@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -29,7 +30,11 @@ from staff.availability import (
     record_successful_turn,
     resolve_provider_chain,
 )
-from staff.chat_failures import chat_read_only_tools, record_chat_failure
+from staff.chat_failures import (
+    chat_read_only_tools,
+    record_chat_capacity_failure,
+    record_chat_failure,
+)
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
     extract_session_id,
@@ -37,19 +42,14 @@ from staff.chat_history import (
 )
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
+    DEFAULT_CHAT_ACQUIRE_TIMEOUT,
     DEFAULT_MAX_CHAT_TURNS,
     ChatConcurrencyPool,
     get_chat_pool,
 )
 from staff.classifier import classify_run_failure
-from staff.conversations import (
-    ConversationStore,
-    get_conversation_store,
-)
-from staff.reply_contract import (
-    ProposedAction,
-    parse_reply,
-)
+from staff.conversations import ConversationStore, get_conversation_store
+from staff.reply_contract import ProposedAction, parse_reply
 from staff.roles import RoleSpec, load_roles
 from staff.thread_bus import get_thread_bus
 
@@ -94,10 +94,12 @@ class ChatTurnRunner:
         conv_store: ConversationStore | None = None,
         adapters: dict[str, ProviderAdapter] | None = None,
         pool: ChatConcurrencyPool | None = None,
+        acquire_timeout: float | None = None,
     ) -> None:
         self.conv_store = conv_store or get_conversation_store()
         self.adapters = adapters if adapters is not None else ADAPTERS
         self.pool = pool or get_chat_pool()
+        self.acquire_timeout = acquire_timeout if acquire_timeout is not None else DEFAULT_CHAT_ACQUIRE_TIMEOUT
 
     def _spawn_cli_process(
         self,
@@ -141,11 +143,21 @@ class ChatTurnRunner:
         user_msg = self.conv_store.get_message(user_message_id)
         prompt_text = user_msg.body_md if user_msg else ""
 
-        acquired = self.pool.try_acquire(role_name)
+        acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:
-            log.warning(
-                "Chat concurrency limit reached for role %s; executing in fallback queue",
-                role_name,
+            log.warning("Chat concurrency limit reached for role %s; rejecting turn with chat_capacity", role_name)
+            await record_chat_capacity_failure(
+                self.conv_store,
+                thread_id,
+                placeholder_id,
+                user_message_id=user_message_id,
+                role_name=role_name,
+            )
+            return ChatTurnResult(
+                ok=False,
+                failure_class="chat_capacity",
+                retryable=True,
+                remediation="All chat slots are busy; please retry shortly.",
             )
 
         metrics = get_availability_metrics()
@@ -222,21 +234,14 @@ class ChatTurnRunner:
                     return result
 
                 last_failed = result
-                log.warning(
-                    "Turn attempt failed on %s: %s; falling back",
-                    candidate,
-                    result.failure_class,
-                )
+                log.warning("Turn attempt failed on %s: %s; falling back", candidate, result.failure_class)
                 fallback_steps += 1
                 metrics.record_fallback()
 
             if last_failed is not None:
                 return last_failed
 
-            log.warning(
-                "All providers unavailable for thread %s; triggering degraded mode",
-                thread_id,
-            )
+            log.warning("All providers unavailable for thread %s; triggering degraded mode", thread_id)
             return await execute_degraded_turn(
                 thread_id=thread_id,
                 user_message_id=user_message_id,
@@ -458,13 +463,7 @@ class ChatTurnRunner:
                 metrics=metrics,
             )
         finally:
-            # Clean up scratch directory
-            try:
-                import shutil
-
-                shutil.rmtree(scratch_dir, ignore_errors=True)
-            except Exception:  # noqa: BLE001
-                pass
+            shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 async def run_chat_turn_in_background(

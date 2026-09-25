@@ -53,3 +53,39 @@ def chat_read_only_tools(role: RoleSpec | None) -> tuple[str, ...]:
     chat = role.chat if role else {}
     tools = chat.get("read_only_tools") if isinstance(chat, dict) else None
     return tuple(tools) if isinstance(tools, list) else ()
+
+
+async def record_chat_capacity_failure(
+    conv_store: ConversationStore,
+    thread_id: str,
+    placeholder_id: str,
+    *,
+    user_message_id: str,
+    role_name: str,
+    detail: str = "All chat slots are busy; please retry shortly.",
+) -> None:
+    """Mark placeholder reply failed due to capacity saturation and post system message."""
+    await record_chat_failure(
+        conv_store,
+        thread_id,
+        placeholder_id,
+        actor=role_name,
+        failure_class="chat_capacity",
+        retryable=True,
+        detail=detail,
+        error="chat_capacity",
+    )
+    sys_msg = conv_store.add_message(
+        thread_id=thread_id,
+        author_kind="system",
+        author="system",
+        kind="text",
+        body_md="All chat slots are busy, please retry.",
+        meta={
+            "in_reply_to": user_message_id,
+            "failure_class": "chat_capacity",
+            "retryable": True,
+        },
+        delivery="complete",
+    )
+    await get_thread_bus().publish_message(thread_id, sys_msg.to_dict())

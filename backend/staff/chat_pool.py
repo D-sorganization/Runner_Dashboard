@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import threading
 
 __all__ = [
     "DEFAULT_BARB_RESERVED_SLOTS",
+    "DEFAULT_CHAT_ACQUIRE_TIMEOUT",
     "DEFAULT_MAX_CHAT_TURNS",
     "ChatConcurrencyPool",
     "get_chat_pool",
@@ -14,6 +16,7 @@ __all__ = [
 
 DEFAULT_MAX_CHAT_TURNS = int(os.environ.get("STAFF_MAX_CHAT_TURNS", "4"))
 DEFAULT_BARB_RESERVED_SLOTS = 1
+DEFAULT_CHAT_ACQUIRE_TIMEOUT = float(os.environ.get("STAFF_CHAT_ACQUIRE_TIMEOUT", "0.5"))
 
 
 class ChatConcurrencyPool:
@@ -46,6 +49,20 @@ class ChatConcurrencyPool:
                 self._active += 1
                 return True
             return False
+
+    async def acquire(self, role: str, timeout: float = DEFAULT_CHAT_ACQUIRE_TIMEOUT) -> bool:
+        """Attempt to acquire a chat slot for ``role``, waiting up to ``timeout`` seconds."""
+        if self.try_acquire(role):
+            return True
+        if timeout <= 0:
+            return False
+        deadline = asyncio.get_running_loop().time() + timeout
+        step = min(0.05, max(0.01, timeout / 10))
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(step)
+            if self.try_acquire(role):
+                return True
+        return False
 
     def release(self, role: str) -> None:
         """Release an acquired chat slot."""
