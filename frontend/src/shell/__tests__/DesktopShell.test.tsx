@@ -54,9 +54,10 @@ describe("DesktopShell — structure", () => {
     expect(screen.getByRole("navigation", { name: /dashboard sections/i })).toBeInTheDocument();
   });
 
-  it("renders the slim top toolstrip", () => {
+  it("renders the global search bar and command palette trigger (SC-D2)", () => {
     renderShell();
-    expect(screen.getByRole("toolbar", { name: /primary navigation/i })).toBeInTheDocument();
+    expect(screen.getByRole("search")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open command palette/i })).toBeInTheDocument();
   });
 
   it("renders the page body in a main landmark", () => {
@@ -68,18 +69,18 @@ describe("DesktopShell — structure", () => {
 });
 
 describe("DesktopShell — navigation", () => {
-  it("selecting a frequent toolstrip button calls onSelect(tabId)", () => {
-    const { onSelect } = renderShell();
-    const bar = screen.getByRole("toolbar", { name: /primary navigation/i });
-    fireEvent.click(within(bar).getByRole("button", { name: /^Remediation$/i }));
-    expect(onSelect).toHaveBeenCalledWith("remediation");
+  it("clicking the search trigger opens the command palette", () => {
+    renderShell();
+    const searchBtn = screen.getByRole("button", { name: /open command palette/i });
+    fireEvent.click(searchBtn);
+    expect(screen.getByRole("dialog", { name: /command palette/i })).toBeInTheDocument();
   });
 
   it("selecting a sidebar item calls onSelect(tabId)", () => {
     const { onSelect } = renderShell();
     const nav = screen.getByRole("navigation", { name: /dashboard sections/i });
-    fireEvent.click(within(nav).getByRole("button", { name: /^Settings$/i }));
-    expect(onSelect).toHaveBeenCalledWith("settings");
+    fireEvent.click(within(nav).getByRole("button", { name: /^Credentials$/i }));
+    expect(onSelect).toHaveBeenCalledWith("credentials");
   });
 
   it("reflects the active category in the sidebar", () => {

@@ -101,17 +101,17 @@ describe("nav registry — DbC invariants", () => {
     }
   });
 
-  it("un-orphans LinearSetup and PushSettings via admin nav entries (issue #825)", () => {
+  it("un-orphans LinearSetup and PushSettings via settings nav entries (issue #825)", () => {
     const byTab = (t: string) => NAV_ITEMS.find((i) => i.tabId === t);
-    expect(byTab("linear-setup")?.group).toBe("admin");
-    expect(byTab("push-settings")?.group).toBe("admin");
+    expect(byTab("linear-setup")?.group).toBe("settings");
+    expect(byTab("push-settings")?.group).toBe("settings");
   });
 
-  it("exposes a literal Reports item under the analysis group (issue #840)", () => {
+  it("exposes a literal Reports item under the fleet group (issue #840 / SC-D2)", () => {
     const reports = NAV_ITEMS.find((i) => i.tabId === "reports");
     expect(reports).toBeDefined();
     expect(reports?.label).toBe("Reports");
-    expect(reports?.group).toBe("analysis");
+    expect(reports?.group).toBe("fleet");
   });
 
   it("marks at least one frequent item and not all of them", () => {

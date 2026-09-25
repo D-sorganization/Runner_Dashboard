@@ -25,6 +25,8 @@ export interface Command {
 
 export interface CommandPaletteProps {
   commands: Command[];
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const RECENT_KEY = 'cmdpalette:recent';
@@ -60,8 +62,21 @@ function filterCommands(commands: Command[], query: string): Command[] {
   );
 }
 
-export function CommandPalette({ commands }: CommandPaletteProps) {
-  const [open, setOpen] = useState(false);
+export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPaletteProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = isOpen !== undefined;
+  const open = isControlled ? isOpen : internalOpen;
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (!isControlled) {
+        setInternalOpen(next);
+      }
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange],
+  );
+
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -76,7 +91,7 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
     if (prevFocusRef.current instanceof HTMLElement) {
       prevFocusRef.current.focus();
     }
-  }, []);
+  }, [setOpen]);
 
   // Open with Ctrl+K / Cmd+K
   useEffect(() => {
@@ -91,7 +106,7 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setOpen]);
 
   // Close on Escape
   useEffect(() => {

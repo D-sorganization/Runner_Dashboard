@@ -18,7 +18,7 @@
  * `onSelectTab(tabId)` callback; it never reaches into router internals.
  */
 import React, { useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { MobileShell, type TabId } from "./MobileShell";
 import { DesktopShell } from "./DesktopShell";
 import { ActiveProviderControl } from "./ActiveProviderControl";
@@ -31,7 +31,10 @@ import {
   normalizeTabId,
   pathnameToTabId,
   tabIdToPath,
+  getTabRedirect,
 } from "./routing";
+import { NotFoundPanel } from "./NotFoundPanel";
+import { useToast } from "../primitives/Toaster";
 import { IntroHeader } from "../primitives/IntroHeader";
 import { ConnectionIndicator } from "../primitives/ConnectionIndicator";
 import { useSession } from "../hooks/useSession";
@@ -198,15 +201,42 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
  * navigates to that tab's canonical path. Because the URL is the single source
  * of truth, bookmarks and back/forward work for free.
  */
-export function RoutedShell() {
+export function RoutedShell({
+  isNotFoundRoute,
+}: {
+  isNotFoundRoute?: boolean;
+} = {}) {
   const navigate = useNavigate();
-  const params = useParams<{ tabId?: string }>();
+  const location = useLocation();
+  const { showToast } = useToast();
 
-  // The active tab is derived purely from the URL. The router mounts this
-  // component for "/" (no param -> default) and "/t/:tabId".
-  const activeTab = params.tabId
-    ? pathnameToTabId(`/t/${params.tabId}`)
-    : DEFAULT_TAB_ID;
+  const redirect = getTabRedirect(location.pathname);
+  React.useEffect(() => {
+    if (redirect) {
+      const key = `redirect_toast_${redirect.to}`;
+      let hasNotified = false;
+      try {
+        hasNotified = Boolean(sessionStorage.getItem(key));
+        if (!hasNotified) sessionStorage.setItem(key, "1");
+      } catch {
+        // Storage unavailable
+      }
+      if (!hasNotified) {
+        showToast(`${redirect.label} moved to ${redirect.to}`, {
+          title: "Page Moved",
+          variant: "info",
+        });
+      }
+      navigate(redirect.to, { replace: true });
+    }
+  }, [redirect, navigate, showToast]);
+
+  const resolvedTab = isNotFoundRoute
+    ? undefined
+    : pathnameToTabId(location.pathname);
+
+  const isNotFound = isNotFoundRoute || resolvedTab === undefined;
+  const activeTab = resolvedTab ?? DEFAULT_TAB_ID;
 
   const onSelectTab = useCallback(
     (tabId: string) => {
@@ -217,7 +247,7 @@ export function RoutedShell() {
 
   // Anonymous local page usage telemetry (issue #1302 / SC-G1)
   React.useEffect(() => {
-    if (!activeTab) return;
+    if (!activeTab || isNotFound) return;
     try {
       fetch("/api/usage/page-view", {
         method: "POST",
@@ -233,9 +263,16 @@ export function RoutedShell() {
     } catch {
       // Non-blocking
     }
-  }, [activeTab]);
+  }, [activeTab, isNotFound]);
 
-  return <AppShell activeTab={activeTab} onSelectTab={onSelectTab} />;
+  return (
+    <AppShell
+      activeTab={activeTab}
+      onSelectTab={onSelectTab}
+      isNotFound={isNotFound}
+      unmatchedPath={location.pathname}
+    />
+  );
 }
 
 /**
@@ -246,9 +283,13 @@ export function RoutedShell() {
 export function AppShell({
   activeTab,
   onSelectTab,
+  isNotFound,
+  unmatchedPath,
 }: {
   activeTab: string;
   onSelectTab: (tabId: string) => void;
+  isNotFound?: boolean;
+  unmatchedPath?: string;
 }) {
   const breakpoint = useBreakpoint();
   const isMobile = breakpoint !== "lg" && breakpoint !== "xl";
@@ -274,6 +315,20 @@ export function AppShell({
   );
 
   if (isMobile) {
+    if (isNotFound) {
+      return (
+        <MobileShell
+          currentTab="staff"
+          onTabChange={(t) => onSelectTab(t)}
+        >
+          <NotFoundPanel
+            path={unmatchedPath || "/"}
+            onNavigateHome={() => onSelectTab("staff")}
+          />
+        </MobileShell>
+      );
+    }
+
     const mobileTab = normalizeTabId(activeTab) as TabId;
     const mobileTabContent = {
       overview: <FleetMobile />,
@@ -359,7 +414,12 @@ export function AppShell({
   const navItem = navItemById(activeTab);
   const tabDisplayName = navItem ? navItem.label : activeTab;
   const nativeContent = nativeDesktopTabContent(activeTab);
-  const wrappedContent = (
+  const wrappedContent = isNotFound ? (
+    <NotFoundPanel
+      path={unmatchedPath || "/"}
+      onNavigateHome={() => onSelectTab("staff")}
+    />
+  ) : (
     <TabErrorBoundary tabName={tabDisplayName} resetKey={activeTab}>
       <React.Suspense
         fallback={

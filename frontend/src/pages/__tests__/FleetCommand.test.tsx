@@ -306,7 +306,7 @@ describe("FleetCommandPage — active work", () => {
     const run = screen.getByTestId("work-staff:run-1");
     expect(run).toHaveTextContent("night-watch");
     expect(run).toHaveTextContent("claude @ Desk");
-    expect(within(run).getByRole("link", { name: "Open run" })).toHaveAttribute("href", "/t/staff?run=run-1");
+    expect(within(run).getByRole("link", { name: "Open run" })).toHaveAttribute("href", "/?run=run-1");
 
     // Same repo + same issue → both rows flagged.
     expect(codex).toHaveClass("fleet-cmd__conflict");
@@ -480,7 +480,7 @@ describe("FleetCommandPage — dispatch", () => {
     expect(screen.getByTestId("plan-branch")).toHaveTextContent("staff/nw-42");
 
     fireEvent.click(screen.getByRole("button", { name: "Dispatch" }));
-    await waitFor(() => expect(screen.getByTestId("dispatch-run-link")).toHaveAttribute("href", "/t/staff?run=run-77"));
+    await waitFor(() => expect(screen.getByTestId("dispatch-run-link")).toHaveAttribute("href", "/?run=run-77"));
     const posts = writes(fetchMock, "POST").map(([, o]) => JSON.parse(String(o.body)).dry_run);
     expect(posts).toEqual([true, false]);
   });

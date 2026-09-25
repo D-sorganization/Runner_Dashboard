@@ -1,4 +1,65 @@
-# Current handoff — SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override (#1315)
+# Current handoff — SC-D2: Shell restructure: Staff Console as default route, four-area navigation, redirects for old tabs (#1309)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1309-shell-restructure`; Issue #1309; DL-#1309.
+
+## Objective and Status
+
+- SC-D2: Restructure the dashboard navigation architecture so Staff Console is the default root (`/`), with four main navigation areas (`staff`, `work`, `fleet`, `settings`), canonical secondary routes (`/fleet/:tabId`, `/work/:tabId`, `/staff/:tabId`, `/settings/:tabId`), backward-compatible redirects from `/t/:tabId` to canonical paths with a one-time "moved to" toast, replacement of the top toolstrip with a CommandPalette trigger (Ctrl/Cmd+K), updated mobile bottom bar (Staff, Work, Fleet, More), and fail-visible `NotFoundPanel` for unmapped routes that keeps the shell chrome intact.
+- Status: Fully implemented with TDD; 126 test suites (1,158 tests) passing; TypeScript typecheck clean (0 errors); ESLint clean (0 warnings); all touched files strictly <= 500 lines.
+
+## Files and Decisions
+
+- `frontend/src/shell/navRegistryData.ts` (424 lines):
+  - Extracted 31 category items and 4 navigation groups (`staff`, `work`, `fleet`, `settings`) from `navRegistry.ts` to respect the 500-line limit.
+  - Set distinct item labels (`Staff Console` for default staff tab, `Preferences` for settings tab, `Overview` for fleet overview) so that group headers and nav items never have conflicting accessible button names.
+  - Configured `mobilePrimary` for `staff`, `queue` (Work), and `overview` (Fleet), with `mobileLabel` values for clean bottom bar display.
+- `frontend/src/shell/navRegistry.ts` (180 lines):
+  - Retains validation logic, DbC assertions, and helper selectors (`frequentItems`, `mobilePrimaryItems`, `mobileDrawerItems`, `itemsByGroup`, `navItemById`, etc.).
+- `frontend/src/shell/routing.ts` (183 lines):
+  - `DEFAULT_TAB_ID = "staff"`.
+  - Canonical routes: `/` -> `staff`, `/work` -> `queue`, `/fleet` -> `overview`, `/settings` -> `settings`, `/settings/push` -> `push-settings`.
+  - Secondary path resolution for `/fleet/:tabId`, `/work/:tabId`, `/staff/:tabId`, `/settings/:tabId`.
+  - `REDIRECT_TABLE` and `getTabRedirect` mapping legacy `/t/:tabId` to canonical paths.
+  - `pathnameToTabId` returns `undefined` for unrecognized routes to trigger 404 rather than silent fallbacks.
+- `frontend/src/shell/NotFoundPanel.tsx` (129 lines):
+  - Fail-visible 404 panel showing badge `NOT_FOUND • 404`, current pathname, and quick navigation back to Staff Console (`/`) or Fleet Overview (`/fleet`).
+- `frontend/src/shell/RoutedShell.tsx` (462 lines):
+  - Wires `getTabRedirect` to navigate to canonical paths and fire a one-time sessionStorage-guarded toast (`${label} moved to ${newPath}`).
+  - Resolves `activeTab` directly from `pathnameToTabId(location.pathname)`.
+  - Renders `NotFoundPanel` inside `AppShell` when a route is unrecognized, keeping the topbar and sidebar navigation operational.
+- `frontend/src/shell/DesktopShell.tsx` (168 lines):
+  - Replaces `TopToolstrip` with global search / Command Palette trigger button (`Search or jump to... ⌘K`) and controlled `CommandPalette` modal.
+- `frontend/src/shell/MobileShell.tsx` (295 lines):
+  - Renders bottom bar items using `item.mobileLabel || item.label` to provide "Staff", "Work", "Fleet", plus "More" trigger.
+- `frontend/src/main.tsx` (173 lines):
+  - Declares canonical routes for `/settings/push`, `/t/:tabId`, `/staff/:tabId`, `/staff`, `/work/:tabId`, `/work`, `/fleet/:tabId`, `/fleet`, `/settings/:tabId`, `/settings`, `/`, and wildcard `<Route path="*" element={<RoutedShell isNotFoundRoute />} />`.
+- `SPEC.md`:
+  - Bumped to 2.5.239; documented SC-D2 route restructuring.
+- `docs/development/DEVELOPMENT_LOG.md`:
+  - Added DL-#1309; updated DL-#1315 to shipped.
+
+## Validation
+
+- Full Vitest suite: 126 test files passed, 1,158 tests passed in 28.34s.
+- `npm run typecheck`: 0 errors.
+- `npm run lint`: 0 warnings, 0 errors.
+- Line caps: All touched files strictly <= 500 lines.
+
+## Next Steps
+
+1. Commit and push branch `feat/1309-shell-restructure`.
+2. Open PR referencing `Fixes #1309`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI checks to green merge into `main`.
+5. Release lease on issue #1309 and clean up worktree.
+
+---
+
+# Previous handoff — SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override (#1315)
 
 Last updated: 2026-09-25
 
