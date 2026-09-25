@@ -30,6 +30,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Implemented SC-G3 Operations page merging Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan, and Schedules into `/fleet/operations`: (1) `OperationsStatusBanner` with quick KPI badges and 5 jump anchors (`#deploy`, `#admission`, `#runner-hours`, `#scheduled-workflows`, `#diagnostics`); (2) `OperationsDeploySection` with expected version, rollout summary, machine drift table, multi-node deploy action form, and audit log; (3) `OperationsAdmissionSection` with admission gate status (running/paused/draining), queue control buttons, capacity and work queue statistics, provider mix, budget burn, and 404 empty state; (4) `OperationsRunnerHoursSection` with desired/online/busy/offline runner metrics, schedule windows table, save/apply buttons, timer status, and config path footer; (5) `OperationsScheduledWorkflowsSection` with cron workflows table, repository badges, cron expressions, run link, search filter, and trigger CTA; (6) `OperationsDiagnosticsSection` with PID, memory MB, port, WSL status, git drift, service recovery restart with confirmation, Windows launcher generator, and API links; (7) Backwards-compatible redirects configured for `/fleet/deployment`, `/deployment`, `/t/deployment`, `/fleet/fleet-orchestration`, `/t/fleet-orchestration`, `/fleet/conductor`, `/conductor`, `/t/conductor`, `/fleet/runner-schedule`, `/runner-schedule`, `/fleet/runner-plan`, `/runner-plan`, `/t/runner-schedule`, `/work/scheduled-jobs`, `/scheduled-jobs`, `/schedules`, `/work/schedules`, `/t/scheduled-jobs`, `/settings/diagnostics`, `/diagnostics`, `/t/diagnostics` to `/fleet/operations#...` with user toast notices; (8) Recomposed shell navigation and overview deployment navigation to point to `/fleet/operations#deploy`.
 - **Next step:** Push branch `feat/1325-operations-merge`, open PR with Fixes #1325, enable auto-merge, monitor CI to green merge, release lease, and clean up.
 
+### DL-#1428 · Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1428
+- **Branch:** `fix/1428-green-main`
+- **Paths:** `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Mobile.tsx trimmed to 463 lines; api-types.ts formatted without duplicate blank line; vitest StaffConsole 75/75 passed; typecheck 0 errors; lint 0 warnings)
+- **Summary:** Trimmed `frontend/src/pages/StaffConsole/Mobile.tsx` to 463 lines (resolving the soft-cap failure in `ci-health-check` on main) and removed duplicate newline in `frontend/src/lib/api-types.ts` before Client compatibility aliases (satisfying `generate-api:check`).
+- **Next step:** Shipped in PR #1429 (commit `6a1f576`).
+
 ### DL-#1331 · SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links
 
 - **State:** shipped

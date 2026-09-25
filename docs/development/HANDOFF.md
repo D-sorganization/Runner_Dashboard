@@ -45,6 +45,23 @@ Last updated: 2026-09-25
 
 ---
 
+# Previous handoff — Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1428-green-main`; Issue #1428; DL-#1428.
+
+## Objective and Status
+
+- Restore green main:
+  - Trim `frontend/src/pages/StaffConsole/Mobile.tsx` from 516 lines to 463 lines (comfortably below 500-line soft cap).
+  - Remove redundant newline before `Client compatibility aliases` in `frontend/src/lib/api-types.ts` to satisfy `generate-api:check`.
+- Status: Shipped in PR #1429 (commit `6a1f576`).
+
+---
+
 # Previous handoff — SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links (#1331)
 
 Last updated: 2026-09-25
