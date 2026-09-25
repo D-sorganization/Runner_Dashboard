@@ -487,6 +487,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 - **2026-09-03 (2.5.197):** Durable half of the runner `/tmp` exhaustion fix
   (Repository_Management#1489 via #1511, program #1505). (1) The `/tmp`
   litter GC from 2.5.194 is factored into `cleanup_litter_in <dir> <age_min>`
+
   - `tmp_litter_age_min` and gains the `tmp*` (Python `tempfile` default
     prefix) and `pymp-*` (multiprocessing) patterns observed alongside `pip-*`
     in both incidents. (2) New `cleanup_runner_tmpdirs` applies the same GC to
@@ -650,6 +651,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   `busy_without_listener`. Schedule defaults, timed entries, and manual targets
   are capped by `max_count`; dashboard schedule edits preserve the ceiling.
 - **2026-08-21 (2.5.177):** Deterministic and offline-capable dashboard builds and deployments (issue #1085).
+
   - Switched frontend CI workflows and deployment scripts to `npm ci` ensuring strict lockfile synchronization.
   - Added `deploy/package-dashboard-artifact.sh` generating immutable tarballs with `FILES.txt` inventory, `deployment.json` metadata, and SHA-256 sidecars conforming to `docs/ARTIFACT_BUILD.md`.
   - Added `--checksum <sha256>` verification to `deploy/install-dashboard-artifact.sh` and offline dependency installation from `backend/wheels`.
@@ -1808,6 +1810,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
+
   - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
     min/max/default online counts, systemd unit pattern, labels, start/stop
     enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
@@ -2852,8 +2855,8 @@ Response shape (`schema_version` `1.0.0`):
       "experimental": false,
       "editable": true,
       "remote": false,
-      "enabled": true, // false for retired providers (jules_cli, jules_api), #1193
-    },
+      "enabled": true // false for retired providers (jules_cli, jules_api), #1193
+    }
   ],
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
@@ -2864,14 +2867,14 @@ Response shape (`schema_version` `1.0.0`):
     "antigravity": {
       "installed": false,
       "authenticated": false,
-      "detail": "agy not found on PATH",
+      "detail": "agy not found on PATH"
     },
     "claude_code_cli": {
       "installed": true,
       "authenticated": true,
-      "detail": "Ready",
-    },
-  },
+      "detail": "Ready"
+    }
+  }
 }
 ```
 

@@ -26,7 +26,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Branch:** `feat/1446-desktop-staff-console`
 - **Paths:** `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/consoleThreads.ts`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/StaffConsole/ConsoleErrorBanner.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/e2e/a11y.spec.ts`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (vitest frontend/src/pages 86 files/673 tests; tsc -p tsconfig.app.json 0 errors)
+- **Last verified:** 2026-09-25 (vitest frontend/src/pages 86 files/673 tests + StaffPageConsole; tsc -p tsconfig.app.json 0 errors; changed files within the 500-line cap)
 - **Summary:** Desktop console is the default Staff section; desktop and mobile share `useStaffConsole`; roles open server-resolved threads (no invented ids); every backend failure is a visible alert.
 - **Next step:** Merge the PR once CI is green, then send a message to Barb from the deployed Desk node's Staff Console and confirm the reply streams in.
 

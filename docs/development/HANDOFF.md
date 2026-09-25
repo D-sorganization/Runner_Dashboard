@@ -15,6 +15,7 @@ Last updated: 2026-09-25
   - `StaffConsoleDesktop` (Roster | Thread + Composer | collapsible Context) is the default Staff section; the hub sections (Roster, Runs, Assign, Holds) stay as tabs.
   - `Mobile.tsx` now uses the hook; deep links resolve through it.
 - Verification: `npx vitest run frontend/src/pages` 86 files/673 tests passed; `npx tsc -p tsconfig.app.json --noEmit` 0 errors.
+- CI's 500-line cap covers `frontend/src/` tests: the console-default test lives in `pages/__tests__/StaffPageConsole.test.tsx`, which keeps `Staff.test.tsx` at 500 lines.
 
 ## Next Steps
 
