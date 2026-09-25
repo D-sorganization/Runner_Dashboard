@@ -23,6 +23,7 @@ RUN_STATUSES = (
     "failed",
     "cancelled",
     "blocked",
+    "needs_input",
 )
 ACTIVE_STATUSES = ("queued", "preparing", "running")
 
@@ -88,6 +89,8 @@ class RunRecord:
     max_attempts: int = 2
     next_attempt_at: str | None = None
     fallback_provider: str = ""
+    thread_id: str = ""
+    work_item_id: str = ""
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
@@ -161,6 +164,8 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("max_attempts", "INTEGER NOT NULL DEFAULT 2"),
     ("next_attempt_at", "TEXT"),
     ("fallback_provider", "TEXT NOT NULL DEFAULT ''"),
+    ("thread_id", "TEXT NOT NULL DEFAULT ''"),
+    ("work_item_id", "TEXT NOT NULL DEFAULT ''"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")
@@ -192,6 +197,7 @@ class RunStore:
         for name, decl in _ADDED_COLUMNS:
             if name not in present:
                 self._conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")  # noqa: S608
+        self._conn.execute("CREATE INDEX IF NOT EXISTS runs_thread_idx ON runs(thread_id)")
 
     def columns(self) -> set[str]:
         """Column names currently present on the ``runs`` table (for migration tests)."""
@@ -252,6 +258,16 @@ class RunStore:
             rows = self._conn.execute(
                 f"SELECT * FROM runs {where} ORDER BY created_at DESC LIMIT ?",  # noqa: S608
                 (*params, int(limit)),
+            ).fetchall()
+        return [RunRecord(**dict(r)) for r in rows]
+
+    def list_runs_for_thread(self, thread_id: str) -> list[RunRecord]:
+        if not thread_id:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM runs WHERE thread_id = ? ORDER BY created_at ASC",
+                (thread_id,),
             ).fetchall()
         return [RunRecord(**dict(r)) for r in rows]
 

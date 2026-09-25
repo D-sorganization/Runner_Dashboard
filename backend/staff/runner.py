@@ -36,6 +36,7 @@ from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
+from staff.run_link import handle_run_status_change
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import mint_run_token, revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -179,9 +180,12 @@ class StaffRunner:
             branch=plan.branch,
             strategy_mode=plan.strategy_mode,
             max_attempts=max_att,
+            thread_id=req.thread_id,
+            work_item_id=req.work_item_id,
         )
         self.store.create_run(rec)
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
+        handle_run_status_change(rec, "queued")
         thread = threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True)
         thread.start()
         return rec
@@ -196,10 +200,12 @@ class StaffRunner:
         if proc is not None and proc.poll() is None:
             terminate_process_group(proc.pid, grace_period=1.0)
             self.store.append_event(run_id, "cancel", "terminate signal sent")
+            handle_run_status_change(rec, "cancelled")
             return True
         if rec.status in ("queued", "preparing"):
             self.store.update_run(run_id, status="cancelled", ended_at=_now())
             self.store.append_event(run_id, "cancel", "cancelled before start")
+            handle_run_status_change(rec, "cancelled")
             return True
         return False
 
@@ -212,6 +218,7 @@ class StaffRunner:
                 return
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
+                handle_run_status_change(rec, "preparing")
                 workdir = self._prepare_workdir(rec, plan)
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent
@@ -333,6 +340,7 @@ class StaffRunner:
                 pid=proc.pid,
             )
             store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
+            handle_run_status_change(rec, "running")
             if cancelled:
                 terminate_process_group(proc.pid, grace_period=1.0)
             if adapter.prompt_via_stdin and proc.stdin is not None:
@@ -368,6 +376,7 @@ class StaffRunner:
                 watchdog_failure_class=watchdog.failure_class or "",
                 watchdog_error=watchdog.error_message or "",
                 machine=self.machine,
+                has_thread=bool(rec.thread_id),
             )
 
             store.update_run(
@@ -386,6 +395,23 @@ class StaffRunner:
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
             store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
+            updated_rec = store.get_run(rec.id)
+            if updated_rec is not None:
+                question = None
+                if status == "needs_input":
+                    from staff.classifier import _extract_last_line_text  # noqa: PLC0415
+
+                    try:
+                        t_text = transcript.read_text(encoding="utf-8", errors="replace")
+                        question = _extract_last_line_text(t_text)
+                    except Exception:  # noqa: BLE001
+                        pass
+                handle_run_status_change(
+                    updated_rec,
+                    status=status,
+                    question=question,
+                    summary=updated_rec.outcome,
+                )
         finally:
             revoke_run_token(rec.id)
 

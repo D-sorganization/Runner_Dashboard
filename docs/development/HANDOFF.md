@@ -1,52 +1,51 @@
-# Current handoff — SC-B3: Conversation API: threads, messages, streaming replies (SSE with resume) and unread state (#1306)
+# Current handoff — SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes (#1314)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1306-conversation-api`; Issue #1306; DL-#1306.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1314-link-runs-to-threads`; Issue #1314; DL-#1314.
 
 ## Work
 
-- `backend/routers/staff_threads.py`:
-  - Mounted conversation endpoints under `/api/v1/staff`:
-    - `POST /api/v1/staff/threads`: Create conversation thread (direct, group, or auto-routed to Barb).
-    - `GET /api/v1/staff/threads`: Keyset cursor paginated list of threads with filters for `role`, `status`, and `unread`.
-    - `GET /api/v1/staff/threads/{id}`: Thread details with full sequential message history.
-    - `PATCH /api/v1/staff/threads/{id}`: Update thread title or archive status.
-    - `POST /api/v1/staff/threads/{id}/messages`: Requires `Idempotency-Key` header, returns 202 Accepted immediately with user message and pending reply placeholder record. Duplicate submissions replay identically with `Idempotent-Replay: true`.
-    - `GET /api/v1/staff/threads/{id}/stream`: SSE event stream delivering `message`, `token`, `proposal`, `run_card` events, supporting `Last-Event-ID` sequential message replay from SQLite upon reconnection, 15-second heartbeats (`: keep-alive`), and client disconnection detection.
-    - `POST /api/v1/staff/threads/{id}/read`: Mark thread read for caller principal and update unread tracking.
-    - `GET /api/v1/staff/inbox`: Aggregated list of open threads requiring caller attention (unread messages or pending action proposals).
+- `backend/staff/plan.py`:
+  - Added `thread_id: str = ""` and `work_item_id: str = ""` to `RunRequest` and `RunPlan`.
+- `backend/staff/store.py`:
+  - Added `thread_id` and `work_item_id` columns to `RunRecord` and `_ADDED_COLUMNS` with automatic SQLite schema migration and index creation (`runs_thread_idx`).
+  - Added `list_runs_for_thread(thread_id: str) -> list[RunRecord]`.
+  - Added `"needs_input"` to valid `RUN_STATUSES`.
+- `backend/staff/run_link.py`:
+  - Implemented `format_run_card_body`, `post_run_card`, `handle_run_status_change`, and `answer_needs_input`.
+  - Generates markdown `run_card` messages reporting status transitions (`queued`, `preparing`, `running`, `needs_input`, `succeeded`, `failed`, `cancelled`) into linked threads and publishes across `ThreadEventBus`.
+  - `answer_needs_input`: Spawns continuation runs with preserved prompt context and work item linkage.
+- `backend/staff/remote_runs.py`:
+  - Implemented `find_remote_run`, `proxy_remote_run`, `stream_remote_run`, and `proxy_remote_cancel` to discover and proxy runs across nodes using signed on-behalf-of identity (SC-F2) and fail-visible `node_unreachable` SSE events.
 - `backend/staff/thread_bus.py`:
-  - In-memory event bus with per-thread subscription queues and subscriber lifecycle management.
-- `backend/server.py`:
-  - Mounted `staff_threads.router` with prefix `/api/v1/staff`.
-- `docs/api/staff-v1.md`:
-  - Added full section 7 documenting thread, message, SSE streaming resume, and inbox endpoints.
-- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
-  - Regenerated OpenAPI snapshot and client TypeScript types via canonical `gen-api-client.sh`.
-- `tests/api/test_staff_threads_api.py`:
-  - 10 comprehensive tests covering thread creation, auto-route to Barb, role/status/unread filtering, patch, message idempotency, SSE stream resume, unread state, error messages with retry actions, and 503 degraded fail-closed behavior.
+  - Added `publish_sync(thread_id, event, data)` to safely publish live events from worker threads without event loop dependencies.
+- `backend/staff/classifier.py` & `backend/staff/runner.py`:
+  - Updated `classify_execution_result` to accept `has_thread: bool = False`, transitioning to `needs_input` when associated with a thread while preserving `failed` exit 0 semantics for unattended CLI runs.
+- `backend/routers/staff.py`:
+  - Updated `get_run`, `stream_run`, and `cancel_run` to proxy to peer nodes when a run is not found on the local hub.
+- `backend/routers/staff_threads.py`:
+  - Added `POST /api/v1/staff/threads/{thread_id}/runs/{run_id}/answer` endpoint to answer needs-input questions from within conversation threads.
+- `tests/api/test_staff_thread_runs.py`:
+  - 9 comprehensive unit and integration tests covering record metadata, card posting, terminal summaries, question cards, answer flow, remote run discovery, proxying, remote cancel, and remote SSE streaming.
 
 ## Validation
 
-- `pytest tests/api/test_staff_threads_api.py`: 10 passed in 1.87s.
-- `pytest tests/api/test_staff_threads_api.py tests/api/test_staff_v1_api.py tests/unit/test_staff_v1_primitives.py tests/unit/test_conversations_store.py tests/api/test_staff_contracts.py`: 42 passed in 4.00s.
-- `npm test`: 124 test files passed (1139 passed tests) in 24.9s.
-- `npm run typecheck`: 0 errors.
-- `npm run lint`: 0 errors, 0 warnings.
-- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: 0 issues in 200 source files.
+- `pytest tests/api/test_staff_thread_runs.py`: 9 passed in 1.84s.
+- `pytest tests/api/test_staff_threads_api.py tests/api/test_staff_runner.py tests/unit/test_staff_classifier.py`: 47 passed in 9.84s.
+- `mypy backend/staff/run_link.py backend/staff/remote_runs.py backend/staff/runner.py backend/staff/store.py backend/staff/plan.py backend/routers/staff.py backend/routers/staff_threads.py tests/api/test_staff_thread_runs.py`: 0 errors across 8 source files.
 - `ruff check`: All checks passed.
-- `black --check`: All clean.
-- Line limits: All new and modified files strictly <= 500 lines (`staff_threads.py`: 467, `thread_bus.py`: 127, `conversations.py`: 488, `test_staff_threads_api.py`: 294).
+- `ruff format --check`: All checks passed.
+- Line limits: All new and modified files strictly <= 500 lines (`backend/routers/staff.py`: 480, `backend/routers/staff_threads.py`: 494, `backend/staff/runner.py`: 464, `backend/staff/store.py`: 421, `backend/staff/classifier.py`: 390, `tests/api/test_staff_thread_runs.py`: 367, `backend/staff/run_link.py`: 173, `backend/staff/remote_runs.py`: 145, `backend/staff/thread_bus.py`: 140, `backend/staff/plan.py`: 90).
 
 ## Next
 
-1. Open PR with `gh pr create` referencing `Fixes #1306`.
+1. Open PR with `gh pr create` referencing `Fixes #1314`.
 2. Monitor CI checks to completion.
 3. Enable auto-merge and verify PR merges cleanly.
-4. Release coordination lease on Issue #1306.
+4. Release coordination lease on Issue #1314.
 
 ---
 

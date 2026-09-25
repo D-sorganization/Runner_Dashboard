@@ -66,6 +66,29 @@ class ThreadEventBus:
                 log.warning("Subscriber queue full for thread %s; dropping event", thread_id)
         return count
 
+    def publish_sync(
+        self,
+        thread_id: str,
+        event_type: str,
+        data: dict[str, Any],
+        event_id: int | str | None = None,
+    ) -> int:
+        """Synchronously broadcast an event to active queues without requiring an event loop."""
+        payload = {
+            "id": event_id,
+            "event": event_type,
+            "data": data,
+        }
+        subs = list(self._subscribers.get(thread_id, set()))
+        count = 0
+        for q in subs:
+            try:
+                q.put_nowait(payload)
+                count += 1
+            except Exception:  # noqa: BLE001
+                pass
+        return count
+
     async def publish_token(self, thread_id: str, message_id: str, delta: str) -> int:
         """Helper to broadcast a token delta."""
         return await self.publish(
