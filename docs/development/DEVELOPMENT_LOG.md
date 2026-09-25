@@ -29,7 +29,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (docs-only plan; rechecked against `main` `9bbeec6`)
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
-- **Next step:** Fold replies from the active Runner_Dashboard sessions into the plan and get the owner's decision on Phase 0.
+- **Next step:** Dispatch #1474 and #1475 (approved Phase 0) to CLI-tier agents.
 
 ### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
 
