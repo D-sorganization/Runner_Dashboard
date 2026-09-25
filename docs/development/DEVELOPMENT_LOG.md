@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1381 · Restore green main: API contract types synchronization
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1381
+- **Branch:** `fix/1381-api-contract-sync`
+- **PR:** not created
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`scripts/gen-api-client.sh --check` exit 0; `npm run typecheck` 0 errors; `npm test` 123 passed; pytest 29 passed)
+- **Summary:** Synchronized `frontend/src/lib/openapi.json` and generated TypeScript definitions `frontend/src/lib/api-types.ts` with updated `StaffRoleSpec` response model reflecting `defers_to`, `tools`, and dictionary/string `persona` fields from SC-B5 (#1308). Verified via `scripts/gen-api-client.sh --check` and `npm run typecheck`, restoring clean CI on `main`.
+- **Next step:** Commit, push branch, open PR with `Fixes #1381`, auto-merge, and release coordination lease.
+
 ### DL-#1308 · SC-B5: Structured reply contract for chat turns
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1308 (epic #1348 / umbrella #1354)
 - **Branch:** `feat/1308-structured-reply-contract`
-- **PR:** not created
+- **PR:** #1379
 - **Paths:** `backend/staff/reply_contract.py`, `backend/staff/workspace.py`, `backend/staff/roles.py`, `backend/staff/models.py`, `backend/staff/schema.json`, `tests/unit/test_staff_reply_contract.py`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`pytest tests/unit/test_staff_reply_contract.py` 15 passed; all 14 RM playbook worked examples verified; mypy clean, ruff clean, black clean)
 - **Summary:** Implemented structured reply contract parser for conversational chat turns (`backend/staff/reply_contract.py`), replacing flat `STAFF_RESULT` lines. Parses markdown prose replies, trailing fenced `staff-actions` blocks with strict JSON array validation, `handoff: <role>` lines (or ```text blocks), and `question: <text>`lines. Drops unknown actions with system notes and drops unauthorized actions exceeding role's permissions or fleet actions. Fail-safe design ensures malformed JSON never loses prose reply and parser exceptions are impossible by construction. Defends against adversarial prompt injection by ignoring blockquoted or nested code fences. Extended`workspace.py::compose_prompt`to support`chat_turn=True`appending`chat.contract` rather than unattended worktree fleet rules.
-- **Next step:** Commit, push branch, open PR with `Fixes #1308`, auto-merge, and release coordination lease.
+- **Next step:** None (shipped in PR #1379).
 
 ### DL-#1310 · SC-E2: Short-lived, scoped credentials for staff runs
 

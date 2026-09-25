@@ -2281,6 +2281,13 @@
             "title": "Chat",
             "type": "object"
           },
+          "defers_to": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Defers To",
+            "type": "array"
+          },
           "dispatchable": {
             "default": true,
             "title": "Dispatchable",
@@ -2354,8 +2361,7 @@
           },
           "persona": {
             "default": "",
-            "title": "Persona",
-            "type": "string"
+            "title": "Persona"
           },
           "playbook": {
             "default": "",
@@ -2452,6 +2458,13 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
           },
           "valid": {
             "default": true,
@@ -3260,13 +3273,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [

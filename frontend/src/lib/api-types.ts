@@ -5785,6 +5785,8 @@ export interface components {
             chat?: {
                 [key: string]: unknown;
             };
+            /** Defers To */
+            defers_to?: string[];
             /**
              * Dispatchable
              * @default true
@@ -5820,7 +5822,7 @@ export interface components {
              * Persona
              * @default
              */
-            persona: string;
+            persona: unknown;
             /**
              * Playbook
              * @default
@@ -5868,6 +5870,8 @@ export interface components {
             surface: string | null;
             /** Title */
             title: string;
+            /** Tools */
+            tools?: string[];
             /**
              * Valid
              * @default true
@@ -6373,10 +6377,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
