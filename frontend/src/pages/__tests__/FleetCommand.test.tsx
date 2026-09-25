@@ -9,8 +9,6 @@
  * 3. Active work: board sessions merged with staff runs, conflicts highlighted,
  *    repo filter, staff-run deep link, available:false degrades.
  * 4. Messages: Active work "Message" prefills the form; send POSTs with CSRF; inbox renders.
- * 5. Claims: check shows the holder; a 409 claim shows held_by; release POSTs.
- * 6. Dispatch: reuses Staff Assign (dry-run preview, then run) and links to the Staff tab run.
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -18,6 +16,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetCommandPage } from "../FleetCommand";
 import { operatorSession } from "../FleetCommand/fleetApi";
+import {
+  DIRECTIVE,
+  headerOf,
+  openSection,
+  stubFetch,
+  writes,
+} from "./fleetCommandTestHelpers";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -27,169 +32,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-
-const BOARD = {
-  date: "2026-09-21",
-  metadata: {},
-  active: [
-    {
-      rank: 1,
-      item: "Coordination API",
-      project: "Runner_Dashboard",
-      scope: "sessions, claims, briefing",
-      assigned_to: "claude",
-      tracking: "#1229",
-      acceptance: "",
-    },
-    {
-      rank: 2,
-      item: "Glass model",
-      project: "Tools_Private",
-      scope: "",
-      assigned_to: "",
-      tracking: "",
-      acceptance: "",
-    },
-  ],
-  deferred: [{ item: "Mobile polish", project: "Runner_Dashboard", reason: "capacity", reassess: "2026-10-01" }],
-  borda: [],
-  disagreements: ["Codex wants the glass model first"],
-};
-
-const PRIORITIES = { available: true, board: BOARD, directives: [], portfolios: [], generated_at: "x" };
-const MEETINGS = {
-  available: true,
-  meetings: [
-    { date: "2026-09-21", files: ["consensus.md"], has_consensus: true },
-    { date: "2026-09-14", files: ["consensus.md"], has_consensus: true },
-  ],
-};
-const OLD_MEETING = {
-  available: true,
-  date: "2026-09-14",
-  consensus: { ...BOARD, active: [{ ...BOARD.active[0], item: "Staff Hub", tracking: "Runner_Dashboard#1192" }] },
-};
-
-const DIRECTIVE = {
-  id: "d1",
-  text: "Finish the coordination API first",
-  repo: "Runner_Dashboard",
-  priority: 1,
-  expires: "2099-01-01T00:00:00Z",
-  set_by: "dieter",
-  set_on: "2026-09-20T00:00:00Z",
-};
-
-const SESSIONS = {
-  available: true,
-  complete: true,
-  sessions: [
-    {
-      session: "s-1",
-      agent: "codex",
-      repo: "Tools",
-      issue: 42,
-      branch: "feat/x",
-      paths: ["a.py"],
-      goals: { api: "ship" },
-      expires: "2099-01-01T00:00:00Z",
-      source: "board",
-    },
-    {
-      session: "s-2",
-      agent: "gemini",
-      repo: "Runner_Dashboard",
-      issue: 7,
-      branch: "fix/y",
-      paths: [],
-      goals: {},
-      expires: "2099-01-01T00:00:00Z",
-      source: "board",
-    },
-  ],
-  staff_runs: [
-    {
-      id: "run-1",
-      role: "night-watch",
-      provider: "claude",
-      machine: "Desk",
-      repo: "Tools",
-      target: "#42",
-      status: "running",
-      source: "staff",
-    },
-  ],
-  messages: [],
-  conflicts: [],
-  warnings: [],
-};
-
-const ROSTER = {
-  machine: "Desk",
-  active_runs: 0,
-  providers: { claude: true },
-  roles: [
-    {
-      name: "night-watch",
-      title: "Night Watch",
-      summary: "",
-      playbook: "",
-      providers: ["claude"],
-      model: null,
-      schedule: null,
-      window: null,
-      repos: [],
-      budget: { usd_per_run: null, usd_per_day: null },
-      permissions: {},
-      reports_to: null,
-      holds: [],
-      surface: null,
-      retired: false,
-      dispatchable: true,
-      source_path: "",
-      active_runs: 0,
-    },
-  ],
-};
-
-type Reply = { status: number; body: unknown } | undefined;
-type Handler = (url: string, opts?: RequestInit) => Reply;
-
-function jsonResponse(status: number, body: unknown) {
-  return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
-}
-
-/** fetch stub routed by URL; unknown routes 404 so orthogonal panels degrade. */
-function stubFetch(extra: Handler = () => undefined) {
-  const fetchMock = vi.fn((url: string, opts?: RequestInit) => {
-    const custom = extra(url, opts);
-    if (custom) return jsonResponse(custom.status, custom.body);
-    if (url === "/api/priorities") return jsonResponse(200, PRIORITIES);
-    if (url === "/api/priorities/meetings") return jsonResponse(200, MEETINGS);
-    if (url === "/api/priorities/meetings/2026-09-14") return jsonResponse(200, OLD_MEETING);
-    if (url === "/api/priorities/directives") return jsonResponse(200, { directives: [DIRECTIVE] });
-    if (url === "/api/coordination/sessions") return jsonResponse(200, SESSIONS);
-    if (url === "/api/staff/roster" || url === "/api/v1/staff/roster") return jsonResponse(200, ROSTER);
-    return jsonResponse(404, { detail: "Not Found" });
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
-function writes(fetchMock: ReturnType<typeof vi.fn>, method: string) {
-  return fetchMock.mock.calls.filter(([, o]) => (o as RequestInit | undefined)?.method === method) as [
-    string,
-    RequestInit,
-  ][];
-}
-
-function headerOf(opts: RequestInit, name: string): string | undefined {
-  return (opts.headers as Record<string, string>)[name];
-}
-
-function openSection(name: string) {
-  fireEvent.click(screen.getByRole("tab", { name }));
-}
 
 describe("FleetCommandPage — priorities", () => {
   it("shows the latest board meeting with tracking links, deferred items and disagreements", async () => {
@@ -247,79 +89,7 @@ describe("FleetCommandPage — priorities", () => {
     await waitFor(() => expect(screen.getByTestId("fleet-priorities-unavailable")).toBeInTheDocument());
     expect(screen.getByTestId("fleet-directives-unavailable")).toBeInTheDocument();
   });
-
-  it("renders decided proposals for the meeting date", async () => {
-    stubFetch((url) => {
-      if (url.includes("/api/proposals?state=decided")) {
-        return {
-          status: 200,
-          body: {
-            proposals: [
-              {
-                number: 42,
-                title: "Decided in this meeting",
-                target_repos: ["Runner_Dashboard"],
-                decision: "accepted",
-                meeting_date: "2026-09-21",
-                state: "decided",
-              },
-            ],
-          },
-        };
-      }
-      return undefined;
-    });
-    render(<FleetCommandPage />);
-    await waitFor(() => expect(screen.getByTestId("priorities-decided-proposals")).toBeInTheDocument());
-    expect(screen.getByText("Decided in this meeting")).toBeInTheDocument();
-    expect(screen.getByText("#42")).toBeInTheDocument();
-  });
 });
-
-describe("FleetCommandPage — proposals", () => {
-  it("switches to Proposals tab and renders proposal form and lists", async () => {
-    stubFetch((url) => {
-      if (url.includes("/api/proposals")) {
-        return {
-          status: 200,
-          body: { proposals: [] },
-        };
-      }
-      return undefined;
-    });
-    render(<FleetCommandPage />);
-    const proposalsTab = screen.getByRole("tab", { name: /proposals/i });
-    fireEvent.click(proposalsTab);
-    await waitFor(() => expect(screen.getByTestId("proposal-form-frame")).toBeInTheDocument());
-    expect(screen.getByTestId("open-proposals-frame")).toBeInTheDocument();
-    expect(screen.getByTestId("decided-proposals-frame")).toBeInTheDocument();
-  });
-
-  it("pre-fills proposal form from URL search params", async () => {
-    const origLocation = window.location;
-    delete (window as unknown as { location?: Location }).location;
-    window.location = {
-      ...origLocation,
-      search: "?section=proposals&title=Prefilled+Title&repo=Runner_Dashboard&problem=Big+problem",
-    };
-    try {
-      stubFetch((url) => {
-        if (url.includes("/api/proposals")) {
-          return { status: 200, body: { proposals: [] } };
-        }
-        return undefined;
-      });
-      render(<FleetCommandPage />);
-      await waitFor(() => expect(screen.getByTestId("proposal-form-frame")).toBeInTheDocument());
-      expect(screen.getByLabelText("Title")).toHaveValue("Prefilled Title");
-      expect(screen.getByLabelText("Target Repo(s)")).toHaveValue("Runner_Dashboard");
-      expect(screen.getByLabelText("Problem Statement")).toHaveValue("Big problem");
-    } finally {
-      window.location = origLocation;
-    }
-  });
-});
-
 
 describe("FleetCommandPage — directives", () => {
   it("edits, adds and expires directives, then PUTs the list with the CSRF header", async () => {
@@ -460,107 +230,5 @@ describe("FleetCommandPage — messages", () => {
     expect(screen.getByTestId("message-m1")).toHaveTextContent("<b>heads up</b>");
     expect(screen.getByTestId("message-m1")).toHaveTextContent("everyone in Tools");
     expect(screen.getByTestId("messages-inbox")).toHaveTextContent("grok");
-  });
-});
-
-describe("FleetCommandPage — claims", () => {
-  it("checks a claim, surfaces a 409 holder and releases", async () => {
-    const fetchMock = stubFetch((url, opts) => {
-      if (url === "/api/coordination/claims?repo=Tools&issue=42") {
-        return {
-          status: 200,
-          body: {
-            available: true,
-            held: true,
-            agent: "codex",
-            reason: "lease active",
-            expires_at: "2099-01-01T00:00:00Z",
-          },
-        };
-      }
-      if (url === "/api/coordination/claims" && opts?.method === "POST") {
-        return {
-          status: 409,
-          body: { detail: { error: "issue is claimed", held_by: "codex", guidance: "pick another issue" } },
-        };
-      }
-      if (url === "/api/coordination/claims/release") return { status: 200, body: { ok: true } };
-      return undefined;
-    });
-    render(<FleetCommandPage />);
-    openSection("Claims");
-    fireEvent.change(screen.getByRole("textbox", { name: "Claim repo" }), { target: { value: "Tools" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Claim issue" }), { target: { value: "#42" } });
-    fireEvent.click(screen.getByRole("button", { name: "Check claim" }));
-    await waitFor(() => expect(screen.getByTestId("claim-status")).toHaveTextContent("claimed by codex"));
-
-    fireEvent.click(screen.getByRole("button", { name: "Claim" }));
-    await waitFor(() =>
-      expect(screen.getByTestId("claim-error")).toHaveTextContent(
-        "issue is claimed — held by codex — pick another issue",
-      ),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Release" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Released Tools#42."));
-    const release = writes(fetchMock, "POST").find(([u]) => u === "/api/coordination/claims/release");
-    expect(release).toBeDefined();
-    expect(headerOf(release![1], "X-Requested-With")).toBe("XMLHttpRequest");
-    expect(JSON.parse(String(release![1].body))).toEqual({
-      repo: "Tools",
-      issue: 42,
-      session: operatorSession(),
-      reason: "work completed",
-    });
-  });
-});
-
-describe("FleetCommandPage — dispatch", () => {
-  it("previews with dry_run then dispatches and links to the Staff tab run", async () => {
-    const fetchMock = stubFetch((url, opts) => {
-      if (url !== "/api/staff/night-watch/run" && url !== "/api/v1/staff/night-watch/run") return undefined;
-      const body = JSON.parse(String(opts?.body));
-      return body.dry_run
-        ? {
-            status: 200,
-            body: {
-              dry_run: true,
-              machine: "local",
-              plan: {
-                role: "night-watch",
-                provider: "claude",
-                model: null,
-                repo: "Tools",
-                target_kind: "issue",
-                target_ref: "42",
-                prompt: "p",
-                argv: ["claude"],
-                branch: "staff/nw-42",
-                lease_ritual: true,
-              },
-            },
-          }
-        : { status: 200, body: { dry_run: false, machine: "local", run: { id: "run-77" } } };
-    });
-    render(<FleetCommandPage />);
-    openSection("Dispatch");
-    await waitFor(() => expect(screen.getByLabelText("Role")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText("Repo"), { target: { value: "Tools" } });
-    fireEvent.change(screen.getByLabelText("Issue #"), { target: { value: "42" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await waitFor(() => expect(screen.getByTestId("assign-plan")).toBeInTheDocument());
-    expect(screen.getByTestId("plan-branch")).toHaveTextContent("staff/nw-42");
-
-    fireEvent.click(screen.getByRole("button", { name: "Dispatch" }));
-    await waitFor(() => expect(screen.getByTestId("dispatch-run-link")).toHaveAttribute("href", "/?run=run-77"));
-    const posts = writes(fetchMock, "POST").map(([, o]) => JSON.parse(String(o.body)).dry_run);
-    expect(posts).toEqual([true, false]);
-  });
-
-  it("shows 'not available' when the Staff Hub is absent", async () => {
-    stubFetch((url) => (url === "/api/staff/roster" || url === "/api/v1/staff/roster" ? { status: 404, body: { detail: "Not Found" } } : undefined));
-    render(<FleetCommandPage />);
-    openSection("Dispatch");
-    await waitFor(() => expect(screen.getByTestId("fleet-dispatch-unavailable")).toBeInTheDocument());
   });
 });
