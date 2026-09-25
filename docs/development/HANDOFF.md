@@ -1,4 +1,33 @@
-# Current handoff — SC-B1-G9: Chat pool saturation rejects turns with chat_capacity (#1492)
+# Current handoff — SC-B1-G4: one staff dispatch policy for /run and staff.dispatch (#1487)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1487`; branch `fix/1487-shared-dispatch`, stacked on `feat/1448-wire-maintenance` (PR #1483); commit SELF; PR: see DL-#1487; Issue #1487; DL-#1487.
+
+## Objective and Status
+
+- Approved `staff.dispatch` proposals called `runner.submit` directly, so they skipped peer forwarding, the rate limit, dry-run and the dispatch audit. Now there is one `dispatch_staff_run` (`backend/staff/dispatch_service.py`), and both the `/run` route (now a thin adapter) and the executor call it.
+- `backend/staff/loop_bridge.py` holds the worker-thread → event-loop bridge. `maintenance_github.call_github` (#1448) now uses it, so the pattern is no longer duplicated.
+- Validation:
+  - `pytest tests/api/test_staff_dispatch_service.py`: 14 passed.
+  - The staff/dispatch/proposal/action/maintenance/fleet selection is green (WSL venv).
+  - `ruff check`/`format` are clean, and `mypy backend/` is clean.
+
+## Risks
+
+- `ActionContext.caller=None`, which only happens on internal auto-execute paths, is charged to a synthetic `staff_action` bot principal for the rate limit and audit.
+- A forwarded proposal's `run_id` is the peer's id. The verifier accepts it without looking it up in the local store.
+
+## Next steps
+
+1. Merge PR #1510 (rebased onto main after #1483 landed; armed).
+2. #1497 (SC-G5 requests API) routes every dispatch surface through `dispatch_staff_run`.
+
+---
+
+# Past handoff — SC-B1-G9: Chat pool saturation rejects turns with chat_capacity (#1492)
 
 Last updated: 2026-09-25
 

@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1487 · SC-B1-G4: Shared staff dispatch service
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1487
+- **Branch:** `fix/1487-shared-dispatch` (stacked on `feat/1448-wire-maintenance`, PR #1483)
+- **Paths:** `backend/staff/dispatch_service.py`, `backend/staff/loop_bridge.py`, `backend/staff/action_executors.py`, `backend/staff/maintenance_github.py`, `backend/routers/staff.py`, `tests/api/test_staff_dispatch_service.py`, `tests/staff/routing_eval/test_action_executor_roles.py`, `tests/unit/test_staff_actions.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new suite 14 passed; staff/dispatch/proposal/action/maintenance/fleet selection green in WSL venv; ruff clean; `mypy backend/` clean in 252 files)
+- **Summary:** `/run` and the `staff.dispatch` action share `dispatch_staff_run`: forwarding, rate limit, dry-run and audit apply to approved proposals. Executor runs in the proposal routes' worker thread and reaches the loop via `loop_bridge.run_on_loop`; outside a worker thread it fails as `bridge_unavailable`.
+- **Next step:** Merge PR #1510 (on main, armed), then route the #1497 requests API through `dispatch_staff_run`.
+
 ### DL-#1448 · SC-E3: Wire maintenance operations to real backends (slice 1: GitHub run cancel/rerun)
 
 - **State:** in_progress
