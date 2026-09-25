@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1314 · SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes
+### DL-#1316 · SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1316 (epic #1349 / umbrella #1354)
+- **Branch:** `feat/1316-work-item-ledger`
+- **PR:** (pending)
+- **Paths:** `backend/staff/work_items.py`, `backend/routers/staff_work_items.py`, `backend/staff/run_link.py`, `backend/staff/audit.py`, `backend/server.py`, `tests/api/test_staff_work_items.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`pytest tests/api/test_staff_work_items.py` 9 passed; mypy 0 errors; ruff clean; all modules <= 500 lines)
+- **Summary:** Implemented durable WorkItem ledger with SQLite WAL persistence in `staff_runs.sqlite3`. Supports state transitions (`open`, `in_progress`, `waiting_on_user`, `waiting_on_ci`, `blocked`, `done`, `cancelled`, `escalated`), SLA overdue detection, links to runs, issues, PRs, and code requests. State transitions are audited in `staff_audit` (SC-A8). Run status updates (`run_link.py`) automatically transition linked work items. Exposed REST endpoints `POST /api/v1/staff/work-items`, `GET /api/v1/staff/work-items` (filters: `mine`, `overdue`, `waiting_on_me`, `state`, `thread_id`, cursor pagination), `GET /api/v1/staff/work-items/{id}`, and `PATCH /api/v1/staff/work-items/{id}`.
+- **Next step:** Open PR, verify CI, auto-merge, and release lease on #1316.
+
+### DL-#1314 · SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1314 (epic #1348 / umbrella #1354)
 - **Branch:** `feat/1314-link-runs-to-threads`
-- **PR:** (pending)
+- **PR:** #1393
 - **Paths:** `backend/routers/staff.py`, `backend/routers/staff_threads.py`, `backend/staff/run_link.py`, `backend/staff/remote_runs.py`, `backend/staff/plan.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/classifier.py`, `backend/staff/thread_bus.py`, `tests/api/test_staff_thread_runs.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`pytest tests/api/test_staff_thread_runs.py` 9 passed; all 47 staff tests passed; mypy, ruff clean)
+- **Last verified:** 2026-09-24 (shipped in PR #1393)
 - **Summary:** Enabled background staff runs across the fleet to link with conversation threads via `thread_id` and `work_item_id`. Transitions post run cards to threads and publish across `ThreadEventBus`. Cross-node run detail, cancel, and SSE streams proxied with on-behalf-of identity. Unattended agents stopping with questions transition to `needs_input` when threaded, continuing upon answer.
-- **Next step:** Open PR, verify CI, auto-merge, and release lease on #1314.
+- **Next step:** None (shipped in PR #1393).
 
 ### DL-#1306 · SC-B3: Conversation API: threads, messages, streaming replies (SSE with resume) and unread state
 
