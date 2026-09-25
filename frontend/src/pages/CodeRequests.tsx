@@ -16,8 +16,17 @@ import {
   repoName,
 } from "./codeRequestsTypes";
 import { CodeRequestsHistory } from "./CodeRequestsHistory";
+import { useProviderRegistry } from "../lib/useProviderRegistry";
+import { PromptNotesEditor } from "./CodeRequestsPromptNotes";
 
 export type * from "./codeRequestsTypes";
+
+interface ProfileItem {
+  id: string;
+  name: string;
+  provider: string;
+  standards?: string[];
+}
 
 export function CodeRequestsTab({
   repos = [],
@@ -31,24 +40,39 @@ export function CodeRequestsTab({
   onSavePromptNotes,
   onRefresh,
 }: CodeRequestsProps): React.ReactElement {
+  const { registry } = useProviderRegistry();
   const targetUnavailable = dispatchTarget?.available === false;
+  const [profiles, setProfiles] = useState<ProfileItem[]>([]);
+  const [selProfileId, setSelProfileId] = useState("");
   const [selRepo, setSelRepo] = useState("");
   const [selBranch, setSelBranch] = useState("main");
-  const [selProvider, setSelProvider] = useState("jules_api");
+  const [selProvider, setSelProvider] = useState("");
   const [promptText, setPromptText] = useState("");
   const [selStds, setSelStds] = useState<Record<string, boolean>>({});
   const [templateName, setTemplateName] = useState("");
   const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus>(null);
   const [dispatchError, setDispatchError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
-  const [editingPromptNotes, setEditingPromptNotes] = useState(promptNotes.notes);
-  const [promptNotesEnabled, setPromptNotesEnabled] = useState(promptNotes.enabled);
-  const [promptNotesSaveStatus, setPromptNotesSaveStatus] = useState<SaveStatus>(null);
 
   useEffect(() => {
-    setEditingPromptNotes(promptNotes.notes);
-    setPromptNotesEnabled(promptNotes.enabled);
-  }, [promptNotes.enabled, promptNotes.notes]);
+    fetch("/api/agent-profiles")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.profiles)) {
+          setProfiles(data.profiles);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!selProvider && registry && registry.providers.length > 0) {
+      const preferred = registry.providers.find((p) => p.loginStatus === "authenticated") || registry.providers[0];
+      if (preferred) {
+        setSelProvider(preferred.dashboardId);
+      }
+    }
+  }, [registry, selProvider]);
 
   function toggleStd(s: string): void {
     setSelStds((prev) => {
@@ -66,15 +90,17 @@ export function CodeRequestsTab({
     if (!selRepo || !promptText.trim()) return;
     setDispatchStatus("dispatching");
     let finalPrompt = promptText;
-    if (promptNotesEnabled && editingPromptNotes.trim()) {
-      finalPrompt = editingPromptNotes + "\n\n" + promptText;
+    if (promptNotes.enabled && promptNotes.notes.trim()) {
+      finalPrompt = promptNotes.notes + "\n\n" + promptText;
     }
+    const activeProvider = selProvider || (registry?.providers[0]?.dashboardId || "codex");
     onDispatch({
       repository: selRepo,
       branch: selBranch,
-      provider: selProvider,
+      provider: activeProvider,
       prompt: finalPrompt,
       standards: Object.keys(selStds).filter((k) => selStds[k]),
+      profile_id: selProfileId || undefined,
     })
       .then(() => {
         setDispatchStatus("ok");
@@ -103,20 +129,6 @@ export function CodeRequestsTab({
     setPromptText(t.prompt);
   }
 
-  function doSavePromptNotes(): void {
-    setPromptNotesSaveStatus("saving");
-    onSavePromptNotes({ notes: editingPromptNotes, enabled: promptNotesEnabled })
-      .then(() => {
-        setPromptNotesSaveStatus("ok");
-        setTimeout(() => {
-          setPromptNotesSaveStatus(null);
-        }, 2000);
-      })
-      .catch(() => {
-        setPromptNotesSaveStatus("error");
-      });
-  }
-
   return (
     <div style={{ padding: 20 }}>
       <div className="section-header">
@@ -139,69 +151,7 @@ export function CodeRequestsTab({
           Code request dispatch is being replaced by Code Requests (#1279).
         </div>
       ) : null}
-      <div
-        style={{
-          background: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-          borderRadius: 6,
-          padding: 12,
-          marginBottom: 20,
-        }}
-      >
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <input
-              type="checkbox"
-              checked={promptNotesEnabled}
-              onChange={(e) => {
-                setPromptNotesEnabled(e.target.checked);
-              }}
-              style={{ cursor: "pointer" }}
-            />
-            <label style={{ fontWeight: 600, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
-              Auto-inject Prompt Notes
-            </label>
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
-            These notes will be automatically prepended to every prompt dispatch
-          </div>
-        </div>
-        <textarea
-          value={editingPromptNotes}
-          onChange={(e) => {
-            setEditingPromptNotes(e.target.value);
-          }}
-          placeholder="Enter global prompt notes that will be auto-added to every dispatch…"
-          rows={6}
-          style={{
-            width: "100%",
-            background: "var(--bg-primary)",
-            border: "1px solid var(--border)",
-            color: "var(--text-primary)",
-            borderRadius: 4,
-            padding: 8,
-            fontSize: 12,
-            resize: "vertical",
-            boxSizing: "border-box",
-            fontFamily: "monospace",
-          }}
-        />
-        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            className="action-btn secondary"
-            onClick={doSavePromptNotes}
-            style={{ padding: "4px 12px", fontSize: 12 }}
-          >
-            Save Notes
-          </button>
-          {promptNotesSaveStatus === "ok" ? (
-            <div style={{ color: "var(--accent-green)", fontSize: 11 }}>✓ Saved</div>
-          ) : null}
-          {promptNotesSaveStatus === "error" ? (
-            <div style={{ color: "var(--accent-red)", fontSize: 11 }}>✗ Failed</div>
-          ) : null}
-        </div>
-      </div>
+      <PromptNotesEditor promptNotes={promptNotes} onSavePromptNotes={onSavePromptNotes} />
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 500px" }}>
           <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
@@ -261,9 +211,51 @@ export function CodeRequestsTab({
               <label
                 style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
               >
+                Profile
+              </label>
+              <select
+                aria-label="Profile"
+                value={selProfileId}
+                onChange={(e) => {
+                  const profId = e.target.value;
+                  setSelProfileId(profId);
+                  const found = profiles.find((p) => p.id === profId);
+                  if (found) {
+                    if (found.provider) setSelProvider(found.provider);
+                    if (found.standards && Array.isArray(found.standards)) {
+                      const newStds: Record<string, boolean> = {};
+                      for (const s of found.standards) {
+                        newStds[s] = true;
+                      }
+                      setSelStds(newStds);
+                    }
+                  }
+                }}
+                style={{
+                  background: "var(--bg-secondary)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-primary)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  minWidth: 120,
+                }}
+              >
+                <option value="">— custom —</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+              >
                 Provider
               </label>
               <select
+                aria-label="Provider"
                 value={selProvider}
                 onChange={(e) => {
                   setSelProvider(e.target.value);
@@ -274,14 +266,52 @@ export function CodeRequestsTab({
                   color: "var(--text-primary)",
                   borderRadius: 4,
                   padding: "4px 8px",
+                  minWidth: 140,
                 }}
               >
-                <option value="jules_api">Jules</option>
-                <option value="codex">Codex</option>
-                <option value="claude">Claude</option>
+                {registry && registry.providers.length > 0 ? (
+                  registry.providers.map((p) => (
+                    <option key={p.dashboardId} value={p.dashboardId}>
+                      {p.label}
+                      {p.loginStatus === "authenticated" ? " ✓" : ""}
+                      {p.loginStatus === "unauthenticated" ? " ⚠️ (login req.)" : ""}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="codex">Codex</option>
+                    <option value="claude">Claude</option>
+                    <option value="jules_api">Jules</option>
+                  </>
+                )}
               </select>
             </div>
           </div>
+          {(() => {
+            if (!registry) return null;
+            const curP =
+              registry.byDashboardId(selProvider) ||
+              registry.providers.find((p) => p.id === selProvider || p.dashboardId === selProvider);
+            if (curP && (curP.loginStatus === "unauthenticated" || curP.loginStatus === "error")) {
+              return (
+                <div
+                  role="alert"
+                  style={{
+                    border: "1px solid var(--accent-amber, #d97706)",
+                    borderRadius: 4,
+                    padding: "6px 10px",
+                    marginBottom: 10,
+                    fontSize: 12,
+                    color: "var(--accent-amber, #d97706)",
+                    background: "rgba(217, 119, 6, 0.08)",
+                  }}
+                >
+                  ⚠️ Warning: Provider &apos;{curP.label || selProvider}&apos; is currently unauthenticated or unavailable ({curP.loginDetail || "Credentials not configured"}). Dispatch may fail.
+                </div>
+              );
+            }
+            return null;
+          })()}
           <div style={{ marginBottom: 10 }}>
             <label
               style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}

@@ -4528,6 +4528,207 @@
         "tags": ["agent-launcher"]
       }
     },
+    "/api/agent-profiles": {
+      "get": {
+        "description": "List all saved agent profiles and live provider availability.",
+        "operationId": "list_agent_profiles_api_agent_profiles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Agent Profiles Api Agent Profiles Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Agent Profiles",
+        "tags": ["agent_profiles"]
+      },
+      "post": {
+        "description": "Create a new agent profile.",
+        "operationId": "create_agent_profile_api_agent_profiles_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Agent Profile Api Agent Profiles Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Agent Profile",
+        "tags": ["agent_profiles"]
+      }
+    },
+    "/api/agent-profiles/{profile_id}": {
+      "delete": {
+        "description": "Delete an agent profile by id.",
+        "operationId": "delete_agent_profile_api_agent_profiles__profile_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Agent Profile Api Agent Profiles  Profile Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Delete Agent Profile",
+        "tags": ["agent_profiles"]
+      },
+      "get": {
+        "description": "Get a single agent profile by id.",
+        "operationId": "get_agent_profile_api_agent_profiles__profile_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Agent Profile Api Agent Profiles  Profile Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Agent Profile",
+        "tags": ["agent_profiles"]
+      },
+      "put": {
+        "description": "Update an existing agent profile.",
+        "operationId": "update_agent_profile_api_agent_profiles__profile_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Agent Profile Api Agent Profiles  Profile Id  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Update Agent Profile",
+        "tags": ["agent_profiles"]
+      }
+    },
     "/api/agent-remediation/config": {
       "get": {
         "description": "Return the current CI remediation policy and provider availability.",
@@ -7124,7 +7325,6 @@
     "/api/feature-requests": {
       "get": {
         "deprecated": true,
-        "description": "Deprecated alias for GET /api/code-requests.",
         "operationId": "list_feature_requests_deprecated_api_feature_requests_get",
         "responses": {
           "200": {
@@ -7147,7 +7347,6 @@
     "/api/feature-requests/dispatch": {
       "post": {
         "deprecated": true,
-        "description": "Deprecated alias for POST /api/code-requests/dispatch.",
         "operationId": "dispatch_feature_request_deprecated_api_feature_requests_dispatch_post",
         "responses": {
           "200": {
@@ -7178,7 +7377,6 @@
     "/api/feature-requests/templates": {
       "get": {
         "deprecated": true,
-        "description": "Deprecated alias for GET /api/code-requests/templates.",
         "operationId": "list_prompt_templates_deprecated_api_feature_requests_templates_get",
         "responses": {
           "200": {
@@ -7199,7 +7397,6 @@
       },
       "post": {
         "deprecated": true,
-        "description": "Deprecated alias for POST /api/code-requests/templates.",
         "operationId": "save_prompt_template_deprecated_api_feature_requests_templates_post",
         "responses": {
           "200": {

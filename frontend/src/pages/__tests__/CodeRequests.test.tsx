@@ -275,4 +275,69 @@ describe("CodeRequestsTab", () => {
     expect(screen.getByText("Code Requests")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Runner_Dashboard" })).toBeInTheDocument();
   });
+
+  it("loads provider list dynamically from provider registry without hardcoded defaults", async () => {
+    const mockProviders = [
+      {
+        id: "mock-provider-alpha",
+        dashboard_id: "mock_provider_alpha",
+        label: "Alpha Provider",
+        login_status: "authenticated",
+        auth_mode: "token",
+        resource: "local",
+      },
+      {
+        id: "mock-provider-beta",
+        dashboard_id: "mock_provider_beta",
+        label: "Beta Provider",
+        login_status: "unauthenticated",
+        login_detail: "API token missing",
+        auth_mode: "token",
+        resource: "local",
+      },
+    ];
+
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === "string" && url.includes("/api/providers/registry")) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              schema_version: "1.0",
+              providers: mockProviders,
+              auth_kinds: [],
+              task_classes: [],
+              capabilities: [],
+            }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ profiles: [], providers: [] }),
+      });
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    try {
+      setup();
+      await waitFor(() => {
+        expect(screen.getByRole("option", { name: /Alpha Provider/ })).toBeInTheDocument();
+      });
+      expect(screen.getByRole("option", { name: /Beta Provider/ })).toBeInTheDocument();
+
+      // Ensure no hardcoded jules_api option is present when registry loaded
+      expect(screen.queryByRole("option", { name: /^Jules$/ })).not.toBeInTheDocument();
+
+      // Check warning on selecting unauthenticated provider
+      const providerSelect = screen.getByRole("combobox", { name: "Provider" });
+      fireEvent.change(providerSelect, { target: { value: "mock_provider_beta" } });
+
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(/unauthenticated or unavailable/i);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

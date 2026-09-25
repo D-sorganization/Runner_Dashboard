@@ -38,12 +38,24 @@ def cr_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path,
     templates_path = tmp_path / "prompt_templates.json"
     notes_path = tmp_path / "prompt_notes.json"
 
+    profiles_path = tmp_path / "agent_profiles.json"
+    from code_requests.profiles import AgentProfileStore
+
     monkeypatch.setattr(code_requests, "_CODE_REQUESTS_PATH", code_path)
     monkeypatch.setattr(code_requests, "_LEGACY_FEATURE_REQUESTS_PATH", feat_path)
     monkeypatch.setattr(code_requests, "_MIGRATED_MARKER_PATH", migr_path)
     monkeypatch.setattr(code_requests, "_PROMPT_TEMPLATES_PATH", templates_path)
     monkeypatch.setattr(code_requests, "_PROMPT_NOTES_PATH", notes_path)
+    monkeypatch.setattr(code_requests, "_profile_store", AgentProfileStore(profiles_path))
     monkeypatch.setattr(code_requests, "_dispatch_target_state", {"checked_at": None, "available": None, "detail": ""})
+    monkeypatch.setattr(
+        "agent_remediation.probe_provider_availability",
+        lambda *a, **k: {
+            "jules_api": type("_Avail", (), {"available": True, "detail": "ready"})(),
+            "codex_cli": type("_Avail", (), {"available": True, "detail": "ready"})(),
+            "claude_code_cli": type("_Avail", (), {"available": True, "detail": "ready"})(),
+        },
+    )
     return code_path, feat_path, migr_path
 
 

@@ -1,22 +1,15 @@
-"""Code Request workflow dispatch helper (CR-1 / CR-2, issues #1280, #1281, #1282)."""
+"""Code Request workflow dispatch helper (CR-1 / CR-2 / CR-3, issues #1280, #1281, #1282, #1283)."""
 
 from __future__ import annotations
 
-import contextlib
-import json
 import logging
-import tempfile
-from pathlib import Path
 from typing import Any
 
 from code_requests.model import STANDARDS_INJECTION
 from dashboard_config import ORG, REPO_ROOT
-from input_validation import MAX_INPUT_VALUE_LENGTH, validate_workflow_inputs
 from system_utils import run_cmd
 
 log = logging.getLogger("dashboard.code_requests.dispatch")
-_DISPATCH_WORKFLOW = "Jules-Feature-Request.yml"
-_DISPATCH_WORKFLOW_ENDPOINT = f"/repos/{ORG}/Repository_Management/actions/workflows/{_DISPATCH_WORKFLOW}"
 
 
 def build_full_prompt(prompt: str, standards: list[str], prompt_notes_data: dict[str, Any]) -> str:
@@ -41,32 +34,30 @@ async def trigger_workflow_dispatch(
     provider: str,
     full_prompt: str,
     *,
+    model: str = "",
+    effort: str | None = None,
+    principal: str = "",
+    budget: dict[str, Any] | None = None,
+    profile_id: str | None = None,
+    standards: list[str] | None = None,
     run_cmd_fn: Any = run_cmd,
 ) -> tuple[int, str]:
-    """Invoke GitHub Actions workflow dispatch via gh CLI."""
-    dispatch_inputs = validate_workflow_inputs(
-        {
-            "target_repository": f"{ORG}/{repo}",
-            "branch": branch,
-            "provider": provider,
-            "prompt": full_prompt[:MAX_INPUT_VALUE_LENGTH],
-        }
+    """Dispatch an agent task via RD's agent_dispatch_router and command envelope."""
+    from code_requests.agent_dispatcher import dispatch_code_request
+
+    code, stderr, _envelope = await dispatch_code_request(
+        repository=repo,
+        branch=branch,
+        provider=provider,
+        prompt=full_prompt,
+        model=model,
+        effort=effort,
+        principal=principal,
+        budget=budget,
+        profile_id=profile_id,
+        standards=standards,
+        run_cmd_fn=run_cmd_fn,
+        org=ORG,
+        repo_root=REPO_ROOT,
     )
-    endpoint = f"{_DISPATCH_WORKFLOW_ENDPOINT}/dispatches"
-    payload = {
-        "ref": "main",
-        "inputs": dispatch_inputs,
-    }
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
-        json.dump(payload, f)
-        pf = f.name
-    try:
-        code, _, stderr = await run_cmd_fn(
-            ["gh", "api", endpoint, "--method", "POST", "--input", pf],
-            timeout=30,
-            cwd=REPO_ROOT,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(pf).unlink()
     return code, stderr
