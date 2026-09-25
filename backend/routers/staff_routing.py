@@ -151,3 +151,26 @@ async def list_routing_feedback(
     barb_router = BarbRouter()
     items = barb_router.list_routing_feedback(store=store, limit=limit)
     return {"items": [fb.to_dict() for fb in items], "count": len(items)}
+
+
+@router.get(
+    "/routing/eval",
+    response_model_exclude_none=True,
+)
+async def get_routing_evaluation(
+    deterministic_only: bool = Query(default=False),
+    include_feedback: bool = Query(default=True),
+    caller: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Execute routing evaluation and return metrics summary (SC-C7)."""
+    store = _get_store_or_503()
+    from tests.staff.routing_eval.engine import run_evaluation
+
+    barb_router = BarbRouter()
+    summary = run_evaluation(
+        router=barb_router,
+        deterministic_only=deterministic_only,
+        include_feedback_candidates=include_feedback,
+        store=store,
+    )
+    return summary.to_dict()

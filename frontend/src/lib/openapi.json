@@ -14415,6 +14415,68 @@
         "tags": ["staff-routing"]
       }
     },
+    "/api/v1/staff/routing/eval": {
+      "get": {
+        "description": "Execute routing evaluation and return metrics summary (SC-C7).",
+        "operationId": "get_routing_evaluation_api_v1_staff_routing_eval_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "deterministic_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Deterministic Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_feedback",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Feedback",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Routing Evaluation Api V1 Staff Routing Eval Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Routing Evaluation",
+        "tags": ["staff-routing"]
+      }
+    },
     "/api/v1/staff/routing/feedback": {
       "get": {
         "description": "List recent routing feedback records captured from overrides (SC-C7).",
