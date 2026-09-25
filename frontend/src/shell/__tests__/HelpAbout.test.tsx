@@ -8,18 +8,27 @@
  * Escape behaviour is owned (and separately tested) by the Dialog primitive.
  */
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { HelpAbout } from "../HelpAbout";
 
 afterEach(cleanup);
 
-function versionFetch(body: Record<string, unknown> = { dashboard: "1.2.3", git_sha: "0000111" }) {
-  return vi.fn(async () =>
-    new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
+function versionFetch(
+  body: Record<string, unknown> = { dashboard: "1.2.3", git_sha: "0000111" },
+) {
+  return vi.fn(
+    async () =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
   ) as unknown as typeof fetch;
 }
 
@@ -31,14 +40,21 @@ describe("HelpAbout", () => {
     expect(trigger).toHaveClass("shell-help-trigger");
     fireEvent.click(trigger);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("tablist", { name: /help and about sections/i })).toHaveClass("help-about__tabs");
+    expect(
+      screen.getByRole("tablist", { name: /help and about sections/i }),
+    ).toHaveClass("help-about__tabs");
   });
 
   it("fetches and shows the dashboard version when opened", async () => {
-    const fetchImpl = versionFetch({ dashboard: "9.9.9", git_sha: "1234567890" });
+    const fetchImpl = versionFetch({
+      dashboard: "9.9.9",
+      git_sha: "1234567890",
+    });
     render(<HelpAbout onNavigate={vi.fn()} fetchImpl={fetchImpl} />);
     fireEvent.click(screen.getByRole("button", { name: /help and about/i }));
-    await waitFor(() => expect(screen.getByText(/9\.9\.9/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/9\.9\.9/)).toBeInTheDocument(),
+    );
     // Short (7-char) git sha is surfaced too.
     expect(screen.getByText(/1234567/)).toBeInTheDocument();
     expect(screen.getByText(/9\.9\.9/)).toHaveClass("help-about__version");
@@ -57,8 +73,12 @@ describe("HelpAbout", () => {
     render(<HelpAbout onNavigate={vi.fn()} fetchImpl={versionFetch()} />);
     fireEvent.click(screen.getByRole("button", { name: /help and about/i }));
     await screen.findByRole("dialog");
-    expect(screen.getByRole("region", { name: /first things to check/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /keyboard shortcuts/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /first things to check/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /keyboard shortcuts/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/command palette/i)).toBeInTheDocument();
   });
 
@@ -76,8 +96,27 @@ describe("HelpAbout", () => {
     const chatTab = screen.getByRole("tab", { name: /ask the codebase/i });
     fireEvent.click(chatTab);
     expect(chatTab).toHaveClass("help-about__tab--active");
-    expect(screen.getByRole("region", { name: /codebase assistant/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /codebase assistant/i }),
+    ).toBeInTheDocument();
     // The codebase quick-chips are present once the assistant is mounted.
-    expect(screen.getByRole("button", { name: /what does \/api\/queue do\?/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /what does \/api\/queue do\?/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("routes codebase Q&A to Cartographer and Librarian in Staff Console (#1330)", async () => {
+    const onNavigate = vi.fn();
+    render(<HelpAbout onNavigate={onNavigate} fetchImpl={versionFetch()} />);
+    fireEvent.click(screen.getByRole("button", { name: /help and about/i }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("tab", { name: /ask the codebase/i }));
+
+    const cartographerBtn = screen.getByRole("button", {
+      name: /ask cartographer/i,
+    });
+    expect(cartographerBtn).toBeInTheDocument();
+    fireEvent.click(cartographerBtn);
+    expect(onNavigate).toHaveBeenCalledWith("staff");
   });
 });

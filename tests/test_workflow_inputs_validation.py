@@ -230,4 +230,3 @@ def test_feature_request_clean_inputs_ok(client: TestClient) -> None:
         resp = client.post("/api/feature-requests/dispatch", json=body)
     assert resp.status_code in (200, 202)
     assert resp.json().get("status") == "dispatched"
-

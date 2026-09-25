@@ -369,7 +369,7 @@ LOOPBACK_SCOPES = frozenset(
     (
         "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write "
         "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain "
-        "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write"
+        "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write"
     ).split()
 )
 
@@ -380,13 +380,13 @@ SCOPE_PRESETS = {
         "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
-        "coordination.write priorities.write "
+        "coordination.write priorities.write proposals.write "
         "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin fleet.maintain"
     ).split(),
     "viewer": ["assistant.chat", "staff.read"],
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
     "bot": (
-        "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write "
+        "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write proposals.write "
         "staff.read staff.chat staff.dispatch staff.cancel"
     ).split(),
     "fleet-peer": sorted(FLEET_PEER_SCOPES),

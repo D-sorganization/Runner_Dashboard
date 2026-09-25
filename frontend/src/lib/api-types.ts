@@ -575,11 +575,10 @@ export interface paths {
         put?: never;
         /**
          * Assistant Chat
-         * @description Chat with AI assistant about dashboard state.
+         * @description Retired endpoint (SC-D11, issue #1330).
          *
-         *     When ``tools_enabled: true`` is set, the Anthropic tool-use loop is
-         *     activated and the response may contain ``tool_calls`` for the client to
-         *     render as confirmation cards (issue #89).
+         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console
+         *     conversation API at /api/v1/staff/threads.
          */
         post: operations["assistant_chat_api_assistant_chat_post"];
         delete?: never;
@@ -1180,6 +1179,86 @@ export interface paths {
         get: operations["get_code_request_api_code_requests__id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/board-escalation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Escalation
+         * @description Check if the Code Request proposal has passed its review escalation deadline.
+         */
+        get: operations["check_escalation_api_code_requests__id__board_escalation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/evaluate-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Board
+         * @description Evaluate whether a Code Request must go through Architecture Board review.
+         */
+        post: operations["evaluate_board_api_code_requests__id__evaluate_board_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/route-to-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Route To Board
+         * @description Execute the Board routing gate for a Code Request at triage.
+         */
+        post: operations["route_to_board_api_code_requests__id__route_to_board_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/sync-board-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Board Decision
+         * @description Check decision on linked Board proposal and transition Code Request accordingly.
+         */
+        post: operations["sync_board_decision_api_code_requests__id__sync_board_decision_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3055,6 +3134,50 @@ export interface paths {
          * @description One configured repository. Unknown names are 404 so the route never fetches arbitrary repos.
          */
         get: operations["get_project_api_projects__repo__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List board proposals
+         * @description List proposals with decision outcomes and meeting links.
+         */
+        get: operations["list_proposals_api_proposals_get"];
+        put?: never;
+        /**
+         * Submit a proposal to the Board
+         * @description Submit a suggestion to the Board with duplicate check and rate limiting.
+         */
+        post: operations["create_proposal_api_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get proposal detail and Secretary comments
+         * @description Get single proposal details and comments from the Board-Secretary.
+         */
+        get: operations["get_proposal_api_proposals__number__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5024,6 +5147,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/routing/eval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Routing Evaluation
+         * @description Execute routing evaluation and return metrics summary (SC-C7).
+         */
+        get: operations["get_routing_evaluation_api_v1_staff_routing_eval_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/routing/feedback": {
         parameters: {
             query?: never;
@@ -5877,28 +6020,6 @@ export interface components {
             timestamp: string;
         };
         /**
-         * AssistantToolChatResponse
-         * @description Response when tools_enabled=true.
-         *
-         *     ``stop_reason`` is "tool_use" when the model wants to call tools;
-         *     "end_turn" when it has produced a final answer.
-         *     ``tool_calls`` is non-empty when stop_reason == "tool_use".
-         */
-        AssistantToolChatResponse: {
-            /** Message */
-            message: {
-                [key: string]: unknown;
-            };
-            /** Provider */
-            provider: string;
-            /** Stop Reason */
-            stop_reason: string;
-            /** Timestamp */
-            timestamp: string;
-            /** Tool Calls */
-            tool_calls?: components["schemas"]["ToolCallCard"][];
-        };
-        /**
          * AuditHistoryResponse
          * @description Paginated audit history for assistant tool executions.
          */
@@ -5909,6 +6030,63 @@ export interface components {
             }[];
             /** Total */
             total: number;
+        };
+        /**
+         * BoardRoute
+         * @description Routing policy for Architecture Board review.
+         * @enum {string}
+         */
+        BoardRoute: "auto" | "force_board" | "skip_board";
+        /**
+         * BoardRoutingCriteria
+         * @description Explicit requester-declared or system-extracted routing flags.
+         */
+        BoardRoutingCriteria: {
+            /**
+             * Cross Repo Contract
+             * @default false
+             */
+            cross_repo_contract: boolean;
+            /**
+             * Estimated Child Issues
+             * @default 0
+             */
+            estimated_child_issues: number;
+            /**
+             * Inentec Data Egress
+             * @default false
+             */
+            inentec_data_egress: boolean;
+            /**
+             * New Dependency Or Egress
+             * @default false
+             */
+            new_dependency_or_egress: boolean;
+            /**
+             * New Service Or Repo
+             * @default false
+             */
+            new_service_or_repo: boolean;
+            /**
+             * New Surface
+             * @default false
+             */
+            new_surface: boolean;
+            /**
+             * Public Site Structure
+             * @default false
+             */
+            public_site_structure: boolean;
+            /**
+             * Tagged Board
+             * @default false
+             */
+            tagged_board: boolean;
+            /**
+             * Target Repos Count
+             * @default 1
+             */
+            target_repos_count: number;
         };
         /** Body_get_issues_api_issues_get */
         Body_get_issues_api_issues_get: {
@@ -6037,36 +6215,42 @@ export interface components {
              */
             stack?: string | null;
         };
-        /** CreateProposalRequest */
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
         CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
             /**
-             * Action
-             * @description Name of allowlisted action
+             * Confirm Not Duplicate
+             * @default false
              */
-            action: string;
+            confirm_not_duplicate: boolean;
             /**
-             * Message Id
-             * @description Originating message ID
+             * Estimated Cost
+             * @enum {string}
              */
-            message_id: string;
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
             /**
-             * Params
-             * @description Action parameters
+             * Urgency
+             * @enum {string}
              */
-            params?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Risk
-             * @description Risk class (read, low, medium, high, owner-only)
-             * @default low
-             */
-            risk: string;
-            /**
-             * Thread Id
-             * @description Parent thread ID
-             */
-            thread_id: string;
+            urgency: "Routine" | "Urgent" | "Emergency";
         };
         /** CreateThreadRequest */
         CreateThreadRequest: {
@@ -6179,6 +6363,11 @@ export interface components {
              * @description ``version`` from the GET you edited; 409 when stale.
              */
             version?: string | null;
+        };
+        /** EvaluateBoardPayload */
+        EvaluateBoardPayload: {
+            board_route?: components["schemas"]["BoardRoute"] | null;
+            criteria?: components["schemas"]["BoardRoutingCriteria"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -6482,6 +6671,210 @@ export interface components {
              */
             ttl_hours: number;
         };
+        /**
+         * ProposalComment
+         * @description A comment on a proposal issue, highlighting Board-Secretary notes.
+         */
+        ProposalComment: {
+            /** Body */
+            body: string;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Is Secretary
+             * @default false
+             */
+            is_secretary: boolean;
+            /** User */
+            user: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ProposalDetail
+         * @description Full detail of a single proposal, including discussion and Board-Secretary comments.
+         */
+        ProposalDetail: {
+            /** Closed At */
+            closed_at?: string | null;
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /** Comments */
+            comments?: components["schemas"]["ProposalComment"][];
+            /**
+             * Comments Count
+             * @default 0
+             */
+            comments_count: number;
+            /** Consensus Url */
+            consensus_url?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Decision */
+            decision?: string | null;
+            /** Decision Labels */
+            decision_labels?: string[];
+            /**
+             * Estimated Cost
+             * @default
+             */
+            estimated_cost: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /**
+             * Html Url
+             * @default
+             */
+            html_url: string;
+            /**
+             * Lean
+             * @default
+             */
+            lean: string;
+            /** Meeting Date */
+            meeting_date?: string | null;
+            /** Number */
+            number: number;
+            /**
+             * Options Considered
+             * @default
+             */
+            options_considered: string;
+            /**
+             * Problem
+             * @default
+             */
+            problem: string;
+            /**
+             * Source
+             * @default human
+             */
+            source: string;
+            /**
+             * State
+             * @default open
+             */
+            state: string;
+            /** Target Repos */
+            target_repos?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+            /**
+             * Urgency
+             * @default
+             */
+            urgency: string;
+        };
+        /**
+         * ProposalItem
+         * @description Summary of a proposal returned in listings.
+         */
+        ProposalItem: {
+            /** Closed At */
+            closed_at?: string | null;
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Comments Count
+             * @default 0
+             */
+            comments_count: number;
+            /** Consensus Url */
+            consensus_url?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Decision */
+            decision?: string | null;
+            /** Decision Labels */
+            decision_labels?: string[];
+            /**
+             * Estimated Cost
+             * @default
+             */
+            estimated_cost: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /**
+             * Html Url
+             * @default
+             */
+            html_url: string;
+            /**
+             * Lean
+             * @default
+             */
+            lean: string;
+            /** Meeting Date */
+            meeting_date?: string | null;
+            /** Number */
+            number: number;
+            /**
+             * Options Considered
+             * @default
+             */
+            options_considered: string;
+            /**
+             * Problem
+             * @default
+             */
+            problem: string;
+            /**
+             * Source
+             * @default human
+             */
+            source: string;
+            /**
+             * State
+             * @default open
+             */
+            state: string;
+            /** Target Repos */
+            target_repos?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+            /**
+             * Urgency
+             * @default
+             */
+            urgency: string;
+        };
+        /**
+         * ProposalsListResponse
+         * @description Response envelope for GET /api/proposals.
+         */
+        ProposalsListResponse: {
+            /** Proposals */
+            proposals?: components["schemas"]["ProposalItem"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /** PushKeys */
         PushKeys: {
             /** Auth */
@@ -6629,6 +7022,21 @@ export interface components {
              * @default
              */
             reason: string;
+        };
+        /** RouteToBoardPayload */
+        RouteToBoardPayload: {
+            board_route?: components["schemas"]["BoardRoute"] | null;
+            criteria?: components["schemas"]["BoardRoutingCriteria"];
+            /**
+             * Is Operator Override
+             * @default false
+             */
+            is_operator_override: boolean;
+            /**
+             * Override Reason
+             * @default
+             */
+            override_reason: string;
         };
         /**
          * RoutingDecideRequest
@@ -7686,22 +8094,6 @@ export interface components {
             name: string;
         };
         /**
-         * ToolCallCard
-         * @description A tool call proposed by the assistant; may require confirmation.
-         */
-        ToolCallCard: {
-            /** Id */
-            id: string;
-            /** Input */
-            input: {
-                [key: string]: unknown;
-            };
-            /** Name */
-            name: string;
-            /** Requires Confirmation */
-            requires_confirmation: boolean;
-        };
-        /**
          * ToolExecuteResponse
          * @description Result of a tool execution.
          */
@@ -7801,6 +8193,37 @@ export interface components {
              * @default 0
              */
             planned: number;
+        };
+        /** CreateProposalRequest */
+        routers__staff_proposals__CreateProposalRequest: {
+            /**
+             * Action
+             * @description Name of allowlisted action
+             */
+            action: string;
+            /**
+             * Message Id
+             * @description Originating message ID
+             */
+            message_id: string;
+            /**
+             * Params
+             * @description Action parameters
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Risk
+             * @description Risk class (read, low, medium, high, owner-only)
+             * @default low
+             */
+            risk: string;
+            /**
+             * Thread Id
+             * @description Parent thread ID
+             */
+            thread_id: string;
         };
     };
     responses: never;
@@ -8604,12 +9027,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssistantChatResponse"] | components["schemas"]["AssistantToolChatResponse"];
+                    "application/json": components["schemas"]["AssistantChatResponse"];
                 };
             };
         };
@@ -9408,6 +9831,149 @@ export interface operations {
         };
     };
     get_code_request_api_code_requests__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_escalation_api_code_requests__id__board_escalation_get: {
+        parameters: {
+            query?: {
+                meetings_elapsed?: number;
+                max_meetings?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_board_api_code_requests__id__evaluate_board_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluateBoardPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    route_to_board_api_code_requests__id__route_to_board_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteToBoardPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_board_decision_api_code_requests__id__sync_board_decision_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -11974,6 +12540,104 @@ export interface operations {
             };
         };
     };
+    list_proposals_api_proposals_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by state: open, decided */
+                state?: string | null;
+                /** @description Filter by target repo */
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_proposal_api_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_proposals__number__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_provider_registry_api_providers_registry_get: {
         parameters: {
             query?: never;
@@ -14352,7 +15016,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateProposalRequest"];
+                "application/json": components["schemas"]["routers__staff_proposals__CreateProposalRequest"];
             };
         };
         responses: {
@@ -14570,6 +15234,40 @@ export interface operations {
                 "application/json": components["schemas"]["RoutingDecideRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_routing_evaluation_api_v1_staff_routing_eval_get: {
+        parameters: {
+            query?: {
+                deterministic_only?: boolean;
+                include_feedback?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

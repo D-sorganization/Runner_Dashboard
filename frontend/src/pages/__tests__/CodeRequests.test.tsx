@@ -276,6 +276,46 @@ describe("CodeRequestsTab", () => {
     expect(screen.getByRole("option", { name: "Runner_Dashboard" })).toBeInTheDocument();
   });
 
+  it("renders 'Propose to Board' links with prefill query params in history", () => {
+    setup({
+      requests: [
+        {
+          repository: "Runner_Dashboard",
+          prompt: "Need a new feature",
+          provider: "jules_api",
+          standards: ["tdd"],
+          created_at: "2026-06-01T10:00:00Z",
+        },
+      ],
+    });
+    const links = screen.getAllByRole("link", { name: /propose to board/i });
+    expect(links.length).toBeGreaterThan(0);
+    const href = links[0].getAttribute("href") || "";
+    expect(href).toContain("/staff/fleet-command");
+    expect(href).toContain("section=proposals");
+    expect(href).toContain("repo=Runner_Dashboard");
+    expect(href).toContain("problem=Need+a+new+feature");
+  });
+
+  it("includes code_request_url in the 'Propose to Board' link when the request has an id", () => {
+    setup({
+      requests: [
+        {
+          id: "cr-42",
+          repository: "Runner_Dashboard",
+          prompt: "Need a new feature",
+          provider: "jules_api",
+          standards: ["tdd"],
+          created_at: "2026-06-01T10:00:00Z",
+        },
+      ],
+    });
+    const links = screen.getAllByRole("link", { name: /propose to board/i });
+    const href = links[0].getAttribute("href") || "";
+    expect(href).toContain("code_request_url=");
+    expect(decodeURIComponent(href)).toContain("id=cr-42");
+  });
+
   it("loads provider list dynamically from provider registry without hardcoded defaults", async () => {
     const mockProviders = [
       {
@@ -341,3 +381,4 @@ describe("CodeRequestsTab", () => {
     }
   });
 });
+

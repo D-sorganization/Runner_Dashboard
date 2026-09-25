@@ -161,6 +161,29 @@ def get_rate_limit_status() -> dict:
     }
 
 
+def _map_gh_client_error(endpoint: str, exc: Exception) -> None:
+    """Map a ``gh_client`` exception to this module's HTTPException/RateLimitedError contract.
+
+    Used by ``gh_api`` so the 404/429/5xx mapping lives in
+    one place (DRY; review #1444 defect 7) instead of being duplicated
+    per-verb. Returns normally (does nothing) for ``GhAuthError`` — the
+    caller falls through to the subprocess ``gh`` path in that case.
+    """
+    import gh_client as _gc
+
+    if isinstance(exc, _gc.GhAuthError):
+        return
+    if isinstance(exc, _gc.GhRateLimited):
+        raise _record_rate_limit(endpoint, exc.retry_after_seconds) from exc
+    if isinstance(exc, _gc.GhNotFound):
+        raise HTTPException(status_code=404, detail=f"GitHub resource not found: {endpoint}") from exc
+    if isinstance(exc, _gc.GhServerError):
+        if exc.status_code == 429:
+            raise _record_rate_limit(endpoint, DEFAULT_RATE_LIMIT_RETRY_AFTER_SECONDS) from exc
+        raise HTTPException(status_code=502, detail=f"GitHub API error ({exc.status_code}): {exc}") from exc
+    raise exc
+
+
 async def gh_api(endpoint: str) -> dict:
     """Call the GitHub API, preferring the pooled httpx client over subprocess.
 
@@ -179,16 +202,8 @@ async def gh_api(endpoint: str) -> dict:
         return await _gc.get(endpoint)
     except ImportError:
         pass
-    except _gc.GhAuthError:
-        pass  # No token — fall through to subprocess
-    except _gc.GhRateLimited as exc:
-        raise _record_rate_limit(endpoint, exc.retry_after_seconds) from exc
-    except _gc.GhNotFound as exc:
-        raise HTTPException(status_code=404, detail=f"GitHub resource not found: {endpoint}") from exc
-    except _gc.GhServerError as exc:
-        if exc.status_code == 429:
-            raise _record_rate_limit(endpoint, DEFAULT_RATE_LIMIT_RETRY_AFTER_SECONDS) from exc
-        raise HTTPException(status_code=502, detail=f"GitHub API error ({exc.status_code}): {exc}") from exc
+    except (_gc.GhAuthError, _gc.GhRateLimited, _gc.GhNotFound, _gc.GhServerError) as exc:
+        _map_gh_client_error(endpoint, exc)
 
     # ── Fallback: subprocess gh CLI ─────────────────────────────────────────
     code, stdout, stderr = await run_cmd(["gh", "api", endpoint])

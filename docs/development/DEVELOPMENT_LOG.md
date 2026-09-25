@@ -31,22 +31,98 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Fold replies from the active Runner_Dashboard sessions into the plan and get the owner's decision on Phase 0.
 
+### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1286
+- **Branch:** `feat/issue-1286-board-routing-gate`
+- **Paths:** `backend/code_requests/board_gate.py`, `backend/routers/code_requests_board.py`, `backend/server.py`, `tests/code_requests/test_board_gate.py`, `tests/code_requests/test_board_gate_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest 33/33 passed across test_board_gate and test_board_gate_routes; 61/61 passed across tests/code_requests/; vitest 1309/1309 passed; ruff check and format clean; mypy clean; line cap check <= 500 lines passed)
+- **Summary:** Implemented Board routing gate for Code Requests evaluating 7 architectural criteria, confidential InEnTec data egress user sign-off check, operator overrides (`force_board` / `skip_board`) requiring `operator` role and reason, automatic proposal creation via CR-7 proposal API, decision syncing (`board:accepted`, `board:declined`, `board:deferred`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py`.
+- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
+
+### DL-#1330 · SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1330 (epic #1352 / umbrella #1354)
+- **Branch:** `feat/1330-unify-chat-surfaces`
+- **PR:** #1435
+- **Paths:** `backend/routers/assistant.py`, `backend/staff/adapters.py`, `backend/staff/router_models.py`, `frontend/src/pages/AssistantSidebar.tsx`, `frontend/src/pages/Maxwell/CodebaseChat.tsx`, `frontend/src/pages/MaxwellPanels.tsx`, `frontend/src/pages/__tests__/AssistantSidebar.test.tsx`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/shell/__tests__/HelpAbout.test.tsx`, `tests/test_assistant_retirement.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest test_assistant_retirement 5/5 passing, all affected pytest suites 37/37 passing; vitest 1303/1303 passing; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; all files <= 500 lines)
+- **Summary:** Folded stray chat surfaces into the Staff Console: (1) Updated `POST /api/assistant/chat` to return HTTP 410 Gone with successor Link header pointing to `/api/v1/staff/threads` and Sunset header; (2) Folded codebase Q&A into Cartographer and Librarian with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; (3) Added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; (4) Added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); (5) Added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`.
+- **Next step:** None (shipped in PR #1435).
+
+### DL-#1345 · SC-G7: Mobile Projects renders natively (first step of Classic-layout removal)
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1345 (epic #1353)
+- **Branch:** `fix/1345-mobile-projects`
+- **PR:** not created
+- **Paths:** `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at `10cd0136` baseline (RoutedShell/MobileShell/Projects vitest 69 passed; tsc clean)
+- **Summary:** The mobile drawer's Projects entry fell back to the legacy App, which has no projects case, so the page was blank. It now renders the native Projects page.
+- **Next step:** Remove the Classic layout once SC-D8/G2/G3 land.
+
+### DL-#1340 · SC-C7: Routing evaluation set and regression check for Barb
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1340 (epic #1349 / umbrella #1354)
+- **Branch:** `feat/1340-barb-routing-eval`
+- **Paths:** `tests/staff/routing_eval/models.py`, `tests/staff/routing_eval/dataset.py`, `tests/staff/routing_eval/engine.py`, `tests/staff/routing_eval/test_barb_routing_eval.py`, `scripts/eval_barb_routing.py`, `backend/routers/staff_routing.py`, `tests/api/test_staff_routing_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Merged to main via PR #1442, all 22 CI checks passed)
+- **Summary:** Implemented SC-C7 routing evaluation set and regression check for Barb: (1) Curated 80-case evaluation dataset across 10 categories with expected targets and clarify/answer outcomes; (2) Created CI regression test suite running deterministic pre-router; (3) Built `scripts/eval_barb_routing.py` CLI runner for evaluating full router accuracy, supporting `--post-board` proposal creation; (4) Added candidate feedback ingestion from routing overrides (`load_candidate_cases_from_feedback()`); (5) Exposed `GET /api/v1/staff/routing/eval` REST endpoint.
+- **Next step:** Merged PR #1442 to main via auto-merge.
+
+### DL-#1459 · Restore green main: split frontend FleetCommand test suite strictly <= 500 lines
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1459
+- **Branch:** `fix/issue-1459-split-fleetcommand-tests`
+- **Paths:** `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/FleetCommandOps.test.tsx`, `frontend/src/pages/__tests__/fleetCommandTestHelpers.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Merged to main via PR #1460)
+- **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
+<<<<<<< HEAD
+- **Next step:** None (shipped in PR #1460).
+=======
+>>>>>>> origin/main
+
+### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1284
+- **Branch:** `agy/issue-1284`
+- **Paths:** `backend/identity.py`, `backend/gh_utils.py`, `backend/proposals/__init__.py`, `backend/proposals/models.py`, `backend/proposals/service.py`, `backend/proposals/store.py`, `backend/routers/proposals.py`, `backend/server.py`, `backend/middleware.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleet_tools.py`, `clients/fleet/fleet_validators.py`, `frontend/src/pages/FleetCommand/ProposalsPanel.tsx`, `frontend/src/pages/FleetCommand/ProposalForm.tsx`, `frontend/src/pages/FleetCommand/ProposalLists.tsx`, `frontend/src/pages/FleetCommand/FleetCommandPage.tsx`, `frontend/src/pages/FleetCommand/PrioritiesPanel.tsx`, `frontend/src/pages/FleetCommand/fleetApi.ts`, `frontend/src/pages/FleetCommand/index.ts`, `frontend/src/pages/FleetCommand/types.ts`, `frontend/src/pages/CodeRequestsHistory.tsx`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `tests/unit/test_proposals_store.py`, `tests/api/test_proposals_routes.py`, `tests/clients/test_fleet_client_proposals.py`, `tests/clients/test_fleet_cli.py`, `tests/clients/test_fleet_mcp.py`, `frontend/src/pages/__tests__/ProposalsPanel.test.tsx`, `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/CodeRequests.test.tsx`, `SPEC.md`, `docs/development/HANDOFF.md`, `docs/development/DEVELOPMENT_LOG.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Merged to main via PR #1444, all 21 CI checks passed)
+- **Summary:** Implemented suggestion box for humans and agents submitting proposals to the Board stored as GitHub issues in `D-sorganization/Repository_Management` with label `board:proposal` and `needs-decision`.
+
 ### DL-#1346 · SC-G8: Delete dead frontend code
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1346 (epic #1353)
 - **Branch:** `chore/1346-dead-frontend`
-- **PR:** not created
+- **PR:** #1451
 - **Paths:** `frontend/src/primitives/`, `frontend/src/lib/schemas/dispatch.ts`, `package.json`, `package-lock.json`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 at `a34c322b` baseline (vitest 1299 passed; tsc clean; bundle 1,169,405 B before and after)
 - **Summary:** Removes the never-mounted primitives and the dependencies only they used. QuickDispatch and AlertsCenter remain until the legacy App is removed.
-- **Next step:** Merge the PR, then delete QuickDispatch and AlertsCenter together with `legacy/App.tsx` under #1345.
+- **Next step:** Merged PR #1451, delete QuickDispatch and AlertsCenter together with `legacy/App.tsx` under #1345.
 
 ### DL-#1282 · CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** local
 - **Issue:** #1282 (epic #1279)
 - **Branch:** `feat/1282-code-request-model-store`
@@ -54,11 +130,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest all 18 passing; mypy 0 errors in 8 files; ruff check clean; ruff format clean; npm run typecheck clean; npm run lint clean; all files strictly <= 500 lines)
 - **Summary:** Implemented CR-2: (1) Pydantic models for CodeRequest, CodeRequestState, BoardRoute, Requester, CodeRequestAuditEvent with lossless YAML front-matter serialization & parsing; (2) Pure-function lifecycle state machine with legal transitions and operator overrides; (3) GitHub issue-backed durable CodeRequestStore with local JSON cache fallback and automatic cache rebuilds; (4) Dispatch helpers with standards prompt injection (TDD, DbC, DRY, LoD, security, docs); (5) REST API endpoints GET/POST /api/code-requests, GET /api/code-requests/{id}, and POST /api/code-requests/{id}/transition with dual-scope authorization (code-requests.manage and feature-requests.manage); (6) ensure_code_request_labels.py script; (7) Complete documentation and test suites.
-- **Next step:** Merge PR #1443 to main via auto-merge, release lease, and mark shipped.
+- **Next step:** Merged PR #1443 to main via auto-merge.
 
 ### DL-#1434 · Projects: fleet-wide prioritised status, charter coverage and untracked-work report
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1434 (epic #1192)
 - **Branch:** `feat/fleet-project-tracking`
@@ -67,11 +143,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 at 8baa2bf (pytest projects suites 36 passed; vitest Projects 7 passed; tsc clean; ruff/mypy clean; gen-api-client regenerated)
 - **Summary:** Owner priority tiers from Repository_Management `config/project_priorities.yaml`, P0-first ordering and a fleet summary on `GET /api/projects`, per-repo coverage of open issues/PRs by charter features, and `GET /api/projects/untracked` as the fleet-curator worklist; Projects tab shows tier, coverage and the summary.
-- **Next step:** Merge the PR, then publish `config/project_priorities.yaml` in Repository_Management from the owner's priority interview.
+- **Next step:** None: merged as `b2a8aaed`; the owner tiers land with Repository_Management#1761.
 
 ### DL-#1343 · SC-D9: Accessibility and keyboard pass on the Staff Console
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity (implementation), claude (review and rework)
 - **Issue:** #1343 (epic #1350 / umbrella #1354)
 - **Branch:** `agy/issue-1343`
@@ -80,11 +156,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`f9333a9c` baseline; vitest 93/93, tsc 0 errors)
 - **Summary:** The thread is a polite `role="log"` and the only live region. Focus follows a thread switch through the Composer (`focusOnThreadChange`); on mobile it goes to the heading and back to search. Focus rings are visible, scrolling respects reduced motion, status labels are clearer, and the Staff shortcuts are listed in the global `?` Help panel. The axe and keyboard-walkthrough e2e tests assert for real.
-- **Next step:** Merge PR #1433 once CI's Playwright a11y run is green.
+- **Next step:** Shipped in PR #1433 (commit `5c21226`).
 
 ### DL-#1281 · CR-1: Rename Feature Requests → Code Requests with back-compat aliases
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** local
 - **Issue:** #1281 (epic #1279)
 - **Branch:** `feat/1281-code-requests-rename`
@@ -92,11 +168,13 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest all passing; 153/153 frontend vitest test suites passing with 1302 tests; npm run typecheck clean; ruff check clean; ruff format clean; mypy clean; bash scripts/gen-api-client.sh --check clean; all files strictly <= 500 lines)
 - **Summary:** Renamed Feature Requests to Code Requests throughout backend and frontend while maintaining complete backward compatibility: (1) Added `/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch` routes and preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`; (2) Added `code-requests.manage` scope aliased bidirectionally with `feature-requests.manage` in `backend/identity.py`; (3) Idempotently migrated stored history from `feature_requests.json` to `code_requests.json` with `.migrated` marker without deleting original; (4) Added `frontend/src/pages/CodeRequests.tsx`, `CodeRequestsHistory.tsx`, `CodeRequestsPage.tsx`, `codeRequestsTypes.ts` with shims in `FeatureRequests*.tsx`, updated nav tab to `code-requests` ("Code Requests") with redirect from `feature-requests`; (5) Synchronized OpenAPI schema and generated TypeScript client types; (6) Updated docs and test integrity suites.
-- **Next step:** Push branch `feat/1281-code-requests-rename`, open PR with Closes #1281, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+- **Next step:** Shipped in PR #1432.
+
+### DL-#1327 · SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate
 
 ### DL-#1333 · SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1333 (epic #1351 / umbrella #1354)
 - **Branch:** `feat/1333-maintenance-ui`
@@ -104,7 +182,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (vitest 72/72 tests passing across Fleet and cards; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; pytest router & maintenance 12/12 passing; test_color_literal_budget passing; all files <= 500 lines)
 - **Summary:** Implemented SC-E6 Maintenance row actions on the Fleet page: (1) Added accessible `FleetRowActions` dropdown menu for machines and runners covering 5 actions ("Bring online", "Take offline", "Restart", "Compact disk", "Diagnose"); (2) Followed Owner decision (2026-09-23) routing mutating actions through Barb to Maintenance, and read-only actions (Diagnose) directly to Maintenance; (3) Added dry-run display with planned steps, verification confirmations, and Barb routing badges to `ActionCard`; (4) Built `MaintenanceActionModal` presenting pre-filled action card with dry-run shown, executing upon approval, verifying postcondition state cleanly, and refreshing fleet data; (5) Added maintenance action keyword rules to `router_models.py`.
-- **Next step:** Push branch `feat/1333-maintenance-ui`, open PR with Fixes #1333, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+- **Next step:** Shipped in PR #1430.
 
 ### DL-#1325 · SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules
 

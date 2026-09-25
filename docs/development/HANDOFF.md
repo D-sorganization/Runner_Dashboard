@@ -25,6 +25,147 @@ Last updated: 2026-09-25
 
 ---
 
+# Current handoff — CR-6: Board routing gate for new/significant Code Requests (#1286)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/issue-1286-board-routing-gate`; Issue #1286; DL-#1286.
+
+## Objective and Status
+
+- Implement Board routing gate for Code Requests (CR-6, issue #1286) following strict fleet standards (TDD, DbC, LoD, DRY, $\le 500$ lines per file).
+- Implemented `backend/code_requests/board_gate.py` (298 lines):
+  - `BoardRoutingCriteria` and `BoardRoutingDecision` models with 7 architectural criteria:
+    1. `new_surface`: Adds a new user-facing surface (page, tab, or tool).
+    2. `new_service_or_repo`: Creates a new repository, service, or daemon.
+    3. `new_dependency_or_egress`: Adds external dependencies or third-party data egress.
+       - Special constraint: `inentec_data_egress` confidential InEnTec/ICR data egress ALWAYS routes to the Board and flags `requires_user_signoff=True`, overriding any operator `skip_board`.
+    4. `cross_repo_contract`: Modifies cross-repo contract or schema.
+    5. `public_site_structure`: Structural changes to public site navigation or architecture.
+    6. `estimated_child_issues > 8` or `target_repos_count > 1`: Multi-repo or large epic breakdown.
+    7. `tagged_board`: Requester explicitly requested Board review.
+  - `RuleBasedBoardClassifier`: Fallback heuristic regex scanner when no explicit flags are given.
+  - Operator overrides (`force_board` / `skip_board`): Bypasses heuristic checks unless confidential data egress is flagged; requires `operator` role and audit reason.
+  - `route_code_request_to_board`: Creates Board proposal via CR-7 proposal service, transitions Code Request to `BOARD_REVIEW`, links proposal number.
+  - `sync_board_proposal_decision`: Maps proposal outcome (`board:accepted` -> `PLANNING` with Board secretary comments appended; `board:declined` -> `DECLINED`; `board:deferred` -> `DEFERRED`).
+  - `check_board_escalation`: Identifies unreviewed proposals exceeding max scheduled Board meetings (default 2 meetings).
+- Implemented `backend/routers/code_requests_board.py` (225 lines) and mounted in `backend/server.py`:
+  - `POST /api/code-requests/{id}/evaluate-board`: Evaluates whether a Code Request routes to Board.
+  - `POST /api/code-requests/{id}/route-to-board`: Executes routing gate, creating proposal or bypassing to `PLANNING`.
+  - `POST /api/code-requests/{id}/sync-board-decision`: Syncs Board proposal decision to Code Request.
+  - `GET /api/code-requests/{id}/board-escalation`: Checks escalation deadline.
+- Verification:
+  - 33/33 tests passing in `tests/code_requests/test_board_gate.py` and `tests/code_requests/test_board_gate_routes.py`.
+  - 61/61 tests passing across `tests/code_requests/`.
+  - 1309/1309 vitest tests passing across frontend.
+  - `ruff check backend tests`, `ruff format --check`, and `mypy` passing cleanly.
+  - `check_line_caps.py` verified all files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Create pull request referencing issue #1286.
+2. Enable auto-merge.
+3. Verify CI Standard and all required checks pass.
+4. Release lease on issue #1286 once merged.
+
+---
+
+# Past handoff — SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console (#1330)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1330-unify-chat-surfaces`; Issue #1330; DL-#1330; PR #1435.
+
+## Objective and Status
+
+- SC-D11: Fold the three stray chat surfaces into the Staff Console:
+  1. Retired legacy assistant chat endpoint: `POST /api/assistant/chat` in `backend/routers/assistant.py` returns HTTP 410 Gone with `Link: </api/v1/staff/threads>; rel="successor-version"` and `Sunset: Wed, 25 Sep 2026 00:00:00 GMT` headers, plus JSON body with pointer to `/api/v1/staff/threads`.
+  2. Codebase Q&A: Folded codebase Q&A into Cartographer (architecture, dependency graphs, where code lives) and Librarian (documentation, endpoint specs, style guides) with role handoff cards and `onNavigate` buttons in `frontend/src/pages/Maxwell/CodebaseChat.tsx` and `frontend/src/shell/HelpAbout.tsx`.
+  3. Routing keywords & provider registry: Added codebase Q&A routing keywords (`"where is"`, `"codebase question"`, `"codebase map"`, `"codebase search"`, `"ask codebase"`, `"locate code"`, `"where is handled"`) to `cartographer`, documentation Q&A keywords to `librarian`, registered `maxwell` in `ROLE_KEYWORD_RULES` in `backend/staff/router_models.py`, and added `maxwell` provider adapter to `ADAPTERS` in `backend/staff/adapters.py`.
+  4. Maxwell integration: Surfaced Staff Console integration link and multi-agent context in `MaxwellChatPanel` (`frontend/src/pages/MaxwellPanels.tsx`).
+  5. Assistant sidebar: Added retirement notice banner pointing to Staff Console and 410 redirect handling in `frontend/src/pages/AssistantSidebar.tsx`.
+- Quality gates:
+  - All pytest tests passing (37/37 across assistant retirement, contract, tools, router).
+  - All vitest tests passing (1303/1303 across 153 test files).
+  - TypeScript typecheck passing (0 errors).
+  - ESLint passing (0 warnings).
+  - Ruff check & format passing.
+  - All modified files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Complete rebase and push `feat/1330-unify-chat-surfaces`.
+2. Monitor PR #1435 through CI to green squash-merge (no `--admin`).
+3. Release lease on #1330 and clean up worktree.
+
+---
+
+# Current handoff — SC-G7 first step: mobile Projects renders natively (#1345)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1345-mobile-projects`; Issue #1345 (part of SC-G #1353); DL-#1345.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `10cd0136`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- The issue's "verify and fix the mobile Projects case immediately (small PR)". Verified blank: `RoutedShell`'s mobile map had no `projects` entry, and `legacy/App.tsx` has no projects case either.
+- Fixed: `projects: <LazyProjectsPage />` is in the native mobile map. The legacy-fallback test now uses `assessments`, a drawer tab that still has no native page.
+- Not in this PR: removing the Classic layout and `legacy/App.tsx`, which waits for SC-D8/G2/G3 per the issue.
+
+## Validation
+
+- `npx vitest run frontend/src/shell/__tests__/RoutedShell.test.tsx frontend/src/shell/__tests__/MobileShell.test.tsx frontend/src/pages/__tests__/Projects.test.tsx`: 69 passed (RED first: the `/t/projects` native case failed).
+- `npx tsc --noEmit -p tsconfig.app.json` and eslint are clean.
+- Browser at 375×812 via Vite: `/t/projects` redirects to `/work/projects` and shows the Projects page. It is no longer blank; the local API proxy was down, and the page showed its classified error.
+
+## Next Steps
+
+1. Merge; #1345 stays open for the Classic-layout removal.
+
+---
+
+# Current handoff — SC-C7: Routing evaluation set and regression check for Barb (#1340)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1340-barb-routing-eval`; Issue #1340; DL-#1340.
+
+## Objective and Status
+
+- SC-C7: Routing evaluation set and regression check for Barb.
+- Routing quality must be measurable so prompt or roster changes do not silently degrade it.
+- Scope implemented:
+  - Curated 80 representative evaluation cases across 10 categories (`maintenance`, `librarian`, `board`, `project_steward`, `fleet_critic`, `remediation`, `code`, `hygiene`, `barb`, `ambiguous`) with expected target roles, confidence thresholds, and clarify/answer outcomes.
+  - CI test for the deterministic pre-router: `tests/staff/routing_eval/test_barb_routing_eval.py` runs and verifies 100% pass rate.
+  - `scripts/eval_barb_routing.py`: CLI evaluation runner for manual/nightly execution with `--deterministic-only`, `--threshold`, `--output`, and `--post-board` flags to record accuracy and post Board summary proposals.
+  - Feedback ingestion: `load_candidate_cases_from_feedback()` fetches routing overrides from `GET /api/v1/staff/routing/feedback` to surface candidates for dataset expansion.
+  - REST endpoint `GET /api/v1/staff/routing/eval`: triggers routing evaluation and returns aggregate metrics (`total_cases`, `passed_cases`, `accuracy`, `accuracy_pct`, `by_category`, `failures`).
+  - Board reporting: formatted Markdown summary posted to Board as a work item proposal.
+  - Client synchronization: generated updated OpenAPI schema and TypeScript definitions via `scripts/gen-api-client.sh`.
+- Tests passing:
+  - `pytest tests/staff/routing_eval/`: 6/6 passed.
+  - `pytest tests/api/test_staff_routing_api.py`: 5/5 passed.
+  - `python scripts/eval_barb_routing.py --deterministic-only`: 100.0% accuracy (80/80 passed).
+  - All files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `feat/1340-barb-routing-eval`.
+2. Enable auto-merge squash without `--admin`.
+3. Monitor CI to green merge.
+4. Close issue #1340, release lease, and clean up worktree.
+
+---
+
 # Current handoff — SC-G8 first cut: delete never-mounted frontend primitives (#1346)
 
 Last updated: 2026-09-25
@@ -32,7 +173,7 @@ Last updated: 2026-09-25
 ## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `chore/1346-dead-frontend`; Issue #1346 (part of SC-G #1353); DL-#1346.
-- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `a34c322b`; commit `SELF`; PR: opened right after this commit.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `a34c322b`; commit `SELF`; PR #1451 merged.
 
 ## Objective and Status
 
@@ -49,7 +190,7 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Merge this PR. Delete QuickDispatch and AlertsCenter in the same PR that removes `legacy/App.tsx` (#1345).
+1. Delete QuickDispatch and AlertsCenter in the same PR that removes `legacy/App.tsx` (#1345).
 
 ---
 
@@ -59,38 +200,36 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1282-code-request-model-store`; Issue #1282; DL-#1282.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1340-barb-routing-eval`; Issue #1340; DL-#1340.
 
 ## Objective and Status
 
-- CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record (parent epic #1279).
+- SC-C7: Routing evaluation set and regression check for Barb.
+- Routing quality must be measurable so prompt or roster changes do not silently degrade it.
 - Scope implemented:
-  - `backend/code_requests/model.py`: Pydantic models for `CodeRequest`, `CodeRequestState`, `BoardRoute`, `Requester`, `CodeRequestAuditEvent`, lossless front-matter parser/serializer, `STANDARDS_INJECTION`.
-  - `backend/code_requests/lifecycle.py`: Pure-function state machine `transition()` with legal transitions and operator overrides.
-  - `backend/code_requests/store.py`: `CodeRequestStore` backed by GitHub issues (`code-request` and `code-request:<state>` labels, YAML front-matter body, audit comments) with local JSON cache fallback and automatic cache rebuilds.
-  - `backend/code_requests/dispatch.py`: Prompt construction with standards injection and workflow dispatch helpers.
-  - `backend/routers/code_requests.py`: `GET /api/code-requests`, `POST /api/code-requests`, `GET /api/code-requests/{id}`, `POST /api/code-requests/{id}/transition`, with dual-scope authorization (`code-requests.manage` and `feature-requests.manage`), strictly $\le 500$ lines.
-  - `scripts/ensure_code_request_labels.py`: Label creation across fleet repositories.
-  - `docs/code-requests.md` & `backend/code_requests/schema.md`: Complete documentation and record contract.
-  - `backend/dispatch/audit.py`: `CodeRequestTransitionAuditEntry` and audit recording.
-  - Tests: `tests/code_requests/test_lifecycle.py`, `tests/code_requests/test_store.py`, `tests/api/test_code_requests.py` (18 passing tests).
-- Verification:
-  - `pytest tests/code_requests tests/api/test_code_requests.py`: 18 passed in 5.66s.
-  - `mypy backend/code_requests backend/routers/code_requests.py backend/gh_utils.py scripts/ensure_code_request_labels.py`: 0 errors.
-  - `ruff check`: 0 errors.
-  - `ruff format --check`: 0 errors.
-  - `npm run typecheck`: 0 errors.
-  - `npm run lint`: 0 errors.
+  - Curated 80 representative evaluation cases across 10 categories (`maintenance`, `librarian`, `board`, `project_steward`, `fleet_critic`, `remediation`, `code`, `hygiene`, `barb`, `ambiguous`) with expected target roles, confidence thresholds, and clarify/answer outcomes.
+  - CI test for the deterministic pre-router: `tests/staff/routing_eval/test_barb_routing_eval.py` runs and verifies 100% pass rate.
+  - `scripts/eval_barb_routing.py`: CLI evaluation runner for manual/nightly execution with `--deterministic-only`, `--threshold`, `--output`, and `--post-board` flags to record accuracy and post Board summary proposals.
+  - Feedback ingestion: `load_candidate_cases_from_feedback()` fetches routing overrides from `GET /api/v1/staff/routing/feedback` to surface candidates for dataset expansion.
+  - REST endpoint `GET /api/v1/staff/routing/eval`: triggers routing evaluation and returns aggregate metrics (`total_cases`, `passed_cases`, `accuracy`, `accuracy_pct`, `by_category`, `failures`).
+  - Board reporting: formatted Markdown summary posted to Board as a work item proposal.
+  - Client synchronization: generated updated OpenAPI schema and TypeScript definitions via `scripts/gen-api-client.sh`.
+- Tests passing:
+  - `pytest tests/staff/routing_eval/`: 6/6 passed.
+  - `pytest tests/api/test_staff_routing_api.py`: 5/5 passed.
+  - `python scripts/eval_barb_routing.py --deterministic-only`: 100.0% accuracy (80/80 passed).
   - All files strictly $\le 500$ lines.
 
 ## Next Steps
 
-1. Merge PR #1443 to main via auto-merge.
-2. Release lease on issue #1282.
+1. Push branch `feat/1340-barb-routing-eval`.
+2. Enable auto-merge squash without `--admin`.
+3. Monitor CI to green merge.
+4. Close issue #1340, release lease, and clean up worktree.
 
 ---
 
-# Current handoff â€” Projects: fleet-wide prioritised status and untracked-work report (#1434)
+# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
 
 Last updated: 2026-09-25
 
@@ -193,7 +332,36 @@ Last updated: 2026-09-25
 2. Open PR with `gh pr create` referencing `Closes #1281`, labels `agent:local` and `wave:1`.
 3. Enable auto-merge squash without `--admin`.
 4. Monitor CI to green merge.
-5. Release agent lease and clean up.
+5. # Release agent lease and clean up.
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1340-barb-routing-eval`; Issue #1340; DL-#1340.
+
+## Objective and Status
+
+- SC-C7: Routing evaluation set and regression check for Barb.
+- Routing quality must be measurable so prompt or roster changes do not silently degrade it.
+- Scope implemented:
+  - Curated 80 representative evaluation cases across 10 categories (`maintenance`, `librarian`, `board`, `project_steward`, `fleet_critic`, `remediation`, `code`, `hygiene`, `barb`, `ambiguous`) with expected target roles, confidence thresholds, and clarify/answer outcomes.
+  - CI test for the deterministic pre-router: `tests/staff/routing_eval/test_barb_routing_eval.py` runs and verifies 100% pass rate.
+  - `scripts/eval_barb_routing.py`: CLI evaluation runner for manual/nightly execution with `--deterministic-only`, `--threshold`, `--output`, and `--post-board` flags to record accuracy and post Board summary proposals.
+  - Feedback ingestion: `load_candidate_cases_from_feedback()` fetches routing overrides from `GET /api/v1/staff/routing/feedback` to surface candidates for dataset expansion.
+  - REST endpoint `GET /api/v1/staff/routing/eval`: triggers routing evaluation and returns aggregate metrics (`total_cases`, `passed_cases`, `accuracy`, `accuracy_pct`, `by_category`, `failures`).
+  - Board reporting: formatted Markdown summary posted to Board as a work item proposal.
+  - Client synchronization: generated updated OpenAPI schema and TypeScript definitions via `scripts/gen-api-client.sh`.
+- Tests passing:
+  - `pytest tests/staff/routing_eval/`: 6/6 passed.
+  - `pytest tests/api/test_staff_routing_api.py`: 5/5 passed.
+  - `python scripts/eval_barb_routing.py --deterministic-only`: 100.0% accuracy (80/80 passed).
+  - All files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `feat/1340-barb-routing-eval`.
+2. Open PR with `gh pr create` referencing `Fixes #1340`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI to green merge.
+5. Close issue #1340, release lease, and clean up worktree.
+   > > > > > > > 834cc81 (feat(staff): SC-C7 Barb routing evaluation set and regression checks (#1340))
 
 ---
 

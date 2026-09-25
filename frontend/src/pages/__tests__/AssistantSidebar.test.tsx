@@ -18,10 +18,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  AssistantSidebar,
-  DashboardHelp,
-} from "../AssistantSidebar";
+import { AssistantSidebar, DashboardHelp } from "../AssistantSidebar";
 import { ASST_LS } from "../../lib/assistantStorage";
 
 afterEach(() => {
@@ -53,7 +50,9 @@ describe("DashboardHelp", () => {
     fireEvent.click(screen.getByTitle("Dashboard help"));
     expect(screen.getByText("Dashboard Help")).toBeInTheDocument();
     expect(screen.getByText("Current tab: fleet")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close assessment dialog" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close assessment dialog" }),
+    );
     expect(screen.queryByText("Dashboard Help")).toBeNull();
   });
 });
@@ -61,7 +60,9 @@ describe("DashboardHelp", () => {
 describe("AssistantSidebar", () => {
   it("is aria-hidden and renders no chat controls when closed", () => {
     mockChat();
-    render(<AssistantSidebar currentTab="fleet" open={false} onToggle={() => {}} />);
+    render(
+      <AssistantSidebar currentTab="fleet" open={false} onToggle={() => {}} />,
+    );
     const region = screen.getByRole("complementary", { hidden: true });
     expect(region).toHaveAttribute("aria-hidden", "true");
     expect(screen.queryByText("💬 Chat")).toBeNull();
@@ -122,7 +123,9 @@ describe("AssistantSidebar", () => {
   it("persists the transcript when save-history is enabled", async () => {
     mockChat({ reply: "saved reply" });
     render(<AssistantSidebar currentTab="fleet" open onToggle={() => {}} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Save chat history" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Save chat history" }),
+    );
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question… (Enter to send)"),
       { target: { value: "remember me" } },
@@ -144,5 +147,43 @@ describe("AssistantSidebar", () => {
     await waitFor(() =>
       expect(localStorage.getItem(ASST_LS.transcript)).toBeNull(),
     );
+  });
+
+  it("displays retirement banner pointing to Staff Console (#1330)", () => {
+    mockChat();
+    render(<AssistantSidebar currentTab="fleet" open onToggle={() => {}} />);
+    expect(
+      screen.getByText("Chat has moved to Staff Console"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /staff console/i }),
+    ).toHaveAttribute("href", "#staff");
+  });
+
+  it("surfaces retirement message when endpoint returns 410 Gone (#1330)", async () => {
+    const fn = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 410,
+        json: () =>
+          Promise.resolve({
+            detail:
+              "The legacy assistant chat endpoint has been retired. Use Staff Console at /api/v1/staff/threads.",
+          }),
+      } as Response),
+    );
+    vi.stubGlobal("fetch", fn);
+
+    render(<AssistantSidebar currentTab="fleet" open onToggle={() => {}} />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question… (Enter to send)"),
+      { target: { value: "fleet status" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(
+      await screen.findByText(
+        /The legacy assistant chat endpoint has been retired/,
+      ),
+    ).toBeInTheDocument();
   });
 });

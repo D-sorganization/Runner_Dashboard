@@ -142,3 +142,18 @@ def test_api_routing_override_and_feedback(client: TestClient) -> None:
     assert len(fb_list) >= 1
     assert fb_list[0]["original_role"] == "librarian"
     assert fb_list[0]["override_role"] == "pragmatic-programmer"
+
+
+def test_api_routing_eval(client: TestClient) -> None:
+    """GET /api/v1/staff/routing/eval returns evaluation summary metrics."""
+    resp = client.get(
+        "/api/v1/staff/routing/eval?deterministic_only=true",
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["total_cases"] >= 50
+    assert data["accuracy"] == 1.0
+    assert "maintenance" in data["category_metrics"]
+    assert "librarian" in data["category_metrics"]
+    assert "board" in data["category_metrics"]
