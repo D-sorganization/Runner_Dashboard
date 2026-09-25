@@ -1,39 +1,49 @@
-# Current handoff — CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup (#1287)
+# Current handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/cr-5-executor-stage-1287`; Issue #1287; DL-#1287.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.1-resolve-staff-action-roles-1474`; Issue #1474; DL-#1474.
 
 ## Objective and Status
 
-- Implement CR-5 Executor stage for Code Requests (issue #1287) following strict fleet standards (TDD, DbC, LoD, DRY, $\le 500$ lines per file):
-  - Models (`backend/code_requests/executor_models.py`, 102 lines): `ExecutorTier` (`ollama`, `cli`, `strong`), `ChildExecutionState` (`queued`, `claimed`, `pr_open`, `ci`, `merged`, `failed`, `blocked`, `paused_for_human`), `ChildExecutionRecord`, `ChildIssuePayload`, `ExecutionConfig`, `ExecutorRollup`.
-  - Router (`backend/code_requests/executor_router.py`, 169 lines): tier normalization, escalation chain, task class mapping (`docs`/`refactor` -> `ollama`, `feature`/`bug` -> `cli`, `arch`/`perf`/`migration` -> `strong`), pinned profile capability checks with automatic tier escalation, and cheapest capable provider routing via Conductor.
-  - Multi-Agent Coordination (`backend/code_requests/executor_coordination.py`, 206 lines): roster priority (`user > maxwell-daemon > claude > codex > conductor > jules > local > gaai`), `do-not-automate` checks, claim checks, lease acquisition with 2h TTL, and PR metadata generation (`Fixes #N`, `agent:<agent>`).
-  - Pipeline & Scheduler (`backend/code_requests/executor_stage.py`, 354 lines): topological acyclic wave ordering, per-repo dispatch concurrency limits (default 3), PR/CI/merge state machine, retry loop with updated handoffs, failure tier escalation after 2 failures, human triage pausing (`needs-human-triage`) upon strong exhaustion, downstream dependency blocking, and rollup computation.
-  - Endpoints (`backend/routers/code_requests_executor.py`, 175 lines) mounted in `backend/server.py`:
-    - `POST /api/code-requests/{id}/executor/initialize`
-    - `POST /api/code-requests/{id}/executor/dispatch`
-    - `POST /api/code-requests/{id}/executor/report-child`
-    - `GET /api/code-requests/{id}/executor/rollup`
-  - All files strictly $\le 500$ lines.
+- Fix staff role names in `backend/staff/action_executors.py` resolving against loaded roster (WP-0.1, issue #1474):
+  - Defined module constants:
+    - `DEFAULT_REVIEWER_ROLE = "fleet-critic"`
+    - `CODE_REQUEST_OWNER_ROLE = "barb"`
+    - `BOARD_PROPOSAL_ROLE = "board-secretary"`
+  - Updated `execute_review_pr` to use `DEFAULT_REVIEWER_ROLE`.
+  - Updated `execute_code_request_create` to use `CODE_REQUEST_OWNER_ROLE`.
+  - Updated `execute_board_propose` to use `BOARD_PROPOSAL_ROLE`.
+  - Implemented `validate_action_default_roles` checking `load_roles()`: logs a warning without crashing at runtime; raises `ValueError` when `raise_on_error=True` for test failure.
+  - Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`:
+    - Asserts every default role resolves to a dispatchable, non-retired role on dashboard surface.
+    - Asserts `staff.review_pr` with no `reviewer` starts a `fleet-critic` run.
+    - Asserts validation fails loudly on unresolvable roles and logs runtime warnings.
   - Verification:
-    - `pytest tests/code_requests/` passes: 83/83 passed (17 tests in `test_executor_stage.py`, 5 tests in `test_executor_routes.py`, plus existing 61 tests).
-    - Vitest passes: 155/155 test files, 1313/1313 tests passed.
-    - OpenAPI sync: `scripts/gen-api-client.sh --check` passes with zero diff.
-    - TypeScript & Linting: `npm run typecheck` 0 errors, `npm run lint` 0 warnings, `ruff check .` clean.
+    - `pytest tests/staff/ tests/unit/test_staff_actions.py -q`: 19/19 passed.
+    - `ruff check backend/ clients/` and `ruff format --check backend/ clients/`: clean.
+    - `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional`: clean (0 issues in 247 source files).
+    - File line counts: `backend/staff/action_executors.py` (274 lines), `tests/staff/routing_eval/test_action_executor_roles.py` (75 lines), both strictly $\le 500$ lines.
 
 ## Next Steps
 
-1. Commit and push `feat/cr-5-executor-stage-1287`.
-2. Open PR referencing `Fixes #1287` with label `agent:local`.
+1. Commit and push `fix/wp-0.1-resolve-staff-action-roles-1474`.
+2. Open PR referencing `Fixes #1474` with label `agent:local`.
 3. Enable auto-merge (`gh pr merge --auto --squash`).
 4. Verify CI passes and PR merges to `main`.
-5. Release lease on #1287 and fast-forward local `main`.
+5. Release lease on #1474 and fast-forward local `main`.
 
 ---
+
+# Past handoff — CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup (#1287)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/cr-5-executor-stage-1287`; Issue #1287; DL-#1287; PR #1476 (merged).
 
 # Past handoff — CI: Synchronize generated OpenAPI contract types for Staff and Board proposal requests (#1471)
 
