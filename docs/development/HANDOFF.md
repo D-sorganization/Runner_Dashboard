@@ -1,4 +1,49 @@
-# Current handoff — SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
+# Current handoff — SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet (#1324)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1324-one-fleet-page`; Issue #1324; DL-#1324.
+
+## Objective and Status
+
+- SC-G2: One Fleet page: merge Machines, Runner Audit, and Event Log into Fleet.
+- Unified page components (`frontend/src/pages/Fleet/`):
+  - `FleetStatusBanner.tsx`: SC-A2 tri-state health honesty (green/amber/red), KPI summary strip (machines, active runners, alerts, event rate), deployment drift indicator & state button, and jump anchors (`#machines`, `#runners`, `#alerts`, `#events`).
+  - `FleetMachinesSection.tsx`: Single consolidated machines table with expandable telemetry (WSL distribution, CPU/RAM utilization, storage mounts, runner pool) and "Ask Maintenance" button for SC-E6.
+  - `FleetRunnersSection.tsx`: Status filter pills (`all`, `idle`, `active`, `offline`), bulk fleet controls (`Start All`, `Stop All`), runner table with status badges, labels, active run link, and maintenance menu actions.
+  - `FleetAlertsSection.tsx`: Active fleet alerts and hosted-runner billing violations audit table (`runnerAudit`) with refresh trigger, empty state, and severity styling.
+  - `FleetEventsSection.tsx`: Durable fleet event history with severity filters (`All`, `Info`, `Warning`, `Error`), timestamp formatting, node attribution, and independent error state.
+- Recomposed `OverviewPage.tsx`:
+  - 437 lines (strictly <= 500 lines).
+  - Composes `FleetStatusBanner`, `FleetMachinesSection`, `FleetRunnersSection`, `FleetAlertsSection`, `FleetEventsSection`, and `OverviewLeases`.
+  - Independent per-section error isolation (`machinesError`, `runnersError`, `auditError`, `eventsError`).
+  - Smooth hash scrolling (`#machines`, `#runners`, `#alerts`, `#events`).
+- Backward-compatible navigation & redirects:
+  - Pruned duplicate tabs (`machines`, `runner-audit`, `events`) from `navRegistryData.ts`.
+  - Redirects configured in `routing.ts`: `/fleet/machines`, `/machines`, `/t/machines` -> `/fleet#machines`; `/fleet/runner-audit`, `/runner-audit`, `/t/runner-audit` -> `/fleet#alerts`; `/fleet/events`, `/events`, `/t/events` -> `/fleet#events`.
+- Validation:
+  - 142 test files passed, 1,245 frontend tests passed (0 failures).
+  - TypeScript check: 0 errors (`npm run typecheck`).
+  - ESLint: 0 warnings, 0 errors (`npm run lint`).
+  - Color literal budget: 4/4 passed (`pytest tests/frontend/test_color_literal_budget.py`).
+  - Production build: Clean build (`npm run build`).
+  - Frontend perf budget: 0 errors (`python scripts/check_frontend_perf_budget.py --bundle --json`).
+  - File line limits: All modified/created files strictly <= 500 lines (`python scripts/check_lines.py`).
+
+## Next Steps
+
+1. Commit changes with conventional commit `feat(fleet): SC-G2 merge Machines, Runner Audit and Event Log into one Fleet page (#1324)`.
+2. Push branch `feat/1324-one-fleet-page`.
+3. Open PR with `gh pr create` referencing `Fixes #1324`, labels `agent:local` and `wave:3`.
+4. Enable auto-merge squash without `--admin`.
+5. Monitor CI to green merge.
+6. Proceed to Wave 3 issue #1325 (`SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules`).
+
+---
+
+# Previous handoff — SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
 
 Last updated: 2026-09-25
 

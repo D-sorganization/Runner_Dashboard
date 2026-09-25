@@ -89,10 +89,10 @@ describe("SC-D2: Redirect table covers every nav item", () => {
 
 describe("SC-D2: Secondary pages live under their area prefix", () => {
   it("maps secondary fleet pages under /fleet/*", () => {
-    expect(tabIdToPath("machines")).toBe("/fleet/machines");
-    expect(pathnameToTabId("/fleet/machines")).toBe("machines");
-    expect(tabIdToPath("events")).toBe("/fleet/events");
-    expect(pathnameToTabId("/fleet/events")).toBe("events");
+    expect(tabIdToPath("insights")).toBe("/fleet/insights");
+    expect(pathnameToTabId("/fleet/insights")).toBe("insights");
+    expect(tabIdToPath("deployment")).toBe("/fleet/deployment");
+    expect(pathnameToTabId("/fleet/deployment")).toBe("deployment");
   });
 
   it("maps secondary work pages under /work/*", () => {
@@ -145,4 +145,42 @@ describe("SC-G4: Merge Reports and Analysis into Insights with redirects (issue 
     expect(pathnameToTabId("/fleet/analysis")).toBe("insights");
   });
 });
+
+describe("SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet (issue #1324)", () => {
+  it("redirects old tab routes /t/machines, /t/runner-audit and /t/events to /fleet sections", () => {
+    const machinesRedirect = getTabRedirect("/t/machines");
+    expect(machinesRedirect).toBeDefined();
+    expect(machinesRedirect?.to).toBe("/fleet#machines");
+    expect(machinesRedirect?.label).toBe("Machines");
+
+    const auditRedirect = getTabRedirect("/t/runner-audit");
+    expect(auditRedirect).toBeDefined();
+    expect(auditRedirect?.to).toBe("/fleet#alerts");
+    expect(auditRedirect?.label).toBe("Runner Audit");
+
+    const eventsRedirect = getTabRedirect("/t/events");
+    expect(eventsRedirect).toBeDefined();
+    expect(eventsRedirect?.to).toBe("/fleet#events");
+    expect(eventsRedirect?.label).toBe("Event Log");
+  });
+
+  it("redirects /fleet/machines, /fleet/runner-audit and /fleet/events to /fleet sections", () => {
+    expect(getTabRedirect("/fleet/machines")?.to).toBe("/fleet#machines");
+    expect(getTabRedirect("/fleet/runner-audit")?.to).toBe("/fleet#alerts");
+    expect(getTabRedirect("/fleet/events")?.to).toBe("/fleet#events");
+  });
+
+  it("redirects /machines, /runner-audit and /events to /fleet sections", () => {
+    expect(getTabRedirect("/machines")?.to).toBe("/fleet#machines");
+    expect(getTabRedirect("/runner-audit")?.to).toBe("/fleet#alerts");
+    expect(getTabRedirect("/events")?.to).toBe("/fleet#events");
+  });
+
+  it("resolves /fleet/machines, /fleet/runner-audit and /fleet/events to overview tabId", () => {
+    expect(pathnameToTabId("/fleet/machines")).toBe("overview");
+    expect(pathnameToTabId("/fleet/runner-audit")).toBe("overview");
+    expect(pathnameToTabId("/fleet/events")).toBe("overview");
+  });
+});
+
 

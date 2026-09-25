@@ -310,19 +310,16 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["credentials", "native-credentials"],
     ["deployment", "native-deployment"],
     ["diagnostics", "native-diagnostics"],
-    ["events", "native-events"],
     ["feature-requests", "native-feature-requests"],
     ["fleet-orchestration", "native-fleet-orchestration"],
     ["linear-setup", "native-linear-setup"],
     ["local-apps", "native-local-apps"],
-    ["machines", "native-machines"],
     ["maxwell", "native-maxwell"],
     ["org", "native-org"],
     ["principals", "native-principals"],
     ["push-settings", "native-push-settings"],
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
-    ["runner-audit", "native-runner-audit"],
     ["runner-schedule", "native-runner-schedule"],
     ["scheduled-jobs", "native-scheduled-jobs"],
     ["settings", "native-settings"],
@@ -343,6 +340,12 @@ describe("RoutedShell — URL is the source of truth", () => {
     renderAt("/t/reports");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent("insights");
     expect(await screen.findByTestId("native-analysis")).toBeInTheDocument();
+  });
+
+  it("redirects legacy /t/machines, /t/runner-audit and /t/events to /fleet sections (SC-G2)", async () => {
+    renderAt("/t/machines");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("overview");
+    expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
   });
 
   it.each([

@@ -118,6 +118,12 @@ describe("nav registry — DbC invariants", () => {
     expect(NAV_ITEMS.find((i) => i.tabId === "analysis")).toBeUndefined();
   });
 
+  it("merges machines, runner-audit, and events into Fleet (SC-G2 / issue #1324)", () => {
+    expect(NAV_ITEMS.find((i) => i.tabId === "machines")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "runner-audit")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "events")).toBeUndefined();
+  });
+
   it("marks at least one frequent item and not all of them", () => {
     const freq = NAV_ITEMS.filter((i) => i.frequent);
     expect(freq.length).toBeGreaterThanOrEqual(1);

@@ -105,7 +105,7 @@ describe("TopToolstrip — overflow menu", () => {
     fireEvent.click(more);
     const menu = screen.getByRole("menu");
     expect(
-      within(menu).getByRole("menuitem", { name: /machines/i }),
+      within(menu).getByRole("menuitem", { name: /diagnostics/i }),
     ).toBeInTheDocument();
   });
 
@@ -126,12 +126,12 @@ describe("TopToolstrip — overflow menu", () => {
   it("selecting a category from the More menu calls onSelect(tabId)", () => {
     const { onSelect } = renderBar();
     fireEvent.click(screen.getByRole("button", { name: /more/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /machines/i }));
-    expect(onSelect).toHaveBeenCalledWith("machines");
+    fireEvent.click(screen.getByRole("menuitem", { name: /diagnostics/i }));
+    expect(onSelect).toHaveBeenCalledWith("diagnostics");
   });
 
   it("marks the More trigger active when the current tab is a non-frequent category", () => {
-    renderBar({ activeTabId: "machines" });
+    renderBar({ activeTabId: "diagnostics" });
     const more = screen.getByRole("button", { name: /more/i });
     expect(more).toHaveAttribute("aria-current", "page");
   });
