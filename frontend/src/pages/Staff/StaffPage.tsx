@@ -20,6 +20,7 @@ import {
 import { Assign } from "./Assign";
 import { Board } from "./Board";
 import { Holds } from "./Holds";
+import { InboxPanel } from "./InboxPanel";
 import { Roster } from "./Roster";
 import { RunDetail } from "./RunDetail";
 import { RunLog } from "./RunLog";
@@ -77,6 +78,7 @@ export function StaffPage() {
 
   return (
     <div className="staff">
+      <InboxPanel onOpenRun={openRun} />
       <Board onOpenRun={openRun} />
       <SubTabs
         tabs={SECTION_TABS}

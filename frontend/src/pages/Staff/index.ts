@@ -5,3 +5,6 @@ export { RunLog } from "./RunLog";
 export { RunDetail } from "./RunDetail";
 export { Assign } from "./Assign";
 export { Holds } from "./Holds";
+export { InboxPanel } from "./InboxPanel";
+export * from "./inboxTypes";
+
