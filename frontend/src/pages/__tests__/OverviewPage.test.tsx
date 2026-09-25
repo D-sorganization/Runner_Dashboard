@@ -235,7 +235,7 @@ describe("OverviewPage", () => {
     await screen.findByRole("region", { name: "Fleet status" });
 
     // Open row actions menu for runner
-    const runnerActionsBtn = screen.getByRole("button", {
+    const runnerActionsBtn = await screen.findByRole("button", {
       name: "Actions for runner d-sorg-local-ControlTower-1",
     });
     fireEvent.click(runnerActionsBtn);
