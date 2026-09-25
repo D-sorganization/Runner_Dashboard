@@ -6347,43 +6347,6 @@ export interface components {
              */
             stack?: string | null;
         };
-        /**
-         * CreateProposalRequest
-         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
-         */
-        CreateProposalRequest: {
-            /** Code Request Url */
-            code_request_url?: string | null;
-            /**
-             * Confirm Not Duplicate
-             * @default false
-             */
-            confirm_not_duplicate: boolean;
-            /**
-             * Estimated Cost
-             * @enum {string}
-             */
-            estimated_cost: "Low" | "Medium" | "High";
-            /** Evidence */
-            evidence: string;
-            /** Lean */
-            lean: string;
-            /** Options Considered */
-            options_considered: string;
-            /** Problem */
-            problem: string;
-            /** Source */
-            source?: string | null;
-            /** Target Repos */
-            target_repos: string[];
-            /** Title */
-            title: string;
-            /**
-             * Urgency
-             * @enum {string}
-             */
-            urgency: "Routine" | "Urgent" | "Emergency";
-        };
         /** CreateThreadRequest */
         CreateThreadRequest: {
             /**
@@ -8388,6 +8351,43 @@ export interface components {
              * @default 0
              */
             planned: number;
+        };
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
+        proposals__models__CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Confirm Not Duplicate
+             * @default false
+             */
+            confirm_not_duplicate: boolean;
+            /**
+             * Estimated Cost
+             * @enum {string}
+             */
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "Routine" | "Urgent" | "Emergency";
         };
         /** CreateProposalRequest */
         routers__staff_proposals__CreateProposalRequest: {
@@ -12765,7 +12765,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateProposalRequest"];
+                "application/json": components["schemas"]["proposals__models__CreateProposalRequest"];
             };
         };
         responses: {
