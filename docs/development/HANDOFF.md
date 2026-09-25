@@ -22,10 +22,11 @@ Last updated: 2026-09-25
     - Asserts `staff.review_pr` with no `reviewer` starts a `fleet-critic` run.
     - Asserts validation fails loudly on unresolvable roles and logs runtime warnings.
   - Verification:
+    - `pytest tests/staff/routing_eval/test_action_executor_roles.py`: 5/5 passed.
     - `pytest tests/staff/ tests/unit/test_staff_actions.py -q`: 19/19 passed.
     - `ruff check backend/ clients/` and `ruff format --check backend/ clients/`: clean.
     - `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional`: clean (0 issues in 247 source files).
-    - File line counts: `backend/staff/action_executors.py` (274 lines), `tests/staff/routing_eval/test_action_executor_roles.py` (75 lines), both strictly $\le 500$ lines.
+    - File line counts: `backend/staff/action_executors.py` (279 lines), `tests/staff/routing_eval/test_action_executor_roles.py` (95 lines), both strictly $\le 500$ lines.
 
 ## Next Steps
 
@@ -34,6 +35,20 @@ Last updated: 2026-09-25
 3. Enable auto-merge (`gh pr merge --auto --squash`).
 4. Verify CI passes and PR merges to `main`.
 5. Release lease on #1474 and fast-forward local `main`.
+
+---
+
+# Past handoff — Staff validator accepts RM tool/scope grants (#1477)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/staff-validator-tools-scopes`; Issue #1477; DL-#1477; PR #1478 (merged).
+
+## Objective and Status
+
+- Done: `OPTIONAL_FIELDS` gains `tools` and `scopes`, validated as unique non-empty string lists by `_string_list_problems`; `schema.json` gains `scopes`; tests cover acceptance, malformed grants and schema/validator parity.
 
 ---
 

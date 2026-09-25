@@ -26,9 +26,22 @@ reachable from any live state and `abandoned` from `parked`.
 - **Branch:** `fix/wp-0.1-resolve-staff-action-roles-1474`
 - **Paths:** `backend/staff/action_executors.py`, `tests/staff/routing_eval/test_action_executor_roles.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (pytest 4/4 passed in test_action_executor_roles.py, 19/19 passed in tests/staff/ and test_staff_actions.py; ruff check and format clean; mypy backend clean with 0 issues in 247 files; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (pytest 5/5 passed in test_action_executor_roles.py, 19/19 passed in tests/staff/ and test_staff_actions.py; ruff check and format clean; mypy backend clean with 0 issues in 247 files; all files <= 500 lines)
 - **Summary:** Replaced literal unresolvable staff role strings in `backend/staff/action_executors.py` with module constants: `DEFAULT_REVIEWER_ROLE = "fleet-critic"`, `CODE_REQUEST_OWNER_ROLE = "barb"`, `BOARD_PROPOSAL_ROLE = "board-secretary"`. Added `validate_action_default_roles` to validate default roles against `load_roles()`, logging warnings without crashing at runtime and failing loudly on error in tests. Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`.
 - **Next step:** Commit, push, open PR, enable auto-merge, verify CI passes, and release lease.
+
+### DL-#1477 · Staff validator accepts RM tool/scope grants
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1477
+- **Branch:** `fix/staff-validator-tools-scopes`
+- **PR:** #1478
+- **Paths:** `backend/staff/validator.py`, `backend/staff/schema.json`, `tests/unit/test_staff_roles.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest -k 'staff or role': 477 passed; ruff + mypy clean; live RM roster loads with 0 invalid roles)
+- **Summary:** RD's hand-written staff validator rejected the RM `tools`/`scopes` fields, marking three roles invalid and undispatchable; both are now optional unique string lists, RM stays the vocabulary authority.
+- **Next step:** None (shipped in PR #1478).
 
 ### DL-#1287 · CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup
 
