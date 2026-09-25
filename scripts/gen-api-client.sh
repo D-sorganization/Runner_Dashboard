@@ -12,7 +12,7 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SNAPSHOT="$ROOT_DIR/frontend/src/lib/openapi.json"
 TYPES="$ROOT_DIR/frontend/src/lib/api-types.ts"
-TMP_DIR="$(mktemp -d)"
+TMP_DIR="$(mktemp -d -p "$ROOT_DIR" .tmp_api_XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 TMP_SNAPSHOT="$TMP_DIR/openapi.json"
 TMP_TYPES="$TMP_DIR/api-types.ts"

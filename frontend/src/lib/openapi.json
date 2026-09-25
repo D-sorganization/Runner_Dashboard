@@ -1357,6 +1357,20 @@
         "title": "PatchWorkItemRequest",
         "type": "object"
       },
+      "PinsResponse": {
+        "properties": {
+          "pins": {
+            "description": "List of pinned role names.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pins",
+            "type": "array"
+          }
+        },
+        "title": "PinsResponse",
+        "type": "object"
+      },
       "PoolConfigPatch": {
         "additionalProperties": false,
         "description": "Runtime override for a pool's min/max online counts.",
@@ -2139,6 +2153,20 @@
         },
         "required": ["provider", "key"],
         "title": "SetKeyRequest",
+        "type": "object"
+      },
+      "SetPinsRequest": {
+        "properties": {
+          "pins": {
+            "description": "List of role names to pin.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pins",
+            "type": "array"
+          }
+        },
+        "title": "SetPinsRequest",
         "type": "object"
       },
       "SimpleResponse": {
@@ -12512,6 +12540,176 @@
         ],
         "summary": "Detect Stalled Jobs",
         "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/pins": {
+      "get": {
+        "description": "Retrieve pinned roles for the calling user.",
+        "operationId": "get_pins_api_v1_staff_pins_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Pins",
+        "tags": ["staff-pins"]
+      },
+      "put": {
+        "description": "Replace all pinned roles for the calling user.",
+        "operationId": "set_pins_api_v1_staff_pins_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPinsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Set Pins",
+        "tags": ["staff-pins"]
+      }
+    },
+    "/api/v1/staff/pins/{role}": {
+      "delete": {
+        "description": "Unpin a role for the calling user.",
+        "operationId": "unpin_role_api_v1_staff_pins__role__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Unpin Role",
+        "tags": ["staff-pins"]
+      },
+      "post": {
+        "description": "Pin a role for the calling user.",
+        "operationId": "pin_role_api_v1_staff_pins__role__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pin Role",
+        "tags": ["staff-pins"]
       }
     },
     "/api/v1/staff/proposals": {

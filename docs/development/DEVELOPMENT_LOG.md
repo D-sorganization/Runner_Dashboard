@@ -18,30 +18,43 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1317 · SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1317 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1317-staff-roster-sidebar`
+- **Paths:** `frontend/src/pages/StaffConsole/Roster.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/pages/StaffConsole/RosterGroup.tsx`, `frontend/src/pages/StaffConsole/rosterTypes.ts`, `frontend/src/pages/StaffConsole/statusCalculator.ts`, `frontend/src/pages/StaffConsole/pinsApi.ts`, `frontend/src/pages/StaffConsole/useRosterData.ts`, `frontend/src/pages/StaffConsole/Roster.css`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/statusCalculator.test.ts`, `frontend/src/pages/StaffConsole/__tests__/pinsApi.test.ts`, `backend/routers/staff_pins.py`, `backend/staff/pins.py`, `tests/api/test_staff_pins_api.py`, `backend/routers/staff_threads.py`, `backend/server.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Vitest 28/28 tests passing; pytest 15/15 passing; ruff clean; mypy backend clean; typecheck 0 errors; eslint 0 warnings; all files strictly <= 500 lines)
+- **Summary:** Built Staff Roster sidebar component with top "Ask Barb (auto-route)" entry, 4 collapsible operational tiers (Leadership, Project Managers, Specialists, Operations), 5-state lifecycle status dots (idle, working, needs you, unavailable, invalid) with accessible tooltip explanations, unread badge counters, last-message preview snippets and relative timestamps. Real-time search filter matching role names, titles, and mandate keywords with clear button and keyboard escape. Server-side role pinning persistence (`GET/POST/DELETE/PUT /api/v1/staff/pins`) with SQLite backing store and localStorage fallback. Keyboard navigation support (`ArrowUp`, `ArrowDown`, `Enter`, `Home`, `End`, `Escape`). Visible stale banner with retry when roster network call fails while preserving existing roster data.
+- **Next step:** Push branch, open PR referencing Fixes #1317, enable auto-merge, and monitor CI to green merge.
+
 ### DL-#1301 · SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1301 (epic #1348 / umbrella #1354)
 - **Branch:** `feat/1301-staff-console-ux-spec`
 - **PR:** #1405
 - **Paths:** `docs/design/staff-console.md`, `tests/test_staff_console_design_spec.py`, `backend/staff/chat.py`, `tests/api/test_staff_spend_and_rate_limits.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`pytest tests/test_staff_console_design_spec.py` 8 passed; ruff clean; docs/design/staff-console.md 274 lines <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1405; merged into main)
 - **Summary:** Authored comprehensive UX specification and interaction contract for Staff Console (`docs/design/staff-console.md`) establishing Staff Console as the primary landing page across a four-area information architecture (Staff, Work, Fleet, Settings). Defines 6 core design principles, ASCII wireframes for desktop (three-pane), tablet (collapsible drawer), mobile (single-pane bottom navigation), and first-run empty states. Details structured inline card interactions for action approvals, run records, and error remediation with standardized action verbs and complete failure/lifecycle state catalogue. Covered by TDD test suite `tests/test_staff_console_design_spec.py`.
-- **Next step:** Push branch, open PR referencing Fixes #1301, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1405.
 
 ### DL-#1326 · SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1326 (epic #1353 / umbrella #1354)
 - **Branch:** `feat/1326-merge-reports-analysis`
+- **PR:** #1409
 - **Paths:** `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Analysis.tsx`, `frontend/src/pages/Diagnostics.tsx`, `frontend/src/lib/analysisTabs.ts`, `frontend/src/shell/__tests__/RedirectTable.test.ts`, `frontend/src/shell/__tests__/navRegistry.test.ts`, `frontend/src/pages/__tests__/Diagnostics.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (all redirect tests passing; navRegistry tests passing; Diagnostics Web Vitals test passing; typecheck 0 errors; eslint 0 warnings; all touched files strictly <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1409; merged into main)
 - **Summary:** Merged duplicate Reports and Analysis navigation tabs into a unified "Insights" section (`tabId: "insights"`) under Fleet navigation (`/fleet/insights`). Configured backward-compatible redirects from `/t/reports`, `/t/analysis`, `/fleet/reports`, and `/fleet/analysis` to `/fleet/insights` with toast notifications. Relocated Web Vitals metric inspection from AnalysisTab to DiagnosticsTab as a dedicated card.
-- **Next step:** Run full test suite, commit, push branch, open PR with Fixes #1326, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1409.
 
 ### DL-#1407 · CI: Restore green main across frontend integrity checks and generated API contract
 
@@ -92,7 +105,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `backend/staff/maintenance_detect.py`, `backend/staff/maintenance.py`, `backend/staff/actions.py`, `backend/routers/staff_proposals.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_detect_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_maintenance_detect.py` 9 passed; `pytest tests/api/test_staff_maintenance_detect_api.py` 2 passed; full maintenance suite 39 passed; ruff clean; mypy 0 errors; all files <= 500 lines; CI passed green)
-- **Summary:** Implemented autonomous stalled-job detection and remediation playbooks (`backend/staff/maintenance_detect.py`) for the Fleet Maintenance role. Detectors include queued too long with idle matching runners, running past p95 * 3, runner online but listener log stale, runner offline with assigned job, and ghost runner registrations. Automatically executes low-risk remediations (cancel and rerun, restart wedged listener) and generates action proposals in the Maintenance thread for medium/high-risk actions (run cancel, runner remove) awaiting operator approval. Isolates exceptions per detector, logs SC-A8 audit records, and exposes `POST /api/v1/staff/maintenance/detect-stalled`.
+- **Summary:** Implemented autonomous stalled-job detection and remediation playbooks (`backend/staff/maintenance_detect.py`) for the Fleet Maintenance role. Detectors include queued too long with idle matching runners, running past p95 \* 3, runner online but listener log stale, runner offline with assigned job, and ghost runner registrations. Automatically executes low-risk remediations (cancel and rerun, restart wedged listener) and generates action proposals in the Maintenance thread for medium/high-risk actions (run cancel, runner remove) awaiting operator approval. Isolates exceptions per detector, logs SC-A8 audit records, and exposes `POST /api/v1/staff/maintenance/detect-stalled`.
 - **Next step:** Shipped in PR #1402.
 
 ### DL-#1307 · SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree

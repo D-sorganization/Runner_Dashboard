@@ -135,6 +135,18 @@ async def list_threads(
             str(d.get("id", "")),
         ),
     )
+    for it in page.items:
+        with store._lock:
+            m = store._conn.execute(
+                "SELECT body_md, author, created_at FROM messages WHERE thread_id = ? ORDER BY seq DESC LIMIT 1",
+                (it["id"],),
+            ).fetchone()
+            if m:
+                it["last_message"] = {
+                    "body_md": str(m["body_md"]),
+                    "author": str(m["author"]),
+                    "created_at": str(m["created_at"]),
+                }
     return {
         "items": page.items,
         "threads": page.items,

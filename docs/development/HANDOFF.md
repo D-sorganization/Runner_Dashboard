@@ -1,48 +1,68 @@
-# Current handoff — SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture (#1301)
+# Current handoff — SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning (#1317)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1301-staff-console-ux-spec`; Issue #1301; DL-#1301.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1317-staff-roster-sidebar`; Issue #1317; DL-#1317.
 
 ## Objective and Status
 
-- SC-D1: Complete UX specification and interaction design establishing Staff Console as the landing page across a four-area information architecture (Staff, Work, Fleet, Settings).
-- Status: Fully specified and covered with TDD; spec document merged as `docs/design/staff-console.md`; all tests passing; ruff clean; files <= 500 lines. Unblocks SC-D2 (#1309) and the Wave 3 frontend stream.
+- SC-D3: Implement the Staff Roster sidebar component according to SC-D1 specification (`docs/design/staff-console.md`).
+- Status: Fully implemented and tested with TDD. All 28 Vitest tests and 15 pytest tests passing. Full quality gates (typecheck, lint, ruff, mypy) passing. All files strictly <= 500 lines.
 
 ## Files and Decisions
 
-- `docs/design/staff-console.md`:
-  - Four top-level areas: Staff (primary landing page), Work (runs, PRs, review queue), Fleet (machines, runners, providers), Settings (tokens, permissions, budgets).
-  - 6 UX core principles: Status honesty, Progressive disclosure, One obvious primary action, One way to request work, Keyboard-first, Mobile parity.
-  - Roster organization & 4 groupings: Leadership (Ask Barb, Board, Orchestrator), Project Managers (Project Steward), Specialists (Librarian, Cartographer, Fleet Critic, Research Scout, OSS Scout, Pragmatic Programmer), Operations (Fleet Maintenance, Night Watch, Issue Remediator, PR Remediator, Sanitation, Usage Tracker).
-  - Responsive ASCII wireframes: Desktop (three-pane), Tablet (two-pane with drawer), Mobile (single-pane with bottom navigation bar), First-Run & Empty State.
-  - Structured card contracts: Action Approval Card (`ActionProposal`), Run Progress Card (`RunRecord`), Error Card & Remediation (`failure_class`).
-  - Interaction & keyboard shortcuts (`Ctrl+K`, `/` slash commands, `@` mentions).
-  - Copy guidelines & standardized action verbs (`Approve`, `Deny`, `Execute`, `Cancel`, `Retry`, `Hold`).
-  - Complete state catalogue covering loading, empty state, partial failure, offline/reconnecting, provider down, node offline, permission denied.
-- `backend/staff/chat.py`:
-  - Resolved provider fallback in `execute_turn`: when a role's preferred provider is not registered in `ADAPTERS` or `adapters` (e.g. `grok-chat`), scans available providers before cleanly falling back to `claude`.
-- `tests/test_staff_console_design_spec.py`:
-  - 8 TDD unit tests asserting spec existence, line count <= 500, four areas coverage, design principles, responsive wireframes, roster groupings, copy guidelines, and failure states.
-- `tests/api/test_staff_spend_and_rate_limits.py`:
-  - Isolated background chat turn execution in test fixture to prevent background timeouts.
+- `frontend/src/pages/StaffConsole/Roster.tsx` (259 lines):
+  - Primary sidebar container component.
+  - Top entry "Ask Barb (auto-route)" with secretary badge and auto selection handler.
+  - Pinned section rendering pinned roles at the top when active.
+  - Search input with real-time filtering across name, title, and mandate keywords, clear button (✕), and Escape key handling.
+  - Collapsible operational tiers rendering `RosterGroup` components.
+  - Keyboard navigation container (`ArrowUp`, `ArrowDown`, `Enter`, `Home`, `End`, `Escape`) with aria attributes.
+  - Stale banner with retry button displayed on roster fetch failure while retaining previous roster.
+- `frontend/src/pages/StaffConsole/RosterRow.tsx` (108 lines):
+  - Role row component rendering avatar initials, title/name, last message preview with relative age, unread badge, 5-state status dot, and pin toggle button.
+- `frontend/src/pages/StaffConsole/RosterGroup.tsx` (56 lines):
+  - Collapsible group component for the 4 operational tiers with count badge and chevron indicator.
+- `frontend/src/pages/StaffConsole/rosterTypes.ts` (82 lines):
+  - Data contracts for roles, operational tiers, last message previews, and component props.
+- `frontend/src/pages/StaffConsole/statusCalculator.ts` (144 lines):
+  - Computes 5 lifecycle status dots (`idle`, `working`, `needs you`, `unavailable`, `invalid`) with explanatory tooltip text and resolves operational tiers.
+- `frontend/src/pages/StaffConsole/pinsApi.ts` (98 lines):
+  - Client API for role pinning (`/api/v1/staff/pins`) with localStorage fallback.
+- `frontend/src/pages/StaffConsole/useRosterData.ts` (196 lines):
+  - Data hook polling `/api/v1/staff/roster` and `/api/v1/staff/threads` to compute live statuses and unread counts.
+- `frontend/src/pages/StaffConsole/Roster.css` (325 lines):
+  - Scoped styling for roster sidebar, status dots, unread badges, and auto entry.
+- `backend/routers/staff_pins.py` (85 lines) & `backend/staff/pins.py` (170 lines):
+  - Persistent server-side pin store in SQLite `staff_runs.sqlite3` with per-user isolation, SC-A8 auditing, and REST endpoints `GET/POST/DELETE/PUT /api/v1/staff/pins`.
+- `backend/routers/staff_threads.py`:
+  - Enriched `list_threads` items with `last_message` preview object (`body_md`, `author`, `created_at`).
+- Tests:
+  - `frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx` (367 lines, 9 tests)
+  - `frontend/src/pages/StaffConsole/__tests__/statusCalculator.test.ts` (135 lines, 15 tests)
+  - `frontend/src/pages/StaffConsole/__tests__/pinsApi.test.ts` (78 lines, 4 tests)
+  - `tests/api/test_staff_pins_api.py` (164 lines, 5 tests)
 
 ## Validation
 
-- `pytest tests/test_staff_console_design_spec.py`: 8 passed in 0.66s.
-- `ruff check tests/test_staff_console_design_spec.py`: All checks passed.
-- `ruff format --check tests/test_staff_console_design_spec.py`: 1 file already formatted.
-- Line limits: All new files strictly <= 500 lines (`staff-console.md`: 274, `test_staff_console_design_spec.py`: 132).
+- Vitest: 28 passed in 1.62s (`frontend/src/pages/StaffConsole/__tests__/`).
+- Pytest: 15 passed in 1.8s (`tests/api/test_staff_pins_api.py`, `tests/api/test_staff_threads_api.py`).
+- TypeScript: `npm run typecheck` 0 errors.
+- ESLint: `npm run lint` 0 errors, 0 warnings.
+- Python Lint: `ruff check .` clean; `ruff format --check` on touched files clean.
+- Python Types: `mypy backend` clean (218 source files).
+- Line caps: All modified and created files strictly <= 500 lines.
 
 ## Next Steps
 
-1. Push branch `feat/1301-staff-console-ux-spec`.
-2. Open PR referencing `Fixes #1301`.
-3. Enable auto-merge squash without `--admin`.
-4. Monitor CI checks to merge cleanly into `main`.
-5. Release lease on issue #1301 with receipt.
+1. Commit via Conventional Commits: `feat(staff): roster sidebar with grouped roles, status, search, and pinning (Fixes #1317)`
+2. Push branch `feat/1317-staff-roster-sidebar` to origin.
+3. Open PR referencing `Fixes #1317`.
+4. Enable auto-merge squash without `--admin`.
+5. Monitor CI to green merge into `main`.
+6. Release claim/lease on #1317 with completion receipt.
 
 ---
 
@@ -198,7 +218,7 @@ Last updated: 2026-09-25
   - `DetectionItem` and `StalledJobDetectionReport` dataclasses.
   - 5 anomaly detectors:
     - `detect_queued_too_long`: checks queued runs waiting >= 30m when matching idle online runners exist (recommends low-risk `maintenance.cancel_and_rerun`).
-    - `detect_running_past_p95`: checks active runs exceeding workflow p95 * 3 (recommends medium-risk `maintenance.run_cancel`).
+    - `detect_running_past_p95`: checks active runs exceeding workflow p95 \* 3 (recommends medium-risk `maintenance.run_cancel`).
     - `detect_wedged_listener`: checks online runners whose listener log mtime is older than 600s, bypassing deceptive systemctl status (recommends low-risk `maintenance.runner_restart`).
     - `detect_runner_offline_assigned_job`: checks offline runners that have active in-progress jobs assigned (recommends medium-risk `maintenance.run_cancel`).
     - `detect_ghost_runners`: checks unregistered host registrations or runners offline >= 7 days (recommends high-risk `maintenance.runner_remove`).

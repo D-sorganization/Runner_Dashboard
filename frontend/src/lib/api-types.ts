@@ -4526,6 +4526,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pins
+         * @description Retrieve pinned roles for the calling user.
+         */
+        get: operations["get_pins_api_v1_staff_pins_get"];
+        /**
+         * Set Pins
+         * @description Replace all pinned roles for the calling user.
+         */
+        put: operations["set_pins_api_v1_staff_pins_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pins/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pin Role
+         * @description Pin a role for the calling user.
+         */
+        post: operations["pin_role_api_v1_staff_pins__role__post"];
+        /**
+         * Unpin Role
+         * @description Unpin a role for the calling user.
+         */
+        delete: operations["unpin_role_api_v1_staff_pins__role__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/proposals": {
         parameters: {
             query?: never;
@@ -6014,6 +6062,14 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** PinsResponse */
+        PinsResponse: {
+            /**
+             * Pins
+             * @description List of pinned role names.
+             */
+            pins?: string[];
+        };
         /**
          * PoolConfigPatch
          * @description Runtime override for a pool's min/max online counts.
@@ -6382,6 +6438,14 @@ export interface components {
              * @default true
              */
             restart_maxwell: boolean;
+        };
+        /** SetPinsRequest */
+        SetPinsRequest: {
+            /**
+             * Pins
+             * @description List of role names to pin.
+             */
+            pins?: string[];
         };
         /** SimpleResponse */
         SimpleResponse: {
@@ -13352,6 +13416,121 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pins_api_v1_staff_pins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinsResponse"];
+                };
+            };
+        };
+    };
+    set_pins_api_v1_staff_pins_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPinsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pin_role_api_v1_staff_pins__role__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unpin_role_api_v1_staff_pins__role__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinsResponse"];
                 };
             };
             /** @description Validation Error */
