@@ -17,7 +17,7 @@ import {
 } from "./codeRequestsTypes";
 import { CodeRequestsHistory } from "./CodeRequestsHistory";
 
-export * from "./codeRequestsTypes";
+export type * from "./codeRequestsTypes";
 
 export function CodeRequestsTab({
   repos = [],
