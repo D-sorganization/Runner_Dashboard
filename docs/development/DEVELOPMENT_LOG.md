@@ -61,11 +61,24 @@ reachable from any live state and `abandoned` from `parked`.
 - **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1494
+- **PR:** #1509
 - **Branch:** `fix/1494-projects-run-steward-idempotency`
 - **Paths:** `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (Projects.test.tsx 8/8 passed, tsc 0 errors, eslint 0 errors, all files <= 500 lines)
+- **Last verified:** 2026-09-25 (Projects.test.tsx 8/8 passed, tsc 0 errors, eslint 0 errors, all files <= 500 lines, CI 100% green on PR #1509 and main)
 - **Summary:** Replaced raw `apiRequest` in `ProjectsPage.tsx` with shared `dispatchRun("project-steward", ...)` and `errorMessage` from `frontend/src/pages/Staff/staffApi.ts`. `dispatchRun` automatically generates and sets the required `Idempotency-Key` header and CSRF sentinel header, satisfying `require_idempotency_header` on `/api/v1/staff/project-steward/run`. Formatted error messages via `errorMessage` to present user-friendly error details. Added Vitest assertions in `Projects.test.tsx` verifying `Idempotency-Key` presence and surfacing of 400 Bad Request error details.
+- **Next step:** None (shipped in PR #1509).
+
+### DL-#1492 · SC-B1-G9: Chat pool saturation rejects turns with chat_capacity
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1492
+- **Branch:** `fix/1492-chat-pool-saturation-busy`
+- **Paths:** `backend/staff/chat_pool.py`, `backend/staff/chat_failures.py`, `backend/staff/chat.py`, `tests/unit/test_staff_chat_capacity.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (tests/unit/test_staff_chat_capacity.py passed, pytest 25 passed across chat suites, ruff clean, mypy clean, all files <= 500 lines)
+- **Summary:** Implemented `ChatConcurrencyPool.acquire(role, timeout)` respecting total slot capacity and Barb reservation, configured `DEFAULT_CHAT_ACQUIRE_TIMEOUT = 5.0` seconds, added `record_chat_capacity_failure()` in `backend/staff/chat_failures.py` updating placeholder messages to failed with failure class `chat_capacity`, and updated `ChatTurnRunner.execute_turn` to acquire a slot before dispatching, immediately returning retryable `chat_capacity` failure on saturation without attempting LLM execution or skewing successful turn metrics. Added dedicated unit test suite in `tests/unit/test_staff_chat_capacity.py`.
 - **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
 
 ### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges
