@@ -1,16 +1,21 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- OverviewPage adapts dynamic legacy endpoint payloads into the 1:1 FleetTab contract while #949 retires legacy/App.tsx. */
+/* eslint-disable @typescript-eslint/no-explicit-any -- OverviewPage adapts heterogeneous fleet payloads into typed sections. */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { OverviewEventSection } from "./Events";
-import { FleetTab } from "./FleetTab";
+import {
+  FleetStatusBanner,
+  FleetMachinesSection,
+  FleetRunnersSection,
+  FleetAlertsSection,
+  FleetEventsSection,
+} from "./Fleet";
 import { OverviewLeases } from "./OverviewLeases";
-import { ActivityGlyph } from "./decompIcons";
 import { legacyFetch } from "../lib/api";
 import {
   alertContentHash,
   computeFleetAlerts,
   type FleetAlert,
 } from "../lib/fleetAlerts";
+import { useFleetEvents } from "../hooks/useFleetEvents";
 import { tabIdToPath } from "../shell/routing";
 
 interface OverviewState {
@@ -19,10 +24,11 @@ interface OverviewState {
   system: Record<string, any>;
   stats: Record<string, any>;
   queue: Record<string, any>;
-  machinesData: Record<string, any>;
+  machinesData: { nodes: any[] };
   watchdog: Record<string, any>;
   deployment: Record<string, any>;
-  runnerAudit: Record<string, any>;
+  runnerAudit: { violations?: any[]; last_checked?: string | null; error?: string | null };
+  driftInfo: { is_drifted?: boolean; summary?: string } | null;
 }
 
 const EMPTY_STATE: OverviewState = {
@@ -35,6 +41,7 @@ const EMPTY_STATE: OverviewState = {
   watchdog: {},
   deployment: {},
   runnerAudit: { violations: [] },
+  driftInfo: null,
 };
 
 function normalizeArrayPayload(payload: unknown, key: string): any[] {
@@ -52,9 +59,9 @@ function normalizeObjectPayload(payload: unknown): Record<string, any> {
     : {};
 }
 
-function normalizeNodesPayload(payload: unknown): Record<string, any> {
+function normalizeNodesPayload(payload: unknown): { nodes: any[] } {
   const objectPayload = normalizeObjectPayload(payload);
-  return Array.isArray(objectPayload.nodes) ? objectPayload : { nodes: [] };
+  return Array.isArray(objectPayload.nodes) ? { nodes: objectPayload.nodes } : { nodes: [] };
 }
 
 function telemetryAlert(
@@ -140,6 +147,18 @@ export function OverviewPage(): React.ReactElement {
   const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null);
   const [isStale, setIsStale] = useState(false);
 
+  // Independent error states per section (SC-G2 failure mode isolation)
+  const [machinesError, setMachinesError] = useState<string | null>(null);
+  const [runnersError, setRunnersError] = useState<string | null>(null);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
+  const {
+    events,
+    loading: eventsLoading,
+    error: eventsError,
+    refetch: eventsRefetch,
+  } = useFleetEvents();
+
   useEffect(() => {
     const timer = setInterval(() => {
       if (lastSuccessAt && Date.now() - lastSuccessAt >= 60_000) {
@@ -149,9 +168,24 @@ export function OverviewPage(): React.ReactElement {
     return () => clearInterval(timer);
   }, [lastSuccessAt]);
 
+  // Support smooth hash scrolling for deep links (#machines, #runners, #alerts, #events)
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash) {
+      const element = document.querySelector(hash);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  }, []);
+
   const refresh = useCallback((signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
+    setMachinesError(null);
+    setRunnersError(null);
+    setAuditError(null);
+
     const endpoints: Array<{ key: keyof OverviewState | "github"; url: string }> = [
       { key: "stats", url: "/api/stats" },
       { key: "runners", url: "/api/runners" },
@@ -163,6 +197,7 @@ export function OverviewPage(): React.ReactElement {
       { key: "deployment", url: "/api/deployment" },
       { key: "runnerAudit", url: "/api/runner-routing-audit" },
       { key: "github", url: "/api/github/status" },
+      { key: "driftInfo", url: "/api/deployment/git-drift" },
     ];
 
     Promise.allSettled(
@@ -204,12 +239,20 @@ export function OverviewPage(): React.ReactElement {
               updates.runnerAudit = normalizeObjectPayload(data);
             } else if (ep.key === "github") {
               githubPayload = normalizeObjectPayload(data);
+            } else if (ep.key === "driftInfo") {
+              updates.driftInfo = normalizeObjectPayload(data);
             }
           } else {
             const err = res.reason;
             if (err instanceof DOMException && err.name === "AbortError") return;
             const errMsg = err instanceof Error ? err.message : String(err);
-            failed.push(errMsg.includes(ep.url) ? errMsg : `${ep.url}: ${errMsg}`);
+            const formatted = errMsg.includes(ep.url) ? errMsg : `${ep.url}: ${errMsg}`;
+            failed.push(formatted);
+
+            // Per-section error classification
+            if (ep.key === "machinesData") setMachinesError(formatted);
+            if (ep.key === "runners") setRunnersError(formatted);
+            if (ep.key === "runnerAudit") setAuditError(formatted);
           }
         });
 
@@ -282,6 +325,36 @@ export function OverviewPage(): React.ReactElement {
     [refresh],
   );
 
+  const onRefreshAudit = useCallback(() => {
+    legacyFetch("/api/runner-routing-audit/refresh", { method: "POST" })
+      .then(() => {
+        setTimeout(() => {
+          getJson("/api/runner-routing-audit")
+            .then((data) => {
+              setState((prev) => ({
+                ...prev,
+                runnerAudit: normalizeObjectPayload(data),
+              }));
+              setAuditError(null);
+            })
+            .catch((e: unknown) => {
+              setAuditError(e instanceof Error ? e.message : "Failed to refresh audit");
+            });
+        }, 1500);
+      })
+      .catch((e: unknown) => {
+        setAuditError(e instanceof Error ? e.message : "Failed to trigger audit refresh");
+      });
+  }, []);
+
+  const onAskMaintenance = useCallback(
+    (target: string, prompt: string) => {
+      // SC-E6: Route fleet maintenance questions to Staff Console Maintenance role
+      navigate(`/?role=maintenance&prompt=${encodeURIComponent(`[${target}] ${prompt}`)}`);
+    },
+    [navigate],
+  );
+
   const appAlerts = useMemo(
     () =>
       buildOverviewAlerts(
@@ -296,94 +369,66 @@ export function OverviewPage(): React.ReactElement {
     [state, githubStatus, error, failedSources, isStale, runnersLoaded, nodesLoaded],
   );
 
-  const onNavigate = useCallback(
-    (tabId: string) => {
-      navigate(tabIdToPath(tabId));
-    },
-    [navigate],
-  );
-
-  const onAlertNavigate = useCallback(
-    (alertId: FleetAlert["id"]) => {
-      if (alertId === "hosted-runners" || alertId === "github-api") {
-        onNavigate("runner-audit");
-        return;
-      }
-      if (alertId === "machines-offline" || alertId === "telemetry-degraded") {
-        onNavigate("machines");
-        return;
-      }
-      if (alertId === "disk-pressure" || alertId === "runners-offline") {
-        onNavigate("events");
-        return;
-      }
-      onNavigate("overview");
-    },
-    [onNavigate],
-  );
-
   return (
-    <div>
-      {error ? (
-        <div
-          className="section"
-          role="alert"
-          style={{ marginBottom: 12, color: "var(--accent-red)" }}
-        >
-          Failed to load overview data: {error}
-          <button
-            className="btn"
-            type="button"
-            onClick={() => refresh()}
-            style={{ marginLeft: 12 }}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
-      <FleetTab
-        runners={state.runners}
-        runs={state.runs}
-        system={state.system}
-        stats={state.stats}
-        queue={state.queue}
-        machinesData={state.machinesData}
+    <div className="overview-page" style={{ padding: "0.5rem" }}>
+      {/* 1. Status Banner: tri-state health honesty (SC-A2) and jump anchors */}
+      <FleetStatusBanner
+        loading={loading}
         runnersLoaded={runnersLoaded}
         nodesLoaded={nodesLoaded}
         failedSources={failedSources}
         isStale={isStale}
         error={error}
+        runners={state.runners}
+        stats={state.stats}
+        driftInfo={state.driftInfo}
+        onRetry={() => refresh()}
+        onOpenDeployment={() => navigate(tabIdToPath("deployment"))}
+      />
+
+      {/* 2. Machines Section: single unified machines table with expandable telemetry */}
+      <FleetMachinesSection
+        nodes={state.machinesData?.nodes || []}
+        runners={state.runners}
+        loading={loading}
+        error={machinesError}
+        onRetry={() => refresh()}
+        onAskMaintenance={onAskMaintenance}
+      />
+
+      {/* 3. Runners Section: filter pills, fleet controls, runner list with maintenance */}
+      <FleetRunnersSection
+        runners={state.runners}
+        runs={state.runs}
+        loading={loading || actionLoading}
+        error={runnersError}
         onRetry={() => refresh()}
         onFleet={onFleet}
         onRunner={onRunner}
-        loading={loading || actionLoading}
-        watchdog={state.watchdog}
-        deployment={state.deployment}
-        setTab={onNavigate}
-        runnerAudit={state.runnerAudit}
-        onOpenDeployment={() => onNavigate("deployment")}
+        onAskMaintenance={onAskMaintenance}
       />
-      <div className="section section--stacked">
-        <div className="section-header">
-          <div className="section-title">
-            <ActivityGlyph size={16} />
-            Alarms & Recent Events
-          </div>
-          <button
-            className="btn section-header__action"
-            type="button"
-            onClick={() => onNavigate("events")}
-          >
-            Open Event Log
-          </button>
-        </div>
-        <div className="section-body">
-          <OverviewEventSection
-            rollupAlerts={appAlerts}
-            onNavigate={onAlertNavigate}
-          />
-        </div>
+
+      {/* 4. Alerts & Hosted-Runner Billing Section: active alarms + routing audit */}
+      <FleetAlertsSection
+        alerts={appAlerts}
+        runnerAudit={state.runnerAudit}
+        loading={loading}
+        error={auditError}
+        onRefreshAudit={onRefreshAudit}
+        onRetry={() => refresh()}
+      />
+
+      {/* 5. Event Log Section: durable recent fleet events with severity filters */}
+      <div data-testid="overview-events">
+        <FleetEventsSection
+          events={events}
+          loading={eventsLoading}
+          error={eventsError}
+          onRetry={eventsRefetch}
+        />
       </div>
+
+      {/* 6. Active Leases Strip */}
       <OverviewLeases />
     </div>
   );

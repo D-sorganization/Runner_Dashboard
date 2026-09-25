@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1319 · SC-D5: Action, run, hand-off, and review cards embedded in conversation threads
+### DL-#1324 · SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet
 
 - **State:** in_progress
+- **Owner:** local
+- **Issue:** #1324 (epic #1353 / umbrella #1354)
+- **Branch:** `feat/1324-one-fleet-page`
+- **Paths:** `frontend/src/pages/Fleet/FleetStatusBanner.tsx`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/Fleet/FleetAlertsSection.tsx`, `frontend/src/pages/Fleet/FleetEventsSection.tsx`, `frontend/src/pages/Fleet/index.ts`, `frontend/src/pages/OverviewPage.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/__tests__/RedirectTable.test.ts`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `frontend/src/shell/__tests__/TopToolstrip.test.tsx`, `frontend/src/shell/__tests__/navRegistry.test.ts`, `frontend/src/shell/__tests__/routing.test.ts`, `frontend/src/pages/Fleet/__tests__/FleetStatusBanner.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetMachinesSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetRunnersSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetAlertsSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetEventsSection.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 142 test files passed, 1,245 frontend tests passed; npm run typecheck passed with 0 errors; npm run lint passed with 0 warnings; color literal budget passed; npm run build passed; perf budget passed; all files strictly <= 500 lines)
+- **Summary:** Implemented SC-G2 One Fleet page merging Machines, Runner Audit, and Event Log into Fleet: (1) `FleetStatusBanner` complying with SC-A2 status honesty, tri-state health, KPI summary strip, and jump anchors (`#machines`, `#runners`, `#alerts`, `#events`); (2) `FleetMachinesSection` providing single unified machines table with expandable telemetry (WSL, CPU, RAM, storage devices, runner pool) and "Ask Maintenance" button for SC-E6; (3) `FleetRunnersSection` providing status filter pills, fleet control buttons (Start All, Stop All), runner table with labels, current task links, and Maintenance actions; (4) `FleetAlertsSection` surfacing active fleet alerts and hosted-runner billing violations audit table from `runnerAudit` with refresh button and empty state; (5) `FleetEventsSection` displaying recent durable fleet events with level filters and independent error state; (6) `OverviewPage.tsx` recomposed with section-level failure isolation and smooth hash scrolling; (7) Backwards-compatible redirects configured for `/fleet/machines`, `/machines`, `/t/machines` to `/fleet#machines`, `/fleet/runner-audit`, `/runner-audit`, `/t/runner-audit` to `/fleet#alerts`, and `/fleet/events`, `/events`, `/t/events` to `/fleet#events` with user toast notices.
+- **Next step:** Push branch, open PR with Fixes #1324, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1319 · SC-D5: Action, run, hand-off, and review cards embedded in conversation threads
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1319 (epic #1350 / umbrella #1354)
 - **Branch:** `feat/1319-thread-cards`
@@ -28,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 55 StaffConsole unit tests passed; npm run typecheck passed with 0 errors; npm run lint passed with 0 warnings; pytest test_frontend_integrity passed 72 tests; all touched files strictly <= 500 lines)
 - **Summary:** Implemented SC-D5 Action, run, hand-off, and review cards embedded in conversation threads: (1) `ActionCard`: action target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), expandable parameters view, double-click idempotency protection executing once, decision history display, and stale proposal expiration guard (24h limit) disabling actions; (2) `RunCard`: live status indicator (`queued`/`running`/`completed`/`failed`/`cancelled`), node host, provider model, elapsed duration, expandable log tail with toggle, Cancel CTA, and deep links to run page and GitHub PR; (3) `HandoffCard`: routing transition ("Barb → Specialist"), rationale, and interactive specialist re-route selection; (4) `ReviewCard`: PR reference, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), review summary, and key findings list; (5) `ErrorCard`: classified failure display mapping `failure_class` to plain-language cause, highlighted remediation instructions, node badge, and retry CTA; (6) `MessageItem` & `Thread` routing: dynamic card dispatch based on message kind with full callback forwarding.
-- **Next step:** Push branch, open PR with Fixes #1319, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+- **Next step:** Shipped in PR #1419.
 
 ### DL-#1318 · SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send
 
