@@ -428,6 +428,7 @@ class ConversationStore:
         state: str,
         decided_by: str,
         reason: str = "",
+        audit_store: StaffAuditStore | None = None,
     ) -> ActionProposalRecord:
         self._ensure_available()
         return _decide_proposal(
@@ -437,7 +438,7 @@ class ConversationStore:
             state=state,
             decided_by=decided_by,
             reason=reason,
-            audit_store=self._audit_store,
+            audit_store=audit_store or self._audit_store,
         )
 
     def transition_proposal_state(

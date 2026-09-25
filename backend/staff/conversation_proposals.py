@@ -137,8 +137,9 @@ def decide_proposal(
         prop = get_proposal(conn, lock, proposal_id)
         if not prop:
             raise ValueError(f"Proposal {proposal_id} not found")
-        if prop.state != "proposed":
-            raise ValueError(f"Cannot decide proposal in state '{prop.state}' (must be 'proposed')")
+        # A failed proposal may be decided again: approving it is the explicit retry (#1485).
+        if prop.state not in ("proposed", "failed"):
+            raise ValueError(f"Cannot decide proposal in state '{prop.state}' (must be 'proposed' or 'failed')")
         now = _now()
         conn.execute(
             "UPDATE action_proposals SET state = ?, decided_by = ?, decided_at = ?, reason = ? WHERE id = ?",
