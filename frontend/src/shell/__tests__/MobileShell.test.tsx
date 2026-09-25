@@ -17,10 +17,13 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 // the test cannot drift from the registry.
 const PRIMARY = mobilePrimaryItems()
 const DRAWER = mobileDrawerItems()
-const PRIMARY_LABELS = PRIMARY.map((i) => i.label)
-const FIRST = PRIMARY[0] // Fleet / overview
-const SECOND = PRIMARY[1] // Queue / queue
-const LAST_PRIMARY = PRIMARY[PRIMARY.length - 1] // Maxwell / maxwell
+const PRIMARY_LABELS = PRIMARY.map((i) => i.mobileLabel || i.label)
+const FIRST = PRIMARY[0] // Staff / staff
+const FIRST_LABEL = FIRST.mobileLabel || FIRST.label
+const SECOND = PRIMARY[1] // Queue / queue (Work)
+const SECOND_LABEL = SECOND.mobileLabel || SECOND.label
+const LAST_PRIMARY = PRIMARY[PRIMARY.length - 1] // Fleet / overview
+const LAST_PRIMARY_LABEL = LAST_PRIMARY.mobileLabel || LAST_PRIMARY.label
 
 describe('MobileShell', () => {
   beforeEach(() => {
@@ -112,7 +115,7 @@ describe('MobileShell', () => {
     tabs.forEach((tab) => {
       const label = tab.querySelector('.mobile-shell__tab-label')?.textContent
       const isSelected = tab.getAttribute('aria-selected') === 'true'
-      if (label === SECOND.label) {
+      if (label === SECOND_LABEL) {
         expect(isSelected).toBe(true)
       } else {
         expect(isSelected).toBe(false)
@@ -128,7 +131,7 @@ describe('MobileShell', () => {
     )
 
     const tabs = screen.getAllByRole('tab')
-    const firstTab = tabs.find((t) => t.textContent?.includes(FIRST.label))!
+    const firstTab = tabs.find((t) => t.textContent?.includes(FIRST_LABEL))!
     const otherTabs = tabs.filter((t) => t !== firstTab)
 
     expect(firstTab).toHaveAttribute('tabIndex', '0')
@@ -169,7 +172,7 @@ describe('MobileShell', () => {
       </MobileShell>
     )
 
-    fireEvent.click(screen.getByText(SECOND.label))
+    fireEvent.click(screen.getByText(SECOND_LABEL))
     expect(handleTabChange).toHaveBeenCalledWith(SECOND.tabId)
   })
 
@@ -181,7 +184,7 @@ describe('MobileShell', () => {
       </MobileShell>
     )
 
-    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST.label))!
+    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST_LABEL))!
     fireEvent.keyDown(firstTab, { key: 'ArrowRight' })
     expect(handleTabChange).toHaveBeenCalledWith(SECOND.tabId)
   })
@@ -194,7 +197,7 @@ describe('MobileShell', () => {
       </MobileShell>
     )
 
-    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST.label))!
+    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST_LABEL))!
     // Wrapping left from the first tab lands on the trailing "More" trigger,
     // which is a pseudo-tab and does not navigate.
     fireEvent.keyDown(firstTab, { key: 'ArrowLeft' })
@@ -209,7 +212,7 @@ describe('MobileShell', () => {
       </MobileShell>
     )
 
-    const lastTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(LAST_PRIMARY.label))!
+    const lastTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(LAST_PRIMARY_LABEL))!
     fireEvent.keyDown(lastTab, { key: 'Home' })
     expect(handleTabChange).toHaveBeenCalledWith(FIRST.tabId)
   })
@@ -222,7 +225,7 @@ describe('MobileShell', () => {
       </MobileShell>
     )
 
-    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST.label))!
+    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST_LABEL))!
     fireEvent.keyDown(firstTab, { key: 'End' })
     // End lands on the trailing "More" pseudo-tab — focus only, no navigation.
     expect(handleTabChange).not.toHaveBeenCalled()
@@ -335,7 +338,7 @@ describe('MobileShell', () => {
     fireEvent.click(incrementBtn)
     expect(screen.getByText('Count: 2')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText(SECOND.label))
+    fireEvent.click(screen.getByText(SECOND_LABEL))
 
     rerender(
       <MobileShell currentTab={SECOND.tabId} onTabChange={vi.fn()}>

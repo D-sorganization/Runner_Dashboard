@@ -126,6 +126,7 @@ function renderOverview() {
       <LocationProbe />
       <Routes>
         <Route path="/" element={<OverviewPage />} />
+        <Route path="/fleet/:tabId" element={<OverviewPage />} />
         <Route path="/t/:tabId" element={<OverviewPage />} />
       </Routes>
     </MemoryRouter>,
@@ -155,7 +156,9 @@ describe("OverviewPage", () => {
     await screen.findByRole("region", { name: "Fleet status" });
     fireEvent.click(screen.getByRole("button", { name: "Deployment state" }));
 
-    expect(screen.getByTestId("pathname")).toHaveTextContent("/t/deployment");
+    expect(screen.getByTestId("pathname")).toHaveTextContent(
+      "/fleet/deployment",
+    );
   });
 
   it("dispatches fleet and runner actions through native handlers", async () => {

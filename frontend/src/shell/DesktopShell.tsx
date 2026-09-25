@@ -1,25 +1,20 @@
 /**
- * DesktopShell.tsx — the modern desktop application shell (issue #802, #796).
+ * DesktopShell.tsx — modern desktop application shell (SC-D2 / issue #1309).
  *
- * Composes the three merged shell surfaces into one GitHub-style desktop
- * layout, all driven by the single nav registry (DRY):
- *   - the left `Sidebar` (#798) — full grouped navigation;
- *   - the slim `TopToolstrip` (#799) — most-frequent categories + More menu;
- *   - the `Tooltip` primitive (#801) on every nav item (inside those surfaces)
- *     and on every shell action button here.
+ * Composes the shell surfaces into the 4-area desktop layout:
+ *   - left Sidebar: full 4-area navigation (Staff, Work, Fleet, Settings);
+ *   - topbar: global search and command palette (Ctrl+K / Cmd+K) replacing
+ *     the old toolstrip;
+ *   - persistent controls: ThemeSelector, ActiveProviderControl, actions;
+ *   - main region: page body or NotFoundPanel.
  *
- * The page body (the legacy App rendered chromeless, or any page) is passed as
- * `children` and mounted in the `main` landmark — orthogonality: a failing page
- * is isolated to the main region and cannot remove the nav chrome.
- *
- * LoD: flat typed props only — `activeTabId`, `onSelect(tabId)`, and a flat
- * list of `ShellAction` records. The shell never reaches into page or registry
- * internals.
+ * LoD: flat typed props only — activeTabId, onSelect(tabId), and actions.
  */
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { Sidebar } from "./Sidebar";
-import { TopToolstrip } from "./TopToolstrip";
 import { Tooltip } from "../primitives/Tooltip";
+import { CommandPalette, type Command } from "../primitives/CommandPalette";
+import { NAV_ITEMS } from "./navRegistry";
 
 export interface ShellAction {
   /** Stable identifier. */
@@ -43,31 +38,36 @@ export interface DesktopShellProps {
   onSelect: (tabId: string) => void;
   /** Flat list of shell action buttons (refresh, chat, login, …). */
   actions: ShellAction[];
-  /**
-   * Optional persistent controls rendered in the topbar before the action
-   * buttons — e.g. the global ActiveProviderControl (#811). Kept as an opaque
-   * node so the shell stays orthogonal and does not reach into provider state.
-   */
+  /** Optional persistent controls rendered before actions in the topbar. */
   headerExtra?: React.ReactNode;
-  /**
-   * Optional leading topbar node rendered before `headerExtra` — used for the
-   * Help/About '?' surface (#822). Opaque so the shell stays orthogonal.
-   */
+  /** Optional leading topbar node (Help/About ?). */
   helpAbout?: React.ReactNode;
-  /**
-   * Optional per-tab intro header (#822) rendered once at the top of the page
-   * body, above `children`. Opaque node so the shell does not reach into the
-   * nav registry or page state.
-   */
+  /** Optional per-tab intro header. */
   intro?: React.ReactNode;
   /** The page body for the active category. */
   children: React.ReactNode;
 }
 
-/**
- * Contract: every action MUST carry a non-empty tooltip (the a11y audit and the
- * shell both rely on it). A blank tooltip is a programming error — fail loudly.
- */
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
 function assertActions(actions: ShellAction[]): void {
   for (const a of actions) {
     if (!a.id || !a.label || !a.tooltip || a.tooltip.trim().length === 0) {
@@ -105,19 +105,41 @@ export function DesktopShell({
   children,
 }: DesktopShellProps): React.ReactElement {
   assertActions(actions);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  const commands: Command[] = useMemo(() => {
+    return NAV_ITEMS.map((item) => ({
+      id: `nav-${item.tabId}`,
+      label: item.label,
+      group: item.group.charAt(0).toUpperCase() + item.group.slice(1),
+      action: () => onSelect(item.tabId),
+      keywords: [item.id, item.tabId, item.group, item.tooltip],
+    }));
+  }, [onSelect]);
 
   return (
     <div className="desktop-shell">
       <Sidebar activeTabId={activeTabId} onSelect={onSelect} />
       <div className="desktop-shell__body">
-        <header
-          className="desktop-shell__topbar"
-          role="banner"
-        >
+        <header className="desktop-shell__topbar" role="banner">
           <a className="skip-link" href="#main-content">
             Skip to main content
           </a>
-          <TopToolstrip activeTabId={activeTabId} onSelect={onSelect} />
+          <div className="desktop-shell__search" role="search">
+            <button
+              type="button"
+              className="shell-search-btn"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Open command palette (Ctrl+K or Cmd+K)"
+              title="Search commands, pages, and staff roles (Ctrl+K)"
+            >
+              <SearchIcon className="shell-search-icon" />
+              <span className="shell-search-placeholder">
+                Search commands, pages...
+              </span>
+              <kbd className="shell-search-kbd">Ctrl K</kbd>
+            </button>
+          </div>
           <div className="desktop-shell__actions">
             {helpAbout}
             {headerExtra}
@@ -136,6 +158,11 @@ export function DesktopShell({
           {children}
         </main>
       </div>
+      <CommandPalette
+        commands={commands}
+        isOpen={paletteOpen}
+        onOpenChange={setPaletteOpen}
+      />
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import PushSettings from './pages/PushSettings'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { RoutedShell } from './shell/RoutedShell'
 import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
@@ -129,11 +128,19 @@ _win.triggerInstallPrompt = triggerInstallPrompt
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/settings/push" element={<PushSettings />} />
+      <Route path="/settings/push" element={<RoutedShell />} />
       <Route path="/t/:tabId" element={<RoutedShell />} />
+      <Route path="/staff/:tabId" element={<RoutedShell />} />
+      <Route path="/staff" element={<RoutedShell />} />
+      <Route path="/work/:tabId" element={<RoutedShell />} />
+      <Route path="/work" element={<RoutedShell />} />
+      <Route path="/fleet/:tabId" element={<RoutedShell />} />
+      <Route path="/fleet" element={<RoutedShell />} />
+      <Route path="/settings/:tabId" element={<RoutedShell />} />
+      <Route path="/settings" element={<RoutedShell />} />
       <Route path="/" element={<RoutedShell />} />
-      {/* Unknown routes fall back to Fleet, preserving prior behaviour. */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* Unknown routes render NotFoundPanel inside the shell (SC-D2 #1309) */}
+      <Route path="*" element={<RoutedShell isNotFoundRoute />} />
     </Routes>
   )
 }

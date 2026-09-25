@@ -85,13 +85,13 @@ describe("TopToolstrip — frequent items only", () => {
       screen.getByRole("button", { name: /^Queue$/i }),
     ).toHaveAttribute("aria-current", "page");
     expect(
-      screen.getByRole("button", { name: /^Fleet$/i }),
+      screen.getByRole("button", { name: /^Overview$/i }),
     ).not.toHaveAttribute("aria-current", "page");
   });
 
   it("gives each frequent button an accessible tooltip via aria-describedby on focus", async () => {
     renderBar();
-    const btn = screen.getByRole("button", { name: /^Fleet$/i });
+    const btn = screen.getByRole("button", { name: /^Overview$/i });
     fireEvent.focus(btn);
     const tip = await screen.findByRole("tooltip");
     expect(btn).toHaveAttribute("aria-describedby", tip.id);

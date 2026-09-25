@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1315 · SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override
+### DL-#1309 · SC-D2: Shell restructure: Staff Console as default route, four-area navigation, redirects for old tabs
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1309 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1309-shell-restructure`
+- **Paths:** `frontend/src/main.tsx`, `frontend/src/shell/NotFoundPanel.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/navRegistry.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/DesktopShell.tsx`, `frontend/src/shell/MobileShell.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/primitives/CommandPalette.tsx`, `frontend/src/shell/__tests__/RedirectTable.test.ts`, `frontend/src/shell/__tests__/NotFoundPanel.test.tsx`, `frontend/src/shell/__tests__/navRegistry.test.ts`, `frontend/src/shell/__tests__/routing.test.ts`, `frontend/src/shell/__tests__/DesktopShell.test.tsx`, `frontend/src/shell/__tests__/MobileShell.test.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `frontend/src/shell/__tests__/TopToolstrip.test.tsx`, `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/OverviewPage.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 126 Vitest test suites, 1,158 tests passed; TypeScript check 0 errors; ESLint 0 warnings; all touched files strictly <= 500 lines)
+- **Summary:** Restructured frontend shell navigation for SC-D2: default route `/` maps to Staff Console (`staff`); four-area navigation in Sidebar and Registry (`staff`, `work`, `fleet`, `settings`) with canonical secondary routes (`/fleet/:tabId`, `/work/:tabId`, `/staff/:tabId`, `/settings/:tabId`); old tab routes `/t/:tabId` redirect via `getTabRedirect` with one-time 'moved to' toast notification; top toolstrip replaced by CommandPalette trigger (Ctrl/Cmd+K); mobile bottom bar updated to Staff/Work/Fleet/More; unknown routes render visibly via `NotFoundPanel` without dropping shell chrome; split `navRegistry.ts` into `navRegistryData.ts` and `navRegistry.ts` to respect <= 500 lines soft-cap.
+- **Next step:** Push branch, open PR referencing Fixes #1309, enable auto-merge, and monitor CI to green merge.
+
+### DL-#1315 · SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1315 (epic #1349 / umbrella #1354)
 - **Branch:** `feat/1315-barb-routing`
+- **PR:** #1403
 - **Paths:** `backend/staff/router.py`, `backend/staff/router_models.py`, `backend/routers/staff_routing.py`, `backend/server.py`, `tests/unit/test_staff_router.py`, `tests/api/test_staff_routing_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_router.py` 9 passed; `pytest tests/api/test_staff_routing_api.py` 4 passed; ruff clean; mypy 0 errors across 6 files; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1403; CI green)
 - **Summary:** Implemented Barb two-stage request router (`backend/staff/router.py`, `backend/staff/router_models.py`) and FastAPI endpoints (`backend/routers/staff_routing.py`). Stage 1 evaluates deterministic pre-router rules (explicit @mentions, /role commands, Barb self-handling keywords, specialist role capability keywords, code change detection). Stage 2 uses roster metadata with quick fallback mode when LLM is unavailable. Prompts below confidence threshold ask a single clarifying question rather than guessing. Handoff execution posts structured handoff cards ('Barb → Role: reason'), creates/resumes destination threads, links WorkItemStore tracked work items (SC-C3), routes code modifications to Code Request pipeline (#1279), and records owner overrides with auditable routing feedback (SC-C7).
-- **Next step:** Push branch, open PR referencing Fixes #1315, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1403.
 
 ### DL-#1322 · SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role
 

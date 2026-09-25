@@ -60,7 +60,7 @@ interface BottomTab {
 
 const PRIMARY_TABS: BottomTab[] = mobilePrimaryItems().map((it) => ({
   id: it.tabId,
-  label: it.label,
+  label: it.mobileLabel || it.label,
   Icon: it.Icon,
   isMore: false,
 }))

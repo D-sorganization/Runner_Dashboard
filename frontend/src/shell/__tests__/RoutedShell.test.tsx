@@ -127,6 +127,10 @@ vi.mock("../../pages/OverviewPage", () => ({
   default: () => <div data-testid="native-overview">Overview</div>,
 }));
 
+vi.mock("../../pages/Staff/StaffPage", () => ({
+  default: () => <div data-testid="native-staff">Staff</div>,
+}));
+
 vi.mock("../../pages/Fleet", () => ({
   FleetMobile: () => <div data-testid="mobile-overview">Mobile Overview</div>,
 }));
@@ -239,8 +243,18 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <LocationProbe />
       <Routes>
+        <Route path="/settings/push" element={<RoutedShell />} />
         <Route path="/t/:tabId" element={<RoutedShell />} />
+        <Route path="/staff/:tabId" element={<RoutedShell />} />
+        <Route path="/staff" element={<RoutedShell />} />
+        <Route path="/work/:tabId" element={<RoutedShell />} />
+        <Route path="/work" element={<RoutedShell />} />
+        <Route path="/fleet/:tabId" element={<RoutedShell />} />
+        <Route path="/fleet" element={<RoutedShell />} />
+        <Route path="/settings/:tabId" element={<RoutedShell />} />
+        <Route path="/settings" element={<RoutedShell />} />
         <Route path="/" element={<RoutedShell />} />
+        <Route path="*" element={<RoutedShell isNotFoundRoute />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -257,9 +271,9 @@ describe("RoutedShell — URL is the source of truth", () => {
   it("derives the default tab from the root path", async () => {
     renderAt("/");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "overview",
+      "staff",
     );
-    expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
+    expect(await screen.findByTestId("native-staff")).toBeInTheDocument();
   });
 
   it("derives the active tab from the /t/:tabId param", async () => {
@@ -267,11 +281,9 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
   });
 
-  it("falls back to the default tab for an unknown tab id", async () => {
+  it("renders not-found panel for an unknown tab id (SC-D2)", async () => {
     renderAt("/t/not-a-real-tab");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "overview",
-    );
+    expect(await screen.findByRole("region", { name: /route not found/i })).toBeInTheDocument();
   });
 
   it("selecting a tab navigates the URL (deep-linkable + back/forward)", async () => {
@@ -280,7 +292,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     await screen.findByTestId("active-tab");
     await user.click(screen.getByText("go-maxwell"));
     expect(await screen.findByTestId("pathname")).toHaveTextContent(
-      "/t/maxwell",
+      "/staff/maxwell",
     );
     expect(await screen.findByTestId("active-tab")).toHaveTextContent(
       "maxwell",
@@ -288,6 +300,7 @@ describe("RoutedShell — URL is the source of truth", () => {
   });
 
   it.each([
+    ["staff", "native-staff"],
     ["overview", "native-overview"],
     ["agent-dispatch", "native-agent-dispatch"],
     ["analysis", "native-analysis"],
@@ -328,7 +341,7 @@ describe("RoutedShell — URL is the source of truth", () => {
   );
 
   it.each([
-    ["/", "mobile-overview"],
+    ["/fleet", "mobile-overview"],
     ["/t/queue", "mobile-queue"],
     ["/t/maxwell", "mobile-maxwell"],
     ["/t/remediation", "mobile-remediation"],
@@ -393,7 +406,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     await user.click(screen.getByRole("button", { name: "go-maxwell" }));
 
     // Navigation recovers without a reload
-    expect(screen.getByTestId("pathname")).toHaveTextContent("/t/maxwell");
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/staff/maxwell");
     expect(await screen.findByTestId("native-maxwell")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     testsPageShouldThrow = false;
