@@ -1463,6 +1463,20 @@
         "title": "PoolsResponse",
         "type": "object"
       },
+      "PostBriefingBody": {
+        "description": "Request payload for triggering a briefing.",
+        "properties": {
+          "kind": {
+            "default": "on_demand",
+            "description": "Briefing kind (morning, evening, on_demand)",
+            "enum": ["morning", "evening", "on_demand"],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "PostBriefingBody",
+        "type": "object"
+      },
       "PostMessageRequest": {
         "properties": {
           "body": {
@@ -11238,6 +11252,56 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/briefing": {
+      "post": {
+        "description": "Generate and post an on-schedule or on-demand briefing to Barb's thread.",
+        "operationId": "trigger_briefing_api_staff_briefing_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostBriefingBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trigger Briefing Api Staff Briefing Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Trigger Briefing",
+        "tags": ["staff-inbox"]
+      }
+    },
     "/api/staff/holds": {
       "get": {
         "operationId": "get_holds_api_staff_holds_get",
@@ -11309,6 +11373,36 @@
         ],
         "summary": "Put Holds",
         "tags": ["staff"]
+      }
+    },
+    "/api/staff/inbox": {
+      "get": {
+        "description": "Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.",
+        "operationId": "get_staff_inbox_api_staff_inbox_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Staff Inbox Api Staff Inbox Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Staff Inbox",
+        "tags": ["staff-inbox"]
       }
     },
     "/api/staff/roles": {
@@ -12415,6 +12509,56 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/briefing": {
+      "post": {
+        "description": "Generate and post an on-schedule or on-demand briefing to Barb's thread.",
+        "operationId": "trigger_briefing_api_v1_staff_briefing_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostBriefingBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trigger Briefing Api V1 Staff Briefing Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Trigger Briefing",
+        "tags": ["staff-inbox-v1"]
+      }
+    },
     "/api/v1/staff/holds": {
       "get": {
         "operationId": "get_holds_v1_api_v1_staff_holds_get",
@@ -12507,15 +12651,15 @@
     },
     "/api/v1/staff/inbox": {
       "get": {
-        "description": "List threads requiring caller attention (unread messages or pending proposals).",
-        "operationId": "get_inbox_api_v1_staff_inbox_get",
+        "description": "Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.",
+        "operationId": "get_staff_inbox_api_v1_staff_inbox_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get Inbox Api V1 Staff Inbox Get",
+                  "title": "Response Get Staff Inbox Api V1 Staff Inbox Get",
                   "type": "object"
                 }
               }
@@ -12531,8 +12675,8 @@
             "APIKeyCookie": []
           }
         ],
-        "summary": "Get Inbox",
-        "tags": ["staff-threads"]
+        "summary": "Get Staff Inbox",
+        "tags": ["staff-inbox-v1"]
       }
     },
     "/api/v1/staff/maintenance/detect-stalled": {
