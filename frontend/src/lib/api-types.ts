@@ -1185,6 +1185,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/code-requests/{id}/board-escalation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Escalation
+         * @description Check if the Code Request proposal has passed its review escalation deadline.
+         */
+        get: operations["check_escalation_api_code_requests__id__board_escalation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/evaluate-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Board
+         * @description Evaluate whether a Code Request must go through Architecture Board review.
+         */
+        post: operations["evaluate_board_api_code_requests__id__evaluate_board_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/route-to-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Route To Board
+         * @description Execute the Board routing gate for a Code Request at triage.
+         */
+        post: operations["route_to_board_api_code_requests__id__route_to_board_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/sync-board-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Board Decision
+         * @description Check decision on linked Board proposal and transition Code Request accordingly.
+         */
+        post: operations["sync_board_decision_api_code_requests__id__sync_board_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/code-requests/{id}/transition": {
         parameters: {
             query?: never;
@@ -5951,6 +6031,63 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * BoardRoute
+         * @description Routing policy for Architecture Board review.
+         * @enum {string}
+         */
+        BoardRoute: "auto" | "force_board" | "skip_board";
+        /**
+         * BoardRoutingCriteria
+         * @description Explicit requester-declared or system-extracted routing flags.
+         */
+        BoardRoutingCriteria: {
+            /**
+             * Cross Repo Contract
+             * @default false
+             */
+            cross_repo_contract: boolean;
+            /**
+             * Estimated Child Issues
+             * @default 0
+             */
+            estimated_child_issues: number;
+            /**
+             * Inentec Data Egress
+             * @default false
+             */
+            inentec_data_egress: boolean;
+            /**
+             * New Dependency Or Egress
+             * @default false
+             */
+            new_dependency_or_egress: boolean;
+            /**
+             * New Service Or Repo
+             * @default false
+             */
+            new_service_or_repo: boolean;
+            /**
+             * New Surface
+             * @default false
+             */
+            new_surface: boolean;
+            /**
+             * Public Site Structure
+             * @default false
+             */
+            public_site_structure: boolean;
+            /**
+             * Tagged Board
+             * @default false
+             */
+            tagged_board: boolean;
+            /**
+             * Target Repos Count
+             * @default 1
+             */
+            target_repos_count: number;
+        };
         /** Body_get_issues_api_issues_get */
         Body_get_issues_api_issues_get: {
             /** Complexity */
@@ -6078,6 +6215,43 @@ export interface components {
              */
             stack?: string | null;
         };
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
+        CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Confirm Not Duplicate
+             * @default false
+             */
+            confirm_not_duplicate: boolean;
+            /**
+             * Estimated Cost
+             * @enum {string}
+             */
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "Routine" | "Urgent" | "Emergency";
+        };
         /** CreateThreadRequest */
         CreateThreadRequest: {
             /**
@@ -6189,6 +6363,11 @@ export interface components {
              * @description ``version`` from the GET you edited; 409 when stale.
              */
             version?: string | null;
+        };
+        /** EvaluateBoardPayload */
+        EvaluateBoardPayload: {
+            board_route?: components["schemas"]["BoardRoute"] | null;
+            criteria?: components["schemas"]["BoardRoutingCriteria"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -6843,6 +7022,21 @@ export interface components {
              * @default
              */
             reason: string;
+        };
+        /** RouteToBoardPayload */
+        RouteToBoardPayload: {
+            board_route?: components["schemas"]["BoardRoute"] | null;
+            criteria?: components["schemas"]["BoardRoutingCriteria"];
+            /**
+             * Is Operator Override
+             * @default false
+             */
+            is_operator_override: boolean;
+            /**
+             * Override Reason
+             * @default
+             */
+            override_reason: string;
         };
         /**
          * RoutingDecideRequest
@@ -7999,43 +8193,6 @@ export interface components {
              * @default 0
              */
             planned: number;
-        };
-        /**
-         * CreateProposalRequest
-         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
-         */
-        proposals__models__CreateProposalRequest: {
-            /** Code Request Url */
-            code_request_url?: string | null;
-            /**
-             * Confirm Not Duplicate
-             * @default false
-             */
-            confirm_not_duplicate: boolean;
-            /**
-             * Estimated Cost
-             * @enum {string}
-             */
-            estimated_cost: "Low" | "Medium" | "High";
-            /** Evidence */
-            evidence: string;
-            /** Lean */
-            lean: string;
-            /** Options Considered */
-            options_considered: string;
-            /** Problem */
-            problem: string;
-            /** Source */
-            source?: string | null;
-            /** Target Repos */
-            target_repos: string[];
-            /** Title */
-            title: string;
-            /**
-             * Urgency
-             * @enum {string}
-             */
-            urgency: "Routine" | "Urgent" | "Emergency";
         };
         /** CreateProposalRequest */
         routers__staff_proposals__CreateProposalRequest: {
@@ -9674,6 +9831,149 @@ export interface operations {
         };
     };
     get_code_request_api_code_requests__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_escalation_api_code_requests__id__board_escalation_get: {
+        parameters: {
+            query?: {
+                meetings_elapsed?: number;
+                max_meetings?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_board_api_code_requests__id__evaluate_board_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluateBoardPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    route_to_board_api_code_requests__id__route_to_board_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteToBoardPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_board_decision_api_code_requests__id__sync_board_decision_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12283,7 +12583,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["proposals__models__CreateProposalRequest"];
+                "application/json": components["schemas"]["CreateProposalRequest"];
             };
         };
         responses: {

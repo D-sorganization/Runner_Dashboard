@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1286
+- **Branch:** `feat/issue-1286-board-routing-gate`
+- **Paths:** `backend/code_requests/board_gate.py`, `backend/routers/code_requests_board.py`, `backend/server.py`, `tests/code_requests/test_board_gate.py`, `tests/code_requests/test_board_gate_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest 33/33 passed across test_board_gate and test_board_gate_routes; 61/61 passed across tests/code_requests/; vitest 1309/1309 passed; ruff check and format clean; mypy clean; line cap check <= 500 lines passed)
+- **Summary:** Implemented Board routing gate for Code Requests evaluating 7 architectural criteria, confidential InEnTec data egress user sign-off check, operator overrides (`force_board` / `skip_board`) requiring `operator` role and reason, automatic proposal creation via CR-7 proposal API, decision syncing (`board:accepted`, `board:declined`, `board:deferred`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py`.
+- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
+
 ### DL-#1330 · SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1330 (epic #1352 / umbrella #1354)
 - **Branch:** `feat/1330-unify-chat-surfaces`
@@ -29,11 +41,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest test_assistant_retirement 5/5 passing, all affected pytest suites 37/37 passing; vitest 1303/1303 passing; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; all files <= 500 lines)
 - **Summary:** Folded stray chat surfaces into the Staff Console: (1) Updated `POST /api/assistant/chat` to return HTTP 410 Gone with successor Link header pointing to `/api/v1/staff/threads` and Sunset header; (2) Folded codebase Q&A into Cartographer and Librarian with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; (3) Added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; (4) Added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); (5) Added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`.
-- **Next step:** Push branch `feat/1330-unify-chat-surfaces`, monitor PR #1435 CI to green merge, release lease, and clean up.
+- **Next step:** None (shipped in PR #1435).
 
 ### DL-#1345 · SC-G7: Mobile Projects renders natively (first step of Classic-layout removal)
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1345 (epic #1353)
 - **Branch:** `fix/1345-mobile-projects`
@@ -42,7 +54,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 at `10cd0136` baseline (RoutedShell/MobileShell/Projects vitest 69 passed; tsc clean)
 - **Summary:** The mobile drawer's Projects entry fell back to the legacy App, which has no projects case, so the page was blank. It now renders the native Projects page.
-- **Next step:** Merge the PR, then remove the Classic layout once SC-D8/G2/G3 land.
+- **Next step:** Remove the Classic layout once SC-D8/G2/G3 land.
 
 ### DL-#1340 · SC-C7: Routing evaluation set and regression check for Barb
 
@@ -66,6 +78,10 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (Merged to main via PR #1460)
 - **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
+<<<<<<< HEAD
+- **Next step:** None (shipped in PR #1460).
+=======
+>>>>>>> origin/main
 
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool
 

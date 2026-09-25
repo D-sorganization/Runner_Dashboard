@@ -1,4 +1,51 @@
-# Current handoff — SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console (#1330)
+# Current handoff — CR-6: Board routing gate for new/significant Code Requests (#1286)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/issue-1286-board-routing-gate`; Issue #1286; DL-#1286.
+
+## Objective and Status
+
+- Implement Board routing gate for Code Requests (CR-6, issue #1286) following strict fleet standards (TDD, DbC, LoD, DRY, $\le 500$ lines per file).
+- Implemented `backend/code_requests/board_gate.py` (298 lines):
+  - `BoardRoutingCriteria` and `BoardRoutingDecision` models with 7 architectural criteria:
+    1. `new_surface`: Adds a new user-facing surface (page, tab, or tool).
+    2. `new_service_or_repo`: Creates a new repository, service, or daemon.
+    3. `new_dependency_or_egress`: Adds external dependencies or third-party data egress.
+       - Special constraint: `inentec_data_egress` confidential InEnTec/ICR data egress ALWAYS routes to the Board and flags `requires_user_signoff=True`, overriding any operator `skip_board`.
+    4. `cross_repo_contract`: Modifies cross-repo contract or schema.
+    5. `public_site_structure`: Structural changes to public site navigation or architecture.
+    6. `estimated_child_issues > 8` or `target_repos_count > 1`: Multi-repo or large epic breakdown.
+    7. `tagged_board`: Requester explicitly requested Board review.
+  - `RuleBasedBoardClassifier`: Fallback heuristic regex scanner when no explicit flags are given.
+  - Operator overrides (`force_board` / `skip_board`): Bypasses heuristic checks unless confidential data egress is flagged; requires `operator` role and audit reason.
+  - `route_code_request_to_board`: Creates Board proposal via CR-7 proposal service, transitions Code Request to `BOARD_REVIEW`, links proposal number.
+  - `sync_board_proposal_decision`: Maps proposal outcome (`board:accepted` -> `PLANNING` with Board secretary comments appended; `board:declined` -> `DECLINED`; `board:deferred` -> `DEFERRED`).
+  - `check_board_escalation`: Identifies unreviewed proposals exceeding max scheduled Board meetings (default 2 meetings).
+- Implemented `backend/routers/code_requests_board.py` (225 lines) and mounted in `backend/server.py`:
+  - `POST /api/code-requests/{id}/evaluate-board`: Evaluates whether a Code Request routes to Board.
+  - `POST /api/code-requests/{id}/route-to-board`: Executes routing gate, creating proposal or bypassing to `PLANNING`.
+  - `POST /api/code-requests/{id}/sync-board-decision`: Syncs Board proposal decision to Code Request.
+  - `GET /api/code-requests/{id}/board-escalation`: Checks escalation deadline.
+- Verification:
+  - 33/33 tests passing in `tests/code_requests/test_board_gate.py` and `tests/code_requests/test_board_gate_routes.py`.
+  - 61/61 tests passing across `tests/code_requests/`.
+  - 1309/1309 vitest tests passing across frontend.
+  - `ruff check backend tests`, `ruff format --check`, and `mypy` passing cleanly.
+  - `check_line_caps.py` verified all files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Create pull request referencing issue #1286.
+2. Enable auto-merge.
+3. Verify CI Standard and all required checks pass.
+4. Release lease on issue #1286 once merged.
+
+---
+
+# Past handoff — SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console (#1330)
 
 Last updated: 2026-09-25
 
