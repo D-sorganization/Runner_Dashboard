@@ -105,70 +105,6 @@
         "title": "ActionRiskLevel",
         "type": "string"
       },
-      "AgentStatus": {
-        "properties": {
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "interval_seconds": {
-            "title": "Interval Seconds",
-            "type": "integer"
-          },
-          "last_repo": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Repo"
-          },
-          "last_run_iso": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Run Iso"
-          },
-          "last_window_pid": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Window Pid"
-          },
-          "lock_alive": {
-            "title": "Lock Alive",
-            "type": "boolean"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "enabled",
-          "interval_seconds",
-          "last_run_iso",
-          "last_repo",
-          "last_window_pid",
-          "lock_alive"
-        ],
-        "title": "AgentStatus",
-        "type": "object"
-      },
       "AnswerNeedsInputRequest": {
         "properties": {
           "answer": {
@@ -2593,29 +2529,6 @@
         "title": "RemoteLogoutRequest",
         "type": "object"
       },
-      "RepoEntry": {
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "org": {
-            "title": "Org",
-            "type": "string"
-          },
-          "remote_url": {
-            "title": "Remote Url",
-            "type": "string"
-          },
-          "wsl_path": {
-            "title": "Wsl Path",
-            "type": "string"
-          }
-        },
-        "required": ["name", "wsl_path", "org", "remote_url"],
-        "title": "RepoEntry",
-        "type": "object"
-      },
       "ReportChildPayload": {
         "properties": {
           "ci_status": {
@@ -2672,42 +2585,6 @@
         },
         "required": ["key", "event"],
         "title": "ReportChildPayload",
-        "type": "object"
-      },
-      "ReposResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "org_filter": {
-            "title": "Org Filter",
-            "type": "string"
-          },
-          "repos": {
-            "items": {
-              "$ref": "#/components/schemas/RepoEntry"
-            },
-            "title": "Repos",
-            "type": "array"
-          },
-          "repos_root": {
-            "title": "Repos Root",
-            "type": "string"
-          },
-          "wsl_distro": {
-            "title": "Wsl Distro",
-            "type": "string"
-          }
-        },
-        "required": [
-          "wsl_distro",
-          "repos_root",
-          "org_filter",
-          "count",
-          "repos"
-        ],
-        "title": "ReposResponse",
         "type": "object"
       },
       "RoleScheduleOverrideBody": {
@@ -2990,19 +2867,6 @@
         "title": "RunBody",
         "type": "object"
       },
-      "RunOnceRequest": {
-        "properties": {
-          "agent": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Agent",
-            "type": "string"
-          }
-        },
-        "required": ["agent"],
-        "title": "RunOnceRequest",
-        "type": "object"
-      },
       "ScheduleToggleBody": {
         "properties": {
           "enabled": {
@@ -3036,22 +2900,6 @@
         },
         "required": ["provider", "key"],
         "title": "SetKeyRequest",
-        "type": "object"
-      },
-      "SimpleResponse": {
-        "properties": {
-          "detail": {
-            "default": "",
-            "title": "Detail",
-            "type": "string"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": ["ok"],
-        "title": "SimpleResponse",
         "type": "object"
       },
       "StaffAuditListResponse": {
@@ -4633,56 +4481,6 @@
         "title": "StaffV1RunsPage",
         "type": "object"
       },
-      "StatusResponse": {
-        "properties": {
-          "agents": {
-            "items": {
-              "$ref": "#/components/schemas/AgentStatus"
-            },
-            "title": "Agents",
-            "type": "array"
-          },
-          "runtime_root": {
-            "title": "Runtime Root",
-            "type": "string"
-          },
-          "scheduler_pid": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scheduler Pid"
-          },
-          "scheduler_running": {
-            "title": "Scheduler Running",
-            "type": "boolean"
-          },
-          "scheduler_started_iso": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scheduler Started Iso"
-          }
-        },
-        "required": [
-          "runtime_root",
-          "scheduler_running",
-          "scheduler_pid",
-          "scheduler_started_iso",
-          "agents"
-        ],
-        "title": "StatusResponse",
-        "type": "object"
-      },
       "TokenCreateRequest": {
         "properties": {
           "expires_in_days": {
@@ -5283,219 +5081,6 @@
         ],
         "summary": "Revoke Service Token",
         "tags": ["admin"]
-      }
-    },
-    "/api/agent-launcher/config": {
-      "get": {
-        "description": "Return the normalized v2 user config. Delegates to the launcher's\n``--validate-config`` so the response matches whatever the scheduler\nwill see.",
-        "operationId": "get_config_api_agent_launcher_config_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Config Api Agent Launcher Config Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Get Config",
-        "tags": ["agent-launcher"]
-      },
-      "put": {
-        "description": "Replace the user config. Validates by writing to a temp file and\ninvoking the launcher's ``--validate-config --config <tmp>``; only\npromotes to the real config path if validation passes (atomic\nrename).",
-        "operationId": "put_config_api_agent_launcher_config_put",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Put Config",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/repos": {
-      "get": {
-        "operationId": "get_repos_api_agent_launcher_repos_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReposResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Get Repos",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/run-once": {
-      "post": {
-        "description": "Spawn one window for one agent now (does not affect the scheduler).",
-        "operationId": "run_once_api_agent_launcher_run_once_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RunOnceRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Run Once",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/start": {
-      "post": {
-        "operationId": "start_scheduler_api_agent_launcher_start_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Start Scheduler",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/status": {
-      "get": {
-        "description": "Quick status read. Pure file I/O \u2014 no subprocess. Safe to poll\nevery few seconds from the dashboard.",
-        "operationId": "get_status_api_agent_launcher_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Get Status",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/stop": {
-      "post": {
-        "operationId": "stop_scheduler_api_agent_launcher_stop_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Stop Scheduler",
-        "tags": ["agent-launcher"]
       }
     },
     "/api/agent-profiles": {
@@ -15063,6 +14648,217 @@
         ],
         "summary": "Trigger Sweep",
         "tags": ["staff-followup"]
+      }
+    },
+    "/api/v1/staff/groups": {
+      "get": {
+        "description": "List all registered multi-seat staff groups (e.g. Board of Directors).",
+        "operationId": "get_groups_api_v1_staff_groups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Groups Api V1 Staff Groups Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List available staff groups",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}": {
+      "get": {
+        "description": "Get group specification, coordinator role, and seat definitions.",
+        "operationId": "get_group_detail_api_v1_staff_groups__group_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Group Detail Api V1 Staff Groups  Group Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get group details",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}/cost-estimate": {
+      "get": {
+        "description": "Estimate token spend and USD cost across all seats for a prompt.",
+        "operationId": "get_group_cost_estimate_api_v1_staff_groups__group_id__cost_estimate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Proposed question or prompt for the group",
+            "in": "query",
+            "name": "prompt",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Proposed question or prompt for the group",
+              "title": "Prompt",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Group Cost Estimate Api V1 Staff Groups  Group Id  Cost Estimate Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Estimate group turn cost",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}/threads": {
+      "post": {
+        "description": "Convenience helper to create a group thread populated with coordinator and seats.",
+        "operationId": "create_group_thread_endpoint_api_v1_staff_groups__group_id__threads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Group Thread Endpoint Api V1 Staff Groups  Group Id  Threads Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create a new group conversation thread",
+        "tags": ["staff-groups"]
       }
     },
     "/api/v1/staff/holds": {
