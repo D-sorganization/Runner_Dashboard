@@ -252,22 +252,14 @@ async def create_code_request(
         CodeRequestState.TRIAGE if (body.get("submitted") or state_str == "triage") else CodeRequestState.DRAFT
     )
 
-    req_data = body.get("requester")
-    if isinstance(req_data, dict) and req_data.get("id"):
-        kind_str = str(req_data.get("kind", RequesterKind.HUMAN.value)).lower()
-        requester = Requester(
-            id=str(req_data["id"]),
-            kind=RequesterKind.AGENT if kind_str == "agent" else RequesterKind.HUMAN,
-        )
-    else:
-        requester = Requester(
-            id=principal.id,
-            kind=RequesterKind.AGENT if getattr(principal, "type", "").lower() == "bot" else RequesterKind.HUMAN,
-        )
+    raw_req = body.get("requester")
+    req_dict: dict = raw_req if isinstance(raw_req, dict) else {}
+    req_id = str(req_dict.get("id") or principal.id)
+    is_agent = (req_dict.get("kind") == "agent") or (not req_dict and getattr(principal, "type", "").lower() == "bot")
+    requester = Requester(id=req_id, kind=RequesterKind.AGENT if is_agent else RequesterKind.HUMAN)
 
-    route_str = str(body.get("board_route", BoardRoute.AUTO.value)).lower()
     try:
-        board_route = BoardRoute(route_str)
+        board_route = BoardRoute(str(body.get("board_route", BoardRoute.AUTO.value)).lower())
     except ValueError:
         board_route = BoardRoute.AUTO
 
@@ -413,6 +405,7 @@ async def dispatch_code_request(
 
     full_prompt = build_full_prompt(prompt, list(standards), prompt_notes_data)
     code, stderr = await trigger_workflow_dispatch(repo, branch, provider, full_prompt, run_cmd_fn=run_cmd)
+    _record_dispatch_target(code == 0, stderr)
     if code != 0:
         log.warning("code_request_dispatch failed: %s", sanitize_log_value(stderr.strip()[:200]))
 
