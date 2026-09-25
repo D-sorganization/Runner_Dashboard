@@ -41,7 +41,37 @@ Last updated: 2026-09-25
 3. Open PR with `gh pr create` referencing `Fixes #1325`, labels `agent:local` and `wave:3`.
 4. Enable auto-merge squash without `--admin`.
 5. Monitor CI to green merge.
-6. Proceed to Wave 3 issue #1327 (`SC-G5: Work -> Workflows: merge Workflows and Remediation into Workflows`).
+6. Proceed to next issue in program.
+
+---
+
+# Previous handoff — SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links (#1331)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1331-mobile-staff-console`; Issue #1331; DL-#1331.
+
+## Objective and Status
+
+- SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links.
+- Full-screen roster → thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
+- Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with touch-friendly input, Send, and Voice input buttons.
+- Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons.
+- Push notification deep links: supports `?thread=<id>` and `?role=<role>`, synchronizing state on mount and browser popstate.
+- Role context drawer: slide-up bottom sheet drawer with role mandate, provider info, and schedule/budget summary.
+- Inbox tab: "Waiting on you" tab in mobile roster showing items requiring human intervention.
+- Status: Completed all implementation, unit tests, and e2e specs. Shipped in PR #1427 (commit `94b7090`).
+
+## Validation
+
+- `npx vitest run frontend/src/pages/StaffConsole/`: 13 test files passed, 75 tests passed.
+- `npx vitest run frontend/src/shell/__tests__/RoutedShell.test.tsx`: 42 tests passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 warnings).
+- `uv run ruff check .`: passed cleanly.
+- `uv run pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
 
 ---
 
@@ -57,75 +87,41 @@ Last updated: 2026-09-25
 
 - Restore green main: synchronize `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` following the merge of SC-C5 (#1328 / PR #1422).
 - Resolves failing step `Verify generated API contract types` in `Frontend Tests` on `main`.
-- Status: Fully synchronized via FastAPI TestClient generator; all tests passing (contract tests 10/10, typecheck 0 errors, lint 0 warnings); all files formatted.
-
-## Files and Decisions
-
-- `frontend/src/lib/openapi.json`:
-  - Added OpenAPI specs for `POST /api/staff/briefing`, `GET /api/staff/inbox`, `POST /api/v1/staff/briefing`, and updated `GET /api/v1/staff/inbox`.
-  - Added schema `PostBriefingBody`.
-- `frontend/src/lib/api-types.ts`:
-  - Regenerated TypeScript operations and paths matching the updated OpenAPI contract.
-- `SPEC.md`:
-  - Bumped version to 2.5.249 and added change log entry for #1424.
-- `docs/development/DEVELOPMENT_LOG.md`:
-  - Added DL-#1424 and marked DL-#1328 as shipped.
-
-## Validation
-
-- `pytest tests/frontend/test_api_generation_contract.py tests/api/test_staff_contracts.py`: 10 passed.
-- `npm run typecheck`: clean (0 errors).
-- `npm run lint`: clean (0 warnings).
-
-## Next Steps
-
-1. Push branch `fix/1424-green-main`.
-2. Open PR with `Fixes #1424`, enable auto-merge.
-3. Monitor CI until green merge into `main`.
-4. Release lease on issue #1424 and clean up worktree.
+- Status: Shipped in PR #1425 (commit `c2292e3`).
 
 ---
 
 # Previous handoff — SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
 
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1328-waiting-on-you-inbox`; Issue #1328; DL-#1328; PR #1422.
-
-## Objective and Status
-
-- SC-C5: Waiting on you inbox and Barb briefings inside dashboard.
-- API `GET /api/v1/staff/inbox`: Aggregates pending approvals, needs-input items, escalations, project charter decisions needed (STATUS.md), board proposals, and auth sign-in alerts.
-- Fault isolation: Any failing source reports `status: "unavailable"` with error detail; healthy sources continue aggregating cleanly (HTTP 200).
-- Briefings: Scheduled and on-demand Markdown one-pagers generated and posted to Barb's conversation thread with SC-A8 audit logging (`POST /api/v1/staff/briefing`).
-- Web Push: Critical escalations trigger web push notifications (`staff.escalation`) with thread deep links.
-- Frontend: `InboxPanel` component with severity badges, category pills, degraded source alert banner, and briefing trigger, embedded at the top of `StaffPage`.
-- Status: Fully implemented with TDD; all pytest (`test_staff_inbox.py` and `test_staff_threads_api.py`) passing (14/14); Vitest `InboxPanel.test.tsx` and StaffConsole suite passing (63/63); `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `ruff` and `mypy` clean; all files strictly <= 500 lines.
+- Full-screen roster → thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
+- Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with touch-friendly input, Send, and Voice input buttons.
+- Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons.
+- Push notification deep links: supports `?thread=<id>` and `?role=<role>`, synchronizing state on mount and browser popstate.
+- Role context bottom sheet drawer for inspecting schedule and budget.
+- Tab switching to "Waiting on you" inbox panel.
+- Wired into `RoutedShell.tsx` for mobile viewports (`staff: <LazyStaffMobile />`).
+- Status: Fully implemented with TDD; all 75 StaffConsole Vitest tests passing; Playwright mobile spec updated; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `test_frontend_integrity.py` 72 passed; all files strictly <= 500 lines.
 
 ## Files and Decisions
 
-- `backend/staff/inbox.py` (497 lines):
-  - Multi-source aggregator (`_collect_approvals`, `_collect_needs_input`, `_collect_escalations`, `_collect_project_decisions`, `_collect_board_proposals`, `_collect_auth_sign_ins`).
-  - Fault isolation returning per-source status (`"ok"`, `"empty"`, `"unavailable"`).
-  - Markdown briefing generator and poster to Barb thread with SC-A8 audit logging.
-  - Escalation Web Push dispatch (`staff.escalation`) with thread deep link.
-- `backend/routers/staff_inbox.py` (88 lines):
-  - Endpoints `GET /inbox` and `POST /briefing` mounted under `/api/staff` and `/api/v1/staff`.
-- `backend/routers/staff_threads.py`:
-  - Removed deprecated stub `/inbox` route to avoid collision.
-- `backend/server.py`:
-  - Mounted `staff_inbox` router and v1_router.
-- `backend/push.py`:
-  - Added `"staff.escalation"` to `PUSH_TOPICS`.
-- `frontend/src/pages/Staff/inboxTypes.ts` (55 lines):
-  - Type definitions for `InboxItem`, `InboxAggregate`, `SourceStatus`.
-- `frontend/src/pages/Staff/staffApi.ts`:
-  - Added `fetchStaffInbox()` and `requestStaffBriefing()`.
-- `frontend/src/pages/Staff/InboxPanel.tsx` (319 lines):
-  - Severity badges, category filter tabs, degraded sources banner, briefing trigger, and deep links.
-- `frontend/src/pages/Staff/StaffPage.tsx`:
+- `frontend/src/pages/StaffConsole/Mobile.tsx` (483 lines):
+  - Mobile Staff Console view with roster, thread, deep linking, context drawer, and message sending.
+- `frontend/src/pages/StaffConsole/mobile.css` (338 lines):
+  - CSS tokens only; safe-area bottom padding; thumb-reach zone; slide-up bottom drawer.
+- `frontend/src/pages/StaffConsole/index.ts` (28 lines):
+  - Re-exports `StaffConsoleMobile`.
+- `frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx` (270 lines):
+  - 10 Vitest tests covering all mobile requirements.
+- `frontend/src/pages/StaffConsole/cards/cards.css` (42 lines):
+  - Responsive action buttons with $\ge 44\text{px}$ touch targets on mobile.
+- `frontend/src/pages/StaffConsole/cards/ActionCard.tsx` (203 lines):
+  - Added action BEM classes.
+- `frontend/src/pages/Staff/staffApi.ts` (335 lines):
+  - Added thread & proposal decide API helpers.
+- `frontend/src/shell/RoutedShell.tsx` (445 lines):
+  - Connected `staff: <LazyStaffMobile />` for mobile viewports.
+- `tests/e2e/mobile.spec.ts` (193 lines):
+  - Added Playwright mobile spec for SC-D8.
   - Embedded `<InboxPanel onOpenRun={openRun} />` above roster/thread layout.
 - `tests/api/test_staff_inbox.py` (190 lines):
   - 4 integration tests covering aggregation, source failure isolation, briefing posting, and push notifications.

@@ -84,6 +84,9 @@ const LazyRemediationPage = React.lazy(
   () => import("../pages/RemediationPage"),
 );
 const LazyStaffPage = React.lazy(() => import("../pages/Staff/StaffPage"));
+const LazyStaffMobile = React.lazy(
+  () => import("../pages/StaffConsole/Mobile"),
+);
 const LazyProjectsPage = React.lazy(() => import("../pages/ProjectsPage"));
 const LazyFleetCommandPage = React.lazy(
   () => import("../pages/FleetCommand/FleetCommandPage"),
@@ -343,7 +346,7 @@ export function AppShell({
       reports: <ReportsMobile />,
       insights: <ReportsMobile />,
       credentials: <CredentialsMobile />,
-      staff: <LazyStaffPage />,
+      staff: <LazyStaffMobile />,
       "fleet-command": <LazyFleetCommandPage />,
     } as Partial<Record<TabId, React.ReactNode>>;
     const nativeMobileContent = mobileTabContent[mobileTab];

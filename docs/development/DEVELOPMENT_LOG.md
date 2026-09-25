@@ -30,6 +30,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Implemented SC-G3 Operations page merging Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan, and Schedules into `/fleet/operations`: (1) `OperationsStatusBanner` with quick KPI badges and 5 jump anchors (`#deploy`, `#admission`, `#runner-hours`, `#scheduled-workflows`, `#diagnostics`); (2) `OperationsDeploySection` with expected version, rollout summary, machine drift table, multi-node deploy action form, and audit log; (3) `OperationsAdmissionSection` with admission gate status (running/paused/draining), queue control buttons, capacity and work queue statistics, provider mix, budget burn, and 404 empty state; (4) `OperationsRunnerHoursSection` with desired/online/busy/offline runner metrics, schedule windows table, save/apply buttons, timer status, and config path footer; (5) `OperationsScheduledWorkflowsSection` with cron workflows table, repository badges, cron expressions, run link, search filter, and trigger CTA; (6) `OperationsDiagnosticsSection` with PID, memory MB, port, WSL status, git drift, service recovery restart with confirmation, Windows launcher generator, and API links; (7) Backwards-compatible redirects configured for `/fleet/deployment`, `/deployment`, `/t/deployment`, `/fleet/fleet-orchestration`, `/t/fleet-orchestration`, `/fleet/conductor`, `/conductor`, `/t/conductor`, `/fleet/runner-schedule`, `/runner-schedule`, `/fleet/runner-plan`, `/runner-plan`, `/t/runner-schedule`, `/work/scheduled-jobs`, `/scheduled-jobs`, `/schedules`, `/work/schedules`, `/t/scheduled-jobs`, `/settings/diagnostics`, `/diagnostics`, `/t/diagnostics` to `/fleet/operations#...` with user toast notices; (8) Recomposed shell navigation and overview deployment navigation to point to `/fleet/operations#deploy`.
 - **Next step:** Push branch `feat/1325-operations-merge`, open PR with Fixes #1325, enable auto-merge, monitor CI to green merge, release lease, and clean up.
 
+### DL-#1331 · SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1331 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1331-mobile-staff-console`
+- **Paths:** `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/mobile.css`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx`, `frontend/src/pages/StaffConsole/cards/cards.css`, `frontend/src/pages/StaffConsole/cards/ActionCard.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/shell/RoutedShell.tsx`, `tests/e2e/mobile.spec.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 75 StaffConsole unit tests passed; npm run typecheck passed 0 errors; npm run lint passed 0 warnings; pytest test_frontend_integrity passed 72/72; all files strictly <= 500 lines)
+- **Summary:** Implemented SC-D8 Mobile Staff Console: (1) Full-screen mobile roster with Ask Barb top entry, role groupings, status badges, and search filtering; (2) Full-screen transition to conversation thread with `< Back to Roster` button, role header, and details sheet; (3) Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with Send and Voice input touch targets; (4) Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons; (5) Push notification deep links (`?thread=<id>` and `?role=<role>`); (6) Role context bottom sheet drawer for inspecting schedule and budget; (7) Seamless mobile tab integration in `RoutedShell.tsx`.
+- **Next step:** Shipped in PR #1427 (commit `94b7090`).
+
 ### DL-#1424 · Restore green main: synchronize generated API contract for SC-C5
 
 - **State:** shipped
@@ -40,7 +52,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/frontend/test_api_generation_contract.py and test_staff_contracts.py passed 10/10; npm run typecheck 0 errors; npm run lint 0 warnings)
 - **Summary:** Synchronized generated OpenAPI schema (`openapi.json`) and TypeScript client types (`api-types.ts`) following SC-C5 merge (`/api/v1/staff/briefing` and updated `/api/v1/staff/inbox`), resolving the failing `Verify generated API contract types` step in `Frontend Tests` on `main`.
-- **Next step:** Shipped in PR #1425.
+- **Next step:** Shipped in PR #1425 (commit `c2292e3`).
 
 ### DL-#1328 · SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard
 

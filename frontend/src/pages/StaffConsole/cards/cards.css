@@ -20,3 +20,28 @@
   border-color: var(--border-hover, #444c56);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
+
+.staff-action-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .staff-action-card__actions {
+    gap: 12px;
+  }
+
+  .staff-action-card__btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+    flex: 1 1 calc(50% - 6px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+}
