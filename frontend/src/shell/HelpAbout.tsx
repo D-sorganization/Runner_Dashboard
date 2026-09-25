@@ -22,7 +22,13 @@
  * injectable so tests drive the version probe without the network.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { Dialog, DialogTitle, DialogContent, DialogActions, DialogClose } from "../primitives/Dialog";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogClose,
+} from "../primitives/Dialog";
 import { Tooltip } from "../primitives/Tooltip";
 import { navItemById } from "./navRegistry";
 import { CodebaseChat } from "../pages/Maxwell";
@@ -82,8 +88,12 @@ function VersionLine({
   error: boolean;
 }): React.ReactElement {
   if (loading) return <span className="help-about__muted">checking…</span>;
-  if (error || !version) return <span className="help-about__muted">unavailable</span>;
-  const sha = version.git_sha && version.git_sha !== "unknown" ? version.git_sha.slice(0, 7) : null;
+  if (error || !version)
+    return <span className="help-about__muted">unavailable</span>;
+  const sha =
+    version.git_sha && version.git_sha !== "unknown"
+      ? version.git_sha.slice(0, 7)
+      : null;
   return (
     <span className="help-about__version">
       {version.dashboard ?? "unknown"}
@@ -106,7 +116,8 @@ export function HelpAbout({
   // Fetch the version once, lazily, the first time the panel is opened.
   useEffect(() => {
     if (!open || version || loading) return;
-    const doFetch = fetchImpl ?? (typeof fetch !== "undefined" ? fetch : undefined);
+    const doFetch =
+      fetchImpl ?? (typeof fetch !== "undefined" ? fetch : undefined);
     if (!doFetch) return;
     setLoading(true);
     setError(false);
@@ -131,7 +142,8 @@ export function HelpAbout({
       if (e.key !== "?" || e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable)
+        return;
       e.preventDefault();
       setOpen(true);
     };
@@ -153,7 +165,10 @@ export function HelpAbout({
 
   return (
     <>
-      <Tooltip content="Help & About: what this dashboard is, version, key tabs and shortcuts." placement="bottom">
+      <Tooltip
+        content="Help & About: what this dashboard is, version, key tabs and shortcuts."
+        placement="bottom"
+      >
         <button
           type="button"
           className="shell-action shell-help-trigger"
@@ -168,7 +183,11 @@ export function HelpAbout({
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Runner Dashboard — Help &amp; About</DialogTitle>
         <DialogContent>
-          <div role="tablist" aria-label="Help and About sections" className="help-about__tabs">
+          <div
+            role="tablist"
+            aria-label="Help and About sections"
+            className="help-about__tabs"
+          >
             <button
               type="button"
               role="tab"
@@ -194,21 +213,33 @@ export function HelpAbout({
           </div>
 
           {tab === "chat" ? (
-            <div role="tabpanel" id="help-panel-chat" aria-labelledby="help-tab-chat">
-              <CodebaseChat fetchImpl={fetchImpl} />
+            <div
+              role="tabpanel"
+              id="help-panel-chat"
+              aria-labelledby="help-tab-chat"
+            >
+              <CodebaseChat fetchImpl={fetchImpl} onNavigate={go} />
             </div>
           ) : (
-            <div role="tabpanel" id="help-panel-help" aria-labelledby="help-tab-help">
+            <div
+              role="tabpanel"
+              id="help-panel-help"
+              aria-labelledby="help-tab-help"
+            >
               <p className="help-about__intro">
-                The operator console for the self-hosted GitHub Actions runner fleet:
-                monitor runner health, manage the job queue, dispatch AI remediation
-                agents, and orchestrate the fleet from one place.
+                The operator console for the self-hosted GitHub Actions runner
+                fleet: monitor runner health, manage the job queue, dispatch AI
+                remediation agents, and orchestrate the fleet from one place.
               </p>
 
               <dl className="help-about__meta">
                 <dt className="help-about__muted">Version</dt>
                 <dd className="help-about__meta-value">
-                  <VersionLine version={version} loading={loading} error={error} />
+                  <VersionLine
+                    version={version}
+                    loading={loading}
+                    error={error}
+                  />
                 </dd>
               </dl>
 
@@ -229,7 +260,10 @@ export function HelpAbout({
                 </div>
               </section>
 
-              <section aria-label="First things to check" className="help-about__section">
+              <section
+                aria-label="First things to check"
+                className="help-about__section"
+              >
                 <h3 className="help-about__heading">First things to check</h3>
                 <ol className="help-about__checklist">
                   {FIRST_CHECKS.map((line) => (
@@ -238,7 +272,10 @@ export function HelpAbout({
                 </ol>
               </section>
 
-              <section aria-label="Keyboard shortcuts" className="help-about__section">
+              <section
+                aria-label="Keyboard shortcuts"
+                className="help-about__section"
+              >
                 <h3 className="help-about__heading">Keyboard shortcuts</h3>
                 <dl className="help-about__shortcuts">
                   {SHORTCUTS.map((s) => (

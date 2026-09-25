@@ -575,11 +575,10 @@ export interface paths {
         put?: never;
         /**
          * Assistant Chat
-         * @description Chat with AI assistant about dashboard state.
+         * @description Retired endpoint (SC-D11, issue #1330).
          *
-         *     When ``tools_enabled: true`` is set, the Anthropic tool-use loop is
-         *     activated and the response may contain ``tool_calls`` for the client to
-         *     render as confirmation cards (issue #89).
+         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console
+         *     conversation API at /api/v1/staff/threads.
          */
         post: operations["assistant_chat_api_assistant_chat_post"];
         delete?: never;
@@ -5941,28 +5940,6 @@ export interface components {
             timestamp: string;
         };
         /**
-         * AssistantToolChatResponse
-         * @description Response when tools_enabled=true.
-         *
-         *     ``stop_reason`` is "tool_use" when the model wants to call tools;
-         *     "end_turn" when it has produced a final answer.
-         *     ``tool_calls`` is non-empty when stop_reason == "tool_use".
-         */
-        AssistantToolChatResponse: {
-            /** Message */
-            message: {
-                [key: string]: unknown;
-            };
-            /** Provider */
-            provider: string;
-            /** Stop Reason */
-            stop_reason: string;
-            /** Timestamp */
-            timestamp: string;
-            /** Tool Calls */
-            tool_calls?: components["schemas"]["ToolCallCard"][];
-        };
-        /**
          * AuditHistoryResponse
          * @description Paginated audit history for assistant tool executions.
          */
@@ -7923,22 +7900,6 @@ export interface components {
             name: string;
         };
         /**
-         * ToolCallCard
-         * @description A tool call proposed by the assistant; may require confirmation.
-         */
-        ToolCallCard: {
-            /** Id */
-            id: string;
-            /** Input */
-            input: {
-                [key: string]: unknown;
-            };
-            /** Name */
-            name: string;
-            /** Requires Confirmation */
-            requires_confirmation: boolean;
-        };
-        /**
          * ToolExecuteResponse
          * @description Result of a tool execution.
          */
@@ -8909,12 +8870,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssistantChatResponse"] | components["schemas"]["AssistantToolChatResponse"];
+                    "application/json": components["schemas"]["AssistantChatResponse"];
                 };
             };
         };

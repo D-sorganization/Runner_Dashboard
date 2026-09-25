@@ -13,15 +13,14 @@ from __future__ import annotations
 import datetime as _dt_mod
 import json
 import logging
-import os
 import secrets
 import time
 
-import agent_remediation
 import assistant_contract
 import assistant_tools
-from dashboard_config import DEFAULT_LLM_MODEL, ORG, REPO_ROOT
+from dashboard_config import ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from gh_utils import gh_api
 from identity import Principal, require_scope
 from security import validate_owner_repo_format, validate_repo_slug
@@ -59,91 +58,43 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
     return repo_name, f"{ORG}/{repo_name}"
 
 
-async def _dispatch_to_ai_provider_for_chat(
-    provider: str | None,
-    prompt: str,
-    context: dict,
-) -> str:
-    """Call the configured AI provider for assistant chat."""
-    provider_id = provider or "ollama_local"
-
-    availability = agent_remediation.probe_provider_availability()
-    if provider_id not in availability or not availability[provider_id].available:
-        return f"(Note: Provider '{provider_id}' is unavailable. Mock response for demonstration.)"
-
-    # MVP: real provider dispatch tracked in issues #88/#89.
-    return f"Assistant response to: {prompt[:100]}... (MVP mock - implement real provider dispatch)"
-
-
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 
 @router.post(
     "/api/assistant/chat",
     tags=["assistant"],
-    response_model=assistant_contract.AssistantChatResponse | assistant_contract.AssistantToolChatResponse,
-    response_model_exclude_none=True,
+    response_model=assistant_contract.AssistantChatResponse,
+    status_code=410,
 )
 async def assistant_chat(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("assistant.chat")),  # noqa: B008
-) -> dict:
-    """Chat with AI assistant about dashboard state.
+) -> JSONResponse:
+    """Retired endpoint (SC-D11, issue #1330).
 
-    When ``tools_enabled: true`` is set, the Anthropic tool-use loop is
-    activated and the response may contain ``tool_calls`` for the client to
-    render as confirmation cards (issue #89).
+    Returns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console
+    conversation API at /api/v1/staff/threads.
     """
-    try:
-        body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid JSON") from None
-
-    try:
-        req = assistant_contract.AssistantChatRequest(**body)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=str(e)) from e
-
-    now_ts = datetime.now(UTC).isoformat()
-
-    if req.tools_enabled:
-        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not anthropic_key:
-            raise HTTPException(
-                status_code=503,
-                detail="ANTHROPIC_API_KEY not configured; tool-use requires Anthropic.",
-            )
-        try:
-            result = await assistant_tools.call_anthropic_with_tools(
-                api_key=anthropic_key,
-                prompt=req.prompt,
-                context=req.context.dict(),
-                model=DEFAULT_LLM_MODEL,
-                tools_enabled=True,
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.error("Anthropic tool-use error: %s", exc)
-            raise HTTPException(status_code=502, detail=f"Anthropic error: {exc}") from exc
-        return {
-            "message": result["message"],
-            "stop_reason": result["stop_reason"],
-            "tool_calls": result["tool_calls"],
-            "provider": "anthropic",
-            "timestamp": now_ts,
-        }
-
-    response_text = await _dispatch_to_ai_provider_for_chat(
-        provider=req.provider,
-        prompt=req.prompt,
-        context=req.context.dict(),
+    detail = (
+        "The legacy assistant chat endpoint has been retired (SC-D11, issue #1330). "
+        "Use the Staff Console conversation API at /api/v1/staff/threads."
     )
-    return {
-        "response": response_text,
-        "provider": req.provider or "ollama_local",
-        "context_used": req.context.dict(),
-        "timestamp": now_ts,
+    headers = {
+        "Link": '</api/v1/staff/threads>; rel="successor-version"',
+        "Sunset": "Wed, 25 Sep 2026 00:00:00 GMT",
     }
+    return JSONResponse(
+        status_code=410,
+        headers=headers,
+        content={
+            "error": detail,
+            "detail": detail,
+            "redirect_url": "/api/v1/staff/threads",
+            "retired_in": "4.10.0",
+        },
+    )
 
 
 @router.post(

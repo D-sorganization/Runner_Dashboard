@@ -234,38 +234,6 @@
         "title": "AssistantChatResponse",
         "type": "object"
       },
-      "AssistantToolChatResponse": {
-        "description": "Response when tools_enabled=true.\n\n``stop_reason`` is \"tool_use\" when the model wants to call tools;\n\"end_turn\" when it has produced a final answer.\n``tool_calls`` is non-empty when stop_reason == \"tool_use\".",
-        "properties": {
-          "message": {
-            "additionalProperties": true,
-            "title": "Message",
-            "type": "object"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "stop_reason": {
-            "title": "Stop Reason",
-            "type": "string"
-          },
-          "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
-          },
-          "tool_calls": {
-            "items": {
-              "$ref": "#/components/schemas/ToolCallCard"
-            },
-            "title": "Tool Calls",
-            "type": "array"
-          }
-        },
-        "required": ["message", "stop_reason", "provider", "timestamp"],
-        "title": "AssistantToolChatResponse",
-        "type": "object"
-      },
       "AuditHistoryResponse": {
         "description": "Paginated audit history for assistant tool executions.",
         "properties": {
@@ -4151,31 +4119,6 @@
         "title": "TokenCreateRequest",
         "type": "object"
       },
-      "ToolCallCard": {
-        "description": "A tool call proposed by the assistant; may require confirmation.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "input": {
-            "additionalProperties": true,
-            "title": "Input",
-            "type": "object"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "requires_confirmation": {
-            "title": "Requires Confirmation",
-            "type": "boolean"
-          }
-        },
-        "required": ["id", "name", "input", "requires_confirmation"],
-        "title": "ToolCallCard",
-        "type": "object"
-      },
       "ToolExecuteResponse": {
         "description": "Result of a tool execution.",
         "properties": {
@@ -5543,22 +5486,14 @@
     },
     "/api/assistant/chat": {
       "post": {
-        "description": "Chat with AI assistant about dashboard state.\n\nWhen ``tools_enabled: true`` is set, the Anthropic tool-use loop is\nactivated and the response may contain ``tool_calls`` for the client to\nrender as confirmation cards (issue #89).",
+        "description": "Retired endpoint (SC-D11, issue #1330).\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console\nconversation API at /api/v1/staff/threads.",
         "operationId": "assistant_chat_api_assistant_chat_post",
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/AssistantChatResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/AssistantToolChatResponse"
-                    }
-                  ],
-                  "title": "Response Assistant Chat Api Assistant Chat Post"
+                  "$ref": "#/components/schemas/AssistantChatResponse"
                 }
               }
             },

@@ -26,6 +26,8 @@ import { CODEBASE_QUICK_CHIPS } from "./mobileTypes";
 export interface CodebaseChatProps {
   /** Injectable fetch (tests). Defaults to the global `fetch`. */
   fetchImpl?: typeof fetch;
+  /** Navigate to a tab (e.g. Staff Console). */
+  onNavigate?: (tabId: string) => void;
 }
 
 /** Minimal shape of a `/api/repos` entry we care about (extra fields tolerated). */
@@ -33,8 +35,12 @@ interface RepoEntry {
   name: string;
 }
 
-export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactElement {
-  const doFetch = fetchImpl ?? (typeof fetch !== "undefined" ? fetch : undefined);
+export function CodebaseChat({
+  fetchImpl,
+  onNavigate,
+}: CodebaseChatProps): React.ReactElement {
+  const doFetch =
+    fetchImpl ?? (typeof fetch !== "undefined" ? fetch : undefined);
 
   const [repos, setRepos] = useState<string[]>([]);
   const [repo, setRepo] = useState("");
@@ -66,9 +72,14 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
     };
   }, [doFetch]);
 
-  const updateMessage = useCallback((id: number, patch: Partial<ChatMessage>) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
-  }, []);
+  const updateMessage = useCallback(
+    (id: number, patch: Partial<ChatMessage>) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+      );
+    },
+    [],
+  );
 
   const send = useCallback(
     async (text?: string) => {
@@ -112,7 +123,10 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
             const { done, value } = await reader.read();
             if (done) break;
             acc += decoder.decode(value, { stream: true });
-            updateMessage(assistantId, { content: acc || "Receiving…", streaming: true });
+            updateMessage(assistantId, {
+              content: acc || "Receiving…",
+              streaming: true,
+            });
           }
           updateMessage(assistantId, {
             content: acc || "The assistant returned an empty response.",
@@ -122,7 +136,9 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
           const data = await resp.json().catch(() => ({}));
           updateMessage(assistantId, {
             content:
-              data.response ?? data.message ?? "The assistant returned an empty response.",
+              data.response ??
+              data.message ??
+              "The assistant returned an empty response.",
             streaming: false,
           });
         }
@@ -153,17 +169,80 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
   return (
     <section
       aria-label="Codebase assistant"
-      style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        marginTop: 16,
+      }}
     >
       <h3 style={headingStyle}>Codebase assistant</h3>
       <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
-        Ask questions about a repository. Pick a repo and point the assistant at its
-        local checkout; Maxwell-Daemon reads the code to answer.
+        Ask questions about a repository. Pick a repo and point the assistant at
+        its local checkout; Maxwell-Daemon reads the code to answer.
       </p>
+
+      {/* Staff Console role handoff notice */}
+      <div
+        style={{
+          padding: "8px 12px",
+          borderRadius: 8,
+          background: "var(--bg-tertiary)",
+          border: "1px solid var(--border)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          fontSize: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontWeight: 600,
+          }}
+        >
+          <span>Staff Console Codebase Assistants</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            aria-label="Ask Cartographer"
+            onClick={() => onNavigate?.("staff")}
+            style={{
+              ...chipStyle,
+              background: "var(--accent-blue-subtle, rgba(56, 139, 253, 0.15))",
+              fontWeight: 600,
+            }}
+          >
+            Ask Cartographer (maps &amp; architecture)
+          </button>
+          <button
+            type="button"
+            aria-label="Ask Librarian"
+            onClick={() => onNavigate?.("staff")}
+            style={{
+              ...chipStyle,
+              background: "var(--accent-green-subtle, rgba(46, 160, 67, 0.15))",
+              fontWeight: 600,
+            }}
+          >
+            Ask Librarian (docs &amp; endpoints)
+          </button>
+        </div>
+      </div>
 
       {/* Repo picker */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
+        <label
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            fontSize: 11,
+          }}
+        >
           <span style={{ color: "var(--text-muted)" }}>Repository</span>
           <input
             aria-label="Repository"
@@ -179,8 +258,18 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
             ))}
           </datalist>
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11, flex: 1 }}>
-          <span style={{ color: "var(--text-muted)" }}>Local path (repo_root)</span>
+        <label
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            fontSize: 11,
+            flex: 1,
+          }}
+        >
+          <span style={{ color: "var(--text-muted)" }}>
+            Local path (repo_root)
+          </span>
           <input
             aria-label="Local repository path"
             value={repoRoot}
@@ -208,7 +297,14 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
         }}
       >
         {messages.length === 0 ? (
-          <div style={{ color: "var(--text-muted)", fontSize: 12, margin: "auto", textAlign: "center" }}>
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: 12,
+              margin: "auto",
+              textAlign: "center",
+            }}
+          >
             {ready
               ? "Ask where something is handled, what an endpoint does, or how a subsystem works."
               : "Pick a repository above to start a codebase Q&A session."}
@@ -219,7 +315,10 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
       </div>
 
       {/* Codebase quick-chips */}
-      <div aria-label="Codebase quick questions" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      <div
+        aria-label="Codebase quick questions"
+        style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
+      >
         {CODEBASE_QUICK_CHIPS.map((chip) => (
           <button
             key={chip}
@@ -243,7 +342,9 @@ export function CodebaseChat({ fetchImpl }: CodebaseChatProps): React.ReactEleme
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           rows={1}
-          placeholder={ready ? "Ask about this repository…" : "Pick a repository first"}
+          placeholder={
+            ready ? "Ask about this repository…" : "Pick a repository first"
+          }
           style={{
             background: "var(--bg-tertiary)",
             border: "1px solid var(--border)",

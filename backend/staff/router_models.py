@@ -52,6 +52,13 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
         "contract seam",
         "contract seams",
         "dependency graph",
+        "where is",
+        "codebase question",
+        "codebase map",
+        "codebase search",
+        "ask codebase",
+        "locate code",
+        "where is handled",
     ),
     "sanitation": (
         "clean up stale",
@@ -68,6 +75,10 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
         "doc audit",
         "update readme",
         "readme.md",
+        "codebase docs",
+        "explain endpoint",
+        "what does",
+        "how does",
     ),
     "maintenance": (
         "runner offline",
@@ -131,6 +142,14 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
         "meeting agenda",
         "board proposal",
         "meeting minutes",
+    ),
+    "maxwell": (
+        "maxwell daemon",
+        "maxwell status",
+        "maxwell task",
+        "local tools",
+        "desktop agent",
+        "daemon health",
     ),
 }
 
