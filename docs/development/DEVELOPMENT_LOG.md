@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1322 · SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role
+### DL-#1315 · SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1315 (epic #1349 / umbrella #1354)
+- **Branch:** `feat/1315-barb-routing`
+- **Paths:** `backend/staff/router.py`, `backend/staff/router_models.py`, `backend/routers/staff_routing.py`, `backend/server.py`, `tests/unit/test_staff_router.py`, `tests/api/test_staff_routing_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_router.py` 9 passed; `pytest tests/api/test_staff_routing_api.py` 4 passed; ruff clean; mypy 0 errors across 6 files; all files <= 500 lines)
+- **Summary:** Implemented Barb two-stage request router (`backend/staff/router.py`, `backend/staff/router_models.py`) and FastAPI endpoints (`backend/routers/staff_routing.py`). Stage 1 evaluates deterministic pre-router rules (explicit @mentions, /role commands, Barb self-handling keywords, specialist role capability keywords, code change detection). Stage 2 uses roster metadata with quick fallback mode when LLM is unavailable. Prompts below confidence threshold ask a single clarifying question rather than guessing. Handoff execution posts structured handoff cards ('Barb → Role: reason'), creates/resumes destination threads, links WorkItemStore tracked work items (SC-C3), routes code modifications to Code Request pipeline (#1279), and records owner overrides with auditable routing feedback (SC-C7).
+- **Next step:** Push branch, open PR referencing Fixes #1315, enable auto-merge, and monitor CI to green merge.
+
+### DL-#1322 · SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1322 (epic #1351 / umbrella #1354)
 - **Branch:** `feat/1322-stalled-job-detection`
+- **PR:** #1402
 - **Paths:** `backend/staff/maintenance_detect.py`, `backend/staff/maintenance.py`, `backend/staff/actions.py`, `backend/routers/staff_proposals.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_detect_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_maintenance_detect.py` 9 passed; `pytest tests/api/test_staff_maintenance_detect_api.py` 2 passed; full maintenance suite 39 passed; ruff clean; mypy 0 errors; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_maintenance_detect.py` 9 passed; `pytest tests/api/test_staff_maintenance_detect_api.py` 2 passed; full maintenance suite 39 passed; ruff clean; mypy 0 errors; all files <= 500 lines; CI passed green)
 - **Summary:** Implemented autonomous stalled-job detection and remediation playbooks (`backend/staff/maintenance_detect.py`) for the Fleet Maintenance role. Detectors include queued too long with idle matching runners, running past p95 * 3, runner online but listener log stale, runner offline with assigned job, and ghost runner registrations. Automatically executes low-risk remediations (cancel and rerun, restart wedged listener) and generates action proposals in the Maintenance thread for medium/high-risk actions (run cancel, runner remove) awaiting operator approval. Isolates exceptions per detector, logs SC-A8 audit records, and exposes `POST /api/v1/staff/maintenance/detect-stalled`.
-- **Next step:** Push branch, open PR referencing Fixes #1322, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1402.
 
 ### DL-#1307 · SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree
 
