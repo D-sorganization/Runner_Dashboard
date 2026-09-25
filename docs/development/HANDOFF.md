@@ -1,3 +1,37 @@
+# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/fleet-project-tracking`; Issue #1434; DL-#1434.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; PR #1441 (auto-merge armed); companion Repository_Management#1761.
+
+## Objective and Status
+
+- One prioritised status view of every fleet project, plus the fleet-curator worklist of untracked work.
+- Implemented: `backend/projects/priorities.py`, `coverage.py`, `rollup.py`; `service.fleet_overview`,
+  `load_priorities`, `fetch_open_items`, `fetch_org_repos`; routes `/api/projects` (+summary),
+  `/api/projects/priorities`, `/api/projects/untracked`; `config/projects.json` now lists all active org repos;
+  frontend `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`; regenerated OpenAPI contract.
+- Decisions: priority lives centrally in Repository_Management (owner-set, fleet-wide), charters stay per repo;
+  coverage is deterministic so the curator role only judges, never discovers.
+
+## Validation
+
+- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
+- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
+- `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
+- `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. Repository_Management: `fleet-curator` role + `config/project_priorities.yaml` from the owner interview.
+3. Charter PRs for the repositories that had none (fleet charter sweep drafts).
+
+---
+
 # Current handoff — SC-D9: Accessibility and keyboard pass on the Staff Console (#1343)
 
 Last updated: 2026-09-25

@@ -6,13 +6,20 @@ through the shared GitHub client (``gh_utils.gh_api``), parses them with the
 mirrored charter contract, joins the latest ``project-steward`` run from the staff
 run store, and caches the result for ``CACHE_TTL_SECONDS``.
 
+It also joins each repository's open issues/PRs against the charter
+(``coverage``), and ``fleet_overview`` layers the owner's priority tiers from
+Repository_Management ``config/project_priorities.yaml`` on top (``rollup``).
+
 Postconditions: ``project_overview`` never raises for a repository problem — a
 missing charter yields ``charter_present: false`` and any fetch/parse failure is
-reported in ``error``; the route therefore never answers 5xx for one bad repo.
+reported in ``error`` (``coverage_error`` for the open-item join); the route
+therefore never answers 5xx for one bad repo. A missing or malformed priority
+file leaves every project ``unranked`` and is reported in ``priorities_error``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
@@ -27,7 +34,10 @@ from cache_utils import cache_get, cache_set
 from dashboard_config import ORG
 from fastapi import HTTPException
 from gh_utils import gh_api
-from projects.charter import CharterError, feature_progress, parse_charter, parse_decisions_needed
+from projects import rollup
+from projects.charter import CharterError, Feature, feature_progress, parse_charter, parse_decisions_needed
+from projects.coverage import classify
+from projects.priorities import PRIORITIES_PATH, PRIORITIES_REPO, PriorityError, ProjectPriority, parse_priorities
 from staff.store import RunStore, get_store
 
 log = logging.getLogger("dashboard.projects")
@@ -47,6 +57,7 @@ DEFAULT_REPOS: tuple[str, ...] = (
 )
 _REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _STEWARD_LOOKBACK = 200
+_MAX_PAGES = 5  # 500 open items per repo is plenty for a coverage signal
 
 Fetcher = Callable[[str], Awaitable[dict[str, Any]]]
 
@@ -99,6 +110,49 @@ async def fetch_repo_file(repo: str, path: str, fetch: Fetcher | None = None) ->
         raise HTTPException(status_code=502, detail=f"GitHub returned undecodable content for {path}") from exc
 
 
+async def _paged(endpoint: str, fetch: Fetcher) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for page in range(1, _MAX_PAGES + 1):
+        batch: Any = await fetch(f"{endpoint}&per_page=100&page={page}")
+        if not isinstance(batch, list) or not batch:
+            break
+        rows.extend(r for r in batch if isinstance(r, dict))
+        if len(batch) < 100:
+            break
+    return rows
+
+
+async def fetch_open_items(repo: str, fetch: Fetcher | None = None) -> list[dict[str, Any]]:
+    """Open issues and pull requests (the issues API returns both)."""
+    return await _paged(f"/repos/{ORG}/{repo}/issues?state=open", fetch or _default_fetch())
+
+
+async def fetch_org_repos(fetch: Fetcher | None = None) -> list[dict[str, Any]]:
+    """Every repository in ``GITHUB_ORG`` (cached), for the unregistered-repo check."""
+    cached = cache_get("projects:org-repos", CACHE_TTL_SECONDS)
+    if cached is None:
+        cached = await _paged(f"/orgs/{ORG}/repos?type=all", fetch or _default_fetch())
+        cache_set("projects:org-repos", cached)
+    return cached
+
+
+async def load_priorities(fetch: Fetcher | None = None) -> tuple[dict[str, ProjectPriority], str | None]:
+    """``(priorities, error)``; never raises. The parsed result is cached like the overviews."""
+    cached = cache_get("projects:priorities", CACHE_TTL_SECONDS)
+    if cached is not None:
+        return cached
+    result: tuple[dict[str, ProjectPriority], str | None]
+    try:
+        text = await fetch_repo_file(PRIORITIES_REPO, PRIORITIES_PATH, fetch)
+        result = ({}, "priority file not found") if text is None else (parse_priorities(text), None)
+    except PriorityError as exc:
+        result = ({}, f"priorities invalid: {exc}")
+    except HTTPException as exc:
+        result = ({}, f"github: {exc.detail}")
+    cache_set("projects:priorities", result)
+    return result
+
+
 def last_steward_run(repo: str, store: RunStore | None = None) -> dict[str, Any] | None:
     """Latest ``project-steward`` run recorded for ``repo`` on this node, or ``None``."""
     runs = (store or get_store()).list_runs(limit=_STEWARD_LOOKBACK, role=STEWARD_ROLE)
@@ -117,12 +171,14 @@ def _empty(repo: str) -> dict[str, Any]:
         "status_present": False,
         "decisions_needed": [],
         "last_steward_run": None,
+        "coverage": None,
     }
 
 
 async def build_project(repo: str, fetch: Fetcher | None = None, store: RunStore | None = None) -> dict[str, Any]:
     """Assemble one repository's overview. Never raises for repository-level problems."""
     result = _empty(repo)
+    features: list[Feature] = []
     try:
         charter = await fetch_repo_file(repo, CHARTER_PATH, fetch)
         if charter is not None:
@@ -142,6 +198,10 @@ async def build_project(repo: str, fetch: Fetcher | None = None, store: RunStore
         log.warning("projects: %s overview failed: %s", repo, exc)
         result["error"] = f"{type(exc).__name__}: {exc}"
     try:
+        result["coverage"] = classify(repo, features, await fetch_open_items(repo, fetch))
+    except HTTPException as exc:
+        result["coverage_error"] = f"github: {exc.detail}"
+    try:
         result["last_steward_run"] = last_steward_run(repo, store)
     except Exception as exc:  # noqa: BLE001 — store trouble is reported, not fatal
         log.warning("projects: %s steward lookup failed: %s", repo, exc)
@@ -159,3 +219,14 @@ async def project_overview(repo: str, fetch: Fetcher | None = None, store: RunSt
     else:
         cached = {**cached, "last_steward_run": last_steward_run(repo, store)}
     return cached
+
+
+async def fleet_overview(repos: list[str], fetch: Fetcher | None = None) -> dict[str, Any]:
+    """Every repo's overview with priorities attached, P0 first, plus the fleet summary."""
+    overviews = await asyncio.gather(*(project_overview(repo, fetch) for repo in repos))
+    prio, prio_error = await load_priorities(fetch)
+    projects = rollup.sort_by_priority(rollup.attach_priorities(overviews, prio))
+    body: dict[str, Any] = {"projects": projects, "summary": rollup.fleet_summary(projects)}
+    if prio_error:
+        body["priorities_error"] = prio_error
+    return body

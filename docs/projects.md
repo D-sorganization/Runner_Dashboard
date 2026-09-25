@@ -49,12 +49,42 @@ in the live API and UI. Passing the synthetic API fixture proves projection
 behavior only. Restore the prior configuration to roll back this additive owner
 list; no plan or source issue is deleted by a configuration change.
 
+## Priorities, coverage and the untracked-work report (#1434)
+
+| Concern                   | Owner                                                 | Mechanism                                                                                                                  |
+| ------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Priority tiers            | The owner (priority interview), Repository_Management | `config/project_priorities.yaml`, fetched like the charters; parsed by `backend/projects/priorities.py`                    |
+| Charter coverage          | This dashboard                                        | `backend/projects/coverage.py` joins charter Tracking refs with the repo's open issues/PRs (`/issues?state=open`, 5 pages) |
+| Fleet rollup and worklist | This dashboard                                        | `backend/projects/rollup.py` (pure functions)                                                                              |
+| Acting on the worklist    | Staff role `fleet-curator` (Repository_Management)    | Reads `GET /api/projects/untracked`; recommends deprecate / integrate / implement / track; proposes to the Board           |
+
+Priority file (`schema_version: 1`):
+
+```yaml
+schema_version: 1
+projects:
+  Runner_Dashboard:
+    tier: P0 # P0 critical focus · P1 high · P2 normal · P3 low · P4 maintenance/sunset
+    focus: Central fleet status and staff console
+    rationale: Every other project is coordinated through it
+    decided: 2026-09-25
+```
+
+A repository missing from the file is `unranked` and sorts last. A missing or malformed file never fails a
+route: every repository is `unranked` and the list response carries `priorities_error`.
+
+An open issue or PR is **tracked** when a charter feature's Tracking cell names it, or when its title/body
+references a tracked number in the same repository (`Part of #N`, `Fixes #N`), so epic children and fixing
+PRs count. Everything else is **untracked**.
+
 ## API (`/api/projects`)
 
-| Method | Path                   | Auth       | Purpose                                                                  |
-| ------ | ---------------------- | ---------- | ------------------------------------------------------------------------ |
-| GET    | `/api/projects`        | fleet peer | Every configured repository, in config order, cached 10 minutes per repo |
-| GET    | `/api/projects/{repo}` | fleet peer | One configured repository; `404` when the name is not in the config      |
+| Method | Path                       | Auth       | Purpose                                                                                                                                       |
+| ------ | -------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/projects`            | fleet peer | Every configured repository, P0 first (config order within a tier), cached 10 minutes per repo, plus `summary` and `priorities_error?`        |
+| GET    | `/api/projects/priorities` | fleet peer | Tier vocabulary (`tiers[]`), the owner's ranking (`projects{}`), `source`, `error?`                                                           |
+| GET    | `/api/projects/untracked`  | fleet peer | Curator worklist: `repos[]` (repo, tier, untracked items), `total_untracked`, `repos_without_charter[]`, `unregistered_repos[]`, `org_error?` |
+| GET    | `/api/projects/{repo}`     | fleet peer | One configured repository; `404` when the name is not in the config                                                                           |
 
 Per repository:
 

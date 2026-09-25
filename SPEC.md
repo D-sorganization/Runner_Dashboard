@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-25 | #1434                  | Projects: fleet-wide prioritised status. Owner tiers P0-P4 from Repository_Management `config/project_priorities.yaml` (`GET /api/projects/priorities`), `GET /api/projects` ordered P0 first with a fleet `summary`, per-repo charter coverage of open issues/PRs, `GET /api/projects/untracked` fleet-curator worklist, `config/projects.json` lists every active org repo; tier badge, coverage and summary bar on the Projects tab.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-09-25 | #1343                  | SC-D9: Staff Console accessibility and keyboard pass. The thread is a polite `role="log"` and the only live region. Focus follows a thread switch via `Composer.focusOnThreadChange`; on mobile it goes to the heading, then back to search. Visible focus rings, reduced-motion scrolling, clearer status labels, and Staff shortcuts in the global `?` Help panel. Real axe e2e on `/staff` and the `?` dialog, plus a mobile keyboard walkthrough.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-09-25 | #1281                  | CR-1: Rename Feature Requests → Code Requests with back-compat aliases. Added `/api/code-requests*` endpoints (`/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch`) and preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`. Added `code-requests.manage` scope aliased bidirectionally with `feature-requests.manage`. Idempotently migrated stored history from `feature_requests.json` to `code_requests.json` with `.migrated` marker. Updated frontend routes and nav to `code-requests` with back-compat redirects and shims.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 2026-09-25 | #1327                  | SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate. Implemented `FollowupEngine` (`backend/staff/followup.py`), REST API endpoints `POST /api/v1/staff/followup/sweep`, `GET /api/v1/staff/followup/status`, `GET /api/v1/staff/followup/digest` (`backend/routers/staff_followup.py`), mounted in `backend/server.py`. Added playbooks for retryable/stalled runs (retry once under max_attempts, escalate to Barb's thread and send `staff.escalation` Web Push on repeated failure), auth expiration alerts with action items, input-needed prompting in Barb's thread, and wrong-owner re-routing with SC-A8 audit logging. Added debounce and idempotency guarantees, daily digest counts (`closed`, `retried`, `rerouted`, `escalated`, `still_open`), and a watchdog detector raising critical fleet event `barb_followup_watchdog` if $\ge 2$ sweep intervals are missed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -299,6 +300,17 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   `STAFF_WORKTREES_ROOT`, `STAFF_RM_ROOT`, `STAFF_RM_PYTHON`, `STAFF_MAX_CONCURRENT_RUNS`,
   `STAFF_RUN_TIMEOUT_SECONDS`. Docs: `docs/staff-hub.md`. TDD: 16 tests in
   `tests/api/test_staff_runner.py` (fake CLI end-to-end) and 4 in `tests/api/test_staff_auth_perimeter.py`.
+- **2026-09-25:** Projects — fleet-wide prioritised status and untracked-work report (#1434, epic #1192).
+  `backend/projects/priorities.py` parses Repository_Management `config/project_priorities.yaml`
+  (`schema_version: 1`, tiers P0-P4, absent repo = `unranked`); `coverage.py` splits a repo's open issues/PRs
+  into tracked (a charter Tracking cell names it, or it references a tracked number) and untracked (capped at
+  100 listed); `rollup.py` attaches tiers, sorts P0 first (config order within a tier), builds the fleet
+  `summary` and the curator report. Routes: `GET /api/projects` (+`summary`, `priorities_error`),
+  `GET /api/projects/priorities`, `GET /api/projects/untracked` (untracked items, charter-less repos, org repos
+  missing from `config/projects.json`). Missing/malformed priority file → every repo `unranked` with
+  `priorities_error`; open-item fetch failure → `coverage: null` + `coverage_error`; never 5xx. Frontend:
+  `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`. TDD: `tests/api/test_projects_tracking.py`,
+  `frontend/src/pages/__tests__/Projects.test.tsx`.
 - **2026-09-22:** Projects tab — per-repo charter progress, decisions needed and last project-steward run
   (#1199, epic #1192). New package `backend/projects/` (`charter.py` mirrors the Repository_Management
   `shared_scripts/project_charter.py` contract — `| ID | Feature | Status | Tracking | Notes |`, status
@@ -474,7 +486,6 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 - **2026-09-03 (2.5.197):** Durable half of the runner `/tmp` exhaustion fix
   (Repository_Management#1489 via #1511, program #1505). (1) The `/tmp`
   litter GC from 2.5.194 is factored into `cleanup_litter_in <dir> <age_min>`
-
   - `tmp_litter_age_min` and gains the `tmp*` (Python `tempfile` default
     prefix) and `pymp-*` (multiprocessing) patterns observed alongside `pip-*`
     in both incidents. (2) New `cleanup_runner_tmpdirs` applies the same GC to
@@ -638,7 +649,6 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   `busy_without_listener`. Schedule defaults, timed entries, and manual targets
   are capped by `max_count`; dashboard schedule edits preserve the ceiling.
 - **2026-08-21 (2.5.177):** Deterministic and offline-capable dashboard builds and deployments (issue #1085).
-
   - Switched frontend CI workflows and deployment scripts to `npm ci` ensuring strict lockfile synchronization.
   - Added `deploy/package-dashboard-artifact.sh` generating immutable tarballs with `FILES.txt` inventory, `deployment.json` metadata, and SHA-256 sidecars conforming to `docs/ARTIFACT_BUILD.md`.
   - Added `--checksum <sha256>` verification to `deploy/install-dashboard-artifact.sh` and offline dependency installation from `backend/wheels`.
@@ -1797,7 +1807,6 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
-
   - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
     min/max/default online counts, systemd unit pattern, labels, start/stop
     enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
@@ -2842,8 +2851,8 @@ Response shape (`schema_version` `1.0.0`):
       "experimental": false,
       "editable": true,
       "remote": false,
-      "enabled": true // false for retired providers (jules_cli, jules_api), #1193
-    }
+      "enabled": true, // false for retired providers (jules_cli, jules_api), #1193
+    },
   ],
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
@@ -2854,14 +2863,14 @@ Response shape (`schema_version` `1.0.0`):
     "antigravity": {
       "installed": false,
       "authenticated": false,
-      "detail": "agy not found on PATH"
+      "detail": "agy not found on PATH",
     },
     "claude_code_cli": {
       "installed": true,
       "authenticated": true,
-      "detail": "Ready"
-    }
-  }
+      "detail": "Ready",
+    },
+  },
 }
 ```
 

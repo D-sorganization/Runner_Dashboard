@@ -86,7 +86,9 @@ def _run(run_id: str, role: str, repo: str, **fields: Any) -> store_mod.RunRecor
 def _fake_gh(files: dict[str, str]) -> Any:
     """A ``gh_api`` stand-in serving ``{"<repo>/<path>": text}``; anything else is a 404."""
 
-    async def fake(endpoint: str) -> dict[str, Any]:
+    async def fake(endpoint: str) -> Any:
+        if "/issues?" in endpoint:
+            return []  # no open issues/PRs: coverage is trivially complete
         for key, text in files.items():
             repo, path = key.split("/", 1)
             if endpoint == f"/repos/{service.ORG}/{repo}/contents/{path}":
@@ -198,6 +200,7 @@ async def test_build_project_charter_missing(projects_env: Path) -> None:  # noq
         "status_present": False,
         "decisions_needed": [],
         "last_steward_run": None,
+        "coverage": {"open_items": 0, "tracked": 0, "percent_tracked": 100, "untracked_count": 0, "untracked": []},
     }
 
 
@@ -263,7 +266,7 @@ def test_overview_is_cached_but_steward_run_is_live(client: TestClient, monkeypa
     monkeypatch.setattr(service, "gh_api", counting)
     assert client.get("/api/projects/Alpha").json()["last_steward_run"] is None
     first_calls = len(calls)
-    assert first_calls == 2  # charter + status
+    assert first_calls == 3  # charter + status + open items (one page)
     store_mod.get_store().create_run(_run("r9", "project-steward", "Alpha"))
     again = client.get("/api/projects/Alpha").json()
     assert again["last_steward_run"]["id"] == "r9"
