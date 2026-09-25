@@ -261,7 +261,11 @@ def test_detector_exceptions_isolated_per_detector() -> None:
 
 
 def test_simulated_wedged_listener_restarted_and_verified() -> None:
-    """Low-risk wedged listener auto-executes restart and verifies runner returns online."""
+    """Wedged listener: runner_restart is a registered medium-risk action, so the detector
+    proposes it (a "low" detection label cannot downgrade the gate, #1344); once approved
+    it restarts and verifies the runner is back online."""
+    from staff.actions import execute_proposal
+
     detector = StalledJobDetector()
 
     wedged_detection = DetectionItem(
@@ -278,12 +282,21 @@ def test_simulated_wedged_listener_restarted_and_verified() -> None:
     with patch.object(detector, "_collect_detections", return_value=([wedged_detection], [])):
         report = detector.run_scan(auto_remediate=True)
 
-        assert len(report.detections) == 1
-        assert len(report.auto_executed) == 1
-        executed = report.auto_executed[0]
-        assert executed["action"] == "maintenance.runner_restart"
-        assert executed["success"] is True
-        assert executed["verification_ok"] is True
+    assert len(report.detections) == 1
+    assert report.auto_executed == []
+    assert len(report.proposals_created) == 1
+    proposal = report.proposals_created[0]
+    assert (proposal["action"], proposal["risk"]) == ("maintenance.runner_restart", "medium")
+
+    # Simulated runner backend: the restart succeeds and the runner reports online again.
+    with (
+        patch("staff.maintenance._get_runner_state", return_value={"busy": False, "status": "online"}),
+        patch("staff.maintenance._run_service_command", return_value=(0, "restarted", "")),
+    ):
+        res = execute_proposal(proposal["id"], approver=TEST_OPERATOR)
+
+    assert res.success is True
+    assert res.verification_ok is True
 
 
 def test_high_risk_remediation_waits_for_approval() -> None:

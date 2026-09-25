@@ -1,3 +1,28 @@
+# Current handoff — SC-E7: Maintenance safety tests and gates (#1344)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1344`; branch `test/1344-maintenance-safety`; PR: see branch; Issue #1344; DL-#1344. Commit: SELF.
+
+## Objective and Status
+
+- Found: the SC-E3 catalogue's operations were stubs that reported success without acting, `_get_runner_state` always said "online, not busy", group actions ignored `max_count` at run time, and the stalled-job detector auto-executed by its own detection label, so any detection could downgrade a high-risk action.
+- Now:
+  - `MAINTENANCE_POLICY` (risk, scope, disruptive, target parameter, max targets) lives in `staff/maintenance_policy.py` and drives registration and `check_maintenance_policy`; `maintenance.py` stays under the 500-line cap.
+  - Stubs raise `MaintenanceNotWiredError` and fail as `not_wired`.
+  - `_run_group` refuses oversized groups and stops on token expiry, marking the rest as skipped.
+  - Every real invocation is audited with its `failure_class`; dry runs skip verification.
+  - `run_scan` gates auto-execution with `can_auto_execute` on the registered action.
+- Tests: `tests/staff/test_maintenance_safety.py` (pinned table, mutation check, limits, owner gate, replay, prompt injection, fault injection). Existing tests that asserted stub success now use a simulated backend, or expect `not_wired` for runner removal.
+- Verification: maintenance/actions/proposals/safety pytest 197 passed, 12 skipped (no-op mutations); ruff clean; `mypy backend/` clean.
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. #1448: wire the stub operations one at a time, removing each from `UNWIRED_ACTIONS` as it lands.
+
 # Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
 
 Last updated: 2026-09-25
