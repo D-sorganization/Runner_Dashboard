@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1310 · SC-E2: Short-lived, scoped credentials for staff runs
+### DL-#1308 · SC-B5: Structured reply contract for chat turns
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1308 (epic #1348 / umbrella #1354), pair to Repository_Management#1735
+- **Branch:** `feat/1308-reply-contract`
+- **PR:** not created
+- **Paths:** `backend/staff/reply_contract.py`, `backend/staff/roles.py`, `backend/staff/workspace.py`, `backend/staff/__init__.py`, `tests/unit/test_reply_contract.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (local pytest 28 passed, mypy, ruff pass)
+- **Summary:** Implemented structured conversational reply contract parser in `backend/staff/reply_contract.py` supporting markdown prose, optional fenced ```staff-actions JSON block (`[{action, params, reason}]`), optional `handoff: <role>`, and optional `question: <text>`. Validates actions against strict JSON schema and action vocabulary. Enforces role permissions and fleet_actions boundaries, dropping unauthorized actions with system notes. Protects against prompt-injection from blockquotes and outer code fences. Extended `RoleSpec` with `defers_to` property and flexible persona parsing. Updated `workspace.py` with `contract_text()` loading and `chat_mode` prompt composition with `CHAT_RULES`.
+- **Next step:** Open PR with `Fixes #1308`.
+
+### DL-#1310 · SC-E2: Short-lived, scoped credentials for staff runs
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1310 (epic #1351 / umbrella #1354)
 - **Branch:** `feat/1310-staff-run-tokens`
 - **PR:** #1376
 - **Paths:** `backend/staff/tokens.py`, `backend/staff/roles.py`, `backend/staff/runner.py`, `backend/staff/reconcile.py`, `backend/staff/validator.py`, `backend/staff/schema.json`, `backend/identity.py`, `tests/unit/test_staff_tokens.py`, `tests/api/test_staff_run_tokens.py`, `tests/unit/test_staff_roles.py`, `SPEC.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (local pytest, mypy, ruff pass)
+- **Last verified:** 2026-09-24 (shipped in PR #1376)
 - **Summary:** Implemented short-lived, fine-grained Bearer credentials for staff runs (`backend/staff/tokens.py`). Tokens are bound to ephemeral principal `staff:<role>:<run_id>` with TTL matching run deadline. Scopes are computed as intersection of role's `fleet_actions` (SC-E1) and `ACTION_POLICY` catalog, mapping maintenance actions to dashboard route scopes (`runners.control`, `fleet.control`, `workflows.control`, `system.control`, `fleet.maintain`). Injected as `FLEET_API_TOKEN` into subprocess env. Enforced token revocation upon run completion in runner finally block and on orphaned run reconciliation. Fail-closed: minting failure sets `failure_class="workspace_error"` before CLI starts.
-- **Next step:** Land PR #1376, release coordination lease on #1310.
+- **Next step:** None (shipped in PR #1376).
 
 ### DL-#1303 · SC-A7: Bounded retry policy for transient staff-run failures and enforce per-provider concurrency
 

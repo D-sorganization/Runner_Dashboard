@@ -27,6 +27,12 @@ FLEET_RULES = (
     "PR URL if any."
 )
 
+CHAT_RULES = (
+    "Fleet rules: conversational turn; TDD, DbC, LoD, DRY; when done, format your reply following "
+    "the reply contract (prose reply, optional fenced staff-actions block, optional handoff: line, "
+    "optional question: line); never invent numbers or run IDs; never report proposed actions as done."
+)
+
 PLAYBOOK_MAX_CHARS = 16000
 
 
@@ -67,6 +73,19 @@ def playbook_text(rel: str, limit: int = PLAYBOOK_MAX_CHARS) -> str:
     except OSError:
         return ""
     return text if len(text) <= limit else text[:limit] + "\n[playbook truncated]"
+
+
+def contract_text(rel: str, limit: int = PLAYBOOK_MAX_CHARS) -> str:
+    """Inline a chat reply contract fragment from the RM checkout (#1735, #1308)."""
+    root = rm_root()
+    if root is None or not rel or Path(rel).is_absolute() or ".." in Path(rel).parts:
+        return ""
+    path = root / rel
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return text if len(text) <= limit else text[:limit] + "\n[contract truncated]"
 
 
 def staff_worktrees_root() -> Path:
@@ -197,16 +216,19 @@ def compose_prompt(
     lease_note: str = "",
     consolidation: str = "",
     focus: str = "",
+    chat_mode: bool = False,
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules.
 
     Kept deliberately plain: role instructions (from RM), the playbook path,
     the target, the PR-consolidation decision when the role has one (#1213),
-    and the non-negotiable fleet rules for an unattended run.
+    optional chat reply contract (#1735, #1308), and the non-negotiable fleet
+    rules for an unattended run or conversational chat turn.
     """
     target = target_ref or "free-form task"
+    turn_type = "a conversational chat turn" if chat_mode else "unattended"
     parts = [
-        f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard.",
+        f"You are the fleet staff role '{role.title}' ({role.name}) running {turn_type} from the Runner Dashboard.",
     ]
     if role.playbook:
         text = playbook_text(role.playbook)
@@ -217,12 +239,16 @@ def compose_prompt(
                 f"Your playbook is Repository_Management/{role.playbook}; read it first if it is available in this "
                 "checkout or as a sibling repository."
             )
-    if role.instructions:
-        parts.append("Role instructions:\n" + role.instructions.strip())
+    instructions = role.instructions.strip() if role.instructions else ""
+    if role.chat and role.chat.get("contract"):
+        c_text = contract_text(role.chat["contract"])
+        if c_text:
+            instructions = f"{instructions}\n\n{c_text}" if instructions else c_text
+    if instructions:
+        parts.append("Role instructions:\n" + instructions)
     if repo:
-        parts.append(
-            f"Repository: {ORG}/{repo}. Target: {target}. You are in an isolated git worktree on branch {branch}."
-        )
+        loc = f" You are in an isolated git worktree on branch {branch}." if branch else ""
+        parts.append(f"Repository: {ORG}/{repo}. Target: {target}.{loc}")
     else:
         parts.append(f"Target: {target}.")
     if operator_prompt:
@@ -233,5 +259,8 @@ def compose_prompt(
         parts.append(consolidation)
     if focus:
         parts.append(focus)
-    parts.append(FLEET_RULES)
+    if chat_mode:
+        parts.append(CHAT_RULES)
+    else:
+        parts.append(FLEET_RULES)
     return "\n\n".join(parts)

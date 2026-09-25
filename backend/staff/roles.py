@@ -59,7 +59,7 @@ class RoleSpec:
     # Optional ``strategy:`` block (RM#1690 / #1213), e.g.
     # ``{"consolidate_when": {"open_prs": 6, "utilisation_pct": 70}}``. Kept as-is; unknown keys ignored downstream.
     strategy: dict[str, Any] = field(default_factory=dict)
-    persona: str = ""
+    persona: dict[str, Any] | str = field(default_factory=dict)
     chat: dict[str, Any] = field(default_factory=dict)
     group: str | None = None
     max_attempts: int = 2
@@ -83,6 +83,15 @@ class RoleSpec:
         if isinstance(appr, dict):
             return {str(k): str(v) for k, v in appr.items()}
         return {}
+
+    @property
+    def defers_to(self) -> tuple[str, ...]:
+        """Roles this role's persona permits handing off to (#1735, #1308)."""
+        if isinstance(self.persona, dict):
+            dt = self.persona.get("defers_to")
+            if isinstance(dt, (list, tuple)):
+                return tuple(str(x) for x in dt)
+        return ()
 
     @property
     def dispatchable(self) -> bool:
@@ -119,7 +128,8 @@ class RoleSpec:
             "retired": self.retired,
             "retired_reason": self.retired_reason,
             "strategy": dict(self.strategy),
-            "persona": self.persona,
+            "persona": dict(self.persona) if isinstance(self.persona, dict) else self.persona,
+            "defers_to": list(self.defers_to),
             "chat": dict(self.chat),
             "group": self.group,
             "max_attempts": self.max_attempts,
@@ -248,7 +258,8 @@ def parse_role(
 
     prompt_template = str(data["prompt_template"]) if data.get("prompt_template") not in (None, "") else None
     scope = dict(data["scope"]) if isinstance(data.get("scope"), dict) else {}
-    persona = str(data.get("persona") or "")
+    raw_persona = data.get("persona")
+    persona: dict[str, Any] | str = dict(raw_persona) if isinstance(raw_persona, dict) else str(raw_persona or "")
     group = str(data["group"]) if data.get("group") is not None else None
     chat = dict(data["chat"]) if isinstance(data.get("chat"), dict) else {}
     retired_reason = str(data.get("retired_reason") or "")

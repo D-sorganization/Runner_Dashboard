@@ -13,3 +13,7 @@ Boundaries (see Repository_Management/docs/sibling-repos.md):
   * Provider CLIs (claude, codex, agy, gemini, cursor-agent, ollama) are
     spawned as subprocesses; nothing here talks to a model API directly.
 """
+
+from staff.reply_contract import ChatReply, ProposedAction, parse_reply
+
+__all__ = ["ChatReply", "ProposedAction", "parse_reply"]

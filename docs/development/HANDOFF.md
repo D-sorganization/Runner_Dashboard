@@ -1,3 +1,42 @@
+# Current handoff — Structured reply contract for chat turns (#1308)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1308-reply-contract`; Issue #1308 (epic #1348 / umbrella #1354); DL-#1308.
+
+## Work
+
+- `backend/staff/reply_contract.py`:
+  - Implemented `parse_reply(text, role=None)`: parses conversational turn outputs into `ChatReply(prose, actions, handoff, question, warnings, dropped_actions, raw)`.
+  - Implemented `ProposedAction(action, params, reason)` with strict schema validation against `ACTIONS_SCHEMA` (`action: str`, `params: dict`, `reason: str`, `additionalProperties: False`).
+  - Implemented `KNOWN_ACTIONS` vocabulary check covering standard actions (`claim_issue`, `open_pr`, `notify_user`, `submit_proposal`, `board.propose`), maintenance actions (`runner.*`, `fleet.*`, `queue.*`, `run.*`, `host.*`, `dashboard.*`), and SC-B6 actions (`staff.dispatch`, `staff.review_pr`, `staff.hold`, `staff.unhold`, `code_request.create`).
+  - Implemented role-based permission verification (`is_action_permitted`) enforcing lease, open_pr, notify_user, proposals, and fleet_actions boundaries. Dropped unauthorized actions are recorded in `dropped_actions` with explanatory warnings.
+  - Implemented prompt-injection protection: ignores action blocks, directives, and fences inside markdown blockquotes (`>`) and nested outer code blocks.
+  - Fail-soft resilience: guaranteed no parser exceptions; malformed JSON or non-array blocks preserve prose reply with warning reporting.
+- `backend/staff/roles.py`:
+  - Added `defers_to` property to `RoleSpec`.
+  - Allowed `persona` to be parsed as `dict[str, Any] | str`, supporting both RM schema dicts and legacy string representations.
+  - Exposed `defers_to` and dict persona in `RoleSpec.to_dict()`.
+- `backend/staff/workspace.py`:
+  - Added `contract_text(rel, limit)` loading reply contract fragments from `rm_root()`.
+  - Extended `compose_prompt()` with `chat_mode` flag, appending contract instructions when `role.chat["contract"]` is set and swapping `FLEET_RULES` for conversational `CHAT_RULES`.
+- `backend/staff/__init__.py`:
+  - Re-exported `ChatReply`, `ProposedAction`, and `parse_reply`.
+- `tests/unit/test_reply_contract.py`:
+  - Added comprehensive test suite with 19 tests covering bare directives, fenced text directives, prose-only, empty/whitespace, malformed JSON, schema violations, unknown actions, permission checks, defers_to warnings, adversarial blockquote prompt injection, nested code fences, multiple action blocks, RM playbook fixtures across all 13 chat roles, and `compose_prompt` chat mode.
+- `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`:
+  - Updated specification changelog and development log.
+
+## Validation
+
+- `pytest tests/unit/test_reply_contract.py`: 19 passed.
+- `pytest tests/unit/test_staff_roles.py tests/unit/test_reply_contract.py`: 28 passed.
+- `ruff check backend/staff/ tests/unit/test_reply_contract.py`: Passed.
+- `ruff format --check backend/staff/ tests/unit/test_reply_contract.py`: Passed.
+- `mypy backend/staff/reply_contract.py backend/staff/roles.py backend/staff/workspace.py`: Passed (0 errors).
+
 # Current handoff — Short-lived, scoped credentials for staff runs (#1310)
 
 Last updated: 2026-09-24
