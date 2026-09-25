@@ -1,10 +1,10 @@
 # Current handoff — SC-B6: Action proposals from conversations with risk-based approval gates (#1313)
 
-Last updated: 2026-09-24
+Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1313-action-proposals`; Issue #1313; DL-#1313.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1313-action-proposals`; Issue #1313; DL-#1313; PR #1396.
 
 ## Work
 
@@ -53,9 +53,49 @@ Last updated: 2026-09-24
 
 ## Next
 
-1. Commit and push to branch `feat/1313-action-proposals`.
-2. Open PR referencing `Fixes #1313`.
-3. Enable auto-merge and verify green CI checks.
+1. Verify CI passes on PR #1396.
+2. Ensure auto-merge merges branch into main.
+3. Release lease on issue #1313.
+
+---
+
+# Previous handoff — SC-F5: External Agent Connection Guides & Troubleshooting (#1334)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `docs/1334-agent-connection-guides`; Issue #1334; DL-#1334; PR #1397.
+
+## Work
+
+- `docs/agents/claude.md`:
+  - Dedicated client connection guide for Claude Code (CLI) and Claude Cowork.
+  - Covers token minting (`agent-claude` identity), configuration via `~/.claude.json` / Claude Desktop JSON, least-privilege scopes (`staff.read`, `staff.write`, `staff.wait`), multi-turn collaboration, Barb verification, and troubleshooting.
+- `docs/agents/codex.md`:
+  - Dedicated client connection guide for Codex CLI.
+  - Covers token minting (`agent-codex` identity), configuration via `~/.codex/config.toml`, work-item tracking and status polling via `staff_work_items`, and error recovery.
+- `docs/agents/grok.md`:
+  - Dedicated client connection guide for Grok Bot.
+  - Covers local execution recipes via curl against `/api/v1/staff`, active Barb/Orchestrator roles, and forward-looking remote MCP connector notes (SC-F6).
+- `docs/agents/connect.md`:
+  - Updated with client guide index linking to Claude, Codex, and Grok guides.
+  - Full catalog of all 25 fleet MCP tools organized across 6 categories (Conversations, Work Items, Actions & Approvals, Runners & Executions, Repositories, System & Health).
+  - Comprehensive SC-F3 classified error troubleshooting table covering `invalid_argument`, `unauthenticated`, `forbidden`, `not_found`, `conflict`, `precondition_failed`, `rate_limited`, `agent_busy`, `agent_timeout`, and `server_error`, with retryability guidance and remediation steps.
+- `docs/staff-hub.md`:
+  - Added cross-reference links in the external agent section to `docs/agents/connect.md` and dedicated client guides.
+- `SPEC.md`:
+  - Updated SC-F5 status to shipped/completed in Change Log and detailed specification narrative.
+- `tests/test_agent_connection_docs.py`:
+  - TDD test suite validating existence and contents of client guides, link integrity, 25-tool MCP catalog completeness, SC-F3 error troubleshooting codes, and line length constraints.
+
+## Validation
+
+- `pytest tests/test_agent_connection_docs.py`: 9 passed in 0.40s.
+- `ruff check docs/ tests/test_agent_connection_docs.py`: All checks passed.
+- Line limits: All new and modified files strictly <= 500 lines.
+
+---
 
 # Previous handoff — SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel (#1323)
 
@@ -88,13 +128,6 @@ Last updated: 2026-09-24
 - `ruff format --check`: 12 files already formatted.
 - `mypy clients/fleet backend/routers/staff_proposals.py backend/routers/staff_threads.py tests/api/test_staff_proposals_api.py tests/clients/`: Success: no issues found in 12 source files.
 - Line limits: All new and modified files strictly <= 500 lines (`fleet_client.py`: 466, `fleet_validators.py`: 188, `fleet_tools.py`: 438, `fleet_mcp.py`: 153, `staff_proposals.py`: 122, `staff_threads.py`: 495, `test_staff_proposals_api.py`: 117, `test_fleet_client.py`: 460, `test_fleet_mcp.py`: 211, `test_fleet_cli.py`: 160).
-
-## Next
-
-1. Commit and push to branch `feat/1323-fleet-mcp-staff`.
-2. Open PR referencing `Fixes #1323`.
-3. Enable auto-merge and verify green CI checks.
-4. Release lease on issue #1323.
 
 ---
 
