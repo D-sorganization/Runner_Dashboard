@@ -62,6 +62,8 @@ class RoleSpec:
     persona: str = ""
     chat: dict[str, Any] = field(default_factory=dict)
     group: str | None = None
+    max_attempts: int = 2
+    fallback_providers: tuple[str, ...] = ()
     valid: bool = True
     errors: tuple[str, ...] = ()
     source_path: str = ""
@@ -102,6 +104,8 @@ class RoleSpec:
             "persona": self.persona,
             "chat": dict(self.chat),
             "group": self.group,
+            "max_attempts": self.max_attempts,
+            "fallback_providers": list(self.fallback_providers),
             "valid": self.valid,
             "errors": list(self.errors),
             "error": self.errors[0] if self.errors else None,
@@ -214,6 +218,13 @@ def parse_role(
     group = str(data["group"]) if data.get("group") is not None else None
     chat = dict(data["chat"]) if isinstance(data.get("chat"), dict) else {}
     retired_reason = str(data.get("retired_reason") or "")
+    raw_retry = data.get("retry")
+    retry_cfg: dict[str, Any] = raw_retry if isinstance(raw_retry, dict) else {}
+    try:
+        max_att = int(retry_cfg.get("max_attempts") or data.get("max_attempts") or 2)
+    except (TypeError, ValueError):
+        max_att = 2
+    fallback_provs = _as_tuple(retry_cfg.get("fallback_providers") or data.get("fallback_providers"))
 
     return RoleSpec(
         name=name,
@@ -246,6 +257,8 @@ def parse_role(
         persona=persona,
         chat=chat,
         group=group,
+        max_attempts=max_att,
+        fallback_providers=fallback_provs,
         valid=len(errors) == 0,
         errors=errors,
         source_path=source_path,

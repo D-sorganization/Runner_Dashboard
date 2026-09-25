@@ -1,4 +1,64 @@
-# Current handoff — Contract check between backend response models and frontend types (#1296)
+# Current handoff — Bounded retry policy for transient staff-run failures and per-provider concurrency (#1303)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1303-bounded-retry-provider-concurrency`; Issue #1303, epic #1347 / umbrella #1354; DL-#1303.
+
+## Work
+
+- `backend/staff/plan.py`:
+  - Extracted `RunRequest` and `RunPlan` dataclasses from `runner.py` into standalone module to adhere strictly to <= 500 lines rule.
+- `backend/staff/retry.py`:
+  - Defined retry policies, classification sets (`RETRYABLE_FAILURE_CLASSES`, `NON_RETRYABLE_FAILURE_CLASSES`).
+  - Implemented exponential backoff with full jitter (`compute_backoff`).
+  - Implemented retry eligibility evaluation (`should_retry`) checking max attempts, retryable failure class, and role budget limits.
+  - Implemented provider fallback chain logic (`next_fallback_provider`).
+  - Implemented post-execution retry handler (`handle_post_execution_retry`) which dispatches next attempt or schedules it for backoff.
+- `backend/staff/roles.py`:
+  - Added `max_attempts` (default 2) and `fallback_providers` to `RoleSpec`, `to_dict()`, and `parse_role()`.
+- `backend/staff/store.py`:
+  - Added columns `retry_of`, `attempt`, `max_attempts`, `next_attempt_at`, and `fallback_provider` to `RunRecord` and `_ADDED_COLUMNS` with SQLite migration.
+  - Added `get_attempts()` and `get_pending_retries()`.
+  - Added `logical_only: bool = True` to `list_runs()`, filtering out child retry attempts by default from roster run lists.
+- `backend/staff/models.py`:
+  - Added retry fields to `StaffRunRecord` and `attempts: list[StaffRunRecord]` to `StaffRunDetailResponse`.
+- `backend/routers/staff.py`:
+  - Aggregated attempt chain in `get_run()` response.
+  - Preserved `logical_only=True` default in `list_runs()`.
+- `backend/staff/runner.py`:
+  - Re-exported `RunRequest` and `RunPlan` from `plan.py`.
+  - Added per-provider concurrency enforcement via `_get_provider_sema()` with `threading.BoundedSemaphore(max_concurrency)`, acquired ahead of node semaphore.
+  - Hooked post-execution retry handling in `_worker`.
+- `backend/staff/reconcile.py`:
+  - Preserved scheduled retries waiting for backoff (`status == 'queued' and rec.next_attempt_at`).
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
+  - Regenerated with `scripts/gen-api-client.sh` and validated drift-free via `--check`.
+- `tests/api/test_staff_retry.py`:
+  - Wrote 20 tests covering exponential backoff, retry matrix, budget stop, fallback chain, serial concurrency enforcement, 429 twice then success acceptance test, and reconciliation survival.
+- `SPEC.md`: Bumped to 2.5.221 with change log and specification updates.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1303 entry.
+
+## Validation
+
+- `pytest tests/api/test_staff_retry.py`: 20 passed.
+- `pytest tests/api/test_staff_retry.py tests/api/test_staff_runner.py tests/api/test_staff_contracts.py tests/unit/test_staff_roles.py tests/unit/test_staff_reconcile.py`: 58 passed.
+- `scripts/gen-api-client.sh --check`: Drift check passed.
+- `ruff check backend/ clients/`: Passed with 0 errors.
+- `ruff format --check backend/ clients/`: Passed with 0 errors.
+- `mypy backend/staff/ backend/routers/staff.py tests/api/test_staff_retry.py`: Passed with 0 errors.
+- All modified and new files strictly <= 500 lines.
+
+## Next
+
+1. Commit and push branch `feat/1303-bounded-retry-provider-concurrency`.
+2. Open PR linking `Fixes #1303` and enable auto-merge.
+3. Once merged, release agent lease on #1303 and clean up worktree.
+
+---
+
+# Previous handoff — Contract check between backend response models and frontend types (#1296)
 
 Last updated: 2026-09-24
 

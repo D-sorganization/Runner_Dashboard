@@ -5915,6 +5915,8 @@ export interface components {
          * @description Response model for GET /api/staff/runs/{id}.
          */
         StaffRunDetailResponse: {
+            /** Attempts */
+            attempts?: components["schemas"]["StaffRunRecord"][];
             /** Events */
             events: components["schemas"]["StaffRunEvent"][];
             run: components["schemas"]["StaffRunRecord"];
@@ -5996,6 +5998,11 @@ export interface components {
          */
         StaffRunRecord: {
             /**
+             * Attempt
+             * @default 1
+             */
+            attempt: number;
+            /**
              * Branch
              * @default
              */
@@ -6029,6 +6036,11 @@ export interface components {
              * @default
              */
             failure_class: string;
+            /**
+             * Fallback Provider
+             * @default
+             */
+            fallback_provider: string;
             /** Id */
             id: string;
             /**
@@ -6051,8 +6063,15 @@ export interface components {
              * @default
              */
             machine: string;
+            /**
+             * Max Attempts
+             * @default 2
+             */
+            max_attempts: number;
             /** Model */
             model?: string | null;
+            /** Next Attempt At */
+            next_attempt_at?: string | null;
             /**
              * On Behalf Of
              * @default
@@ -6095,6 +6114,11 @@ export interface components {
              * @default
              */
             requested_by: string;
+            /**
+             * Retry Of
+             * @default
+             */
+            retry_of: string;
             /**
              * Retryable
              * @default false

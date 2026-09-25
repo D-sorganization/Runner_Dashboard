@@ -194,18 +194,16 @@ async def list_audit(
 ) -> Any:
     """Retrieve durable append-only staff audit rows (SC-A8, Issue #1298)."""
     store = get_audit_store()
-    filt = {
-        k: v
-        for k, v in [
-            ("principal", principal),
-            ("thread_id", thread_id),
-            ("run_id", run_id),
-            ("action", action),
-            ("surface", surface),
-            ("target", target),
-            ("since", since),
-        ]
-    }
+    items = [
+        ("principal", principal),
+        ("thread_id", thread_id),
+        ("run_id", run_id),
+        ("action", action),
+        ("surface", surface),
+        ("target", target),
+        ("since", since),
+    ]
+    filt = {k: v for k, v in items if v is not None}
     entries = store.list_entries(limit=limit, offset=offset, **filt)
     if format == "csv":
         headers = {"Content-Disposition": "attachment; filename=staff_audit.csv"}
@@ -248,7 +246,12 @@ async def get_run(
     if rec is None:
         raise HTTPException(status_code=404, detail="run not found")
     evs = store.events_after(run_id, 0, limit=MAX_LIMIT)
-    return {"run": rec.to_dict(), "events": evs[-events:] if events else []}
+    attempts = [a.to_dict() for a in store.get_attempts(run_id)]
+    return {
+        "run": rec.to_dict(),
+        "events": evs[-events:] if events else [],
+        "attempts": attempts,
+    }
 
 
 @router.get("/runs/{run_id}/stream")
@@ -330,7 +333,10 @@ async def _resolve_target(runner: StaffRunner, machine: str, provider: str) -> s
     resolved = staff_fleet.resolve_machine(machine, runner.machine, peers)
     if resolved is None:
         known = ", ".join([runner.machine, *sorted(peers)]) or runner.machine
-        raise HTTPException(status_code=422, detail=f"unknown machine '{machine}' (known: {known}, or 'auto')")
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown machine '{machine}' (known: {known}, or 'auto')",
+        )
     return resolved
 
 
@@ -418,7 +424,12 @@ async def dispatch(
     if body.dry_run:
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
     rec = runner.submit(req)
-    detail = {"repo": rec.repo, "target_ref": rec.target_ref, "provider": rec.provider, "machine": rec.machine}
+    detail = {
+        "repo": rec.repo,
+        "target_ref": rec.target_ref,
+        "provider": rec.provider,
+        "machine": rec.machine,
+    }
     record_audit(
         action="dispatch",
         target=f"role:{rec.role}",

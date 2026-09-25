@@ -116,6 +116,10 @@ def reconcile_orphaned_runs(
         if requeue_queued and rec.status == "queued" and not rec.started_at:
             continue
 
+        # Preserve scheduled retries waiting for backoff (issue #1303, SC-A7)
+        if rec.status == "queued" and rec.next_attempt_at:
+            continue
+
         # 1. Terminate child PID if present
         if rec.pid is not None:
             terminate_pid(rec.pid)

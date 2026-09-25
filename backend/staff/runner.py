@@ -24,16 +24,17 @@ import subprocess
 import threading
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from staff import consolidation, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
+from staff import retry as retry_mod
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.classifier import classify_execution_result
+from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -45,87 +46,6 @@ NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line (it stopped before
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
-
-
-@dataclass(frozen=True)
-class RunRequest:
-    """Validated, flat run request (built by the router from the POST body)."""
-
-    role: str
-    provider: str | None = None
-    model: str | None = None
-    repo: str = ""
-    issue: int | None = None
-    pr: int | None = None
-    prompt: str = ""
-    machine: str = "local"
-    requested_by: str = ""
-    on_behalf_of: str = ""
-    # PR-consolidation decision from ``staff.consolidation.decide`` (#1213); None when not applicable.
-    consolidation: dict[str, Any] | None = None
-
-    @property
-    def target_kind(self) -> str:
-        if self.issue:
-            return "issue"
-        if self.pr:
-            return "pr"
-        return "prompt"
-
-    @property
-    def target_ref(self) -> str:
-        if self.issue:
-            return f"#{self.issue}"
-        if self.pr:
-            return f"PR #{self.pr}"
-        return ""
-
-
-@dataclass(frozen=True)
-class RunPlan:
-    """What a run *would* do; returned by dry runs and used by the worker."""
-
-    role: str
-    provider: str
-    model: str | None
-    repo: str
-    target_kind: str
-    target_ref: str
-    operator_prompt: str
-    prompt: str
-    argv: list[str]
-    branch: str
-    lease_ritual: bool
-    consolidation: dict[str, Any] | None = None
-    focus: str = ""  # board priorities + directives for this repo (#1239)
-
-    @property
-    def strategy_mode(self) -> str:
-        return str(self.consolidation.get("mode", "")) if self.consolidation else ""
-
-    @property
-    def consolidation_paragraph(self) -> str:
-        return consolidation.prompt_paragraph(self.consolidation) if self.consolidation else ""
-
-    @property
-    def issue_number(self) -> str:
-        return self.target_ref.lstrip("#") if self.target_kind == "issue" else ""
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "role": self.role,
-            "provider": self.provider,
-            "model": self.model,
-            "repo": self.repo,
-            "target_kind": self.target_kind,
-            "target_ref": self.target_ref,
-            "prompt": self.prompt,
-            "argv": list(self.argv),
-            "branch": self.branch,
-            "lease_ritual": self.lease_ritual,
-            "focus": self.focus,
-            "consolidation": dict(self.consolidation) if self.consolidation else None,
-        }
 
 
 class StaffRunner:
@@ -148,6 +68,14 @@ class StaffRunner:
         self._cancel_flags: set[str] = set()
         self._lock = threading.Lock()
         self._sema = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
+        self._provider_semas: dict[str, threading.BoundedSemaphore] = {}
+
+    def _get_provider_sema(self, provider: str) -> threading.BoundedSemaphore:
+        with self._lock:
+            if provider not in self._provider_semas:
+                max_c = max(1, getattr(self._adapters.get(provider), "max_concurrency", 1))
+                self._provider_semas[provider] = threading.BoundedSemaphore(max_c)
+            return self._provider_semas[provider]
 
     @property
     def store(self) -> RunStore:
@@ -233,6 +161,8 @@ class StaffRunner:
     def submit(self, req: RunRequest) -> RunRecord:
         """Validate, persist as ``queued`` and start the worker thread."""
         plan = self.plan(req)
+        role = self.roles().get(plan.role)
+        max_att = getattr(role, "max_attempts", 2) or 2
         rec = RunRecord(
             id=f"run-{uuid.uuid4().hex[:12]}",
             role=plan.role,
@@ -247,6 +177,7 @@ class StaffRunner:
             on_behalf_of=req.on_behalf_of,
             branch=plan.branch,
             strategy_mode=plan.strategy_mode,
+            max_attempts=max_att,
         )
         self.store.create_run(rec)
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
@@ -274,7 +205,8 @@ class StaffRunner:
     # ── worker ───────────────────────────────────────────────────────────
     def _worker(self, rec: RunRecord, plan: RunPlan) -> None:
         store = self.store
-        with self._sema:
+        provider_sema = self._get_provider_sema(plan.provider)
+        with provider_sema, self._sema:
             if rec.id in self._cancel_flags:
                 return
             try:
@@ -308,6 +240,7 @@ class StaffRunner:
                         issue=plan.issue_number,
                         agent=self._adapters[plan.provider].lease_agent,
                     )
+        retry_mod.handle_post_execution_retry(self, rec, plan)
 
     def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
         store = self.store

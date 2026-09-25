@@ -82,13 +82,23 @@ class RunRecord:
     retryable: bool = False
     remediation: str = ""
     on_behalf_of: str = ""
+    # Bounded retries and provider fallback (issue #1303, SC-A7)
+    retry_of: str = ""
+    attempt: int = 1
+    max_attempts: int = 2
+    next_attempt_at: str | None = None
+    fallback_provider: str = ""
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
+        self.attempt = int(self.attempt)
+        self.max_attempts = int(self.max_attempts)
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
         d["retryable"] = bool(self.retryable)
+        d["attempt"] = int(self.attempt)
+        d["max_attempts"] = int(self.max_attempts)
         return d
 
 
@@ -146,6 +156,11 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("retryable", "INTEGER NOT NULL DEFAULT 0"),
     ("remediation", "TEXT NOT NULL DEFAULT ''"),
     ("on_behalf_of", "TEXT NOT NULL DEFAULT ''"),
+    ("retry_of", "TEXT NOT NULL DEFAULT ''"),
+    ("attempt", "INTEGER NOT NULL DEFAULT 1"),
+    ("max_attempts", "INTEGER NOT NULL DEFAULT 2"),
+    ("next_attempt_at", "TEXT"),
+    ("fallback_provider", "TEXT NOT NULL DEFAULT ''"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")
@@ -217,9 +232,12 @@ class RunStore:
         role: str | None = None,
         status: str | None = None,
         since: str | None = None,
+        logical_only: bool = True,
     ) -> list[RunRecord]:
         clauses: list[str] = []
         params: list[Any] = []
+        if logical_only:
+            clauses.append("retry_of = ''")
         if role:
             clauses.append("role = ?")
             params.append(role)
@@ -234,6 +252,38 @@ class RunStore:
             rows = self._conn.execute(
                 f"SELECT * FROM runs {where} ORDER BY created_at DESC LIMIT ?",  # noqa: S608
                 (*params, int(limit)),
+            ).fetchall()
+        return [RunRecord(**dict(r)) for r in rows]
+
+    def get_attempts(self, run_id: str) -> list[RunRecord]:
+        """Return all attempts linked to a run (the root run and its retries)."""
+        root = run_id
+        with self._lock:
+            row = self._conn.execute("SELECT retry_of FROM runs WHERE id = ?", (run_id,)).fetchone()
+            if row and row["retry_of"]:
+                root = str(row["retry_of"])
+            rows = self._conn.execute(
+                "SELECT * FROM runs WHERE id = ? OR retry_of = ? ORDER BY attempt ASC",
+                (root, root),
+            ).fetchall()
+        return [RunRecord(**dict(r)) for r in rows]
+
+    def get_pending_retries(self, machine: str | None = None) -> list[RunRecord]:
+        """Return runs with status='queued' that have next_attempt_at populated."""
+        clauses = [
+            "status = 'queued'",
+            "next_attempt_at IS NOT NULL",
+            "next_attempt_at != ''",
+        ]
+        params: list[Any] = []
+        if machine:
+            clauses.append("machine = ?")
+            params.append(machine)
+        where = f"WHERE {' AND '.join(clauses)}"
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM runs {where} ORDER BY next_attempt_at ASC",  # noqa: S608
+                params,
             ).fetchall()
         return [RunRecord(**dict(r)) for r in rows]
 
