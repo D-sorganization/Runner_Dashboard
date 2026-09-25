@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from staff.adapters import ADAPTERS, ProviderAdapter, get_adapter
+from staff.adapters import ADAPTERS, ChatReadOnlyUnsupportedError, ProviderAdapter, get_adapter
 from staff.availability import (
     execute_degraded_turn,
     get_availability_metrics,
@@ -29,6 +29,7 @@ from staff.availability import (
     record_successful_turn,
     resolve_provider_chain,
 )
+from staff.chat_failures import chat_read_only_tools, record_chat_failure
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
     extract_session_id,
@@ -270,12 +271,32 @@ class ChatTurnRunner:
         stderr_text: list[str] = []
 
         try:
-            cmd = adapter.chat_argv(
-                prompt=prompt,
-                workdir=scratch_dir,
-                model=role.model if role else None,
-                session_id=session_id,
-            )
+            try:
+                cmd = adapter.chat_argv(
+                    prompt=prompt,
+                    workdir=scratch_dir,
+                    model=role.model if role else None,
+                    session_id=session_id,
+                    read_only_tools=chat_read_only_tools(role),
+                )
+            except (ChatReadOnlyUnsupportedError, ValueError) as exc:
+                # Fail closed and visibly: never fall back to a writable argv (#1484).
+                failure_class = (
+                    "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
+                )
+                remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
+                if update_on_failure:
+                    await record_chat_failure(
+                        self.conv_store,
+                        thread_id,
+                        placeholder_id,
+                        actor=role.name if role else adapter.provider_id,
+                        failure_class=failure_class,
+                        retryable=False,
+                        detail=remediation,
+                        error=str(exc),
+                    )
+                return ChatTurnResult(ok=False, failure_class=failure_class, retryable=False, remediation=remediation)
             env = {**os.environ, **adapter.runtime_env()}
 
             proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
@@ -339,23 +360,16 @@ class ChatTurnRunner:
                     error_message="".join(stderr_text),
                 )
                 if not is_resume and update_on_failure:
-                    err_detail = classified.remediation or classified.error or "Failed to complete reply"
-                    actor = role.name if role else adapter.provider_id
-                    self.conv_store.update_message(
+                    await record_chat_failure(
+                        self.conv_store,
+                        thread_id,
                         placeholder_id,
-                        kind="error",
-                        delivery="failed",
-                        body_md=f"Error from {actor}: {err_detail}",
-                        meta={
-                            "failure_class": classified.failure_class,
-                            "retryable": classified.retryable,
-                            "actions": [{"name": "retry", "label": "Retry"}],
-                            "error": classified.error,
-                        },
+                        actor=role.name if role else adapter.provider_id,
+                        failure_class=classified.failure_class,
+                        retryable=classified.retryable,
+                        detail=classified.remediation or classified.error or "Failed to complete reply",
+                        error=classified.error,
                     )
-                    err_msg = self.conv_store.get_message(placeholder_id)
-                    if err_msg:
-                        await bus.publish_message(thread_id, err_msg.to_dict())
 
                 return ChatTurnResult(
                     ok=False,

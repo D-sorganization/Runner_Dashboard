@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1484 · SC-B1-G1: Enforce read-only chat turns per provider
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1484
+- **Branch:** `fix/1484-read-only-chat`
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `backend/staff/validator.py`, `tests/unit/test_staff_chat_read_only.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new suite 24 passed; staff/chat/role/adapter/validator selection 618 passed, 15 skipped; ruff clean; `mypy backend/` clean in 249 files; chat.py 492 lines)
+- **Summary:** Every chat argv carries the provider's explicit read-only flag on fresh and resumed turns (the resumed claude turn had none); claude additionally denies the write tools; providers without a read-only mode fail closed with `provider_not_read_only`; `chat.read_only_tools` is a validated provider-neutral vocabulary mapped to the claude `--allowedTools` allowlist. `cursor-agent --mode ask` could not be verified locally (CLI not installed on DeskComputer); an unknown flag fails the turn visibly, never writable.
+- **Next step:** Merge PR, then verify a live cursor-agent chat turn on a node that has the CLI.
+
 ### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow and ContextPane
 
 - **State:** in_progress

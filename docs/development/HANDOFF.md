@@ -1,3 +1,56 @@
+# Current handoff — SC-B1-G1: read-only chat turns on every provider (#1484)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1484`; branch `fix/1484-read-only-chat`; commit SELF; PR: see DL-#1484; Issue #1484; DL-#1484.
+
+## Objective and Status
+
+- Closed the hole where a resumed claude chat turn ran with no permission flag, and made read-only enforcement explicit and fail-closed for every provider (`backend/staff/adapters.py`: `_CHAT_READ_ONLY_FLAGS`, `CLAUDE_WRITE_TOOLS`, `CHAT_READ_ONLY_TOOLS`, `claude_allowed_tools`, `ChatReadOnlyUnsupportedError`).
+- `chat.py` passes `chat.read_only_tools` and turns an unsupported provider or bad tool name into a classified failed message (`staff/chat_failures.py`).
+- Role validator rejects `chat.read_only_tools` names outside the vocabulary.
+- Validation: `pytest tests/unit/test_staff_chat_read_only.py` 24 passed; staff selection 618 passed / 15 skipped (WSL venv); `ruff check` clean; `mypy backend/` clean.
+
+## Risks
+
+- `cursor-agent --mode ask` was not verifiable on DeskComputer (CLI absent). If the flag is wrong the turn fails visibly (`classify_run_failure`), never writable.
+
+## Next steps
+
+1. Merge; verify one live cursor-agent chat turn on a node with the CLI.
+2. Amend ADR 0006 §6 (PR #1495) once this lands: enforcement is no longer partial.
+
+# Past handoff — Restore green main: remove nested interactive controls in staff RosterRow (#1483)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-roster-a11y`; DL-#1483.
+
+## Objective and Status
+
+- Restore green main by removing nested interactive controls in `frontend/src/pages/StaffConsole/RosterRow.tsx`:
+  - Wrapped the role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container.
+  - The pin toggle button is now an adjacent sibling rather than a focusable descendant inside an interactive element.
+  - Resolves WCAG 4.1.2 `nested-interactive` violation in axe-core that broke Playwright E2E smoke tests.
+  - Verification:
+    - StaffConsole vitest: 17/17 test files passed (113/113 tests passed).
+    - `npm run typecheck`: clean (0 errors).
+    - `npm run lint`: clean (0 errors, 0 warnings).
+    - `RosterRow.tsx`: 296 lines ($\le 500$).
+
+## Next Steps
+
+1. Push `fix/restore-green-main-roster-a11y`.
+2. Open PR with label `agent:local`.
+3. Enable auto-merge (`gh pr merge --auto --squash`).
+4. Verify all CI checks pass and PR merges cleanly to `main`.
+
+---
+
 # Current handoff — Restore green main: resolve a11y violations in staff RosterRow and ContextPane (#1483)
 
 Last updated: 2026-09-25
