@@ -131,7 +131,7 @@ def test_unpushed_worktree_preserved(
     subprocess.run(["git", "-C", str(repo_dir), "config", "user.name", "Test"], check=True)
     (repo_dir / "README.md").write_text("hello", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo_dir), "commit", "-m", "init"], check=True)
+    subprocess.run(["git", "-C", str(repo_dir), "commit", "--no-verify", "-m", "init"], check=True)
 
     # Create worktree
     wt_dir = tmp_path / "worktree-dirty"
@@ -177,7 +177,7 @@ def test_clean_worktree_removed(temp_store: RunStore, staff_runner: runner_mod.S
     subprocess.run(["git", "-C", str(repo_dir), "config", "user.name", "Test"], check=True)
     (repo_dir / "README.md").write_text("hello", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo_dir), "commit", "-m", "init"], check=True)
+    subprocess.run(["git", "-C", str(repo_dir), "commit", "--no-verify", "-m", "init"], check=True)
 
     wt_dir = tmp_path / "worktree-clean"
     subprocess.run(

@@ -1,10 +1,58 @@
-# Current handoff — Restore green main across secrets, api-types, and line-cap gates (#1372)
+# Current handoff — Contract check between backend response models and frontend types (#1296)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1372-restore-green-main`; PR pending. Issue #1372; DL-#1372.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1296-contract-check-staff-types`; PR #1370; Issue #1296, epic #1347 / umbrella #1354; DL-#1296.
+
+## Work
+
+- `backend/staff/models.py`:
+  - Created dedicated Pydantic models for all `/api/staff/*` response payloads: `StaffConsolidateWhen`, `StaffRoleStrategy`, `StaffRoleBudget`, `StaffRoleSpec`, `StaffRosterResponse`, `StaffRunRecord`, `StaffRunsResponse`, `StaffRunEvent`, `StaffRunDetailResponse`, `StaffCancelResponse`, `StaffConsolidationDecision`, `StaffRunPlan`, `StaffDispatchResponse`, `StaffRoleLiveness`, `StaffBoardResponse`, `StaffHold`, `StaffSummaryResponse`, `StaffAuditRecordResponse`, `StaffAuditListResponse`, `StaffHoldsResponse`, `StaffScheduleToggleResponse`, `StaffScheduleResponse`, `StaffUsageResponse`, `StaffPricingResponse`, `StaffUsageExportResponse`.
+- `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`, `backend/routers/assistant.py`:
+  - Wired Pydantic response models across all endpoints.
+  - Used `response_model_exclude_unset=True` on dispatch route to preserve explicit nulls while omitting unneeded optional fields.
+- `backend/staff/fleet.py`:
+  - Added `local_board` and `holds_snapshot` helper delegation, keeping `routers/staff.py` under 500 lines.
+  - Added `machine` and `recent` to `aggregate_board` fleet response.
+  - Imported `today_iso` from `staff.usage` to prevent top-level function duplication.
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
+  - Regenerated with `scripts/gen-api-client.sh` and validated drift-free via `--check`.
+- `frontend/src/pages/Staff/staffApi.ts`:
+  - Replaced hand-written duplicate TypeScript interfaces with aliases directly to generated `components["schemas"]`.
+- `frontend/src/pages/Staff/Assign.tsx`:
+  - Updated to safely handle optional properties on generated types.
+- `tests/api/test_staff_contracts.py`:
+  - Added contract tests ensuring staff and conversation schemas exist in OpenAPI, required properties are validated, and drift check passes.
+- `SPEC.md`: Bumped to 2.5.220 with change log and specification updates.
+- `docs/development/DEVELOPMENT_LOG.md`: Added active DL-#1296 entry.
+
+## Validation
+
+- `pytest tests/api/test_staff_contracts.py`: 6 passed.
+- `pytest tests/unit/ tests/api/ -k staff`: 225+ passed.
+- `scripts/gen-api-client.sh --check`: Drift check passed.
+- `npm run typecheck`: Passed with 0 errors.
+- `vitest run Staff`: 18 passed.
+- `ruff check .`, `black .`, `mypy .`: Passed with 0 errors.
+- All modified and new files strictly <= 500 lines.
+
+## Next
+
+1. Push branch `feat/1296-contract-check-staff-types` to update PR #1370.
+2. Enable auto-merge and monitor CI.
+3. Once merged, release agent lease on #1296 and clean up worktree.
+
+---
+
+# Previous handoff — Restore green main across secrets, api-types, and line-cap gates (#1372)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1372-restore-green-main`; PR #1373 (merged). Issue #1372; DL-#1372.
 
 ## Work
 
@@ -27,9 +75,9 @@ Last updated: 2026-09-24
 
 ## Next
 
-1. Open PR for #1372, monitor CI, and auto-squash merge to restore green main.
-2. Release lease on #1372.
-3. Clean up worktree and proceed to SC-B7 (#1314).
+1. None (merged in PR #1373).
+
+---
 
 # Previous handoff — Keep original caller identity when forwarding staff runs (#1311)
 
@@ -76,9 +124,9 @@ Last updated: 2026-09-24
 
 ## Next
 
-1. Open PR, monitor CI, and auto-squash merge.
-2. Release lease on #1311.
-3. Unblock SC-B7 (#1314).
+1. None (merged in PR #1371).
+
+---
 
 # Previous handoff — Page usage evidence before pruning (#1302)
 
@@ -86,7 +134,7 @@ Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1302-page-usage-metrics`; PR pending. Issue #1302 (open), epic #1353 / umbrella #1354; DL-#1302.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1302-page-usage-metrics`; PR #1369 (merged). Issue #1302 (closed), epic #1353 / umbrella #1354; DL-#1302.
 
 ## Work
 
@@ -122,56 +170,9 @@ Last updated: 2026-09-24
 2. Post usage table markdown to #1302.
 3. Release lease on #1302.
 
+---
+
 # Previous handoff — Classify staff run failures with remediation hints (#1297)
-
-Last updated: 2026-09-24
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1297-classify-staff-run-failures`; commit `ef40f89`; PR #1367 (merged). Issue #1297 (closed), epic #1347 / umbrella #1354; DL-#1297.
-
-## Work
-
-- `backend/staff/store.py`:
-  - Added `retryable: bool = False` and `remediation: str = ""` to `RunRecord` dataclass.
-  - Added SQLite schema migration columns `("retryable", "INTEGER NOT NULL DEFAULT 0")` and `("remediation", "TEXT NOT NULL DEFAULT ''")` to `_ADDED_COLUMNS`.
-- `backend/staff/classifier.py`:
-  - Implemented `ALLOWED_FAILURE_CLASSES` enum (all 12 classes: `auth_expired`, `cli_missing`, `provider_error`, `rate_limited`, `needs_input`, `timeout`, `stalled`, `lease_blocked`, `orphaned`, `workspace_error`, `unkillable`, `unknown`).
-  - Mapped provider-specific sign-in commands (`LOGIN_COMMANDS`) matching runbook and documentation (`claude`: `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login`, `codex`: `codex login --device-auth`, `cursor-agent`: `cursor-agent login`, `antigravity`: `agy auth login`, `gemini`: `gemini login`, `ollama`: `systemctl --user start ollama`).
-  - Implemented `classify_run_failure()` handling watchdog errors, `needs_input` (exit 0 without result ending in question mark, supporting both plain text and stream-json lines), CLI missing patterns, auth expiry patterns, 429 rate limits, provider errors, lease conflicts, workspace errors, and fallback unknown with last 20 lines.
-  - Implemented `format_attention_items()` which groups and deduplicates `auth_expired` failures per `(machine, provider)` into a single attention item with sign-in command and `affected_runs`.
-  - Implemented `classify_execution_result()` helper for runner run completion.
-- `backend/staff/runner.py`:
-  - Integrated `classify_execution_result()` into `_run_subprocess`, setting `failure_class`, `retryable`, `remediation`, and `error` in `store.update_run()`.
-- `backend/staff/reconcile.py`:
-  - Updated orphaned run updates to record `retryable=False` and node-specific remediation.
-- `backend/routers/staff.py`:
-  - Updated `get_summary()` to use `format_attention_items(recent)`.
-- `frontend/src/pages/Staff/staffApi.ts`:
-  - Added `failure_class?`, `retryable?`, `remediation?` to `RunRecord`.
-- `frontend/src/pages/Staff/RunDetail.tsx`:
-  - Rendered `failure_class` (with retryable indicator badge) and `remediation` in dl facts.
-- `tests/unit/test_staff_classifier.py`:
-  - Table-driven unit tests for all failure classes and providers, watchdog states, question extraction, fallback clipping, and auth deduplication.
-- `tests/api/test_staff_failure_classification.py`:
-  - API integration tests for schema migration, run detail exposure, and summary attention deduplication.
-- `SPEC.md`: Bumped to 2.5.217 with change log and specification updates.
-- `docs/development/DEVELOPMENT_LOG.md`: Updated DL-#1298 to shipped, added active DL-#1297.
-
-## Validation
-
-- `pytest tests/unit/test_staff_classifier.py tests/api/test_staff_failure_classification.py`: 23 passed in 2.2s.
-- `pytest tests/unit/ tests/api/ -k staff`: 201 passed in 32.5s.
-- `ruff check`: 0 errors.
-- `ruff format --check`: 0 errors.
-- `mypy`: 0 errors in all 7 source files.
-- All modified and new files strictly <= 500 lines.
-
-## Next
-
-1. Shipped in PR #1367; auto-merged into `main` at `2026-09-24T22:43:22Z` (`ef40f89`). Issue #1297 closed.
-2. Lease released on #1297 (receipt: `https://github.com/D-sorganization/Runner_Dashboard/issues/1297#issuecomment-5823595206`).
-3. Worktree removed. Next task in queue.
 
 ## Work
 

@@ -78,7 +78,12 @@ async def _dispatch_to_ai_provider_for_chat(
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 
-@router.post("/api/assistant/chat", tags=["assistant"])
+@router.post(
+    "/api/assistant/chat",
+    tags=["assistant"],
+    response_model=assistant_contract.AssistantChatResponse | assistant_contract.AssistantToolChatResponse,
+    response_model_exclude_none=True,
+)
 async def assistant_chat(
     request: Request,
     *,
@@ -141,7 +146,12 @@ async def assistant_chat(
     }
 
 
-@router.post("/api/assistant/tool/execute", tags=["assistant"])
+@router.post(
+    "/api/assistant/tool/execute",
+    tags=["assistant"],
+    response_model=assistant_contract.ToolExecuteResponse,
+    response_model_exclude_none=True,
+)
 async def execute_assistant_tool(
     request: Request,
     *,
@@ -184,8 +194,8 @@ async def execute_assistant_tool(
             inputs=req.input,
             confirmation=req.confirmation.model_dump() if req.confirmation else None,
             principal=principal.id,
-            on_behalf_of=(req.confirmation.on_behalf_of or "") if req.confirmation else "",
-            correlation_id=(req.confirmation.correlation_id or "") if req.confirmation else "",
+            on_behalf_of=((req.confirmation.on_behalf_of or "") if req.confirmation else ""),
+            correlation_id=((req.confirmation.correlation_id or "") if req.confirmation else ""),
             gh_api_fn=gh_api,
             run_cmd_fn=run_cmd,
             normalize_repository_fn=_normalize_repository_input,
@@ -213,8 +223,8 @@ async def execute_assistant_tool(
             success=False,
             approved_by=req.confirmation.approved_by if req.confirmation else "n/a",
             principal=principal.id,
-            on_behalf_of=(req.confirmation.on_behalf_of or "") if req.confirmation else "",
-            correlation_id=(req.confirmation.correlation_id or "") if req.confirmation else "",
+            on_behalf_of=((req.confirmation.on_behalf_of or "") if req.confirmation else ""),
+            correlation_id=((req.confirmation.correlation_id or "") if req.confirmation else ""),
             note=req.confirmation.note if req.confirmation else "",
         )
         return {
@@ -226,7 +236,12 @@ async def execute_assistant_tool(
         }
 
 
-@router.get("/api/assistant/audit-history", tags=["assistant"])
+@router.get(
+    "/api/assistant/audit-history",
+    tags=["assistant"],
+    response_model=assistant_contract.AuditHistoryResponse,
+    response_model_exclude_none=True,
+)
 async def get_tool_audit_history(limit: int = 50) -> dict:
     """Return the most recent assistant tool-execution audit entries (Issue #89)."""
     capped = max(1, min(limit, 200))
@@ -234,7 +249,12 @@ async def get_tool_audit_history(limit: int = 50) -> dict:
     return {"entries": entries, "total": len(entries)}
 
 
-@router.post("/api/assistant/propose-action", tags=["assistant"])
+@router.post(
+    "/api/assistant/propose-action",
+    tags=["assistant"],
+    response_model=assistant_contract.ActionProposeResponse,
+    response_model_exclude_none=True,
+)
 async def propose_action(
     request: Request,
     *,
@@ -294,7 +314,12 @@ async def propose_action(
         raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
 
 
-@router.post("/api/assistant/execute-action", tags=["assistant"])
+@router.post(
+    "/api/assistant/execute-action",
+    tags=["assistant"],
+    response_model=assistant_contract.ActionExecuteResponse,
+    response_model_exclude_none=True,
+)
 async def execute_action(
     request: Request,
     *,

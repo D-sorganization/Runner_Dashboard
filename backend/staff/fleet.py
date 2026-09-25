@@ -21,6 +21,7 @@ import hmac
 import json
 import logging
 import os
+import sys
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -31,6 +32,10 @@ from dashboard_config import FLEET_NODES, HOSTNAME, RUNNER_ALIASES
 from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
 from staff import liveness as staff_liveness
+from staff.adapters import available_providers
+from staff.rm_sync import source_status
+from staff.store import ACTIVE_STATUSES
+from staff.usage import today_iso
 
 log = logging.getLogger("dashboard.staff.fleet")
 
@@ -75,10 +80,18 @@ def fleet_headers() -> dict[str, str]:
 def peer_nodes() -> dict[str, str]:
     """Name → base URL of every other dashboard node (env first, registry second)."""
     nodes = dict(FLEET_NODES)
-    if not nodes and os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in {"0", "false", "no", ""}:
+    if not nodes and os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+        "",
+    }:
         try:
             nodes = derive_fleet_nodes_from_registry(
-                load_machine_registry(), display_name=HOSTNAME, platform_node="", runner_aliases=RUNNER_ALIASES
+                load_machine_registry(),
+                display_name=HOSTNAME,
+                platform_node="",
+                runner_aliases=RUNNER_ALIASES,
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("staff.fleet: registry-derived peers unavailable: %s", exc)
@@ -144,11 +157,13 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "hub": local_name,
+        "machine": local_name,
         "machines": machines,
         "online": sorted(n for n, b in machines.items() if b.get("status") == "online"),
         "offline": sorted(n for n, b in machines.items() if b.get("status") != "online"),
         "running": running,
         "queued": queued,
+        "recent": [],
         "spend_today_usd": spend,
         "providers": providers,
         "liveness_alerts": liveness_alerts,
@@ -279,3 +294,39 @@ async def forward_run(
     if on_behalf_of:
         headers["X-Staff-On-Behalf-Of"] = on_behalf_of
     return await post_json(f"{url}/api/staff/{role}/run", payload, headers)
+
+
+def local_board(runner: Any) -> dict[str, Any]:
+    store = runner.store
+    active = store.active_runs()
+    recent = store.list_runs(limit=20)
+    now = datetime.now(UTC)
+    liveness = staff_liveness.compute_liveness(runner.roles(), store, staff_liveness.load_scheduler_state(), now)
+    staff_liveness.notify_dead(liveness, runner.machine)
+    return {
+        "machine": runner.machine,
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
+        "running": [r.to_dict() for r in active if r.status == "running"],
+        "queued": [r.to_dict() for r in active if r.status in ("queued", "preparing")],
+        "recent": [r.to_dict() for r in recent if r.status not in ACTIVE_STATUSES],
+        "spend_today_usd": store.spend_since(today_iso()),
+        "providers": available_providers(),
+        "liveness": liveness,
+        "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
+    }
+
+
+def holds_snapshot() -> list[dict[str, Any]]:
+    """Active holds when the scheduler module (#1196) is present; empty otherwise."""
+    try:
+        from staff import holds as staff_holds  # noqa: PLC0415
+    except ImportError:
+        return []
+    loader = getattr(staff_holds, "active_holds", None)
+    if loader is None:
+        return []
+    try:
+        return [dict(h) for h in loader()]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff: holds unavailable: %s", exc)
+        return []

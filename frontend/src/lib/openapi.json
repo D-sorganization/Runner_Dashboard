@@ -25,6 +25,86 @@
         "title": "AckBody",
         "type": "object"
       },
+      "ActionExecuteResponse": {
+        "description": "Result of executing an action.",
+        "properties": {
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "execution_time_ms": {
+            "title": "Execution Time Ms",
+            "type": "integer"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "action_id", "result", "execution_time_ms"],
+        "title": "ActionExecuteResponse",
+        "type": "object"
+      },
+      "ActionProposeResponse": {
+        "description": "Proposed action with full details.",
+        "properties": {
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "estimated_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Duration Seconds"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "risk_level": {
+            "$ref": "#/components/schemas/ActionRiskLevel"
+          }
+        },
+        "required": [
+          "action_id",
+          "action_type",
+          "parameters",
+          "description",
+          "risk_level",
+          "rationale"
+        ],
+        "title": "ActionProposeResponse",
+        "type": "object"
+      },
+      "ActionRiskLevel": {
+        "description": "Risk assessment for proposed actions.",
+        "enum": ["low", "medium", "high", "critical"],
+        "title": "ActionRiskLevel",
+        "type": "string"
+      },
       "AgentStatus": {
         "properties": {
           "enabled": {
@@ -116,6 +196,83 @@
         },
         "required": ["credential"],
         "title": "AssertCompleteRequest",
+        "type": "object"
+      },
+      "AssistantChatResponse": {
+        "description": "AI assistant response.",
+        "properties": {
+          "context_used": {
+            "additionalProperties": true,
+            "title": "Context Used",
+            "type": "object"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": ["response", "provider", "context_used", "timestamp"],
+        "title": "AssistantChatResponse",
+        "type": "object"
+      },
+      "AssistantToolChatResponse": {
+        "description": "Response when tools_enabled=true.\n\n``stop_reason`` is \"tool_use\" when the model wants to call tools;\n\"end_turn\" when it has produced a final answer.\n``tool_calls`` is non-empty when stop_reason == \"tool_use\".",
+        "properties": {
+          "message": {
+            "additionalProperties": true,
+            "title": "Message",
+            "type": "object"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "stop_reason": {
+            "title": "Stop Reason",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallCard"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          }
+        },
+        "required": ["message", "stop_reason", "provider", "timestamp"],
+        "title": "AssistantToolChatResponse",
+        "type": "object"
+      },
+      "AuditHistoryResponse": {
+        "description": "Paginated audit history for assistant tool executions.",
+        "properties": {
+          "entries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": ["entries", "total"],
+        "title": "AuditHistoryResponse",
         "type": "object"
       },
       "Body_get_issues_api_issues_get": {
@@ -1529,9 +1686,128 @@
         "title": "SimpleResponse",
         "type": "object"
       },
+      "StaffAuditListResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/audit.",
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/StaffAuditRecordResponse"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "StaffAuditListResponse",
+        "type": "object"
+      },
+      "StaffAuditRecordResponse": {
+        "additionalProperties": true,
+        "description": "One staff audit entry.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Id"
+          },
+          "on_behalf_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Behalf Of"
+          },
+          "outcome": {
+            "default": "success",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "principal": {
+            "title": "Principal",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "surface": {
+            "title": "Surface",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": ["id", "ts", "principal", "surface", "action", "target"],
+        "title": "StaffAuditRecordResponse",
+        "type": "object"
+      },
       "StaffBoardResponse": {
         "additionalProperties": true,
-        "description": "Response model for /api/staff/board (issue #1289).",
+        "description": "Response model for GET /api/staff/board (issue #1289).",
         "properties": {
           "generated_at": {
             "description": "ISO-8601 UTC timestamp",
@@ -1552,31 +1828,22 @@
           },
           "liveness": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRoleLiveness"
             },
             "title": "Liveness",
             "type": "array"
           },
           "liveness_alerts": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRoleLiveness"
             },
             "title": "Liveness Alerts",
             "type": "array"
           },
           "machine": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Local machine hostname",
-            "title": "Machine"
+            "title": "Machine",
+            "type": "string"
           },
           "machines": {
             "anyOf": [
@@ -1614,16 +1881,14 @@
           },
           "queued": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRunRecord"
             },
             "title": "Queued",
             "type": "array"
           },
           "recent": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRunRecord"
             },
             "title": "Recent",
             "type": "array"
@@ -1642,8 +1907,7 @@
           },
           "running": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRunRecord"
             },
             "title": "Running",
             "type": "array"
@@ -1657,13 +1921,1012 @@
             "type": "object"
           }
         },
-        "required": ["generated_at"],
+        "required": [
+          "generated_at",
+          "machine",
+          "running",
+          "queued",
+          "recent",
+          "spend_today_usd",
+          "providers"
+        ],
         "title": "StaffBoardResponse",
+        "type": "object"
+      },
+      "StaffCancelResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/runs/{id}/cancel.",
+        "properties": {
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffRunRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["cancelled"],
+        "title": "StaffCancelResponse",
+        "type": "object"
+      },
+      "StaffConsolidateWhen": {
+        "additionalProperties": true,
+        "description": "Thresholds for consolidating PRs (#1213).",
+        "properties": {
+          "open_prs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Prs"
+          },
+          "utilisation_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utilisation Pct"
+          }
+        },
+        "title": "StaffConsolidateWhen",
+        "type": "object"
+      },
+      "StaffConsolidationDecision": {
+        "additionalProperties": true,
+        "description": "Consolidation decision injected into prompt (#1213).",
+        "properties": {
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "threshold": {
+            "$ref": "#/components/schemas/StaffConsolidateWhen"
+          }
+        },
+        "required": ["mode", "reason"],
+        "title": "StaffConsolidationDecision",
+        "type": "object"
+      },
+      "StaffDispatchResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/{role}/run.",
+        "properties": {
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "forwarded_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwarded To"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffRunPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffRunRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["dry_run", "machine"],
+        "title": "StaffDispatchResponse",
+        "type": "object"
+      },
+      "StaffHold": {
+        "additionalProperties": true,
+        "description": "One policy hold.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "applies_to": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Applies To",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lifted_when": {
+            "title": "Lifted When",
+            "type": "string"
+          },
+          "set_on": {
+            "title": "Set On",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "set_on",
+          "lifted_when",
+          "applies_to",
+          "active"
+        ],
+        "title": "StaffHold",
+        "type": "object"
+      },
+      "StaffHoldsResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/holds and PUT /api/staff/holds.",
+        "properties": {
+          "holds": {
+            "items": {
+              "$ref": "#/components/schemas/StaffHold"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "path": {
+            "default": "",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": ["holds"],
+        "title": "StaffHoldsResponse",
+        "type": "object"
+      },
+      "StaffPricingResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/usage/pricing.",
+        "properties": {
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "title": "StaffPricingResponse",
+        "type": "object"
+      },
+      "StaffRoleBudget": {
+        "additionalProperties": true,
+        "description": "Budget limits for a role.",
+        "properties": {
+          "usd_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd Per Day"
+          },
+          "usd_per_run": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd Per Run"
+          }
+        },
+        "title": "StaffRoleBudget",
+        "type": "object"
+      },
+      "StaffRoleLiveness": {
+        "additionalProperties": true,
+        "description": "Liveness record of one scheduled role (#1209).",
+        "properties": {
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Seconds"
+          },
+          "expected_interval_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Interval Seconds"
+          },
+          "last_attempt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt"
+          },
+          "last_fired": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fired"
+          },
+          "last_success": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Machine"
+          },
+          "next_fire": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Fire"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "schedule": {
+            "default": "",
+            "title": "Schedule",
+            "type": "string"
+          },
+          "status": {
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": ["role"],
+        "title": "StaffRoleLiveness",
+        "type": "object"
+      },
+      "StaffRoleSpec": {
+        "additionalProperties": true,
+        "description": "Detailed role specification exposed on the roster.",
+        "properties": {
+          "active_runs": {
+            "default": 0,
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/StaffRoleBudget"
+          },
+          "chat": {
+            "additionalProperties": true,
+            "title": "Chat",
+            "type": "object"
+          },
+          "dispatchable": {
+            "default": true,
+            "title": "Dispatchable",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "holds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "idle_minutes": {
+            "default": 20.0,
+            "title": "Idle Minutes",
+            "type": "number"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "additionalProperties": true,
+            "title": "Permissions",
+            "type": "object"
+          },
+          "persona": {
+            "default": "",
+            "title": "Persona",
+            "type": "string"
+          },
+          "playbook": {
+            "default": "",
+            "title": "Playbook",
+            "type": "string"
+          },
+          "prompt_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Template"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "reports_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reports To"
+          },
+          "repos": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Repos",
+            "type": "array"
+          },
+          "retired": {
+            "default": false,
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "retired_reason": {
+            "default": "",
+            "title": "Retired Reason",
+            "type": "string"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "source_path": {
+            "default": "",
+            "title": "Source Path",
+            "type": "string"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/StaffRoleStrategy"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "dashboard",
+            "title": "Surface"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "valid": {
+            "default": true,
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          }
+        },
+        "required": ["name", "title", "providers", "repos", "budget", "holds"],
+        "title": "StaffRoleSpec",
+        "type": "object"
+      },
+      "StaffRoleStrategy": {
+        "additionalProperties": true,
+        "description": "Strategy configuration for a role (#1213).",
+        "properties": {
+          "consolidate_when": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffConsolidateWhen"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "StaffRoleStrategy",
+        "type": "object"
+      },
+      "StaffRosterResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/roster and GET /api/staff/roles.",
+        "properties": {
+          "active_runs": {
+            "default": 0,
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "providers": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Providers",
+            "type": "object"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/StaffRoleSpec"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": ["machine", "roles", "providers"],
+        "title": "StaffRosterResponse",
+        "type": "object"
+      },
+      "StaffRunDetailResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/runs/{id}.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/StaffRunEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "run": {
+            "$ref": "#/components/schemas/StaffRunRecord"
+          }
+        },
+        "required": ["run", "events"],
+        "title": "StaffRunDetailResponse",
+        "type": "object"
+      },
+      "StaffRunEvent": {
+        "additionalProperties": true,
+        "description": "One event in a staff run's lifecycle.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": ["seq", "ts", "kind", "text"],
+        "title": "StaffRunEvent",
+        "type": "object"
+      },
+      "StaffRunPlan": {
+        "additionalProperties": true,
+        "description": "Dry-run execution plan for a staff run (#1213).",
+        "properties": {
+          "argv": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Argv",
+            "type": "array"
+          },
+          "branch": {
+            "default": "",
+            "title": "Branch",
+            "type": "string"
+          },
+          "consolidation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffConsolidationDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lease_ritual": {
+            "default": true,
+            "title": "Lease Ritual",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "title": "Repo",
+            "type": "string"
+          },
+          "role": {
+            "default": "",
+            "title": "Role",
+            "type": "string"
+          },
+          "target_kind": {
+            "default": "prompt",
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_ref": {
+            "default": "",
+            "title": "Target Ref",
+            "type": "string"
+          }
+        },
+        "title": "StaffRunPlan",
+        "type": "object"
+      },
+      "StaffRunRecord": {
+        "additionalProperties": true,
+        "description": "One staff execution run record.",
+        "properties": {
+          "branch": {
+            "default": "",
+            "title": "Branch",
+            "type": "string"
+          },
+          "cost_method": {
+            "default": "",
+            "title": "Cost Method",
+            "type": "string"
+          },
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "failure_class": {
+            "default": "",
+            "title": "Failure Class",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "last_line": {
+            "default": "",
+            "title": "Last Line",
+            "type": "string"
+          },
+          "lease_id": {
+            "default": "",
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "machine": {
+            "default": "",
+            "title": "Machine",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "on_behalf_of": {
+            "default": "",
+            "title": "On Behalf Of",
+            "type": "string"
+          },
+          "outcome": {
+            "default": "",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "remediation": {
+            "default": "",
+            "title": "Remediation",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "title": "Repo",
+            "type": "string"
+          },
+          "requested_by": {
+            "default": "",
+            "title": "Requested By",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "role": {
+            "default": "",
+            "title": "Role",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy_mode": {
+            "default": "",
+            "title": "Strategy Mode",
+            "type": "string"
+          },
+          "target_kind": {
+            "default": "prompt",
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_ref": {
+            "default": "",
+            "title": "Target Ref",
+            "type": "string"
+          },
+          "transcript_path": {
+            "default": "",
+            "title": "Transcript Path",
+            "type": "string"
+          },
+          "workdir": {
+            "default": "",
+            "title": "Workdir",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "title": "StaffRunRecord",
+        "type": "object"
+      },
+      "StaffRunsResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/runs.",
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/StaffRunRecord"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": ["runs"],
+        "title": "StaffRunsResponse",
+        "type": "object"
+      },
+      "StaffScheduleResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/schedule.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "tick_seconds": {
+            "default": 60.0,
+            "title": "Tick Seconds",
+            "type": "number"
+          }
+        },
+        "required": ["machine", "generated_at", "enabled", "running"],
+        "title": "StaffScheduleResponse",
+        "type": "object"
+      },
+      "StaffScheduleToggleResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/schedule/toggle.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": ["enabled", "running"],
+        "title": "StaffScheduleToggleResponse",
         "type": "object"
       },
       "StaffSummaryResponse": {
         "additionalProperties": true,
-        "description": "Response model for /api/staff/summary (issue #1289).",
+        "description": "Response model for GET /api/staff/summary (issue #1289).",
         "properties": {
           "attention": {
             "items": {
@@ -1701,8 +2964,7 @@
           },
           "liveness_alerts": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRoleLiveness"
             },
             "title": "Liveness Alerts",
             "type": "array"
@@ -1752,6 +3014,86 @@
         },
         "required": ["generated_at", "hub"],
         "title": "StaffSummaryResponse",
+        "type": "object"
+      },
+      "StaffUsageExportResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/usage/export.",
+        "properties": {
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          }
+        },
+        "required": ["ok"],
+        "title": "StaffUsageExportResponse",
+        "type": "object"
+      },
+      "StaffUsageResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/usage.",
+        "properties": {
+          "budget_per_day_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Per Day Usd"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "spend_today_usd": {
+            "default": 0.0,
+            "title": "Spend Today Usd",
+            "type": "number"
+          },
+          "totals": {
+            "additionalProperties": true,
+            "title": "Totals",
+            "type": "object"
+          }
+        },
+        "required": ["machine", "since", "group"],
+        "title": "StaffUsageResponse",
         "type": "object"
       },
       "StatusResponse": {
@@ -1824,6 +3166,58 @@
         },
         "required": ["name"],
         "title": "TokenCreateRequest",
+        "type": "object"
+      },
+      "ToolCallCard": {
+        "description": "A tool call proposed by the assistant; may require confirmation.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "requires_confirmation": {
+            "title": "Requires Confirmation",
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "name", "input", "requires_confirmation"],
+        "title": "ToolCallCard",
+        "type": "object"
+      },
+      "ToolExecuteResponse": {
+        "description": "Result of a tool execution.",
+        "properties": {
+          "audit_id": {
+            "title": "Audit Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "result": {
+            "title": "Result"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "tool_call_id": {
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": ["success", "tool_call_id", "name", "result", "audit_id"],
+        "title": "ToolExecuteResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -2785,9 +4179,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Tool Audit History Api Assistant Audit History Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AuditHistoryResponse"
                 }
               }
             },
@@ -2817,9 +4209,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Assistant Chat Api Assistant Chat Post",
-                  "type": "object"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AssistantChatResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssistantToolChatResponse"
+                    }
+                  ],
+                  "title": "Response Assistant Chat Api Assistant Chat Post"
                 }
               }
             },
@@ -2847,9 +4245,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Execute Action Api Assistant Execute Action Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ActionExecuteResponse"
                 }
               }
             },
@@ -2877,9 +4273,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Propose Action Api Assistant Propose Action Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ActionProposeResponse"
                 }
               }
             },
@@ -2907,9 +4301,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Execute Assistant Tool Api Assistant Tool Execute Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ToolExecuteResponse"
                 }
               }
             },
@@ -9080,7 +10472,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response List Audit Api Staff Audit Get"
+                  "$ref": "#/components/schemas/StaffAuditListResponse"
                 }
               }
             },
@@ -9169,9 +10561,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Holds Api Staff Holds Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffHoldsResponse"
                 }
               }
             },
@@ -9207,9 +10597,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Put Holds Api Staff Holds Put",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffHoldsResponse"
                 }
               }
             },
@@ -9246,9 +10634,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Roster Api Staff Roles Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRosterResponse"
                 }
               }
             },
@@ -9275,9 +10661,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Roster Api Staff Roster Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRosterResponse"
                 }
               }
             },
@@ -9369,9 +10753,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Runs Api Staff Runs Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRunsResponse"
                 }
               }
             },
@@ -9431,9 +10813,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Run Api Staff Runs  Run Id  Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRunDetailResponse"
                 }
               }
             },
@@ -9481,9 +10861,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Cancel Run Api Staff Runs  Run Id  Cancel Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffCancelResponse"
                 }
               }
             },
@@ -9578,9 +10956,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Schedule Api Staff Schedule Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffScheduleResponse"
                 }
               }
             },
@@ -9618,9 +10994,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Toggle Scheduler Api Staff Schedule Toggle Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffScheduleToggleResponse"
                 }
               }
             },
@@ -9716,9 +11090,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Usage Api Staff Usage Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffUsageResponse"
                 }
               }
             },
@@ -9756,9 +11128,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Export Usage Api Staff Usage Export Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffUsageExportResponse"
                 }
               }
             },
@@ -9785,9 +11155,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Pricing Api Staff Usage Pricing Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffPricingResponse"
                 }
               }
             },
@@ -9836,9 +11204,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Dispatch Api Staff  Role  Run Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffDispatchResponse"
                 }
               }
             },
