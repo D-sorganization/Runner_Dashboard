@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1318 · SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send
+### DL-#1319 · SC-D5: Structured message cards: action approval, run progress, hand-off, review verdict, error with remediation
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1319 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1319-structured-cards`
+- **Paths:** `frontend/src/pages/StaffConsole/cards/cardTypes.ts`, `frontend/src/pages/StaffConsole/cards/cardUtils.ts`, `frontend/src/pages/StaffConsole/cards/ActionCard.tsx`, `frontend/src/pages/StaffConsole/cards/RunCard.tsx`, `frontend/src/pages/StaffConsole/cards/HandoffCard.tsx`, `frontend/src/pages/StaffConsole/cards/ReviewCard.tsx`, `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`, `frontend/src/pages/StaffConsole/cards/index.ts`, `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/Thread.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `frontend/src/pages/StaffConsole/threadUtils.ts`, `frontend/src/pages/StaffConsole/__tests__/ActionCard.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/RunCard.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/HandoffCard.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/ReviewCard.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/ErrorCard.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 51 StaffConsole tests passed; npm run lint passed 0 warnings; npm run typecheck passed 0 errors; pytest test_frontend_integrity.py passed 72 passed, 1 xfailed; all files strictly <= 500 lines)
+- **Summary:** Implemented SC-D5 Structured message cards: (1) `ActionCard` for action proposals with risk badge, execution status, inline parameter editor, decision audit ('Decided: state by author at time'), stale/expired action gating, and double-click idempotency; (2) `RunCard` for live run progress with host node, provider badge, elapsed timer, expandable log tail, cancel controls, and direct links to run detail and PR; (3) `HandoffCard` for role delegation flows with transfer arrow, delegation reason, and 'send to someone else' role redirection; (4) `ReviewCard` for pull request reviews with PR number link, verdict badge ('APPROVED', 'CHANGES_REQUESTED', 'COMMENTED'), summary, and bulleted findings; (5) `ErrorCard` with classified failure cause, node indicator, remediation command with one-click copy, and retry gate; (6) integrated all structured cards into `MessageItem` and `Thread`.
+- **Next step:** Push branch, open PR with Fixes #1319, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1318 · SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1318 (epic #1350 / umbrella #1354)
 - **Branch:** `feat/1318-thread-composer`
@@ -28,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 34 StaffConsole tests passed; npm run typecheck passed with 0 errors; ruff check passed; all files strictly <= 500 lines)
 - **Summary:** Implemented SC-D4 Thread view and Composer: (1) Sanitized markdown rendering (`ThreadMarkdown`) with code block copying, link previews for issues/PRs/runs, and strict XSS protection with DOMPurify; (2) Keyboard-first Composer (`Composer`, `ComposerAutocompletes`, `composerUtils`) with @mentions role auto-complete, slash commands (`/dispatch`, `/review`, `/status`, `/hold`, `/brief`), voice input integration, reliable send with idempotent retry (retaining same Idempotency-Key), and per-thread draft persistence; (3) Thread view (`Thread`, `MessageItem`) with date separators across day boundaries, jump-to-unread button, streaming token deltas with stop button, classified error cards with remediation, and SSE reconnection management (`useThreadStream`).
-- **Next step:** Push branch, open PR with Fixes #1318, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+- **Next step:** Shipped in PR #1413 / #1414.
 
 ### DL-#1329 · SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode
 

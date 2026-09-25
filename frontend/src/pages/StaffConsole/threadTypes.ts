@@ -100,6 +100,10 @@ export interface ThreadProps {
   onStopStreaming?: (messageId: string) => void;
   onRetryMessage?: (message: ThreadMessage) => void;
   onSendMessage?: (payload: SendMessagePayload) => Promise<{ ok: boolean; [key: string]: unknown }>;
+  onApproveProposal?: (proposalId: string, params: Record<string, unknown>) => Promise<void> | void;
+  onDenyProposal?: (proposalId: string, reason?: string) => Promise<void> | void;
+  onCancelRun?: (runId: string) => Promise<void> | void;
+  onRedirectHandoff?: (targetRole: string) => Promise<void> | void;
   roles?: import("./types").StaffRoleItem[];
   className?: string;
 }

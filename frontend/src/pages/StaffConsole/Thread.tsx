@@ -41,6 +41,10 @@ export const Thread: React.FC<ThreadProps> = ({
   onStopStreaming,
   onRetryMessage,
   onSendMessage,
+  onApproveProposal,
+  onDenyProposal,
+  onCancelRun,
+  onRedirectHandoff,
   roles = [],
   className = "",
 }) => {
@@ -192,6 +196,10 @@ export const Thread: React.FC<ThreadProps> = ({
                   isStreaming={item.message.streaming}
                   onStopStreaming={onStopStreaming}
                   onRetry={onRetryMessage}
+                  onApproveProposal={onApproveProposal}
+                  onDenyProposal={onDenyProposal}
+                  onCancelRun={onCancelRun}
+                  onRedirectHandoff={onRedirectHandoff}
                 />
               </div>
             );

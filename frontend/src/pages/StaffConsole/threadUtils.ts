@@ -69,6 +69,8 @@ export function formatFailureTitle(failureClass?: string | null): string {
   switch (failureClass) {
     case "auth_expired":
       return "Authentication Expired";
+    case "auth_token_expired":
+      return "Authentication Token Expired";
     case "rate_limit_exceeded":
       return "Rate Limit Exceeded";
     case "token_budget_exceeded":
