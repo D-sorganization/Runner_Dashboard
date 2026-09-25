@@ -55,7 +55,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — SC-B1-G4: one staff dispatch policy for /run and staff.dispatch (#1487)
+# Past handoff — SC-B1-G4: one staff dispatch policy for /run and staff.dispatch (#1487)
 
 Last updated: 2026-09-25
 
@@ -84,7 +84,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — CR-4: Planner stage backend (#1285)
+# Past handoff — CR-4: Planner stage backend (#1285)
 
 Last updated: 2026-09-25
 
@@ -115,7 +115,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart (#1491)
+# Past handoff — SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart (#1491)
 
 Last updated: 2026-09-25
 
@@ -151,7 +151,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
+# Past handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
 
 Last updated: 2026-09-25
 

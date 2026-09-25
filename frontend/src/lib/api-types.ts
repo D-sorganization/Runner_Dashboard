@@ -147,127 +147,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent-launcher/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Config
-         * @description Return the normalized v2 user config. Delegates to the launcher's
-         *     ``--validate-config`` so the response matches whatever the scheduler
-         *     will see.
-         */
-        get: operations["get_config_api_agent_launcher_config_get"];
-        /**
-         * Put Config
-         * @description Replace the user config. Validates by writing to a temp file and
-         *     invoking the launcher's ``--validate-config --config <tmp>``; only
-         *     promotes to the real config path if validation passes (atomic
-         *     rename).
-         */
-        put: operations["put_config_api_agent_launcher_config_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent-launcher/repos": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Repos */
-        get: operations["get_repos_api_agent_launcher_repos_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent-launcher/run-once": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Run Once
-         * @description Spawn one window for one agent now (does not affect the scheduler).
-         */
-        post: operations["run_once_api_agent_launcher_run_once_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent-launcher/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start Scheduler */
-        post: operations["start_scheduler_api_agent_launcher_start_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent-launcher/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Status
-         * @description Quick status read. Pure file I/O — no subprocess. Safe to poll
-         *     every few seconds from the dashboard.
-         */
-        get: operations["get_status_api_agent_launcher_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent-launcher/stop": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Stop Scheduler */
-        post: operations["stop_scheduler_api_agent_launcher_stop_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/agent-profiles": {
         parameters: {
             query?: never;
@@ -5309,6 +5188,9 @@ export interface paths {
         /**
          * Create Proposal
          * @description Create a new action proposal within a conversation thread.
+         *
+         *     Pre: ``action`` is registered; ``thread_id`` exists and ``message_id`` is a message in it.
+         *     Post: the proposal is ``proposed`` with the registry's risk class (any caller risk is ignored).
          */
         post: operations["create_proposal_api_v1_staff_proposals_post"];
         delete?: never;
@@ -5349,6 +5231,8 @@ export interface paths {
         /**
          * Decide Proposal
          * @description Decide (approve or deny) an action proposal, optionally executing immediately.
+         *
+         *     A ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).
          */
         post: operations["decide_proposal_api_v1_staff_proposals__proposal_id__decide_post"];
         delete?: never;
@@ -5368,7 +5252,7 @@ export interface paths {
         put?: never;
         /**
          * Execute Approved Proposal
-         * @description Execute an approved proposal through the action registry.
+         * @description Execute an ``approved`` proposal through the action registry (409 for any other live state).
          */
         post: operations["execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post"];
         delete?: never;
@@ -6273,23 +6157,6 @@ export interface components {
          * @enum {string}
          */
         ActionRiskLevel: "low" | "medium" | "high" | "critical";
-        /** AgentStatus */
-        AgentStatus: {
-            /** Enabled */
-            enabled: boolean;
-            /** Interval Seconds */
-            interval_seconds: number;
-            /** Last Repo */
-            last_repo: string | null;
-            /** Last Run Iso */
-            last_run_iso: string | null;
-            /** Last Window Pid */
-            last_window_pid: number | null;
-            /** Lock Alive */
-            lock_alive: boolean;
-            /** Name */
-            name: string;
-        };
         /** AnswerNeedsInputRequest */
         AnswerNeedsInputRequest: {
             /** Answer */
@@ -7463,17 +7330,6 @@ export interface components {
              */
             exclude_current: boolean;
         };
-        /** RepoEntry */
-        RepoEntry: {
-            /** Name */
-            name: string;
-            /** Org */
-            org: string;
-            /** Remote Url */
-            remote_url: string;
-            /** Wsl Path */
-            wsl_path: string;
-        };
         /** ReportChildPayload */
         ReportChildPayload: {
             /**
@@ -7509,19 +7365,6 @@ export interface components {
              * @default
              */
             updated_handoff: string;
-        };
-        /** ReposResponse */
-        ReposResponse: {
-            /** Count */
-            count: number;
-            /** Org Filter */
-            org_filter: string;
-            /** Repos */
-            repos: components["schemas"]["RepoEntry"][];
-            /** Repos Root */
-            repos_root: string;
-            /** Wsl Distro */
-            wsl_distro: string;
         };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
@@ -7655,11 +7498,6 @@ export interface components {
             /** Work Item Id */
             work_item_id?: string | null;
         };
-        /** RunOnceRequest */
-        RunOnceRequest: {
-            /** Agent */
-            agent: string;
-        };
         /** ScheduleToggleBody */
         ScheduleToggleBody: {
             /** Enabled */
@@ -7683,16 +7521,6 @@ export interface components {
              * @default true
              */
             restart_maxwell: boolean;
-        };
-        /** SimpleResponse */
-        SimpleResponse: {
-            /**
-             * Detail
-             * @default
-             */
-            detail: string;
-            /** Ok */
-            ok: boolean;
         };
         /**
          * StaffAuditListResponse
@@ -8655,19 +8483,6 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
-        /** StatusResponse */
-        StatusResponse: {
-            /** Agents */
-            agents: components["schemas"]["AgentStatus"][];
-            /** Runtime Root */
-            runtime_root: string;
-            /** Scheduler Pid */
-            scheduler_pid: number | null;
-            /** Scheduler Running */
-            scheduler_running: boolean;
-            /** Scheduler Started Iso */
-            scheduler_started_iso: string | null;
-        };
         /** TokenCreateRequest */
         TokenCreateRequest: {
             /** Expires In Days */
@@ -8834,10 +8649,9 @@ export interface components {
             };
             /**
              * Risk
-             * @description Risk class (read, low, medium, high, owner-only)
-             * @default low
+             * @description Ignored: the risk always comes from the action registry (#1485)
              */
-            risk: string;
+            risk?: string | null;
             /**
              * Thread Id
              * @description Parent thread ID
@@ -9032,161 +8846,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_config_api_agent_launcher_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    put_config_api_agent_launcher_config_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SimpleResponse"];
-                };
-            };
-        };
-    };
-    get_repos_api_agent_launcher_repos_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReposResponse"];
-                };
-            };
-        };
-    };
-    run_once_api_agent_launcher_run_once_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RunOnceRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SimpleResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    start_scheduler_api_agent_launcher_start_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SimpleResponse"];
-                };
-            };
-        };
-    };
-    get_status_api_agent_launcher_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StatusResponse"];
-                };
-            };
-        };
-    };
-    stop_scheduler_api_agent_launcher_stop_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SimpleResponse"];
                 };
             };
         };
