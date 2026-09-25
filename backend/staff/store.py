@@ -81,6 +81,7 @@ class RunRecord:
     # Retryable indicator and remediation guidance (issue #1297, SC-A6)
     retryable: bool = False
     remediation: str = ""
+    on_behalf_of: str = ""
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
@@ -144,6 +145,7 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("pid", "INTEGER"),
     ("retryable", "INTEGER NOT NULL DEFAULT 0"),
     ("remediation", "TEXT NOT NULL DEFAULT ''"),
+    ("on_behalf_of", "TEXT NOT NULL DEFAULT ''"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")

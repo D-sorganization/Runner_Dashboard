@@ -29,7 +29,7 @@ if "staff.audit.read" not in SCOPE_PRESETS.get("operator", []):
 
 log = logging.getLogger("dashboard.staff.audit")
 
-ALLOWED_SURFACES = frozenset({"ui", "api", "mcp", "barb", "scheduler"})
+ALLOWED_SURFACES = frozenset({"ui", "api", "mcp", "barb", "scheduler", "thread"})
 
 ALLOWED_ACTIONS = frozenset(
     {

@@ -1,4 +1,53 @@
-# Current handoff — Page usage evidence before pruning (#1302)
+# Current handoff — Keep original caller identity when forwarding staff runs (#1311)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1311-staff-on-behalf-of`; PR pending. Issue #1311 (open), epic #1352 / umbrella #1354; DL-#1311.
+
+## Work
+
+- `backend/staff/fleet.py`:
+  - Implemented `sign_on_behalf_of(principal, surface, thread_id, request_id, secret=None)` producing HMAC-SHA256 signed `X-Staff-On-Behalf-Of` token (`base64url(json).hmac_signature`).
+  - Implemented `verify_on_behalf_of(header, secret=None, ttl_seconds=300)` with constant-time HMAC comparison and freshness checks.
+  - Implemented `extract_on_behalf_of(header, is_peer)` validating and unpacking forwarded identity only when caller is authenticated as `fleet-peer`.
+  - Implemented `caller_identity(principal)` and `is_fleet_peer(principal)` helpers.
+  - Updated `forward_run` to accept and attach `on_behalf_of` header.
+- `backend/staff/store.py`:
+  - Added `on_behalf_of: str = ""` to `RunRecord` dataclass and `_ADDED_COLUMNS` for automatic SQLite migration.
+- `backend/staff/runner.py`:
+  - Added `on_behalf_of: str = ""` to `RunRequest` and passed to `RunRecord` in `submit()`.
+- `backend/routers/staff.py`:
+  - Added optional `surface` and `thread_id` to `RunBody`.
+  - Updated `_forward` to sign and attach `X-Staff-On-Behalf-Of`.
+  - In `dispatch()`, parsed `X-Staff-On-Behalf-Of` header if caller is `fleet-peer`; adopted `requested_by` and `on_behalf_of`; passed forwarded context to `record_audit()`.
+  - Kept file strictly under 500 lines (497 lines).
+- `backend/staff/audit.py`:
+  - Added `"thread"` to `ALLOWED_SURFACES`.
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
+  - Synced schema and types for `RunBody` with `surface` and `thread_id`.
+- `tests/api/test_staff_on_behalf_of.py`:
+  - Complete test suite covering signing/verification roundtrip, signature tampering, payload tampering, TTL expiration, empty principal rejection, forwarding header inclusion, peer verification & audit recording, tampered fallback, and non-peer spoof prevention.
+- `SPEC.md`: Version bumped to `2.5.218`, Change Log table row and bullet added.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1311 entry; marked DL-#1302 shipped.
+
+## Validation
+
+- `pytest tests/api/test_staff_on_behalf_of.py tests/api/test_staff_fleet.py tests/unit/test_staff_audit.py`: 28 passed.
+- `pytest tests/frontend/test_api_generation_contract.py`: 4 passed.
+- `pytest -k staff`: 228 passed.
+- `ruff check .`: 0 errors.
+- `mypy backend`: 0 errors (184 source files clean).
+- Line caps: all modified source files <= 500 lines (`staff.py`: 497, `runner.py`: 488, `fleet.py`: 282, `audit.py`: 438, `store.py`: 356).
+
+## Next
+
+1. Open PR, monitor CI, and auto-squash merge.
+2. Release lease on #1311.
+3. Unblock SC-B7 (#1314).
+
+# Previous handoff — Page usage evidence before pruning (#1302)
 
 Last updated: 2026-09-24
 
