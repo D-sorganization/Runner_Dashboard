@@ -83,6 +83,10 @@ class PostMessageRequest(BaseModel):
     meta: dict[str, Any] = Field(default_factory=dict)
 
 
+class AnswerNeedsInputRequest(BaseModel):
+    answer: str
+
+
 # ── THREAD MANAGEMENT ────────────────────────────────────────────────────────
 
 
@@ -337,6 +341,37 @@ async def post_message(
         }
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post(
+    "/threads/{thread_id}/runs/{run_id}/answer",
+    response_model_exclude_none=True,
+)
+async def answer_thread_run(
+    thread_id: str,
+    run_id: str,
+    body: AnswerNeedsInputRequest,
+    caller: Principal = Depends(require_scope("staff.chat")),
+) -> dict[str, Any]:
+    """Provide an answer to a needs_input question and trigger a continuation run."""
+    store = _get_store_or_503()
+    caller_id = format_caller(caller)
+    from staff.run_link import answer_needs_input
+
+    continuation = answer_needs_input(
+        thread_id=thread_id,
+        run_id=run_id,
+        answer=body.answer,
+        caller_id=caller_id,
+        conv_store=store,
+    )
+    if continuation is None:
+        raise HTTPException(status_code=404, detail="Run not found or cannot be continued")
+    return {
+        "ok": True,
+        "continuation_run_id": continuation.id,
+        "thread_id": thread_id,
+    }
 
 
 @router.get(

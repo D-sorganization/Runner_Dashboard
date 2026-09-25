@@ -73,6 +73,7 @@ class RunBody(BaseModel):
     machine: str = Field(default="local", max_length=60)
     surface: str | None = Field(default=None, max_length=40)
     thread_id: str | None = Field(default=None, max_length=120)
+    work_item_id: str | None = Field(default=None, max_length=120)
     dry_run: bool = False
 
     @field_validator("repo")
@@ -244,6 +245,12 @@ async def get_run(
     store = get_runner().store
     rec = store.get_run(run_id)
     if rec is None:
+        from staff.remote_runs import find_remote_run, proxy_remote_run  # noqa: PLC0415
+
+        remote = await find_remote_run(run_id)
+        if remote is not None:
+            peer_name, peer_url = remote
+            return await proxy_remote_run(run_id, events, peer_name, peer_url, caller_id=getattr(_peer, "id", ""))
         raise HTTPException(status_code=404, detail="run not found")
     evs = store.events_after(run_id, 0, limit=MAX_LIMIT)
     attempts = [a.to_dict() for a in store.get_attempts(run_id)]
@@ -263,6 +270,16 @@ async def stream_run(
     """SSE feed of run events. Ends with an ``end`` event when the run finishes."""
     store = get_runner().store
     if store.get_run(run_id) is None:
+        from staff.remote_runs import find_remote_run, stream_remote_run  # noqa: PLC0415
+
+        remote = await find_remote_run(run_id)
+        if remote is not None:
+            peer_name, peer_url = remote
+            return StreamingResponse(
+                stream_remote_run(run_id, after, peer_name, peer_url, caller_id=getattr(_peer, "id", "")),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
         raise HTTPException(status_code=404, detail="run not found")
 
     async def _gen():  # type: ignore[no-untyped-def]
@@ -304,6 +321,12 @@ async def stream_run(
 async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("staff.cancel"))) -> dict[str, Any]:
     runner = get_runner()
     if runner.store.get_run(run_id) is None:
+        from staff.remote_runs import find_remote_run, proxy_remote_cancel  # noqa: PLC0415
+
+        remote = await find_remote_run(run_id)
+        if remote is not None:
+            peer_name, peer_url = remote
+            return await proxy_remote_cancel(run_id, peer_name, peer_url, caller_id=getattr(caller, "id", ""))
         raise HTTPException(status_code=404, detail="run not found")
     ok = runner.cancel(run_id)
     caller_str = format_caller(caller)
@@ -411,6 +434,8 @@ async def dispatch(
         machine=body.machine,
         requested_by=caller_id,
         on_behalf_of=on_behalf_of,
+        thread_id=thread_id,
+        work_item_id=body.work_item_id or "",
         consolidation=decision,
     )
     try:

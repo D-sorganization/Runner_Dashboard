@@ -355,6 +355,7 @@ def classify_execution_result(
     watchdog_failure_class: str = "",
     watchdog_error: str = "",
     machine: str = "",
+    has_thread: bool = False,
 ) -> tuple[str, str, bool, str, str]:
     """Determine (status, failure_class, retryable, remediation, error) for a finished run."""
     if cancelled:
@@ -382,4 +383,8 @@ def classify_execution_result(
     err = diag.error or (watchdog_error if watchdog_failure_class else "")
     if rc == 0 and not result_line and not err:
         err = "An unattended agent that stops to ask a question exits 0 without finishing."
-    return "failed", diag.failure_class, diag.retryable, diag.remediation, err
+    if diag.failure_class == "needs_input":
+        status = "needs_input" if has_thread else "failed"
+    else:
+        status = "failed"
+    return status, diag.failure_class, diag.retryable, diag.remediation, err

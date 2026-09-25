@@ -25,6 +25,8 @@ class RunRequest:
     machine: str = "local"
     requested_by: str = ""
     on_behalf_of: str = ""
+    thread_id: str = ""
+    work_item_id: str = ""
     # PR-consolidation decision from ``staff.consolidation.decide`` (#1213); None when not applicable.
     consolidation: dict[str, Any] | None = None
 
@@ -54,6 +56,8 @@ class RunPlan:
     lease_ritual: bool
     consolidation: dict[str, Any] | None = None
     focus: str = ""  # board priorities + directives for this repo (#1239)
+    thread_id: str = ""
+    work_item_id: str = ""
 
     @property
     def strategy_mode(self) -> str:
@@ -80,5 +84,7 @@ class RunPlan:
             "branch": self.branch,
             "lease_ritual": self.lease_ritual,
             "focus": self.focus,
+            "thread_id": self.thread_id,
+            "work_item_id": self.work_item_id,
             "consolidation": dict(self.consolidation) if self.consolidation else None,
         }
