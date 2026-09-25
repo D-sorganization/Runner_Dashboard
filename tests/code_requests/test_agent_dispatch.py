@@ -140,7 +140,11 @@ async def test_profile_snapshot_persisted_on_record(tmp_path: Path) -> None:
     p_store = AgentProfileStore(tmp_path / "profiles.json")
     profile = p_store.get_default_or_fallback()
 
-    cr_store = CodeRequestStore(cache_path=store_path)
+    mock_write = AsyncMock(
+        return_value={"number": 123, "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/123"}
+    )
+    mock_fetch = AsyncMock(return_value=[])
+    cr_store = CodeRequestStore(cache_path=store_path, fetch_fn=mock_fetch, write_fn=mock_write)
     now = datetime.now(UTC).isoformat()
     req = CodeRequest(
         id="cr-test-snapshot-1",

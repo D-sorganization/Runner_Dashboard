@@ -31,13 +31,11 @@ def client(mock_auth: object, profile_store: AgentProfileStore) -> TestClient:  
 
 def test_list_agent_profiles_with_provider_availability(client: TestClient) -> None:
     """GET /api/agent-profiles returns seeded profiles and provider availability map."""
-    with patch(
-        "agent_remediation.probe_provider_availability",
-        return_value={
-            "codex_cli": type("_A", (), {"available": True, "detail": "ready"})(),
-            "claude_code_cli": type("_A", (), {"available": True, "detail": "ready"})(),
-        },
-    ):
+    mock_avail = {
+        "codex_cli": type("_A", (), {"available": True, "detail": "ready"})(),
+        "claude_code_cli": type("_A", (), {"available": True, "detail": "ready"})(),
+    }
+    with patch("routers.agent_profiles.probe_provider_availability", return_value=mock_avail):
         resp = client.get("/api/agent-profiles")
     assert resp.status_code == 200
     data = resp.json()
