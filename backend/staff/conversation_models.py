@@ -34,7 +34,7 @@ PROPOSAL_STATES = (
 PROPOSAL_RISKS = ("read", "low", "medium", "high", "critical", "owner-only")
 
 _VALID_PROPOSAL_TRANSITIONS: dict[str, set[str]] = {
-    "proposed": {"approved", "denied", "expired", "executing"},
+    "proposed": {"approved", "denied", "expired", "executing", "failed"},
     "approved": {"executing", "failed", "expired"},
     "denied": set(),
     "executing": {"done", "failed"},

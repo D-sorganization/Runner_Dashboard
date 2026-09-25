@@ -263,7 +263,7 @@ def execute_proposal(
             success=False, error=f"Action '{prop.action}' not registered", failure_class="unknown_action"
         )
 
-    proposing_role = str(prop.params.get("proposing_role") or prop.params.get("role") or "")
+    proposing_role = str(prop.params.get("proposing_role") or "")
     if not proposing_role and prop.message_id:
         msg = s.get_message(prop.message_id)
         if msg and msg.author_kind == "role":
