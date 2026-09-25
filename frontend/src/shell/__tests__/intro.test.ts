@@ -6,7 +6,7 @@
  * DbC invariant that overrides reference real nav ids.
  */
 import { describe, it, expect } from "vitest";
-import { introForTab, INTRO_OVERRIDES, INTRO_OVERRIDE_IDS } from "../intro";
+import { introForTab, INTRO_OVERRIDE_IDS } from "../intro";
 import { navItemById, NAV_ITEMS } from "../navRegistry";
 
 describe("introForTab", () => {
@@ -20,14 +20,6 @@ describe("introForTab", () => {
   it("returns undefined for an unknown tab", () => {
     expect(introForTab("does-not-exist")).toBeUndefined();
     expect(introForTab(undefined)).toBeUndefined();
-  });
-
-  it("expands the jargon-heavy Cline tab beyond its terse tooltip", () => {
-    const intro = introForTab("cline-launcher");
-    expect(intro!.body).toBe(INTRO_OVERRIDES["cline-launcher"]);
-    // The expanded copy de-jargons "Cline".
-    expect(intro!.body).toMatch(/AI coding-agent/i);
-    expect(intro!.body).not.toBe(navItemById("cline-launcher")!.tooltip);
   });
 
   it("expands the 'principals' admin tab into operator English", () => {

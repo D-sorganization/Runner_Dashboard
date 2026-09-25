@@ -2,10 +2,68 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from identity import format_caller
 from staff.audit import record_audit
+
+log = logging.getLogger("dashboard.staff.action_executors")
+
+DEFAULT_REVIEWER_ROLE = "fleet-critic"
+CODE_REQUEST_OWNER_ROLE = "barb"
+BOARD_PROPOSAL_ROLE = "board-secretary"
+
+ACTION_DEFAULT_ROLES: tuple[str, ...] = (
+    DEFAULT_REVIEWER_ROLE,
+    CODE_REQUEST_OWNER_ROLE,
+    BOARD_PROPOSAL_ROLE,
+)
+
+
+def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
+    """Validate action default roles against the loaded staff roster.
+
+    When a name does not resolve, logs a warning at runtime. If raise_on_error
+    is True, raises ValueError so test suites can fail loudly.
+    """
+    from staff.roles import load_roles, roles_dir
+
+    r_dir = roles_dir()
+    if r_dir is None:
+        log.debug("No staff roles directory located; skipping action default roles validation")
+        return []
+
+    try:
+        roster = load_roles(r_dir)
+    except Exception as exc:
+        msg = f"Failed to load staff roles for validation: {exc}"
+        log.warning(msg)
+        if raise_on_error:
+            raise ValueError(msg) from exc
+        return [msg]
+
+    errors: list[str] = []
+    for role_name in ACTION_DEFAULT_ROLES:
+        spec = roster.get(role_name)
+        if not spec:
+            errors.append(f"Role '{role_name}' does not exist in loaded roster")
+        elif not spec.dispatchable:
+            errors.append(f"Role '{role_name}' is not dispatchable (retired={spec.retired}, surface={spec.surface})")
+
+    if errors:
+        for err in errors:
+            log.warning("Action executor default role validation warning: %s", err)
+        if raise_on_error:
+            raise ValueError("; ".join(errors))
+    return errors
+
+
+# Validate at import time without crashing the server
+try:
+    validate_action_default_roles(raise_on_error=False)
+except Exception:  # noqa: BLE001
+    log.exception("Unexpected error during action default roles initial validation")
 
 if TYPE_CHECKING:
     from staff.actions import ActionContext, ActionResult
@@ -63,7 +121,7 @@ def execute_review_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResul
     pr = params.get("pr")
     if not repo or not pr:
         return ActionResult(success=False, error="Missing 'repo' or 'pr'", failure_class="invalid_params")
-    reviewer = str(params.get("reviewer") or "critic")
+    reviewer = str(params.get("reviewer") or DEFAULT_REVIEWER_ROLE)
     focus = str(params.get("focus") or "code review")
     prompt = f"Review PR #{pr} in {repo}. Focus: {focus}"
     params_copy = dict(params)
@@ -180,9 +238,10 @@ def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> A
     from staff.work_items import get_work_item_store
 
     wi_store = get_work_item_store()
+    role = str(params.get("role") or CODE_REQUEST_OWNER_ROLE)
     wi = wi_store.create_work_item(
         title=f"[Code Request] {title}",
-        role="lead_architect",
+        role=role,
         repo=repo,
         thread_id=ctx.thread_id,
         summary=desc,
@@ -202,9 +261,10 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
     from staff.work_items import get_work_item_store
 
     wi_store = get_work_item_store()
+    role = str(params.get("role") or BOARD_PROPOSAL_ROLE)
     wi = wi_store.create_work_item(
         title=f"[Board Proposal] {title}",
-        role="board_secretary",
+        role=role,
         thread_id=ctx.thread_id,
         summary=prop_body,
         links={"proposals": [{"title": title, "proposal": prop_body, "target": str(params.get("target") or "")}]},

@@ -261,3 +261,41 @@ def test_validate_role_fleet_actions_and_approvals(tmp_path: Path) -> None:
     no_actions["permissions"]["approvals"] = {"runner.start": "confirm"}
     problems_no_actions = validate_role_data(no_actions)
     assert any("approvals declared without fleet_actions" in p for p in problems_no_actions)
+
+
+@pytest.mark.unit
+def test_validator_accepts_tool_and_scope_grants() -> None:
+    """RM roles with ``tools``/``scopes`` (RM#1732) must not be marked invalid."""
+    from staff.validator import validate_role_data
+
+    role_dict = dict(_VALID_ROLE_DICT, tools=["submit_proposal"], scopes=["proposals.write"])
+    assert validate_role_data(role_dict) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("tools", "submit_proposal"),
+        ("tools", ["submit_proposal", "submit_proposal"]),
+        ("scopes", [""]),
+        ("scopes", {"proposals.write": True}),
+    ],
+)
+def test_validator_rejects_malformed_tool_and_scope_grants(key: str, value: object) -> None:
+    from staff.validator import validate_role_data
+
+    problems = validate_role_data(dict(_VALID_ROLE_DICT, **{key: value}))
+    assert any(key in p for p in problems), problems
+
+
+@pytest.mark.unit
+def test_every_schema_property_is_known_to_the_validator() -> None:
+    """The schema and the hand-written validator must name the same top-level fields."""
+    import json
+
+    from staff import validator
+
+    schema = json.loads((Path(validator.__file__).parent / "schema.json").read_text("utf-8"))
+    known = set(validator.REQUIRED_FIELDS) | set(validator.OPTIONAL_FIELDS)
+    assert set(schema["properties"]) == known

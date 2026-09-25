@@ -31,17 +31,108 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Dispatch #1474 and #1475 (approved Phase 0) to CLI-tier agents.
 
-### DL-#1287 · CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup
+### DL-#1483 · Restore green main: remove nested interactive controls in staff RosterRow
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Branch:** `fix/restore-green-main-roster-a11y`
+- **Paths:** `frontend/src/pages/StaffConsole/RosterRow.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 files 113/113 passed; npm run typecheck clean; npm run lint clean; RosterRow 296 lines <= 500 lines)
+- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container, resolving WCAG 4.1.2 nested-interactive violation in axe-core.
+- **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
+
+### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1475
+- **Branch:** `fix/wp-0.2-inbox-board-proposals-1475`
+- **PR:** #1482
+- **Paths:** `backend/staff/inbox.py`, `backend/staff/briefings.py`, `tests/unit/test_staff_inbox_proposals.py`, `frontend/src/pages/Staff/InboxPanel.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/ 100% passed; vitest 1337/1337 passed; npm run typecheck 0 errors; ruff check & format clean; mypy clean in 248 source files; all files <= 500 lines)
+- **Summary:** Replaced the stub in `backend/staff/inbox.py` with `_collect_board_proposals()` reading open proposals from CR-7 store `proposals.store.list_github_proposals(state="open")` with `DEFAULT_CACHE_TTL` caching. Excluded decided and closed proposals, mapped open proposals waiting on decisions to `InboxItem` with `source="board_proposal"`, severity mapped from urgency, age from `created_at`, link `/staff/fleet-command?section=proposals`, and structured metadata. Extracted briefing generation to `backend/staff/briefings.py` to keep all files strictly <= 500 lines. Added Proposals filter pill to frontend `InboxPanel.tsx`. Added unit test suite in `tests/unit/test_staff_inbox_proposals.py`.
+- **Next step:** None (shipped in PR #1482).
+
+### DL-#1338 · SC-G6: Retire the Cline Launcher page and its agent-launcher API
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1338 (Cline Launcher slice only; the other pages in #1338 remain `judgement:contested` pending owner decisions)
+- **Branch:** `chore/1338-retire-cline-launcher`
+- **PR:** #1467
+- **Paths:** `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/legacy/App.tsx`, `backend/server.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/test_retired_cline_launcher.py`, `frontend/src/shell/__tests__/retiredClineLauncher.test.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest 1309 passed; tsc clean; targeted pytest 81 passed, 1 skipped)
+- **Summary:** Owner decided to retire the Cline Launcher. Page, nav entry, intro override, legacy tab and `/api/agent-launcher` router removed; old addresses redirect to the Staff Console.
+- **Next step:** None (shipped in PR #1467).
+
+### DL-#1446 · Staff Console end to end: desktop three-pane console and real thread resolution
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1446 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1446-desktop-staff-console`
+- **PR:** #1467
+- **Paths:** `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/consoleThreads.ts`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/StaffConsole/ConsoleErrorBanner.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/e2e/a11y.spec.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest frontend/src/pages 86 files/673 tests + StaffPageConsole; tsc -p tsconfig.app.json 0 errors; changed files within the 500-line cap)
+- **Summary:** Desktop console is the default Staff section; desktop and mobile share `useStaffConsole`; roles open server-resolved threads (no invented ids); every backend failure is a visible alert.
+- **Next step:** None (shipped in PR #1467).
+
+### DL-#1344 · SC-E7: Maintenance safety tests: approval gates, blast-radius limits and fault injection
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1344 (epic #1351 / umbrella #1354); follow-up #1448 wires the stub operations
+- **Branch:** `test/1344-maintenance-safety`
+- **PR:** #1467
+- **Paths:** `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `backend/staff/maintenance_detect.py`, `tests/staff/test_maintenance_safety.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_detect_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (maintenance/actions/proposals/safety pytest 197 passed, 12 skipped; ruff clean; mypy backend/ clean)
+- **Summary:** Pinned policy table with a mutation check; fleet-wide, single-target and batch-size gates read from it; detector risk comes from the registry; unwired operations fail as `not_wired`; timeouts, token expiry and partial failures are classified and audited.
+- **Next step:** None (shipped in PR #1467).
+
+### DL-#1474 · WP-0.1: Resolve staff action role names against the loaded roster
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1474
+- **Branch:** `fix/wp-0.1-resolve-staff-action-roles-1474`
+- **PR:** #1481
+- **Paths:** `backend/staff/action_executors.py`, `tests/staff/routing_eval/test_action_executor_roles.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest 5/5 passed in test_action_executor_roles.py, 19/19 passed in tests/staff/ and test_staff_actions.py; ruff check and format clean; mypy backend clean with 0 issues in 247 files; all files <= 500 lines)
+- **Summary:** Replaced literal unresolvable staff role strings in `backend/staff/action_executors.py` with module constants: `DEFAULT_REVIEWER_ROLE = "fleet-critic"`, `CODE_REQUEST_OWNER_ROLE = "barb"`, `BOARD_PROPOSAL_ROLE = "board-secretary"`. Added `validate_action_default_roles` to validate default roles against `load_roles()`, logging warnings without crashing at runtime and failing loudly on error in tests. Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`.
+- **Next step:** None (shipped in PR #1481).
+
+
+### DL-#1477 · Staff validator accepts RM tool/scope grants
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1477
+- **Branch:** `fix/staff-validator-tools-scopes`
+- **PR:** #1478
+- **Paths:** `backend/staff/validator.py`, `backend/staff/schema.json`, `tests/unit/test_staff_roles.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest -k 'staff or role': 477 passed; ruff + mypy clean; live RM roster loads with 0 invalid roles)
+- **Summary:** RD's hand-written staff validator rejected the RM `tools`/`scopes` fields, marking three roles invalid and undispatchable; both are now optional unique string lists, RM stays the vocabulary authority.
+- **Next step:** None (shipped in PR #1478).
+
+### DL-#1287 · CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1287
 - **Branch:** `feat/cr-5-executor-stage-1287`
+- **PR:** #1476
 - **Paths:** `backend/code_requests/executor_models.py`, `backend/code_requests/executor_router.py`, `backend/code_requests/executor_coordination.py`, `backend/code_requests/executor_stage.py`, `backend/routers/code_requests_executor.py`, `backend/server.py`, `tests/code_requests/test_executor_stage.py`, `tests/code_requests/test_executor_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest 83/83 passed in tests/code_requests/ across test_executor_stage and test_executor_routes; vitest 1313/1313 passed; npm run generate-api:check exit 0; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; all files <= 500 lines)
 - **Summary:** Implemented CR-5 Executor stage: (1) Execution models and tier classification (`ollama`, `cli`, `strong`) with task class mappings and profile routing; (2) Multi-agent coordination with roster priority (`user > maxwell-daemon > claude > codex > conductor > jules > local > gaai`), claim checking, lease acquisition with 2h TTL, and PR metadata generation; (3) Wave-based dependency scheduler with topological acyclic ordering and per-repo concurrency caps; (4) Retries, failure tier escalation after 2 failures, human triage pausing (`needs-human-triage`) upon strong exhaustion, downstream dependency blocking; (5) Endpoints for initialization, dispatch, child reporting, and rollup mounted in `backend/routers/code_requests_executor.py`.
-- **Next step:** Commit, push, open PR, enable auto-merge, verify CI passes, and release lease.
+- **Next step:** None (shipped in PR #1476).
 
 ### DL-#1471 · CI: Synchronize generated OpenAPI contract types for Staff and Board proposal requests
 

@@ -25,42 +25,144 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup (#1287)
+# Current handoff — Restore green main: remove nested interactive controls in staff RosterRow (#1483)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/cr-5-executor-stage-1287`; Issue #1287; DL-#1287.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-roster-a11y`; DL-#1483.
 
 ## Objective and Status
 
-- Implement CR-5 Executor stage for Code Requests (issue #1287) following strict fleet standards (TDD, DbC, LoD, DRY, $\le 500$ lines per file):
-  - Models (`backend/code_requests/executor_models.py`, 102 lines): `ExecutorTier` (`ollama`, `cli`, `strong`), `ChildExecutionState` (`queued`, `claimed`, `pr_open`, `ci`, `merged`, `failed`, `blocked`, `paused_for_human`), `ChildExecutionRecord`, `ChildIssuePayload`, `ExecutionConfig`, `ExecutorRollup`.
-  - Router (`backend/code_requests/executor_router.py`, 169 lines): tier normalization, escalation chain, task class mapping (`docs`/`refactor` -> `ollama`, `feature`/`bug` -> `cli`, `arch`/`perf`/`migration` -> `strong`), pinned profile capability checks with automatic tier escalation, and cheapest capable provider routing via Conductor.
-  - Multi-Agent Coordination (`backend/code_requests/executor_coordination.py`, 206 lines): roster priority (`user > maxwell-daemon > claude > codex > conductor > jules > local > gaai`), `do-not-automate` checks, claim checks, lease acquisition with 2h TTL, and PR metadata generation (`Fixes #N`, `agent:<agent>`).
-  - Pipeline & Scheduler (`backend/code_requests/executor_stage.py`, 354 lines): topological acyclic wave ordering, per-repo dispatch concurrency limits (default 3), PR/CI/merge state machine, retry loop with updated handoffs, failure tier escalation after 2 failures, human triage pausing (`needs-human-triage`) upon strong exhaustion, downstream dependency blocking, and rollup computation.
-  - Endpoints (`backend/routers/code_requests_executor.py`, 175 lines) mounted in `backend/server.py`:
-    - `POST /api/code-requests/{id}/executor/initialize`
-    - `POST /api/code-requests/{id}/executor/dispatch`
-    - `POST /api/code-requests/{id}/executor/report-child`
-    - `GET /api/code-requests/{id}/executor/rollup`
-  - All files strictly $\le 500$ lines.
+- Restore green main by removing nested interactive controls in `frontend/src/pages/StaffConsole/RosterRow.tsx`:
+  - Wrapped the role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container.
+  - The pin toggle button is now an adjacent sibling rather than a focusable descendant inside an interactive element.
+  - Resolves WCAG 4.1.2 `nested-interactive` violation in axe-core that broke Playwright E2E smoke tests.
   - Verification:
-    - `pytest tests/code_requests/` passes: 83/83 passed (17 tests in `test_executor_stage.py`, 5 tests in `test_executor_routes.py`, plus existing 61 tests).
-    - Vitest passes: 155/155 test files, 1313/1313 tests passed.
-    - OpenAPI sync: `scripts/gen-api-client.sh --check` passes with zero diff.
-    - TypeScript & Linting: `npm run typecheck` 0 errors, `npm run lint` 0 warnings, `ruff check .` clean.
+    - StaffConsole vitest: 17/17 test files passed (113/113 tests passed).
+    - `npm run typecheck`: clean (0 errors).
+    - `npm run lint`: clean (0 errors, 0 warnings).
+    - `RosterRow.tsx`: 296 lines ($\le 500$).
 
 ## Next Steps
 
-1. Commit and push `feat/cr-5-executor-stage-1287`.
-2. Open PR referencing `Fixes #1287` with label `agent:local`.
+1. Push `fix/restore-green-main-roster-a11y`.
+2. Open PR with label `agent:local`.
 3. Enable auto-merge (`gh pr merge --auto --squash`).
-4. Verify CI passes and PR merges to `main`.
-5. Release lease on #1287 and fast-forward local `main`.
+4. Verify all CI checks pass and PR merges cleanly to `main`.
 
 ---
+
+# Past handoff — WP-0.2: Show Board proposals in the owner inbox (#1475)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.2-inbox-board-proposals-1475`; Issue #1475; DL-#1475; PR #1482 (merged).
+
+## Objective and Status
+
+- Wire Board proposals into the owner inbox (WP-0.2, issue #1475):
+  - Replaced stub in `backend/staff/inbox.py` with `_collect_board_proposals()` querying `proposals.store.list_github_proposals(state="open")` with `DEFAULT_CACHE_TTL` caching.
+  - Filtered out closed proposals and decided proposals (`extract_decision_info`).
+  - Mapped each open proposal waiting on a decision to `InboxItem` with `source="board_proposal"`.
+  - Extracted briefing generation to `backend/staff/briefings.py` (128 lines) keeping all files $\le 500$ lines.
+  - Added Proposals filter pill to frontend `InboxPanel.tsx`.
+  - Added unit test suite in `tests/unit/test_staff_inbox_proposals.py`.
+
+## Next Steps
+
+1. None (shipped in PR #1482).
+
+---
+
+# Past handoff — SC-G6: Retire the Cline Launcher (#1338)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `chore/1338-retire-cline-launcher`; PR #1467 (merged); Issue #1338 (Cline slice only); DL-#1338.
+
+## Objective and Status
+
+- Owner decision: retire the Cline Launcher. Page, nav entry, intro override, legacy tab and `/api/agent-launcher` router removed; old addresses redirect to Staff Console.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — Staff Console end to end: desktop console and real thread resolution (#1446)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1446-desktop-staff-console`; PR #1467 (merged); Issue #1446; DL-#1446.
+
+## Objective and Status
+
+- Desktop console is default Staff section; desktop and mobile share `useStaffConsole`; roles open server-resolved threads; backend failures are visible alerts.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — SC-E7: Maintenance safety tests and gates (#1344)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `test/1344-maintenance-safety`; PR #1467 (merged); Issue #1344; DL-#1344.
+
+## Objective and Status
+
+- Pinned policy table with mutation check; fleet-wide, single-target and batch-size gates; detector risk from registry; unwired operations fail as not_wired; timeouts, token expiry, partial failures audited.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.1-resolve-staff-action-roles-1474`; Issue #1474; DL-#1474; PR #1481 (merged).
+
+---
+
+# Past handoff — Staff validator accepts RM tool/scope grants (#1477)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/staff-validator-tools-scopes`; Issue #1477; DL-#1477; PR #1478 (merged).
+
+## Objective and Status
+
+- Done: `OPTIONAL_FIELDS` gains `tools` and `scopes`, validated as unique non-empty string lists by `_string_list_problems`; `schema.json` gains `scopes`; tests cover acceptance, malformed grants and schema/validator parity.
+
+---
+
+# Past handoff — CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup (#1287)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/cr-5-executor-stage-1287`; Issue #1287; DL-#1287; PR #1476 (merged).
 
 # Past handoff — CI: Synchronize generated OpenAPI contract types for Staff and Board proposal requests (#1471)
 
