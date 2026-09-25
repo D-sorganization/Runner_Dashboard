@@ -31,16 +31,55 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Get the owner's decision on Phase 1 (WP-1.1 verification step) now that Phase 0 (#1481, #1482) has merged.
 
-### DL-#1483 · Restore green main: remove nested interactive controls in staff RosterRow
+### DL-#1339 · SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies
 
-- **State:** in_progress
+- **State:** in_review
 - **Owner:** antigravity
-- **Branch:** `fix/restore-green-main-roster-a11y`
-- **Paths:** `frontend/src/pages/StaffConsole/RosterRow.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Issue:** #1339 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1339-group-threads-board`
+- **PR:** #1480
+- **Paths:** `backend/routers/staff_groups.py`, `backend/staff/group_models.py`, `backend/staff/groups.py`, `backend/routers/staff_threads.py`, `backend/staff/action_executors.py`, `backend/staff/actions.py`, `backend/server.py`, `tests/unit/test_staff_groups.py`, `tests/api/test_staff_groups_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 files 113/113 passed; npm run typecheck clean; npm run lint clean; RosterRow 296 lines <= 500 lines)
-- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container, resolving WCAG 4.1.2 nested-interactive violation in axe-core.
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_groups.py tests/api/test_staff_groups_api.py 15/15 passing; regression test suite 42/42 passing; ruff check clean; ruff format clean; mypy 0 issues; all files strictly <= 500 lines)
+- **Summary:** Enabled group threads coordinating seat replies: (1) Added data models (`group_models.py`) and group coordination engine (`groups.py`) configuring Board group (seats Alpha, Bravo, Charlie, Delta + coordinator `board-secretary`); (2) Implemented concurrent fanout across seat chat turns with per-seat timeout and fault isolation; (3) Added consensus synthesis with quorum threshold (3/4), executive synthesis, collapsible `<details><summary>` seat disclosures, and automatic `board.propose` ActionProposal creation; (4) Added pre-send token/USD cost estimation and threshold guard (`STAFF_GROUP_COST_THRESHOLD_USD`, default $2.00) requiring `confirm_cost=True`; (5) Added REST endpoints `GET /api/v1/staff/groups`, `GET /api/v1/staff/groups/{id}`, `GET /api/v1/staff/groups/{id}/cost-estimate`, `POST /api/v1/staff/groups/{id}/threads`; (6) Integrated group threads in `staff_threads.py` with async background coordinator runner; (7) Authorized `board-secretary` for `board.propose` and `staff.dispatch` actions; (8) Fixed `create_work_item` parameter naming in `action_executors.py`.
+- **Next step:** Push rebased branch, monitor PR #1480 CI to squash merge, release lease, and clean up.
+
+### DL-#1484 · SC-B1-G1: Enforce read-only chat turns per provider
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1484
+- **PR:** #1506
+- **Branch:** `fix/1484-read-only-chat`
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `backend/staff/validator.py`, `tests/unit/test_staff_chat_read_only.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new suite 24 passed; staff/chat/role/adapter/validator selection 618 passed, 15 skipped; ruff clean; `mypy backend/` clean in 249 files; chat.py 492 lines)
+- **Summary:** Every chat argv carries the provider's explicit read-only flag on fresh and resumed turns (the resumed claude turn had none); claude additionally denies the write tools; providers without a read-only mode fail closed with `provider_not_read_only`; `chat.read_only_tools` is a validated provider-neutral vocabulary mapped to the claude `--allowedTools` allowlist. `cursor-agent --mode ask` could not be verified locally (CLI not installed on DeskComputer); an unknown flag fails the turn visibly, never writable.
+- **Next step:** None (shipped in PR #1506). Verify a live cursor-agent chat turn on a node that has the CLI.
+
+### DL-#1494 · Fix projects run steward missing Idempotency-Key
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1494
+- **Branch:** `fix/1494-projects-run-steward-idempotency`
+- **Paths:** `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Projects.test.tsx 8/8 passed, tsc 0 errors, eslint 0 errors, all files <= 500 lines)
+- **Summary:** Replaced raw `apiRequest` in `ProjectsPage.tsx` with shared `dispatchRun("project-steward", ...)` and `errorMessage` from `frontend/src/pages/Staff/staffApi.ts`. `dispatchRun` automatically generates and sets the required `Idempotency-Key` header and CSRF sentinel header, satisfying `require_idempotency_header` on `/api/v1/staff/project-steward/run`. Formatted error messages via `errorMessage` to present user-friendly error details. Added Vitest assertions in `Projects.test.tsx` verifying `Idempotency-Key` presence and surfacing of 400 Bad Request error details.
 - **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
+
+### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Branch:** `fix/restore-green-main-danger-badge-contrast`
+- **PR:** #1507
+- **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/design/fleetThemes.ts`, `frontend/src/design/tokens.ts`, `frontend/src/design/__tests__/fleetThemes.contrast.test.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 passed; fleetThemes vitest 24/24 passed; npm run typecheck clean; npm run lint clean; all files <= 500 lines)
+- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container (resolving WCAG 4.1.2 nested-interactive). Replaced unconfigured `--color-*` variables in `ContextPane.tsx` with standard design system tokens. Adjusted `light.semantic.error` in `fleetThemes.ts` and `lightBadgeTokens` in `tokens.ts` from `#bf2130` to `#b81d2c`, raising contrast on tinted backgrounds (`--badge-danger-bg` over `var(--bg-secondary)`) from 4.49:1 to 4.84:1 to strictly satisfy WCAG AA 4.5:1 minimums, resolving axe-core `color-contrast` failures in Playwright E2E smoke tests.
+- **Next step:** None (shipped in PR #1507).
 
 ### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
 
@@ -106,7 +145,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (pytest 5/5 passed in test_action_executor_roles.py, 19/19 passed in tests/staff/ and test_staff_actions.py; ruff check and format clean; mypy backend clean with 0 issues in 247 files; all files <= 500 lines)
 - **Summary:** Replaced literal unresolvable staff role strings in `backend/staff/action_executors.py` with module constants: `DEFAULT_REVIEWER_ROLE = "fleet-critic"`, `CODE_REQUEST_OWNER_ROLE = "barb"`, `BOARD_PROPOSAL_ROLE = "board-secretary"`. Added `validate_action_default_roles` to validate default roles against `load_roles()`, logging warnings without crashing at runtime and failing loudly on error in tests. Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`.
 - **Next step:** None (shipped in PR #1481).
-
 
 ### DL-#1477 · Staff validator accepts RM tool/scope grants
 
@@ -207,7 +245,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/FleetCommandOps.test.tsx`, `frontend/src/pages/__tests__/fleetCommandTestHelpers.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (Merged to main via PR #1460)
-- **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
 - **Next step:** None (shipped in PR #1460).
 
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool

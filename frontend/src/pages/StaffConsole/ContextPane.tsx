@@ -50,8 +50,8 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        background: "var(--color-bg-surface, #ffffff)",
-        borderLeft: "1px solid var(--color-border, #e2e8f0)",
+        background: "var(--bg-secondary, #161b22)",
+        borderLeft: "1px solid var(--border, #30363d)",
         fontSize: "0.875rem",
       }}
     >
@@ -61,8 +61,8 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
         aria-label="Context views"
         style={{
           display: "flex",
-          borderBottom: "1px solid var(--color-border, #e2e8f0)",
-          background: "var(--color-bg-muted, #f8fafc)",
+          borderBottom: "1px solid var(--border, #30363d)",
+          background: "var(--bg-tertiary, #1c2333)",
         }}
       >
         <button
@@ -74,10 +74,10 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             flex: 1,
             padding: "10px 12px",
             border: "none",
-            borderBottom: activeTab === "role" ? "2px solid var(--color-primary, #2563eb)" : "2px solid transparent",
-            background: activeTab === "role" ? "var(--color-bg-surface, #ffffff)" : "transparent",
+            borderBottom: activeTab === "role" ? "2px solid var(--accent-blue, #58a6ff)" : "2px solid transparent",
+            background: activeTab === "role" ? "var(--bg-secondary, #161b22)" : "transparent",
             fontWeight: activeTab === "role" ? 600 : 500,
-            color: activeTab === "role" ? "var(--color-primary, #2563eb)" : "var(--color-text-secondary, #64748b)",
+            color: activeTab === "role" ? "var(--accent-blue, #58a6ff)" : "var(--text-secondary, #8b949e)",
             cursor: "pointer",
           }}
         >
@@ -92,10 +92,10 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             flex: 1,
             padding: "10px 12px",
             border: "none",
-            borderBottom: activeTab === "thread" ? "2px solid var(--color-primary, #2563eb)" : "2px solid transparent",
-            background: activeTab === "thread" ? "var(--color-bg-surface, #ffffff)" : "transparent",
+            borderBottom: activeTab === "thread" ? "2px solid var(--accent-blue, #58a6ff)" : "2px solid transparent",
+            background: activeTab === "thread" ? "var(--bg-secondary, #161b22)" : "transparent",
             fontWeight: activeTab === "thread" ? 600 : 500,
-            color: activeTab === "thread" ? "var(--color-primary, #2563eb)" : "var(--color-text-secondary, #64748b)",
+            color: activeTab === "thread" ? "var(--accent-blue, #58a6ff)" : "var(--text-secondary, #8b949e)",
             cursor: "pointer",
           }}
         >
@@ -120,9 +120,9 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             style={{
               padding: "8px 10px",
               borderRadius: "6px",
-              background: "var(--color-bg-danger-subtle, #fef2f2)",
-              color: "var(--color-text-danger, #b91c1c)",
-              border: "1px solid var(--color-border-danger, #fecaca)",
+              background: "var(--badge-danger-bg, rgba(248, 81, 73, 0.15))",
+              color: "var(--badge-danger-fg, #f85149)",
+              border: "1px solid rgba(248, 81, 73, 0.3)",
               fontSize: "0.75rem",
             }}
           >
@@ -135,20 +135,20 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
           <div role="tabpanel" aria-label="Role details" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             {/* Header */}
             <div>
-              <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--color-text-primary, #0f172a)" }}>
+              <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-primary, #e6edf3)" }}>
                 {role.title}
               </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary, #64748b)" }}>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-secondary, #8b949e)" }}>
                 @{role.name}
               </div>
             </div>
 
             {/* Mandate */}
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase" }}>
                 Mandate
               </div>
-              <p style={{ margin: "4px 0 0 0", color: "var(--color-text-primary, #334155)", lineHeight: 1.4 }}>
+              <p style={{ margin: "4px 0 0 0", color: "var(--text-primary, #e6edf3)", lineHeight: 1.4 }}>
                 {role.mandate}
               </p>
             </div>
@@ -157,14 +157,14 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             {role.schedule && (
               <div
                 style={{
-                  background: "var(--color-bg-muted, #f8fafc)",
+                  background: "var(--bg-tertiary, #1c2333)",
                   padding: "10px",
                   borderRadius: "6px",
-                  border: "1px solid var(--color-border, #e2e8f0)",
+                  border: "1px solid var(--border, #30363d)",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase" }}>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase" }}>
                     Schedule
                   </span>
                   {/* Toggle Switch */}
@@ -179,7 +179,7 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                       width: "36px",
                       height: "20px",
                       borderRadius: "10px",
-                      background: scheduleEnabled ? "var(--color-primary, #2563eb)" : "var(--color-bg-disabled, #cbd5e1)",
+                      background: scheduleEnabled ? "var(--accent-blue, #58a6ff)" : "var(--border-light, #3d444d)",
                       position: "relative",
                       border: "none",
                       cursor: isToggling ? "wait" : "pointer",
@@ -204,11 +204,11 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                 </div>
                 <div style={{ fontSize: "0.8125rem", fontFamily: "monospace" }}>{role.schedule.cron}</div>
                 {role.schedule.window && (
-                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary, #64748b)" }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-secondary, #8b949e)" }}>
                     Window: {role.schedule.window}
                   </div>
                 )}
-                <div style={{ fontSize: "0.75rem", color: scheduleEnabled ? "var(--color-success, #16a34a)" : "var(--color-danger, #dc2626)", marginTop: "4px" }}>
+                <div style={{ fontSize: "0.75rem", color: scheduleEnabled ? "var(--accent-green, #3fb950)" : "var(--accent-red, #f85149)", marginTop: "4px" }}>
                   {scheduleEnabled ? "Active" : "Schedule Paused"}
                 </div>
               </div>
@@ -216,7 +216,7 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
 
             {/* Providers Section */}
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
                 Providers
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
@@ -230,8 +230,9 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                       padding: "3px 8px",
                       borderRadius: "12px",
                       fontSize: "0.75rem",
-                      background: "var(--color-bg-subtle, #f1f5f9)",
-                      border: "1px solid var(--color-border, #e2e8f0)",
+                      background: "var(--bg-card, #1c2128)",
+                      border: "1px solid var(--border, #30363d)",
+                      color: "var(--text-primary, #e6edf3)",
                     }}
                   >
                     <span
@@ -251,15 +252,15 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             {/* Budget & Spend */}
             {role.budget && (
               <div>
-                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase", marginBottom: "4px" }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "4px" }}>
                   Budget & Spend
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem" }}>
-                  <span style={{ color: "var(--color-text-secondary, #64748b)" }}>Today:</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", color: "var(--text-primary, #e6edf3)" }}>
+                  <span style={{ color: "var(--text-secondary, #8b949e)" }}>Today:</span>
                   <span style={{ fontWeight: 600 }}>${role.budget.usd_today.toFixed(2)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem" }}>
-                  <span style={{ color: "var(--color-text-secondary, #64748b)" }}>Daily Cap:</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", color: "var(--text-primary, #e6edf3)" }}>
+                  <span style={{ color: "var(--text-secondary, #8b949e)" }}>Daily Cap:</span>
                   <span style={{ fontWeight: 600 }}>${role.budget.usd_per_day.toFixed(2)}</span>
                 </div>
               </div>
@@ -268,7 +269,7 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             {/* Active Runs */}
             {role.active_runs && role.active_runs.length > 0 && (
               <div>
-                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase", marginBottom: "6px" }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
                   Active Runs
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -278,15 +279,15 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                       style={{
                         padding: "6px 8px",
                         borderRadius: "4px",
-                        background: "var(--color-bg-subtle, #f8fafc)",
-                        border: "1px solid var(--color-border, #e2e8f0)",
+                        background: "var(--bg-card, #1c2128)",
+                        border: "1px solid var(--border, #30363d)",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
                       }}
                     >
-                      <span style={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{r.id}</span>
-                      <span style={{ fontSize: "0.75rem", color: "var(--color-primary, #2563eb)", fontWeight: 500 }}>
+                      <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "var(--text-primary, #e6edf3)" }}>{r.id}</span>
+                      <span style={{ fontSize: "0.75rem", color: "var(--accent-blue, #58a6ff)", fontWeight: 500 }}>
                         {r.status}
                       </span>
                     </div>
@@ -301,32 +302,32 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
         {activeTab === "thread" && (
           <div role="tabpanel" aria-label="Thread linked items" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
                 Linked Work Items
               </div>
               {threadContext?.linked_work_items?.length ? (
                 threadContext.linked_work_items.map((wi) => (
-                  <div key={wi.id} style={{ fontSize: "0.8125rem", padding: "4px 0" }}>
+                  <div key={wi.id} style={{ fontSize: "0.8125rem", padding: "4px 0", color: "var(--text-primary, #e6edf3)" }}>
                     <span style={{ fontWeight: 600 }}>{wi.id}</span>: <span>{wi.title}</span>
                   </div>
                 ))
               ) : (
-                <div style={{ color: "var(--color-text-muted, #94a3b8)", fontSize: "0.75rem" }}>None</div>
+                <div style={{ color: "var(--text-secondary, #8b949e)", fontSize: "0.75rem" }}>None</div>
               )}
             </div>
 
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
                 Linked Issues & PRs
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {threadContext?.linked_issues?.map((iss) => (
-                  <span key={iss} style={{ background: "var(--color-bg-subtle, #f1f5f9)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
+                  <span key={iss} style={{ background: "var(--bg-card, #1c2128)", border: "1px solid var(--border, #30363d)", color: "var(--text-primary, #e6edf3)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
                     {iss}
                   </span>
                 ))}
                 {threadContext?.linked_prs?.map((pr) => (
-                  <span key={pr} style={{ background: "var(--color-bg-subtle, #f1f5f9)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
+                  <span key={pr} style={{ background: "var(--bg-card, #1c2128)", border: "1px solid var(--border, #30363d)", color: "var(--text-primary, #e6edf3)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
                     {pr}
                   </span>
                 ))}
@@ -334,12 +335,12 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             </div>
 
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-muted, #94a3b8)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
                 Linked Code Requests
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {threadContext?.linked_code_requests?.map((cr) => (
-                  <span key={cr} style={{ background: "var(--color-bg-subtle, #f1f5f9)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
+                  <span key={cr} style={{ background: "var(--bg-card, #1c2128)", border: "1px solid var(--border, #30363d)", color: "var(--text-primary, #e6edf3)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
                     {cr}
                   </span>
                 ))}
