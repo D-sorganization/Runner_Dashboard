@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import datetime as _dt
 from collections.abc import Iterator
+from functools import partial
 from pathlib import Path
 from typing import Any
 
+import anyio
+import anyio.to_thread
 import pytest
 from identity import Principal
 from staff.actions import (
@@ -246,8 +249,11 @@ def test_execute_staff_dispatch_success_and_thread_messages() -> None:
         principal="barb",
     )
 
-    result = execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
-    assert result.success is True
+    async def off_loop() -> ActionResult:  # as the proposal routes run it (#1448, #1487)
+        return await anyio.to_thread.run_sync(partial(execute_proposal, prop.id, approver=TEST_APPROVER, store=store))
+
+    result = anyio.run(off_loop)
+    assert result.success is True, result.error
     assert result.run_id is not None
     assert result.run_id.startswith("run-") or result.run_id.startswith("run_")
 

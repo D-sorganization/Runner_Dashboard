@@ -17,10 +17,10 @@ import time
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-import anyio.from_thread
 import gh_client
 from fastapi import HTTPException
 from security import validate_repo_slug
+from staff.loop_bridge import BridgeUnavailableError, run_on_loop
 from staff.maintenance_policy import MaintenanceError, MaintenancePreconditionError
 from staff.workspace import ORG
 
@@ -37,18 +37,12 @@ class MaintenanceBridgeError(MaintenanceError):
     """The operation ran outside an anyio worker thread, so GitHub is unreachable."""
 
 
-def _noop() -> None:
-    return None
-
-
 def call_github(fn: Callable[..., Coroutine[Any, Any, Any]], *args: Any) -> Any:
     """Run the async ``gh_client`` call ``fn(*args)`` on the event loop from a worker thread."""
     try:
-        anyio.from_thread.run_sync(_noop)
-    except RuntimeError as exc:
-        raise MaintenanceBridgeError(f"GitHub call needs an anyio worker thread: {exc}") from exc
-    try:
-        return anyio.from_thread.run(fn, *args)
+        return run_on_loop(fn, *args)
+    except BridgeUnavailableError as exc:
+        raise MaintenanceBridgeError(f"GitHub call {exc}") from exc
     except gh_client.GhAuthError as exc:
         raise PermissionError(f"GitHub rejected the token: {exc}") from exc
     except gh_client.GhClientError as exc:
