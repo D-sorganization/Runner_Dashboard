@@ -42,7 +42,37 @@ CONSOLIDATE_WHEN_BOUNDS: dict[str, tuple[int, int | None]] = {
     "open_prs": (1, None),
     "utilisation_pct": (1, 100),
 }
-PERMISSION_KEYS: tuple[str, ...] = (
+FLEET_ACTIONS: tuple[str, ...] = (
+    "runner.start",
+    "runner.stop",
+    "runner.restart",
+    "runner.scale",
+    "fleet.node_up",
+    "fleet.node_down",
+    "queue.purge_stale",
+    "run.cancel",
+    "run.rerun",
+    "queue.diagnose",
+    "host.vhdx_compact",
+    "dashboard.restart",
+)
+APPROVAL_LEVELS: tuple[str, ...] = ("auto", "confirm", "owner")
+_APPROVAL_ORDER: dict[str, int] = {"auto": 0, "confirm": 1, "owner": 2}
+DEFAULT_ACTION_APPROVALS: dict[str, str] = {
+    "dashboard.restart": "confirm",
+    "fleet.node_down": "owner",
+    "fleet.node_up": "confirm",
+    "host.vhdx_compact": "confirm",
+    "queue.diagnose": "auto",
+    "queue.purge_stale": "auto",
+    "run.cancel": "confirm",
+    "run.rerun": "auto",
+    "runner.restart": "confirm",
+    "runner.scale": "confirm",
+    "runner.start": "confirm",
+    "runner.stop": "confirm",
+}
+REQUIRED_PERMISSION_KEYS: tuple[str, ...] = (
     "lease",
     "push_branch",
     "open_pr",
@@ -50,6 +80,12 @@ PERMISSION_KEYS: tuple[str, ...] = (
     "host_shell",
     "notify_user",
 )
+OPTIONAL_PERMISSION_KEYS: tuple[str, ...] = (
+    "fleet_actions",
+    "approvals",
+    "action_approvals",
+)
+PERMISSION_KEYS: tuple[str, ...] = REQUIRED_PERMISSION_KEYS
 BUDGET_KEYS: tuple[str, ...] = ("usd_per_run", "usd_per_day")
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -195,6 +231,50 @@ def _validate_dicts(data: dict[str, Any]) -> list[str]:
         for key in PERMISSION_KEYS:
             if not isinstance(permissions.get(key), bool):
                 problems.append(f"permissions.{key} must be a boolean")
+        for key in permissions:
+            if key not in REQUIRED_PERMISSION_KEYS and key not in OPTIONAL_PERMISSION_KEYS:
+                problems.append(f"unknown permissions key {key!r}")
+        problems.extend(_validate_fleet_actions_and_approvals(permissions))
+    return problems
+
+
+def _validate_fleet_actions_and_approvals(permissions: dict[str, Any]) -> list[str]:
+    """Check permissions.fleet_actions and approvals (#1734, SC-E1, SC-E2)."""
+    problems: list[str] = []
+    fleet_actions = permissions.get("fleet_actions")
+    if fleet_actions is not None:
+        if not isinstance(fleet_actions, list):
+            problems.append("fleet_actions must be a list")
+        else:
+            unknown = [a for a in fleet_actions if a not in FLEET_ACTIONS]
+            if unknown:
+                problems.append(f"unknown fleet action {unknown!r}")
+            if len(set(map(repr, fleet_actions))) != len(fleet_actions):
+                problems.append("fleet_actions must be unique")
+
+    approvals = permissions.get("approvals")
+    if approvals is None:
+        approvals = permissions.get("action_approvals")
+    if approvals is not None:
+        if not isinstance(approvals, dict):
+            problems.append("approvals must be a mapping")
+        elif fleet_actions is None:
+            problems.append("approvals declared without fleet_actions")
+        else:
+            granted_actions = set(fleet_actions) if isinstance(fleet_actions, list) else set()
+            for action, level in approvals.items():
+                if action not in FLEET_ACTIONS:
+                    problems.append(f"unknown fleet action in approvals: {action!r}")
+                elif action not in granted_actions:
+                    problems.append(f"approval for {action!r} requires action in fleet_actions")
+                if level not in APPROVAL_LEVELS:
+                    problems.append(f"unknown approval level {level!r} for {action!r}")
+                elif action in DEFAULT_ACTION_APPROVALS:
+                    default = DEFAULT_ACTION_APPROVALS[action]
+                    if _APPROVAL_ORDER.get(level, 0) < _APPROVAL_ORDER[default]:
+                        problems.append(
+                            f"approval for {action!r} cannot loosen default policy {default!r} to {level!r}"
+                        )
     return problems
 
 

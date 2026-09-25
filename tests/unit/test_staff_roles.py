@@ -208,3 +208,56 @@ def test_invalid_role_cannot_be_dispatched(tmp_path: Path, monkeypatch: pytest.M
     req = RunRequest(role="broken", prompt="test")
     with pytest.raises(ValueError, match="not dispatchable"):
         runner.plan(req)
+
+
+@pytest.mark.unit
+def test_parse_role_with_fleet_actions_and_approvals() -> None:
+    role_dict = dict(_VALID_ROLE_DICT)
+    role_dict["permissions"] = dict(_VALID_ROLE_DICT["permissions"])
+    role_dict["permissions"]["fleet_actions"] = ["runner.start", "runner.stop"]
+    role_dict["permissions"]["approvals"] = {"runner.start": "confirm", "runner.stop": "owner"}
+
+    spec = roles_mod.parse_role(role_dict, source_path="/path/test.yml")
+    assert spec.fleet_actions == ("runner.start", "runner.stop")
+    assert spec.approvals == {"runner.start": "confirm", "runner.stop": "owner"}
+
+    d = spec.to_dict()
+    assert d["fleet_actions"] == ["runner.start", "runner.stop"]
+    assert d["approvals"] == {"runner.start": "confirm", "runner.stop": "owner"}
+
+
+@pytest.mark.unit
+def test_validate_role_fleet_actions_and_approvals(tmp_path: Path) -> None:
+    from staff.validator import validate_role_data
+
+    role_dict = dict(_VALID_ROLE_DICT)
+    role_dict["permissions"] = dict(_VALID_ROLE_DICT["permissions"])
+    role_dict["permissions"]["fleet_actions"] = ["queue.diagnose", "runner.start"]
+    role_dict["permissions"]["approvals"] = {
+        "queue.diagnose": "auto",
+        "runner.start": "confirm",
+    }
+    assert validate_role_data(role_dict) == []
+
+    # Unknown action fails
+    bad_action = dict(role_dict)
+    bad_action["permissions"] = dict(role_dict["permissions"])
+    bad_action["permissions"]["fleet_actions"] = ["runner.burn_down"]
+    problems = validate_role_data(bad_action)
+    assert any("unknown fleet action" in p for p in problems)
+
+    # Loosening default approval fails (e.g. runner.stop default confirm -> auto)
+    loosen = dict(role_dict)
+    loosen["permissions"] = dict(role_dict["permissions"])
+    loosen["permissions"]["fleet_actions"] = ["runner.stop"]
+    loosen["permissions"]["approvals"] = {"runner.stop": "auto"}
+    problems_loosen = validate_role_data(loosen)
+    assert any("cannot loosen default policy" in p for p in problems_loosen)
+
+    # Approvals without fleet actions fails
+    no_actions = dict(role_dict)
+    no_actions["permissions"] = dict(role_dict["permissions"])
+    no_actions["permissions"].pop("fleet_actions", None)
+    no_actions["permissions"]["approvals"] = {"runner.start": "confirm"}
+    problems_no_actions = validate_role_data(no_actions)
+    assert any("approvals declared without fleet_actions" in p for p in problems_no_actions)

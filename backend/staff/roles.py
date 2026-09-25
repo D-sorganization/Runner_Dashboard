@@ -50,7 +50,7 @@ class RoleSpec:
     budget_usd_per_day: float = 0.0
     budget_max_minutes: float = 240.0
     idle_minutes: float = 20.0
-    permissions: dict[str, bool] = field(default_factory=dict)
+    permissions: dict[str, Any] = field(default_factory=dict)
     reports_to: str = ""
     holds: tuple[str, ...] = ()
     surface: str = "dashboard"
@@ -65,6 +65,22 @@ class RoleSpec:
     valid: bool = True
     errors: tuple[str, ...] = ()
     source_path: str = ""
+
+    @property
+    def fleet_actions(self) -> tuple[str, ...]:
+        """Allowed fleet maintenance actions (RM#1734, RD#1310)."""
+        actions = self.permissions.get("fleet_actions")
+        if isinstance(actions, (list, tuple)):
+            return tuple(str(a) for a in actions)
+        return ()
+
+    @property
+    def approvals(self) -> dict[str, str]:
+        """Per-action approval requirements (RM#1734, RD#1310)."""
+        appr = self.permissions.get("approvals") or self.permissions.get("action_approvals")
+        if isinstance(appr, dict):
+            return {str(k): str(v) for k, v in appr.items()}
+        return {}
 
     @property
     def dispatchable(self) -> bool:
@@ -93,6 +109,8 @@ class RoleSpec:
             },
             "idle_minutes": self.idle_minutes,
             "permissions": dict(self.permissions),
+            "fleet_actions": list(self.fleet_actions),
+            "approvals": dict(self.approvals),
             "reports_to": self.reports_to,
             "holds": list(self.holds),
             "surface": self.surface,
@@ -166,6 +184,22 @@ def _as_tuple(value: Any) -> tuple[str, ...]:
     return ()
 
 
+def _parse_permissions(perms: Any) -> dict[str, Any]:
+    if not isinstance(perms, dict):
+        return {}
+    res: dict[str, Any] = {}
+    for k, v in perms.items():
+        if k == "fleet_actions":
+            res[k] = list(_as_tuple(v))
+        elif k in ("approvals", "action_approvals") and isinstance(v, dict):
+            res[k] = {str(ak): str(av) for ak, av in v.items()}
+        elif isinstance(v, bool):
+            res[k] = v
+        else:
+            res[k] = v
+    return res
+
+
 def parse_role(
     data: dict[str, Any],
     source_path: str = "",
@@ -236,7 +270,7 @@ def parse_role(
         budget_usd_per_day=usd_day,
         budget_max_minutes=max_m,
         idle_minutes=idle_m,
-        permissions=({str(k): bool(v) for k, v in perms.items()} if isinstance(perms, dict) else {}),
+        permissions=_parse_permissions(perms),
         reports_to=str(data.get("reports_to") or ""),
         holds=_as_tuple(data.get("holds")),
         surface=str(data.get("surface") or "dashboard"),

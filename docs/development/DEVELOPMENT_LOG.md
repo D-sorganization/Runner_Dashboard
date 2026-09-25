@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1296 · SC-A10: Contract check between backend response models and frontend types
+### DL-#1310 · SC-E2: Short-lived, scoped credentials for staff runs
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1310 (epic #1351 / umbrella #1354)
+- **Branch:** `feat/1310-staff-run-tokens`
+- **PR:** (pending)
+- **Paths:** `backend/staff/tokens.py`, `backend/staff/roles.py`, `backend/staff/runner.py`, `backend/staff/reconcile.py`, `backend/staff/validator.py`, `backend/staff/schema.json`, `backend/identity.py`, `tests/unit/test_staff_tokens.py`, `tests/api/test_staff_run_tokens.py`, `tests/unit/test_staff_roles.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (local pytest, mypy, ruff pass)
+- **Summary:** Implemented short-lived, fine-grained Bearer credentials for staff runs (`backend/staff/tokens.py`). Tokens are bound to ephemeral principal `staff:<role>:<run_id>` with TTL matching run deadline. Scopes are computed as intersection of role's `fleet_actions` (SC-E1) and `ACTION_POLICY` catalog, mapping maintenance actions to dashboard route scopes (`runners.control`, `fleet.control`, `workflows.control`, `system.control`, `fleet.maintain`). Injected as `FLEET_API_TOKEN` into subprocess env. Enforced token revocation upon run completion in runner finally block and on orphaned run reconciliation. Fail-closed: minting failure sets `failure_class="workspace_error"` before CLI starts.
+- **Next step:** Open PR, enable auto-merge, release coordination lease.
+
+### DL-#1296 · SC-A10: Contract check between backend response models and frontend types
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1296 (epic #1347 / umbrella #1354)
 - **Branch:** `feat/1296-contract-check-staff-types`
 - **PR:** #1370
 - **Paths:** `backend/staff/models.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`, `backend/routers/assistant.py`, `backend/staff/fleet.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Assign.tsx`, `tests/api/test_staff_contracts.py`, `SPEC.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (local pytest, typecheck, drift check pass)
+- **Last verified:** 2026-09-24 (shipped in PR #1370)
 - **Summary:** Defined Pydantic response models for staff Hub routes (`backend/staff/models.py`) and assistant routes (`backend/routers/assistant.py`). Exported OpenAPI schema in `frontend/src/lib/openapi.json` and generated TypeScript definitions in `frontend/src/lib/api-types.ts`. Replaced hand-written duplicates in `frontend/src/pages/Staff/staffApi.ts` with generated `components["schemas"]`. Added contract check tests in `tests/api/test_staff_contracts.py` and drift detection script `scripts/gen-api-client.sh --check`.
-- **Next step:** Land PR #1370, release lease on #1296.
+- **Next step:** None (shipped in PR #1370).
 
 ### DL-#1372 · CI: Restore green main across secrets, api-types, and line-cap gates
 

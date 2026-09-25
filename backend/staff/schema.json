@@ -114,7 +114,84 @@
         "open_pr": { "type": "boolean" },
         "merge": { "type": "boolean" },
         "host_shell": { "type": "boolean" },
-        "notify_user": { "type": "boolean" }
+        "notify_user": { "type": "boolean" },
+        "fleet_actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "runner.start",
+              "runner.stop",
+              "runner.restart",
+              "runner.scale",
+              "fleet.node_up",
+              "fleet.node_down",
+              "queue.purge_stale",
+              "run.cancel",
+              "run.rerun",
+              "queue.diagnose",
+              "host.vhdx_compact",
+              "dashboard.restart"
+            ]
+          },
+          "description": "Allowed fleet maintenance actions drawn from the fixed maintenance catalogue (Runner_Dashboard SC-E3)."
+        },
+        "approvals": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "runner.start": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "runner.stop": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "runner.restart": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "runner.scale": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "fleet.node_up": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "fleet.node_down": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "queue.purge_stale": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "run.cancel": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "run.rerun": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "queue.diagnose": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "host.vhdx_compact": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            },
+            "dashboard.restart": {
+              "type": "string",
+              "enum": ["auto", "confirm", "owner"]
+            }
+          },
+          "description": "Per-action approval requirement (auto, confirm, owner) that tightens default risk policy."
+        }
       }
     },
     "reports_to": {

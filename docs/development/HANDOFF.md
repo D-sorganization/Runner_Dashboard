@@ -1,4 +1,62 @@
-# Current handoff — Contract check between backend response models and frontend types (#1296)
+# Current handoff — Short-lived, scoped credentials for staff runs (#1310)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1310-staff-run-tokens`; Issue #1310 (epic #1351 / umbrella #1354); DL-#1310.
+
+## Work
+
+- `backend/staff/tokens.py`:
+  - Added catalog `FLEET_ACTION_SCOPES` mapping 12 maintenance actions (`runner.*`, `fleet.*`, `queue.*`, `run.*`, `host.*`, `dashboard.*`) to route scopes (`runners.control`, `fleet.control`, `workflows.control`, `system.control`, `fleet.maintain`).
+  - Added `ACTION_POLICY` frozenset and `resolve_run_scopes(fleet_actions)` calculating intersection.
+  - Implemented `mint_run_token(role, run_id, fleet_actions, ttl_seconds)`: creates ephemeral `Principal(id=f"staff:{role}:{run_id}")` with `roles=[f"staff-run:{run_id}"]` and resolved scopes, sets `SCOPE_PRESETS[role_preset]`, generates raw Bearer token, stores hash in `identity_manager.add_ephemeral_token`.
+  - Implemented `revoke_run_token(run_id)`: cleans up ephemeral principal and tokens from `identity_manager` and pops preset from `SCOPE_PRESETS`.
+- `backend/identity.py`:
+  - Added `scopes: list[str] = []` to `Principal`.
+  - Enhanced `IdentityManager` with in-memory `_ephemeral_principals` and `_ephemeral_tokens` stores.
+  - Updated `verify_token` to check ephemeral tokens first with TTL expiration check, and `get_principal` to consult ephemeral principals.
+  - Added `add_ephemeral_token` and `revoke_ephemeral_principal`.
+  - Updated `principal_has_scope` to check `principal.scopes` alongside role presets.
+- `backend/staff/schema.json` & `backend/staff/validator.py`:
+  - Added `fleet_actions` and `approvals` to `permissions` properties matching `Repository_Management/staff/schema.json` (RM#1734 / SC-E1).
+  - Validates `fleet_actions` against `FLEET_ACTIONS` enum and validates action approvals with default tightening policy enforcement.
+- `backend/staff/roles.py`:
+  - Added `fleet_actions` and `approvals` properties on `RoleSpec`.
+  - Added `_parse_permissions` helper preserving action collections in `permissions` and exposed in `to_dict()`.
+- `backend/staff/runner.py`:
+  - In `_execute()`: computes `wall_clock_timeout` and calls `mint_run_token()`.
+  - If token minting fails, records `failure_class="workspace_error"`, sets run status to `failed`, appends event, and aborts before spawning CLI subprocess.
+  - Injects `FLEET_API_TOKEN` into subprocess `env`.
+  - Ensures `revoke_run_token(rec.id)` is called in `finally` block across all outcomes (success, failure, cancel).
+- `backend/staff/reconcile.py`:
+  - In `reconcile_orphaned_runs()`: calls `revoke_run_token(rec.id)` for all reconciled orphaned runs.
+- `tests/unit/test_staff_tokens.py`, `tests/api/test_staff_run_tokens.py`, `tests/unit/test_staff_roles.py`:
+  - Added comprehensive unit and API test coverage for minting, scoping, TTL expiration, endpoint authorization (200/403/401), failure handling, and orphan revocation.
+- `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`:
+  - Updated specification change log and active development log entry.
+
+## Validation
+
+- `pytest tests/unit/test_staff_tokens.py tests/api/test_staff_run_tokens.py tests/unit/test_staff_roles.py`: 18 passed.
+- `pytest tests/api/test_staff_contracts.py`: 6 passed (drift free).
+- `pytest tests/api/test_staff_scopes.py tests/api/test_staff_runner.py tests/unit/test_staff_reconcile.py tests/unit/test_staff_watchdog.py`: 41 passed.
+- `ruff check backend tests`: Passed with 0 errors.
+- `black --line-length 120 --check backend/staff/tokens.py tests/unit/test_staff_roles.py backend/identity.py backend/staff/roles.py backend/staff/runner.py backend/staff/reconcile.py backend/staff/validator.py tests/unit/test_staff_tokens.py tests/api/test_staff_run_tokens.py`: Passed.
+- `mypy backend/staff/tokens.py backend/staff/roles.py backend/staff/runner.py backend/staff/reconcile.py backend/staff/validator.py backend/identity.py`: Passed with 0 errors.
+- All modified and newly created files strictly <= 500 lines.
+
+## Next
+
+1. Commit and push branch `feat/1310-staff-run-tokens`.
+2. Open PR via `gh pr create` with `Fixes #1310`.
+3. Enable auto-merge and wait for CI to merge.
+4. Release coordination lease on Issue #1310 and remove worktree.
+
+---
+
+# Previous handoff — Contract check between backend response models and frontend types (#1296)
 
 Last updated: 2026-09-24
 
