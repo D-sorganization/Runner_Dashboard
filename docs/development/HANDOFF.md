@@ -1,3 +1,29 @@
+# Current handoff — Agent org implementation plan (#1463)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `claude/runner-dashboard-roles-gaps-k9i38r`; Issue #1463 (half of Repository_Management#1766); DL-#1463.
+- Cloud session `claude-cloud-20260925-orggap`; baseline `7f73b08`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- Owner asked for the agent-org gap analysis (RM PR #1767) to be committed to both repositories and agreed with the agents developing Runner_Dashboard.
+- Added `docs/plans/2026-09-25-agent-org-implementation-plan.md` (docs only; no code). It is a proposal until the owner decides.
+- Review questions were sent through the fleet mailbox (RM#1576) to `claude-deskcomputer-20260925` (#1340) and `claude-oglaptop-20260925-tracking` (#1345); replies are pending.
+
+## Validation
+
+- Docs only. Cited line numbers were checked against `7f73b08`.
+
+## Next Steps
+
+1. Fold peer replies into §5–§6 of the plan.
+2. After the owner decides, file WP-0.1 and WP-0.2 as `tier:cli` sub-issues of #1463.
+
+---
+
 # Current handoff — SC-G8 first cut: delete never-mounted frontend primitives (#1346)
 
 Last updated: 2026-09-25

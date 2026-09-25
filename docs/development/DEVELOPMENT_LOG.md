@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1463 · Agent Org Plan: Verify Staff Output, Role Routing, Outcomes API
+
+- **State:** proposed
+- **Owner:** claude
+- **Issue:** #1463 (Repository_Management#1766)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** opened right after this commit
+- **Paths:** `docs/plans/2026-09-25-agent-org-implementation-plan.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (docs-only plan at `7f73b08` baseline)
+- **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
+- **Next step:** Fold replies from the active Runner_Dashboard sessions into the plan and get the owner's decision on Phase 0.
+
 ### DL-#1346 · SC-G8: Delete dead frontend code
 
 - **State:** in_review
