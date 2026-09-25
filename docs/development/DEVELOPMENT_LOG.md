@@ -18,9 +18,22 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1317 · SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning
+### DL-#1329 · SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode
+
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1329 (epic #1349 / umbrella #1354)
+- **Branch:** `feat/1329-barb-availability`
+- **Paths:** `backend/staff/availability.py`, `backend/staff/chat_pool.py`, `backend/staff/chat.py`, `backend/routers/staff_threads.py`, `backend/staff/thread_helpers.py`, `backend/health.py`, `backend/staff/fleet.py`, `tests/unit/test_staff_availability.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 10 availability tests passed; all 13 chat unit tests passed; all 10 thread API tests passed; mypy passed 0 errors; ruff check passed; black formatting verified; all touched files strictly <= 500 lines)
+- **Summary:** Implemented SC-C6 Barb availability guarantees: (1) Reserved chat capacity for Barb independent of heavy work runs via dedicated `ChatConcurrencyPool` and `StaffRunner._sema` isolation; (2) Provider fallback chain (`claude` -> `codex` -> `claude-ollama` -> `ollama`) with health probes and runtime error fallback; active provider and fallback count recorded in thread and message metadata; (3) Fast acknowledgment SLA (< 3 s) system messages ("On it: routing to ...") emitted immediately upon message submission; (4) Degraded mode when all LLM providers fail or are disabled: deterministic rule-based routing, queued follow-up work item in `WorkItemStore`, clearly labeled explanatory text; (5) Availability metrics (`ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count`) tracked in `AvailabilityMetrics` and exposed on the Board and in `/api/health`.
+- **Next step:** Push branch, open PR with Fixes #1329, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1317 · SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1317 (epic #1350 / umbrella #1354)
 - **Branch:** `feat/1317-staff-roster-sidebar`
@@ -28,7 +41,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`npx vitest run frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx` 15 passed; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; all files strictly <= 500 lines)
 - **Summary:** Implemented the Staff Console roster sidebar component (`frontend/src/pages/StaffConsole/Roster.tsx` and modular primitives). Features dedicated top entry for 'Ask Barb (auto-route)'; 4-tier categorical role grouping per SC-D1 (Leadership, Project Managers, Specialists, Operations); live operational status indicators (`idle`, `working`, `needs_you`, `unavailable`, `invalid`) with tooltip explanations for operational blocks (holds, budget limits, unauthenticated provider) and invalid role definitions; real-time search filtering across name, title, and mandate summary; role pinning with local storage persistence and dedicated Pinned section; collapsible group sections; unread count badge and relative-age message preview; network failure fallback retaining previous roster with visible 'Stale Data' badge; and full keyboard navigation (`ArrowUp`/`ArrowDown`, `Enter`/`Space`). Covered by TDD unit tests in `Roster.test.tsx`.
-- **Next step:** Push branch, open PR referencing Fixes #1317, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1411.
 
 ### DL-#1301 · SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture
 
@@ -43,17 +56,20 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Authored comprehensive UX specification and interaction contract for Staff Console (`docs/design/staff-console.md`) establishing Staff Console as the primary landing page across a four-area information architecture (Staff, Work, Fleet, Settings). Defines 6 core design principles, ASCII wireframes for desktop (three-pane), tablet (collapsible drawer), mobile (single-pane bottom navigation), and first-run empty states. Details structured inline card interactions for action approvals, run records, and error remediation with standardized action verbs and complete failure/lifecycle state catalogue. Covered by TDD test suite `tests/test_staff_console_design_spec.py`.
 - **Next step:** Shipped in PR #1405.
 
+
+
 ### DL-#1326 · SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1326 (epic #1353 / umbrella #1354)
 - **Branch:** `feat/1326-merge-reports-analysis`
+- **PR:** #1409
 - **Paths:** `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Analysis.tsx`, `frontend/src/pages/Diagnostics.tsx`, `frontend/src/lib/analysisTabs.ts`, `frontend/src/shell/__tests__/RedirectTable.test.ts`, `frontend/src/shell/__tests__/navRegistry.test.ts`, `frontend/src/pages/__tests__/Diagnostics.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (all redirect tests passing; navRegistry tests passing; Diagnostics Web Vitals test passing; typecheck 0 errors; eslint 0 warnings; all touched files strictly <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1409; merged into main)
 - **Summary:** Merged duplicate Reports and Analysis navigation tabs into a unified "Insights" section (`tabId: "insights"`) under Fleet navigation (`/fleet/insights`). Configured backward-compatible redirects from `/t/reports`, `/t/analysis`, `/fleet/reports`, and `/fleet/analysis` to `/fleet/insights` with toast notifications. Relocated Web Vitals metric inspection from AnalysisTab to DiagnosticsTab as a dedicated card.
-- **Next step:** Run full test suite, commit, push branch, open PR with Fixes #1326, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1409.
 
 ### DL-#1407 · CI: Restore green main across frontend integrity checks and generated API contract
 

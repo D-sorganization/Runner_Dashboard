@@ -138,6 +138,13 @@ async def _health_impl() -> dict:
     record_dashboard_health(status, github_api, duration_s)
     hub_circuit_open = hub_in_cooldown()
 
+    try:
+        from staff.availability import get_availability_metrics  # noqa: PLC0415
+
+        staff_avail = get_availability_metrics().to_dict()
+    except Exception:  # noqa: BLE001
+        staff_avail = {}
+
     return {
         "status": status,
         "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
@@ -152,6 +159,7 @@ async def _health_impl() -> dict:
         "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),
         "deployment": _deployment_info(),
         "oauth": OAuthConfig.from_env().diagnostic(),
+        "staff_availability": staff_avail,
     }
 
 

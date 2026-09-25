@@ -261,7 +261,13 @@ def is_fleet_peer(principal: Any) -> bool:
 def caller_identity(principal: Any) -> str:
     """Format principal identity for run records (issue #1311)."""
     pid = getattr(principal, "id", str(principal))
-    if pid in ("fleet-peer", "__loopback__", "loopback-dev", "test-orchestrator", "test-peer"):
+    if pid in (
+        "fleet-peer",
+        "__loopback__",
+        "loopback-dev",
+        "test-orchestrator",
+        "test-peer",
+    ):
         return pid
     if pid.startswith("user:") or pid.startswith("principal:"):
         return pid
@@ -303,6 +309,13 @@ def local_board(runner: Any) -> dict[str, Any]:
     now = datetime.now(UTC)
     liveness = staff_liveness.compute_liveness(runner.roles(), store, staff_liveness.load_scheduler_state(), now)
     staff_liveness.notify_dead(liveness, runner.machine)
+    try:
+        from staff.availability import get_availability_metrics  # noqa: PLC0415
+
+        avail_stats = get_availability_metrics().to_dict()
+    except Exception:  # noqa: BLE001
+        avail_stats = {}
+
     return {
         "machine": runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
@@ -311,6 +324,7 @@ def local_board(runner: Any) -> dict[str, Any]:
         "recent": [r.to_dict() for r in recent if r.status not in ACTIVE_STATUSES],
         "spend_today_usd": store.spend_since(today_iso()),
         "providers": available_providers(),
+        "availability": avail_stats,
         "liveness": liveness,
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
     }

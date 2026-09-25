@@ -17,16 +17,28 @@ import logging
 import os
 import subprocess
 import tempfile
-import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from staff.adapters import ADAPTERS, ProviderAdapter, get_adapter
+from staff.availability import (
+    execute_degraded_turn,
+    get_availability_metrics,
+    is_provider_healthy,
+    record_successful_turn,
+    resolve_provider_chain,
+)
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
     extract_session_id,
     format_history_replay,
+)
+from staff.chat_pool import (
+    DEFAULT_BARB_RESERVED_SLOTS,
+    DEFAULT_MAX_CHAT_TURNS,
+    ChatConcurrencyPool,
+    get_chat_pool,
 )
 from staff.classifier import classify_run_failure
 from staff.conversations import (
@@ -54,57 +66,6 @@ __all__ = [
     "get_chat_pool",
     "run_chat_turn_in_background",
 ]
-
-# Concurrency defaults
-DEFAULT_MAX_CHAT_TURNS = int(os.environ.get("STAFF_MAX_CHAT_TURNS", "4"))
-DEFAULT_BARB_RESERVED_SLOTS = 1
-
-
-class ChatConcurrencyPool:
-    """Bounded concurrency pool for chat turns with reserved slots for Barb (SC-C6)."""
-
-    def __init__(
-        self, max_concurrency: int = DEFAULT_MAX_CHAT_TURNS, barb_reserved: int = DEFAULT_BARB_RESERVED_SLOTS
-    ) -> None:
-        self.max_concurrency = max(1, max_concurrency)
-        self.barb_reserved = min(max(0, barb_reserved), self.max_concurrency - 1)
-        self._active: int = 0
-        self._lock = threading.Lock()
-
-    def try_acquire(self, role: str) -> bool:
-        """Attempt to acquire a chat slot for ``role``.
-
-        Barb can use any slot up to ``max_concurrency``.
-        Other roles can only acquire if active < (max_concurrency - barb_reserved).
-        """
-        with self._lock:
-            if role.lower() == "barb":
-                if self._active < self.max_concurrency:
-                    self._active += 1
-                    return True
-                return False
-
-            if self._active < (self.max_concurrency - self.barb_reserved):
-                self._active += 1
-                return True
-            return False
-
-    def release(self, role: str) -> None:
-        """Release an acquired chat slot."""
-        with self._lock:
-            if self._active > 0:
-                self._active -= 1
-
-
-# Global chat concurrency pool singleton
-_CHAT_POOL: ChatConcurrencyPool | None = None
-
-
-def get_chat_pool() -> ChatConcurrencyPool:
-    global _CHAT_POOL
-    if _CHAT_POOL is None:
-        _CHAT_POOL = ChatConcurrencyPool()
-    return _CHAT_POOL
 
 
 @dataclass
@@ -164,78 +125,124 @@ class ChatTurnRunner:
         role_name: str,
         provider: str | None = None,
     ) -> ChatTurnResult:
-        """Execute a conversational chat turn, streaming tokens and persisting reply."""
+        """Execute a conversational chat turn with fallback chain and degraded mode."""
         roles = load_roles()
         role = roles.get(role_name)
 
-        target_provider = provider
-        if not target_provider and role and role.providers:
-            for p in role.providers:
-                if p in self.adapters or p in ADAPTERS:
-                    target_provider = p
-                    break
-        if not target_provider:
-            target_provider = "claude"
-
-        try:
-            adapter = self.adapters.get(target_provider) or get_adapter(target_provider)
-        except KeyError:
-            target_provider = "claude"
-            adapter = self.adapters.get("claude") or get_adapter("claude")
-
         thread = self.conv_store.get_thread(thread_id)
         if not thread:
-            return ChatTurnResult(ok=False, failure_class="thread_not_found", remediation="Thread not found.")
+            return ChatTurnResult(
+                ok=False,
+                failure_class="thread_not_found",
+                remediation="Thread not found.",
+            )
 
         user_msg = self.conv_store.get_message(user_message_id)
         prompt_text = user_msg.body_md if user_msg else ""
 
-        # Acquire concurrency slot (or proceed if unavailable with degraded log)
         acquired = self.pool.try_acquire(role_name)
         if not acquired:
-            log.warning("Chat concurrency limit reached for role %s; executing in fallback queue", role_name)
+            log.warning(
+                "Chat concurrency limit reached for role %s; executing in fallback queue",
+                role_name,
+            )
+
+        metrics = get_availability_metrics()
+        metrics.record_turn()
+        chain = [provider] if provider else resolve_provider_chain(role_name, role=role)
 
         try:
-            # Check existing provider session
-            existing_session = thread.meta.get("provider_sessions", {}).get(target_provider)
+            fallback_steps = 0
+            last_failed: ChatTurnResult | None = None
 
-            # Try execution with session resume if available
-            if existing_session:
+            for candidate in chain:
+                if not is_provider_healthy(candidate):
+                    log.info("Provider %s is unhealthy/disabled; skipping", candidate)
+                    fallback_steps += 1
+                    metrics.record_fallback()
+                    continue
+
+                adapter = self.adapters.get(candidate) or get_adapter(candidate)
+                existing_session = thread.meta.get("provider_sessions", {}).get(candidate)
+
+                if existing_session:
+                    result = await self._run_turn_attempt(
+                        thread_id=thread_id,
+                        placeholder_id=placeholder_id,
+                        role=role,
+                        adapter=adapter,
+                        prompt=prompt_text,
+                        session_id=existing_session,
+                        is_resume=True,
+                    )
+                    if result.ok:
+                        record_successful_turn(
+                            self.conv_store,
+                            thread_id,
+                            placeholder_id,
+                            candidate,
+                            fallback_steps,
+                            result,
+                        )
+                        return result
+                    log.info(
+                        "Session resume failed for %s on thread %s; falling back to replay",
+                        candidate,
+                        thread_id,
+                    )
+
+                was_fallback = bool(existing_session)
+                replay_prompt = format_history_replay(
+                    conv_store=self.conv_store,
+                    thread_id=thread_id,
+                    current_prompt=prompt_text,
+                    role=role,
+                )
                 result = await self._run_turn_attempt(
                     thread_id=thread_id,
                     placeholder_id=placeholder_id,
                     role=role,
                     adapter=adapter,
-                    prompt=prompt_text,
-                    session_id=existing_session,
-                    is_resume=True,
+                    prompt=replay_prompt,
+                    session_id=None,
+                    is_resume=False,
+                    replayed_history=was_fallback,
+                    update_on_failure=(candidate == chain[-1]),
                 )
                 if result.ok:
+                    record_successful_turn(
+                        self.conv_store,
+                        thread_id,
+                        placeholder_id,
+                        candidate,
+                        fallback_steps,
+                        result,
+                    )
                     return result
-                log.info(
-                    "Session resume failed for %s on thread %s; falling back to replay", target_provider, thread_id
-                )
 
-            # Fallback to history replay within token budget
-            was_fallback = bool(existing_session)
-            replay_prompt = format_history_replay(
-                conv_store=self.conv_store,
-                thread_id=thread_id,
-                current_prompt=prompt_text,
-                role=role,
+                last_failed = result
+                log.warning(
+                    "Turn attempt failed on %s: %s; falling back",
+                    candidate,
+                    result.failure_class,
+                )
+                fallback_steps += 1
+                metrics.record_fallback()
+
+            if last_failed is not None:
+                return last_failed
+
+            log.warning(
+                "All providers unavailable for thread %s; triggering degraded mode",
+                thread_id,
             )
-            result = await self._run_turn_attempt(
+            return await execute_degraded_turn(
                 thread_id=thread_id,
+                user_message_id=user_message_id,
                 placeholder_id=placeholder_id,
-                role=role,
-                adapter=adapter,
-                prompt=replay_prompt,
-                session_id=None,
-                is_resume=False,
-                replayed_history=was_fallback,
+                role_name=role_name,
+                conv_store=self.conv_store,
             )
-            result.replayed_history = was_fallback
-            return result
         finally:
             if acquired:
                 self.pool.release(role_name)
@@ -250,6 +257,7 @@ class ChatTurnRunner:
         session_id: str | None,
         is_resume: bool,
         replayed_history: bool = False,
+        update_on_failure: bool = True,
     ) -> ChatTurnResult:
         scratch_dir = tempfile.mkdtemp(prefix="staff_chat_")
         bus = get_thread_bus()
@@ -330,7 +338,7 @@ class ChatTurnRunner:
                     output_text=raw_combined,
                     error_message="".join(stderr_text),
                 )
-                if not is_resume:
+                if not is_resume and update_on_failure:
                     err_detail = classified.remediation or classified.error or "Failed to complete reply"
                     actor = role.name if role else adapter.provider_id
                     self.conv_store.update_message(
@@ -462,4 +470,9 @@ async def run_chat_turn_in_background(
             role_name=role_name,
         )
     except Exception as exc:  # noqa: BLE001
-        log.error("Unhandled error during chat turn for thread %s: %s", thread_id, exc, exc_info=True)
+        log.error(
+            "Unhandled error during chat turn for thread %s: %s",
+            thread_id,
+            exc,
+            exc_info=True,
+        )

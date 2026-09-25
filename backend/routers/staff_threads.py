@@ -8,10 +8,20 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from staff.audit import record_audit
+from staff.availability import record_fast_acknowledgment
 from staff.budget import get_global_budget_guard
 from staff.chat import run_chat_turn_in_background
 from staff.conversation_models import (
@@ -22,13 +32,13 @@ from staff.conversation_models import (
 )
 from staff.conversations import (
     ConversationsUnavailableError,
-    MessageRecord,
     get_conversation_store,
 )
 from staff.loop_guard import enforce_loop_guard_or_raise
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
 from staff.thread_bus import get_thread_bus
+from staff.thread_helpers import collect_inbox_items, find_idempotent_reply
 
 log = logging.getLogger("dashboard.staff.threads")
 
@@ -53,8 +63,6 @@ def _get_store_or_503() -> Any:
 
 
 # ── THREAD MANAGEMENT ────────────────────────────────────────────────────────
-
-
 @router.post(
     "/threads",
     status_code=status.HTTP_201_CREATED,
@@ -202,8 +210,6 @@ async def update_thread(
 
 
 # ── MESSAGES & STREAMING ─────────────────────────────────────────────────────
-
-
 @router.post(
     "/threads/{thread_id}/messages",
     status_code=status.HTTP_202_ACCEPTED,
@@ -236,34 +242,13 @@ async def post_message(
         if not thread:
             raise HTTPException(status_code=404, detail="thread not found")
 
-        # Check existing idempotent message
-        existing = store._conn.execute(
-            "SELECT * FROM messages WHERE thread_id = ? AND idempotency_key = ?",
-            (thread_id, idempotency_key.strip()),
-        ).fetchone()
-
+        existing = find_idempotent_reply(store._conn, thread_id, idempotency_key)
         if existing:
-            user_msg = MessageRecord.from_row(existing)
-            reply_row = store._conn.execute(
-                "SELECT * FROM messages WHERE thread_id = ? AND seq = ?",
-                (thread_id, user_msg.seq + 1),
-            ).fetchone()
-            reply_placeholder = (
-                MessageRecord.from_row(reply_row).to_dict()
-                if reply_row
-                else {
-                    "id": f"pending_{user_msg.id}",
-                    "thread_id": thread_id,
-                    "author_kind": "role",
-                    "author": "barb",
-                    "kind": "text",
-                    "delivery": "pending",
-                }
-            )
+            user_msg_dict, reply_placeholder = existing
             response.status_code = status.HTTP_200_OK
             response.headers["Idempotent-Replay"] = "true"
             return {
-                "message": user_msg.to_dict(),
+                "message": user_msg_dict,
                 "reply_placeholder": reply_placeholder,
             }
 
@@ -320,6 +305,10 @@ async def post_message(
 
         # Broadcast live events on thread bus
         bus = get_thread_bus()
+        ack_msg = None
+        if can_chat:
+            ack_msg = await record_fast_acknowledgment(store, bus, thread_id, user_msg.id, target_role, body.body)
+
         asyncio.create_task(bus.publish_message(thread_id, user_msg.to_dict()))
         asyncio.create_task(bus.publish_message(thread_id, reply_placeholder_rec.to_dict()))
 
@@ -328,10 +317,13 @@ async def post_message(
             run_chat_turn_in_background(thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id)
         )
 
-        return {
+        resp_data: dict[str, Any] = {
             "message": user_msg.to_dict(),
             "reply_placeholder": reply_placeholder_rec.to_dict(),
         }
+        if ack_msg:
+            resp_data["acknowledgement"] = ack_msg.to_dict()
+        return resp_data
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -430,8 +422,6 @@ async def stream_thread(
 
 
 # ── READ STATUS & INBOX ──────────────────────────────────────────────────────
-
-
 @router.post(
     "/threads/{thread_id}/read",
     response_model_exclude_none=True,
@@ -464,20 +454,7 @@ async def get_inbox(
     store = _get_store_or_503()
     caller_id = format_caller(caller)
     try:
-        open_threads = store.list_threads(status="open", limit=200)
-        inbox_items: list[dict[str, Any]] = []
-
-        for th in open_threads:
-            has_unread = th.unread_counters.get(caller_id, 0) > 0
-            proposals = store.list_proposals(thread_id=th.id, state="proposed", limit=10)
-            has_proposals = len(proposals) > 0
-
-            if has_unread or has_proposals:
-                item = th.to_dict()
-                item["pending_proposals_count"] = len(proposals)
-                item["caller_unread_count"] = th.unread_counters.get(caller_id, 0)
-                inbox_items.append(item)
-
+        inbox_items = collect_inbox_items(store, caller_id)
         return {
             "items": inbox_items,
             "inbox": inbox_items,
