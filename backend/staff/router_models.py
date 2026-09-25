@@ -151,6 +151,17 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
         "desktop agent",
         "daemon health",
     ),
+    "disciple": (
+        "what do we know",
+        "our findings",
+        "current understanding",
+    ),
+    "vision-quest": (
+        "frontier",
+        "future direction",
+        "what should we explore",
+        "vision",
+    ),
 }
 
 CODE_CHANGE_KEYWORDS: tuple[str, ...] = (

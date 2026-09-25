@@ -375,3 +375,47 @@ class StaffUsageExportResponse(BaseModel):
     totals: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
+
+
+class StaffKnowledgePassage(BaseModel):
+    """One retrieved knowledge chunk with citation (Issue #1479)."""
+
+    repo: str
+    source: str
+    anchor: str
+    title: str
+    text: str
+    commit: str
+    content_hash: str
+    status: str
+    authority: str
+    score: float
+    citation: str
+
+    model_config = ConfigDict(extra="allow")
+
+
+class StaffKnowledgeInfoResponse(BaseModel):
+    """Response model for GET /api/v1/staff/knowledge/{pack_id} (Issue #1479)."""
+
+    pack_id: str
+    title: str
+    built_at: str
+    commits: dict[str, str] = Field(default_factory=dict)
+    stale: bool
+    files: int
+    passages: int
+    passage_count: int
+
+    model_config = ConfigDict(extra="allow")
+
+
+class StaffKnowledgeSearchResponse(BaseModel):
+    """Response model for GET /api/v1/staff/knowledge/{pack_id}/search (Issue #1479)."""
+
+    pack_id: str
+    query: str
+    count: int
+    passages: list[StaffKnowledgePassage] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="allow")

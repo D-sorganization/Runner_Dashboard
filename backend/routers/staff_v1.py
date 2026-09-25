@@ -25,6 +25,7 @@ from routers.staff import (
     MAX_LIMIT,
     RunBody,
 )
+from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_schedule import HoldsBody
 from staff import fleet as staff_fleet
 from staff import usage
@@ -60,6 +61,7 @@ from staff.store import USAGE_GROUPS
 
 log = logging.getLogger("dashboard.staff.v1")
 router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
+router.include_router(staff_knowledge_router)
 
 
 async def _handle_idempotent_post(
