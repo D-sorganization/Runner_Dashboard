@@ -19,6 +19,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, require_scope
 from staff import usage
+from staff.models import (
+    StaffPricingResponse,
+    StaffUsageExportResponse,
+    StaffUsageResponse,
+)
 from staff.pricing import price_table_rows
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
@@ -27,7 +32,7 @@ log = logging.getLogger("dashboard.staff.usage")
 router = APIRouter(prefix="/api/staff", tags=["staff"])
 
 
-@router.get("/usage")
+@router.get("/usage", response_model=StaffUsageResponse, response_model_exclude_none=True)
 async def get_usage(
     since: str | None = Query(default=None, max_length=40),
     group: str = Query(default="provider", max_length=10),
@@ -42,14 +47,22 @@ async def get_usage(
     return body
 
 
-@router.get("/usage/pricing")
+@router.get(
+    "/usage/pricing",
+    response_model=StaffPricingResponse,
+    response_model_exclude_none=True,
+)
 async def get_pricing(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     return {"rows": price_table_rows()}
 
 
-@router.post("/usage/export")
+@router.post(
+    "/usage/export",
+    response_model=StaffUsageExportResponse,
+    response_model_exclude_none=True,
+)
 async def export_usage(
     caller: Principal = Depends(require_scope("staff.admin")),
 ) -> dict[str, Any]:

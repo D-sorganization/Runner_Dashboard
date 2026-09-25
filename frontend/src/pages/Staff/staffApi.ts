@@ -9,10 +9,11 @@
  * structured `ApiClientError` contract are applied uniformly.
  */
 import { ApiClientError, apiRequest } from "../../lib/api";
+import type { components } from "../../lib/api-types";
 
 export { ApiClientError };
 
-// ── Shapes ───────────────────────────────────────────────────────────────────
+// ── Shapes (derived directly from OpenAPI generated schemas) ───────────────────
 
 export type RunStatus =
   | "queued"
@@ -40,194 +41,33 @@ export const RUN_STATUSES: readonly RunStatus[] = [
   "blocked",
 ];
 
-export interface RoleSpec {
-  name: string;
-  title: string;
-  summary: string;
-  playbook: string;
-  providers: string[];
-  model: string | null;
-  schedule: string | null;
-  window: string | null;
-  repos: string[];
-  budget: { usd_per_run: number | null; usd_per_day: number | null };
-  permissions: Record<string, unknown>;
-  reports_to: string | null;
-  holds: string[];
-  surface: string | null;
-  retired: boolean;
-  retired_reason?: string;
-  /** Optional `strategy:` block from the role YAML (#1213); absent on older nodes. */
-  strategy?: RoleStrategy;
-  scope?: Record<string, unknown>;
-  prompt_template?: string | null;
-  instructions?: string;
-  persona?: string;
-  chat?: Record<string, unknown>;
-  group?: string | null;
-  valid?: boolean;
-  errors?: string[];
-  error?: string | null;
-  dispatchable: boolean;
-  source_path: string;
-  active_runs: number;
-}
+export type RoleSpec = components["schemas"]["StaffRoleSpec"];
+export type ConsolidateWhen = components["schemas"]["StaffConsolidateWhen"];
+export type RoleStrategy = components["schemas"]["StaffRoleStrategy"];
+export type ConsolidationDecision = components["schemas"]["StaffConsolidationDecision"];
+export type RoleBudget = components["schemas"]["StaffRoleBudget"];
+export type RosterResponse = components["schemas"]["StaffRosterResponse"];
+export type RunRecord = components["schemas"]["StaffRunRecord"];
+export type RunEvent = components["schemas"]["StaffRunEvent"];
+export type RoleLiveness = components["schemas"]["StaffRoleLiveness"];
+export type BoardResponse = components["schemas"]["StaffBoardResponse"];
+export type RunsResponse = components["schemas"]["StaffRunsResponse"];
+export type RunDetailResponse = components["schemas"]["StaffRunDetailResponse"];
+export type RunPlan = components["schemas"]["StaffRunPlan"];
+export type DispatchResponse = components["schemas"]["StaffDispatchResponse"];
+export type CancelResponse = components["schemas"]["StaffCancelResponse"];
+export type Hold = components["schemas"]["StaffHold"];
+export type HoldsResponse = components["schemas"]["StaffHoldsResponse"];
+export type StaffSummaryResponse = components["schemas"]["StaffSummaryResponse"];
+export type StaffAuditRecord = components["schemas"]["StaffAuditRecordResponse"];
+export type StaffAuditListResponse = components["schemas"]["StaffAuditListResponse"];
+export type ScheduleToggleResponse = components["schemas"]["StaffScheduleToggleResponse"];
+export type ScheduleResponse = components["schemas"]["StaffScheduleResponse"];
+export type UsageResponse = components["schemas"]["StaffUsageResponse"];
+export type PricingResponse = components["schemas"]["StaffPricingResponse"];
+export type UsageExportResponse = components["schemas"]["StaffUsageExportResponse"];
 
-/** PR-consolidation thresholds (#1213): consolidate when every configured value is met. */
-export interface ConsolidateWhen {
-  open_prs?: number;
-  utilisation_pct?: number;
-}
-
-export interface RoleStrategy {
-  consolidate_when?: ConsolidateWhen;
-}
-
-/** The decision the backend injects into the prompt (#1213). */
-export interface ConsolidationDecision {
-  mode: "consolidate" | "serial" | string;
-  reason: string;
-  threshold: ConsolidateWhen;
-}
-
-export interface RosterResponse {
-  machine: string;
-  roles: RoleSpec[];
-  providers: Record<string, boolean>;
-  active_runs: number;
-}
-
-export interface RunRecord {
-  id: string;
-  role: string;
-  provider: string;
-  model: string | null;
-  machine: string;
-  repo: string;
-  target_kind: string;
-  target_ref: string;
-  prompt: string;
-  status: RunStatus | string;
-  requested_by: string;
-  created_at: string;
-  started_at: string | null;
-  ended_at: string | null;
-  exit_code: number | null;
-  cost_usd: number;
-  input_tokens: number;
-  output_tokens: number;
-  workdir: string;
-  branch: string;
-  transcript_path: string;
-  lease_id: string;
-  error: string;
-  last_line: string;
-  /** PR-consolidation strategy (#1213): `consolidate` | `serial` | `` (not applicable). */
-  strategy_mode?: string;
-  /** Normalised "consolidated N PRs into #M" from the final STAFF_RESULT line (#1213). */
-  outcome?: string;
-  /** Failure classification (SC-A6, #1297). */
-  failure_class?: string;
-  /** Whether the failure is transient and eligible for retry. */
-  retryable?: boolean;
-  /** Actionable remediation instructions for the failure. */
-  remediation?: string;
-}
-
-export interface RunEvent {
-  seq: number;
-  ts: string;
-  kind: string;
-  text: string;
-}
-
-/** Liveness of one scheduled role (#1209): `ok | late | dead | never`. */
-export interface RoleLiveness {
-  role: string;
-  schedule: string;
-  status: "ok" | "late" | "dead" | "never" | string;
-  last_success: string | null;
-  last_attempt: string | null;
-  last_fired: string | null;
-  next_fire: string | null;
-  expected_interval_seconds: number | null;
-  age_seconds: number | null;
-  /** Set on hub `liveness_alerts` entries: the node the row came from. */
-  machine?: string;
-}
-
-export interface BoardResponse {
-  machine: string;
-  generated_at: string;
-  running: RunRecord[];
-  queued: RunRecord[];
-  recent: RunRecord[];
-  spend_today_usd: Record<string, number>;
-  providers: Record<string, boolean>;
-  /** Scheduled-role liveness on this node (#1209); absent on older nodes. */
-  liveness?: RoleLiveness[];
-  /** Hub view only: late/dead scheduled roles across online nodes (#1209). */
-  liveness_alerts?: RoleLiveness[];
-}
-
-export interface RunsResponse {
-  runs: RunRecord[];
-  count: number;
-}
-
-export interface RunDetailResponse {
-  run: RunRecord;
-  events: RunEvent[];
-}
-
-export interface RunPlan {
-  role: string;
-  provider: string;
-  model: string | null;
-  repo: string;
-  target_kind: string;
-  target_ref: string;
-  prompt: string;
-  argv: string[];
-  branch: string;
-  lease_ritual: boolean;
-  /** Present when the role has `strategy.consolidate_when` and a repo was given (#1213). */
-  consolidation?: ConsolidationDecision | null;
-}
-
-export interface DispatchBody {
-  provider?: string | null;
-  model?: string | null;
-  repo: string;
-  issue?: number | null;
-  pr?: number | null;
-  prompt: string;
-  machine: string;
-  dry_run: boolean;
-}
-
-export type DispatchResponse =
-  | { dry_run: true; plan: RunPlan; machine: string }
-  | { dry_run: false; run: RunRecord; machine: string };
-
-export interface CancelResponse {
-  cancelled: boolean;
-  run: RunRecord | null;
-}
-
-/** Hold shape agreed with the parallel #1196 PR (`PUT /api/staff/holds`). */
-export interface Hold {
-  id: string;
-  text: string;
-  set_on: string;
-  lifted_when: string;
-  applies_to: string[];
-  active: boolean;
-}
-
-export interface HoldsResponse {
-  holds: Hold[];
-}
+export type DispatchBody = components["schemas"]["RunBody"];
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
@@ -279,7 +119,7 @@ export function fetchHolds(signal?: AbortSignal): Promise<HoldsResponse> {
   return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, { signal });
 }
 
-export function putHolds(body: HoldsResponse): Promise<HoldsResponse> {
+export function putHolds(body: { holds: Hold[] } | HoldsResponse): Promise<HoldsResponse> {
   return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, { method: "PUT", body });
 }
 
