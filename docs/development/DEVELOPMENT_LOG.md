@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1296 · SC-A10: Contract check between backend response models and frontend types
+### DL-#1303 · SC-A7: Bounded retry policy for transient staff-run failures and enforce per-provider concurrency
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1303 (epic #1347 / umbrella #1354)
+- **Branch:** `feat/1303-bounded-retry-provider-concurrency`
+- **PR:** (pending)
+- **Paths:** `backend/staff/plan.py`, `backend/staff/retry.py`, `backend/staff/roles.py`, `backend/staff/store.py`, `backend/staff/models.py`, `backend/routers/staff.py`, `backend/staff/runner.py`, `backend/staff/reconcile.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/api/test_staff_retry.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (local pytest, typecheck, drift check pass)
+- **Summary:** Implemented bounded retry policy for transient staff run failures in backend/staff/retry.py with exponential backoff and jitter. Enforced per-provider concurrency with BoundedSemaphore in runner.py. Added retry tracking columns and queries in store.py. Linked attempt history in API responses.
+- **Next step:** Land PR, release lease on #1303.
+
+### DL-#1296 · SC-A10: Contract check between backend response models and frontend types
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1296 (epic #1347 / umbrella #1354)
 - **Branch:** `feat/1296-contract-check-staff-types`
 - **PR:** #1370
 - **Paths:** `backend/staff/models.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`, `backend/routers/assistant.py`, `backend/staff/fleet.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Assign.tsx`, `tests/api/test_staff_contracts.py`, `SPEC.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (local pytest, typecheck, drift check pass)
+- **Last verified:** 2026-09-24 (shipped in PR #1370)
 - **Summary:** Defined Pydantic response models for staff Hub routes (`backend/staff/models.py`) and assistant routes (`backend/routers/assistant.py`). Exported OpenAPI schema in `frontend/src/lib/openapi.json` and generated TypeScript definitions in `frontend/src/lib/api-types.ts`. Replaced hand-written duplicates in `frontend/src/pages/Staff/staffApi.ts` with generated `components["schemas"]`. Added contract check tests in `tests/api/test_staff_contracts.py` and drift detection script `scripts/gen-api-client.sh --check`.
-- **Next step:** Land PR #1370, release lease on #1296.
+- **Next step:** None (shipped in PR #1370).
 
 ### DL-#1372 · CI: Restore green main across secrets, api-types, and line-cap gates
 
