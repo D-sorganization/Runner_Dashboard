@@ -120,6 +120,11 @@ class StaffRunRecord(BaseModel):
     pid: int | None = None
     retryable: bool = False
     remediation: str = ""
+    retry_of: str = ""
+    attempt: int = 1
+    max_attempts: int = 2
+    next_attempt_at: str | None = None
+    fallback_provider: str = ""
 
     model_config = ConfigDict(extra="allow")
 
@@ -149,6 +154,7 @@ class StaffRunDetailResponse(BaseModel):
 
     run: StaffRunRecord
     events: list[StaffRunEvent]
+    attempts: list[StaffRunRecord] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="allow")
 

@@ -210,9 +210,9 @@ describe("OverviewPage", () => {
     renderOverview();
 
     await waitFor(() => {
-      expect(screen.getByText("Fleet Unknown")).toBeInTheDocument();
+      expect(screen.getByText(/Fleet status unknown — \/api\/runners HTTP 500/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Fleet status unknown — \/api\/runners HTTP 500/)).toBeInTheDocument();
+    expect(screen.getByText("Fleet Unknown")).toBeInTheDocument();
     expect(screen.queryByText("All systems nominal")).not.toBeInTheDocument();
     expect(screen.queryByText("Fleet Operational")).not.toBeInTheDocument();
   });

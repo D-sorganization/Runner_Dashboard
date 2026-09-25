@@ -2534,6 +2534,13 @@
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/runs/{id}.",
         "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/StaffRunRecord"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/StaffRunEvent"
@@ -2654,6 +2661,11 @@
         "additionalProperties": true,
         "description": "One staff execution run record.",
         "properties": {
+          "attempt": {
+            "default": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
           "branch": {
             "default": "",
             "title": "Branch",
@@ -2706,6 +2718,11 @@
             "title": "Failure Class",
             "type": "string"
           },
+          "fallback_provider": {
+            "default": "",
+            "title": "Fallback Provider",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2730,6 +2747,11 @@
             "title": "Machine",
             "type": "string"
           },
+          "max_attempts": {
+            "default": 2,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
           "model": {
             "anyOf": [
               {
@@ -2740,6 +2762,17 @@
               }
             ],
             "title": "Model"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
           },
           "on_behalf_of": {
             "default": "",
@@ -2790,6 +2823,11 @@
           "requested_by": {
             "default": "",
             "title": "Requested By",
+            "type": "string"
+          },
+          "retry_of": {
+            "default": "",
+            "title": "Retry Of",
             "type": "string"
           },
           "retryable": {
