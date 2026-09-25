@@ -1,49 +1,53 @@
-# Current handoff — SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state (#1316)
+# Current handoff — SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel (#1323)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1316-work-item-ledger`; Issue #1316; DL-#1316.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1323-fleet-mcp-staff`; Issue #1323; DL-#1323.
 
 ## Work
 
-- `backend/staff/work_items.py`:
-  - Implemented `WorkItemRecord` dataclass and valid state machine transitions: `open`, `in_progress`, `waiting_on_user`, `waiting_on_ci`, `blocked`, `done`, `cancelled`, `escalated`.
-  - Implemented `WorkItemStore` with SQLite WAL persistence in `staff_runs.sqlite3`, forward migrations, and indexes.
-  - Added SLA tracking with `compute_sla`, `expected_by`, `is_overdue`, and `next_check_at`.
-  - Added links management (`runs`, `issues`, `prs`, `code_requests`) and failure status handling (`unknown` link state on GitHub API failures).
-  - Integrated SC-A8 durable audit logging on creation and state transitions (`work_item_create`, `work_item_transition`).
-- `backend/routers/staff_work_items.py`:
+- `clients/fleet/fleet_validators.py`:
+  - Extracted contract limits, regex patterns, and client-side validators (`_check`, `_match`, `_positive_int`, `_non_negative_int`, `_text`, `_opt_text`, `_opt`, `default_session`, `_compact`, `_validate_directive`, `_decode`, `_resolve_session`).
+  - Added `FleetArgumentError` and `FleetAPIError` with `to_envelope()` implementing the SC-F3 classified error envelope (`{error, status, body, code, message, retryable}`).
+- `clients/fleet/fleet_client.py`:
+  - Added 9 staff methods matching console capabilities: `staff_threads_list`, `staff_thread_open` (defaults to Barb via `auto`), `staff_message_send` (idempotent with `Idempotency-Key`), `staff_thread_read` (cursor via `since_seq`), `staff_thread_wait` (long-poll up to 60s for replies), `staff_run_cancel` (run cancellation alias), `staff_work_items` (filters: `mine`, `overdue`, `waiting_on_me`, `state`, `thread_id`, cursor), `staff_approvals_list` (review action proposals), `staff_approval_decide` (approve/deny with `decision` and `reason`).
+  - Implemented automatic retry on network errors or 502/503/504 for idempotent HTTP methods (`GET`, `HEAD`, `PUT`, `DELETE`) or when `Idempotency-Key` is present; fail-fast without retry on non-idempotent mutations.
+- `clients/fleet/fleet_tools.py`:
+  - Added `Command` specifications for the 9 staff tools for CLI (`fleetctl`) and MCP (`fleet_mcp`). Total tool count expanded from 16 to 25.
+- `clients/fleet/fleet_mcp.py`:
+  - Updated tool error handling to return SC-F3 classified error envelope for both `FleetAPIError` and `FleetArgumentError`.
+- `backend/routers/staff_proposals.py`:
   - Mounted public REST endpoints under `/api/v1/staff`:
-    - `POST /api/v1/staff/work-items`: Create work item with audit record.
-    - `GET /api/v1/staff/work-items`: List work items with filters (`mine`, `overdue`, `waiting_on_me`, `state`, `thread_id`) and keyset cursor pagination.
-    - `GET /api/v1/staff/work-items/{id}`: Work item detail.
-    - `PATCH /api/v1/staff/work-items/{id}`: State transitions, owner reassignment, link updates, and progress notes.
+    - `GET /api/v1/staff/proposals`: list proposals with `thread_id`, `message_id`, `state` filters and cursor pagination.
+    - `GET /api/v1/staff/proposals/{proposal_id}`: proposal detail.
+    - `POST /api/v1/staff/proposals/{proposal_id}/decide`: review proposal (`approved` or `denied`) requiring `staff.approve` scope.
+- `backend/routers/staff_threads.py`:
+  - Added `since_seq` query parameter to `GET /api/v1/staff/threads/{thread_id}` for cursor pagination of thread messages.
 - `backend/server.py`:
-  - Mounted `staff_work_items_router` under prefix `/api/v1/staff`.
-- `backend/staff/audit.py`:
-  - Registered `work_item_create` and `work_item_transition` in `ALLOWED_ACTIONS` and `MUTATING_ACTIONS`.
-- `backend/staff/run_link.py`:
-  - Added `update_linked_work_item(run, status, summary)` syncing run lifecycle transitions into linked work items.
-- `tests/api/test_staff_work_items.py`:
-  - 9 comprehensive tests covering creation, valid transitions, invalid transition rejections, SLA overdue calculation, link tracking, list filtering, and run event synchronization.
+  - Mounted `staff_proposals_router` under prefix `/api/v1/staff`.
 
 ## Validation
 
-- `pytest tests/api/test_staff_work_items.py`: 9 passed in 1.52s.
-- `pytest tests/api/test_staff_thread_runs.py tests/api/test_staff_threads_api.py tests/api/test_staff_runner.py`: 36 passed in 13.49s.
-- `mypy backend/staff/work_items.py backend/routers/staff_work_items.py backend/staff/run_link.py backend/staff/audit.py tests/api/test_staff_work_items.py backend/server.py`: 0 errors.
+- `pytest tests/clients`: 121 passed in 68.81s.
+- `pytest tests/api/test_staff_proposals_api.py`: 2 passed in 1.44s.
+- `pytest tests/test_no_duplicate_top_level_functions.py`: 3 passed in 1.40s.
 - `ruff check`: All checks passed.
-- `ruff format --check`: All checks passed.
-- Line limits: All new and modified files strictly <= 500 lines (`backend/staff/work_items.py`: 433, `backend/routers/staff_work_items.py`: 202, `backend/staff/run_link.py`: 207, `backend/staff/audit.py`: 447, `tests/api/test_staff_work_items.py`: 317).
+- `ruff format --check`: 12 files already formatted.
+- `mypy clients/fleet backend/routers/staff_proposals.py backend/routers/staff_threads.py tests/api/test_staff_proposals_api.py tests/clients/`: Success: no issues found in 12 source files.
+- Line limits: All new and modified files strictly <= 500 lines (`fleet_client.py`: 466, `fleet_validators.py`: 188, `fleet_tools.py`: 438, `fleet_mcp.py`: 153, `staff_proposals.py`: 122, `staff_threads.py`: 495, `test_staff_proposals_api.py`: 117, `test_fleet_client.py`: 460, `test_fleet_mcp.py`: 211, `test_fleet_cli.py`: 160).
 
 ## Next
 
-1. Open PR with `gh pr create` referencing `Fixes #1316`.
-2. Enable auto-merge and verify CI passes cleanly.
-3. Release coordination lease on Issue #1316.
-4. Survey next unblocked issue in wave order.
+1. Commit and push to branch `feat/1323-fleet-mcp-staff`.
+2. Open PR referencing `Fixes #1323`.
+3. Enable auto-merge and verify green CI checks.
+4. Release lease on issue #1323.
+
+---
+
+# Previous handoff — SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state (#1316)
 
 ---
 

@@ -185,6 +185,7 @@ async def list_threads(
 )
 async def get_thread_detail(
     thread_id: str,
+    since_seq: int = Query(default=0, ge=0),
     _caller: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     """Get thread metadata along with its historical messages."""
@@ -193,7 +194,7 @@ async def get_thread_detail(
         thread = store.get_thread(thread_id)
         if not thread:
             raise HTTPException(status_code=404, detail="thread not found")
-        messages = store.list_messages(thread_id, limit=200)
+        messages = store.list_messages(thread_id, limit=200, since_seq=since_seq)
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

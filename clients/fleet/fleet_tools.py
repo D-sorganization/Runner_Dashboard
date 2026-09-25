@@ -28,6 +28,8 @@ AGENT = {
     "agent-<name> may only act as <name>.",
 }
 RUN_ID = {"type": "string", "description": "Staff run id, e.g. run-905a8b3586a7."}
+THREAD_ID = {"type": "string", "description": "Conversation thread id, e.g. th_1234."}
+PROPOSAL_ID = {"type": "string", "description": "Action proposal id, e.g. prop_1234."}
 
 
 @dataclass(frozen=True)
@@ -305,7 +307,144 @@ COMMANDS: tuple[Command, ...] = (
         positional=("role",),
     ),
     Command(
-        "cancel", "cancel", "Cancel a staff run.", {"run_id": RUN_ID}, required=("run_id",), positional=("run_id",)
+        "cancel",
+        "cancel",
+        "Cancel a staff run.",
+        {"run_id": RUN_ID},
+        required=("run_id",),
+        tool="staff_run_cancel",
+        positional=("run_id",),
+    ),
+    Command(
+        "staff-threads",
+        "staff_threads_list",
+        "List conversation threads with optional participant, status, unread, cursor.",
+        {
+            "participant": {"type": "string", "description": "Filter by participant role or agent name."},
+            "status": {"type": "string", "enum": ["open", "archived"], "description": "Filter by status."},
+            "unread_by": {"type": "string", "description": "Filter threads with unread messages."},
+            "cursor": {"type": "string", "description": "Pagination cursor."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Max threads to return."},
+        },
+        tool="staff_threads_list",
+    ),
+    Command(
+        "thread-open",
+        "staff_thread_open",
+        "Open a conversation thread with a staff role (default 'auto' routes to Barb).",
+        {
+            "role": {"type": "string", "description": "Role to converse with ('auto' or role name, default 'auto')."},
+            "title": {"type": "string", "description": "Thread title."},
+            "initial_message": {"type": "string", "description": "Optional first message to post into the thread."},
+            "kind": {"type": "string", "enum": ["direct", "group", "auto"], "description": "Thread kind."},
+            "project_id": {"type": "string", "description": "Optional project id."},
+        },
+        tool="staff_thread_open",
+    ),
+    Command(
+        "message-send",
+        "staff_message_send",
+        "Send an idempotent message to a conversation thread.",
+        {
+            "thread_id": THREAD_ID,
+            "body": {"type": "string", "description": "Message content."},
+            "idempotency_key": {"type": "string", "description": "Idempotency key (auto-generated if omitted)."},
+        },
+        required=("thread_id", "body"),
+        tool="staff_message_send",
+        positional=("thread_id", "body"),
+    ),
+    Command(
+        "thread-read",
+        "staff_thread_read",
+        "Read messages and details from a conversation thread since a sequence number.",
+        {
+            "thread_id": THREAD_ID,
+            "since_seq": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Return messages after this sequence number.",
+            },
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Max messages to return."},
+        },
+        required=("thread_id",),
+        tool="staff_thread_read",
+        positional=("thread_id",),
+    ),
+    Command(
+        "thread-wait",
+        "staff_thread_wait",
+        "Long-poll up to timeout seconds (max 60) for a reply in a conversation thread.",
+        {
+            "thread_id": THREAD_ID,
+            "since_seq": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Wait for messages after this sequence number.",
+            },
+            "timeout": {
+                "type": "number",
+                "minimum": 1.0,
+                "maximum": 60.0,
+                "description": "Timeout in seconds (max 60).",
+            },
+        },
+        required=("thread_id",),
+        tool="staff_thread_wait",
+        positional=("thread_id",),
+    ),
+    Command(
+        "work-items",
+        "staff_work_items",
+        "List and filter tracked work items across the fleet.",
+        {
+            "mine": {"type": "boolean", "description": "Filter work items requested by caller."},
+            "overdue": {"type": "boolean", "description": "Filter work items past SLA deadline."},
+            "waiting_on_me": {"type": "boolean", "description": "Filter work items waiting on caller action."},
+            "state": {
+                "type": "string",
+                "description": (
+                    "Filter by state: open, in_progress, waiting_on_user, waiting_on_ci, "
+                    "blocked, done, cancelled, escalated."
+                ),
+            },
+            "thread_id": {"type": "string", "description": "Filter by associated thread id."},
+            "cursor": {"type": "string", "description": "Pagination cursor."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Max items to return."},
+        },
+        tool="staff_work_items",
+    ),
+    Command(
+        "approvals",
+        "staff_approvals_list",
+        "List action proposals awaiting review or in terminal states.",
+        {
+            "thread_id": {"type": "string", "description": "Filter proposals by thread id."},
+            "state": {
+                "type": "string",
+                "enum": ["proposed", "approved", "denied", "executing", "done", "failed", "expired"],
+                "description": "Filter by proposal state.",
+            },
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Max proposals to return."},
+        },
+        tool="staff_approvals_list",
+    ),
+    Command(
+        "approval-decide",
+        "staff_approval_decide",
+        "Decide (approve or deny) an action proposal (requires staff.approve scope).",
+        {
+            "proposal_id": PROPOSAL_ID,
+            "decision": {
+                "type": "string",
+                "enum": ["approved", "denied"],
+                "description": "Decision: 'approved' or 'denied'.",
+            },
+            "reason": {"type": "string", "description": "Optional rationale for the decision."},
+        },
+        required=("proposal_id", "decision"),
+        tool="staff_approval_decide",
+        positional=("proposal_id", "decision"),
     ),
 )
 

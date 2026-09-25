@@ -57,13 +57,18 @@ def test_handshake_list_and_call(fake_api: Any) -> None:
     assert "tools" in init["capabilities"]
 
     tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
-    assert len(tools) == 16
+    assert len(tools) == 25
     claim_schema = tools["fleet_claim_issue"]["inputSchema"]
     assert claim_schema["type"] == "object"
     assert set(claim_schema["required"]) == {"repo", "issue"}
     assert tools["fleet_dispatch_role"]["inputSchema"]["properties"]["dry_run"]["type"] == "boolean"
     assert set(tools["fleet_ack_message"]["inputSchema"]["required"]) == {"repo", "message_id"}
     assert "agent name" not in tools["fleet_send_message"]["inputSchema"]["properties"]["to"]["description"]
+    assert set(tools["staff_run_cancel"]["inputSchema"]["required"]) == {"run_id"}
+    assert set(tools["staff_message_send"]["inputSchema"]["required"]) == {"thread_id", "body"}
+    assert set(tools["staff_thread_read"]["inputSchema"]["required"]) == {"thread_id"}
+    assert set(tools["staff_thread_wait"]["inputSchema"]["required"]) == {"thread_id"}
+    assert set(tools["staff_approval_decide"]["inputSchema"]["required"]) == {"proposal_id", "decision"}
 
     call = responses[2]["result"]
     assert call["isError"] is False
@@ -95,13 +100,17 @@ def test_write_tool_uses_env_identity(fake_api: Any) -> None:
 
 
 def test_api_error_is_tool_error(fake_api: Any) -> None:
-    fake_api.respond("POST", "/api/coordination/claims", 409, {"detail": {"held": True, "agent": "claude"}})
+    fake_api.respond("POST", "/api/coordination/claims", 409, {"detail": "held by claude"})
     responses = _session(
         fake_api, [INIT, _call(2, "fleet_claim_issue", {"repo": "Runner_Dashboard", "issue": 9, "session": "s"})]
     )
     result = responses[1]["result"]
     assert result["isError"] is True
-    assert json.loads(result["content"][0]["text"])["status"] == 409
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["status"] == 409
+    assert payload["code"] == "http_409"
+    assert payload["retryable"] is False
+    assert payload["message"] == "held by claude"
 
 
 @pytest.mark.parametrize(
@@ -112,7 +121,10 @@ def test_invalid_arguments_are_tool_errors_and_send_nothing(fake_api: Any, argum
     responses = _session(fake_api, [INIT, _call(2, "fleet_check_claim", arguments)])
     result = responses[1]["result"]
     assert result["isError"] is True
-    assert json.loads(result["content"][0]["text"])["error"] == "invalid_arguments"
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["error"] == "invalid_arguments"
+    assert payload["code"] == "invalid_arguments"
+    assert payload["retryable"] is False
     assert fake_api.requests == []
 
 
@@ -143,3 +155,30 @@ def test_unreachable_api_is_tool_error_not_crash(fake_api: Any) -> None:
     assert responses[1]["result"]["isError"] is True
     assert json.loads(responses[1]["result"]["content"][0]["text"])["status"] == 0
     assert responses[2]["result"] == {}
+
+
+def test_staff_tools_mcp_flow(fake_api: Any) -> None:
+    responses = _session(
+        fake_api,
+        [
+            INIT,
+            _call(2, "staff_thread_open", {"role": "Barb", "title": "Test Thread"}),
+            _call(3, "staff_message_send", {"thread_id": "th_123", "body": "Hello Barb"}),
+            _call(4, "staff_thread_read", {"thread_id": "th_123", "since_seq": 0}),
+            _call(5, "staff_run_cancel", {"run_id": "run-905"}),
+            _call(6, "staff_work_items", {"limit": 10, "overdue": True}),
+            _call(7, "staff_approvals_list", {"limit": 5}),
+            _call(8, "staff_approval_decide", {"proposal_id": "prop_1", "decision": "approved"}),
+        ],
+    )
+    assert all(r["result"]["isError"] is False for r in responses[1:])
+    paths = [req.path for req in fake_api.requests]
+    assert paths == [
+        "/api/v1/staff/threads",
+        "/api/v1/staff/threads/th_123/messages",
+        "/api/v1/staff/threads/th_123",
+        "/api/staff/runs/run-905/cancel",
+        "/api/v1/staff/work-items",
+        "/api/v1/staff/proposals",
+        "/api/v1/staff/proposals/prop_1/decide",
+    ]

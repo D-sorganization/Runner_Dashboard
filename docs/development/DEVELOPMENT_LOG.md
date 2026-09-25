@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1316 · SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state
+### DL-#1323 · SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1323 (epic #1352 / umbrella #1354)
+- **Branch:** `feat/1323-fleet-mcp-staff`
+- **PR:** (pending)
+- **Paths:** `clients/fleet/fleet_client.py`, `clients/fleet/fleet_validators.py`, `clients/fleet/fleet_tools.py`, `clients/fleet/fleet_mcp.py`, `backend/routers/staff_proposals.py`, `backend/routers/staff_threads.py`, `backend/server.py`, `tests/api/test_staff_proposals_api.py`, `tests/clients/test_fleet_client.py`, `tests/clients/test_fleet_mcp.py`, `tests/clients/test_fleet_cli.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`pytest tests/clients` 121 passed; `pytest tests/api/test_staff_proposals_api.py` 2 passed; ruff clean; mypy 0 errors; all modules <= 500 lines)
+- **Summary:** Exposed 9 staff tools in `fleet_mcp` and `fleetctl`: `staff_threads_list`, `staff_thread_open`, `staff_message_send`, `staff_thread_read`, `staff_thread_wait`, `staff_run_cancel`, `staff_work_items`, `staff_approvals_list`, `staff_approval_decide`. Standardized SC-F3 error envelope for tool errors and implemented idempotent request retries for network/5xx errors on idempotent calls. Added action proposal review and decision endpoints `GET/POST /api/v1/staff/proposals`.
+- **Next step:** Open PR, verify CI, auto-merge, and release lease on #1323.
+
+### DL-#1316 · SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1316 (epic #1349 / umbrella #1354)
 - **Branch:** `feat/1316-work-item-ledger`
-- **PR:** (pending)
+- **PR:** #1394
 - **Paths:** `backend/staff/work_items.py`, `backend/routers/staff_work_items.py`, `backend/staff/run_link.py`, `backend/staff/audit.py`, `backend/server.py`, `tests/api/test_staff_work_items.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`pytest tests/api/test_staff_work_items.py` 9 passed; mypy 0 errors; ruff clean; all modules <= 500 lines)
+- **Last verified:** 2026-09-24 (shipped in PR #1394)
 - **Summary:** Implemented durable WorkItem ledger with SQLite WAL persistence in `staff_runs.sqlite3`. Supports state transitions (`open`, `in_progress`, `waiting_on_user`, `waiting_on_ci`, `blocked`, `done`, `cancelled`, `escalated`), SLA overdue detection, links to runs, issues, PRs, and code requests. State transitions are audited in `staff_audit` (SC-A8). Run status updates (`run_link.py`) automatically transition linked work items. Exposed REST endpoints `POST /api/v1/staff/work-items`, `GET /api/v1/staff/work-items` (filters: `mine`, `overdue`, `waiting_on_me`, `state`, `thread_id`, cursor pagination), `GET /api/v1/staff/work-items/{id}`, and `PATCH /api/v1/staff/work-items/{id}`.
-- **Next step:** Open PR, verify CI, auto-merge, and release lease on #1316.
+- **Next step:** None (shipped in PR #1394).
 
 ### DL-#1314 · SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes
 
