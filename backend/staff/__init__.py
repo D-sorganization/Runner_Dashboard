@@ -14,6 +14,18 @@ Boundaries (see Repository_Management/docs/sibling-repos.md):
     spawned as subprocesses; nothing here talks to a model API directly.
 """
 
-from staff.reply_contract import ChatReply, ProposedAction, parse_reply
+from staff.reply_contract import (
+    ACTIONS_SCHEMA,
+    ChatReply,
+    ProposedAction,
+    parse_reply,
+    validate_action_schema,
+)
 
-__all__ = ["ChatReply", "ProposedAction", "parse_reply"]
+__all__ = [
+    "ACTIONS_SCHEMA",
+    "ChatReply",
+    "ProposedAction",
+    "parse_reply",
+    "validate_action_schema",
+]

@@ -26,8 +26,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import jsonschema
-
 log = logging.getLogger("dashboard.staff.reply_contract")
 
 ACTIONS_SCHEMA: dict[str, Any] = {
@@ -44,6 +42,45 @@ ACTIONS_SCHEMA: dict[str, Any] = {
         },
     },
 }
+
+
+def validate_action_schema(item: Any) -> list[str]:
+    """Pure-Python schema validator for an action object in a staff-actions block.
+
+    Validates against ACTIONS_SCHEMA without requiring external dependencies like jsonschema.
+    Returns a list of validation error descriptions.
+    """
+    errors: list[str] = []
+    if not isinstance(item, dict):
+        errors.append(f"item must be a JSON object, got {type(item).__name__}")
+        return errors
+
+    required_keys = ("action", "params", "reason")
+    for key in required_keys:
+        if key not in item:
+            errors.append(f"'{key}' is a required property")
+
+    for key in item:
+        if key not in required_keys:
+            errors.append(f"Additional properties are not allowed ('{key}' was unexpected)")
+
+    if "action" in item:
+        val = item["action"]
+        if not isinstance(val, str) or len(val) < 1:
+            errors.append("'action' must be a non-empty string")
+
+    if "params" in item:
+        val = item["params"]
+        if not isinstance(val, dict):
+            errors.append(f"'params' must be a dict/object, got {type(val).__name__}")
+
+    if "reason" in item:
+        val = item["reason"]
+        if not isinstance(val, str) or len(val) < 1:
+            errors.append("'reason' must be a non-empty string")
+
+    return errors
+
 
 KNOWN_ACTIONS: frozenset[str] = frozenset(
     {
@@ -343,10 +380,10 @@ def parse_reply(text: str, role: Any = None) -> ChatReply:
                         continue
 
                     # Validate schema
-                    try:
-                        jsonschema.validate([item], ACTIONS_SCHEMA)
-                    except jsonschema.ValidationError as ve:
-                        warnings.append(f"staff-actions item {idx} schema validation failed: {ve.message}")
+                    schema_errors = validate_action_schema(item)
+                    if schema_errors:
+                        err_msg = "; ".join(schema_errors)
+                        warnings.append(f"staff-actions item {idx} schema validation failed: {err_msg}")
                         dropped_actions.append(item)
                         continue
 
