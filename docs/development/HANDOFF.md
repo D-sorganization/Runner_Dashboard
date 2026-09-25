@@ -1,3 +1,62 @@
+# Current handoff — SC-E7: Maintenance safety tests and gates (#1344)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1344`; branch `test/1344-maintenance-safety`; PR: see branch; Issue #1344; DL-#1344. Commit: SELF.
+
+## Objective and Status
+
+- Found: the SC-E3 catalogue's operations were stubs that reported success without acting, `_get_runner_state` always said "online, not busy", group actions ignored `max_count` at run time, and the stalled-job detector auto-executed by its own detection label, so any detection could downgrade a high-risk action.
+- Now:
+  - `MAINTENANCE_POLICY` (risk, scope, disruptive, target parameter, max targets) lives in `staff/maintenance_policy.py` and drives registration and `check_maintenance_policy`; `maintenance.py` stays under the 500-line cap.
+  - Stubs raise `MaintenanceNotWiredError` and fail as `not_wired`.
+  - `_run_group` refuses oversized groups and stops on token expiry, marking the rest as skipped.
+  - Every real invocation is audited with its `failure_class`; dry runs skip verification.
+  - `run_scan` gates auto-execution with `can_auto_execute` on the registered action.
+- Tests: `tests/staff/test_maintenance_safety.py` (pinned table, mutation check, limits, owner gate, replay, prompt injection, fault injection). Existing tests that asserted stub success now use a simulated backend, or expect `not_wired` for runner removal.
+- Verification: maintenance/actions/proposals/safety pytest 197 passed, 12 skipped (no-op mutations); ruff clean; `mypy backend/` clean.
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. #1448: wire the stub operations one at a time, removing each from `UNWIRED_ACTIONS` as it lands.
+
+# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/fleet-project-tracking`; Issue #1434; DL-#1434.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; PR #1441 (auto-merge armed); companion Repository_Management#1761.
+
+## Objective and Status
+
+- One prioritised status view of every fleet project, plus the fleet-curator worklist of untracked work.
+- Implemented: `backend/projects/priorities.py`, `coverage.py`, `rollup.py`; `service.fleet_overview`,
+  `load_priorities`, `fetch_open_items`, `fetch_org_repos`; routes `/api/projects` (+summary),
+  `/api/projects/priorities`, `/api/projects/untracked`; `config/projects.json` now lists all active org repos;
+  frontend `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`; regenerated OpenAPI contract.
+- Decisions: priority lives centrally in Repository_Management (owner-set, fleet-wide), charters stay per repo;
+  coverage is deterministic so the curator role only judges, never discovers.
+
+## Validation
+
+- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
+- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
+- `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
+- `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. Repository_Management: `fleet-curator` role + `config/project_priorities.yaml` from the owner interview.
+3. Charter PRs for the repositories that had none (fleet charter sweep drafts).
+
+---
+
 # Current handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
 
 Last updated: 2026-09-25

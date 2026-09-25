@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -86,11 +87,16 @@ def test_api_detect_stalled_auto_remediate_low_risk(client: TestClient) -> None:
         "auto_remediate": True,
     }
 
-    res = client.post(
-        "/api/v1/staff/maintenance/detect-stalled",
-        json=payload,
-        headers={"X-Requested-With": "XMLHttpRequest"},
-    )
+    # Simulated GitHub backend for the cancel and the rerun.
+    with (
+        patch("staff.maintenance._cancel_run", return_value={"status": "cancelled"}),
+        patch("staff.maintenance._rerun_run", return_value={"status": "rerun_requested"}),
+    ):
+        res = client.post(
+            "/api/v1/staff/maintenance/detect-stalled",
+            json=payload,
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
     assert res.status_code == 200, res.text
     data = res.json()
 
@@ -158,5 +164,7 @@ def test_api_detect_stalled_high_risk_creates_proposal_for_approval(
     )
     assert decide_res.status_code == 200, decide_res.text
     decide_data = decide_res.json()
-    assert decide_data["state"] in ("approved", "done")
-    assert decide_data["execution_result"]["success"] is True
+    # Runner removal has no backend yet (#1344): it fails visibly instead of claiming success.
+    assert decide_data["state"] == "failed"
+    assert decide_data["execution_result"]["success"] is False
+    assert decide_data["execution_result"]["failure_class"] == "not_wired"

@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1344 · SC-E7: Maintenance safety tests: approval gates, blast-radius limits and fault injection
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1344 (epic #1351 / umbrella #1354); follow-up #1448 wires the stub operations
+- **Branch:** `test/1344-maintenance-safety`
+- **Paths:** `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `backend/staff/maintenance_detect.py`, `tests/staff/test_maintenance_safety.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_detect_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (maintenance/actions/proposals/safety pytest 197 passed, 12 skipped; ruff clean; mypy backend/ clean)
+- **Summary:** Pinned policy table with a mutation check; fleet-wide, single-target and batch-size gates read from it; detector risk comes from the registry; unwired operations fail as `not_wired`; timeouts, token expiry and partial failures are classified and audited.
+- **Next step:** Merge the PR once CI is green, then start #1448 by wiring `_cancel_run` / `_rerun_run` to `gh_client`.
+
 ### DL-#1474 · WP-0.1: Resolve staff action role names against the loaded roster
 
 - **State:** in_progress
