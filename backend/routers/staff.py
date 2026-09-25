@@ -49,6 +49,7 @@ from staff.models import (
     StaffRunsResponse,
     StaffSummaryResponse,
 )
+from staff.rate_limit import check_rate_limit
 from staff.rm_sync import source_status as source_status  # noqa: F401
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
@@ -442,6 +443,7 @@ async def dispatch(
         plan = runner.plan(req)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    check_rate_limit("dispatches", caller)
     target = await _resolve_target(runner, body.machine, plan.provider)
     if target != "local":
         obo_hdr = staff_fleet.sign_on_behalf_of(caller_id, surface, thread_id)

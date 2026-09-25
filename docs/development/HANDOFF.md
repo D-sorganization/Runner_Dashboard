@@ -1,10 +1,43 @@
-# Current handoff — SC-F5: External Agent Connection Guides & Troubleshooting (#1334)
+# Current handoff — SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs (#1336)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `docs/1334-agent-connection-guides`; Issue #1334; DL-#1334.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1336-rate-limits-spend-guards`; Issue #1336; DL-#1336.
+
+## Work
+
+- Implementing per-principal token-bucket limits on message send (30/min) and dispatch (10/hour).
+- Extending `BudgetGuard` to count chat turns against role `usd_per_day` budget, generating system message and notifying Barb upon exhaustion.
+- Implementing `LoopGuard` to detect > N consecutive agent turns without user input, pausing threads and requesting owner input.
+- All files strictly <= 500 lines.
+
+## Validation
+
+- Ran `pytest tests/api/test_staff_spend_and_rate_limits.py` (8 passed).
+- Ran related staff test suites: `test_staff_threads_api.py`, `test_staff_v1_api.py`, `test_staff_scopes.py`, `test_staff_proposals_api.py` (28 passed).
+- Verified `ruff check` and `ruff format` are clean.
+- Verified `mypy` passes with no issues in all 6 modified backend staff modules.
+- Line cap verified: all modified/created files are strictly <= 500 lines.
+
+## Next
+
+1. Commit changes using Conventional Commits: `feat(staff): rate limits and spend guards on staff conversation and dispatch APIs (Fixes #1336)`.
+2. Push branch to remote.
+3. Open PR with `gh pr create` and enable auto-merge.
+4. Verify all CI checks pass and PR is merged.
+5. Release lease on #1336 and remove worktree.
+
+---
+
+# Previous handoff — SC-F5: External Agent Connection Guides & Troubleshooting (#1334)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `docs/1334-agent-connection-guides`; Issue #1334; DL-#1334; PR #1397.
 
 ## Work
 

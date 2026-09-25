@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1334 · SC-F5: External Agent Connection Guides & Troubleshooting
+### DL-#1336 · SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1336 (epic #1352 / umbrella #1354)
+- **Branch:** `feat/1336-rate-limits-spend-guards`
+- **PR:** (pending)
+- **Paths:** `backend/staff/rate_limit.py`, `backend/staff/budget.py`, `backend/staff/loop_guard.py`, `backend/staff/conversation_models.py`, `backend/routers/staff_threads.py`, `backend/routers/staff.py`, `SPEC.md`, `tests/api/test_staff_spend_and_rate_limits.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/api/test_staff_spend_and_rate_limits.py` 8 passed; ruff clean; mypy clean; all files <= 500 lines)
+- **Summary:** Implemented per-principal token-bucket limits on message send (30/min) and dispatch (10/hour) returning 429 with Retry-After and fail-open/fail-closed storage error handling. Extended BudgetGuard to track chat turn spend against usd_per_day, producing fixed system messages upon exhaustion and notifying Barb. Added LoopGuard detecting > N consecutive agent turns without user messages to pause threads and request owner input.
+- **Next step:** Push branch, open PR with auto-merge, verify CI passes, merge, and release lease on #1336.
+
+### DL-#1334 · SC-F5: External Agent Connection Guides & Troubleshooting
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1334 (epic #1352 / umbrella #1354)
 - **Branch:** `docs/1334-agent-connection-guides`
-- **PR:** (pending)
+- **PR:** #1397
 - **Paths:** `docs/agents/claude.md`, `docs/agents/codex.md`, `docs/agents/grok.md`, `docs/agents/connect.md`, `docs/staff-hub.md`, `SPEC.md`, `tests/test_agent_connection_docs.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`pytest tests/test_agent_connection_docs.py` 9 passed; ruff clean; all documents and tests <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1397)
 - **Summary:** Authored external client connection guides for Claude Code / Claude Cowork (`docs/agents/claude.md`), Codex CLI (`docs/agents/codex.md`), and Grok Bot (`docs/agents/grok.md`). Updated `docs/agents/connect.md` with client guide navigation index, complete 25-tool fleet MCP reference table, and SC-F3 classified error troubleshooting guide. Added cross-references in `docs/staff-hub.md` and updated `SPEC.md` SC-F5 specification. Added automated documentation validation tests.
-- **Next step:** Push branch, open PR with auto-merge, verify CI passes, merge, and release lease on #1334.
+- **Next step:** None (shipped in PR #1397).
 
 ### DL-#1323 · SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel
 

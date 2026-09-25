@@ -51,12 +51,18 @@ class BudgetGuard:
         alert_sink: AlertSink = _log_alert,
         clock: Callable[[], datetime] | None = None,
         tz: str = DEFAULT_TZ,
+        role_budgets: dict[str, float] | None = None,
     ) -> None:
         self._store = store
         self._sink = alert_sink
         self._clock = clock or (lambda: datetime.now(ZoneInfo(tz)))
         self._tz = tz
         self._last_alert: dict[tuple[str, float], datetime] = {}
+        self._role_budgets: dict[str, float] = dict(role_budgets or {})
+
+    def set_role_budget(self, role: str, budget_usd: float) -> None:
+        """Register or override a role's daily USD budget cap."""
+        self._role_budgets[role] = budget_usd
 
     def spent_today(self, role: str) -> float:
         now = self._clock()
@@ -78,6 +84,27 @@ class BudgetGuard:
             return False, f"next run (${role.budget_usd_per_run:.2f}) would exceed daily budget ${cap:.2f}"
         return True, f"${spent:.2f} of ${cap:.2f} spent today"
 
+    def can_chat(self, role: str, role_budget_usd: float | None = None) -> tuple[bool, str]:
+        """Check if role has remaining daily USD budget for conversational chat turns."""
+        cap = role_budget_usd
+        if cap is None:
+            cap = self._role_budgets.get(role)
+        if cap is None:
+            from staff.runner import get_runner  # noqa: PLC0415
+
+            runner = get_runner()
+            spec = runner.roles().get(role)
+            cap = getattr(spec, "budget_usd_per_day", 0.0) if spec else 0.0
+
+        if cap <= 0:
+            return True, "no daily budget"
+
+        spent = self.spent_today(role)
+        self.check_alerts(role, spent, cap)
+        if spent >= cap:
+            return False, f"daily budget ${cap:.2f} reached (spent ${spent:.2f})"
+        return True, f"${spent:.2f} of ${cap:.2f} spent today"
+
     def check_alerts(self, role: str, spent: float, cap: float) -> list[str]:
         """Emit one alert per crossed threshold, at most once per six hours each."""
         if cap <= 0:
@@ -96,3 +123,28 @@ class BudgetGuard:
             self._sink(role, message, fraction)
             emitted.append(message)
         return emitted
+
+
+_GLOBAL_BUDGET_GUARD: BudgetGuard | None = None
+
+
+def get_global_budget_guard() -> BudgetGuard:
+    """Retrieve or lazily initialize the process-wide BudgetGuard instance."""
+    global _GLOBAL_BUDGET_GUARD  # noqa: PLW0603
+    if _GLOBAL_BUDGET_GUARD is None:
+        from staff.runner import get_runner  # noqa: PLC0415
+
+        _GLOBAL_BUDGET_GUARD = BudgetGuard(store=get_runner().store)
+    return _GLOBAL_BUDGET_GUARD
+
+
+def set_global_budget_guard(guard: BudgetGuard) -> None:
+    """Explicitly inject a BudgetGuard instance (for tests)."""
+    global _GLOBAL_BUDGET_GUARD  # noqa: PLW0603
+    _GLOBAL_BUDGET_GUARD = guard
+
+
+def reset_global_budget_guard() -> None:
+    """Reset the global BudgetGuard instance (for tests)."""
+    global _GLOBAL_BUDGET_GUARD  # noqa: PLW0603
+    _GLOBAL_BUDGET_GUARD = None
