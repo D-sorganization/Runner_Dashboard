@@ -67,8 +67,13 @@ CREATE INDEX IF NOT EXISTS action_proposals_message_idx ON action_proposals(mess
 CREATE INDEX IF NOT EXISTS action_proposals_state_idx ON action_proposals(state);
 """
 
+_MIGRATION_2_SQL = """
+ALTER TABLE threads ADD COLUMN meta TEXT NOT NULL DEFAULT '{}';
+"""
+
 CORE_MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "conversations_core_tables", _MIGRATION_1_SQL),
+    (2, "threads_meta_column", _MIGRATION_2_SQL),
 ]
 
 

@@ -71,6 +71,7 @@ class ThreadRecord:
     status: str = "open"
     last_message_at: str | None = None
     unread_counters: dict[str, int] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
 
@@ -84,6 +85,7 @@ class ThreadRecord:
             "status": self.status,
             "last_message_at": self.last_message_at,
             "unread_counters": dict(self.unread_counters),
+            "meta": dict(self.meta),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -95,6 +97,8 @@ class ThreadRecord:
         parts = json.loads(raw_parts) if isinstance(raw_parts, str) else (raw_parts or [])
         raw_unread = d.get("unread_counters")
         unread = json.loads(raw_unread) if isinstance(raw_unread, str) else (raw_unread or {})
+        raw_meta = d.get("meta")
+        meta = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
         return cls(
             id=str(d["id"]),
             title=str(d["title"]),
@@ -104,6 +108,7 @@ class ThreadRecord:
             status=str(d.get("status") or "open"),
             last_message_at=d.get("last_message_at"),
             unread_counters=dict(unread),
+            meta=dict(meta),
             created_at=str(d["created_at"]),
             updated_at=str(d["updated_at"]),
         )

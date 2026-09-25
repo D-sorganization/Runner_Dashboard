@@ -1,4 +1,64 @@
-# Current handoff — SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs (#1336)
+# Current handoff — SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1307-chat-turn-execution-path`; Issue #1307; DL-#1307; PR #1398.
+
+## Objective and Status
+
+- SC-B4: Fast, read-only conversational replies with per-provider session resumption, isolated scratch execution (no git worktrees), Barb concurrency reservation, and structured reply contract integration.
+- Status: Fully implemented with TDD; all quality gates passing locally.
+
+## Files and Decisions
+
+- `backend/staff/adapters.py`:
+  - Added `chat_argv(prompt, workdir, model, session_id)` for all 6 provider adapters (`claude`, `codex`, `antigravity`, `cursor-agent`, `gemini`, `ollama`), enforcing read-only plan mode, no dangerous bypass permissions, and session resumption (`--resume` or `--session`).
+  - Added `"delta"` extraction support to `_extract_text` for Claude CLI stream-json events.
+- `backend/staff/conversation_migrations.py`:
+  - Added Migration 2 (`threads_meta_column`) creating `meta TEXT NOT NULL DEFAULT '{}'` column on `threads` with pre-migration backup.
+- `backend/staff/conversation_models.py`:
+  - Added `meta: dict[str, Any]` to `ThreadRecord`.
+- `backend/staff/conversations.py`:
+  - Updated `create_thread` and `get_thread` to read/write `meta` in SQLite.
+  - Added `update_message(message_id, kind, body_md, meta, delivery, run_id)` for in-place placeholder resolution.
+  - Added `role` convenience parameter to `create_thread`.
+- `backend/staff/chat_history.py`:
+  - Extracted provider session extraction and prompt formatting with persona injection into dedicated module.
+  - `extract_session_id(provider, event, raw_line)`: detects provider session IDs from stream events and logs across Claude, Codex, Cursor, and Antigravity.
+  - `format_history_replay`: formats role persona and conversation dialogue turns into a prompt within 4000-token budget for fallback execution.
+- `backend/staff/chat.py`:
+  - `ChatConcurrencyPool`: bounded chat turn concurrency pool with reserved slots guarantee for Barb (SC-C6).
+  - `ChatTurnRunner`: executes turns in read-only scratch directories, streams token deltas to SSE `ThreadEventBus`, records TTFT and turn duration metrics, parses reply contracts, creates action proposals, and classifies errors on provider failure.
+  - `run_chat_turn_in_background`: async task wrapper for FastAPI endpoint dispatch.
+- `backend/routers/staff_threads.py`:
+  - Dispatches `run_chat_turn_in_background` as an asynchronous background task on `POST /api/v1/staff/threads/{id}/messages`.
+- `tests/unit/test_staff_chat.py`:
+  - 13 unit tests covering adapter recipes, session extraction, concurrency pool, runner metrics, multi-turn session resume, fallback replay, read-only scratch isolation, action proposal generation, and failure classification.
+- `tests/api/test_staff_chat_turns.py`:
+  - 4 API integration tests verifying background turn dispatch, message completion, multi-turn session resume via HTTP, action proposal persistence, and error handling.
+
+## Validation
+
+- `pytest tests/unit/test_staff_chat.py`: 13 passed in 1.28s.
+- `pytest tests/api/test_staff_chat_turns.py`: 4 passed in 1.46s.
+- Full staff test suite (`pytest -k staff`): 358 passed in 91.98s.
+- `ruff check backend tests`: All checks passed.
+- `ruff format --check backend tests`: All files formatted.
+- `mypy`: 0 errors across all touched files.
+- Line limits: All new and modified files strictly <= 500 lines (`chat.py`: 457, `chat_history.py`: 104, `adapters.py`: 370, `conversations.py`: 497, `conversation_migrations.py`: 142, `conversation_models.py`: 218, `staff_threads.py`: 487, `test_staff_chat_turns.py`: 290, `test_staff_chat.py`: 493).
+
+## Next Steps
+
+1. Merge origin/main and resolve documentation conflicts.
+2. Verify CI checks pass on PR #1398.
+3. Auto-merge PR #1398 into main.
+4. Release lease on issue #1307 and post completion receipt.
+
+---
+
+## Prior handoff — SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs (#1336)
 
 Last updated: 2026-09-25
 

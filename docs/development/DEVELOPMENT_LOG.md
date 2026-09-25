@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1336 · SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs
+### DL-#1307 · SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1307 (epic #1346 / umbrella #1354)
+- **Branch:** `feat/1307-chat-turn-execution-path`
+- **PR:** #1398
+- **Paths:** `backend/staff/chat.py`, `backend/staff/adapters.py`, `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/conversation_migrations.py`, `backend/routers/staff_threads.py`, `tests/unit/test_staff_chat.py`, `tests/api/test_staff_chat_turns.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_chat.py` 13 passed; `pytest tests/api/test_staff_chat_turns.py` 4 passed; full staff test suite 358 passed; ruff clean; mypy 0 errors; all files <= 500 lines)
+- **Summary:** Implemented conversational chat turn execution engine (`backend/staff/chat.py`) in read-only scratch directories without git worktree checkout. Added provider session extraction and persistence (`meta.provider_sessions`), multi-turn session resumption (`--resume`), fallback to history replay under 4000-token budget, chat concurrency pool with reserved slots for Barb (SC-C6), reply contract parsing with action proposal creation, and background turn execution on message post.
+- **Next step:** Merge origin/main, verify CI quality gates, auto-merge, and close issue #1307.
+
+### DL-#1336 · SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1336 (epic #1352 / umbrella #1354)
 - **Branch:** `feat/1336-rate-limits-spend-guards`
 - **PR:** #1399
 - **Paths:** `backend/staff/rate_limit.py`, `backend/staff/budget.py`, `backend/staff/loop_guard.py`, `backend/staff/conversation_models.py`, `backend/routers/staff_threads.py`, `backend/routers/staff.py`, `SPEC.md`, `tests/api/test_staff_spend_and_rate_limits.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`pytest tests/api/test_staff_spend_and_rate_limits.py` 8 passed; ruff clean; mypy clean; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1399)
 - **Summary:** Implemented per-principal token-bucket limits on message send (30/min) and dispatch (10/hour) returning 429 with Retry-After and fail-open/fail-closed storage error handling. Extended BudgetGuard to track chat turn spend against usd_per_day, producing fixed system messages upon exhaustion and notifying Barb. Added LoopGuard detecting > N consecutive agent turns without user messages to pause threads and request owner input.
-- **Next step:** Merge origin/main, verify CI passes on PR #1399, auto-merge, and release lease on #1336.
+- **Next step:** None (shipped in PR #1399).
 
 ### DL-#1321 · SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification
 

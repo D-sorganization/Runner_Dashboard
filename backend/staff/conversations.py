@@ -106,12 +106,17 @@ class ConversationStore:
         participants: list[str] | None = None,
         created_by: str = "",
         thread_id: str | None = None,
+        meta: dict[str, Any] | None = None,
+        role: str | None = None,
     ) -> ThreadRecord:
         self._ensure_available()
         assert kind in THREAD_KINDS, f"Invalid thread kind: {kind}"  # noqa: S101
         tid = thread_id or f"th_{uuid.uuid4().hex[:12]}"
         parts = list(participants or [])
+        if role and role not in parts:
+            parts.append(role)
         unread = {p: 0 for p in parts}
+        meta_dict = dict(meta or {})
         now = _now()
         rec = ThreadRecord(
             id=tid,
@@ -121,14 +126,15 @@ class ConversationStore:
             created_by=created_by,
             status="open",
             unread_counters=unread,
+            meta=meta_dict,
             created_at=now,
             updated_at=now,
         )
         with self._lock:
             self._conn.execute(
                 "INSERT INTO threads (id, title, kind, participants, created_by, status, "
-                "last_message_at, unread_counters, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "last_message_at, unread_counters, meta, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     rec.id,
                     rec.title,
@@ -138,6 +144,7 @@ class ConversationStore:
                     rec.status,
                     rec.last_message_at,
                     json.dumps(rec.unread_counters),
+                    json.dumps(rec.meta),
                     rec.created_at,
                     rec.updated_at,
                 ),
@@ -194,11 +201,11 @@ class ConversationStore:
             cur = self.get_thread(thread_id)
             if not cur:
                 return None
-            allowed = {"title", "status", "participants", "unread_counters"}
+            allowed = {"title", "status", "participants", "unread_counters", "meta"}
             updates: dict[str, Any] = {}
             for k, v in fields.items():
                 if k in allowed:
-                    updates[k] = json.dumps(v) if k in {"participants", "unread_counters"} else v
+                    updates[k] = json.dumps(v) if k in {"participants", "unread_counters", "meta"} else v
             if not updates:
                 return cur
             updates["updated_at"] = _now()
@@ -347,6 +354,26 @@ class ConversationStore:
                 (thread_id, since_seq, limit),
             ).fetchall()
         return [MessageRecord.from_row(r) for r in rows]
+
+    def update_message(self, message_id: str, **fields: Any) -> MessageRecord | None:
+        """Update mutable fields of a message (body_md, kind, meta, delivery, run_id)."""
+        self._ensure_available()
+        with self._lock:
+            cur = self.get_message(message_id)
+            if not cur:
+                return None
+            allowed = {"body_md", "kind", "meta", "delivery", "run_id"}
+            updates = {
+                k: redact_sensitive_content(v or "") if k == "body_md" else json.dumps(v or {}) if k == "meta" else v
+                for k, v in fields.items()
+                if k in allowed
+            }
+            if not updates:
+                return cur
+            sets = ", ".join(f"{k} = ?" for k in updates)
+            self._conn.execute(f"UPDATE messages SET {sets} WHERE id = ?", (*updates.values(), message_id))  # noqa: S608
+            row = self._conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+            return MessageRecord.from_row(row) if row else None
 
     # ── ACTION PROPOSALS ─────────────────────────────────────────────────────
 
