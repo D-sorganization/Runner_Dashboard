@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.staff.store import _now
+from staff.store import _now
 
 THREAD_KINDS = ("direct", "group", "auto")
 THREAD_STATUSES = ("open", "archived")
