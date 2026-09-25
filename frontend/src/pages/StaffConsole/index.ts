@@ -23,3 +23,8 @@ export * from "./cards";
 export * from "./contextTypes";
 export * from "./ContextPane";
 
+// SC-C5: Waiting on you inbox
+export * from "../Staff/inboxTypes";
+export * from "../Staff/InboxPanel";
+
+

@@ -30,6 +30,30 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Implemented SC-G3 Operations page merging Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan, and Schedules into `/fleet/operations`: (1) `OperationsStatusBanner` with quick KPI badges and 5 jump anchors (`#deploy`, `#admission`, `#runner-hours`, `#scheduled-workflows`, `#diagnostics`); (2) `OperationsDeploySection` with expected version, rollout summary, machine drift table, multi-node deploy action form, and audit log; (3) `OperationsAdmissionSection` with admission gate status (running/paused/draining), queue control buttons, capacity and work queue statistics, provider mix, budget burn, and 404 empty state; (4) `OperationsRunnerHoursSection` with desired/online/busy/offline runner metrics, schedule windows table, save/apply buttons, timer status, and config path footer; (5) `OperationsScheduledWorkflowsSection` with cron workflows table, repository badges, cron expressions, run link, search filter, and trigger CTA; (6) `OperationsDiagnosticsSection` with PID, memory MB, port, WSL status, git drift, service recovery restart with confirmation, Windows launcher generator, and API links; (7) Backwards-compatible redirects configured for `/fleet/deployment`, `/deployment`, `/t/deployment`, `/fleet/fleet-orchestration`, `/t/fleet-orchestration`, `/fleet/conductor`, `/conductor`, `/t/conductor`, `/fleet/runner-schedule`, `/runner-schedule`, `/fleet/runner-plan`, `/runner-plan`, `/t/runner-schedule`, `/work/scheduled-jobs`, `/scheduled-jobs`, `/schedules`, `/work/schedules`, `/t/scheduled-jobs`, `/settings/diagnostics`, `/diagnostics`, `/t/diagnostics` to `/fleet/operations#...` with user toast notices; (8) Recomposed shell navigation and overview deployment navigation to point to `/fleet/operations#deploy`.
 - **Next step:** Push branch `feat/1325-operations-merge`, open PR with Fixes #1325, enable auto-merge, monitor CI to green merge, release lease, and clean up.
 
+### DL-#1424 · Restore green main: synchronize generated API contract for SC-C5
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1424
+- **Branch:** `fix/1424-green-main`
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/frontend/test_api_generation_contract.py and test_staff_contracts.py passed 10/10; npm run typecheck 0 errors; npm run lint 0 warnings)
+- **Summary:** Synchronized generated OpenAPI schema (`openapi.json`) and TypeScript client types (`api-types.ts`) following SC-C5 merge (`/api/v1/staff/briefing` and updated `/api/v1/staff/inbox`), resolving the failing `Verify generated API contract types` step in `Frontend Tests` on `main`.
+- **Next step:** Shipped in PR #1425.
+
+### DL-#1328 · SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1328 (epic #1349 / umbrella #1354)
+- **Branch:** `feat/1328-waiting-on-you-inbox`
+- **Paths:** `backend/staff/inbox.py`, `backend/routers/staff_inbox.py`, `backend/routers/staff_threads.py`, `backend/server.py`, `backend/push.py`, `frontend/src/pages/Staff/inboxTypes.ts`, `frontend/src/pages/Staff/InboxPanel.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/index.ts`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`, `tests/api/test_staff_inbox.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/api/test_staff_inbox.py passed 4/4; test_staff_threads_api.py passed 11/11; vitest InboxPanel.test.tsx passed 6/6; StaffConsole suite passed 63/63; npm run typecheck 0 errors; npm run lint 0 warnings; ruff & mypy clean; all files <= 500 lines)
+- **Summary:** Implemented SC-C5 Waiting on you inbox and Barb briefings inside dashboard: (1) `backend/staff/inbox.py` multi-source aggregation (`_collect_approvals`, `_collect_needs_input`, `_collect_escalations`, `_collect_project_decisions`, `_collect_board_proposals`, `_collect_auth_sign_ins`) with per-source fault isolation returning `status: "unavailable"` and HTTP 200; (2) Scheduled/on-demand Markdown briefing generation (`POST /api/v1/staff/briefing`) posted to Barb's thread with SC-A8 audit logging; (3) Web push (`staff.escalation`) for critical escalations with thread deep links; (4) Frontend `InboxPanel` with severity badges, category pills, degraded source banner, briefing trigger, and deep linking, embedded at the top of `StaffPage`.
+- **Next step:** Shipped in PR #1422 (commit `c9e558f`).
+
 ### DL-#1324 · SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet
 
 - **State:** shipped

@@ -3968,6 +3968,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/briefing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Briefing
+         * @description Generate and post an on-schedule or on-demand briefing to Barb's thread.
+         */
+        post: operations["trigger_briefing_api_staff_briefing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/holds": {
         parameters: {
             query?: never;
@@ -3982,6 +4002,26 @@ export interface paths {
          * @description Replace the holds list. Postcondition: the file on disk equals the response.
          */
         put: operations["put_holds_api_staff_holds_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Staff Inbox
+         * @description Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.
+         */
+        get: operations["get_staff_inbox_api_staff_inbox_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4488,6 +4528,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/briefing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Briefing
+         * @description Generate and post an on-schedule or on-demand briefing to Barb's thread.
+         */
+        post: operations["trigger_briefing_api_v1_staff_briefing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/holds": {
         parameters: {
             query?: never;
@@ -4514,10 +4574,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Inbox
-         * @description List threads requiring caller attention (unread messages or pending proposals).
+         * Get Staff Inbox
+         * @description Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.
          */
-        get: operations["get_inbox_api_v1_staff_inbox_get"];
+        get: operations["get_staff_inbox_api_v1_staff_inbox_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6107,6 +6167,19 @@ export interface components {
             dry_run: boolean;
             /** Pools */
             pools: components["schemas"]["PoolScalingState"][];
+        };
+        /**
+         * PostBriefingBody
+         * @description Request payload for triggering a briefing.
+         */
+        PostBriefingBody: {
+            /**
+             * Kind
+             * @description Briefing kind (morning, evening, on_demand)
+             * @default on_demand
+             * @enum {string}
+             */
+            kind: "morning" | "evening" | "on_demand";
         };
         /** PostMessageRequest */
         PostMessageRequest: {
@@ -12593,6 +12666,41 @@ export interface operations {
             };
         };
     };
+    trigger_briefing_api_staff_briefing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostBriefingBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_holds_api_staff_holds_get: {
         parameters: {
             query?: never;
@@ -12642,6 +12750,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_staff_inbox_api_staff_inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -13340,6 +13470,41 @@ export interface operations {
             };
         };
     };
+    trigger_briefing_api_v1_staff_briefing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostBriefingBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_holds_v1_api_v1_staff_holds_get: {
         parameters: {
             query?: never;
@@ -13395,7 +13560,7 @@ export interface operations {
             };
         };
     };
-    get_inbox_api_v1_staff_inbox_get: {
+    get_staff_inbox_api_v1_staff_inbox_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14896,6 +15061,7 @@ export interface operations {
         };
     };
 }
+
 
 // ── Client compatibility aliases ─────────────────────────────────────────────
 // These aliases keep the hand-written API client on stable names while the

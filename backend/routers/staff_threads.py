@@ -38,7 +38,7 @@ from staff.loop_guard import enforce_loop_guard_or_raise
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
 from staff.thread_bus import get_thread_bus
-from staff.thread_helpers import collect_inbox_items, find_idempotent_reply
+from staff.thread_helpers import find_idempotent_reply
 
 log = logging.getLogger("dashboard.staff.threads")
 
@@ -439,26 +439,5 @@ async def mark_thread_read(
             raise HTTPException(status_code=404, detail="thread not found")
         store.mark_thread_read(thread_id, principal=caller_id)
         return {"ok": True, "thread_id": thread_id}
-    except ConversationsUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get(
-    "/inbox",
-    response_model_exclude_none=True,
-)
-async def get_inbox(
-    caller: Principal = Depends(require_scope("staff.read")),
-) -> dict[str, Any]:
-    """List threads requiring caller attention (unread messages or pending proposals)."""
-    store = _get_store_or_503()
-    caller_id = format_caller(caller)
-    try:
-        inbox_items = collect_inbox_items(store, caller_id)
-        return {
-            "items": inbox_items,
-            "inbox": inbox_items,
-            "count": len(inbox_items),
-        }
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

@@ -45,6 +45,113 @@ Last updated: 2026-09-25
 
 ---
 
+# Previous handoff — Restore green main: synchronize generated API contract for SC-C5 (#1424)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1424-green-main`; Issue #1424; DL-#1424.
+
+## Objective and Status
+
+- Restore green main: synchronize `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` following the merge of SC-C5 (#1328 / PR #1422).
+- Resolves failing step `Verify generated API contract types` in `Frontend Tests` on `main`.
+- Status: Fully synchronized via FastAPI TestClient generator; all tests passing (contract tests 10/10, typecheck 0 errors, lint 0 warnings); all files formatted.
+
+## Files and Decisions
+
+- `frontend/src/lib/openapi.json`:
+  - Added OpenAPI specs for `POST /api/staff/briefing`, `GET /api/staff/inbox`, `POST /api/v1/staff/briefing`, and updated `GET /api/v1/staff/inbox`.
+  - Added schema `PostBriefingBody`.
+- `frontend/src/lib/api-types.ts`:
+  - Regenerated TypeScript operations and paths matching the updated OpenAPI contract.
+- `SPEC.md`:
+  - Bumped version to 2.5.249 and added change log entry for #1424.
+- `docs/development/DEVELOPMENT_LOG.md`:
+  - Added DL-#1424 and marked DL-#1328 as shipped.
+
+## Validation
+
+- `pytest tests/frontend/test_api_generation_contract.py tests/api/test_staff_contracts.py`: 10 passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 warnings).
+
+## Next Steps
+
+1. Push branch `fix/1424-green-main`.
+2. Open PR with `Fixes #1424`, enable auto-merge.
+3. Monitor CI until green merge into `main`.
+4. Release lease on issue #1424 and clean up worktree.
+
+---
+
+# Previous handoff — SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1328-waiting-on-you-inbox`; Issue #1328; DL-#1328; PR #1422.
+
+## Objective and Status
+
+- SC-C5: Waiting on you inbox and Barb briefings inside dashboard.
+- API `GET /api/v1/staff/inbox`: Aggregates pending approvals, needs-input items, escalations, project charter decisions needed (STATUS.md), board proposals, and auth sign-in alerts.
+- Fault isolation: Any failing source reports `status: "unavailable"` with error detail; healthy sources continue aggregating cleanly (HTTP 200).
+- Briefings: Scheduled and on-demand Markdown one-pagers generated and posted to Barb's conversation thread with SC-A8 audit logging (`POST /api/v1/staff/briefing`).
+- Web Push: Critical escalations trigger web push notifications (`staff.escalation`) with thread deep links.
+- Frontend: `InboxPanel` component with severity badges, category pills, degraded source alert banner, and briefing trigger, embedded at the top of `StaffPage`.
+- Status: Fully implemented with TDD; all pytest (`test_staff_inbox.py` and `test_staff_threads_api.py`) passing (14/14); Vitest `InboxPanel.test.tsx` and StaffConsole suite passing (63/63); `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `ruff` and `mypy` clean; all files strictly <= 500 lines.
+
+## Files and Decisions
+
+- `backend/staff/inbox.py` (497 lines):
+  - Multi-source aggregator (`_collect_approvals`, `_collect_needs_input`, `_collect_escalations`, `_collect_project_decisions`, `_collect_board_proposals`, `_collect_auth_sign_ins`).
+  - Fault isolation returning per-source status (`"ok"`, `"empty"`, `"unavailable"`).
+  - Markdown briefing generator and poster to Barb thread with SC-A8 audit logging.
+  - Escalation Web Push dispatch (`staff.escalation`) with thread deep link.
+- `backend/routers/staff_inbox.py` (88 lines):
+  - Endpoints `GET /inbox` and `POST /briefing` mounted under `/api/staff` and `/api/v1/staff`.
+- `backend/routers/staff_threads.py`:
+  - Removed deprecated stub `/inbox` route to avoid collision.
+- `backend/server.py`:
+  - Mounted `staff_inbox` router and v1_router.
+- `backend/push.py`:
+  - Added `"staff.escalation"` to `PUSH_TOPICS`.
+- `frontend/src/pages/Staff/inboxTypes.ts` (55 lines):
+  - Type definitions for `InboxItem`, `InboxAggregate`, `SourceStatus`.
+- `frontend/src/pages/Staff/staffApi.ts`:
+  - Added `fetchStaffInbox()` and `requestStaffBriefing()`.
+- `frontend/src/pages/Staff/InboxPanel.tsx` (319 lines):
+  - Severity badges, category filter tabs, degraded sources banner, briefing trigger, and deep links.
+- `frontend/src/pages/Staff/StaffPage.tsx`:
+  - Embedded `<InboxPanel onOpenRun={openRun} />` above roster/thread layout.
+- `tests/api/test_staff_inbox.py` (190 lines):
+  - 4 integration tests covering aggregation, source failure isolation, briefing posting, and push notifications.
+- `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx` (207 lines):
+  - 6 unit tests covering rendering, empty state, degraded sources alert, filtering, briefing trigger, and run click.
+
+## Validation
+
+- `pytest tests/api/test_staff_inbox.py tests/api/test_staff_threads_api.py`: 15 passed.
+- `npx vitest run frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`: 6 passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 warnings).
+- `ruff check .`: clean.
+- All files strictly <= 500 lines.
+
+## Next Steps
+
+1. Merge `origin/main` into `feat/1328-waiting-on-you-inbox` and resolve conflict markers.
+2. Push merge commit to `origin/feat/1328-waiting-on-you-inbox`.
+3. Wait for CI checks to pass and PR #1422 to auto-merge.
+4. Post completion receipt on Issue #1328 and release lease.
+5. Clean up worktree `Runner_Dashboard-1328`.
+>>>>>>> origin/main
+
+---
+
 # Previous handoff — SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet (#1324)
 
 Last updated: 2026-09-25
