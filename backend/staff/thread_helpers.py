@@ -42,9 +42,7 @@ def find_idempotent_reply(
     return user_msg.to_dict(), reply_placeholder
 
 
-def collect_inbox_items(
-    store: ConversationStore, caller_id: str
-) -> list[dict[str, Any]]:
+def collect_inbox_items(store: ConversationStore, caller_id: str) -> list[dict[str, Any]]:
     """Collect threads requiring caller attention (unread messages or pending proposals)."""
     open_threads = store.list_threads(status="open", limit=200)
     inbox_items: list[dict[str, Any]] = []

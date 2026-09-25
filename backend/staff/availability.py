@@ -182,16 +182,8 @@ class AvailabilityMetrics:
 
     def to_dict(self) -> dict[str, Any]:
         with self._lock:
-            avg_ack = (
-                round(sum(self._ack_latencies) / len(self._ack_latencies), 2)
-                if self._ack_latencies
-                else None
-            )
-            avg_ttft = (
-                round(sum(self._ttft_latencies) / len(self._ttft_latencies), 2)
-                if self._ttft_latencies
-                else None
-            )
+            avg_ack = round(sum(self._ack_latencies) / len(self._ack_latencies), 2) if self._ack_latencies else None
+            avg_ttft = round(sum(self._ttft_latencies) / len(self._ttft_latencies), 2) if self._ttft_latencies else None
             return {
                 "ack_latency_ms": avg_ack,
                 "first_token_latency_ms": avg_ttft,

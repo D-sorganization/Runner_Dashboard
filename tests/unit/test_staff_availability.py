@@ -122,15 +122,9 @@ def test_provider_health_probing_and_disabling() -> None:
 async def test_execute_turn_falls_back_when_primary_disabled(tmp_path: Path) -> None:
     """When claude is probe-disabled, execution falls back to codex."""
     conv_store = get_conversation_store()
-    thread = conv_store.create_thread(
-        title="Availability Test", role="barb", created_by="alice"
-    )
-    user_msg = conv_store.add_message(
-        thread.id, author_kind="user", author="alice", body_md="Status report"
-    )
-    placeholder = conv_store.add_message(
-        thread.id, author_kind="role", author="barb", delivery="pending"
-    )
+    thread = conv_store.create_thread(title="Availability Test", role="barb", created_by="alice")
+    user_msg = conv_store.add_message(thread.id, author_kind="user", author="alice", body_md="Status report")
+    placeholder = conv_store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
     # Disable claude
     set_provider_health("claude", False)
@@ -179,15 +173,9 @@ async def test_execute_turn_falls_back_when_primary_disabled(tmp_path: Path) -> 
 async def test_execute_turn_falls_back_on_runtime_failure() -> None:
     """When claude CLI execution crashes or exits non-zero, runner falls back to codex."""
     conv_store = get_conversation_store()
-    thread = conv_store.create_thread(
-        title="Runtime Fail Test", role="barb", created_by="bob"
-    )
-    user_msg = conv_store.add_message(
-        thread.id, author_kind="user", author="bob", body_md="Review PRs"
-    )
-    placeholder = conv_store.add_message(
-        thread.id, author_kind="role", author="barb", delivery="pending"
-    )
+    thread = conv_store.create_thread(title="Runtime Fail Test", role="barb", created_by="bob")
+    user_msg = conv_store.add_message(thread.id, author_kind="user", author="bob", body_md="Review PRs")
+    placeholder = conv_store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
     runner = ChatTurnRunner(conv_store=conv_store)
 
@@ -206,9 +194,7 @@ async def test_execute_turn_falls_back_on_runtime_failure() -> None:
         else:
             # Second attempt (codex): succeeds
             proc.returncode = 0
-            proc.stdout = iter(
-                ["Session: sess_ok_123\n", "Codex recovered and handled the request.\n"]
-            )
+            proc.stdout = iter(["Session: sess_ok_123\n", "Codex recovered and handled the request.\n"])
             proc.stderr = iter([])
             proc.poll.return_value = 0
         return proc
@@ -244,18 +230,14 @@ async def test_degraded_mode_deterministic_routing_and_queued_followup() -> None
     conv_store = get_conversation_store()
     work_store = get_work_item_store()
 
-    thread = conv_store.create_thread(
-        title="Degraded Test", role="barb", created_by="carol"
-    )
+    thread = conv_store.create_thread(title="Degraded Test", role="barb", created_by="carol")
     user_msg = conv_store.add_message(
         thread.id,
         author_kind="user",
         author="carol",
         body_md="Night-watch please inspect red CI build",
     )
-    placeholder = conv_store.add_message(
-        thread.id, author_kind="role", author="barb", delivery="pending"
-    )
+    placeholder = conv_store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
     # Disable all providers
     for p in DEFAULT_PROVIDER_CHAIN:
@@ -278,11 +260,7 @@ async def test_degraded_mode_deterministic_routing_and_queued_followup() -> None
     assert len(work_items) == 1
     wi = work_items[0]
     assert wi.state == "open"
-    assert (
-        "ci" in wi.title.lower()
-        or "night-watch" in wi.title.lower()
-        or "degraded" in wi.title.lower()
-    )
+    assert "ci" in wi.title.lower() or "night-watch" in wi.title.lower() or "degraded" in wi.title.lower()
 
     # Check thread and message meta
     th = conv_store.get_thread(thread.id)

@@ -163,9 +163,7 @@ class ChatTurnRunner:
                     continue
 
                 adapter = self.adapters.get(candidate) or get_adapter(candidate)
-                existing_session = thread.meta.get("provider_sessions", {}).get(
-                    candidate
-                )
+                existing_session = thread.meta.get("provider_sessions", {}).get(candidate)
 
                 if existing_session:
                     result = await self._run_turn_attempt(
@@ -232,9 +230,7 @@ class ChatTurnRunner:
                 metrics.record_fallback()
 
             if provider is not None:
-                return last_failed or ChatTurnResult(
-                    ok=False, failure_class="provider_failed"
-                )
+                return last_failed or ChatTurnResult(ok=False, failure_class="provider_failed")
 
             log.warning(
                 "All providers failed or disabled for thread %s; triggering degraded mode",
@@ -308,9 +304,7 @@ class ChatTurnRunner:
                     rc = 0
                 return out_lines, err_lines, rc
 
-            lines, err_lines, returncode = await loop.run_in_executor(
-                None, _read_output
-            )
+            lines, err_lines, returncode = await loop.run_in_executor(None, _read_output)
             stderr_text = err_lines
 
             deltas: list[str] = []
@@ -319,9 +313,7 @@ class ChatTurnRunner:
                 event = adapter.parse_line(line)
 
                 # Check session id extraction
-                detected_sid = extract_session_id(
-                    adapter.provider_id, event, raw_line=line
-                )
+                detected_sid = extract_session_id(adapter.provider_id, event, raw_line=line)
                 if detected_sid:
                     captured_session_id = detected_sid
 
@@ -334,11 +326,7 @@ class ChatTurnRunner:
                     await bus.publish_token(thread_id, placeholder_id, delta)
 
             t_end = time.monotonic()
-            ttft = (
-                (t_first_token - t_start)
-                if t_first_token is not None
-                else (t_end - t_start)
-            )
+            ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
             turn_duration = t_end - t_start
 
             raw_combined = "".join(stdout_text)
@@ -351,11 +339,7 @@ class ChatTurnRunner:
                     error_message="".join(stderr_text),
                 )
                 if not is_resume and update_on_failure:
-                    err_detail = (
-                        classified.remediation
-                        or classified.error
-                        or "Failed to complete reply"
-                    )
+                    err_detail = classified.remediation or classified.error or "Failed to complete reply"
                     actor = role.name if role else adapter.provider_id
                     self.conv_store.update_message(
                         placeholder_id,
@@ -433,9 +417,7 @@ class ChatTurnRunner:
                         },
                     )
                 except Exception as exc:  # noqa: BLE001
-                    log.warning(
-                        "Failed to persist action proposal %s: %s", action.action, exc
-                    )
+                    log.warning("Failed to persist action proposal %s: %s", action.action, exc)
 
             # Persist provider session id on thread metadata
             if captured_session_id:

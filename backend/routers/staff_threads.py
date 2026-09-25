@@ -131,9 +131,7 @@ async def list_threads(
     if role:
         all_threads = [t for t in all_threads if role in t.participants]
     if unread:
-        all_threads = [
-            t for t in all_threads if t.unread_counters.get(caller_id, 0) > 0
-        ]
+        all_threads = [t for t in all_threads if t.unread_counters.get(caller_id, 0) > 0]
 
     dicts = [t.to_dict() for t in all_threads]
     page = paginate_items(
@@ -309,20 +307,14 @@ async def post_message(
         bus = get_thread_bus()
         ack_msg = None
         if can_chat:
-            ack_msg = await record_fast_acknowledgment(
-                store, bus, thread_id, user_msg.id, target_role, body.body
-            )
+            ack_msg = await record_fast_acknowledgment(store, bus, thread_id, user_msg.id, target_role, body.body)
 
         asyncio.create_task(bus.publish_message(thread_id, user_msg.to_dict()))
-        asyncio.create_task(
-            bus.publish_message(thread_id, reply_placeholder_rec.to_dict())
-        )
+        asyncio.create_task(bus.publish_message(thread_id, reply_placeholder_rec.to_dict()))
 
         # Spawn background chat turn execution (SC-B4, #1307)
         asyncio.create_task(
-            run_chat_turn_in_background(
-                thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id
-            )
+            run_chat_turn_in_background(thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id)
         )
 
         resp_data: dict[str, Any] = {
@@ -359,9 +351,7 @@ async def answer_thread_run(
         conv_store=store,
     )
     if continuation is None:
-        raise HTTPException(
-            status_code=404, detail="Run not found or cannot be continued"
-        )
+        raise HTTPException(status_code=404, detail="Run not found or cannot be continued")
     return {
         "ok": True,
         "continuation_run_id": continuation.id,
@@ -415,9 +405,7 @@ async def stream_thread(
                 if await request.is_disconnected():
                     break
                 try:
-                    ev = await asyncio.wait_for(
-                        queue.get(), timeout=STREAM_HEARTBEAT_SECONDS
-                    )
+                    ev = await asyncio.wait_for(queue.get(), timeout=STREAM_HEARTBEAT_SECONDS)
                     eid = ev.get("id")
                     eid_str = f"id: {eid}\n" if eid is not None else ""
                     yield f"{eid_str}event: {ev['event']}\ndata: {json.dumps(ev['data'])}\n\n"
