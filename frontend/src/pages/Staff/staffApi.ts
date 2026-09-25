@@ -10,8 +10,10 @@
  */
 import { ApiClientError, apiRequest } from "../../lib/api";
 import type { components } from "../../lib/api-types";
+import type { BriefingResponse, InboxAggregate } from "./inboxTypes";
 
 export { ApiClientError };
+export type { BriefingResponse, InboxAggregate };
 
 // ── Shapes (derived directly from OpenAPI generated schemas) ───────────────────
 
@@ -135,6 +137,21 @@ export function putHolds(body: { holds: Hold[] } | HoldsResponse, idempotencyKey
     method: "PUT",
     headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
     body,
+  });
+}
+
+export function fetchStaffInbox(signal?: AbortSignal): Promise<InboxAggregate> {
+  return apiRequest<InboxAggregate>("/api/v1/staff/inbox", { signal });
+}
+
+export function requestStaffBriefing(
+  kind: "morning" | "evening" | "on_demand" = "on_demand",
+  signal?: AbortSignal
+): Promise<BriefingResponse> {
+  return apiRequest<BriefingResponse>("/api/v1/staff/briefing", {
+    method: "POST",
+    body: { kind },
+    signal,
   });
 }
 

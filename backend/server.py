@@ -710,6 +710,7 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 
 # Fleet Staff Hub (epic #1192): named AI staff roles run as local CLI subprocesses.
 from routers import staff as _staff_router  # noqa: E402
+from routers import staff_inbox as _staff_inbox_router  # noqa: E402
 from routers import staff_proposals as _staff_proposals_router  # noqa: E402
 from routers import staff_routing as _staff_routing_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
@@ -723,6 +724,8 @@ app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conv
 app.include_router(_staff_routing_router.router, prefix="/api/v1/staff")  # Barb routing (#1315)
 app.include_router(_staff_work_items_router.router, prefix="/api/v1/staff")  # Work-item ledger (issue #1316)
 app.include_router(_staff_proposals_router.router, prefix="/api/v1/staff")  # Action proposals API (issue #1323)
+app.include_router(_staff_inbox_router.router)  # Inbox and briefings (issue #1328)
+app.include_router(_staff_inbox_router.v1_router)
 app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)

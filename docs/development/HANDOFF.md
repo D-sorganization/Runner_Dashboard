@@ -1,20 +1,20 @@
-# Current handoff — SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
+# Current handoff — SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1319-thread-cards`; Issue #1319; DL-#1319.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1328-waiting-on-you-inbox`; Issue #1328; DL-#1328.
 
 ## Objective and Status
 
-- SC-D5: Make the things staff do visible and controllable right in the conversation.
-- Action card: what will happen, target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), Approve / Deny buttons, parameter inspection, decision history, double-click idempotency protection, and stale/expired (24h limit) action lock.
-- Run card: live status badge (`queued`/`running`/`completed`/`failed`/`cancelled`), node, provider, elapsed duration, expandable log tail with toggle, Cancel button, and deep links to run page and PR.
-- Hand-off card: "Barb → Specialist" with reason and "Send to someone else" alternative specialist re-route selection.
-- Review card: PR, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), summary, and key findings.
-- Error card: plain-language cause from `failure_class`, remediation instructions, node badge, and retry CTA.
-- Status: Fully implemented with strict TDD; all 55 StaffConsole unit tests passing; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `pytest tests/test_frontend_integrity.py` 72 passed; all files strictly <= 500 lines.
+- SC-C5: Waiting on you inbox and Barb briefings inside dashboard.
+- API `GET /api/v1/staff/inbox`: Aggregates pending approvals, needs-input items, escalations, project charter decisions needed (STATUS.md), board proposals, and auth sign-in alerts.
+- Fault isolation: Any failing source reports `status: "unavailable"` with error detail; healthy sources continue aggregating cleanly (HTTP 200).
+- Briefings: Scheduled and on-demand Markdown one-pagers generated and posted to Barb's conversation thread with SC-A8 audit logging (`POST /api/v1/staff/briefing`).
+- Web Push: Critical escalations trigger web push notifications (`staff.escalation`) with thread deep links.
+- Frontend: `InboxPanel` component with severity badges, category pills, degraded source alert banner, and briefing trigger, embedded at the top of `StaffPage`.
+- Status: Fully implemented with TDD; all pytest (`test_staff_inbox.py` and `test_staff_threads_api.py`) passing (14/14); Vitest `InboxPanel.test.tsx` and StaffConsole suite passing (63/63); `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `ruff` and `mypy` clean; all files strictly <= 500 lines.
 
 ## Files and Decisions
 
