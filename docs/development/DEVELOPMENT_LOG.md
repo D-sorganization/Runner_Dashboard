@@ -91,10 +91,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (Merged to main via PR #1460)
 - **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
-<<<<<<< HEAD
 - **Next step:** None (shipped in PR #1460).
-=======
->>>>>>> origin/main
 
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool
 
