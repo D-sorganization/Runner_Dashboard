@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,12 +15,17 @@ from staff.action_executors import (
     validate_action_default_roles,
 )
 from staff.actions import ActionContext
-from staff.roles import load_roles
 
 
 def test_action_executor_default_roles_resolve_and_are_dispatchable() -> None:
     """Assert every default role string in action_executors.py resolves to a dispatchable role."""
-    roster = load_roles()
+    from staff.roles import load_roles, roles_dir
+
+    r_dir = roles_dir()
+    if r_dir is None or not r_dir.is_dir():
+        pytest.skip("Repository_Management checkout not found")
+
+    roster = load_roles(r_dir)
     default_roles = [
         DEFAULT_REVIEWER_ROLE,
         CODE_REQUEST_OWNER_ROLE,
@@ -58,13 +64,27 @@ def test_execute_review_pr_defaults_to_fleet_critic() -> None:
 
 def test_validate_action_default_roles_clean_on_valid_roster() -> None:
     """Validation succeeds with zero errors on standard loaded roster."""
+    from staff.roles import roles_dir
+
+    if roles_dir() is None:
+        pytest.skip("Repository_Management checkout not found")
     errors = validate_action_default_roles(raise_on_error=True)
     assert errors == []
 
 
+def test_validate_action_default_roles_skips_when_no_roles_dir() -> None:
+    """When roles_dir is None (e.g. standalone/CI node), validation gracefully returns empty."""
+    with patch("staff.roles.roles_dir", return_value=None):
+        assert validate_action_default_roles(raise_on_error=True) == []
+
+
 def test_validate_action_default_roles_fails_loudly_on_missing_role(caplog: pytest.LogCaptureFixture) -> None:
     """When a role does not resolve, fail loudly in tests and log warning at runtime."""
-    with patch("staff.action_executors.ACTION_DEFAULT_ROLES", ("nonexistent-role",)):
+    with (
+        patch("staff.roles.roles_dir", return_value=Path("/mock/roles")),
+        patch("staff.roles.load_roles", return_value={}),
+        patch("staff.action_executors.ACTION_DEFAULT_ROLES", ("nonexistent-role",)),
+    ):
         with caplog.at_level(logging.WARNING):
             errors = validate_action_default_roles(raise_on_error=False)
             assert len(errors) == 1

@@ -27,10 +27,15 @@ def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
     When a name does not resolve, logs a warning at runtime. If raise_on_error
     is True, raises ValueError so test suites can fail loudly.
     """
-    from staff.roles import load_roles
+    from staff.roles import load_roles, roles_dir
+
+    r_dir = roles_dir()
+    if r_dir is None:
+        log.debug("No staff roles directory located; skipping action default roles validation")
+        return []
 
     try:
-        roster = load_roles()
+        roster = load_roles(r_dir)
     except Exception as exc:
         msg = f"Failed to load staff roles for validation: {exc}"
         log.warning(msg)
