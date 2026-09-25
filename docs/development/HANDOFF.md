@@ -1,9 +1,15 @@
+# Current handoff — SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate (#1327)
+
+---
+
 # Current handoff — SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page (#1333)
+
 
 Last updated: 2026-09-25
 
 ## Identity
 
+<<<<<<< HEAD
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1333-maintenance-ui`; Issue #1333; DL-#1333.
 
 ## Objective and Status
@@ -34,6 +40,46 @@ Last updated: 2026-09-25
 3. Enable auto-merge squash without `--admin`.
 4. Monitor CI to green merge.
 5. Release lease and clean up worktree.
+=======
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1327-barb-followup`; Issue #1327; DL-#1327.
+
+## Objective and Status
+
+- SC-C4: Barb follow-up engine: detect stalled, failed, blocked, and waiting work; retry, re-route or escalate.
+- Components implemented:
+  - `backend/staff/followup.py` (434 lines):
+    - `FollowupEngine` periodic idempotent sweep (default 300s / 5m).
+    - Playbooks:
+      - Retryable/stalled runs: retry once if `attempt < max_attempts`; second failure transitions item to `escalated`, posts alert to Barb's thread, and sends Web Push `staff.escalation`.
+      - Auth expired runs: posts action item alert to Barb's thread with link to Settings.
+      - Waiting-on-user / needs-input: prompts the owner role in Barb's thread.
+      - Wrong/unrecognized owner: re-routes to default role with SC-A8 audit log record.
+      - Overdue items: records overdue ping follow-up.
+    - Debounce & Idempotency: at most one follow-up per item per sweep interval; records follow-up history per item.
+    - Watchdog detector: verifies engine liveness; if $\ge 2$ intervals are missed, emits critical `FleetEvent(kind="barb_followup_watchdog")` and fires Web Push `staff.escalation`.
+    - Daily digest counts: `closed`, `retried`, `rerouted`, `escalated`, `still_open`.
+  - `backend/routers/staff_followup.py` (76 lines):
+    - `POST /api/v1/staff/followup/sweep`: trigger manual sweep.
+    - `GET /api/v1/staff/followup/status`: returns engine liveness and watchdog check.
+    - `GET /api/v1/staff/followup/digest`: returns today's follow-up digest.
+  - `backend/server.py`: Mounted `staff_followup_router.router` at `/api/v1/staff`.
+  - `backend/staff/store.py`: Added `get_run_store` alias to `get_store` supporting optional path parameter.
+  - `backend/fleet_events.py`: Added `barb_followup_watchdog` event kind to `EventKind` and `FleetEvent` validation.
+  - `tests/api/test_staff_followup.py` (461 lines): 9 comprehensive tests covering all acceptance criteria and property tests.
+- Validation:
+  - `pytest tests/api/test_staff_followup.py`: 9/9 passed.
+  - Full staff backend test suite: 261 passed, 0 failures.
+  - Lint and formatting: `ruff check`, `black`, and `mypy` all passed with 0 errors.
+  - Line limits: All touched files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `feat/1327-barb-followup`.
+2. Open PR with `gh pr create` referencing `Fixes #1327`, labels `agent:local` and `wave:4`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI to green merge.
+5. Release agent lease and clean up.
+>>>>>>> 0cff4d4 (feat(staff): SC-C4 Barb follow-up engine: detect stalled, failed, blocked and waiting work (#1327))
 
 ---
 
@@ -47,42 +93,8 @@ Last updated: 2026-09-25
 
 ## Objective and Status
 
-- SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules into unified `/fleet/operations` page.
-- Operations page components (`frontend/src/pages/Operations/`):
-  - `OperationsStatusBanner.tsx` (381 lines): KPI summary metrics row, title/subtitle orientation, and 5 jump anchors (`#deploy`, `#admission`, `#runner-hours`, `#scheduled-workflows`, `#diagnostics`).
-  - `OperationsDeploySection.tsx` (453 lines) + `OperationsDeployAuditLog.tsx` (67 lines) + `deployTypes.ts` (69 lines): Expected version, rollout summary, machine drift table, multi-node deploy action form (`/api/fleet/orchestration/deploy`), and orchestration audit log.
-  - `OperationsAdmissionSection.tsx` (444 lines): Admission gate status (`running`/`paused`/`draining`), queue control actions (Pause/Resume/Drain), capacity and work queue statistics, provider mix, budget burn, 404 disabled empty state, and retry CTA.
-  - `OperationsRunnerHoursSection.tsx` (409 lines): Desired/online/busy/offline runner metrics, schedule windows table, Save Schedule & Apply Now buttons (`/api/fleet/schedule`), timer status, and config path footer.
-  - `OperationsScheduledWorkflowsSection.tsx` (428 lines): Cron workflows table, repository badges, cron expressions, run link, plan search filter, and trigger CTA.
-  - `OperationsDiagnosticsSection.tsx` (476 lines) + `diagnosticsTypes.ts` (33 lines): PID, memory MB, port, WSL status, git drift, Service Recovery restart with confirmation step, Windows launcher generator, and API links.
-  - `OperationsPage.tsx` (121 lines): Coordinator page mounting all sections with independent failure isolation, individual retry buttons, and smooth hash scrolling on mount and `hashchange`.
-- Shell & Navigation:
-  - `navRegistryData.ts`: Replaced 6 separate tabs (`runner-schedule`, `fleet-orchestration`, `conductor`, `deployment`, `scheduled-jobs`, `diagnostics`) with unified `operations` under `fleet` group (`frequent: true`, `Icon: NetworkIcon`).
-  - `routing.ts`: Configured backwards-compatible redirects for `/fleet/deployment`, `/deployment`, `/t/deployment`, `/fleet/fleet-orchestration`, `/t/fleet-orchestration`, `/fleet/conductor`, `/conductor`, `/t/conductor`, `/fleet/runner-schedule`, `/runner-schedule`, `/fleet/runner-plan`, `/runner-plan`, `/t/runner-schedule`, `/work/scheduled-jobs`, `/scheduled-jobs`, `/schedules`, `/work/schedules`, `/t/scheduled-jobs`, `/settings/diagnostics`, `/diagnostics`, `/t/diagnostics` to their respective anchors on `/fleet/operations` with user toast notices.
-  - `RoutedShell.tsx`: Added lazy-loaded `LazyOperationsPage`, routed `operations` and legacy aliases.
-  - `HelpAbout.tsx`: Updated quick links from `diagnostics` to `operations`.
-  - `intro.ts`: Added `operations` override, pruned removed `conductor`.
-  - `OverviewPage.tsx`: Updated "Deployment state" button navigation to `/fleet/operations#deploy`.
-  - `backend/routers/usage_metrics.py`: Added `operations` to `TAB_RECOMMENDATIONS`.
-- Validation:
-  - 149 test files passed, 1,269 frontend tests passed (0 failures).
-  - TypeScript check: 0 errors (`npm run typecheck`).
-  - ESLint: 0 warnings, 0 errors (`npm run lint`).
-  - Color literal budget: 4/4 passed (`pytest tests/frontend/test_color_literal_budget.py`).
-  - Production build: Clean build (`npm run build`).
-  - Frontend bundle budget: 0 errors (`python scripts/check_frontend_perf_budget.py --bundle --json`).
-  - File line limits: All modified/created files strictly <= 500 lines.
+- SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules into unified `/fleet/operations` page. Shipped in PR #1426 (commit `1ce7324`).
 
-## Next Steps
-
-1. Commit changes with conventional commit `feat(operations): SC-G3 merge Deployment, Orchestration, Conductor, Runner Plan, Schedules, Diagnostics (#1325)`.
-2. Push branch `feat/1325-operations-merge`.
-3. Open PR with `gh pr create` referencing `Fixes #1325`, labels `agent:local` and `wave:3`.
-4. Enable auto-merge squash without `--admin`.
-5. Monitor CI to green merge.
-6. Proceed to next issue in program.
-
----
 
 # Previous handoff — Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
 

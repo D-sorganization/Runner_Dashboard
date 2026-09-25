@@ -404,13 +404,17 @@ _store: RunStore | None = None
 _store_lock = threading.Lock()
 
 
-def get_store() -> RunStore:
+def get_store(path: Path | None = None) -> RunStore:
     """Process-wide store (path resolved lazily so tests can point it at tmp)."""
     global _store  # noqa: PLW0603
+    target_path = path or default_db_path()
     with _store_lock:
-        if _store is None or _store.path != default_db_path():
-            _store = RunStore()
+        if _store is None or _store.path != target_path:
+            _store = RunStore(target_path)
         return _store
+
+
+get_run_store = get_store
 
 
 def reset_store() -> None:

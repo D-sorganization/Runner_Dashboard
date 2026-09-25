@@ -18,7 +18,10 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1327 · SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate
+
 ### DL-#1333 · SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page
+
 
 - **State:** in_progress
 - **Owner:** antigravity
@@ -29,6 +32,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (vitest 72/72 tests passing across Fleet and cards; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; pytest router & maintenance 12/12 passing; test_color_literal_budget passing; all files <= 500 lines)
 - **Summary:** Implemented SC-E6 Maintenance row actions on the Fleet page: (1) Added accessible `FleetRowActions` dropdown menu for machines and runners covering 5 actions ("Bring online", "Take offline", "Restart", "Compact disk", "Diagnose"); (2) Followed Owner decision (2026-09-23) routing mutating actions through Barb to Maintenance, and read-only actions (Diagnose) directly to Maintenance; (3) Added dry-run display with planned steps, verification confirmations, and Barb routing badges to `ActionCard`; (4) Built `MaintenanceActionModal` presenting pre-filled action card with dry-run shown, executing upon approval, verifying postcondition state cleanly, and refreshing fleet data; (5) Added maintenance action keyword rules to `router_models.py`.
 - **Next step:** Push branch `feat/1333-maintenance-ui`, open PR with Fixes #1333, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+
+### DL-#1325 · SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules
+
+- **State:** shipped
+- **Owner:** local
+- **Issue:** #1327 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1327-barb-followup`
+- **Paths:** `backend/staff/followup.py`, `backend/routers/staff_followup.py`, `backend/server.py`, `backend/staff/store.py`, `backend/fleet_events.py`, `tests/api/test_staff_followup.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/api/test_staff_followup.py 9/9 passed; full staff suite 261 passed; ruff, black, mypy all passed 0 errors; all files strictly <= 500 lines)
+- **Summary:** Implemented SC-C4 Barb follow-up engine: (1) `FollowupEngine` coordinates periodic idempotent sweep (default 300s) detecting overdue work items, stalled or failed runs, waiting-on-user work, and invalid owners; (2) condition playbooks: retryable/stalled runs retried once up to max_attempts; second failure escalates to Barb's conversation thread and fires critical Web Push `staff.escalation`; auth expired runs post action item notice to Barb's thread; needs-input prompts the owner in Barb's thread; wrong owners re-routed to default role with SC-A8 audit log; (3) debounce & idempotency guarantees (at most 1 follow-up per item per interval); (4) watchdog detects missed sweeps ($\ge 2$ intervals), emitting critical fleet event `barb_followup_watchdog` and `staff.escalation` Web Push; (5) daily digest counts (`closed`, `retried`, `rerouted`, `escalated`, `still_open`); (6) REST API endpoints `POST /api/v1/staff/followup/sweep`, `GET /api/v1/staff/followup/status`, `GET /api/v1/staff/followup/digest`.
+- **Next step:** Push branch `feat/1327-barb-followup`, open PR with Fixes #1327, enable auto-merge, monitor CI to green merge, release lease, and clean up.
 
 ### DL-#1325 · SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules
 

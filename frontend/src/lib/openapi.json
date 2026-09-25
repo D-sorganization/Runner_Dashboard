@@ -12559,6 +12559,96 @@
         "tags": ["staff-inbox-v1"]
       }
     },
+    "/api/v1/staff/followup/digest": {
+      "get": {
+        "description": "Retrieve the daily digest of follow-up activities and work item states.",
+        "operationId": "get_digest_api_v1_staff_followup_digest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Digest Api V1 Staff Followup Digest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Digest",
+        "tags": ["staff-followup"]
+      }
+    },
+    "/api/v1/staff/followup/status": {
+      "get": {
+        "description": "Check the watchdog status and health of the Barb follow-up engine.",
+        "operationId": "get_status_api_v1_staff_followup_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Status Api V1 Staff Followup Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Status",
+        "tags": ["staff-followup"]
+      }
+    },
+    "/api/v1/staff/followup/sweep": {
+      "post": {
+        "description": "Execute an on-demand follow-up sweep over active work items and runs.",
+        "operationId": "trigger_sweep_api_v1_staff_followup_sweep_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trigger Sweep Api V1 Staff Followup Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Trigger Sweep",
+        "tags": ["staff-followup"]
+      }
+    },
     "/api/v1/staff/holds": {
       "get": {
         "operationId": "get_holds_v1_api_v1_staff_holds_get",
