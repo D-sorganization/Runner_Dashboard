@@ -8,41 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadMessage, ThreadProps } from "./threadTypes";
 import { MessageItem } from "./MessageItem";
 import { Composer } from "./Composer";
-
-export function formatSeparatorDate(isoString?: string): string {
-  if (!isoString) return "";
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return "";
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
-
-    if (d.toDateString() === today.toDateString()) {
-      return "Today";
-    }
-    if (d.toDateString() === yesterday.toDateString()) {
-      return "Yesterday";
-    }
-    return d.toLocaleDateString([], {
-      month: "short",
-      day: "numeric",
-      year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
-    });
-  } catch {
-    return "";
-  }
-}
-
-export function getDateKey(isoString?: string): string {
-  if (!isoString) return "unknown";
-  try {
-    const d = new Date(isoString);
-    return isNaN(d.getTime()) ? "unknown" : d.toISOString().slice(0, 10);
-  } catch {
-    return "unknown";
-  }
-}
+import { formatSeparatorDate, getDateKey } from "./threadUtils";
 
 export const DateSeparator: React.FC<{ label: string }> = ({ label }) => {
   return (

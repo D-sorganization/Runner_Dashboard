@@ -5,6 +5,7 @@
  */
 export * from "./types";
 export * from "./threadTypes";
+export * from "./threadUtils";
 export * from "./rosterUtils";
 export * from "./RosterRow";
 export * from "./RosterGroup";
