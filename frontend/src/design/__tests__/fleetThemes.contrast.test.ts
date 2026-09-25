@@ -104,4 +104,28 @@ describe('fleet theme WCAG AA contrast', () => {
       `light: --accent-control-fg ${vars['--accent-control-fg']} on --accent-control-bg ${vars['--accent-control-bg']}`,
     ).toBeGreaterThanOrEqual(AA_NORMAL)
   })
+
+  it('clears WCAG AA contrast for danger badge in light theme on bg and group_bg tints', () => {
+    const vars = fleetThemeToCssVars(FLEET_THEMES.light)
+    const fg = vars['--badge-danger-fg']
+    function blendHex(fgColor: string, alpha: number, bgColor: string): string {
+      const fgH = fgColor.replace('#', '')
+      const bgH = bgColor.replace('#', '')
+      const r = Math.round(parseInt(bgH.slice(0, 2), 16) * (1 - alpha) + parseInt(fgH.slice(0, 2), 16) * alpha)
+      const g = Math.round(parseInt(bgH.slice(2, 4), 16) * (1 - alpha) + parseInt(fgH.slice(2, 4), 16) * alpha)
+      const b = Math.round(parseInt(bgH.slice(4, 6), 16) * (1 - alpha) + parseInt(fgH.slice(4, 6), 16) * alpha)
+      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+    }
+    const blendOnGroupBg = blendHex(fg, 0.15, FLEET_THEMES.light.colors.group_bg)
+    expect(
+      contrastRatio(fg, blendOnGroupBg),
+      `light: --badge-danger-fg ${fg} on group_bg tint ${blendOnGroupBg}`,
+    ).toBeGreaterThanOrEqual(AA_NORMAL)
+
+    const blendOnBg = blendHex(fg, 0.15, FLEET_THEMES.light.colors.bg)
+    expect(
+      contrastRatio(fg, blendOnBg),
+      `light: --badge-danger-fg ${fg} on bg tint ${blendOnBg}`,
+    ).toBeGreaterThanOrEqual(AA_NORMAL)
+  })
 })

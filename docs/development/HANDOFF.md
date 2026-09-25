@@ -1,10 +1,46 @@
-# Current handoff — SC-B1-G1: read-only chat turns on every provider (#1484)
+# Current handoff — Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges (#1483)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1484`; branch `fix/1484-read-only-chat`; commit SELF; PR: see DL-#1484; Issue #1484; DL-#1484.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-danger-badge-contrast`; DL-#1483; PR #1507.
+
+## Objective and Status
+
+- Restore green main by resolving a11y violations in Staff Console:
+  - `frontend/src/pages/StaffConsole/RosterRow.tsx`:
+    - Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container.
+    - Resolves WCAG 4.1.2 `nested-interactive` violation in axe-core (PR #1496).
+  - `frontend/src/pages/StaffConsole/ContextPane.tsx`:
+    - Replaced unconfigured `--color-*` variables and low-contrast light fallback values (`#94a3b8`, `#f1f5f9`, `#f8fafc`, etc.) with standard design system tokens (`var(--bg-card, #1c2128)`, `var(--text-secondary, #8b949e)`, `var(--border, #30363d)`, `var(--accent-blue, #58a6ff)`).
+    - Resolves WCAG 1.4.3 `color-contrast` violation in axe-core Playwright E2E smoke tests.
+  - `frontend/src/design/fleetThemes.ts` & `frontend/src/design/tokens.ts`:
+    - Adjusted `light.semantic.error` and `lightBadgeTokens.dangerFg` / `dangerBg` from `#bf2130` to `#b81d2c`.
+    - Resolves WCAG 1.4.3 `color-contrast` violation on tinted danger error banners (`--badge-danger-bg` on `var(--bg-secondary)`), raising contrast from 4.49:1 to 4.84:1 (>= 4.5:1).
+    - Added regression unit tests in `frontend/src/design/__tests__/fleetThemes.contrast.test.ts`.
+  - Verification:
+    - StaffConsole vitest: 17/17 test files passed (113/113 tests passed).
+    - fleetThemes contrast vitest: 24/24 tests passed.
+    - `npm run typecheck`: clean (0 errors).
+    - `npm run lint`: clean (0 errors, 0 warnings).
+    - All touched files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push `fix/restore-green-main-danger-badge-contrast` (PR #1507).
+2. Enable auto-merge (`gh pr merge 1507 --auto --squash`).
+3. Verify all CI checks pass and PR merges cleanly to `main`.
+
+---
+
+# Past handoff — SC-B1-G1: read-only chat turns on every provider (#1484)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1484`; branch `fix/1484-read-only-chat`; commit SELF; PR #1506 (merged); Issue #1484; DL-#1484.
 
 ## Objective and Status
 
@@ -21,66 +57,6 @@ Last updated: 2026-09-25
 
 1. Merge; verify one live cursor-agent chat turn on a node with the CLI.
 2. Amend ADR 0006 §6 (PR #1495) once this lands: enforcement is no longer partial.
-
-# Past handoff — Restore green main: remove nested interactive controls in staff RosterRow (#1483)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-roster-a11y`; DL-#1483.
-
-## Objective and Status
-
-- Restore green main by removing nested interactive controls in `frontend/src/pages/StaffConsole/RosterRow.tsx`:
-  - Wrapped the role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container.
-  - The pin toggle button is now an adjacent sibling rather than a focusable descendant inside an interactive element.
-  - Resolves WCAG 4.1.2 `nested-interactive` violation in axe-core that broke Playwright E2E smoke tests.
-  - Verification:
-    - StaffConsole vitest: 17/17 test files passed (113/113 tests passed).
-    - `npm run typecheck`: clean (0 errors).
-    - `npm run lint`: clean (0 errors, 0 warnings).
-    - `RosterRow.tsx`: 296 lines ($\le 500$).
-
-## Next Steps
-
-1. Push `fix/restore-green-main-roster-a11y`.
-2. Open PR with label `agent:local`.
-3. Enable auto-merge (`gh pr merge --auto --squash`).
-4. Verify all CI checks pass and PR merges cleanly to `main`.
-
----
-
-# Current handoff — Restore green main: resolve a11y violations in staff RosterRow and ContextPane (#1483)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-contextpane-contrast`; DL-#1483.
-
-## Objective and Status
-
-- Restore green main by resolving a11y violations in Staff Console:
-  - `frontend/src/pages/StaffConsole/RosterRow.tsx`:
-    - Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container.
-    - Resolves WCAG 4.1.2 `nested-interactive` violation in axe-core (PR #1496).
-  - `frontend/src/pages/StaffConsole/ContextPane.tsx`:
-    - Replaced unconfigured `--color-*` variables and low-contrast light fallback values (`#94a3b8`, `#f1f5f9`, `#f8fafc`, etc.) with standard design system tokens (`var(--bg-card, #1c2128)`, `var(--text-secondary, #8b949e)`, `var(--border, #30363d)`, `var(--accent-blue, #58a6ff)`).
-    - Resolves WCAG 1.4.3 `color-contrast` violation in axe-core Playwright E2E smoke tests.
-  - Verification:
-    - StaffConsole vitest: 17/17 test files passed (113/113 tests passed).
-    - `npm run typecheck`: clean (0 errors).
-    - `npm run lint`: clean (0 errors, 0 warnings).
-    - `ContextPane.tsx`: 354 lines ($\le 500$).
-    - `RosterRow.tsx`: 296 lines ($\le 500$).
-
-## Next Steps
-
-1. Push `fix/restore-green-main-contextpane-contrast`.
-2. Open PR with label `agent:local`.
-3. Enable auto-merge (`gh pr merge --auto --squash`).
-4. Verify all CI checks pass and PR merges cleanly to `main`.
 
 ---
 
