@@ -147,6 +147,7 @@ class StaffScheduler:
     def evaluate(self, role: RoleSpec, now: datetime) -> dict[str, Any]:
         """Gate report for one role: what would happen if its slot were due right now."""
         entry = self._load_state().get(role.name, {})
+        enabled = entry.get("enabled", True)
         out: dict[str, Any] = {
             "role": role.name,
             "schedule": role.schedule,
@@ -159,6 +160,7 @@ class StaffScheduler:
             "budget_reason": "",
             "last_fired": entry.get("last_fired"),
             "last_reason": entry.get("last_reason", ""),
+            "enabled": enabled,
         }
         if role.schedule:
             try:
@@ -166,13 +168,15 @@ class StaffScheduler:
             except ValueError as exc:
                 out["schedule_error"] = str(exc)
         hold = self.holds.blocking(role.name, role.repos[0] if role.repos else "")
-        out["hold"] = hold.text if hold else None
+        out["hold"] = hold.text if hold else (None if enabled else "schedule disabled for role")
         active = next((r for r in self.runner.store.active_runs() if r.role == role.name), None)
         out["active_run"] = active.id if active else None
         out["budget_ok"], out["budget_reason"] = self.budget.can_run(role)
         return out
 
     def _blocker(self, report: dict[str, Any]) -> str:
+        if not report.get("enabled", True):
+            return "schedule disabled for role"
         if report.get("schedule_error"):
             return f"bad schedule: {report['schedule_error']}"
         if not report["in_window"]:
@@ -184,6 +188,18 @@ class StaffScheduler:
         if not report["budget_ok"]:
             return f"budget: {report['budget_reason']}"
         return ""
+
+    def set_role_schedule_enabled(self, role_name: str, enabled: bool) -> dict[str, Any]:
+        """Enable or disable scheduling for a specific role (SC-D6, Issue #1320)."""
+        with self._lock:
+            entry = self._load_state().setdefault(role_name, {})
+            entry["enabled"] = enabled
+            self._save_state()
+            now = self._clock()
+            role = self.runner.roles().get(role_name)
+            if role:
+                return self.evaluate(role, now)
+            return {"role": role_name, "enabled": enabled}
 
     def tick(self, now: datetime | None = None) -> list[dict[str, Any]]:
         """Handle every due slot once. Returns one decision per due role."""

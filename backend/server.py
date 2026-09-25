@@ -725,6 +725,7 @@ app.include_router(_staff_work_items_router.router, prefix="/api/v1/staff")  # W
 app.include_router(_staff_proposals_router.router, prefix="/api/v1/staff")  # Action proposals API (issue #1323)
 app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
+app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
