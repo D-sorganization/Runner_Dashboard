@@ -168,9 +168,19 @@ class ChatTurnRunner:
         roles = load_roles()
         role = roles.get(role_name)
 
-        role_provider = role.providers[0] if (role and role.providers) else "claude"
+        role_provider = "claude"
+        if role and role.providers:
+            for p in role.providers:
+                if p in self.adapters or p in ADAPTERS:
+                    role_provider = p
+                    break
+
         target_provider = provider or role_provider
-        adapter = self.adapters.get(target_provider) or get_adapter(target_provider)
+        try:
+            adapter = self.adapters.get(target_provider) or get_adapter(target_provider)
+        except KeyError:
+            target_provider = "claude"
+            adapter = self.adapters.get(target_provider) or get_adapter(target_provider)
 
         thread = self.conv_store.get_thread(thread_id)
         if not thread:
@@ -452,3 +462,13 @@ async def run_chat_turn_in_background(
         )
     except Exception as exc:  # noqa: BLE001
         log.error("Unhandled error during chat turn for thread %s: %s", thread_id, exc, exc_info=True)
+        try:
+            store = get_conversation_store()
+            store.update_message(
+                placeholder_id,
+                kind="error",
+                body_md=f"Failed to execute chat turn: {exc}",
+                delivery="failed",
+            )
+        except Exception:  # noqa: BLE001
+            pass

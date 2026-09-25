@@ -1,4 +1,52 @@
-# Current handoff — SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
+# Current handoff — SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role (#1322)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1322-stalled-job-remediation`; Issue #1322; DL-#1322; PR #1401.
+
+## Work
+
+- `backend/staff/maintenance_detect.py`:
+  - Implemented anomaly detectors across runners, jobs, and worktrees:
+    - `detect_queued_too_long`: Queued past threshold (> 15m) with matching idle online runners.
+    - `detect_running_past_p95`: Running past 3x historical P95 workflow duration.
+    - `detect_wedged_listener`: Runner online/idle but listener log mtime older than threshold (> 10m).
+    - `detect_offline_runner_assigned_job`: Runner offline with an active assigned job.
+    - `detect_ghost_runners`: Runner in pool but host missing from machine registry or heartbeat expired (> 30m).
+    - `detect_orphaned_worktrees`: Worktrees older than retention threshold (> 7d).
+  - Exception isolation via `run_all_detectors`: individual detector failures do not crash others and are reported in error structures.
+  - Re-exports `AutoHealRateTracker`, `MaintenancePlaybookEngine`, and `RemediationResult` from `maintenance_playbooks.py`.
+- `backend/staff/maintenance_playbooks.py`:
+  - `AutoHealRateTracker`: Enforces Owner policy of <= 3 auto-heals per host per hour and escalates repeat target failures within the hour.
+  - `MaintenancePlaybookEngine`:
+    - Auto-executes eligible low-risk playbooks (`maintenance.runner_restart`, `maintenance.run_rerun`, `maintenance.trim_worktrees`) via `ACTION_REGISTRY`.
+    - Tracks executions in `WorkItemStore` (`in_progress` -> `done` or `escalated`).
+    - Posts status notifications to the Maintenance conversation thread.
+    - Escalates high-risk actions, hourly budget exhaustion, and execution failures as `ActionProposal`s presented by Barb with work items in `waiting_on_user` state.
+- All source and test files strictly <= 500 lines:
+  - `backend/staff/maintenance_detect.py` (332 lines)
+  - `backend/staff/maintenance_playbooks.py` (249 lines)
+  - `tests/unit/test_staff_maintenance_detect.py` (408 lines)
+
+## Validation
+
+- Ran `pytest tests/unit/test_staff_maintenance_detect.py tests/unit/test_staff_maintenance.py tests/api/test_staff_maintenance_api.py` (25 passed).
+- Verified `ruff check`, `ruff format`, `black` are clean.
+- Verified `mypy` passes with no issues in all modified backend staff modules.
+- Line cap verified: all modified/created files are strictly <= 500 lines.
+
+## Next
+
+1. Push rebased branch `feat/1322-stalled-job-remediation` to origin.
+2. Verify CI checks pass on PR #1401.
+3. Enable auto-merge / squash merge PR #1401.
+4. Release lease on issue #1322.
+
+---
+
+## Prior handoff — SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
 
 Last updated: 2026-09-25
 
@@ -9,7 +57,7 @@ Last updated: 2026-09-25
 ## Objective and Status
 
 - SC-B4: Fast, read-only conversational replies with per-provider session resumption, isolated scratch execution (no git worktrees), Barb concurrency reservation, and structured reply contract integration.
-- Status: Fully implemented with TDD; all quality gates passing locally.
+- Status: Shipped in PR #1398.
 
 ## Files and Decisions
 
@@ -51,18 +99,11 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Merge origin/main and resolve documentation conflicts.
-2. Verify CI checks pass on PR #1398.
-3. Auto-merge PR #1398 into main.
-4. Release lease on issue #1307 and post completion receipt.
+1. Shipped in PR #1398; lease released on #1307.
 
 ---
 
 ## Prior handoff — SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs (#1336)
-
-Last updated: 2026-09-25
-
-## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1336-rate-limits-spend-guards`; Issue #1336; DL-#1336; PR #1399.
 
@@ -83,10 +124,7 @@ Last updated: 2026-09-25
 
 ## Next
 
-1. Merge origin/main to resolve documentation conflict.
-2. Verify all CI checks pass on PR #1399.
-3. Auto-merge PR #1399 into main.
-4. Release lease on issue #1336.
+1. Shipped in PR #1399; lease released on #1336.
 
 ---
 
@@ -184,7 +222,7 @@ Last updated: 2026-09-25
 1. Verify CI passes on PR #1396.
 2. Ensure auto-merge merges branch into main.
 3. Release lease on issue #1313.
->>>>>>> origin/main
+   > > > > > > > origin/main
 
 ---
 
