@@ -1,4 +1,37 @@
-# Current handoff — Structured reply contract for chat turns (#1308)
+# Current handoff — Restore green main: API contract types synchronization (#1381)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1381-api-contract-sync`; Issue #1381; DL-#1381.
+
+## Work
+
+- `frontend/src/lib/openapi.json`:
+  - Regenerated canonical OpenAPI schema snapshot matching updated `StaffRoleSpec` model (`defers_to`, `tools`, and `persona` object/str).
+- `frontend/src/lib/api-types.ts`:
+  - Regenerated TypeScript client definitions via `openapi-typescript` with preserved 4-space formatting.
+- `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`:
+  - Updated specification changelog and development log entries for #1381.
+
+## Validation
+
+- `scripts/gen-api-client.sh --check`: Exited 0 with exact match.
+- `npm run typecheck`: Passed with 0 errors.
+- `npm test`: Passed (123 test files, 1130 unit tests).
+- `pytest tests/test_ci_config.py`: 29 passed.
+
+## Next
+
+1. Commit and push branch `fix/1381-api-contract-sync`.
+2. Open PR via `gh pr create` with `Fixes #1381`.
+3. Enable squash auto-merge and wait for CI to merge cleanly.
+4. Release coordination lease on Issue #1381.
+
+---
+
+# Previous handoff — Structured reply contract for chat turns (#1308)
 
 Last updated: 2026-09-24
 
