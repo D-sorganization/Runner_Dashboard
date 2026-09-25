@@ -35,7 +35,7 @@ def child(key: str, deps: list[str] | None = None, **overrides: Any) -> dict[str
         "dependencies": deps or [],
         "out_of_scope": ["UI changes"],
         "tier": "tier:cli",
-        "complexity": "small",
+        "complexity": "routine",
         "task_class": "feature",
         "key_decisions": ["Reuse the existing store"],
         "next_steps": [f"Write the failing test for {key}"],
@@ -118,7 +118,7 @@ def test_a_missing_or_unknown_tier_label_is_rejected(tier: str | None) -> None:
 
 def test_unknown_complexity_and_task_class_are_rejected() -> None:
     plan = good_plan()
-    plan["children"][0]["complexity"] = "huge"
+    plan["children"][0]["complexity"] = "small"  # the old CR-4 draft vocabulary, not the fleet taxonomy
     plan["children"][1]["task_class"] = "misc"
     errors = errors_for(plan)
     assert any("complexity" in e for e in errors)
