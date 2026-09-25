@@ -36,6 +36,8 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "persona",
     "chat",
     "group",
+    "tools",
+    "scopes",
 )
 STRATEGY_KEYS: tuple[str, ...] = ("consolidate_when",)
 CONSOLIDATE_WHEN_BOUNDS: dict[str, tuple[int, int | None]] = {
@@ -163,6 +165,18 @@ def _validate_strings(data: dict[str, Any]) -> list[str]:
     return problems
 
 
+def _string_list_problems(key: str, value: Any) -> list[str]:
+    """Optional grant lists (``tools``, ``scopes``, RM#1732): unique non-empty strings.
+
+    The allowed vocabulary is enforced by the RM validator, the source of truth.
+    """
+    if not isinstance(value, list) or any(not isinstance(v, str) or not v.strip() for v in value):
+        return [f"{key} must be a list of non-empty strings"]
+    if len(set(value)) != len(value):
+        return [f"{key} must be unique"]
+    return []
+
+
 def _validate_collections(data: dict[str, Any]) -> list[str]:
     problems: list[str] = []
     providers = data.get("providers")
@@ -183,6 +197,10 @@ def _validate_collections(data: dict[str, Any]) -> list[str]:
             problems.append(f"bad repo names {bad!r}")
         if len(set(repos)) != len(repos):
             problems.append("repos must be unique")
+
+    for key in ("tools", "scopes"):
+        if key in data:
+            problems.extend(_string_list_problems(key, data[key]))
 
     holds = data.get("holds")
     if not isinstance(holds, list) or any(not isinstance(h, str) or not h.strip() for h in holds):

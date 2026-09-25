@@ -1,3 +1,31 @@
+# Current handoff — Staff validator accepts RM tool/scope grants (#1477)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `Runner_Dashboard-worktrees/claude-validator-tools`; branch `fix/staff-validator-tools-scopes`; baseline `origin/main`; Implementation commit: SELF; PR: not created; Issue #1477; DL-#1477; parent epic D-sorganization/Repository_Management#1772.
+
+## Objective and Status
+
+- Done: `OPTIONAL_FIELDS` gains `tools` and `scopes`, validated as unique non-empty string lists by `_string_list_problems`; `schema.json` gains `scopes`; tests cover acceptance, malformed grants and schema/validator parity.
+
+## Validation
+
+- `pytest tests -k 'staff or role'` 477 passed, 1 skipped.
+- `ruff check`, `ruff format --check`, `mypy backend/staff/validator.py` clean.
+
+## Next Steps
+
+1. Open the PR and arm auto-merge through `automerge_guard.py`.
+2. After deploy, confirm the three roles report `valid: true` on `/api/staff/roles`.
+
+## Change Log
+
+- `SELF`: validator accepts RM tool/scope grants (#1477).
+
+---
+
 # Current handoff — CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup (#1287)
 
 Last updated: 2026-09-25
