@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1305 · SC-B2: Thread, message and action-proposal store with migrations
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1305 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1305-conversations-store`
+- **PR:** #1385
+- **Paths:** `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/conversation_migrations.py`, `backend/staff/conversation_proposals.py`, `backend/staff/redaction.py`, `backend/staff/audit.py`, `tests/unit/test_conversations_store.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`pytest tests/unit/test_conversations_store.py` 13 passed, full test suite clean; ruff, ruff format, and mypy clean)
+- **Summary:** Persist conversations on conversation hub in `staff_runs.sqlite3` with SQLite WAL mode and `threading.RLock()`. Tables `threads`, `messages`, `action_proposals`, and `schema_migrations`. Forward-only migrations at startup with automatic timestamped pre-migration backups. Fail-safe degraded status and banner on migration error. Pre-write redaction hook for secret tokens and RFC 1918 / RFC 6598 private LAN IPv4 addresses. Monotonic message sequencing with idempotency deduplication. Action proposal state machine with SC-A8 auditing. All modules strictly <= 500 lines.
+- **Next step:** Land PR #1385 and release coordination lease on #1305.
+
 ### DL-#1304 · SC-A9: One frontend data layer for staff and conversation data (React Query)
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1304 (epic #1347 / umbrella #1354)
 - **Branch:** `feat/1304-react-query-datalayer`
 - **PR:** #1380
 - **Paths:** `frontend/src/lib/api.ts`, `frontend/src/hooks/usePollingQueries.ts`, `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/primitives/ConnectionIndicator.tsx`, `frontend/src/hooks/useMutationQueue.ts`, `frontend/src/main.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/Board.tsx`, `frontend/src/pages/Staff/RunLog.tsx`, `frontend/src/pages/Staff/RunDetail.tsx`, `frontend/src/pages/Staff/Holds.tsx`, `frontend/src/hooks/__tests__/useStaffDataLayer.test.tsx`, `frontend/src/pages/__tests__/Staff.test.tsx`, `SPEC.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (vitest, typecheck, lint, perf budget pass)
+- **Last verified:** 2026-09-24 (shipped in PR #1380)
 - **Summary:** Implemented unified TanStack Query v5 data layer for Staff Console. Mounted single QueryClient in main.tsx with retry 2 and exponential backoff for idempotent GET queries, no retry on mutations without idempotency key, and 10s staleTime. Intercepted 401 responses in lib/api.ts to coalesce concurrent requests into a single tryRefreshSession() flow with emitSessionExpired fallback. Implemented useStaffQueries.ts providing hooks for roster, board, summary, runs, detail, holds, threads, messages, and work items. Synchronized live SSE events to query cache via updateStaffRunFromEvent. Built global ConnectionIndicator displaying online, reconnecting, offline, and queued mutation replay states. Migrated StaffPage, Board, RunLog, RunDetail, and Holds to shared hooks and mounted RefreshBadge.
-- **Next step:** Land PR #1380 and release coordination lease on #1304.
+- **Next step:** None (shipped in PR #1380).
 
 ### DL-#1383 · Restore green main: OpenAPI ValidationError schema alignment
 
@@ -43,6 +56,8 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-24 (shipped in PR #1384)
 - **Summary:** Preserved `ValidationError.ctx` and `ValidationError.input` properties in `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` generated during Python 3.11 contract validation in CI, restoring clean CI on `main`.
 - **Next step:** None (shipped in PR #1384).
+
+### DL-#1381 · Restore green main: API contract types synchronization
 
 - **State:** shipped
 - **Owner:** antigravity

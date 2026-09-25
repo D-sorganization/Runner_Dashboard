@@ -44,6 +44,8 @@ ALLOWED_ACTIONS = frozenset(
         "proposal_execute",
         "maintenance",
         "routing",
+        "thread_create",
+        "thread_archive",
     }
 )
 
@@ -59,6 +61,8 @@ MUTATING_ACTIONS = frozenset(
         "proposal_deny",
         "proposal_execute",
         "maintenance",
+        "thread_create",
+        "thread_archive",
     }
 )
 
@@ -335,6 +339,7 @@ def record_audit(
     outcome: str = "success",
     detail: dict[str, Any] | None = None,
     fail_closed: bool | None = None,
+    store: StaffAuditStore | None = None,
 ) -> int:
     """Helper to record a staff audit entry in the default store."""
     rec = StaffAuditRecord(
@@ -349,7 +354,8 @@ def record_audit(
         outcome=outcome,
         detail=detail or {},
     )
-    return get_audit_store().record(rec, fail_closed=fail_closed)
+    target_store = store or get_audit_store()
+    return target_store.record(rec, fail_closed=fail_closed)
 
 
 def archive_old_audit_entries(

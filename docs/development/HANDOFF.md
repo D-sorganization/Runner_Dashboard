@@ -1,4 +1,54 @@
-# Current handoff — React Query Data Layer for Staff Console (#1304)
+# Current handoff — SC-B2: Thread, message and action-proposal store with migrations (#1305)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1305-conversations-store`; Issue #1305; DL-#1305.
+
+## Work
+
+- `backend/staff/conversations.py`:
+  - `ConversationStore` with `threading.RLock()` and SQLite WAL mode on `staff_runs.sqlite3`.
+  - CRUD operations for threads, monotonic sequencing for messages, unread tracking per principal, and action proposal state machine.
+  - Fail-safe degraded status (`available=False`) and banner if migrations fail, raising `ConversationsUnavailableError`.
+- `backend/staff/conversation_models.py`:
+  - Records: `ThreadRecord`, `MessageRecord`, `ActionProposalRecord`, `ConversationStoreStatus`.
+  - Constants and state machine transition rules (`_VALID_PROPOSAL_TRANSITIONS`).
+- `backend/staff/conversation_migrations.py`:
+  - Forward-only schema migrations with pre-migration database backup (`.bak.<timestamp>`).
+  - Table `schema_migrations` tracking version, name, and timestamp.
+- `backend/staff/conversation_proposals.py`:
+  - Proposal creation, decision (`approved` / `denied`), and lifecycle state transitions (`executing` -> `done`/`failed`/`expired`).
+- `backend/staff/redaction.py`:
+  - Pre-write redaction hook for GitHub tokens, AWS keys/secrets, API keys, PEM private keys, Bearer tokens, and RFC 1918 / RFC 6598 private LAN IPv4 addresses.
+- `backend/staff/audit.py`:
+  - Extended `ALLOWED_ACTIONS` and `MUTATING_ACTIONS` to include `thread_create` and `thread_archive`.
+  - Enabled optional explicit `store` injection in `record_audit`.
+- `tests/unit/test_conversations_store.py`:
+  - Comprehensive unit test suite (13 tests) covering redaction, migration preservation of existing DB data, degraded banners on migration failures, thread/message/proposal CRUD, idempotency deduplication, and multi-thread WAL concurrency.
+- `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`:
+  - Updated specification changelog and development log entries for #1305.
+
+## Validation
+
+- `pytest tests/unit/test_conversations_store.py`: 13 passed in 1.48s.
+- `pytest tests/unit/`: 107 passed in 39.84s.
+- `ruff check .`: 0 issues found across all modified files.
+- `ruff format --check .`: Clean formatting across all files.
+- `mypy .`: Success: no issues found.
+- Line limits: All new files strictly <= 500 lines (`conversations.py`: 460, `conversation_models.py`: 214, `conversation_proposals.py`: 206, `conversation_migrations.py`: 137, `redaction.py`: 93).
+
+## Next
+
+1. Push branch `feat/1305-conversations-store` to PR #1385.
+2. Verify all CI checks pass.
+3. Land PR #1385 via squash merge.
+4. Release coordination lease on Issue #1305.
+
+---
+
+# Previous handoff — React Query Data Layer for Staff Console (#1304)
 
 Last updated: 2026-09-24
 
@@ -45,13 +95,6 @@ Last updated: 2026-09-24
 - `npx vitest run`: 124 passed of 124 test suites; 1,139 passed of 1,139 tests.
 - All modified and newly created files strictly <= 500 lines.
 
-## Next
-
-1. Push branch `feat/1304-react-query-datalayer`.
-2. Land PR #1380 via auto-merge.
-3. Release coordination lease on Issue #1304 and remove worktree.
-4. Close parent Epic SC-A (#1347).
-
 ---
 
 # Previous handoff — Restore green main: OpenAPI ValidationError schema alignment (#1383)
@@ -61,27 +104,6 @@ Last updated: 2026-09-24
 ## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `fix/1383-validation-error-contract`; Issue #1383; DL-#1383.
-
-## Work
-
-- `frontend/src/lib/openapi.json`:
-  - Preserved `ValidationError.ctx` and `ValidationError.input` properties matching Python 3.11 Pydantic schema used in CI.
-- `frontend/src/lib/api-types.ts`:
-  - Preserved `ValidationError` fields with matching TypeScript types.
-- `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`:
-  - Updated specification changelog and development log entries for #1383.
-
-## Validation
-
-- `npm run typecheck`: Passed with 0 errors.
-- `pytest tests/test_ci_config.py`: 29 passed.
-
-## Next
-
-1. Commit and push branch `fix/1383-validation-error-contract`.
-2. Open PR via `gh pr create` with `Fixes #1383`.
-3. Enable squash auto-merge and wait for CI to merge cleanly.
-4. Release coordination lease on Issue #1383.
 
 ---
 
