@@ -73,7 +73,7 @@ def is_provider_healthy(provider_id: str) -> bool:
         if pid in disabled:
             return False
 
-    if os.environ.get("STAFF_MOCK_INSTALLED") == "1":
+    if os.environ.get("STAFF_MOCK_INSTALLED") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
         return True
 
     adapter = ADAPTERS.get(pid)

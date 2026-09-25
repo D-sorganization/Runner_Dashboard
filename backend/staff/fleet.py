@@ -308,6 +308,7 @@ def local_board(runner: Any) -> dict[str, Any]:
     recent = store.list_runs(limit=20)
     now = datetime.now(UTC)
     liveness = staff_liveness.compute_liveness(runner.roles(), store, staff_liveness.load_scheduler_state(), now)
+    staff_liveness.notify_dead(liveness, runner.machine)
     try:
         from staff.availability import get_availability_metrics  # noqa: PLC0415
 

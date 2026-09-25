@@ -207,7 +207,7 @@ class ChatTurnRunner:
                     session_id=None,
                     is_resume=False,
                     replayed_history=was_fallback,
-                    update_on_failure=(len(chain) == 1),
+                    update_on_failure=(candidate == chain[-1]),
                 )
                 if result.ok:
                     record_successful_turn(
@@ -229,11 +229,11 @@ class ChatTurnRunner:
                 fallback_steps += 1
                 metrics.record_fallback()
 
-            if provider is not None:
-                return last_failed or ChatTurnResult(ok=False, failure_class="provider_failed")
+            if last_failed is not None:
+                return last_failed
 
             log.warning(
-                "All providers failed or disabled for thread %s; triggering degraded mode",
+                "All providers unavailable for thread %s; triggering degraded mode",
                 thread_id,
             )
             return await execute_degraded_turn(
