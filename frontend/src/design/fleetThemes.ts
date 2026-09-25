@@ -89,7 +89,7 @@ export type FleetThemeId =
 //   light.label   #6c757d → #60666d     (muted text, was 4.45:1)
 //   light.success #28a745 → #1b722f     (badge/stat text, was 2.55:1 on tint)
 //   light.warning #ffc107 → #7f5f00     (was 1.54:1 — yellow-on-white)
-//   light.error   #dc3545 → #bf2130     (was 3.48:1 on tint)
+//   light.error   #dc3545 → #b81d2c     (was 4.49:1 on group_bg tint, now 4.84:1)
 //   light.info    #17a2b8 → #106e7d
 //   dark.label    #8b949e → #a6adb5     (was 4.46:1 on hero-KPI; neutral badge)
 //   dark.error    #f85149 → #fa7973     (was 3.75:1 on tint)
@@ -102,7 +102,7 @@ export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
   light: {
     name: 'Light', category: 'standard', isDark: false,
     colors: { bg: '#ffffff', group_bg: '#f8f9fa', border: '#ced4da', text: '#212529', text_secondary: '#495057', label: '#60666d', focus: '#0969da', input_bg: '#ffffff', accent: '#5a8fc4', title_bg: '#e3f2fd', title_border: '#90caf9', table_header: '#e9ecef', table_alt: '#f8f9fa', button_hover: '#4a7ba7' },
-    semantic: { success: '#1b722f', warning: '#7f5f00', error: '#bf2130', info: '#106e7d', link: '#0066cc', link_hover: '#004499', selection_bg: '#0078d4', selection_text: '#ffffff' },
+    semantic: { success: '#1b722f', warning: '#7f5f00', error: '#b81d2c', info: '#106e7d', link: '#0066cc', link_hover: '#004499', selection_bg: '#0078d4', selection_text: '#ffffff' },
   },
   dark: {
     name: 'Dark', category: 'standard', isDark: true,

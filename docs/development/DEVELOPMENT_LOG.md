@@ -20,25 +20,26 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1484 · SC-B1-G1: Enforce read-only chat turns per provider
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1484
+- **PR:** #1506
 - **Branch:** `fix/1484-read-only-chat`
 - **Paths:** `backend/staff/adapters.py`, `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `backend/staff/validator.py`, `tests/unit/test_staff_chat_read_only.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (new suite 24 passed; staff/chat/role/adapter/validator selection 618 passed, 15 skipped; ruff clean; `mypy backend/` clean in 249 files; chat.py 492 lines)
 - **Summary:** Every chat argv carries the provider's explicit read-only flag on fresh and resumed turns (the resumed claude turn had none); claude additionally denies the write tools; providers without a read-only mode fail closed with `provider_not_read_only`; `chat.read_only_tools` is a validated provider-neutral vocabulary mapped to the claude `--allowedTools` allowlist. `cursor-agent --mode ask` could not be verified locally (CLI not installed on DeskComputer); an unknown flag fails the turn visibly, never writable.
-- **Next step:** Merge PR, then verify a live cursor-agent chat turn on a node that has the CLI.
+- **Next step:** None (shipped in PR #1506). Verify a live cursor-agent chat turn on a node that has the CLI.
 
-### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow and ContextPane
+### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges
 
 - **State:** in_progress
 - **Owner:** antigravity
-- **Branch:** `fix/restore-green-main-contextpane-contrast`
-- **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Branch:** `fix/restore-green-main-danger-badge-contrast`
+- **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/design/fleetThemes.ts`, `frontend/src/design/tokens.ts`, `frontend/src/design/__tests__/fleetThemes.contrast.test.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 files 113/113 passed; npm run typecheck clean; npm run lint clean; ContextPane 354 lines <= 500 lines; RosterRow 296 lines <= 500 lines)
-- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container (resolving WCAG 4.1.2 nested-interactive). Replaced unconfigured `--color-*` variables and low-contrast light fallback values in `ContextPane.tsx` with standard theme tokens (`var(--bg-card, #1c2128)`, `var(--text-secondary, #8b949e)`, `var(--border, #30363d)`, `var(--accent-blue, #58a6ff)`), resolving WCAG 1.4.3 color-contrast violation in axe-core.
+- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 passed; fleetThemes vitest 24/24 passed; npm run typecheck clean; npm run lint clean; all files <= 500 lines)
+- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container (resolving WCAG 4.1.2 nested-interactive). Replaced unconfigured `--color-*` variables in `ContextPane.tsx` with standard design system tokens. Adjusted `light.semantic.error` in `fleetThemes.ts` and `lightBadgeTokens` in `tokens.ts` from `#bf2130` to `#b81d2c`, raising contrast on tinted backgrounds (`--badge-danger-bg` over `var(--bg-secondary)`) from 4.49:1 to 4.84:1 to strictly satisfy WCAG AA 4.5:1 minimums, resolving axe-core `color-contrast` failures in Playwright E2E smoke tests.
 - **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
 
 ### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
