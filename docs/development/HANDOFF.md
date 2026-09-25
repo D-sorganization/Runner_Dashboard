@@ -1,10 +1,71 @@
-# Current handoff — SC-F5: External Agent Connection Guides & Troubleshooting (#1334)
+# Current handoff — SC-B6: Action proposals from conversations with risk-based approval gates (#1313)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `docs/1334-agent-connection-guides`; Issue #1334; DL-#1334.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1313-action-proposals`; Issue #1313; DL-#1313; PR #1396.
+
+## Work
+
+- `backend/staff/actions.py` & `backend/staff/action_executors.py`:
+  - Replaced legacy assistant stubs with unified `ActionRegistry` allowlisting:
+    - `staff.dispatch`: submit run requests to `RunStore` with parameters (`role`, `repo`, `prompt`, `issue`, `pr`, `provider`, `model`, `machine`).
+    - `staff.review_pr`: dispatch specialized reviewer (e.g. `critic`) on PR targets with custom focus prompts.
+    - `staff.hold`: append operational holds to `HoldsList` ledger with targets (`applies_to`) and audit logging.
+    - `staff.unhold`: lift active holds by ID or text.
+    - `code_request.create`: record new Code Request items in durable `WorkItemStore`.
+    - `board.propose`: submit structured proposals to Board in `WorkItemStore`.
+    - `maintenance.runner_restart`, `maintenance.runner_stop`, `maintenance.diagnose`: typed maintenance operations.
+  - Implemented risk-based approval policy gates:
+    - `read` / `low`: can auto-execute without interactive confirmation.
+    - `medium`: requires user approval with `staff.approve` scope.
+    - `high` / `owner-only`: strictly requires owner credentials (`is_owner`).
+  - Added role permission gating (`check_role_permission`): proposing roles must be authorized in their role specs / fleet actions (rejects unauthorized execution with 403 Forbidden).
+  - Added 24-hour proposal TTL expiry (`is_proposal_expired`) and replay protection against terminal states (`denied`, `expired`, `done`).
+  - Post-execution verifiers validate real state changes before advancing proposals to `done`.
+  - Dispatched runs and action outcomes post `action_result` and `run_card` messages to thread transcripts (SC-B7), fully audited in `staff_audit` (SC-A8).
+- `backend/staff/conversation_models.py`:
+  - Expanded `PROPOSAL_RISKS` to `("read", "low", "medium", "high", "critical", "owner-only")`.
+  - Updated `_VALID_PROPOSAL_TRANSITIONS` to allow `proposed -> executing` (for auto-execution) and `failed -> executing` (for retries).
+- `backend/staff/conversations.py`:
+  - Added `audit_store` override parameter in `transition_proposal_state`.
+- `backend/routers/staff_proposals.py`:
+  - Mounted REST endpoints under `/api/v1/staff`:
+    - `GET /api/v1/staff/actions`: catalogue of all registered actions, schemas, risk classes, and scopes.
+    - `GET /api/v1/staff/actions/{name}`: single action definition.
+    - `POST /api/v1/staff/proposals`: create proposal within thread.
+    - `POST /api/v1/staff/proposals/{id}/decide`: decide proposal (with `execute: bool = False` default, or immediate execution when `execute=True`).
+    - `POST /api/v1/staff/proposals/{id}/execute`: execute approved proposal through registry.
+- `backend/routers/assistant.py`:
+  - Mirrored legacy `propose-action` and `execute-action` to `ConversationStore` and `ActionRegistry`.
+
+## Validation
+
+- `pytest tests/unit/test_staff_actions.py tests/api/test_staff_proposals_api.py`: 15 passed in 2.67s.
+- `pytest tests/clients`: 121 passed in 68.92s.
+- `pytest tests/test_assistant_contract.py tests/test_assistant_tools.py tests/frontend/test_assistant_chat_privacy.py`: 37 passed in 1.10s.
+- `pytest tests/test_no_duplicate_top_level_functions.py`: 3 passed in 1.71s.
+- `ruff check`: All checks passed.
+- `ruff format --check`: 209 files already formatted.
+- `mypy backend/`: Success: no issues found in 207 source files.
+- Line limits: All new and modified files strictly <= 500 lines (`actions.py`: 468, `action_executors.py`: 223, `conversation_models.py`: 213, `conversations.py`: 470, `staff_proposals.py`: 244, `assistant.py`: 444, `test_staff_actions.py`: 395, `test_staff_proposals_api.py`: 252).
+
+## Next
+
+1. Verify CI passes on PR #1396.
+2. Ensure auto-merge merges branch into main.
+3. Release lease on issue #1313.
+
+---
+
+# Previous handoff — SC-F5: External Agent Connection Guides & Troubleshooting (#1334)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `docs/1334-agent-connection-guides`; Issue #1334; DL-#1334; PR #1397.
 
 ## Work
 
@@ -32,26 +93,11 @@ Last updated: 2026-09-25
 
 - `pytest tests/test_agent_connection_docs.py`: 9 passed in 0.40s.
 - `ruff check docs/ tests/test_agent_connection_docs.py`: All checks passed.
-- Line limits: All new and modified files strictly <= 500 lines (`docs/agents/claude.md`: 137, `docs/agents/codex.md`: 76, `docs/agents/grok.md`: 109, `docs/agents/connect.md`: 237, `docs/staff-hub.md`: 485, `tests/test_agent_connection_docs.py`: 142).
-
-## Next
-
-1. Push branch `docs/1334-agent-connection-guides`.
-2. Open PR referencing `Fixes #1334`.
-3. Enable auto-merge and verify green CI checks.
-4. Release lease on issue #1334.
+- Line limits: All new and modified files strictly <= 500 lines.
 
 ---
 
 # Previous handoff — SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel (#1323)
-
-Last updated: 2026-09-24
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1323-fleet-mcp-staff`; Issue #1323; DL-#1323; PR #1395.
-
-## Work
 
 - `clients/fleet/fleet_validators.py`:
   - Extracted contract limits, regex patterns, and client-side validators (`_check`, `_match`, `_positive_int`, `_non_negative_int`, `_text`, `_opt_text`, `_opt`, `default_session`, `_compact`, `_validate_directive`, `_decode`, `_resolve_session`).

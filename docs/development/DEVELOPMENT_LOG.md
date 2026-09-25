@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1334 · SC-F5: External Agent Connection Guides & Troubleshooting
+### DL-#1313 · SC-B6: Action proposals from conversations with risk-based approval gates
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1313 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1313-action-proposals`
+- **PR:** #1396
+- **Paths:** `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/staff/conversation_models.py`, `backend/staff/conversations.py`, `backend/routers/staff_proposals.py`, `backend/routers/assistant.py`, `tests/unit/test_staff_actions.py`, `tests/api/test_staff_proposals_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`pytest tests/unit/test_staff_actions.py tests/api/test_staff_proposals_api.py` 15 passed; `pytest tests/clients` 121 passed; ruff clean; mypy 0 errors in 207 files; all modules <= 500 lines)
+- **Summary:** Replaced legacy stubs with unified `ActionRegistry` (`staff/actions.py`, `staff/action_executors.py`); approval policies (`read`/`low` auto-execute, `medium` operator approve with `staff.approve` scope, `high`/`owner-only` owner approve); 24h proposal expiry and terminal replay protection; role permission gating (unauthorized roles rejected with 403 Forbidden); post-execution verifiers validating actual state changes; dispatched runs and action outcomes post `action_result` and `run_card` messages back to conversation threads (SC-B7), fully audited in `staff_audit` (SC-A8). Mounted REST endpoints in `backend/routers/staff_proposals.py` under `/api/v1/staff`: `GET /api/v1/staff/actions`, `GET /api/v1/staff/actions/{name}`, `POST /api/v1/staff/proposals`, `POST /api/v1/staff/proposals/{id}/decide` (with immediate execution option), and `POST /api/v1/staff/proposals/{id}/execute`.
+- **Next step:** Verify CI passes on PR #1396, auto-merge, and release lease on #1313.
+
+### DL-#1334 · SC-F5: External Agent Connection Guides & Troubleshooting
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1334 (epic #1352 / umbrella #1354)
 - **Branch:** `docs/1334-agent-connection-guides`
-- **PR:** (pending)
+- **PR:** #1397
 - **Paths:** `docs/agents/claude.md`, `docs/agents/codex.md`, `docs/agents/grok.md`, `docs/agents/connect.md`, `docs/staff-hub.md`, `SPEC.md`, `tests/test_agent_connection_docs.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`pytest tests/test_agent_connection_docs.py` 9 passed; ruff clean; all documents and tests <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1397)
 - **Summary:** Authored external client connection guides for Claude Code / Claude Cowork (`docs/agents/claude.md`), Codex CLI (`docs/agents/codex.md`), and Grok Bot (`docs/agents/grok.md`). Updated `docs/agents/connect.md` with client guide navigation index, complete 25-tool fleet MCP reference table, and SC-F3 classified error troubleshooting guide. Added cross-references in `docs/staff-hub.md` and updated `SPEC.md` SC-F5 specification. Added automated documentation validation tests.
-- **Next step:** Push branch, open PR with auto-merge, verify CI passes, merge, and release lease on #1334.
+- **Next step:** None (shipped in PR #1397).
 
 ### DL-#1323 · SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel
 

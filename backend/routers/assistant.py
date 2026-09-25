@@ -299,6 +299,25 @@ async def propose_action(
             "proposal": proposal_dict,
             "approved": False,
         }
+        try:
+            from staff.conversations import get_conversation_store
+
+            c_store = get_conversation_store()
+            act_name = proposal_dict.get("action_type", "custom")
+            if act_name == "restart_runner":
+                act_name = "maintenance.runner_restart"
+            c_prop = c_store.create_proposal(
+                message_id=f"msg_{action_id}",
+                thread_id="assistant",
+                action=act_name,
+                params=proposal_dict.get("parameters", {}),
+                risk=proposal_dict.get("risk_level", "medium"),
+                proposal_id=f"prop_{action_id}",
+                principal=principal.id,
+            )
+            _proposed_actions[action_id]["prop_record_id"] = c_prop.id
+        except Exception as _sync_err:  # noqa: BLE001
+            log.debug("Assistant action proposal not mirrored to conversation store: %s", _sync_err)
 
         return {
             "action_id": action_id,
@@ -343,9 +362,19 @@ async def execute_action(
     if action_record.get("approved"):
         raise HTTPException(status_code=409, detail="Action already executed")
 
+    prop_rec_id = action_record.get("prop_record_id")
+
     if not req.approved:
         action_record["approved"] = True
         action_record["result"] = "Rejected by operator"
+        if prop_rec_id:
+            try:
+                from staff.conversations import get_conversation_store
+
+                c_store = get_conversation_store()
+                c_store.decide_proposal(prop_rec_id, "denied", decided_by=principal.id, reason=req.operator_notes or "")
+            except Exception as _sync_err:  # noqa: BLE001
+                log.debug("Could not record denial in conversation store: %s", _sync_err)
         return {
             "success": False,
             "action_id": req.action_id,
@@ -357,6 +386,16 @@ async def execute_action(
     action_record["approved_at"] = datetime.now(UTC).isoformat()
     action_record["approved_by"] = "operator"
     action_record["operator_notes"] = req.operator_notes
+
+    if prop_rec_id:
+        try:
+            from staff.actions import execute_proposal
+            from staff.conversations import get_conversation_store
+
+            c_store = get_conversation_store()
+            execute_proposal(prop_rec_id, approver=principal, store=c_store)
+        except Exception as _sync_err:  # noqa: BLE001
+            log.warning("Assistant action execute could not sync to conversation store: %s", _sync_err)
 
     proposal = action_record["proposal"]
     action_type = proposal.get("action_type", "unknown")
