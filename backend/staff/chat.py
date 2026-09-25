@@ -21,6 +21,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from staff.actions import registered_risk
 from staff.adapters import (
     ADAPTERS,
     ChatReadOnlyUnsupportedError,
@@ -412,6 +413,7 @@ class ChatTurnRunner:
                         thread_id=thread_id,
                         action=action.action,
                         params=action.params,
+                        risk=registered_risk(action.action),
                         principal=role.name if role else "assistant",
                     )
                     created_proposals.append(action)

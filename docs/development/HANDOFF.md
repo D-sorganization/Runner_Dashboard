@@ -1,3 +1,33 @@
+# Current handoff — SC-B1-G2: Harden the action-proposal API (#1485)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1485`; branch `fix/1485-proposal-hardening` (stacked on `feat/1448-wire-maintenance`, PR #1483); PR: see DL-#1485; Issue #1485. Commit: SELF.
+
+## Objective and Status
+
+- Make the proposal API enforce its documented design.
+- Done:
+  - `POST /proposals` needs `staff.chat`; it refuses (422) an unregistered action, a missing thread, or a message that is missing or in another thread. The caller's `risk` is ignored: `registered_risk(action)` (unknown = high) is the only source, also used by chat replies, Board group-turn proposals, the maintenance detector and the assistant.
+  - `execute_proposal(..., approve=False)`: only `approved` runs; `approve=True` also accepts `proposed` and records the approval after the role and approval-policy checks. Anything else raises `ProposalNotApprovedError` (route → 409). The unused `auto_execute` flag is gone.
+  - `failed` proposals can be decided again (`failed → approved|denied`): approving is the explicit retry.
+  - `check_approval_policy` enforces the action's `required_scope` for non-owners.
+  - Results post only to an existing thread; the assistant path is thread-less (`thread_id=""`) and uses `approve=True`.
+  - The standard action catalogue moved to `action_executors.register_standard_actions` (keeps `actions.py` under the 500-line cap).
+
+## Validation
+
+- WSL venv: `tests/api/test_staff_proposal_hardening.py` 11 passed (RED before). Proposal, maintenance, chat, assistant and client tests: 192 + 214 passed.
+- `ruff check`/`ruff format --check` clean; `py -3.12 -m mypy backend/ --ignore-missing-imports` clean in 250 files.
+
+## Next Steps
+
+1. After #1483 merges, rebase onto `origin/main`, check the doc heading counts, retarget the PR to main, mark it ready and arm it via `automerge_guard.py`.
+
+---
+
 # Current handoff — SC-B1-G4: one staff dispatch policy for /run and staff.dispatch (#1487)
 
 Last updated: 2026-09-25

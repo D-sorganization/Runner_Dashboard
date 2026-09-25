@@ -66,7 +66,7 @@ except Exception:  # noqa: BLE001
     log.exception("Unexpected error during action default roles initial validation")
 
 if TYPE_CHECKING:
-    from staff.actions import ActionContext, ActionResult
+    from staff.actions import ActionContext, ActionRegistry, ActionResult
 
 
 def _optional_int(value: Any) -> int | None:
@@ -306,3 +306,98 @@ def execute_maintenance_action(params: dict[str, Any], ctx: ActionContext, actio
     from staff.maintenance import execute_maintenance
 
     return execute_maintenance(action_name, params, ctx)
+
+
+def register_standard_actions(registry: ActionRegistry) -> None:
+    """Register the standard staff actions (the non-maintenance catalogue) into ``registry``."""
+    from staff.actions import ActionDefinition, ActionRiskClass
+
+    registry.register(
+        ActionDefinition(
+            name="staff.dispatch",
+            description="Dispatch an AI staff role to work on an issue, PR, or prompt.",
+            params_schema={
+                "role": "string",
+                "repo": "string?",
+                "prompt": "string?",
+                "issue": "int?",
+                "pr": "int?",
+            },
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_staff_dispatch,
+            verifier=verify_staff_dispatch,
+        )
+    )
+
+    registry.register(
+        ActionDefinition(
+            name="staff.review_pr",
+            description="Request a PR review from a specialist staff role.",
+            params_schema={
+                "repo": "string",
+                "pr": "int",
+                "reviewer": "string?",
+                "focus": "string?",
+            },
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.LOW,
+            executor=execute_review_pr,
+            verifier=verify_staff_dispatch,
+        )
+    )
+
+    registry.register(
+        ActionDefinition(
+            name="staff.hold",
+            description="Set an operational hold locking a role or policy.",
+            params_schema={
+                "text": "string",
+                "applies_to": "list[string]?",
+                "lifted_when": "string?",
+            },
+            required_scope="staff.holds.write",
+            risk_class=ActionRiskClass.HIGH,
+            executor=execute_staff_hold,
+            verifier=verify_staff_hold,
+        )
+    )
+
+    registry.register(
+        ActionDefinition(
+            name="staff.unhold",
+            description="Lift an operational hold.",
+            params_schema={"hold_id": "string?", "text": "string?"},
+            required_scope="staff.holds.write",
+            risk_class=ActionRiskClass.HIGH,
+            executor=execute_staff_unhold,
+            verifier=verify_staff_unhold,
+        )
+    )
+
+    registry.register(
+        ActionDefinition(
+            name="code_request.create",
+            description="Create a tracked Code Request work item.",
+            params_schema={
+                "title": "string",
+                "repo": "string",
+                "description": "string?",
+                "priority": "string?",
+            },
+            required_scope="code_requests.write",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_code_request_create,
+        )
+    )
+
+    registry.register(
+        ActionDefinition(
+            name="board.propose",
+            description="Submit a proposal to the Board of Directors.",
+            params_schema={"title": "string", "proposal": "string", "target": "string?"},
+            required_scope="board.proposals.write",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_board_propose,
+        )
+    )

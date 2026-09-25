@@ -40,7 +40,7 @@ _VALID_PROPOSAL_TRANSITIONS: dict[str, set[str]] = {
     "denied": set(),
     "executing": {"done", "failed"},
     "done": set(),
-    "failed": {"executing"},
+    "failed": {"executing", "approved", "denied"},
     "expired": set(),
 }
 

@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1485 · SC-B1-G2: Harden the action-proposal API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1485
+- **Branch:** `fix/1485-proposal-hardening`
+- **Paths:** `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/routers/staff_proposals.py`, `backend/staff/conversation_proposals.py`, `backend/staff/conversation_models.py`, `backend/staff/conversations.py`, `backend/staff/chat.py`, `backend/staff/maintenance_detect.py`, `backend/routers/assistant.py`, `backend/staff/groups.py`, `tests/api/test_staff_proposal_hardening.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (hardening suite 11 passed; proposal/maintenance/chat/assistant/client selection 406 passed; ruff clean; `mypy backend/` clean in 250 files)
+- **Summary:** Proposal creation needs `staff.chat`, a registered action and a real thread/message; risk comes only from the registry; only approved proposals execute (one-step `approve=True` records the decision after policy checks), failed ones need a retry decision; `required_scope` enforced at execute; no results posted to missing threads.
+- **Next step:** After #1483 merges, rebase onto main, retarget the PR to main, mark it ready and arm it.
+
 ### DL-#1487 · SC-B1-G4: Shared staff dispatch service
 
 - **State:** in_review

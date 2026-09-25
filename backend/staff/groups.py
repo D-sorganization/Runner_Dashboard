@@ -17,6 +17,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from staff.actions import registered_risk
 from staff.audit import record_audit
 from staff.conversation_models import ThreadRecord
 from staff.conversations import get_conversation_store
@@ -361,6 +362,7 @@ async def run_group_turn_in_background(
                     thread_id=thread_id,
                     action=action.action,
                     params=action.params,
+                    risk=registered_risk(action.action),
                     principal=res.coordinator,
                 )
                 await bus.publish_proposal(
