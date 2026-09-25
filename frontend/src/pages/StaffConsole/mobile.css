@@ -384,3 +384,18 @@
     transform: translateY(0);
   }
 }
+
+/* ── Reduced-Motion Support (SC-D9) ──────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-mobile__drawer-overlay,
+  .staff-mobile__drawer,
+  .staff-mobile__ask-barb,
+  .staff-mobile__role-item,
+  .staff-mobile__tab,
+  .staff-mobile__thumb-btn,
+  .thread-streaming-cursor {
+    animation: none !important;
+    transition: none !important;
+  }
+}

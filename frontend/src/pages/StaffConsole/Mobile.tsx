@@ -5,7 +5,7 @@
  * composer, thumb-reachable approve/deny actions, push deep linking (?thread=, ?role=),
  * and role context inspection.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { ROSTER_GROUPS } from "./types";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
@@ -62,6 +62,20 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
 }) => {
   const [roles, setRoles] = useState<StaffRoleItem[]>(initialRoles || []);
   const [view, setView] = useState<MobileView>(initialView);
+
+  // SC-D9: move keyboard focus with the full-screen view change. The thread
+  // heading takes focus (not the composer, which would pop the soft
+  // keyboard); returning to the roster focuses the search box.
+  const threadHeadingRef = useRef<HTMLHeadingElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const previousViewRef = useRef<MobileView>(initialView);
+  useEffect(() => {
+    const previous = previousViewRef.current;
+    previousViewRef.current = view;
+    if (previous === view) return;
+    if (view === "thread") threadHeadingRef.current?.focus();
+    else if (previous === "thread") searchInputRef.current?.focus();
+  }, [view]);
   const [selectedRole, setSelectedRole] = useState<string | null>(initialRole || null);
   const [activeThread, setActiveThread] = useState<ThreadInfo | null>(initialThread || null);
   const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
@@ -268,7 +282,9 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               >
                 ← Roster
               </button>
-              <h1 className="staff-mobile__title">{activeThread.title}</h1>
+              <h1 className="staff-mobile__title" ref={threadHeadingRef} tabIndex={-1}>
+                {activeThread.title}
+              </h1>
             </div>
             <div className="staff-mobile__header-right">
               <button
@@ -378,6 +394,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             <div className="staff-mobile__content">
               <div className="staff-mobile__search-container">
                 <input
+                  ref={searchInputRef}
                   type="search"
                   className="staff-mobile__search-input"
                   placeholder="Search staff roles…"

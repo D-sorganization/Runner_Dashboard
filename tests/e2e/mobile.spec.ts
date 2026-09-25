@@ -97,6 +97,82 @@ test.describe("Mobile accessibility", () => {
 // Mobile Staff Console (SC-D8)
 // ---------------------------------------------------------------------------
 
+/** Mock the Staff Hub endpoints the mobile console reads (Barb thread + one proposal). */
+async function mockStaffApi(page: import("@playwright/test").Page): Promise<void> {
+  await page.route("**/api/v1/staff/roster", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        roles: [
+          {
+            name: "barb",
+            title: "Barb",
+            summary: "Fleet Orchestrator",
+            group: "leadership",
+            valid: true,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/staff/threads/thread-barb-auto/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ id: "msg-user-1", body_md: "Please run disk hygiene" }),
+      });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          messages: [
+            {
+              id: "msg-1",
+              thread_id: "thread-barb-auto",
+              author: "barb",
+              author_kind: "staff",
+              kind: "text",
+              body_md: "Hello! I am Barb.",
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: "msg-prop-1",
+              thread_id: "thread-barb-auto",
+              author: "barb",
+              author_kind: "staff",
+              kind: "action_proposal",
+              body_md: "Trim stale worktrees",
+              meta: {
+                proposal: {
+                  id: "prop-123",
+                  thread_id: "thread-barb-auto",
+                  action_name: "maintenance.trim_worktrees",
+                  description: "Trim stale worktrees",
+                  risk_level: "medium",
+                  status: "proposed",
+                },
+              },
+              created_at: new Date().toISOString(),
+            },
+          ],
+        }),
+      });
+    }
+  });
+
+  await page.route("**/api/v1/staff/proposals/prop-123/decide", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, status: "approved" }),
+    });
+  });
+}
+
 test.describe("Mobile Staff Console (SC-D8)", () => {
   test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
 
@@ -104,78 +180,7 @@ test.describe("Mobile Staff Console (SC-D8)", () => {
     page,
   }) => {
     // 1. Mock staff endpoints
-    await page.route("**/api/v1/staff/roster", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          roles: [
-            {
-              name: "barb",
-              title: "Barb",
-              summary: "Fleet Orchestrator",
-              group: "leadership",
-              valid: true,
-            },
-          ],
-        }),
-      });
-    });
-
-    await page.route("**/api/v1/staff/threads/thread-barb-auto/messages", async (route) => {
-      if (route.request().method() === "POST") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ id: "msg-user-1", body_md: "Please run disk hygiene" }),
-        });
-      } else {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            messages: [
-              {
-                id: "msg-1",
-                thread_id: "thread-barb-auto",
-                author: "barb",
-                author_kind: "staff",
-                kind: "text",
-                body_md: "Hello! I am Barb.",
-                created_at: new Date().toISOString(),
-              },
-              {
-                id: "msg-prop-1",
-                thread_id: "thread-barb-auto",
-                author: "barb",
-                author_kind: "staff",
-                kind: "action_proposal",
-                body_md: "Trim stale worktrees",
-                meta: {
-                  proposal: {
-                    id: "prop-123",
-                    thread_id: "thread-barb-auto",
-                    action_name: "maintenance.trim_worktrees",
-                    description: "Trim stale worktrees",
-                    risk_level: "medium",
-                    status: "proposed",
-                  },
-                },
-                created_at: new Date().toISOString(),
-              },
-            ],
-          }),
-        });
-      }
-    });
-
-    await page.route("**/api/v1/staff/proposals/prop-123/decide", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: true, status: "approved" }),
-      });
-    });
+    await mockStaffApi(page);
 
     // 2. Open mobile dashboard and navigate to Staff Console
     await page.goto("/");
@@ -212,5 +217,32 @@ test.describe("Mobile Staff Console (SC-D8)", () => {
     await page.goto("/staff?thread=thread-barb-auto");
     await expect(page.locator('[data-testid="staff-mobile-thread"]')).toBeVisible();
     await expect(page.locator("text=Conversation with Barb")).toBeVisible();
+  });
+
+  test("keyboard walkthrough: open Barb, focus follows the view, back returns to search (SC-D9)", async ({
+    page,
+  }) => {
+    await mockStaffApi(page);
+    await page.goto("/staff");
+
+    const askBarb = page.getByTestId("staff-mobile-ask-barb");
+    await expect(askBarb).toBeVisible();
+    await askBarb.focus();
+    await page.keyboard.press("Enter");
+
+    // Opening a thread moves focus to its heading, not the composer.
+    await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+
+    // The message log is reachable by keyboard and is a polite live region.
+    const log = page.getByRole("log", { name: "Conversation messages" });
+    await expect(log).toHaveAttribute("aria-live", "polite");
+    await log.focus();
+    await expect(log).toBeFocused();
+
+    // Back returns focus to the roster search box.
+    await page.getByTestId("staff-mobile-back-btn").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("searchbox", { name: "Search staff roles" })).toBeFocused();
   });
 });

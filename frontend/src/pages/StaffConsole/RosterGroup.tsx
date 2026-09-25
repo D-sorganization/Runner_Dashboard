@@ -66,7 +66,6 @@ export const RosterGroup: React.FC<RosterGroupProps> = ({
           letterSpacing: "0.05em",
           borderRadius: "4px",
           textAlign: "left",
-          outline: "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>

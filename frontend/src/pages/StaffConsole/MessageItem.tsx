@@ -187,6 +187,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           >
             <span
               aria-hidden="true"
+              className="thread-streaming-cursor"
               style={{
                 color: isUser ? "rgba(255, 255, 255, 0.7)" : "var(--accent-blue, #58a6ff)",
                 animation: "pulse 1s infinite",

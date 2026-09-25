@@ -65,6 +65,9 @@ const FIRST_CHECKS: readonly string[] = [
 /** Keyboard shortcuts surfaced to operators. */
 const SHORTCUTS: readonly { keys: string; label: string }[] = [
   { keys: "Ctrl / ⌘ + K", label: "Open the command palette" },
+  { keys: "↑ / ↓", label: "Navigate staff roster roles" },
+  { keys: "j / k", label: "Scroll staff thread messages" },
+  { keys: "/", label: "Activate slash commands (/dispatch, /status)" },
   { keys: "?", label: "Open this Help & About panel" },
   { keys: "Esc", label: "Close a dialog or palette" },
 ];
