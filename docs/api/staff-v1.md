@@ -140,3 +140,39 @@ When `has_more` is `false`, `next_cursor` is `null`. Passing an invalid or tampe
 | `GET` | `/api/v1/staff/usage` | `staff.read` | No | Token and cost usage metrics |
 | `GET` | `/api/v1/staff/usage/pricing`| `staff.read` | No | Model pricing lookup table |
 | `POST`| `/api/v1/staff/usage/export` | `staff.admin` | **Required** | Export usage metrics to Repository_Management |
+| `POST`| `/api/v1/staff/threads` | `staff.chat` | No | Create conversation thread (direct, group, auto to Barb) |
+| `GET` | `/api/v1/staff/threads` | `staff.read` | No | Paginated list of threads with filters (`role`, `status`, `unread`) |
+| `GET` | `/api/v1/staff/threads/{id}` | `staff.read` | No | Thread details and message history |
+| `PATCH`| `/api/v1/staff/threads/{id}`| `staff.chat` | No | Rename thread title or archive thread status |
+| `POST`| `/api/v1/staff/threads/{id}/messages` | `staff.chat` | **Required** | Post user message; returns 202 Accepted with reply placeholder |
+| `GET` | `/api/v1/staff/threads/{id}/stream` | `staff.read` | No | SSE stream with Last-Event-ID resume, heartbeats, token events |
+| `POST`| `/api/v1/staff/threads/{id}/read` | `staff.chat` | No | Mark thread read for caller principal |
+| `GET` | `/api/v1/staff/inbox` | `staff.read` | No | List open threads requiring user attention (unread or pending actions) |
+
+---
+
+## 7. Conversations & Threads API (SC-B3)
+
+The Conversation & Threads API enables interactive conversations between operators and staff roles (Barb, Night Watch, PR Remediator), action proposal review workflows, and live SSE event streaming.
+
+### Message Submission (202 Accepted & Idempotency)
+Posting a message to `POST /api/v1/staff/threads/{id}/messages` requires an `Idempotency-Key` header and returns `202 Accepted` immediately with:
+1. The persisted user message record (state: `complete`).
+2. A pending reply placeholder record (state: `pending`, `meta.in_reply_to: <user_message_id>`).
+
+Replaying a request with the same `Idempotency-Key` returns `200 OK` with header `Idempotent-Replay: true` and the existing message records, guaranteeing zero duplicate agent responses.
+
+### SSE Stream & Resume Contract (`/api/v1/staff/threads/{id}/stream`)
+The Server-Sent Events stream delivers live updates for:
+- `message`: user messages, agent completions, or error messages with failure classification.
+- `token`: streaming delta tokens from active model runs.
+- `proposal`: created or transitioned action proposals.
+- `run_card`: execution status updates for triggered runs.
+
+#### Resume via `Last-Event-ID`
+Clients passing `Last-Event-ID: <seq>` or query parameter `since_seq=<seq>` receive an immediate sequential replay of all missed messages from SQLite before live events begin.
+
+#### Connection Maintenance
+- Heartbeats (`: keep-alive\n\n`) emit every 15 seconds of silence.
+- Query parameter `follow=false` allows single-batch catch-up without keeping the connection open.
+

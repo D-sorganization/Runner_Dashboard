@@ -441,11 +441,12 @@ _conversation_store: ConversationStore | None = None
 _conversation_store_lock = threading.Lock()
 
 
-def get_conversation_store() -> ConversationStore:
+def get_conversation_store(path: Path | None = None) -> ConversationStore:
     global _conversation_store  # noqa: PLW0603
+    target_path = path or default_db_path()
     with _conversation_store_lock:
-        if _conversation_store is None or _conversation_store.path != default_db_path():
-            _conversation_store = ConversationStore()
+        if _conversation_store is None or _conversation_store.path != target_path:
+            _conversation_store = ConversationStore(path=target_path)
         return _conversation_store
 
 
