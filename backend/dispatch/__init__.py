@@ -9,10 +9,15 @@ Submodules:
 - dispatch.registry  — allowlisted actions, DispatchAccess, DispatchAction
 - dispatch.envelope  — CommandEnvelope, DispatchConfirmation, schema constants
 - dispatch.validate  — validate_envelope, validate_envelope_crypto, result types
-- dispatch.audit     — DispatchAuditLogEntry, build_audit_log_entry
+- dispatch.audit     — DispatchAuditLogEntry, build_audit_log_entry, record_code_request_transition
 """
 
-from dispatch.audit import DispatchAuditLogEntry, build_audit_log_entry
+from dispatch.audit import (
+    CodeRequestTransitionAuditEntry,
+    DispatchAuditLogEntry,
+    build_audit_log_entry,
+    record_code_request_transition,
+)
 from dispatch.envelope import (
     ENVELOPE_VERSION,
     MAX_ENVELOPE_VERSION,
@@ -74,6 +79,8 @@ __all__ = [
     "validate_envelope",
     "validate_envelope_crypto",
     # audit
+    "CodeRequestTransitionAuditEntry",
     "DispatchAuditLogEntry",
     "build_audit_log_entry",
+    "record_code_request_transition",
 ]

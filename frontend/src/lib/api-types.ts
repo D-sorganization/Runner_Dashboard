@@ -1059,7 +1059,11 @@ export interface paths {
          */
         get: operations["list_code_requests_api_code_requests_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Code Request
+         * @description Create a new Code Request in draft or triage state.
+         */
+        post: operations["create_code_request_api_code_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1104,6 +1108,46 @@ export interface paths {
          * @description Save a prompt template.
          */
         post: operations["save_prompt_template_api_code_requests_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Code Request
+         * @description Get a Code Request by id or issue number.
+         */
+        get: operations["get_code_request_api_code_requests__id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transition Code Request
+         * @description Transition a Code Request lifecycle state.
+         */
+        post: operations["transition_code_request_api_code_requests__id__transition_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9084,6 +9128,28 @@ export interface operations {
             };
         };
     };
+    create_code_request_api_code_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     dispatch_code_request_api_code_requests_dispatch_post: {
         parameters: {
             query?: never;
@@ -9146,6 +9212,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_code_request_api_code_requests__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transition_code_request_api_code_requests__id__transition_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

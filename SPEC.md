@@ -1,12 +1,13 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.255
+**Spec Version:** 2.5.257
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-25T00:00:00-07:00
 **Status:** Active
 
 ## Change Log
 
+| 2026-09-25 | #1282                  | CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record. Implemented Pydantic models (`CodeRequest`, `CodeRequestState`, `BoardRoute`, `Requester`, `CodeRequestAuditEvent`) with lossless fenced YAML front-matter serialization; pure-function lifecycle state machine (`transition`); GitHub issue-backed durable `CodeRequestStore` with node-local JSON cache fallback and automatic cache rebuild; prompt construction with standards injection (TDD, DbC, DRY, LoD, security, docs); REST API endpoints `GET/POST /api/code-requests`, `GET /api/code-requests/{id}`, and `POST /api/code-requests/{id}/transition` with dual-scope authorization (`code-requests.manage` and `feature-requests.manage`); `scripts/ensure_code_request_labels.py`; and comprehensive tests. |
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-09-25 | #1434                  | Projects: fleet-wide prioritised status. Owner tiers P0-P4 from Repository_Management `config/project_priorities.yaml` (`GET /api/projects/priorities`), `GET /api/projects` ordered P0 first with a fleet `summary`, per-repo charter coverage of open issues/PRs, `GET /api/projects/untracked` fleet-curator worklist, `config/projects.json` lists every active org repo; tier badge, coverage and summary bar on the Projects tab.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -3051,13 +3052,16 @@ inline style objects.
 
 ### Code Requests
 
-| Method | Path                           | Description                                                                                 |
-| ------ | ------------------------------ | ------------------------------------------------------------------------------------------- |
-| GET    | `/api/code-requests`           | Code request history plus `dispatchTarget` availability                                     |
-| GET    | `/api/code-requests/templates` | Available code request templates                                                            |
-| POST   | `/api/code-requests/templates` | Create a new code request template                                                          |
-| POST   | `/api/code-requests/dispatch`  | Dispatch a code request workflow; 502 when dispatch fails                                   |
-| \*     | `/api/feature-requests*`       | Deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>` (CR-1) |
+| Method | Path                                    | Description                                                                                     |
+| ------ | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| GET    | `/api/code-requests`                    | Code request history plus `dispatchTarget` availability                                         |
+| POST   | `/api/code-requests`                    | Create a Code Request in `draft` or `triage`, persists to GitHub issue with YAML front-matter   |
+| GET    | `/api/code-requests/{id}`               | Fetch Code Request detail with state, links, and full audit trail                               |
+| POST   | `/api/code-requests/{id}/transition`    | Transition Code Request lifecycle state or apply operator override                             |
+| GET    | `/api/code-requests/templates`          | Available code request templates                                                                |
+| POST   | `/api/code-requests/templates`          | Create a new code request template                                                              |
+| POST   | `/api/code-requests/dispatch`           | Dispatch a code request workflow; 502 when dispatch fails                                       |
+| *      | `/api/feature-requests*`                | Deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>` (CR-1)     |
 
 ### Local Apps
 
@@ -4460,7 +4464,7 @@ proper authentication and CSRF protection:
 
 ### 16.3 Test Results
 
-**Before:** 158 passed, 8 failed, 1 xfailed  
+**Before:** 158 passed, 8 failed, 1 xfailed
 **After:** 166 passed, 1 xfailed âœ“
 
 The 8 previously failing tests required these headers:

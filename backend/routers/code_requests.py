@@ -16,20 +16,32 @@ Backward compatibility:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import datetime as _dt_mod
 import json
 import logging
 import shutil
-import tempfile
 import time
 from pathlib import Path
 
 import config_schema
+from code_requests.dispatch import (
+    build_full_prompt,
+    trigger_workflow_dispatch,
+)
+from code_requests.lifecycle import InvalidTransitionError
+from code_requests.model import (
+    STANDARDS_INJECTION,
+    BoardRoute,
+    CodeRequest,
+    CodeRequestState,
+    Requester,
+    RequesterKind,
+)
+from code_requests.store import CodeRequestStore
 from dashboard_config import ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from identity import Principal, require_scope
-from input_validation import MAX_INPUT_VALUE_LENGTH, validate_workflow_inputs
+from identity import Principal, require_fleet_peer, require_scope
+from input_validation import validate_workflow_inputs
 from security import check_dispatch_rate, sanitize_log_value
 from system_utils import run_cmd
 
@@ -65,8 +77,6 @@ _DISPATCH_WORKFLOW = "Jules-Feature-Request.yml"
 _DISPATCH_WORKFLOW_ENDPOINT = f"/repos/{ORG}/Repository_Management/actions/workflows/{_DISPATCH_WORKFLOW}"
 _DISPATCH_TARGET_TTL_S = 600.0
 
-# Cached result of probing the dispatch workflow (#1280). A failed dispatch
-# primes it too, so the UI can disable dispatch without another API call.
 _dispatch_target_state: dict[str, object] = {"checked_at": None, "available": None, "detail": ""}
 
 
@@ -103,71 +113,47 @@ _prompt_notes_lock: asyncio.Lock = asyncio.Lock()
 
 
 def _migrate_storage_if_needed() -> None:
-    """Migrate legacy feature_requests.json to code_requests.json on first read.
-
-    Copies the file and leaves a .migrated marker; never deletes the original.
-    """
+    """Migrate legacy feature_requests.json to code_requests.json on first read."""
     if _MIGRATED_MARKER_PATH.exists():
         return
     try:
         source_path = _FEATURE_REQUESTS_PATH if _FEATURE_REQUESTS_PATH is not None else _LEGACY_FEATURE_REQUESTS_PATH
         target_path = _CODE_REQUESTS_PATH
+        if source_path.exists() and not target_path.exists():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
         if source_path.exists():
-            if not target_path.exists():
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source_path, target_path)
             _MIGRATED_MARKER_PATH.write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
     except OSError as e:
         log.warning("Storage migration error: %s", e)
 
 
-# ─── Standards injection map ──────────────────────────────────────────────────
+# ─── Store Instance ───────────────────────────────────────────────────────────
 
-STANDARDS_INJECTION: dict[str, str] = {
-    "tdd": (
-        "Use Test-Driven Development: write failing tests first (RED), then minimal code to pass (GREEN),"
-        " then refactor. Tests must pass before any PR."
-    ),
-    "dbc": (
-        "Apply Design by Contract: validate inputs at boundaries, assert internal invariants,"
-        " document pre/postconditions in docstrings."
-    ),
-    "dry": (
-        "Apply DRY: extract shared logic into modules, eliminate duplication."
-        " Three similar code blocks should become one shared function."
-    ),
-    "lod": (
-        "Apply Law of Demeter: components talk to immediate neighbors only."
-        " UI receives view models, not raw nested payloads."
-    ),
-    "security": (
-        "Apply security-first: validate all inputs, avoid injection vulnerabilities,"
-        " use parameterized queries, never log secrets."
-    ),
-    "docs": (
-        "Document public APIs, non-obvious decisions, and architecture choices."
-        " Prefer short clear docstrings over multi-paragraph ones."
-    ),
-}
+_store: CodeRequestStore | None = None
+
+
+def _get_store() -> CodeRequestStore:
+    global _store
+    storage_path = _active_storage_path()
+    if _store is None or _store.cache_path != storage_path:
+        _store = CodeRequestStore(cache_path=storage_path)
+    return _store
+
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 
 @router.get("/api/code-requests")
-async def list_code_requests() -> dict:
+async def list_code_requests(_peer: str = Depends(require_fleet_peer)) -> dict:  # noqa: B008
     """List saved code implementation requests."""
     _migrate_storage_if_needed()
-    path = _active_storage_path()
-    try:
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-        else:
-            data = []
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        data = []
+    store = _get_store()
+    items = await store.list()
+    serialized = [item.model_dump(mode="json") for item in items]
     return {
-        "requests": list(reversed(data[-100:])),
-        "total": len(data),
+        "requests": serialized,
+        "total": len(serialized),
         "dispatchTarget": await _dispatch_target_status(),
     }
 
@@ -227,6 +213,120 @@ async def save_prompt_template(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "name": name}
+
+
+@router.get("/api/code-requests/{id}")
+async def get_code_request(
+    id: str,
+    _peer: str = Depends(require_fleet_peer),  # noqa: B008
+) -> dict:
+    """Get a Code Request by id or issue number."""
+    _migrate_storage_if_needed()
+    store = _get_store()
+    item = await store.get(id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"Code request {id!r} not found")
+    return item.model_dump(mode="json")
+
+
+@router.post("/api/code-requests")
+async def create_code_request(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
+) -> dict:
+    """Create a new Code Request in draft or triage state."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="Request body must be a JSON object")
+
+    repo = str(body.get("repository", "")).strip()
+    prompt = str(body.get("prompt", "")).strip()
+    if not repo:
+        raise HTTPException(status_code=422, detail="repository required")
+    if not prompt:
+        raise HTTPException(status_code=422, detail="prompt required")
+
+    state_str = str(body.get("state", "")).strip().lower()
+    initial_state = (
+        CodeRequestState.TRIAGE if (body.get("submitted") or state_str == "triage") else CodeRequestState.DRAFT
+    )
+
+    raw_req = body.get("requester")
+    req_dict: dict = raw_req if isinstance(raw_req, dict) else {}
+    req_id = str(req_dict.get("id") or principal.id)
+    is_agent = (req_dict.get("kind") == "agent") or (not req_dict and getattr(principal, "type", "").lower() == "bot")
+    requester = Requester(id=req_id, kind=RequesterKind.AGENT if is_agent else RequesterKind.HUMAN)
+
+    try:
+        board_route = BoardRoute(str(body.get("board_route", BoardRoute.AUTO.value)).lower())
+    except ValueError:
+        board_route = BoardRoute.AUTO
+
+    now = datetime.now(UTC).isoformat()
+    req_id = str(body.get("id") or f"cr-unknown-{int(datetime.now(UTC).timestamp())}")
+    title = str(body.get("title") or f"Code Request: {prompt[:40]}")
+
+    code_req = CodeRequest(
+        id=req_id,
+        repository=repo,
+        title=title,
+        state=initial_state,
+        prompt=prompt,
+        requester=requester,
+        planner_profile_id=body.get("planner_profile_id"),
+        executor_profile_id=body.get("executor_profile_id"),
+        board_route=board_route,
+        board_proposal=body.get("board_proposal"),
+        plan_epic=body.get("plan_epic"),
+        branch=str(body.get("branch", "main")),
+        standards=list(body.get("standards", []) or []),
+        created_at=now,
+        updated_at=now,
+    )
+
+    store = _get_store()
+    saved = await store.create(code_req)
+    return saved.model_dump(mode="json")
+
+
+@router.post("/api/code-requests/{id}/transition")
+async def transition_code_request(
+    id: str,
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
+) -> dict:
+    """Transition a Code Request lifecycle state."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="Request body must be a JSON object")
+
+    to_state = str(body.get("to_state", "")).strip()
+    reason = str(body.get("reason", "")).strip()
+    is_override = bool(body.get("is_operator_override", False) or body.get("override", False))
+
+    if not to_state:
+        raise HTTPException(status_code=422, detail="to_state required")
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason required")
+
+    store = _get_store()
+    try:
+        actor = principal.id or principal.name or "operator"
+        updated = await store.transition(
+            id,
+            to_state,
+            actor=actor,
+            reason=reason,
+            is_operator_override=is_override,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidTransitionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return updated.model_dump(mode="json")
 
 
 @router.get("/api/settings/prompt-notes")
@@ -303,43 +403,8 @@ async def dispatch_code_request(
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         pass
 
-    # Build full prompt with notes and standards injection
-    full_prompt = prompt
-    notes_val = str(prompt_notes_data.get("notes", ""))
-    if prompt_notes_data.get("enabled", True) and notes_val.strip():
-        full_prompt = f"{notes_val}\n\n{prompt}"
-
-    injected_standards = "\n\n".join(
-        f"[{s.upper()}] {STANDARDS_INJECTION[s]}" for s in standards if s in STANDARDS_INJECTION
-    )
-    if injected_standards:
-        full_prompt = f"{full_prompt}\n\n## Engineering Standards\n{injected_standards}"
-
-    dispatch_inputs = validate_workflow_inputs(
-        {
-            "target_repository": f"{ORG}/{repo}",
-            "branch": branch,
-            "provider": provider,
-            "prompt": full_prompt[:MAX_INPUT_VALUE_LENGTH],
-        }
-    )
-    endpoint = f"{_DISPATCH_WORKFLOW_ENDPOINT}/dispatches"
-    payload = {
-        "ref": "main",
-        "inputs": dispatch_inputs,
-    }
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
-        json.dump(payload, f)
-        pf = f.name
-    try:
-        code, _, stderr = await run_cmd(
-            ["gh", "api", endpoint, "--method", "POST", "--input", pf],
-            timeout=30,
-            cwd=REPO_ROOT,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(pf).unlink()
+    full_prompt = build_full_prompt(prompt, list(standards), prompt_notes_data)
+    code, stderr = await trigger_workflow_dispatch(repo, branch, provider, full_prompt, run_cmd_fn=run_cmd)
     _record_dispatch_target(code == 0, stderr)
     if code != 0:
         log.warning("code_request_dispatch failed: %s", sanitize_log_value(stderr.strip()[:200]))

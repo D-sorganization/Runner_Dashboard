@@ -5893,7 +5893,40 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "List Code Requests",
+        "tags": ["code_requests"]
+      },
+      "post": {
+        "description": "Create a new Code Request in draft or triage state.",
+        "operationId": "create_code_request_api_code_requests_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Code Request Api Code Requests Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Code Request",
         "tags": ["code_requests"]
       }
     },
@@ -5974,6 +6007,105 @@
           }
         ],
         "summary": "Save Prompt Template",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}": {
+      "get": {
+        "description": "Get a Code Request by id or issue number.",
+        "operationId": "get_code_request_api_code_requests__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Code Request Api Code Requests  Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Code Request",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/transition": {
+      "post": {
+        "description": "Transition a Code Request lifecycle state.",
+        "operationId": "transition_code_request_api_code_requests__id__transition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Transition Code Request Api Code Requests  Id  Transition Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Transition Code Request",
         "tags": ["code_requests"]
       }
     },

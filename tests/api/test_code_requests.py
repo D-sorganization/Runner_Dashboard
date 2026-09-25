@@ -160,3 +160,119 @@ def test_deprecated_feature_requests_endpoints(client: TestClient, cr_env: tuple
     assert d_resp.headers.get("Deprecation") == "true"
     assert d_resp.headers.get("Link") == '</api/code-requests/dispatch>; rel="successor-version"'
     assert d_resp.json()["status"] == "dispatched"
+
+
+def test_create_and_get_code_request(client: TestClient, cr_env: tuple[Path, Path, Path]) -> None:
+    """POST /api/code-requests creates in draft or triage; GET returns typed detail."""
+    payload = {
+        "repository": "Runner_Dashboard",
+        "prompt": "Create test feature A",
+        "state": "draft",
+        "standards": ["tdd", "dbc"],
+        "board_route": "auto",
+    }
+    with patch(
+        "code_requests.store.gh_api_write",
+        new=AsyncMock(
+            return_value={
+                "number": 101,
+                "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/101",
+            }
+        ),
+    ):
+        resp = client.post("/api/code-requests", json=payload)
+    assert resp.status_code == 200
+    created = resp.json()
+    assert created["state"] == "draft"
+    assert created["issue_number"] == 101
+    assert created["prompt"] == "Create test feature A"
+    assert created["repository"] == "Runner_Dashboard"
+    req_id = created["id"]
+
+    # GET /api/code-requests/{id}
+    get_resp = client.get(f"/api/code-requests/{req_id}")
+    assert get_resp.status_code == 200
+    detail = get_resp.json()
+    assert detail["id"] == req_id
+    assert detail["state"] == "draft"
+    assert detail["standards"] == ["tdd", "dbc"]
+
+    # Non-existent ID
+    missing = client.get("/api/code-requests/cr-non-existent")
+    assert missing.status_code == 404
+
+    # Create submitted in triage
+    payload_triage = {
+        "repository": "Runner_Dashboard",
+        "prompt": "Create test feature B",
+        "submitted": True,
+    }
+    with patch(
+        "code_requests.store.gh_api_write",
+        new=AsyncMock(
+            return_value={
+                "number": 102,
+                "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/102",
+            }
+        ),
+    ):
+        resp2 = client.post("/api/code-requests", json=payload_triage)
+    assert resp2.status_code == 200
+    assert resp2.json()["state"] == "triage"
+
+
+def test_transition_code_request(client: TestClient, cr_env: tuple[Path, Path, Path]) -> None:
+    """POST /api/code-requests/{id}/transition handles transitions and raises 400 on illegal jumps."""
+    with patch(
+        "code_requests.store.gh_api_write",
+        new=AsyncMock(
+            return_value={
+                "number": 103,
+                "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/103",
+            }
+        ),
+    ):
+        create_resp = client.post(
+            "/api/code-requests",
+            json={"repository": "Runner_Dashboard", "prompt": "Needs transition"},
+        )
+    assert create_resp.status_code == 200
+    req_id = create_resp.json()["id"]
+
+    # Transition draft -> triage
+    with patch("code_requests.store.gh_api_write", new=AsyncMock(return_value={})):
+        trans_resp = client.post(
+            f"/api/code-requests/{req_id}/transition",
+            json={"to_state": "triage", "reason": "Ready for triage"},
+        )
+    assert trans_resp.status_code == 200
+    trans_data = trans_resp.json()
+    assert trans_data["state"] == "triage"
+    assert len(trans_data["audit_trail"]) == 1
+    assert trans_data["audit_trail"][0]["from_state"] == "draft"
+    assert trans_data["audit_trail"][0]["to_state"] == "triage"
+
+    # Illegal transition: triage -> done
+    with patch("code_requests.store.gh_api_write", new=AsyncMock(return_value={})):
+        bad_resp = client.post(
+            f"/api/code-requests/{req_id}/transition",
+            json={"to_state": "done", "reason": "Skip execution"},
+        )
+    assert bad_resp.status_code == 400
+
+    # Non-existent ID -> 404
+    not_found_resp = client.post(
+        "/api/code-requests/non-existent-id/transition",
+        json={"to_state": "triage", "reason": "random"},
+    )
+    assert not_found_resp.status_code == 404
+
+
+def test_scope_authorization(cr_env: tuple[Path, Path, Path]) -> None:
+    """Bots are allowed to create requests only when holding code-requests.manage."""
+    p_bot_allowed = Principal(id="allowed-bot", type="bot", name="Allowed", scopes=["code-requests.manage"])
+    p_bot_denied = Principal(id="unauth-bot", type="bot", name="Denied", scopes=["viewer"])
+
+    assert principal_has_scope(p_bot_allowed, "code-requests.manage")
+    assert not principal_has_scope(p_bot_denied, "code-requests.manage")
+    assert not principal_has_scope(p_bot_denied, "feature-requests.manage")
