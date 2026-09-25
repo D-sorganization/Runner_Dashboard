@@ -1,8 +1,55 @@
-# Current handoff — SC-B6: Action proposals from conversations with risk-based approval gates (#1313)
+# Current handoff — SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification (#1321)
 
 Last updated: 2026-09-25
 
 ## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1321-maintenance-catalogue`; Issue #1321; DL-#1321.
+
+## Work
+
+- `backend/staff/maintenance.py`:
+  - Created standalone typed maintenance engine registering 13 allowlisted fleet operations:
+    - `maintenance.runner_start`, `maintenance.runner_stop`, `maintenance.runner_restart`, `maintenance.runner_drain`
+    - `maintenance.group_start`, `maintenance.group_stop`
+    - `maintenance.fleet_control`
+    - `maintenance.queue_purge_stale`
+    - `maintenance.run_cancel`, `maintenance.run_rerun`
+    - `maintenance.trim_worktrees`, `maintenance.vacuum_sqlite`, `maintenance.diagnose`
+  - Integrated safety rails:
+    - Preflight checks: active/busy runners require `maintenance.runner_drain` before `runner_stop` or `runner_restart` unless explicit `force=True` is provided.
+    - Blast-radius bounds: multi-runner batches bounded to `MAX_BATCH_RUNNERS = 10`.
+    - Single-host limits: disruptive actions like `fleet_control` disallow `host="all"`.
+    - Cooldown tracker: thread-safe `MaintenanceCooldownTracker` enforces cooldown intervals between consecutive invocations on same action/target.
+    - Dry-run planning: `dry_run=True` generates complete execution preview plans without mutating runner states.
+    - Partial failure aggregation: multi-target batch operations report individual per-target successes and errors in aggregate output.
+    - SC-A8 SQLite audit logging: every maintenance operation logs audit record with outcome, detail, and fail-closed durability.
+  - Verification routines (`verify_maintenance`):
+    - Confirms expected runner state transitions (`stopped`, `online`, `active`) and raises `MaintenanceVerificationError` on mismatch.
+- `backend/staff/actions.py`:
+  - Registered 13 typed maintenance actions via `register_maintenance_actions(ACTION_REGISTRY)` on startup.
+- `backend/staff/action_executors.py`:
+  - Delegated `execute_maintenance_action` to `execute_maintenance` and `verify_maintenance_action` to `verify_maintenance`.
+
+## Validation
+
+- `pytest tests/unit/test_staff_maintenance.py tests/api/test_staff_maintenance_api.py tests/unit/test_staff_actions.py tests/api/test_staff_proposals_api.py`: 31 passed in 3.99s.
+- `pytest tests/test_no_duplicate_top_level_functions.py`: 3 passed in 1.68s.
+- `ruff check`: All checks passed.
+- `ruff format --check`: 210 files already formatted.
+- `mypy backend/`: Success: no issues found in 208 source files.
+- Line limits: All new and modified files strictly <= 500 lines (`maintenance.py`: 460, `actions.py`: 439, `action_executors.py`: 219, `test_staff_maintenance.py`: 196, `test_staff_maintenance_api.py`: 151).
+
+## Next
+
+1. Push branch `feat/1321-maintenance-catalogue`.
+2. Open PR with GitHub CLI and enable auto-merge squash.
+3. Verify CI passes and PR auto-merges into main.
+4. Release lease on issue #1321.
+
+---
+
+## Prior handoff — SC-B6: Action proposals from conversations with risk-based approval gates (#1313)
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1313-action-proposals`; Issue #1313; DL-#1313; PR #1396.
 

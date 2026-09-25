@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1313 · SC-B6: Action proposals from conversations with risk-based approval gates
+### DL-#1321 · SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1321 (epic #1351 / umbrella #1354)
+- **Branch:** `feat/1321-maintenance-catalogue`
+- **PR:** pending
+- **Paths:** `backend/staff/maintenance.py`, `backend/staff/actions.py`, `backend/staff/action_executors.py`, `tests/unit/test_staff_maintenance.py`, `tests/api/test_staff_maintenance_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_maintenance.py tests/api/test_staff_maintenance_api.py tests/unit/test_staff_actions.py tests/api/test_staff_proposals_api.py` 31 passed; `pytest tests/test_no_duplicate_top_level_functions.py` passed; ruff clean; mypy 0 errors in 208 files; all modules <= 500 lines)
+- **Summary:** Implemented typed maintenance operations with safety rails (`backend/staff/maintenance.py`) integrated into `ActionRegistry` (`backend/staff/actions.py`, `backend/staff/action_executors.py`). Registered 13 maintenance actions: `maintenance.runner_start`, `maintenance.runner_stop`, `maintenance.runner_restart`, `maintenance.runner_drain`, `maintenance.group_start`, `maintenance.group_stop`, `maintenance.fleet_control`, `maintenance.queue_purge_stale`, `maintenance.run_cancel`, `maintenance.run_rerun`, `maintenance.trim_worktrees`, `maintenance.vacuum_sqlite`, and `maintenance.diagnose`. Enforced preflight checks (busy runners require drain before stop/restart unless `force=True`), blast-radius bounds (`max_count <= 10`), single-host restriction on disruptive operations (`fleet_control` disallows `host="all"`), cooldown tracker preventing rapid consecutive operations per action and target, dry-run planning returning detailed action plans without side effects, per-target partial failure aggregation, and SC-A8 SQLite audit logging. Verification handlers check real runner status (`stopped`, `online`, `active`) and raise `MaintenanceVerificationError` on mismatch.
+- **Next step:** Push branch, open PR with GitHub CLI, verify CI passes, auto-merge, and release lease on #1321.
+
+### DL-#1313 · SC-B6: Action proposals from conversations with risk-based approval gates
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1313 (epic #1348 / umbrella #1354)
 - **Branch:** `feat/1313-action-proposals`
 - **PR:** #1396
 - **Paths:** `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/staff/conversation_models.py`, `backend/staff/conversations.py`, `backend/routers/staff_proposals.py`, `backend/routers/assistant.py`, `tests/unit/test_staff_actions.py`, `tests/api/test_staff_proposals_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`pytest tests/unit/test_staff_actions.py tests/api/test_staff_proposals_api.py` 15 passed; `pytest tests/clients` 121 passed; ruff clean; mypy 0 errors in 207 files; all modules <= 500 lines)
+- **Last verified:** 2026-09-24 (shipped in PR #1396)
 - **Summary:** Replaced legacy stubs with unified `ActionRegistry` (`staff/actions.py`, `staff/action_executors.py`); approval policies (`read`/`low` auto-execute, `medium` operator approve with `staff.approve` scope, `high`/`owner-only` owner approve); 24h proposal expiry and terminal replay protection; role permission gating (unauthorized roles rejected with 403 Forbidden); post-execution verifiers validating actual state changes; dispatched runs and action outcomes post `action_result` and `run_card` messages back to conversation threads (SC-B7), fully audited in `staff_audit` (SC-A8). Mounted REST endpoints in `backend/routers/staff_proposals.py` under `/api/v1/staff`: `GET /api/v1/staff/actions`, `GET /api/v1/staff/actions/{name}`, `POST /api/v1/staff/proposals`, `POST /api/v1/staff/proposals/{id}/decide` (with immediate execution option), and `POST /api/v1/staff/proposals/{id}/execute`.
-- **Next step:** Verify CI passes on PR #1396, auto-merge, and release lease on #1313.
+- **Next step:** None (shipped in PR #1396).
 
 ### DL-#1334 · SC-F5: External Agent Connection Guides & Troubleshooting
 
