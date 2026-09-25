@@ -189,7 +189,11 @@ export function AssistantSidebar(props: AssistantSidebarProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then(function (r) {
+      .then(async function (r) {
+        if (r.status === 410) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || "Retired: Please migrate to Staff Console at /api/v1/staff/threads.");
+        }
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
       })
@@ -203,6 +207,7 @@ export function AssistantSidebar(props: AssistantSidebarProps) {
         setTranscript(function (t) { return t.concat([errMsg]); });
       })
       .finally(function () { setLoading(false); });
+
   }
 
   function handleTranscription(text: string) {
@@ -464,8 +469,15 @@ export function AssistantSidebar(props: AssistantSidebarProps) {
           }, "×"),
         ),
       ),
+      h("div", {
+        style: { padding: "6px 12px", background: "var(--bg-tertiary)", borderBottom: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" },
+      },
+        h("span", null, "Chat has moved to Staff Console"),
+        h("a", { href: "#staff", style: { color: "var(--accent-blue)", textDecoration: "none", fontWeight: 600 } }, "Staff Console →"),
+      ),
       settingsPanel,
       chatPanel,
     ) : null,
   );
 }
+

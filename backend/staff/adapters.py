@@ -357,6 +357,13 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         lease_as="local",  # RM has no per-harness id for local models
         notes="Claude Code against Ollama's Anthropic-compatible API; never touches the Claude seat's credentials.",
     ),
+    "maxwell": ProviderAdapter(
+        provider_id="maxwell",
+        label="Maxwell Daemon",
+        executable="maxwell",
+        argv=("-p", "{prompt}"),
+        notes="Maxwell-Daemon participant and provider for local desktop agent workflows.",
+    ),
 }
 
 

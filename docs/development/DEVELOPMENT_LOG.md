@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1330 · SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1330 (epic #1352 / umbrella #1354)
+- **Branch:** `feat/1330-unify-chat-surfaces`
+- **PR:** #1435
+- **Paths:** `backend/routers/assistant.py`, `backend/staff/adapters.py`, `backend/staff/router_models.py`, `frontend/src/pages/AssistantSidebar.tsx`, `frontend/src/pages/Maxwell/CodebaseChat.tsx`, `frontend/src/pages/MaxwellPanels.tsx`, `frontend/src/pages/__tests__/AssistantSidebar.test.tsx`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/shell/__tests__/HelpAbout.test.tsx`, `tests/test_assistant_retirement.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest test_assistant_retirement 5/5 passing, all affected pytest suites 37/37 passing; vitest 1303/1303 passing; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; all files <= 500 lines)
+- **Summary:** Folded stray chat surfaces into the Staff Console: (1) Updated `POST /api/assistant/chat` to return HTTP 410 Gone with successor Link header pointing to `/api/v1/staff/threads` and Sunset header; (2) Folded codebase Q&A into Cartographer and Librarian with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; (3) Added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; (4) Added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); (5) Added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`.
+- **Next step:** Push branch `feat/1330-unify-chat-surfaces`, monitor PR #1435 CI to green merge, release lease, and clean up.
+
 ### DL-#1345 · SC-G7: Mobile Projects renders natively (first step of Classic-layout removal)
 
 - **State:** in_review
@@ -33,15 +46,15 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1340 · SC-C7: Routing evaluation set and regression check for Barb
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1340 (epic #1349 / umbrella #1354)
 - **Branch:** `feat/1340-barb-routing-eval`
 - **Paths:** `tests/staff/routing_eval/models.py`, `tests/staff/routing_eval/dataset.py`, `tests/staff/routing_eval/engine.py`, `tests/staff/routing_eval/test_barb_routing_eval.py`, `scripts/eval_barb_routing.py`, `backend/routers/staff_routing.py`, `tests/api/test_staff_routing_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (pytest routing eval 6/6 passing; pytest staff routing api 5/5 passing; scripts/eval_barb_routing.py 100% accuracy; gen-api-client freshness passed; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (Merged to main via PR #1442, all 22 CI checks passed)
 - **Summary:** Implemented SC-C7 routing evaluation set and regression check for Barb: (1) Curated 80-case evaluation dataset across 10 categories with expected targets and clarify/answer outcomes; (2) Created CI regression test suite running deterministic pre-router; (3) Built `scripts/eval_barb_routing.py` CLI runner for evaluating full router accuracy, supporting `--post-board` proposal creation; (4) Added candidate feedback ingestion from routing overrides (`load_candidate_cases_from_feedback()`); (5) Exposed `GET /api/v1/staff/routing/eval` REST endpoint.
-- **Next step:** Push branch `feat/1340-barb-routing-eval`, open PR with Fixes #1340, enable auto-merge, verify CI passes, monitor merge.
+- **Next step:** Merged PR #1442 to main via auto-merge.
 
 ### DL-#1459 · Restore green main: split frontend FleetCommand test suite strictly <= 500 lines
 
@@ -67,7 +80,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1346 · SC-G8: Delete dead frontend code
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1346 (epic #1353)
 - **Branch:** `chore/1346-dead-frontend`
@@ -105,7 +118,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1343 · SC-D9: Accessibility and keyboard pass on the Staff Console
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity (implementation), claude (review and rework)
 - **Issue:** #1343 (epic #1350 / umbrella #1354)
 - **Branch:** `agy/issue-1343`
@@ -114,11 +127,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`f9333a9c` baseline; vitest 93/93, tsc 0 errors)
 - **Summary:** The thread is a polite `role="log"` and the only live region. Focus follows a thread switch through the Composer (`focusOnThreadChange`); on mobile it goes to the heading and back to search. Focus rings are visible, scrolling respects reduced motion, status labels are clearer, and the Staff shortcuts are listed in the global `?` Help panel. The axe and keyboard-walkthrough e2e tests assert for real.
-- **Next step:** Merge PR #1433 once CI's Playwright a11y run is green.
+- **Next step:** Shipped in PR #1433 (commit `5c21226`).
 
 ### DL-#1281 · CR-1: Rename Feature Requests → Code Requests with back-compat aliases
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** local
 - **Issue:** #1281 (epic #1279)
 - **Branch:** `feat/1281-code-requests-rename`
@@ -126,13 +139,13 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest all passing; 153/153 frontend vitest test suites passing with 1302 tests; npm run typecheck clean; ruff check clean; ruff format clean; mypy clean; bash scripts/gen-api-client.sh --check clean; all files strictly <= 500 lines)
 - **Summary:** Renamed Feature Requests to Code Requests throughout backend and frontend while maintaining complete backward compatibility: (1) Added `/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch` routes and preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`; (2) Added `code-requests.manage` scope aliased bidirectionally with `feature-requests.manage` in `backend/identity.py`; (3) Idempotently migrated stored history from `feature_requests.json` to `code_requests.json` with `.migrated` marker without deleting original; (4) Added `frontend/src/pages/CodeRequests.tsx`, `CodeRequestsHistory.tsx`, `CodeRequestsPage.tsx`, `codeRequestsTypes.ts` with shims in `FeatureRequests*.tsx`, updated nav tab to `code-requests` ("Code Requests") with redirect from `feature-requests`; (5) Synchronized OpenAPI schema and generated TypeScript client types; (6) Updated docs and test integrity suites.
-- **Next step:** Push branch `feat/1281-code-requests-rename`, open PR with Closes #1281, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+- **Next step:** Shipped in PR #1432.
 
 ### DL-#1327 · SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate
 
 ### DL-#1333 · SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1333 (epic #1351 / umbrella #1354)
 - **Branch:** `feat/1333-maintenance-ui`
@@ -140,7 +153,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (vitest 72/72 tests passing across Fleet and cards; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; pytest router & maintenance 12/12 passing; test_color_literal_budget passing; all files <= 500 lines)
 - **Summary:** Implemented SC-E6 Maintenance row actions on the Fleet page: (1) Added accessible `FleetRowActions` dropdown menu for machines and runners covering 5 actions ("Bring online", "Take offline", "Restart", "Compact disk", "Diagnose"); (2) Followed Owner decision (2026-09-23) routing mutating actions through Barb to Maintenance, and read-only actions (Diagnose) directly to Maintenance; (3) Added dry-run display with planned steps, verification confirmations, and Barb routing badges to `ActionCard`; (4) Built `MaintenanceActionModal` presenting pre-filled action card with dry-run shown, executing upon approval, verifying postcondition state cleanly, and refreshing fleet data; (5) Added maintenance action keyword rules to `router_models.py`.
-- **Next step:** Push branch `feat/1333-maintenance-ui`, open PR with Fixes #1333, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+- **Next step:** Shipped in PR #1430.
 
 ### DL-#1325 · SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules
 

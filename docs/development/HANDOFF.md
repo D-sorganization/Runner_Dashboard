@@ -1,3 +1,35 @@
+# Current handoff — SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console (#1330)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1330-unify-chat-surfaces`; Issue #1330; DL-#1330; PR #1435.
+
+## Objective and Status
+
+- SC-D11: Fold the three stray chat surfaces into the Staff Console:
+  1. Retired legacy assistant chat endpoint: `POST /api/assistant/chat` in `backend/routers/assistant.py` returns HTTP 410 Gone with `Link: </api/v1/staff/threads>; rel="successor-version"` and `Sunset: Wed, 25 Sep 2026 00:00:00 GMT` headers, plus JSON body with pointer to `/api/v1/staff/threads`.
+  2. Codebase Q&A: Folded codebase Q&A into Cartographer (architecture, dependency graphs, where code lives) and Librarian (documentation, endpoint specs, style guides) with role handoff cards and `onNavigate` buttons in `frontend/src/pages/Maxwell/CodebaseChat.tsx` and `frontend/src/shell/HelpAbout.tsx`.
+  3. Routing keywords & provider registry: Added codebase Q&A routing keywords (`"where is"`, `"codebase question"`, `"codebase map"`, `"codebase search"`, `"ask codebase"`, `"locate code"`, `"where is handled"`) to `cartographer`, documentation Q&A keywords to `librarian`, registered `maxwell` in `ROLE_KEYWORD_RULES` in `backend/staff/router_models.py`, and added `maxwell` provider adapter to `ADAPTERS` in `backend/staff/adapters.py`.
+  4. Maxwell integration: Surfaced Staff Console integration link and multi-agent context in `MaxwellChatPanel` (`frontend/src/pages/MaxwellPanels.tsx`).
+  5. Assistant sidebar: Added retirement notice banner pointing to Staff Console and 410 redirect handling in `frontend/src/pages/AssistantSidebar.tsx`.
+- Quality gates:
+  - All pytest tests passing (37/37 across assistant retirement, contract, tools, router).
+  - All vitest tests passing (1303/1303 across 153 test files).
+  - TypeScript typecheck passing (0 errors).
+  - ESLint passing (0 warnings).
+  - Ruff check & format passing.
+  - All modified files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Complete rebase and push `feat/1330-unify-chat-surfaces`.
+2. Monitor PR #1435 through CI to green squash-merge (no `--admin`).
+3. Release lease on #1330 and clean up worktree.
+
+---
+
 # Current handoff — SC-G7 first step: mobile Projects renders natively (#1345)
 
 Last updated: 2026-09-25
@@ -60,7 +92,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — Restore green main: split FleetCommand tests <= 500 lines (#1459)
+# Current handoff — SC-G8 first cut: delete never-mounted frontend primitives (#1346)
 
 Last updated: 2026-09-25
 
