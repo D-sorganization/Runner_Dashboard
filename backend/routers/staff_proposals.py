@@ -35,7 +35,10 @@ class CreateProposalRequest(BaseModel):
 class DecideProposalRequest(BaseModel):
     decision: str = Field(description="Must be 'approved' or 'denied'")
     reason: str = Field(default="", description="Reason for the decision")
-    execute: bool = Field(default=False, description="Whether to execute the action immediately upon approval")
+    execute: bool = Field(
+        default=False,
+        description="Whether to execute the action immediately upon approval",
+    )
 
 
 # ─── Actions Catalogue Endpoints ─────────────────────────────────────────────
@@ -242,3 +245,32 @@ async def execute_approved_proposal(
     except Exception as exc:  # noqa: BLE001
         log.exception("Error executing proposal %s: %s", proposal_id, exc)
         raise HTTPException(status_code=500, detail=f"Execution error: {exc}") from exc
+
+
+class DetectStalledRequest(BaseModel):
+    queued_runs: list[dict[str, Any]] | None = None
+    in_progress_runs: list[dict[str, Any]] | None = None
+    runners: list[dict[str, Any]] | None = None
+    known_hosts: list[str] | None = None
+    auto_remediate: bool = True
+
+
+@router.post("/maintenance/detect-stalled")
+async def detect_stalled_jobs(
+    body: DetectStalledRequest | None = None,
+    caller: Principal = Depends(require_scope("staff.read")),  # noqa: B008
+) -> dict[str, Any]:
+    """Execute stalled-job detection scan with optional auto-remediation (SC-E5)."""
+    from staff.maintenance_detect import StalledJobDetector
+
+    req = body or DetectStalledRequest()
+    detector = StalledJobDetector()
+    report = detector.run_scan(
+        queued_runs=req.queued_runs,
+        in_progress_runs=req.in_progress_runs,
+        runners=req.runners,
+        known_hosts=set(req.known_hosts) if req.known_hosts else None,
+        auto_remediate=req.auto_remediate,
+        caller=caller,
+    )
+    return report.to_dict()

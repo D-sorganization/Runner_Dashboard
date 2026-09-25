@@ -173,7 +173,10 @@ def is_owner(principal: Principal | None) -> bool:
         return True
     if "owner" in scopes or "admin" in scopes:
         return True
-    if principal.id.lower() in ("owner", "operator") or principal.name.lower() in ("owner", "operator"):
+    if principal.id.lower() in ("owner", "operator") or principal.name.lower() in (
+        "owner",
+        "operator",
+    ):
         return True
     return False
 
@@ -193,7 +196,11 @@ def check_approval_policy(
         raise ProposalExpiredError(f"Proposal {prop.id} has expired (exceeded 24h TTL)")
 
     risk = action.risk_class if action else prop.risk
-    if risk in (ActionRiskClass.HIGH, ActionRiskClass.CRITICAL, ActionRiskClass.OWNER_ONLY):
+    if risk in (
+        ActionRiskClass.HIGH,
+        ActionRiskClass.CRITICAL,
+        ActionRiskClass.OWNER_ONLY,
+    ):
         if not is_owner(approver):
             raise PermissionError(f"Action '{prop.action}' has risk '{risk}' and requires owner approval")
 
@@ -223,6 +230,9 @@ def check_role_permission(
     if "*" in allowed or "*" in fleet_acts or act_name in allowed or act_name in fleet_acts:
         return True
 
+    if role_name == "maintenance" and act_name.startswith("maintenance."):
+        return True
+
     for pat in allowed | fleet_acts:
         if pat.endswith(".*") and act_name.startswith(pat[:-2] + "."):
             return True
@@ -248,7 +258,12 @@ def execute_proposal(
 
     if is_proposal_expired(prop):
         if prop.state == "proposed":
-            s.transition_proposal_state(proposal_id, "expired", reason="Expired after 24h", audit_store=audit_store)
+            s.transition_proposal_state(
+                proposal_id,
+                "expired",
+                reason="Expired after 24h",
+                audit_store=audit_store,
+            )
         raise ProposalExpiredError(f"Proposal {proposal_id} has expired (exceeded 24h TTL)")
 
     if prop.state in ("denied", "expired", "done"):
@@ -257,10 +272,15 @@ def execute_proposal(
     action_def = ACTION_REGISTRY.get(prop.action)
     if not action_def:
         s.transition_proposal_state(
-            proposal_id, "failed", reason=f"Unknown action '{prop.action}'", audit_store=audit_store
+            proposal_id,
+            "failed",
+            reason=f"Unknown action '{prop.action}'",
+            audit_store=audit_store,
         )
         return ActionResult(
-            success=False, error=f"Action '{prop.action}' not registered", failure_class="unknown_action"
+            success=False,
+            error=f"Action '{prop.action}' not registered",
+            failure_class="unknown_action",
         )
 
     proposing_role = str(prop.params.get("proposing_role") or "")
@@ -280,7 +300,12 @@ def execute_proposal(
     if not auto_execute:
         check_approval_policy(action_def, prop, approver)
 
-    s.transition_proposal_state(proposal_id, "executing", decided_by=format_caller(approver), audit_store=audit_store)
+    s.transition_proposal_state(
+        proposal_id,
+        "executing",
+        decided_by=format_caller(approver),
+        audit_store=audit_store,
+    )
 
     ctx = ActionContext(
         thread_id=prop.thread_id,
@@ -323,7 +348,12 @@ def execute_proposal(
                 author="system",
                 kind="action_result",
                 body_md=f"**Action Executed**: `{prop.action}`\n\nResult: {formatted_res}",
-                meta={"proposal_id": prop.id, "action": prop.action, "success": True, "result": res.result},
+                meta={
+                    "proposal_id": prop.id,
+                    "action": prop.action,
+                    "success": True,
+                    "result": res.result,
+                },
             )
             if res.run_id:
                 s.add_message(
@@ -368,7 +398,13 @@ ACTION_REGISTRY.register(
     ActionDefinition(
         name="staff.dispatch",
         description="Dispatch an AI staff role to work on an issue, PR, or prompt.",
-        params_schema={"role": "string", "repo": "string?", "prompt": "string?", "issue": "int?", "pr": "int?"},
+        params_schema={
+            "role": "string",
+            "repo": "string?",
+            "prompt": "string?",
+            "issue": "int?",
+            "pr": "int?",
+        },
         required_scope="staff.dispatch",
         risk_class=ActionRiskClass.MEDIUM,
         executor=execute_staff_dispatch,
@@ -380,7 +416,12 @@ ACTION_REGISTRY.register(
     ActionDefinition(
         name="staff.review_pr",
         description="Request a PR review from a specialist staff role.",
-        params_schema={"repo": "string", "pr": "int", "reviewer": "string?", "focus": "string?"},
+        params_schema={
+            "repo": "string",
+            "pr": "int",
+            "reviewer": "string?",
+            "focus": "string?",
+        },
         required_scope="staff.dispatch",
         risk_class=ActionRiskClass.LOW,
         executor=execute_review_pr,
@@ -392,7 +433,11 @@ ACTION_REGISTRY.register(
     ActionDefinition(
         name="staff.hold",
         description="Set an operational hold locking a role or policy.",
-        params_schema={"text": "string", "applies_to": "list[string]?", "lifted_when": "string?"},
+        params_schema={
+            "text": "string",
+            "applies_to": "list[string]?",
+            "lifted_when": "string?",
+        },
         required_scope="staff.holds.write",
         risk_class=ActionRiskClass.HIGH,
         executor=execute_staff_hold,
@@ -416,7 +461,12 @@ ACTION_REGISTRY.register(
     ActionDefinition(
         name="code_request.create",
         description="Create a tracked Code Request work item.",
-        params_schema={"title": "string", "repo": "string", "description": "string?", "priority": "string?"},
+        params_schema={
+            "title": "string",
+            "repo": "string",
+            "description": "string?",
+            "priority": "string?",
+        },
         required_scope="code_requests.write",
         risk_class=ActionRiskClass.MEDIUM,
         executor=execute_code_request_create,
