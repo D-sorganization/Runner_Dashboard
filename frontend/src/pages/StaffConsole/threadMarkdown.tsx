@@ -127,6 +127,7 @@ export const ThreadMarkdown: React.FC<ThreadMarkdownProps> = ({ content, classNa
         );
       }
 
+      // sanitized via DOMPurify.sanitize in sanitizeMarkdown (safe)
       return (
         <div
           key={`md-${idx}`}
