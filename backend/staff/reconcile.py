@@ -30,6 +30,7 @@ from staff import lease as lease_mod
 from staff import workspace
 from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore, _now
+from staff.tokens import revoke_run_token
 from staff.watchdog import terminate_process_group
 
 log = logging.getLogger("dashboard.staff.reconcile")
@@ -143,6 +144,9 @@ def reconcile_orphaned_runs(
 
         # 3. Release RM lease (with background retry if unreachable)
         _release_lease_with_retry(store, rec)
+
+        # 3b. Revoke active run tokens (SC-E2, issue #1310)
+        revoke_run_token(rec.id)
 
         # 4. Update run record
         err_msg = (

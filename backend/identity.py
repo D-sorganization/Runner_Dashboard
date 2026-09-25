@@ -32,6 +32,7 @@ class Principal(BaseModel):
     type: str  # 'human' or 'bot'
     name: str
     roles: list[str] = []
+    scopes: list[str] = []
     github_username: str | None = None
     email: str | None = None
     quotas: Quota = Field(default_factory=Quota)
@@ -52,6 +53,8 @@ class IdentityManager:
         self.tokens_path = self.config_dir / "tokens.yml"
         self.principals: dict[str, Principal] = {}
         self.tokens: list[TokenRecord] = []
+        self._ephemeral_principals: dict[str, Principal] = {}
+        self._ephemeral_tokens: dict[str, TokenRecord] = {}
         self.load_principals()
         self.load_tokens()
 
@@ -108,7 +111,7 @@ class IdentityManager:
             raise
 
     def get_principal(self, principal_id: str) -> Principal | None:
-        return self.principals.get(principal_id)
+        return self.principals.get(principal_id) or self._ephemeral_principals.get(principal_id)
 
     def load_tokens(self):
         if not self.tokens_path.exists():
@@ -195,12 +198,41 @@ class IdentityManager:
 
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
+        # Ephemeral run tokens (issue #1310, SC-E2)
+        e_rec = self._ephemeral_tokens.get(token_hash)
+        if e_rec is not None:
+            if e_rec.expires_at and time.time() > e_rec.expires_at:
+                return None
+            return self._ephemeral_principals.get(e_rec.principal_id)
+
         for t in self.tokens:
             if t.token_hash == token_hash:
                 if t.expires_at and time.time() > t.expires_at:
                     return None
                 return self.principals.get(t.principal_id)
         return None
+
+    def add_ephemeral_token(
+        self,
+        token_hash: str,
+        principal: Principal,
+        expires_at: float | None = None,
+        name: str = "",
+    ) -> None:
+        """Register an in-memory ephemeral token bound to an ephemeral principal (#1310)."""
+        self._ephemeral_principals[principal.id] = principal
+        self._ephemeral_tokens[token_hash] = TokenRecord(
+            token_hash=token_hash,
+            principal_id=principal.id,
+            created_at=time.time(),
+            expires_at=expires_at,
+            name=name,
+        )
+
+    def revoke_ephemeral_principal(self, principal_id: str) -> None:
+        """Revoke any in-memory ephemeral principal and associated tokens (#1310)."""
+        self._ephemeral_principals.pop(principal_id, None)
+        self._ephemeral_tokens = {th: t for th, t in self._ephemeral_tokens.items() if t.principal_id != principal_id}
 
 
 def resolve_identity_dir() -> Path:
@@ -363,7 +395,7 @@ SCOPE_PRESETS = {
 
 def principal_has_scope(principal: Principal, required_scope: str) -> bool:
     """True when any of the principal's role presets grants ``required_scope`` (``*`` and ``x.*`` wildcards)."""
-    principal_scopes: set[str] = set()
+    principal_scopes: set[str] = set(principal.scopes)
     for role in principal.roles:
         principal_scopes.update(SCOPE_PRESETS.get(role, []))
     if "*" in principal_scopes:

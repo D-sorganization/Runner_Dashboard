@@ -1,60 +1,58 @@
-# Current handoff — Bounded retry policy for transient staff-run failures and per-provider concurrency (#1303)
+# Current handoff — Short-lived, scoped credentials for staff runs (#1310)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1303-bounded-retry-provider-concurrency`; Issue #1303, epic #1347 / umbrella #1354; DL-#1303.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1310-staff-run-tokens`; Issue #1310 (epic #1351 / umbrella #1354); DL-#1310.
 
 ## Work
 
-- `backend/staff/plan.py`:
-  - Extracted `RunRequest` and `RunPlan` dataclasses from `runner.py` into standalone module to adhere strictly to <= 500 lines rule.
-- `backend/staff/retry.py`:
-  - Defined retry policies, classification sets (`RETRYABLE_FAILURE_CLASSES`, `NON_RETRYABLE_FAILURE_CLASSES`).
-  - Implemented exponential backoff with full jitter (`compute_backoff`).
-  - Implemented retry eligibility evaluation (`should_retry`) checking max attempts, retryable failure class, and role budget limits.
-  - Implemented provider fallback chain logic (`next_fallback_provider`).
-  - Implemented post-execution retry handler (`handle_post_execution_retry`) which dispatches next attempt or schedules it for backoff.
+- `backend/staff/tokens.py`:
+  - Added catalog `FLEET_ACTION_SCOPES` mapping 12 maintenance actions (`runner.*`, `fleet.*`, `queue.*`, `run.*`, `host.*`, `dashboard.*`) to route scopes (`runners.control`, `fleet.control`, `workflows.control`, `system.control`, `fleet.maintain`).
+  - Added `ACTION_POLICY` frozenset and `resolve_run_scopes(fleet_actions)` calculating intersection.
+  - Implemented `mint_run_token(role, run_id, fleet_actions, ttl_seconds)`: creates ephemeral `Principal(id=f"staff:{role}:{run_id}")` with `roles=[f"staff-run:{run_id}"]` and resolved scopes, sets `SCOPE_PRESETS[role_preset]`, generates raw Bearer token, stores hash in `identity_manager.add_ephemeral_token`.
+  - Implemented `revoke_run_token(run_id)`: cleans up ephemeral principal and tokens from `identity_manager` and pops preset from `SCOPE_PRESETS`.
+- `backend/identity.py`:
+  - Added `scopes: list[str] = []` to `Principal`.
+  - Enhanced `IdentityManager` with in-memory `_ephemeral_principals` and `_ephemeral_tokens` stores.
+  - Updated `verify_token` to check ephemeral tokens first with TTL expiration check, and `get_principal` to consult ephemeral principals.
+  - Added `add_ephemeral_token` and `revoke_ephemeral_principal`.
+  - Updated `principal_has_scope` to check `principal.scopes` alongside role presets.
+- `backend/staff/schema.json` & `backend/staff/validator.py`:
+  - Added `fleet_actions` and `approvals` to `permissions` properties matching `Repository_Management/staff/schema.json` (RM#1734 / SC-E1).
+  - Validates `fleet_actions` against `FLEET_ACTIONS` enum and validates action approvals with default tightening policy enforcement.
 - `backend/staff/roles.py`:
-  - Added `max_attempts` (default 2) and `fallback_providers` to `RoleSpec`, `to_dict()`, and `parse_role()`.
-- `backend/staff/store.py`:
-  - Added columns `retry_of`, `attempt`, `max_attempts`, `next_attempt_at`, and `fallback_provider` to `RunRecord` and `_ADDED_COLUMNS` with SQLite migration.
-  - Added `get_attempts()` and `get_pending_retries()`.
-  - Added `logical_only: bool = True` to `list_runs()`, filtering out child retry attempts by default from roster run lists.
-- `backend/staff/models.py`:
-  - Added retry fields to `StaffRunRecord` and `attempts: list[StaffRunRecord]` to `StaffRunDetailResponse`.
-- `backend/routers/staff.py`:
-  - Aggregated attempt chain in `get_run()` response.
-  - Preserved `logical_only=True` default in `list_runs()`.
+  - Added `fleet_actions` and `approvals` properties on `RoleSpec`.
+  - Added `_parse_permissions` helper preserving action collections in `permissions` and exposed in `to_dict()`.
 - `backend/staff/runner.py`:
-  - Re-exported `RunRequest` and `RunPlan` from `plan.py`.
-  - Added per-provider concurrency enforcement via `_get_provider_sema()` with `threading.BoundedSemaphore(max_concurrency)`, acquired ahead of node semaphore.
-  - Hooked post-execution retry handling in `_worker`.
+  - In `_execute()`: computes `wall_clock_timeout` and calls `mint_run_token()`.
+  - If token minting fails, records `failure_class="workspace_error"`, sets run status to `failed`, appends event, and aborts before spawning CLI subprocess.
+  - Injects `FLEET_API_TOKEN` into subprocess `env`.
+  - Ensures `revoke_run_token(rec.id)` is called in `finally` block across all outcomes (success, failure, cancel).
 - `backend/staff/reconcile.py`:
-  - Preserved scheduled retries waiting for backoff (`status == 'queued' and rec.next_attempt_at`).
-- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
-  - Regenerated with `scripts/gen-api-client.sh` and validated drift-free via `--check`.
-- `tests/api/test_staff_retry.py`:
-  - Wrote 20 tests covering exponential backoff, retry matrix, budget stop, fallback chain, serial concurrency enforcement, 429 twice then success acceptance test, and reconciliation survival.
-- `SPEC.md`: Bumped to 2.5.221 with change log and specification updates.
-- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1303 entry.
+  - In `reconcile_orphaned_runs()`: calls `revoke_run_token(rec.id)` for all reconciled orphaned runs.
+- `tests/unit/test_staff_tokens.py`, `tests/api/test_staff_run_tokens.py`, `tests/unit/test_staff_roles.py`:
+  - Added comprehensive unit and API test coverage for minting, scoping, TTL expiration, endpoint authorization (200/403/401), failure handling, and orphan revocation.
+- `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`:
+  - Updated specification change log and active development log entry.
 
 ## Validation
 
-- `pytest tests/api/test_staff_retry.py`: 20 passed.
-- `pytest tests/api/test_staff_retry.py tests/api/test_staff_runner.py tests/api/test_staff_contracts.py tests/unit/test_staff_roles.py tests/unit/test_staff_reconcile.py`: 58 passed.
-- `scripts/gen-api-client.sh --check`: Drift check passed.
-- `ruff check backend/ clients/`: Passed with 0 errors.
-- `ruff format --check backend/ clients/`: Passed with 0 errors.
-- `mypy backend/staff/ backend/routers/staff.py tests/api/test_staff_retry.py`: Passed with 0 errors.
-- All modified and new files strictly <= 500 lines.
+- `pytest tests/unit/test_staff_tokens.py tests/api/test_staff_run_tokens.py tests/unit/test_staff_roles.py`: 18 passed.
+- `pytest tests/api/test_staff_contracts.py`: 6 passed (drift free).
+- `pytest tests/api/test_staff_scopes.py tests/api/test_staff_runner.py tests/unit/test_staff_reconcile.py tests/unit/test_staff_watchdog.py`: 41 passed.
+- `ruff check backend tests`: Passed with 0 errors.
+- `black --line-length 120 --check backend/staff/tokens.py tests/unit/test_staff_roles.py backend/identity.py backend/staff/roles.py backend/staff/runner.py backend/staff/reconcile.py backend/staff/validator.py tests/unit/test_staff_tokens.py tests/api/test_staff_run_tokens.py`: Passed.
+- `mypy backend/staff/tokens.py backend/staff/roles.py backend/staff/runner.py backend/staff/reconcile.py backend/staff/validator.py backend/identity.py`: Passed with 0 errors.
+- All modified and newly created files strictly <= 500 lines.
 
 ## Next
 
-1. Commit and push branch `feat/1303-bounded-retry-provider-concurrency`.
-2. Open PR linking `Fixes #1303` and enable auto-merge.
-3. Once merged, release agent lease on #1303 and clean up worktree.
+1. Commit and push branch `feat/1310-staff-run-tokens`.
+2. Open PR via `gh pr create` with `Fixes #1310`.
+3. Enable auto-merge and wait for CI to merge.
+4. Release coordination lease on Issue #1310 and remove worktree.
 
 ---
 

@@ -37,6 +37,7 @@ from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.store import RunRecord, RunStore, _now, get_store
+from staff.tokens import mint_run_token, revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
 
 log = logging.getLogger("dashboard.staff.runner")
@@ -276,100 +277,117 @@ class StaffRunner:
         argv = adapter.build_command(prompt, str(workdir), plan.model)
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
-        env = {
-            **os.environ,
-            **adapter.runtime_env(),
-            "STAFF_RUN_ID": rec.id,
-            "STAFF_ROLE": plan.role,
-        }
-        exe = shutil.which(adapter.executable) or adapter.executable
-        proc = subprocess.Popen(  # noqa: S603
-            [exe, *argv[1:]],
-            cwd=str(workdir),
-            env=env,
-            stdin=subprocess.PIPE if adapter.prompt_via_stdin else subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-        )
-        with self._lock:
-            self._procs[rec.id] = proc
-            cancelled = rec.id in self._cancel_flags
-        store.update_run(
-            rec.id,
-            status="running",
-            transcript_path=str(transcript),
-            prompt=prompt,
-            pid=proc.pid,
-        )
-        store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
-        if cancelled:
-            terminate_process_group(proc.pid, grace_period=1.0)
-        if adapter.prompt_via_stdin and proc.stdin is not None:
-            proc.stdin.write(prompt + "\n")
-            proc.stdin.close()
+        wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
+        idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
 
-        wall_clock_timeout = (
-            float(os.environ["STAFF_RUN_TIMEOUT_SECONDS"])
-            if "STAFF_RUN_TIMEOUT_SECONDS" in os.environ
-            else role.budget_max_minutes * 60.0
-        )
-        idle_timeout = (
-            float(os.environ["STAFF_IDLE_TIMEOUT_SECONDS"])
-            if "STAFF_IDLE_TIMEOUT_SECONDS" in os.environ
-            else role.idle_minutes * 60.0
-        )
-
-        watchdog = StaffWatchdog(
-            run_id=rec.id,
-            proc=proc,
-            store=store,
-            max_seconds=wall_clock_timeout,
-            idle_seconds=idle_timeout,
-        )
-        watchdog.start()
         try:
-            usage, result_line = self._pump_output(rec, adapter, proc, transcript, watchdog)
+            token = mint_run_token(
+                role=plan.role,
+                run_id=rec.id,
+                fleet_actions=role.fleet_actions,
+                ttl_seconds=wall_clock_timeout,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Failed to mint staff run token for %s", rec.id)
+            store.update_run(
+                rec.id,
+                status="failed",
+                failure_class="workspace_error",
+                retryable=False,
+                remediation="Token minting failed; verify node identity configuration.",
+                error=f"token minting failed: {exc}",
+                ended_at=_now(),
+            )
+            store.append_event(rec.id, "error", f"token minting failed: {exc}")
+            return
+
+        try:
+            env = {
+                **os.environ,
+                **adapter.runtime_env(),
+                "STAFF_RUN_ID": rec.id,
+                "STAFF_ROLE": plan.role,
+                "FLEET_API_TOKEN": token,
+            }
+            exe = shutil.which(adapter.executable) or adapter.executable
+            proc = subprocess.Popen(  # noqa: S603
+                [exe, *argv[1:]],
+                cwd=str(workdir),
+                env=env,
+                stdin=subprocess.PIPE if adapter.prompt_via_stdin else subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+            with self._lock:
+                self._procs[rec.id] = proc
+                cancelled = rec.id in self._cancel_flags
+            store.update_run(
+                rec.id,
+                status="running",
+                transcript_path=str(transcript),
+                prompt=prompt,
+                pid=proc.pid,
+            )
+            store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
+            if cancelled:
+                terminate_process_group(proc.pid, grace_period=1.0)
+            if adapter.prompt_via_stdin and proc.stdin is not None:
+                proc.stdin.write(prompt + "\n")
+                proc.stdin.close()
+
+            watchdog = StaffWatchdog(
+                run_id=rec.id,
+                proc=proc,
+                store=store,
+                max_seconds=wall_clock_timeout,
+                idle_seconds=idle_timeout,
+            )
+            watchdog.start()
             try:
-                rc = proc.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                rc = -1
+                usage, result_line = self._pump_output(rec, adapter, proc, transcript, watchdog)
+                try:
+                    rc = proc.wait(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    rc = -1
+            finally:
+                watchdog.stop()
+
+            with self._lock:
+                self._procs.pop(rec.id, None)
+            cancelled = rec.id in self._cancel_flags
+            status, failure_class, retryable, remediation, error = classify_execution_result(
+                cancelled=cancelled,
+                rc=rc,
+                result_line=result_line,
+                provider=plan.provider,
+                transcript_path=transcript,
+                watchdog_failure_class=watchdog.failure_class or "",
+                watchdog_error=watchdog.error_message or "",
+                machine=self.machine,
+            )
+
+            store.update_run(
+                rec.id,
+                status=status,
+                failure_class=failure_class,
+                retryable=retryable,
+                remediation=remediation,
+                error=error,
+                ended_at=_now(),
+                exit_code=rc,
+                cost_usd=float(usage.get("cost_usd", 0.0)),
+                input_tokens=int(usage.get("input_tokens", 0)),
+                output_tokens=int(usage.get("output_tokens", 0)),
+                outcome=consolidation.parse_outcome(result_line),
+            )
+            usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
+            store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
         finally:
-            watchdog.stop()
-
-        with self._lock:
-            self._procs.pop(rec.id, None)
-        cancelled = rec.id in self._cancel_flags
-        status, failure_class, retryable, remediation, error = classify_execution_result(
-            cancelled=cancelled,
-            rc=rc,
-            result_line=result_line,
-            provider=plan.provider,
-            transcript_path=transcript,
-            watchdog_failure_class=watchdog.failure_class or "",
-            watchdog_error=watchdog.error_message or "",
-            machine=self.machine,
-        )
-
-        store.update_run(
-            rec.id,
-            status=status,
-            failure_class=failure_class,
-            retryable=retryable,
-            remediation=remediation,
-            error=error,
-            ended_at=_now(),
-            exit_code=rc,
-            cost_usd=float(usage.get("cost_usd", 0.0)),
-            input_tokens=int(usage.get("input_tokens", 0)),
-            output_tokens=int(usage.get("output_tokens", 0)),
-            outcome=consolidation.parse_outcome(result_line),  # issue #1213
-        )
-        usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)  # issue #1200
-        store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
+            revoke_run_token(rec.id)
 
     def _pump_output(
         self,
