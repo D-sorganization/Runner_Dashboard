@@ -111,8 +111,12 @@ async function request<T>(
   if (!resp.ok) {
     let detail = `HTTP ${resp.status}`;
     try {
-      const errBody = (await resp.json()) as ApiError;
-      detail = errBody.detail ?? detail;
+      const errBody = (await resp.json()) as Record<string, any>;
+      if (errBody?.error?.message) {
+        detail = errBody.error.message;
+      } else {
+        detail = errBody.detail ?? detail;
+      }
     } catch {
       // Non-JSON error body — use status text
     }

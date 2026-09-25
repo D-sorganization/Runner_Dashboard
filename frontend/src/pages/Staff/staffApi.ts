@@ -71,7 +71,14 @@ export type DispatchBody = components["schemas"]["RunBody"];
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
-export const STAFF_BASE = "/api/staff";
+export const STAFF_BASE = "/api/v1/staff";
+
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `idem-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+}
 
 export function fetchRoster(signal?: AbortSignal): Promise<RosterResponse> {
   return apiRequest<RosterResponse>(`${STAFF_BASE}/roster`, { signal });
@@ -104,23 +111,31 @@ export function runStreamUrl(id: string, after = 0): string {
   return `${STAFF_BASE}/runs/${encodeURIComponent(id)}/stream?after=${after}`;
 }
 
-export function cancelRun(id: string): Promise<CancelResponse> {
+export function cancelRun(id: string, idempotencyKey?: string): Promise<CancelResponse> {
   return apiRequest<CancelResponse>(`${STAFF_BASE}/runs/${encodeURIComponent(id)}/cancel`, {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
     body: {},
   });
 }
 
-export function dispatchRun(role: string, body: DispatchBody): Promise<DispatchResponse> {
-  return apiRequest<DispatchResponse>(`${STAFF_BASE}/${encodeURIComponent(role)}/run`, { body });
+export function dispatchRun(role: string, body: DispatchBody, idempotencyKey?: string): Promise<DispatchResponse> {
+  return apiRequest<DispatchResponse>(`${STAFF_BASE}/${encodeURIComponent(role)}/run`, {
+    body,
+    headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
+  });
 }
 
 export function fetchHolds(signal?: AbortSignal): Promise<HoldsResponse> {
   return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, { signal });
 }
 
-export function putHolds(body: { holds: Hold[] } | HoldsResponse): Promise<HoldsResponse> {
-  return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, { method: "PUT", body });
+export function putHolds(body: { holds: Hold[] } | HoldsResponse, idempotencyKey?: string): Promise<HoldsResponse> {
+  return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, {
+    method: "PUT",
+    headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
+    body,
+  });
 }
 
 /** True when the error is a structured 404 from the API (feature absent). */

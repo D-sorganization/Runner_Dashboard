@@ -49,7 +49,7 @@ export interface ProjectsResponse {
   cache_ttl_seconds: number;
 }
 
-export const STEWARD_RUN_URL = "/api/staff/project-steward/run";
+export const STEWARD_RUN_URL = "/api/v1/staff/project-steward/run";
 export const STEWARD_RUN_BODY = {
   prompt: "Scheduled steward pass",
   machine: "auto",
