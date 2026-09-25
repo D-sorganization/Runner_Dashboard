@@ -1,4 +1,46 @@
-# Current handoff — Classify staff run failures with remediation hints (#1297)
+# Current handoff — Page usage evidence before pruning (#1302)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1302-page-usage-metrics`; PR pending. Issue #1302 (open), epic #1353 / umbrella #1354; DL-#1302.
+
+## Work
+
+- `backend/routers/usage_metrics.py`:
+  - Implemented `UsageTracker` recording page views and endpoint hits bucketed by day (`YYYY-MM-DD`).
+  - Rolling retention window of 14 days, pruning days older than `date.today() - timedelta(days=14)`.
+  - Configurable via `DASHBOARD_USAGE_METRICS_ENABLED` env var (default true) and custom storage path.
+  - Tab disposition mapping `TAB_RECOMMENDATIONS` covering all navigation tabs (`overview`, `queue`, `staff`, `remediation`, `workflows`, `machines`, `events`, `credentials`, `principals`, `reports`, `analysis`, `deployment`, `fleet-orchestration`, `diagnostics`, `conductor`, `runner-schedule`, `scheduled-jobs`, `runner-audit`, `fleet-command`, `maxwell`, `agent-dispatch`, `cline-launcher`, `local-apps`, `heavy-tests`).
+  - Implemented `GET /api/usage/summary`, `GET /api/usage/markdown`, and `POST /api/usage/page-view`.
+- `backend/middleware.py`:
+  - Added `/api/usage/page-view` to `_AUTH_EXEMPT_PATHS`.
+- `backend/server.py`:
+  - Registered `_usage_metrics_router`.
+  - Hooked `record_api_call` in `log_requests` middleware.
+- `frontend/src/shell/RoutedShell.tsx`:
+  - Added beacon effect dispatching `POST /api/usage/page-view` on route changes.
+- `tests/test_usage_metrics.py`:
+  - Full test suite covering page views, endpoint calls, summary tab analysis, markdown table generation, env var disable, validation errors, and 14-day retention pruning.
+- `SPEC.md`: Added change log and specification update.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1302 entry.
+
+## Validation
+
+- `pytest tests/test_usage_metrics.py tests/test_log_requests_middleware.py tests/api/test_structural_auth_perimeter.py`: 33 passed.
+- `node node_modules\typescript\bin\tsc -p tsconfig.app.json`: 0 errors.
+- `ruff check .`: 0 errors.
+- `ruff format --check .`: 0 errors.
+- `mypy backend`: 0 errors.
+
+## Next
+
+1. Open PR, monitor CI, and auto-squash merge.
+2. Post usage table markdown to #1302.
+3. Release lease on #1302.
+
+# Previous handoff — Classify staff run failures with remediation hints (#1297)
 
 Last updated: 2026-09-24
 

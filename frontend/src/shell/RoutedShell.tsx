@@ -214,6 +214,26 @@ export function RoutedShell() {
     [navigate],
   );
 
+  // Anonymous local page usage telemetry (issue #1302 / SC-G1)
+  React.useEffect(() => {
+    if (!activeTab) return;
+    try {
+      fetch("/api/usage/page-view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tab_id: activeTab,
+          pathname:
+            typeof window !== "undefined" ? window.location.pathname : undefined,
+        }),
+      }).catch(() => {
+        // Non-blocking telemetry
+      });
+    } catch {
+      // Non-blocking
+    }
+  }, [activeTab]);
+
   return <AppShell activeTab={activeTab} onSelectTab={onSelectTab} />;
 }
 

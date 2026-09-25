@@ -158,6 +158,7 @@ from routers import runner_groups as _runner_groups_router  # noqa: E402
 from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
+from routers import usage_metrics as _usage_metrics_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from runners.service_control import (  # noqa: E402
@@ -683,6 +684,7 @@ app.include_router(_system_router.router)
 app.include_router(_web_vitals_router.router)
 app.include_router(_events_router.router)  # issue #863 fleet event log
 app.include_router(_client_errors_router.router)  # issue #1292 client error beacon
+app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics and page tracking
 app.include_router(_fleet_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
@@ -1942,6 +1944,10 @@ async def log_requests(request: Request, call_next):
     elapsed = round((time.time() - start) * 1000, 1)
     path = request.url.path
     status = response.status_code
+
+    # Record usage metrics for /api/* endpoints (SC-G1 / issue #1302)
+    if path.startswith("/api/") and not path.startswith("/api/usage"):
+        _usage_metrics_router.get_usage_tracker().record_api_call(request.method, path)
 
     # Always log errors regardless of path — incident reconstruction requires them.
     is_error = status >= 400

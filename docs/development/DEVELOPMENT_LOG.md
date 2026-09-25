@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1302 · SC-G1: Page usage evidence before pruning
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1302 (epic #1353 / umbrella #1354)
+- **Branch:** `feat/1302-page-usage-metrics`
+- **PR:**
+- **Paths:** `backend/routers/usage_metrics.py`, `backend/middleware.py`, `backend/server.py`, `frontend/src/shell/RoutedShell.tsx`, `tests/test_usage_metrics.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24
+- **Summary:** Record page view beacons and API endpoint invocations in a rolling 14-day window. Expose GET /api/usage/summary with tab recommendations (keep, merge, retire, owner-decision) aligned with Staff Console pruning waves (SC-G2 through SC-G6). Added /api/usage/page-view exempt endpoint and client beacon in RoutedShell.
+- **Next step:** Land PR, post evidence table to #1302, unblock SC-G2 (#1324) and SC-G3 (#1325).
+
 ### DL-#1297 · SC-A6: Classify staff run failures with remediation hints
 
 - **State:** shipped
