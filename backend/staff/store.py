@@ -30,17 +30,11 @@ ACTIVE_STATUSES = ("queued", "preparing", "running")
 
 def _config_dir() -> Path:
     configured = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
-    return (
-        Path(configured).expanduser()
-        if configured
-        else Path("~/.config/runner-dashboard").expanduser()
-    )
+    return Path(configured).expanduser() if configured else Path("~/.config/runner-dashboard").expanduser()
 
 
 def default_db_path() -> Path:
-    return Path(
-        os.environ.get("STAFF_RUNS_DB", str(_config_dir() / "staff_runs.sqlite3"))
-    ).expanduser()
+    return Path(os.environ.get("STAFF_RUNS_DB", str(_config_dir() / "staff_runs.sqlite3"))).expanduser()
 
 
 def _now() -> str:
@@ -189,9 +183,7 @@ class RunStore:
         self.path = path or default_db_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(
-            str(self.path), check_same_thread=False, isolation_level=None
-        )
+        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
         self._conn.row_factory = sqlite3.Row
         with self._lock:
             self._conn.execute("PRAGMA journal_mode=WAL")
@@ -201,26 +193,16 @@ class RunStore:
 
     def _migrate(self) -> None:
         """Add any column in ``_ADDED_COLUMNS`` that the on-disk table lacks (idempotent)."""
-        present = {
-            str(r["name"])
-            for r in self._conn.execute("PRAGMA table_info(runs)").fetchall()
-        }
+        present = {str(r["name"]) for r in self._conn.execute("PRAGMA table_info(runs)").fetchall()}
         for name, decl in _ADDED_COLUMNS:
             if name not in present:
-                self._conn.execute(
-                    f"ALTER TABLE runs ADD COLUMN {name} {decl}"
-                )  # noqa: S608
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS runs_thread_idx ON runs(thread_id)"
-        )
+                self._conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")  # noqa: S608
+        self._conn.execute("CREATE INDEX IF NOT EXISTS runs_thread_idx ON runs(thread_id)")
 
     def columns(self) -> set[str]:
         """Column names currently present on the ``runs`` table (for migration tests)."""
         with self._lock:
-            return {
-                str(r["name"])
-                for r in self._conn.execute("PRAGMA table_info(runs)").fetchall()
-            }
+            return {str(r["name"]) for r in self._conn.execute("PRAGMA table_info(runs)").fetchall()}
 
     # ── runs ─────────────────────────────────────────────────────────────
     def create_run(self, rec: RunRecord) -> RunRecord:
@@ -243,15 +225,11 @@ class RunStore:
             assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self._lock:
-            self._conn.execute(
-                f"UPDATE runs SET {sets} WHERE id = ?", (*fields.values(), run_id)
-            )  # noqa: S608
+            self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*fields.values(), run_id))  # noqa: S608
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM runs WHERE id = ?", (run_id,)
-            ).fetchone()
+            row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return RunRecord(**dict(row)) if row else None
 
     def list_runs(
@@ -297,9 +275,7 @@ class RunStore:
         """Return all attempts linked to a run (the root run and its retries)."""
         root = run_id
         with self._lock:
-            row = self._conn.execute(
-                "SELECT retry_of FROM runs WHERE id = ?", (run_id,)
-            ).fetchone()
+            row = self._conn.execute("SELECT retry_of FROM runs WHERE id = ?", (run_id,)).fetchone()
             if row and row["retry_of"]:
                 root = str(row["retry_of"])
             rows = self._conn.execute(
@@ -356,9 +332,7 @@ class RunStore:
             ).fetchall()
         return {str(r["role"]): float(r["usd"]) for r in rows}
 
-    def usage_by(
-        self, group: str = "provider", since: str | None = None
-    ) -> list[dict[str, Any]]:
+    def usage_by(self, group: str = "provider", since: str | None = None) -> list[dict[str, Any]]:
         """Aggregate runs by ``provider``, ``role`` or ``day`` (issue #1200).
 
         Pre: ``group`` in ``USAGE_GROUPS``. Post: one row per key, ordered by key,
@@ -413,9 +387,7 @@ class RunStore:
                 )
         return seq
 
-    def events_after(
-        self, run_id: str, after_seq: int = 0, limit: int = 500
-    ) -> list[dict[str, Any]]:
+    def events_after(self, run_id: str, after_seq: int = 0, limit: int = 500) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT seq, ts, kind, text FROM events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?",

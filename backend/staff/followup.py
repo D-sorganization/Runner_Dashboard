@@ -28,9 +28,7 @@ from staff.work_items import (
 )
 
 log = logging.getLogger("dashboard.staff.followup")
-DEFAULT_SWEEP_INTERVAL_SECONDS = int(
-    os.environ.get("BARB_SWEEP_INTERVAL_SECONDS", "300")
-)
+DEFAULT_SWEEP_INTERVAL_SECONDS = int(os.environ.get("BARB_SWEEP_INTERVAL_SECONDS", "300"))
 DEFAULT_WATCHDOG_MISSED_INTERVALS = 2
 WATCHDOG_EVENT_KIND = "barb_followup_watchdog"
 
@@ -81,12 +79,8 @@ class SweepResult:
         }
 
 
-def _mk_record(
-    item_id: str, cond: str, act: str, detail: dict[str, Any], ts: str
-) -> FollowupRecord:
-    return FollowupRecord(
-        f"flw-{uuid.uuid4().hex[:10]}", item_id, "work_item", cond, act, detail, ts
-    )
+def _mk_record(item_id: str, cond: str, act: str, detail: dict[str, Any], ts: str) -> FollowupRecord:
+    return FollowupRecord(f"flw-{uuid.uuid4().hex[:10]}", item_id, "work_item", cond, act, detail, ts)
 
 
 def _audit(action: str, target: str, thread_id: str, detail: dict[str, Any]) -> None:
@@ -133,13 +127,9 @@ class FollowupEngine:
 
     def _get_barb_thread_id(self) -> str:
         threads = self.conversation_store.list_threads(status="open", limit=50)
-        found = next(
-            (t for t in threads if "barb" in [p.lower() for p in t.participants]), None
-        )
+        found = next((t for t in threads if "barb" in [p.lower() for p in t.participants]), None)
         if not found:
-            found = self.conversation_store.create_thread(
-                title="Barb", kind="direct", participants=["barb", "user"]
-            )
+            found = self.conversation_store.create_thread(title="Barb", kind="direct", participants=["barb", "user"])
         return found.id
 
     def check_watchdog(self, now: datetime | None = None) -> dict[str, Any]:
@@ -155,9 +145,7 @@ class FollowupEngine:
                     "sweep_interval_seconds": self.sweep_interval_seconds,
                 }
             elapsed = max(0.0, cur_ts - self._last_sweep_at.timestamp())
-            thresh = float(
-                DEFAULT_WATCHDOG_MISSED_INTERVALS * self.sweep_interval_seconds
-            )
+            thresh = float(DEFAULT_WATCHDOG_MISSED_INTERVALS * self.sweep_interval_seconds)
             if elapsed > thresh:
                 missed = int(elapsed // self.sweep_interval_seconds)
                 detail = f"Follow-up engine missed {missed} intervals ({int(elapsed)}s elapsed)"
@@ -208,10 +196,7 @@ class FollowupEngine:
         for item in items:
             if item.state in TERMINAL_STATES:
                 continue
-            if (
-                ts - self._last_followup.get(item.id, float("-inf"))
-                < self.sweep_interval_seconds
-            ):
+            if ts - self._last_followup.get(item.id, float("-inf")) < self.sweep_interval_seconds:
                 continue
             rec = self._process_item(item, dt, roles)
             if rec:
@@ -228,22 +213,16 @@ class FollowupEngine:
                     if ckey in self._counters:
                         self._counters[ckey] += 1
 
-        return SweepResult(
-            iso, len(items), followups, counts, self.get_daily_digest(now=dt)
-        )
+        return SweepResult(iso, len(items), followups, counts, self.get_daily_digest(now=dt))
 
-    def _process_item(
-        self, item: WorkItemRecord, now: datetime, valid_roles: dict[str, Any]
-    ) -> FollowupRecord | None:
+    def _process_item(self, item: WorkItemRecord, now: datetime, valid_roles: dict[str, Any]) -> FollowupRecord | None:
         runs = item.links.get("runs", [])
         if runs:
             r = self.run_store.get_run(runs[-1])
             if r is not None:
                 if r.status == "failed" and r.failure_class == "auth_expired":
                     return self._handle_auth_expired(item, r, now)
-                if r.status == "stalled" or (
-                    r.status == "failed" and r.failure_class == "stalled"
-                ):
+                if r.status == "stalled" or (r.status == "failed" and r.failure_class == "stalled"):
                     return self._handle_stalled_or_failed_run(item, r, now, "stalled")
                 if r.status == "failed":
                     return self._handle_stalled_or_failed_run(item, r, now, "failed")
@@ -253,11 +232,7 @@ class FollowupEngine:
 
         known = set(valid_roles.keys()) | {"operator", "admin", "user"}
         if item.owner_role and item.owner_role not in known:
-            tgt = (
-                "librarian"
-                if "librarian" in valid_roles
-                else next(iter(valid_roles), "operator")
-            )
+            tgt = "librarian" if "librarian" in valid_roles else next(iter(valid_roles), "operator")
             self.work_item_store.update_work_item(item.id, owner_role=tgt)
             _audit(
                 "barb_followup_reroute",
@@ -343,9 +318,7 @@ class FollowupEngine:
         _audit("barb_followup_escalate", item.id, item.thread_id, detail)
         return _mk_record(item.id, condition, "escalate", detail, now_iso)
 
-    def _handle_auth_expired(
-        self, item: WorkItemRecord, run: RunRecord, now: datetime
-    ) -> FollowupRecord:
+    def _handle_auth_expired(self, item: WorkItemRecord, run: RunRecord, now: datetime) -> FollowupRecord:
         now_iso = now.isoformat().replace("+00:00", "Z")
         msg = (
             f"⚠️ **Action Required: Authentication Expired**\n\n"
@@ -364,9 +337,7 @@ class FollowupEngine:
         _audit("barb_followup_auth_alert", item.id, item.thread_id, detail)
         return _mk_record(item.id, "auth_expired", "auth_alert", detail, now_iso)
 
-    def _handle_needs_input(
-        self, item: WorkItemRecord, now: datetime
-    ) -> FollowupRecord:
+    def _handle_needs_input(self, item: WorkItemRecord, now: datetime) -> FollowupRecord:
         now_iso = now.isoformat().replace("+00:00", "Z")
         msg = (
             f"❓ **Barb → Owner: Input Needed**\n\n"
@@ -385,9 +356,7 @@ class FollowupEngine:
         _audit("barb_followup_ask_owner", item.id, item.thread_id, detail)
         return _mk_record(item.id, "needs_input", "ask_owner", detail, now_iso)
 
-    def _handle_overdue_item(
-        self, item: WorkItemRecord, now: datetime
-    ) -> FollowupRecord:
+    def _handle_overdue_item(self, item: WorkItemRecord, now: datetime) -> FollowupRecord:
         now_iso = now.isoformat().replace("+00:00", "Z")
         detail = {"expected_by": item.expected_by}
         _audit("barb_followup_overdue_ping", item.id, item.thread_id, detail)
@@ -396,11 +365,7 @@ class FollowupEngine:
     def get_daily_digest(self, now: datetime | None = None) -> FollowupDigest:
         """Calculate digest counts for the day."""
         cur = now or datetime.now(UTC)
-        start = (
-            cur.replace(hour=0, minute=0, second=0, microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z")
-        )
+        start = cur.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
         now_iso = cur.isoformat().replace("+00:00", "Z")
 
         items = self.work_item_store.list_work_items(limit=500)
@@ -412,9 +377,7 @@ class FollowupEngine:
             retried = self._counters.get("retried", 0)
             rerouted = self._counters.get("rerouted", 0)
 
-        return FollowupDigest(
-            closed, retried, rerouted, escalated, still_open, start, now_iso
-        )
+        return FollowupDigest(closed, retried, rerouted, escalated, still_open, start, now_iso)
 
 
 _engine_instance: FollowupEngine | None = None

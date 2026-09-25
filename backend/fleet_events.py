@@ -193,11 +193,7 @@ def classify_node_offline_event(snap: NodeSnapshot, ts: int) -> FleetEvent:
     )
 
     if disk_pressure:
-        free_txt = (
-            f"{snap.disk_free_gb:.1f} GB free"
-            if snap.disk_free_gb is not None
-            else "low disk"
-        )
+        free_txt = f"{snap.disk_free_gb:.1f} GB free" if snap.disk_free_gb is not None else "low disk"
         return FleetEvent(
             ts=ts,
             severity="critical",
@@ -267,9 +263,7 @@ def classify_fleet_events(
       low-disk warnings, saturation, watchdog. Same input → same output.
     """
     events: list[FleetEvent] = []
-    prev_by_name: dict[str, NodeSnapshot] = (
-        {n.name: n for n in previous} if previous is not None else {}
-    )
+    prev_by_name: dict[str, NodeSnapshot] = {n.name: n for n in previous} if previous is not None else {}
     curr_list = list(current)
 
     # 1. Offline transitions (online→offline). First poll emits none.
@@ -302,12 +296,7 @@ def classify_fleet_events(
             events.append(_low_disk_event(snap, ts))
 
     # 4. Saturation: every available runner is busy.
-    if (
-        capacity is not None
-        and online_count is not None
-        and capacity > 0
-        and online_count >= capacity
-    ):
+    if capacity is not None and online_count is not None and capacity > 0 and online_count >= capacity:
         events.append(
             FleetEvent(
                 ts=ts,
@@ -319,11 +308,7 @@ def classify_fleet_events(
         )
 
     # 5. Watchdog regression (any non-healthy status, newly observed).
-    if (
-        watchdog_status
-        and watchdog_status != "healthy"
-        and watchdog_status != previous_watchdog_status
-    ):
+    if watchdog_status and watchdog_status != "healthy" and watchdog_status != previous_watchdog_status:
         events.append(
             FleetEvent(
                 ts=ts,
@@ -425,14 +410,8 @@ def nodes_from_fleet_status(
                 online=bool(online),
                 disk_free_gb=free_gb,
                 disk_percent=percent,
-                offline_reason=(
-                    str(offline_reason) if offline_reason is not None else None
-                ),
-                offline_detail=(
-                    str(data.get("offline_detail"))
-                    if data.get("offline_detail") is not None
-                    else None
-                ),
+                offline_reason=(str(offline_reason) if offline_reason is not None else None),
+                offline_detail=(str(data.get("offline_detail")) if data.get("offline_detail") is not None else None),
             )
         )
     return out
