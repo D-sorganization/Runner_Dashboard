@@ -27,8 +27,8 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `tests/conftest.py`, `tests/unit/test_staff_test_isolation.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`tests/unit/test_staff_test_isolation.py` clean; `tests/staff tests/api/test_staff*.py tests/unit/test_staff*.py` pass under WSL with `HOME`/`USERNAME` isolated)
-- **Summary:** `staff.workspace.repos_roots()` always appended real developer checkout roots after any configured `STAFF_REPOS_ROOT`, so staff tests that submitted a run did real `git worktree add` / `gh` against real checkouts. Added one autouse fixture in `tests/conftest.py` that neutralizes `repos_roots()` to `[]`, isolates `STAFF_WORKTREES_ROOT`/`STAFF_RM_ROOT` under `tmp_path`, and guards `add_worktree()` with a DbC assertion against any target outside `tmp_path`.
-- **Next step:** Owner review of the draft PR, in particular the prepend-vs-replace question for `STAFF_REPOS_ROOT` in production, then mark ready and merge.
+- **Summary:** `staff.workspace.repos_roots()` always appended real developer checkout roots after any configured `STAFF_REPOS_ROOT`, so staff tests that submitted a run did real `git worktree add` / `gh` against real checkouts. Added one autouse fixture in `tests/conftest.py` that neutralizes `repos_roots()` to `[]`, isolates `STAFF_WORKTREES_ROOT`/`STAFF_RM_ROOT` under `tmp_path`, and guards `add_worktree()` with a DbC assertion against any target outside `tmp_path`. It also patches the `repos_roots` name that `staff.knowledge_refresh` imports directly.
+- **Next step:** Merge. The prepend-vs-replace question for `STAFF_REPOS_ROOT` in production stays with the owner; this PR changes tests only.
 
 ### DL-#1465 · Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked'
 
