@@ -21,7 +21,7 @@ Last updated: 2026-09-25
 ## Next Steps
 
 1. Fold peer replies from #1463 into §5–§6 of the plan.
-2. Phase 0 is done: WP-0.1 #1474 merged as #1481 and WP-0.2 #1475 merged as #1482; both were verified against `main` `4018454`. Next is the owner's decision on Phase 1.
+2. Phase 0 is done: WP-0.1 #1474 merged as #1481 and WP-0.2 #1475 merged as #1482; both were verified against `main` `4018454`. Phase 1 was approved on 2026-09-25 and filed as #1516, #1517 and #1518, plus Repository_Management#1781 and #1782. Start with #1516.
 
 ---
 
