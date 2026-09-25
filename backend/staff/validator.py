@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any, TypeGuard
 
+from staff.adapters import CHAT_READ_ONLY_TOOLS
+
 SURFACES: tuple[str, ...] = ("grok-chat", "dashboard", "both")
 REQUIRED_FIELDS: tuple[str, ...] = (
     "name",
@@ -345,6 +347,20 @@ def _validate_lifecycle(data: dict[str, Any]) -> list[str]:
     return problems
 
 
+def _validate_chat(data: dict[str, Any]) -> list[str]:
+    """``chat.read_only_tools`` must use the read-only vocabulary (#1484)."""
+    chat = data.get("chat")
+    if not isinstance(chat, dict) or "read_only_tools" not in chat:
+        return []
+    tools = chat["read_only_tools"]
+    if not isinstance(tools, list) or not all(isinstance(t, str) for t in tools):
+        return ["chat.read_only_tools must be a list of strings"]
+    unknown = [t for t in tools if t not in CHAT_READ_ONLY_TOOLS]
+    if unknown:
+        return [f"chat.read_only_tools has non-read-only tools {unknown}; known: {sorted(CHAT_READ_ONLY_TOOLS)}"]
+    return []
+
+
 def validate_role_data(data: Any) -> list[str]:
     """Validate parsed role mapping against staff/schema.json."""
     if not isinstance(data, dict):
@@ -365,4 +381,5 @@ def validate_role_data(data: Any) -> list[str]:
     problems.extend(_validate_collections(data))
     problems.extend(_validate_dicts(data))
     problems.extend(_validate_lifecycle(data))
+    problems.extend(_validate_chat(data))
     return problems
