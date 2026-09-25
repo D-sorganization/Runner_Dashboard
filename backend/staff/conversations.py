@@ -363,22 +363,15 @@ class ConversationStore:
             if not cur:
                 return None
             allowed = {"body_md", "kind", "meta", "delivery", "run_id"}
-            updates: dict[str, Any] = {}
-            for k, v in fields.items():
-                if k in allowed:
-                    if k == "body_md":
-                        updates[k] = redact_sensitive_content(v or "")
-                    elif k == "meta":
-                        updates[k] = json.dumps(v or {})
-                    else:
-                        updates[k] = v
+            updates = {
+                k: redact_sensitive_content(v or "") if k == "body_md" else json.dumps(v or {}) if k == "meta" else v
+                for k, v in fields.items()
+                if k in allowed
+            }
             if not updates:
                 return cur
             sets = ", ".join(f"{k} = ?" for k in updates)
-            self._conn.execute(
-                f"UPDATE messages SET {sets} WHERE id = ?",
-                (*updates.values(), message_id),
-            )  # noqa: S608
+            self._conn.execute(f"UPDATE messages SET {sets} WHERE id = ?", (*updates.values(), message_id))  # noqa: S608
             row = self._conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
             return MessageRecord.from_row(row) if row else None
 
