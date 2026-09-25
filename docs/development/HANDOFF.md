@@ -1,10 +1,43 @@
-# Current handoff — Fix projects run steward missing Idempotency-Key (#1494)
+# Current handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1494-projects-run-steward-idempotency`; DL-#1494; Issue #1494.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1339-group-threads-board`; Issue #1339; DL-#1339; PR #1480.
+
+## Objective and Status
+
+- SC-B9: Group threads for Board deliberation with Board Secretary coordination:
+  1. Group data models (`backend/staff/group_models.py`): Defined `SeatSpec`, `GroupDefinition`, `SeatReply`, `GroupCostEstimate`, and `ConsensusResult`. Configured default Board definition with 4 seats (`alpha`, `bravo`, `charlie`, `delta`) and `board-secretary` coordinator.
+  2. Coordination & fanout (`backend/staff/groups.py`): Implemented concurrent fanout across seat chat turns with per-seat timeout (default 60s) and fault isolation (failed/timed out seats record "no response").
+  3. Consensus collation & proposals: Collation synthesizes consensus summary, evaluates quorum (3/4 for Board), renders collapsible `<details><summary>` seat disclosures, and generates `board.propose` ActionProposal for formal decisions.
+  4. Pre-send cost estimation & threshold guard: Enforced `STAFF_GROUP_COST_THRESHOLD_USD` (default $2.00). Returns HTTP 400 when exceeded unless `confirm_cost=True`.
+  5. API endpoints (`backend/routers/staff_groups.py`): Added `GET /api/v1/staff/groups`, `GET /api/v1/staff/groups/{id}`, `GET /api/v1/staff/groups/{id}/cost-estimate`, `POST /api/v1/staff/groups/{id}/threads`.
+  6. Thread dispatch integration: Updated `staff_threads.py` to route group messages with cost check and launch background coordinator turn runner.
+  7. Actions & permissions: Permitted `board-secretary` for `board.propose` and `staff.dispatch`. Fixed `create_work_item` parameter naming in `action_executors.py`.
+- Quality gates:
+  - All unit & API group tests passing (15/15 passing in 3.0s).
+  - All regression tests passing (42/42 passing in 61s).
+  - Ruff check & format clean.
+  - Mypy passing (0 errors).
+  - All modified/created files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push rebased branch `feat/1339-group-threads-board`.
+2. Monitor PR #1480 CI to squash merge (no `--admin`).
+3. Release lease on #1339 and clean up worktree.
+
+---
+
+# Past handoff — Fix projects run steward missing Idempotency-Key (#1494)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1494-projects-run-steward-idempotency`; DL-#1494; Issue #1494; PR #1509 (merged).
 
 ## Objective and Status
 
@@ -23,10 +56,32 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Push `fix/1494-projects-run-steward-idempotency`.
-2. Open PR with `Fixes #1494`, label `agent:antigravity`.
-3. Enable auto-merge (`gh pr merge --auto --squash`).
-4. Monitor CI until merged to `main`.
+1. None (merged in PR #1509).
+
+---
+
+# Past handoff — SC-B1-G1: read-only chat turns on every provider (#1484)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1484`; branch `fix/1484-read-only-chat`; commit SELF; PR #1506 (merged); Issue #1484; DL-#1484.
+
+## Objective and Status
+
+- Closed the hole where a resumed claude chat turn ran with no permission flag, and made read-only enforcement explicit and fail-closed for every provider (`backend/staff/adapters.py`: `_CHAT_READ_ONLY_FLAGS`, `CLAUDE_WRITE_TOOLS`, `CHAT_READ_ONLY_TOOLS`, `claude_allowed_tools`, `ChatReadOnlyUnsupportedError`).
+- `chat.py` passes `chat.read_only_tools` and turns an unsupported provider or bad tool name into a classified failed message (`staff/chat_failures.py`).
+- Role validator rejects `chat.read_only_tools` names outside the vocabulary.
+- Validation: `pytest tests/unit/test_staff_chat_read_only.py` 24 passed; staff selection 618 passed / 15 skipped (WSL venv); `ruff check` clean; `mypy backend/` clean.
+
+## Risks
+
+- `cursor-agent --mode ask` was not verifiable on DeskComputer (CLI absent). If the flag is wrong the turn fails visibly (`classify_run_failure`), never writable.
+
+## Next steps
+
+1. None (merged in PR #1506).
 
 ---
 
@@ -58,31 +113,9 @@ Last updated: 2026-09-25
     - `npm run lint`: clean (0 errors, 0 warnings).
     - All touched files strictly $\le 500$ lines.
 
----
+## Next Steps
 
-# Past handoff — SC-B1-G1: read-only chat turns on every provider (#1484)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1484`; branch `fix/1484-read-only-chat`; commit SELF; PR #1506 (merged); Issue #1484; DL-#1484.
-
-## Objective and Status
-
-- Closed the hole where a resumed claude chat turn ran with no permission flag, and made read-only enforcement explicit and fail-closed for every provider (`backend/staff/adapters.py`: `_CHAT_READ_ONLY_FLAGS`, `CLAUDE_WRITE_TOOLS`, `CHAT_READ_ONLY_TOOLS`, `claude_allowed_tools`, `ChatReadOnlyUnsupportedError`).
-- `chat.py` passes `chat.read_only_tools` and turns an unsupported provider or bad tool name into a classified failed message (`staff/chat_failures.py`).
-- Role validator rejects `chat.read_only_tools` names outside the vocabulary.
-- Validation: `pytest tests/unit/test_staff_chat_read_only.py` 24 passed; staff selection 618 passed / 15 skipped (WSL venv); `ruff check` clean; `mypy backend/` clean.
-
-## Risks
-
-- `cursor-agent --mode ask` was not verifiable on DeskComputer (CLI absent). If the flag is wrong the turn fails visibly (`classify_run_failure`), never writable.
-
-## Next steps
-
-1. Merge; verify one live cursor-agent chat turn on a node with the CLI.
-2. Amend ADR 0006 §6 (PR #1495) once this lands: enforcement is no longer partial.
+1. None (merged in PR #1507).
 
 ---
 
@@ -171,6 +204,32 @@ Last updated: 2026-09-25
 ## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.1-resolve-staff-action-roles-1474`; Issue #1474; DL-#1474; PR #1481 (merged).
+
+## Objective and Status
+
+- Fix staff role names in `backend/staff/action_executors.py` resolving against loaded roster (WP-0.1, issue #1474):
+  - Defined module constants:
+    - `DEFAULT_REVIEWER_ROLE = "fleet-critic"`
+    - `CODE_REQUEST_OWNER_ROLE = "barb"`
+    - `BOARD_PROPOSAL_ROLE = "board-secretary"`
+  - Updated `execute_review_pr` to use `DEFAULT_REVIEWER_ROLE`.
+  - Updated `execute_code_request_create` to use `CODE_REQUEST_OWNER_ROLE`.
+  - Updated `execute_board_propose` to use `BOARD_PROPOSAL_ROLE`.
+  - Implemented `validate_action_default_roles` checking `load_roles()`: logs a warning without crashing at runtime; raises `ValueError` when `raise_on_error=True` for test failure.
+  - Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`:
+    - Asserts every default role resolves to a dispatchable, non-retired role on dashboard surface.
+    - Asserts `staff.review_pr` with no `reviewer` starts a `fleet-critic` run.
+    - Asserts validation fails loudly on unresolvable roles and logs runtime warnings.
+  - Verification:
+    - `pytest tests/staff/routing_eval/test_action_executor_roles.py`: 5/5 passed.
+    - `pytest tests/staff/ tests/unit/test_staff_actions.py -q`: 19/19 passed.
+    - `ruff check backend/ clients/` and `ruff format --check backend/ clients/`: clean.
+    - `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional`: clean (0 issues in 247 source files).
+    - File line counts: `backend/staff/action_executors.py` (279 lines), `tests/staff/routing_eval/test_action_executor_roles.py` (95 lines), both strictly $\le 500$ lines.
+
+## Next Steps
+
+1. None (merged in PR #1481).
 
 ---
 
