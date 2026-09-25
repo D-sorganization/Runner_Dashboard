@@ -33,6 +33,7 @@ import {
   tabIdToPath,
 } from "./routing";
 import { IntroHeader } from "../primitives/IntroHeader";
+import { ConnectionIndicator } from "../primitives/ConnectionIndicator";
 import { useSession } from "../hooks/useSession";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { useBreakpoint } from "../hooks/useBreakpoint";
@@ -386,6 +387,7 @@ export function AppShell({
       intro={introNode}
       headerExtra={
         <>
+          <ConnectionIndicator />
           <DensityToggle />
           <ShellThemeSelector />
           <ShellActiveProvider

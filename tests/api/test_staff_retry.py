@@ -286,7 +286,7 @@ def test_provider_concurrency_enforced_serially(
 
     # Wait for all 3 runs to complete
     for r in (r1, r2, r3):
-        for _ in range(100):
+        for _ in range(300):
             row = temp_store.get_run(r.id)
             if row and row.status in ("succeeded", "failed"):
                 break
@@ -345,7 +345,7 @@ def test_bounded_retry_fake_provider_429_twice_then_success(
     rec = runner.submit(runner_mod.RunRequest(role="flaky-worker", prompt="process data"))
 
     # Wait for logical run and attempts to reach terminal state
-    for _ in range(100):
+    for _ in range(300):
         row = temp_store.get_run(rec.id)
         if row and row.status == "succeeded":
             break

@@ -13,6 +13,10 @@ import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
 import { errorMessage, fetchHolds, isNotFound, putHolds, type Hold } from "./staffApi";
+import {
+  invalidateStaffQueries,
+  useResolvedQueryClient,
+} from "../../hooks/useStaffQueries";
 
 export interface HoldsProps {
   /** Role names offered in the applies-to picker (from the roster). */
@@ -28,6 +32,7 @@ function newHoldId(): string {
 }
 
 export function Holds({ roles }: HoldsProps) {
+  const client = useResolvedQueryClient();
   const [holds, setHolds] = useState<Hold[] | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +91,7 @@ export function Holds({ roles }: HoldsProps) {
         setHolds(data.holds);
         setDirty(false);
         setSaving(false);
+        invalidateStaffQueries(client);
       })
       .catch((e: unknown) => {
         setError(errorMessage(e));

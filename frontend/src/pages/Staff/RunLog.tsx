@@ -4,19 +4,18 @@
  * Role and status filters map 1:1 onto the API query parameters. Clicking a
  * row opens RunDetail (owned by StaffPage so the Board can deep-link too).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TimeAgo } from "../../primitives/TimeAgo";
 import { TouchButton } from "../../primitives/TouchButton";
+import { useStaffRuns } from "../../hooks/useStaffQueries";
 import {
   errorMessage,
-  fetchRuns,
   formatUsd,
   RUN_STATUSES,
   statusTone,
   targetLabel,
-  type RunRecord,
 } from "./staffApi";
 
 export interface RunLogProps {
@@ -28,29 +27,28 @@ export interface RunLogProps {
 }
 
 export function RunLog({ roles, onOpenRun, refreshKey = 0 }: RunLogProps) {
-  const [runs, setRuns] = useState<RunRecord[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
 
-  const load = useCallback(
-    (signal?: AbortSignal) => {
-      setError(null);
-      fetchRuns({ role: role || undefined, status: status || undefined, limit: 100 }, signal)
-        .then((data) => setRuns(data.runs))
-        .catch((e: unknown) => {
-          if (signal?.aborted) return;
-          setError(errorMessage(e));
-        });
-    },
-    [role, status],
-  );
+  const {
+    data: runsData,
+    error: runsErr,
+    isLoading,
+    refetch,
+  } = useStaffRuns({
+    role: role || undefined,
+    status: status || undefined,
+    limit: 100,
+  });
+
+  const runs = runsData?.runs ?? (isLoading ? null : []);
+  const error = runsErr ? errorMessage(runsErr) : null;
 
   useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal);
-    return () => controller.abort();
-  }, [load, refreshKey]);
+    if (refreshKey > 0) {
+      refetch();
+    }
+  }, [refreshKey, refetch]);
 
   return (
     <div className="glass-card staff-panel">
@@ -89,12 +87,12 @@ export function RunLog({ roles, onOpenRun, refreshKey = 0 }: RunLogProps) {
               </option>
             ))}
           </select>
-          <TouchButton onClick={() => load()}>Refresh</TouchButton>
+          <TouchButton onClick={() => refetch()}>Refresh</TouchButton>
         </div>
       </div>
 
       {error ? (
-        <EmptyState variant="error" title="Failed to load runs" description={error} onRetry={() => load()} />
+        <EmptyState variant="error" title="Failed to load runs" description={error} onRetry={() => refetch()} />
       ) : runs === null ? (
         <p className="staff-muted">Loading runs...</p>
       ) : runs.length === 0 ? (

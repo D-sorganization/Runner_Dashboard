@@ -47,6 +47,11 @@ export type {
   UsageResponse,
 } from "./api-types";
 import type { EventsResponse } from "./fleetEvents";
+import {
+  emitSessionExpired,
+  shouldIgnoreUnauthorizedResponse,
+  tryRefreshSession,
+} from "../legacy/sessionExpired";
 
 // Re-export the events feed type so consumers import from a single location.
 export type { EventsResponse, FleetEvent } from "./fleetEvents";
@@ -92,7 +97,16 @@ async function request<T>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   };
 
-  const resp = await fetch(url, init);
+  let resp = await fetch(url, init);
+
+  if (resp.status === 401 && !shouldIgnoreUnauthorizedResponse(url)) {
+    const refreshed = await tryRefreshSession();
+    if (refreshed) {
+      resp = await fetch(url, init);
+    } else {
+      emitSessionExpired();
+    }
+  }
 
   if (!resp.ok) {
     let detail = `HTTP ${resp.status}`;

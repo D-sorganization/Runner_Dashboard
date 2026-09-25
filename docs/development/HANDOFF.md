@@ -1,4 +1,60 @@
-# Current handoff — Restore green main: OpenAPI ValidationError schema alignment (#1383)
+# Current handoff — React Query Data Layer for Staff Console (#1304)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1304-react-query-datalayer`; Issue #1304 (epic #1347 / umbrella #1354); DL-#1304.
+
+## Work
+
+- `frontend/src/lib/api.ts`:
+  - Intercepts 401 responses on protected endpoints.
+  - Coalesces in-flight session refreshes via `tryRefreshSession()` from `sessionExpired.ts` so multiple concurrent queries/panels await a single POST to `/api/auth/refresh`.
+  - Replays original request on refresh success; on refresh failure emits `emitSessionExpired()` once and raises `SessionExpiredError`.
+- `frontend/src/hooks/usePollingQueries.ts`:
+  - Configures `QueryClient` defaults: `staleTime: 10_000`, `retry: 2` with exponential backoff (`Math.min(1000 * 2 ** attemptIndex, 30_000)`) for idempotent GET queries (exempting 401/403/404).
+  - Mutations do not retry unless explicit idempotency key is present in mutation variables or context.
+  - Exported `queryClient` singleton with safe window access.
+- `frontend/src/hooks/useStaffQueries.ts`:
+  - Complete query keys factory `staffKeys` for roster, board, summary, runs, detail, holds, threads, messages, and work items.
+  - Provides hooks `useStaffRoster`, `useStaffBoard`, `useStaffSummary`, `useStaffRuns`, `useStaffRun`, `useStaffHolds`, `useStaffThreads`, `useStaffMessages`, `useStaffWorkItems`, and `useStaffMutation`.
+  - Includes `useResolvedQueryClient()` fallback helper enabling isolated tests to run without explicit `<QueryClientProvider>`.
+  - Real-time SSE synchronizer `updateStaffRunFromEvent` to update queries in-place upon incoming `RunEvent`.
+- `frontend/src/primitives/ConnectionIndicator.tsx`:
+  - Global status pill displaying connection state: `online`, `reconnecting`, `offline`, or `syncing` (replaying queued mutations from IndexedDB).
+- `frontend/src/hooks/useMutationQueue.ts`:
+  - Added guard for environments where `indexedDB` is undefined (SSR/jsdom).
+- `frontend/src/main.tsx`:
+  - Wrapped `<AppRoutes />` in `<QueryClientProvider client={queryClient}>`.
+- `frontend/src/shell/RoutedShell.tsx`:
+  - Mounted `<ConnectionIndicator />` in desktop shell topbar next to existing controls.
+- `frontend/src/pages/Staff/`:
+  - Migrated `StaffPage.tsx`, `Board.tsx`, `RunLog.tsx`, `RunDetail.tsx`, and `Holds.tsx` to shared query hooks with `RefreshBadge` staleness indicators and cache invalidations on mutations.
+- `frontend/src/hooks/__tests__/useStaffDataLayer.test.tsx`:
+  - 9 comprehensive unit tests covering defaults, caching, 401 refresh coalescing, SSE updates, and connection status.
+- `frontend/src/pages/__tests__/Staff.test.tsx`:
+  - Isolated test cache via `queryClient.clear()` in `afterEach()`. All 16 tests passing.
+
+## Validation
+
+- `npm run typecheck`: Passed with 0 errors.
+- `npm run lint`: Passed with 0 warnings, 0 errors (`--max-warnings 0`).
+- `npm run build`: Production bundle built in 1.66s.
+- `python scripts/check_frontend_perf_budget.py --bundle --json`: Passed with 0 errors (entry JS gzip 99,752 bytes <= 150kB budget).
+- `npx vitest run`: 124 passed of 124 test suites; 1,139 passed of 1,139 tests.
+- All modified and newly created files strictly <= 500 lines.
+
+## Next
+
+1. Push branch `feat/1304-react-query-datalayer`.
+2. Land PR #1380 via auto-merge.
+3. Release coordination lease on Issue #1304 and remove worktree.
+4. Close parent Epic SC-A (#1347).
+
+---
+
+# Previous handoff — Restore green main: OpenAPI ValidationError schema alignment (#1383)
 
 Last updated: 2026-09-24
 

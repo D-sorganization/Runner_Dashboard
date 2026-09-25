@@ -103,6 +103,7 @@ export function useMutationQueue() {
 
   // Attach online/offline listeners and seed initial count.
   useEffect(() => {
+    if (typeof indexedDB === "undefined") return;
     refreshCount()
 
     function handleOnline() {

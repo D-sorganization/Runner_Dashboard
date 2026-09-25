@@ -17,9 +17,13 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { queryClient } from "../../hooks/usePollingQueries";
 import { StaffPage } from "../Staff";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  queryClient.clear();
+});
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
