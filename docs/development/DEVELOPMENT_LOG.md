@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1477 · Staff validator accepts RM tool/scope grants
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1477
+- **Branch:** `fix/staff-validator-tools-scopes`
+- **Paths:** `backend/staff/validator.py`, `backend/staff/schema.json`, `tests/unit/test_staff_roles.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest -k 'staff or role': 477 passed; ruff + mypy clean; live RM roster loads with 0 invalid roles)
+- **Summary:** RD's hand-written staff validator rejected the RM `tools`/`scopes` fields, marking three roles invalid and undispatchable; both are now optional unique string lists, RM stays the vocabulary authority.
+- **Next step:** Merge the PR, then confirm on a node that GET /api/staff/roles reports research-scout, project-steward and fleet-curator as valid.
+
 ### DL-#1287 · CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup
 
 - **State:** in_progress
