@@ -21,7 +21,6 @@ from identity import Principal, format_caller
 from staff.action_executors import (
     execute_board_propose,
     execute_code_request_create,
-    execute_maintenance_action,
     execute_review_pr,
     execute_staff_dispatch,
     execute_staff_hold,
@@ -32,6 +31,7 @@ from staff.action_executors import (
 )
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import get_conversation_store
+from staff.maintenance import register_maintenance_actions
 from staff.roles import RoleSpec, load_roles
 
 if TYPE_CHECKING:
@@ -434,35 +434,4 @@ ACTION_REGISTRY.register(
     )
 )
 
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="maintenance.runner_restart",
-        description="Restart a runner service.",
-        params_schema={"runner_name": "string"},
-        required_scope="runners.control",
-        risk_class=ActionRiskClass.MEDIUM,
-        executor=lambda p, c: execute_maintenance_action(p, c, "maintenance.runner_restart"),
-    )
-)
-
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="maintenance.runner_stop",
-        description="Stop a runner service.",
-        params_schema={"runner_name": "string"},
-        required_scope="runners.control",
-        risk_class=ActionRiskClass.HIGH,
-        executor=lambda p, c: execute_maintenance_action(p, c, "maintenance.runner_stop"),
-    )
-)
-
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="maintenance.diagnose",
-        description="Run non-invasive diagnostics on a runner or node.",
-        params_schema={"target": "string?"},
-        required_scope="staff.read",
-        risk_class=ActionRiskClass.READ,
-        executor=lambda p, c: execute_maintenance_action(p, c, "maintenance.diagnose"),
-    )
-)
+register_maintenance_actions(ACTION_REGISTRY)

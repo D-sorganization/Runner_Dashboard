@@ -214,10 +214,6 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
 
 
 def execute_maintenance_action(params: dict[str, Any], ctx: ActionContext, action_name: str) -> ActionResult:
-    from staff.actions import ActionResult
+    from staff.maintenance import execute_maintenance
 
-    runner_name = str(params.get("runner_name") or params.get("target") or "fleet")
-    return ActionResult(
-        success=True,
-        result={"action": action_name, "target": runner_name, "status": "completed"},
-    )
+    return execute_maintenance(action_name, params, ctx)
