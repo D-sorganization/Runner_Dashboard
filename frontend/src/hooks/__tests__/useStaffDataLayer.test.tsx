@@ -135,7 +135,7 @@ describe("Staff React Query caching & staleness", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((url: string) => {
-        if (url === "/api/staff/roster") {
+        if (url === "/api/staff/roster" || url === "/api/v1/staff/roster") {
           fetchCount += 1;
           return Promise.resolve({
             ok: true,
@@ -199,7 +199,12 @@ describe("401 single session-refresh flow (issue #1304)", () => {
           authRefreshed = true;
           return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) });
         }
-        if (url === "/api/staff/roster" || url === "/api/staff/board") {
+        if (
+          url === "/api/staff/roster" ||
+          url === "/api/v1/staff/roster" ||
+          url === "/api/staff/board" ||
+          url === "/api/v1/staff/board"
+        ) {
           if (!authRefreshed) {
             return Promise.resolve({
               ok: false,
@@ -210,7 +215,7 @@ describe("401 single session-refresh flow (issue #1304)", () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: async () => (url === "/api/staff/roster" ? FAKE_ROSTER : { machine: "Desk", spend_today_usd: 0 }),
+            json: async () => (url.endsWith("/roster") ? FAKE_ROSTER : { machine: "Desk", spend_today_usd: 0 }),
           });
         }
         return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
@@ -246,7 +251,7 @@ describe("401 single session-refresh flow (issue #1304)", () => {
         if (url === "/api/auth/refresh") {
           return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
         }
-        if (url === "/api/staff/roster") {
+        if (url === "/api/staff/roster" || url === "/api/v1/staff/roster") {
           return Promise.resolve({
             ok: false,
             status: 401,

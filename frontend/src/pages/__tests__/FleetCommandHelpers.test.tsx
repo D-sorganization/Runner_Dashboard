@@ -96,7 +96,8 @@ describe("Staff tab deep link", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) => {
-        const body = url === "/api/staff/runs/run-5" ? { run, events: [] } : null;
+        const body =
+          url === "/api/staff/runs/run-5" || url === "/api/v1/staff/runs/run-5" ? { run, events: [] } : null;
         return Promise.resolve({
           ok: body !== null,
           status: body ? 200 : 404,
