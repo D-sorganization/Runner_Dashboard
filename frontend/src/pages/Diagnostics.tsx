@@ -13,6 +13,8 @@
  * LoD: the component talks only to the typed API shapes below through the
  * shared `legacyFetch` (adds the CSRF header); callers pass no props.
  * Orthogonality: a diagnostics 5xx surfaces inline and never touches Fleet.
+ *
+ * @deprecated Merged into unified Operations page (`/fleet/operations#diagnostics`) in SC-G3 (#1325).
  */
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
