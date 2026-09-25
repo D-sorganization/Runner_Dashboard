@@ -18,32 +18,58 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1479 · K2: knowledge packs in the Staff Console
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1479
+- **Branch:** `agy/issue-1479`
+- **Paths:** `backend/knowledge_pack/`, `backend/staff/knowledge_refresh.py`, `backend/staff/chat.py`, `backend/staff/chat_knowledge.py`, `backend/routers/staff_v1.py`, `backend/routers/staff_knowledge.py`, `backend/staff/models.py`, `backend/staff/router_models.py`, `deploy/systemd-user/runner-dashboard-knowledge.service`, `deploy/systemd-user/runner-dashboard-knowledge.timer`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `frontend/src/pages/StaffConsole/Roster.tsx`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `tests/api/test_staff_knowledge_api.py`, `tests/knowledge/test_knowledge_pack_drift.py`, `tests/staff/routing_eval/dataset.py`, `tests/unit/test_knowledge_refresh.py`, `tests/unit/test_staff_chat_knowledge.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (review cleanup: reverted ruff-exclude weakening, rebuilt SPEC.md diff to a single change-log row, split knowledge injection out of `chat.py` into `chat_knowledge.py` and the two knowledge endpoints out of `staff_v1.py` into `staff_knowledge.py` to clear the 500-line cap, deduplicated pack-staleness logic into `knowledge_refresh.pack_is_stale`; `pytest tests/api/test_staff_knowledge_api.py tests/knowledge tests/unit/test_knowledge_refresh.py tests/unit/test_staff_chat_knowledge.py tests/unit/test_staff_chat*.py tests/staff/routing_eval` 63 passed/2 skipped; `mypy backend/` clean; `ruff check`/`ruff format --check` clean on backend/ and tests/; all touched backend files <= 500 lines)
+- **Summary:** Vendored knowledge engine from Tools at pinned commit 09ff428af314969363f8908dcebafb84ddd7a3ef with drift test; added user systemd service and timer for pack refresh along with backend/staff/knowledge_refresh.py module; integrated retrieval-augmented chat turns for roles with search_knowledge tool injecting cited ## Knowledge block (now in `staff/chat_knowledge.py`); added GET /api/v1/staff/knowledge/{pack_id} and GET /api/v1/staff/knowledge/{pack_id}/search Pydantic endpoints (now in `routers/staff_knowledge.py`, mounted into `staff_v1.router`) and updated OpenAPI contract; added advisors roster group for disciple and vision-quest with routing keyword rules and eval dataset test cases.
+- **Next step:** Push branch; PR stays draft pending owner review.
+
 ### DL-#1513 · Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Branch:** `fix/align-openapi-schema-python-311`
+- **PR:** #1519
 - **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (generate-api:check clean via Python 3.11 uv sync, tsc clean, eslint clean, all files <= 500 lines)
 - **Summary:** Aligned `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` under Python 3.11 to capture `/api/v1/staff/groups/{group_id}/threads` and disambiguate `proposals__models__CreateProposalRequest`, resolving the failure in `Frontend Tests` on `main` push.
-- **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1519).
 
 ### DL-#1448 · SC-E3: Wire maintenance operations to real backends (slice 1: GitHub run cancel/rerun)
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1448
 - **Branch:** `feat/1448-wire-maintenance`
+- **PR:** #1483
 - **Paths:** `backend/staff/maintenance_github.py`, `backend/staff/maintenance.py`, `backend/gh_client.py`, `backend/routers/staff_proposals.py`, `backend/routers/assistant.py`, `tests/staff/test_maintenance_github.py`, `tests/staff/test_maintenance_safety.py`, `tests/api/test_staff_maintenance_detect_api.py`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (tests/staff + tests/api + gh_client/slug tests: 1249 passed, 1 timing-flaky test_staff_runner case that passes 3/3 alone; mypy clean)
 - **Summary:** Run cancel/rerun/cancel_and_rerun call GitHub via an anyio worker-thread bridge with classified faults and state-based verification; runner service, drain, group, purge, fleet_control, runner_remove and diagnose remain `not_wired` for later slices.
-- **Next step:** Open the slice-1 PR after #1458 merges (rebase onto main), then wire runner service/drain through the fleet node API in slice 2.
+- **Next step:** None (shipped in PR #1483).
 
 ### DL-#1339 · SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies
 
 - **State:** in_review
+- **Owner:** claude
+- **Issue:** #1479
+- **Branch:** `agy/issue-1479`
+- **Paths:** `backend/knowledge_pack/`, `backend/staff/knowledge_refresh.py`, `backend/staff/chat.py`, `backend/staff/chat_knowledge.py`, `backend/routers/staff_v1.py`, `backend/routers/staff_knowledge.py`, `backend/staff/models.py`, `backend/staff/router_models.py`, `deploy/systemd-user/runner-dashboard-knowledge.service`, `deploy/systemd-user/runner-dashboard-knowledge.timer`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `frontend/src/pages/StaffConsole/Roster.tsx`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `tests/api/test_staff_knowledge_api.py`, `tests/knowledge/test_knowledge_pack_drift.py`, `tests/staff/routing_eval/dataset.py`, `tests/unit/test_knowledge_refresh.py`, `tests/unit/test_staff_chat_knowledge.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (review cleanup: reverted ruff-exclude weakening, rebuilt SPEC.md diff to a single change-log row, split knowledge injection out of `chat.py` into `chat_knowledge.py` and the two knowledge endpoints out of `staff_v1.py` into `staff_knowledge.py` to clear the 500-line cap, deduplicated pack-staleness logic into `knowledge_refresh.pack_is_stale`; `pytest tests/api/test_staff_knowledge_api.py tests/knowledge tests/unit/test_knowledge_refresh.py tests/unit/test_staff_chat_knowledge.py tests/unit/test_staff_chat*.py tests/staff/routing_eval` 63 passed/2 skipped; `mypy backend/` clean; `ruff check`/`ruff format --check` clean on backend/ and tests/; all touched backend files <= 500 lines)
+- **Summary:** Vendored knowledge engine from Tools at pinned commit 09ff428af314969363f8908dcebafb84ddd7a3ef with drift test; added user systemd service and timer for pack refresh along with backend/staff/knowledge_refresh.py module; integrated retrieval-augmented chat turns for roles with search_knowledge tool injecting cited ## Knowledge block (now in `staff/chat_knowledge.py`); added GET /api/v1/staff/knowledge/{pack_id} and GET /api/v1/staff/knowledge/{pack_id}/search Pydantic endpoints (now in `routers/staff_knowledge.py`, mounted into `staff_v1.router`) and updated OpenAPI contract; added advisors roster group for disciple and vision-quest with routing keyword rules and eval dataset test cases.
+- **Next step:** Push branch; PR stays draft pending owner review.
+
+### DL-#1339 · SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1339 (epic #1348 / umbrella #1354)
 - **Branch:** `feat/1339-group-threads-board`
@@ -52,7 +78,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_groups.py tests/api/test_staff_groups_api.py 15/15 passing; regression test suite 42/42 passing; ruff check clean; ruff format clean; mypy 0 issues; all files strictly <= 500 lines)
 - **Summary:** Enabled group threads coordinating seat replies: (1) Added data models (`group_models.py`) and group coordination engine (`groups.py`) configuring Board group (seats Alpha, Bravo, Charlie, Delta + coordinator `board-secretary`); (2) Implemented concurrent fanout across seat chat turns with per-seat timeout and fault isolation; (3) Added consensus synthesis with quorum threshold (3/4), executive synthesis, collapsible `<details><summary>` seat disclosures, and automatic `board.propose` ActionProposal creation; (4) Added pre-send token/USD cost estimation and threshold guard (`STAFF_GROUP_COST_THRESHOLD_USD`, default $2.00) requiring `confirm_cost=True`; (5) Added REST endpoints `GET /api/v1/staff/groups`, `GET /api/v1/staff/groups/{id}`, `GET /api/v1/staff/groups/{id}/cost-estimate`, `POST /api/v1/staff/groups/{id}/threads`; (6) Integrated group threads in `staff_threads.py` with async background coordinator runner; (7) Authorized `board-secretary` for `board.propose` and `staff.dispatch` actions; (8) Fixed `create_work_item` parameter naming in `action_executors.py`.
-- **Next step:** Push rebased branch, monitor PR #1480 CI to squash merge, release lease, and clean up.
+- **Next step:** None (shipped in PR #1480).
 
 ### DL-#1484 · SC-B1-G1: Enforce read-only chat turns per provider
 
@@ -268,6 +294,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/FleetCommandOps.test.tsx`, `frontend/src/pages/__tests__/fleetCommandTestHelpers.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (Merged to main via PR #1460)
+- **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
 - **Next step:** None (shipped in PR #1460).
 
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool

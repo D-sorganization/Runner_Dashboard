@@ -5008,6 +5008,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/knowledge/{pack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Knowledge Info V1
+         * @description Retrieve metadata and freshness status of a knowledge pack (Issue #1479).
+         */
+        get: operations["get_knowledge_info_v1_api_v1_staff_knowledge__pack_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/knowledge/{pack_id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Knowledge V1
+         * @description Search knowledge pack by BM25 query (Issue #1479).
+         */
+        get: operations["search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/maintenance/detect-stalled": {
         parameters: {
             query?: never;
@@ -7554,6 +7594,78 @@ export interface components {
              * @default
              */
             path: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffKnowledgeInfoResponse
+         * @description Response model for GET /api/v1/staff/knowledge/{pack_id} (Issue #1479).
+         */
+        StaffKnowledgeInfoResponse: {
+            /** Built At */
+            built_at: string;
+            /** Commits */
+            commits?: {
+                [key: string]: string;
+            };
+            /** Files */
+            files: number;
+            /** Pack Id */
+            pack_id: string;
+            /** Passage Count */
+            passage_count: number;
+            /** Passages */
+            passages: number;
+            /** Stale */
+            stale: boolean;
+            /** Title */
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffKnowledgePassage
+         * @description One retrieved knowledge chunk with citation (Issue #1479).
+         */
+        StaffKnowledgePassage: {
+            /** Anchor */
+            anchor: string;
+            /** Authority */
+            authority: string;
+            /** Citation */
+            citation: string;
+            /** Commit */
+            commit: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Repo */
+            repo: string;
+            /** Score */
+            score: number;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffKnowledgeSearchResponse
+         * @description Response model for GET /api/v1/staff/knowledge/{pack_id}/search (Issue #1479).
+         */
+        StaffKnowledgeSearchResponse: {
+            /** Count */
+            count: number;
+            /** Pack Id */
+            pack_id: string;
+            /** Passages */
+            passages?: components["schemas"]["StaffKnowledgePassage"][];
+            /** Query */
+            query: string;
         } & {
             [key: string]: unknown;
         };
@@ -15243,6 +15355,75 @@ export interface operations {
             };
         };
     };
+    get_knowledge_info_v1_api_v1_staff_knowledge__pack_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffKnowledgeInfoResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get: {
+        parameters: {
+            query: {
+                /** @description Search query string */
+                q: string;
+                /** @description Max passages to return */
+                k?: number;
+                /** @description Include superseded passages */
+                include_superseded?: boolean;
+            };
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffKnowledgeSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     detect_stalled_jobs_api_v1_staff_maintenance_detect_stalled_post: {
         parameters: {
             query?: never;
@@ -16756,6 +16937,7 @@ export interface operations {
         };
     };
 }
+
 
 // ── Client compatibility aliases ─────────────────────────────────────────────
 // These aliases keep the hand-written API client on stable names while the

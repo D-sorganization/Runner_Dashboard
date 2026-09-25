@@ -3307,6 +3307,151 @@
         "title": "StaffHoldsResponse",
         "type": "object"
       },
+      "StaffKnowledgeInfoResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/v1/staff/knowledge/{pack_id} (Issue #1479).",
+        "properties": {
+          "built_at": {
+            "title": "Built At",
+            "type": "string"
+          },
+          "commits": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Commits",
+            "type": "object"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "pack_id": {
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "passage_count": {
+            "title": "Passage Count",
+            "type": "integer"
+          },
+          "passages": {
+            "title": "Passages",
+            "type": "integer"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack_id",
+          "title",
+          "built_at",
+          "stale",
+          "files",
+          "passages",
+          "passage_count"
+        ],
+        "title": "StaffKnowledgeInfoResponse",
+        "type": "object"
+      },
+      "StaffKnowledgePassage": {
+        "additionalProperties": true,
+        "description": "One retrieved knowledge chunk with citation (Issue #1479).",
+        "properties": {
+          "anchor": {
+            "title": "Anchor",
+            "type": "string"
+          },
+          "authority": {
+            "title": "Authority",
+            "type": "string"
+          },
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "source",
+          "anchor",
+          "title",
+          "text",
+          "commit",
+          "content_hash",
+          "status",
+          "authority",
+          "score",
+          "citation"
+        ],
+        "title": "StaffKnowledgePassage",
+        "type": "object"
+      },
+      "StaffKnowledgeSearchResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/v1/staff/knowledge/{pack_id}/search (Issue #1479).",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "pack_id": {
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/components/schemas/StaffKnowledgePassage"
+            },
+            "title": "Passages",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": ["pack_id", "query", "count"],
+        "title": "StaffKnowledgeSearchResponse",
+        "type": "object"
+      },
       "StaffPricingResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/usage/pricing.",
@@ -14628,6 +14773,142 @@
         ],
         "summary": "Get Staff Inbox",
         "tags": ["staff-inbox-v1"]
+      }
+    },
+    "/api/v1/staff/knowledge/{pack_id}": {
+      "get": {
+        "description": "Retrieve metadata and freshness status of a knowledge pack (Issue #1479).",
+        "operationId": "get_knowledge_info_v1_api_v1_staff_knowledge__pack_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffKnowledgeInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Knowledge Info V1",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/knowledge/{pack_id}/search": {
+      "get": {
+        "description": "Search knowledge pack by BM25 query (Issue #1479).",
+        "operationId": "search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search query string",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Search query string",
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max passages to return",
+            "in": "query",
+            "name": "k",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "Max passages to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "K",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Include superseded passages",
+            "in": "query",
+            "name": "include_superseded",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include superseded passages",
+              "title": "Include Superseded",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffKnowledgeSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Search Knowledge V1",
+        "tags": ["staff-v1"]
       }
     },
     "/api/v1/staff/maintenance/detect-stalled": {
