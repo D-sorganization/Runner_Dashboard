@@ -1,3 +1,33 @@
+# Current handoff — SC-G6: Retire the Cline Launcher (#1338)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1338`; branch `chore/1338-retire-cline-launcher`; PR: see branch; Issue #1338 (Cline slice only); DL-#1338. Commit: SELF.
+
+## Objective and Status
+
+- Owner decision: retire the Cline Launcher. The rest of #1338 (other low-usage pages) stays `judgement:contested` and is not touched here.
+- Done:
+  - Removed `pages/ClineLauncher.tsx` (and its test), the nav entry, the intro override, the RoutedShell case and the legacy-App tab.
+  - Removed `backend/agent_launcher_router.py`, its `server.py` include, and its tests; dropped the six `/api/agent-launcher/*` paths and their six schemas from `openapi.json` / `api-types.ts`.
+  - `getTabRedirect` sends `/staff/cline-launcher`, `/cline-launcher` and `/t/cline-launcher` to the Staff Console (`/`).
+- Kept: the `cline-launcher` row in `usage_metrics.TAB_RECOMMENDATIONS`, so historical page views still report as `retire`.
+
+## Validation
+
+- `npx vitest run` → 154 files, 1309 passed; `npx tsc -p tsconfig.app.json --noEmit` → clean.
+- WSL venv: `pytest tests/test_retired_cline_launcher.py tests/test_async_hygiene.py tests/test_usage_metrics.py tests/api/test_structural_auth_perimeter.py tests/frontend/test_api_generation_contract.py` → 81 passed, 1 skipped.
+- `scripts/gen-api-client.sh` failed locally at its prettier step (the Windows `npx` cannot see WSL `/tmp`), so the snapshot was edited surgically; CI's `generate-api:check` is the authority.
+
+## Next Steps
+
+1. Merge once CI is green.
+2. File a Repository_Management issue to retire `launchers/cline_agent_launcher` (its only consumer is gone).
+
+---
+
 # Current handoff — CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool (#1284)
 
 Last updated: 2026-09-25

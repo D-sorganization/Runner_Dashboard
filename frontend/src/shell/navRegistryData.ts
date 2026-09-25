@@ -2,7 +2,7 @@
  * navRegistryData.ts — Nav items and groups definition (SC-D2 / issue #1309).
  *
  * Defines the 4-area information architecture:
- *   - Staff (Staff Console, Fleet Command, Maxwell, Cline Launcher)
+ *   - Staff (Staff Console, Fleet Command, Maxwell)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
  *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Assessments, Org)
  *   - Settings (Settings, Credentials, Notifications, Linear Setup, Local Tools, Tests, Diagnostics, Principals)
@@ -16,7 +16,6 @@ import {
   FlaskIcon,
   ActivityIcon,
   RocketIcon,
-  TerminalIcon,
   KeyIcon,
   BotIcon,
   ChartIcon,
@@ -92,17 +91,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: BotIcon,
     tooltip: "Maxwell autonomous AI control plane: status and tasks.",
     tabId: "maxwell",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: true,
-  },
-  {
-    id: "cline-launcher",
-    label: "Cline Launcher",
-    group: "staff",
-    Icon: TerminalIcon,
-    tooltip: "Launch Cline agent sessions against the fleet.",
-    tabId: "cline-launcher",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

@@ -673,12 +673,6 @@ app.include_router(_health_router.router)
 app.include_router(_metrics_router.router)
 app.include_router(_prometheus_metrics_router.router)
 
-# Agent-launcher control surface (sibling: Repository_Management/launchers/cline_agent_launcher).
-# Subprocess-only — never imports the launcher Python at runtime.
-import agent_launcher_router as _agent_launcher_router  # noqa: E402
-
-app.include_router(_agent_launcher_router.router)
-
 # Batch-2 extracted routers (epic #159)
 app.include_router(_system_router.router)
 app.include_router(_web_vitals_router.router)
