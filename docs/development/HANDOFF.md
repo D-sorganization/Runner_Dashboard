@@ -1,4 +1,49 @@
-# Current handoff — Short-lived, scoped credentials for staff runs (#1310)
+# Current handoff — Structured reply contract for chat turns (#1308)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1308-structured-reply-contract`; Issue #1308 (epic #1348 / umbrella #1354); DL-#1308.
+
+## Work
+
+- `backend/staff/reply_contract.py`:
+  - Implemented `parse_reply(raw_text, role=None)` structured reply parser for conversational turns.
+  - Extracts markdown prose reply, trailing fenced ` ```staff-actions ` JSON block, `handoff: <role>` line, and `question: <text>` line (inside ` ```text ` or as plain trailing lines).
+  - Validates action objects against standard actions (`claim_issue`, `open_pr`, `notify_user`, `submit_proposal`) and 12 fleet maintenance actions (`runner.*`, `fleet.*`, `queue.*`, `run.*`, `host.*`, `dashboard.*`).
+  - Drops unknown actions with system notes.
+  - Validates proposed actions against role's declared permissions (`lease`, `open_pr`, `notify_user`, `tools: [submit_proposal]`, and `fleet_actions`), dropping unauthorized proposals with warnings.
+  - Enforced fail-safe guarantee: parser exceptions are impossible by construction; malformed JSON retains the prose reply with a diagnostic warning.
+  - Built-in adversarial injection defense: action blocks inside Markdown blockquotes (`> ...`) or nested within code blocks are treated as data/quotes and not parsed as actionable proposals.
+- `backend/staff/workspace.py`:
+  - Extended `compose_prompt` with `chat_turn: bool = False`. When True, appends role's `chat.contract` fragment rather than unattended worktree fleet rules / `STAFF_RESULT` instructions.
+  - Updated `rm_root()` to check `Repository_Management-main` before `Repository_Management`.
+- `backend/staff/roles.py`, `backend/staff/schema.json`, `backend/staff/models.py`:
+  - Support `persona` as dict or str, added `defers_to` property on `RoleSpec`.
+  - Added `tools` tuple to `RoleSpec` matching RM schema.
+- `tests/unit/test_staff_reply_contract.py`:
+  - Added comprehensive table-driven tests for plain prose, actions, handoff, question, malformed JSON, unknown actions, unauthorized actions, fleet actions, adversarial blockquotes and nested code fences, edge cases, and all 14 RM playbook worked examples.
+
+## Validation
+
+- `pytest tests/unit/test_staff_reply_contract.py`: 15 passed (including verification of all 14 RM playbook worked examples).
+- `pytest tests/unit/ tests/api/test_staff_contracts.py`: 100 passed (0 regressions, drift-free contract tests).
+- `ruff check backend tests`: Passed with 0 errors.
+- `black --line-length 120 --check backend/staff/reply_contract.py backend/staff/workspace.py backend/staff/roles.py tests/unit/test_staff_reply_contract.py`: Passed.
+- `mypy backend/staff/reply_contract.py backend/staff/workspace.py backend/staff/roles.py`: Passed with 0 errors.
+- All modified and newly created files strictly <= 500 lines.
+
+## Next
+
+1. Commit and push branch `feat/1308-structured-reply-contract`.
+2. Open PR via `gh pr create` with `Fixes #1308`.
+3. Enable auto-merge and wait for CI to merge.
+4. Release coordination lease on Issue #1308 and remove worktree.
+
+---
+
+# Previous handoff — Short-lived, scoped credentials for staff runs (#1310)
 
 Last updated: 2026-09-24
 
