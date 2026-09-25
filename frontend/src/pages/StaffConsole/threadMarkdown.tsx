@@ -131,6 +131,7 @@ export const ThreadMarkdown: React.FC<ThreadMarkdownProps> = ({ content, classNa
         <div
           key={`md-${idx}`}
           className="thread-md-chunk"
+          // safe: cleanHtml is sanitized via DOMPurify.sanitize in lexMarkdownTokens
           dangerouslySetInnerHTML={{ __html: cleanHtml }}
           style={{ lineHeight: 1.5 }}
         />

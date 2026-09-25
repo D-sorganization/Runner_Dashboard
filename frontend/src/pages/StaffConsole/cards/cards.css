@@ -1,0 +1,22 @@
+/**
+ * cards.css — Styles for Action, Run, Handoff, Review, and Error cards.
+ * Mobile-first BEM architecture adhering to repo web standards.
+ */
+
+.staff-action-card,
+.staff-run-card,
+.staff-handoff-card,
+.staff-review-card,
+.staff-error-card {
+  box-sizing: border-box;
+  width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.staff-action-card:hover,
+.staff-run-card:hover,
+.staff-handoff-card:hover,
+.staff-review-card:hover {
+  border-color: var(--border-hover, #444c56);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
