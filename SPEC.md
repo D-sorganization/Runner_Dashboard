@@ -1,12 +1,13 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.257
+**Spec Version:** 2.5.258
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-25T00:00:00-07:00
 **Status:** Active
 
 ## Change Log
 
+| 2026-09-25 | #1283                  | CR-3: Agent-agnostic Code Request dispatch with customizable agent profiles. Implemented Pydantic models (`AgentProfile`, `AgentProfileStore`) with atomic filesystem persistence and default seeding (`planner-strong`, `executor-cli`); agent-agnostic CommandEnvelope dispatch (`agents.dispatch.adhoc`) with live provider availability validation, quota budget overrun rejection, profile snapshotting, and audit logging; CRUD endpoints `/api/agent-profiles` with live provider health probes; updated frontend `CodeRequests` with dynamic provider registry (`useProviderRegistry`), unavailable provider warnings, and profile selection; synchronized OpenAPI schema and TypeScript client bindings; and comprehensive parametrized backend/frontend test coverage across all 10 registry providers. |
 | 2026-09-25 | #1282                  | CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record. Implemented Pydantic models (`CodeRequest`, `CodeRequestState`, `BoardRoute`, `Requester`, `CodeRequestAuditEvent`) with lossless fenced YAML front-matter serialization; pure-function lifecycle state machine (`transition`); GitHub issue-backed durable `CodeRequestStore` with node-local JSON cache fallback and automatic cache rebuild; prompt construction with standards injection (TDD, DbC, DRY, LoD, security, docs); REST API endpoints `GET/POST /api/code-requests`, `GET /api/code-requests/{id}`, and `POST /api/code-requests/{id}/transition` with dual-scope authorization (`code-requests.manage` and `feature-requests.manage`); `scripts/ensure_code_request_labels.py`; and comprehensive tests. |
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2585,7 +2586,17 @@ over the `/api/code-requests` response (and legacy `/api/feature-requests` alias
 Dispatch reports its real outcome (#1280): a failed `gh api` dispatch returns HTTP 502 and
 records a `failed` history entry with an `error`, and the tab shows the error. `/api/code-requests`
 includes `dispatchTarget {workflow, available, detail}`, probed at most every 10 minutes; while it
-is unavailable the tab shows why and disables Dispatch. Replacement by Code Requests is tracked in epic #1279.
+is unavailable the tab shows why and disables Dispatch.
+
+#### Agent-Agnostic Dispatch & Agent Profiles (CR-3, #1283)
+
+Code requests support agent-agnostic dispatch using signed `CommandEnvelope` messages (`agents.dispatch.adhoc`).
+Operators can select or customize agent profiles (`planner-strong`, `executor-cli`, or custom profiles stored via
+`/api/agent-profiles`) configuring the execution provider, model, timeout, max turns, and budget ceilings.
+The UI dynamically queries the central provider registry (`useProviderRegistry`) across all registered providers,
+probes provider health in real-time, displays warning banners if the chosen provider is offline or missing credentials,
+and freezes an immutable snapshot of the agent profile on the code request record upon dispatch. Daily and per-request
+budget and quota overruns are validated and rejected prior to dispatch. Replacement by Code Requests is tracked in epic #1279.
 
 ### 3.17 Maxwell Tab
 
@@ -3062,6 +3073,16 @@ inline style objects.
 | POST   | `/api/code-requests/templates`          | Create a new code request template                                                              |
 | POST   | `/api/code-requests/dispatch`           | Dispatch a code request workflow; 502 when dispatch fails                                       |
 | *      | `/api/feature-requests*`                | Deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>` (CR-1)     |
+
+### Agent Profiles
+
+| Method | Path                       | Description                                                                     |
+| ------ | -------------------------- | ------------------------------------------------------------------------------- |
+| GET    | `/api/agent-profiles`      | List all agent profiles with live provider probe status and defaults seeded     |
+| POST   | `/api/agent-profiles`      | Create a new custom agent profile with provider availability validation         |
+| GET    | `/api/agent-profiles/{id}` | Get agent profile detail by ID                                                  |
+| PUT    | `/api/agent-profiles/{id}` | Update an existing agent profile (blocks modifying built-in profile IDs)        |
+| DELETE | `/api/agent-profiles/{id}` | Delete an agent profile (blocks deleting built-in profile defaults)             |
 
 ### Local Apps
 
