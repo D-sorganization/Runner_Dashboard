@@ -96,10 +96,10 @@ export function Assign({ roster, initialRole, onDispatched }: AssignProps) {
         .then((resp) => {
           setBusy(null);
           if (resp.dry_run) {
-            setPlan(resp.plan);
+            setPlan(resp.plan ?? null);
           } else {
             setPlan(null);
-            onDispatched(resp.run.id);
+            if (resp.run?.id) onDispatched(resp.run.id);
           }
         })
         .catch((e: unknown) => {
@@ -279,7 +279,7 @@ export function Assign({ roster, initialRole, onDispatched }: AssignProps) {
             ) : null}
             <dt>argv</dt>
             <dd>
-              <code data-testid="plan-argv">{plan.argv.join(" ")}</code>
+              <code data-testid="plan-argv">{plan.argv?.join(" ") ?? ""}</code>
             </dd>
           </dl>
           <details open>

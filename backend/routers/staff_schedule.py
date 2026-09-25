@@ -23,6 +23,11 @@ from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
 from staff.audit import record_audit
 from staff.holds import MAX_TEXT
+from staff.models import (
+    StaffHoldsResponse,
+    StaffScheduleResponse,
+    StaffScheduleToggleResponse,
+)
 from staff.scheduler import get_scheduler
 
 log = logging.getLogger("dashboard.staff.schedule")
@@ -73,7 +78,7 @@ def start_scheduler() -> None:
     get_scheduler().start()
 
 
-@router.get("/holds")
+@router.get("/holds", response_model=StaffHoldsResponse, response_model_exclude_none=True)
 async def get_holds(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
@@ -81,7 +86,7 @@ async def get_holds(
     return {"holds": [h.to_dict() for h in holds.load()], "path": str(holds.path)}
 
 
-@router.put("/holds")
+@router.put("/holds", response_model=StaffHoldsResponse, response_model_exclude_none=True)
 async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("staff.holds.write"))) -> dict[str, Any]:
     """Replace the holds list. Postcondition: the file on disk equals the response."""
     holds = get_scheduler().holds
@@ -108,7 +113,11 @@ class ScheduleToggleBody(BaseModel):
     enabled: bool
 
 
-@router.post("/schedule/toggle")
+@router.post(
+    "/schedule/toggle",
+    response_model=StaffScheduleToggleResponse,
+    response_model_exclude_none=True,
+)
 async def toggle_scheduler(
     body: ScheduleToggleBody,
     caller: Principal = Depends(require_scope("staff.admin")),
@@ -132,7 +141,7 @@ async def toggle_scheduler(
     return {"enabled": body.enabled, "running": sched.running}
 
 
-@router.get("/schedule")
+@router.get("/schedule", response_model=StaffScheduleResponse, response_model_exclude_none=True)
 async def get_schedule(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:

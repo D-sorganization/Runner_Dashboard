@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1372 · CI: Restore green main across secrets, api-types, and line-cap gates
+### DL-#1296 · SC-A10: Contract check between backend response models and frontend types
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1296 (epic #1347 / umbrella #1354)
+- **Branch:** `feat/1296-contract-check-staff-types`
+- **PR:** #1370
+- **Paths:** `backend/staff/models.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`, `backend/routers/assistant.py`, `backend/staff/fleet.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Assign.tsx`, `tests/api/test_staff_contracts.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (local pytest, typecheck, drift check pass)
+- **Summary:** Defined Pydantic response models for staff Hub routes (`backend/staff/models.py`) and assistant routes (`backend/routers/assistant.py`). Exported OpenAPI schema in `frontend/src/lib/openapi.json` and generated TypeScript definitions in `frontend/src/lib/api-types.ts`. Replaced hand-written duplicates in `frontend/src/pages/Staff/staffApi.ts` with generated `components["schemas"]`. Added contract check tests in `tests/api/test_staff_contracts.py` and drift detection script `scripts/gen-api-client.sh --check`.
+- **Next step:** Land PR #1370, release lease on #1296.
+
+### DL-#1372 · CI: Restore green main across secrets, api-types, and line-cap gates
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1372
 - **Branch:** `fix/1372-restore-green-main`
-- **PR:**
+- **PR:** #1373
 - **Paths:** `tests/api/test_staff_on_behalf_of.py`, `frontend/src/lib/api-types.ts`, `.github/workflows/ci-standard.yml`, `SPEC.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24
+- **Last verified:** 2026-09-24 (`32691e7`)
 - **Summary:** Satisfied detect-secrets audit in test_staff_on_behalf_of.py with token_key/signing_key variables and pragma allowlist annotations. Restored canonical 4-space formatting in frontend/src/lib/api-types.ts. Appended overgrown legacy modules identity.py and machine_registry.py to EXEMPT regex in ci-standard.yml line-cap check.
-- **Next step:** Land PR, verify all main branch CI checks pass green.
+- **Next step:** None (shipped in PR #1373).
 
 ### DL-#1311 · SC-F2: Preserve original caller's identity when forwarding staff runs
 

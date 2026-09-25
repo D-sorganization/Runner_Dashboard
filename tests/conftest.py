@@ -26,6 +26,11 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 os.environ["AUTODERIVE_FLEET_NODES"] = "0"
 os.environ["FLEET_NODES"] = ""
 
+# Strip git hook environment variables so tests creating temporary git repos are isolated
+for _var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"):
+    os.environ.pop(_var, None)
+os.environ["PRE_COMMIT_ALLOW_NO_CONFIG"] = "1"
+
 # matplotlib headless backend, set before any matplotlib import.
 os.environ.setdefault("MPLBACKEND", "Agg")
 
