@@ -383,7 +383,7 @@ export function OverviewPage(): React.ReactElement {
         stats={state.stats}
         driftInfo={state.driftInfo}
         onRetry={() => refresh()}
-        onOpenDeployment={() => navigate(tabIdToPath("deployment"))}
+        onOpenDeployment={() => navigate(tabIdToPath("operations") + "#deploy")}
       />
 
       {/* 2. Machines Section: single unified machines table with expandable telemetry */}

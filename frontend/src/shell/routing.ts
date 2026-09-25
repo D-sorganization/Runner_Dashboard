@@ -105,6 +105,14 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["machines"] = { to: "/fleet#machines", label: "Machines" };
   table["runner-audit"] = { to: "/fleet#alerts", label: "Runner Audit" };
   table["events"] = { to: "/fleet#events", label: "Event Log" };
+  table["deployment"] = { to: "/fleet/operations#deploy", label: "Deploy & versions" };
+  table["fleet-orchestration"] = { to: "/fleet/operations#deploy", label: "Deploy & versions" };
+  table["conductor"] = { to: "/fleet/operations#admission", label: "Admission (Conductor)" };
+  table["runner-schedule"] = { to: "/fleet/operations#runner-hours", label: "Runner hours" };
+  table["runner-plan"] = { to: "/fleet/operations#runner-hours", label: "Runner hours" };
+  table["scheduled-jobs"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
+  table["schedules"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
+  table["diagnostics"] = { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
   return table;
 })();
 
@@ -125,6 +133,37 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
   }
   if (normalized === "/fleet/events" || normalized === "/events") {
     return { to: "/fleet#events", label: "Event Log" };
+  }
+  if (normalized === "/fleet/deployment" || normalized === "/deployment") {
+    return { to: "/fleet/operations#deploy", label: "Deploy & versions" };
+  }
+  if (normalized === "/fleet/fleet-orchestration" || normalized === "/fleet-orchestration") {
+    return { to: "/fleet/operations#deploy", label: "Deploy & versions" };
+  }
+  if (normalized === "/fleet/conductor" || normalized === "/conductor") {
+    return { to: "/fleet/operations#admission", label: "Admission (Conductor)" };
+  }
+  if (
+    normalized === "/fleet/runner-schedule" ||
+    normalized === "/runner-schedule" ||
+    normalized === "/fleet/runner-plan" ||
+    normalized === "/runner-plan"
+  ) {
+    return { to: "/fleet/operations#runner-hours", label: "Runner hours" };
+  }
+  if (
+    normalized === "/work/scheduled-jobs" ||
+    normalized === "/scheduled-jobs" ||
+    normalized === "/schedules" ||
+    normalized === "/work/schedules"
+  ) {
+    return { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
+  }
+  if (normalized === "/settings/diagnostics" || normalized === "/diagnostics") {
+    return { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
+  }
+  if (normalized === "/operations") {
+    return { to: "/fleet/operations", label: "Operations" };
   }
   const match = normalized.match(/^\/t\/([^/]+)$/);
   if (!match) return null;
@@ -186,6 +225,29 @@ export function pathnameToTabId(pathname: string): string | undefined {
     normalized === "/events"
   ) {
     return "overview";
+  }
+
+  if (
+    normalized === "/fleet/deployment" ||
+    normalized === "/deployment" ||
+    normalized === "/fleet/fleet-orchestration" ||
+    normalized === "/fleet-orchestration" ||
+    normalized === "/fleet/conductor" ||
+    normalized === "/conductor" ||
+    normalized === "/fleet/runner-schedule" ||
+    normalized === "/runner-schedule" ||
+    normalized === "/fleet/runner-plan" ||
+    normalized === "/runner-plan" ||
+    normalized === "/work/scheduled-jobs" ||
+    normalized === "/scheduled-jobs" ||
+    normalized === "/schedules" ||
+    normalized === "/work/schedules" ||
+    normalized === "/settings/diagnostics" ||
+    normalized === "/diagnostics" ||
+    normalized === "/fleet/operations" ||
+    normalized === "/operations"
+  ) {
+    return "operations";
   }
 
   // Secondary area pages: /<group>/<tabId>

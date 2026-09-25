@@ -117,7 +117,12 @@ function mockOverviewFetch() {
 
 function LocationProbe() {
   const loc = useLocation();
-  return <span data-testid="pathname">{loc.pathname}</span>;
+  return (
+    <>
+      <span data-testid="pathname">{loc.pathname}</span>
+      <span data-testid="hash">{loc.hash}</span>
+    </>
+  );
 }
 
 function renderOverview() {
@@ -157,8 +162,9 @@ describe("OverviewPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Deployment state" }));
 
     expect(screen.getByTestId("pathname")).toHaveTextContent(
-      "/fleet/deployment",
+      "/fleet/operations",
     );
+    expect(screen.getByTestId("hash")).toHaveTextContent("#deploy");
   });
 
   it("dispatches fleet and runner actions through native handlers", async () => {

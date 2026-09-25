@@ -34,9 +34,8 @@ export const INTRO_OVERRIDES: Readonly<Record<string, string>> = {
   // "Principals" is auth jargon for the identities the dashboard can act as.
   principals:
     "The identities (users, bots, service accounts) the dashboard is authenticated as, and which one it is currently acting on behalf of.",
-  // "Conductor admission gate" needs unpacking for new operators.
-  conductor:
-    "The admission gate that decides which queued agent dispatches are allowed to run — see what's pending, admitted, or held, and adjust capacity.",
+  operations:
+    "Fleet operations: deployment rollouts, Conductor admission gate, runner hours, scheduled workflows, and diagnostics.",
   maxwell:
     "Maxwell-Daemon is the autonomous local AI control plane. Watch its status, review tasks, and chat with it (it must be running — start it from Local Tools).",
   "local-apps":

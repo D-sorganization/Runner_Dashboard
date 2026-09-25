@@ -96,7 +96,7 @@ describe("nav registry — DbC invariants", () => {
 
   it("surfaces the on-call operator controls in the mobile drawer (issue #821)", () => {
     const drawerTabIds = NAV_ITEMS.filter((i) => i.mobileDrawer).map((i) => i.tabId);
-    for (const expected of ["conductor", "agent-dispatch"]) {
+    for (const expected of ["operations", "agent-dispatch"]) {
       expect(drawerTabIds).toContain(expected);
     }
   });
@@ -124,6 +124,20 @@ describe("nav registry — DbC invariants", () => {
     expect(NAV_ITEMS.find((i) => i.tabId === "events")).toBeUndefined();
   });
 
+  it("merges deployment, fleet-orchestration, conductor, runner-schedule, scheduled-jobs, diagnostics into Operations (SC-G3 / issue #1325)", () => {
+    const ops = NAV_ITEMS.find((i) => i.tabId === "operations");
+    expect(ops).toBeDefined();
+    expect(ops?.label).toBe("Operations");
+    expect(ops?.group).toBe("fleet");
+
+    expect(NAV_ITEMS.find((i) => i.tabId === "deployment")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "fleet-orchestration")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "conductor")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "runner-schedule")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "scheduled-jobs")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "diagnostics")).toBeUndefined();
+  });
+
   it("marks at least one frequent item and not all of them", () => {
     const freq = NAV_ITEMS.filter((i) => i.frequent);
     expect(freq.length).toBeGreaterThanOrEqual(1);
@@ -132,7 +146,7 @@ describe("nav registry — DbC invariants", () => {
 
   it("includes the four expected top-bar categories as frequent", () => {
     const freqTabIds = NAV_ITEMS.filter((i) => i.frequent).map((i) => i.tabId);
-    for (const expected of ["overview", "queue", "remediation", "conductor"]) {
+    for (const expected of ["overview", "queue", "remediation", "operations"]) {
       expect(freqTabIds).toContain(expected);
     }
   });

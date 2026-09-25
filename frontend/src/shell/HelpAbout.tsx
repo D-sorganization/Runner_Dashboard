@@ -50,7 +50,7 @@ const DEFAULT_QUICK_LINKS = [
   "remediation",
   "credentials",
   "local-apps",
-  "diagnostics",
+  "operations",
 ];
 
 /** First-things-to-check checklist (kept to five concise lines). */
