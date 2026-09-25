@@ -41,8 +41,27 @@ export function MaxwellChatPanel({
 }: MaxwellChatPanelProps): React.ReactElement {
   return (
     <div className="section maxwell-chat-section">
-      <div className="section-header">
+      <div
+        className="section-header"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <span className="section-title">Maxwell Chat</span>
+        <a
+          href="/#staff"
+          style={{
+            fontSize: 12,
+            color: "var(--accent-blue)",
+            textDecoration: "none",
+            fontWeight: 500,
+          }}
+          title="Open Staff Console"
+        >
+          Staff Console →
+        </a>
       </div>
       <div className="section-body maxwell-chat">
         <div
@@ -54,7 +73,7 @@ export function MaxwellChatPanel({
           {chatMessages.length === 0 ? (
             <div className="maxwell-chat-empty">
               {status.http_reachable
-                ? "Ask Maxwell for fleet status, recent runner activity, or the next operator command."
+                ? "Ask Maxwell for fleet status, recent runner activity, or dispatch tasks via the Staff Console."
                 : "Maxwell-Daemon is unreachable. Chat history is preserved; use Retry after the daemon is reachable."}
             </div>
           ) : (

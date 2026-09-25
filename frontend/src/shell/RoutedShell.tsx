@@ -349,6 +349,8 @@ export function AppShell({
       credentials: <CredentialsMobile />,
       staff: <LazyStaffMobile />,
       "fleet-command": <LazyFleetCommandPage />,
+      // The legacy App has no projects case, so falling back rendered blank (#1345).
+      projects: <LazyProjectsPage />,
     } as Partial<Record<TabId, React.ReactNode>>;
     const nativeMobileContent = mobileTabContent[mobileTab];
     const legacyMobileFallback = nativeMobileContent ? null : (

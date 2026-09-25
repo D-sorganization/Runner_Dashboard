@@ -234,38 +234,6 @@
         "title": "AssistantChatResponse",
         "type": "object"
       },
-      "AssistantToolChatResponse": {
-        "description": "Response when tools_enabled=true.\n\n``stop_reason`` is \"tool_use\" when the model wants to call tools;\n\"end_turn\" when it has produced a final answer.\n``tool_calls`` is non-empty when stop_reason == \"tool_use\".",
-        "properties": {
-          "message": {
-            "additionalProperties": true,
-            "title": "Message",
-            "type": "object"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "stop_reason": {
-            "title": "Stop Reason",
-            "type": "string"
-          },
-          "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
-          },
-          "tool_calls": {
-            "items": {
-              "$ref": "#/components/schemas/ToolCallCard"
-            },
-            "title": "Tool Calls",
-            "type": "array"
-          }
-        },
-        "required": ["message", "stop_reason", "provider", "timestamp"],
-        "title": "AssistantToolChatResponse",
-        "type": "object"
-      },
       "AuditHistoryResponse": {
         "description": "Paginated audit history for assistant tool executions.",
         "properties": {
@@ -684,97 +652,36 @@
         "type": "object"
       },
       "CreateProposalRequest": {
-        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
         "properties": {
-          "code_request_url": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code Request Url"
-          },
-          "confirm_not_duplicate": {
-            "default": false,
-            "title": "Confirm Not Duplicate",
-            "type": "boolean"
-          },
-          "estimated_cost": {
-            "enum": ["Low", "Medium", "High"],
-            "title": "Estimated Cost",
+          "action": {
+            "description": "Name of allowlisted action",
+            "title": "Action",
             "type": "string"
           },
-          "evidence": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Evidence",
+          "message_id": {
+            "description": "Originating message ID",
+            "title": "Message Id",
             "type": "string"
           },
-          "lean": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Lean",
+          "params": {
+            "additionalProperties": true,
+            "description": "Action parameters",
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "default": "low",
+            "description": "Risk class (read, low, medium, high, owner-only)",
+            "title": "Risk",
             "type": "string"
           },
-          "options_considered": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Options Considered",
-            "type": "string"
-          },
-          "problem": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Problem",
-            "type": "string"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "target_repos": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Target Repos",
-            "type": "array"
-          },
-          "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "urgency": {
-            "enum": ["Routine", "Urgent", "Emergency"],
-            "title": "Urgency",
+          "thread_id": {
+            "description": "Parent thread ID",
+            "title": "Thread Id",
             "type": "string"
           }
         },
-        "required": [
-          "title",
-          "target_repos",
-          "problem",
-          "evidence",
-          "options_considered",
-          "lean",
-          "estimated_cost",
-          "urgency"
-        ],
+        "required": ["message_id", "thread_id", "action"],
         "title": "CreateProposalRequest",
         "type": "object"
       },
@@ -4352,31 +4259,6 @@
         "title": "TokenCreateRequest",
         "type": "object"
       },
-      "ToolCallCard": {
-        "description": "A tool call proposed by the assistant; may require confirmation.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "input": {
-            "additionalProperties": true,
-            "title": "Input",
-            "type": "object"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "requires_confirmation": {
-            "title": "Requires Confirmation",
-            "type": "boolean"
-          }
-        },
-        "required": ["id", "name", "input", "requires_confirmation"],
-        "title": "ToolCallCard",
-        "type": "object"
-      },
       "ToolExecuteResponse": {
         "description": "Result of a tool execution.",
         "properties": {
@@ -4556,37 +4438,98 @@
         "title": "WorkSummary",
         "type": "object"
       },
-      "routers__staff_proposals__CreateProposalRequest": {
+      "proposals__models__CreateProposalRequest": {
+        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
         "properties": {
-          "action": {
-            "description": "Name of allowlisted action",
-            "title": "Action",
+          "code_request_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "confirm_not_duplicate": {
+            "default": false,
+            "title": "Confirm Not Duplicate",
+            "type": "boolean"
+          },
+          "estimated_cost": {
+            "enum": ["Low", "Medium", "High"],
+            "title": "Estimated Cost",
             "type": "string"
           },
-          "message_id": {
-            "description": "Originating message ID",
-            "title": "Message Id",
+          "evidence": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Evidence",
             "type": "string"
           },
-          "params": {
-            "additionalProperties": true,
-            "description": "Action parameters",
-            "title": "Params",
-            "type": "object"
-          },
-          "risk": {
-            "default": "low",
-            "description": "Risk class (read, low, medium, high, owner-only)",
-            "title": "Risk",
+          "lean": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Lean",
             "type": "string"
           },
-          "thread_id": {
-            "description": "Parent thread ID",
-            "title": "Thread Id",
+          "options_considered": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "enum": ["Routine", "Urgent", "Emergency"],
+            "title": "Urgency",
             "type": "string"
           }
         },
-        "required": ["message_id", "thread_id", "action"],
+        "required": [
+          "title",
+          "target_repos",
+          "problem",
+          "evidence",
+          "options_considered",
+          "lean",
+          "estimated_cost",
+          "urgency"
+        ],
         "title": "CreateProposalRequest",
         "type": "object"
       }
@@ -5649,22 +5592,14 @@
     },
     "/api/assistant/chat": {
       "post": {
-        "description": "Chat with AI assistant about dashboard state.\n\nWhen ``tools_enabled: true`` is set, the Anthropic tool-use loop is\nactivated and the response may contain ``tool_calls`` for the client to\nrender as confirmation cards (issue #89).",
+        "description": "Retired endpoint (SC-D11, issue #1330).\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console\nconversation API at /api/v1/staff/threads.",
         "operationId": "assistant_chat_api_assistant_chat_post",
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/AssistantChatResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/AssistantToolChatResponse"
-                    }
-                  ],
-                  "title": "Response Assistant Chat Api Assistant Chat Post"
+                  "$ref": "#/components/schemas/AssistantChatResponse"
                 }
               }
             },
@@ -10447,7 +10382,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateProposalRequest"
+                "$ref": "#/components/schemas/proposals__models__CreateProposalRequest"
               }
             }
           },
@@ -14395,7 +14330,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/routers__staff_proposals__CreateProposalRequest"
+                "$ref": "#/components/schemas/CreateProposalRequest"
               }
             }
           },
@@ -14762,6 +14697,68 @@
           }
         ],
         "summary": "Decide Routing",
+        "tags": ["staff-routing"]
+      }
+    },
+    "/api/v1/staff/routing/eval": {
+      "get": {
+        "description": "Execute routing evaluation and return metrics summary (SC-C7).",
+        "operationId": "get_routing_evaluation_api_v1_staff_routing_eval_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "deterministic_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Deterministic Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_feedback",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Feedback",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Routing Evaluation Api V1 Staff Routing Eval Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Routing Evaluation",
         "tags": ["staff-routing"]
       }
     },

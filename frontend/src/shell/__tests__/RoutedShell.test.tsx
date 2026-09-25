@@ -132,6 +132,9 @@ vi.mock("../../pages/Operations/OperationsPage", () => ({
   OperationsPage: () => <div data-testid="native-operations">Operations</div>,
 }));
 
+vi.mock("../../pages/ProjectsPage", () => ({
+  default: () => <div data-testid="native-projects">Projects</div>,
+}));
 vi.mock("../../pages/Staff/StaffPage", () => ({
   default: () => <div data-testid="native-staff">Staff</div>,
 }));
@@ -362,6 +365,8 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["/t/reports", "mobile-reports"],
     ["/fleet/insights", "mobile-reports"],
     ["/t/credentials", "mobile-credentials"],
+    // #1345: the legacy App has no projects case, so the fallback was blank.
+    ["/t/projects", "native-projects"],
   ])(
     "routes native mobile tab %s without importing the legacy App",
     async (path, testId) => {
@@ -376,11 +381,11 @@ describe("RoutedShell — URL is the source of truth", () => {
 
   it("keeps the mobile legacy fallback for drawer tabs without native content", async () => {
     breakpointMock.mockReturnValue("md");
-    renderAt("/t/projects");
+    renderAt("/t/assessments");
 
     expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
       "data-active-tab",
-      "projects",
+      "assessments",
     );
     expect(legacyAppImport).toHaveBeenCalledTimes(1);
   });

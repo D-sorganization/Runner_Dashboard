@@ -2,7 +2,7 @@
 
 **Status:** Active  
 **Epic:** #1279  
-**Specification:** CR-2 (#1282), CR-1 (#1281)  
+**Specification:** CR-2 (#1282), CR-1 (#1281)
 
 ## Overview
 
@@ -15,12 +15,13 @@ A node-local JSON file (`~/actions-runners/dashboard/code_requests.json`) functi
 ## Canonical GitHub Record
 
 Each Code Request is stored as an issue in the target repository:
+
 - **Labels:** `code-request` and `code-request:<state>`
 - **Body:** Machine-readable YAML front-matter block at the top, followed by the human-readable prompt.
 
 ### Front-Matter Example
 
-```markdown
+````markdown
 ```yaml
 id: cr-Runner_Dashboard-101
 repository: Runner_Dashboard
@@ -37,13 +38,15 @@ standards:
   - tdd
   - dbc
 branch: main
-created_at: '2026-09-25T12:00:00Z'
-updated_at: '2026-09-25T12:05:00Z'
+created_at: "2026-09-25T12:00:00Z"
+updated_at: "2026-09-25T12:05:00Z"
 ```
+````
 
 ## Prompt
 
 Implement kinematic velocity validation in swing analysis pipeline.
+
 ```
 
 ---
@@ -53,16 +56,20 @@ Implement kinematic velocity validation in swing analysis pipeline.
 The lifecycle is modeled as a pure state transition function (`code_requests.lifecycle.transition`).
 
 ```
+
                 ┌───────► board_review ──┬──► deferred
                 │             │          └──► declined
-draft ──► triage┤             ▼
-                └───────► planning ──► planned ──► executing ──┬──► done
-                                                               └──► failed
+
+draft ──► triage┤ ▼
+└───────► planning ──► planned ──► executing ──┬──► done
+└──► failed
 
 Operator Overrides:
+
 - Any pre-planning state (draft, triage, board_review) ──► planning | board_review
 - Any state ──► cancelled
-```
+
+````
 
 ### Transition Invariants
 - Illegal transitions immediately raise `InvalidTransitionError`.
@@ -87,14 +94,16 @@ All endpoints are mounted on `/api/code-requests`:
     "total": 1,
     "dispatchTarget": { "workflow": "...", "available": true, "detail": "" }
   }
-  ```
+````
 
 ### 2. `GET /api/code-requests/{id}`
+
 - **Scope / Auth:** `require_fleet_peer` / session auth.
 - **Lookup:** By `id` (e.g. `cr-Runner_Dashboard-101`), `repo#issue_number`, or issue number.
 - **Response:** Full `CodeRequest` payload including audit trail.
 
 ### 3. `POST /api/code-requests`
+
 - **Scope / Auth:** `code-requests.manage` (with backward-compatible alias `feature-requests.manage`).
 - **Body:**
   - `repository` (string, required)
@@ -105,6 +114,7 @@ All endpoints are mounted on `/api/code-requests`:
   - `board_route` (`auto`, `force_board`, `skip_board`)
 
 ### 4. `POST /api/code-requests/{id}/transition`
+
 - **Scope / Auth:** `code-requests.manage`.
 - **Body:**
   - `to_state` (string, required)
@@ -116,6 +126,7 @@ All endpoints are mounted on `/api/code-requests`:
 ## Label Management
 
 Labels are provisioned across the fleet using `scripts/ensure_code_request_labels.py`:
+
 ```bash
 python scripts/ensure_code_request_labels.py --repo Runner_Dashboard
 ```

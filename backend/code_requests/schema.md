@@ -1,7 +1,7 @@
 # Code Request Schema & Front-Matter Contract
 
 **Specification Version:** 1.0.0 (CR-2, Issue #1282)  
-**Parent Epic:** #1279  
+**Parent Epic:** #1279
 
 ## 1. Overview
 
@@ -11,7 +11,7 @@ Persistence uses a fenced YAML front-matter block at the very top of the issue b
 
 ## 2. Issue Body Format
 
-```markdown
+````markdown
 ```yaml
 id: cr-<repo>-<issue_number>
 repository: <repo_name>
@@ -28,9 +28,10 @@ standards:
   - tdd
   - dbc
 branch: main
-created_at: '<iso8601_utc>'
-updated_at: '<iso8601_utc>'
+created_at: "<iso8601_utc>"
+updated_at: "<iso8601_utc>"
 ```
+````
 
 ## Prompt
 
@@ -39,22 +40,22 @@ updated_at: '<iso8601_utc>'
 
 ## 3. Field Definitions
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | `string` | Yes | Unique identifier (conventionally `cr-<repo>-<number>`). |
-| `repository` | `string` | Yes | Target repository name (e.g. `Runner_Dashboard`). |
-| `state` | `enum` | Yes | Current lifecycle state. |
-| `board_route` | `enum` | Yes | `auto`, `force_board`, or `skip_board`. |
-| `board_proposal` | `string \| null` | Optional | Link/reference to Architecture Board proposal issue if routed. |
-| `plan_epic` | `string \| null` | Optional | Link/reference to tracking epic once technical planning finishes. |
-| `planner_profile_id` | `string \| null` | Optional | Identifier of planning prompt profile / model. |
-| `executor_profile_id` | `string \| null` | Optional | Identifier of execution agent profile / model. |
-| `requester.id` | `string` | Yes | Principal ID of the creator (user or agent). |
-| `requester.kind` | `enum` | Yes | `human` or `agent`. |
-| `standards` | `list[string]` | Yes | Active engineering standards (`tdd`, `dbc`, `dry`, `lod`, `security`, `docs`). |
-| `branch` | `string` | Yes | Target branch (default `main`). |
-| `created_at` | `string` | Yes | ISO 8601 UTC timestamp of creation. |
-| `updated_at` | `string` | Yes | ISO 8601 UTC timestamp of last update. |
+| Field                 | Type             | Required | Description                                                                    |
+| --------------------- | ---------------- | -------- | ------------------------------------------------------------------------------ |
+| `id`                  | `string`         | Yes      | Unique identifier (conventionally `cr-<repo>-<number>`).                       |
+| `repository`          | `string`         | Yes      | Target repository name (e.g. `Runner_Dashboard`).                              |
+| `state`               | `enum`           | Yes      | Current lifecycle state.                                                       |
+| `board_route`         | `enum`           | Yes      | `auto`, `force_board`, or `skip_board`.                                        |
+| `board_proposal`      | `string \| null` | Optional | Link/reference to Architecture Board proposal issue if routed.                 |
+| `plan_epic`           | `string \| null` | Optional | Link/reference to tracking epic once technical planning finishes.              |
+| `planner_profile_id`  | `string \| null` | Optional | Identifier of planning prompt profile / model.                                 |
+| `executor_profile_id` | `string \| null` | Optional | Identifier of execution agent profile / model.                                 |
+| `requester.id`        | `string`         | Yes      | Principal ID of the creator (user or agent).                                   |
+| `requester.kind`      | `enum`           | Yes      | `human` or `agent`.                                                            |
+| `standards`           | `list[string]`   | Yes      | Active engineering standards (`tdd`, `dbc`, `dry`, `lod`, `security`, `docs`). |
+| `branch`              | `string`         | Yes      | Target branch (default `main`).                                                |
+| `created_at`          | `string`         | Yes      | ISO 8601 UTC timestamp of creation.                                            |
+| `updated_at`          | `string`         | Yes      | ISO 8601 UTC timestamp of last update.                                         |
 
 ## 4. Lifecycle States
 
