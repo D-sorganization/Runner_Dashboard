@@ -148,4 +148,6 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "staff_work_items",
         "staff_approvals_list",
         "staff_approval_decide",
+        "submit_proposal",
+        "list_proposals",
     }

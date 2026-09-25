@@ -1,6 +1,23 @@
 import type React from "react";
+import { tabIdToPath } from "../shell/routing";
 import type { CodeRequestRecord } from "./codeRequestsTypes";
 import { requestDate, requestStatus, requestVoteCount } from "./codeRequestsTypes";
+
+function proposeToBoardHref(r: CodeRequestRecord): string {
+  const params: Record<string, string> = {
+    section: "proposals",
+    title: (r.prompt || "").slice(0, 80).trim(),
+    repo: r.repository || "",
+    problem: r.prompt || "",
+  };
+  if (r.id) {
+    // Deep link back to the originating Code Request so the Board can trace
+    // the proposal to its source (#1284 review defect 10).
+    params.code_request_url = `${window.location.origin}${tabIdToPath("code-requests")}?id=${encodeURIComponent(r.id)}`;
+  }
+  const p = new URLSearchParams(params);
+  return `${tabIdToPath("fleet-command")}?${p.toString()}`;
+}
 
 export interface CodeRequestsHistoryProps {
   requests: CodeRequestRecord[];
@@ -61,6 +78,19 @@ export function CodeRequestsHistory({
                     {s.toUpperCase()}
                   </span>
                 ))}
+                <a
+                  href={proposeToBoardHref(r)}
+                  className="feature-request-propose-link"
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: 11,
+                    color: "var(--accent-blue, #3b82f6)",
+                    textDecoration: "none",
+                    fontWeight: 500,
+                  }}
+                >
+                  Propose to Board →
+                </a>
               </div>
               {r.error ? (
                 <div style={{ color: "var(--accent-red)", marginTop: 2 }}>{r.error}</div>
@@ -101,6 +131,13 @@ export function CodeRequestsHistory({
                 <span className="feature-request-mobile-chip">
                   {requestDate(r) || "date unknown"}
                 </span>
+                <a
+                  href={proposeToBoardHref(r)}
+                  className="feature-request-mobile-chip"
+                  style={{ color: "var(--accent-blue, #3b82f6)", textDecoration: "none" }}
+                >
+                  Propose to Board →
+                </a>
               </div>
             </article>
           ))}

@@ -26,6 +26,8 @@ from fleet_validators import (
     LIMITS,
     PATTERNS,
     PROPOSAL_DECISIONS,
+    PROPOSAL_ESTIMATED_EFFORTS,
+    PROPOSAL_URGENCIES,
     RUN_STATUSES,
     USAGE_GROUPS,
     FleetAPIError,
@@ -464,3 +466,72 @@ class FleetClient:
         if version is not None:
             body["version"] = _text(version, "version", LIMITS.max_version, form="line")
         return self.request("PUT", "/api/priorities/directives", body=body)
+
+    # ------------------------------------------------------------------ proposals
+
+    def submit_proposal(
+        self,
+        title: str,
+        target_repos: list[str] | str,
+        problem: str,
+        evidence: str,
+        options_considered: str | list[str],
+        lean: str,
+        estimated_cost: str,
+        urgency: str,
+        source: str | None = None,
+        code_request_url: str | None = None,
+        confirm_not_duplicate: bool = False,
+    ) -> Any:
+        """Submit a proposal to the Board (requires ``proposals.write`` scope)."""
+        title_text = _text(title, "title", LIMITS.max_proposal_title)
+        if isinstance(target_repos, str):
+            repos = [r.strip() for r in target_repos.split(",") if r.strip()]
+        else:
+            _check(
+                isinstance(target_repos, list) and bool(target_repos),
+                "target_repos must be a non-empty list or string",
+            )
+            repos = [str(r).strip() for r in target_repos if str(r).strip()]
+        _check(bool(repos), "target_repos cannot be empty")
+
+        if isinstance(options_considered, list):
+            options_text = "\n".join(f"- {o}" for o in options_considered)
+        else:
+            options_text = str(options_considered)
+
+        estimated_cost_text = _text(estimated_cost, "estimated_cost", LIMITS.max_proposal_source, form="line")
+        _check(
+            estimated_cost_text in PROPOSAL_ESTIMATED_EFFORTS,
+            f"estimated_cost must be one of {PROPOSAL_ESTIMATED_EFFORTS}",
+        )
+        urgency_text = _text(urgency, "urgency", LIMITS.max_proposal_source, form="line")
+        _check(urgency_text in PROPOSAL_URGENCIES, f"urgency must be one of {PROPOSAL_URGENCIES}")
+
+        body = {
+            "title": title_text,
+            "target_repos": repos,
+            "problem": _text(problem, "problem", LIMITS.max_proposal_text),
+            "evidence": _text(evidence, "evidence", LIMITS.max_proposal_text),
+            "options_considered": _text(options_text, "options_considered", LIMITS.max_proposal_text),
+            "lean": _text(lean, "lean", LIMITS.max_proposal_text),
+            "estimated_cost": estimated_cost_text,
+            "urgency": urgency_text,
+            "source": _opt_text(source, "source", LIMITS.max_proposal_source) or self.agent or self.session or "agent",
+            "code_request_url": _opt_text(code_request_url, "code_request_url", LIMITS.max_proposal_url),
+            "confirm_not_duplicate": bool(confirm_not_duplicate),
+        }
+        return self.request("POST", "/api/proposals", body=body)
+
+    def list_proposals(self, state: str | None = None, repo: str | None = None) -> Any:
+        """List Board proposals with optional state and repo filtering."""
+        params: dict[str, Any] = {}
+        if state is not None:
+            params["state"] = state
+        if repo is not None:
+            params["repo"] = repo
+        return self.request("GET", "/api/proposals", params=params)
+
+    def get_proposal(self, number: int) -> Any:
+        """Get detail and secretary comments for proposal ``number``."""
+        return self.request("GET", f"/api/proposals/{_positive_int(number, 'number')}")
