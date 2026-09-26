@@ -204,7 +204,7 @@ export function useStaffConsole({
       try {
         const message = await postThreadMessage(
           activeThread.id,
-          { body_md: payload.body, author: "user", author_kind: "user", meta: payload.meta },
+          { body: payload.body, meta: payload.meta },
           payload.idempotencyKey,
         );
         return { ok: true, message };

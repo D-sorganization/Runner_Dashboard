@@ -1,0 +1,39 @@
+# Fixture role for the Staff Console e2e suite (#1341). Not a real staff role.
+name: e2e-offline
+title: E2E Offline
+summary: E2E role whose only provider is not installed.
+playbook: docs/fleet-e2e.md
+prompt_template: null
+instructions: |
+  Fixture role. The fake provider CLI in tests/e2e/fakes/bin decides every reply.
+providers:
+  - codex
+model: default
+schedule: null
+window: null
+repos:
+  - e2e-fixture
+scope: {}
+budget:
+  usd_per_run: 0.5
+  usd_per_day: 2.0
+permissions:
+  lease: false
+  push_branch: false
+  open_pr: false
+  merge: false
+  host_shell: false
+  notify_user: true
+reports_to: barb
+holds: []
+surface: both
+persona:
+  voice: "Plain."
+  greeting: "E2E Offline here."
+  answers:
+    - "test questions"
+  defers_to: []
+chat:
+  providers:
+    - codex
+  tools: []

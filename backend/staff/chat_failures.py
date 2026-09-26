@@ -89,3 +89,34 @@ async def record_chat_capacity_failure(
         delivery="complete",
     )
     await get_thread_bus().publish_message(thread_id, sys_msg.to_dict())
+
+
+async def record_chat_failure_if_pending(
+    conv_store: ConversationStore,
+    thread_id: str,
+    placeholder_id: str,
+    *,
+    actor: str,
+    failure_class: str | None,
+    retryable: bool,
+    detail: str,
+    error: str | None,
+) -> None:
+    """Record the chain's last failure when no attempt recorded one (#1341).
+
+    Only the chain's last entry records its own failure, so a skipped last
+    entry left the reply pending forever. Post: the placeholder is not pending.
+    """
+    placeholder = conv_store.get_message(placeholder_id)
+    if placeholder is None or placeholder.delivery != "pending":
+        return
+    await record_chat_failure(
+        conv_store,
+        thread_id,
+        placeholder_id,
+        actor=actor,
+        failure_class=failure_class or "unknown",
+        retryable=retryable,
+        detail=detail or "Failed to complete reply",
+        error=error,
+    )

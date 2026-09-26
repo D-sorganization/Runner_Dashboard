@@ -8633,11 +8633,15 @@ export interface components {
          * @description The body of ``POST /api/v1/staff/requests``.
          */
         WorkRequest: {
+            /** Approved By */
+            approved_by?: string | null;
             /**
              * Dry Run
              * @default false
              */
             dry_run: boolean;
+            /** Force */
+            force?: boolean | null;
             /**
              * Kind
              * @description A request kind; see REQUEST_KINDS

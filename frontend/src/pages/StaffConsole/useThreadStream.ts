@@ -23,6 +23,21 @@ export interface UseThreadStreamResult {
   updateMessage: (messageId: string, updater: (prev: ThreadMessage) => ThreadMessage) => void;
 }
 
+/**
+ * The message a `message` SSE frame carries, or null when it carries none.
+ *
+ * Replay frames hold the bare message; live frames wrap it as `{message}`
+ * (backend `thread_bus.publish_message`). Post: a returned message has a
+ * string `id` and `author`, so rendering it cannot throw (#1341).
+ */
+export function messageFromFrame(data: unknown): ThreadMessage | null {
+  if (!data || typeof data !== "object") return null;
+  const wrapped = (data as { message?: unknown }).message;
+  const candidate = wrapped && typeof wrapped === "object" ? wrapped : data;
+  const { id, author } = candidate as { id?: unknown; author?: unknown };
+  return typeof id === "string" && typeof author === "string" ? (candidate as ThreadMessage) : null;
+}
+
 export function useThreadStream({
   threadId,
   initialMessages = [],
@@ -155,7 +170,8 @@ export function useThreadStream({
           }
 
           try {
-            const incoming: ThreadMessage = JSON.parse(ev.data);
+            const incoming = messageFromFrame(JSON.parse(ev.data));
+            if (!incoming) return;
             if (incoming.seq && incoming.seq > lastEventIdRef.current) {
               lastEventIdRef.current = incoming.seq;
             }

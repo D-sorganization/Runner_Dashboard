@@ -4898,10 +4898,32 @@
         "additionalProperties": false,
         "description": "The body of ``POST /api/v1/staff/requests``.",
         "properties": {
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
           "dry_run": {
             "default": false,
             "title": "Dry Run",
             "type": "boolean"
+          },
+          "force": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force"
           },
           "kind": {
             "description": "A request kind; see REQUEST_KINDS",

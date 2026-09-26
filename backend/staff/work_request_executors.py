@@ -13,190 +13,40 @@ event loop with :func:`staff.loop_bridge.run_on_loop`.
 
 from __future__ import annotations
 
-import contextlib
-import json
 import logging
-import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
-from dashboard_config import ORG, REPO_ROOT
 from staff.loop_bridge import BridgeUnavailableError, run_on_loop
-from system_utils import run_cmd
+from staff.work_request_dispatch import (
+    _dispatch_assessment_workflow,
+    _dispatch_code_request_workflow,
+    _dispatch_issue_action,
+    _dispatch_issue_or_pr_action,
+    _dispatch_pr_action,
+    _dispatch_remediation_workflow,
+    _dispatch_workflow_json,
+)
 
 if TYPE_CHECKING:
     from staff.actions import ActionContext, ActionRegistry, ActionResult
 
+__all__ = [
+    "_dispatch_assessment_workflow",
+    "_dispatch_code_request_workflow",
+    "_dispatch_issue_action",
+    "_dispatch_issue_or_pr_action",
+    "_dispatch_pr_action",
+    "_dispatch_remediation_workflow",
+    "_dispatch_workflow_json",
+    "execute_assessment_run",
+    "execute_ci_remediate",
+    "execute_code_request_dispatch",
+    "execute_issue_act",
+    "execute_pr_act",
+    "register_work_request_actions",
+]
+
 log = logging.getLogger("dashboard.staff.work_request_executors")
-
-
-# ─── Underlying Dispatch Functions ───────────────────────────────────────────
-
-
-async def _dispatch_workflow_json(endpoint: str, payload: dict[str, Any], prefix: str = "agent-dispatch-") -> None:
-    """Helper to write temp JSON payload and execute gh api workflow dispatch."""
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix=prefix, suffix=".json", delete=False) as f:
-        json.dump(payload, f)
-        pf = f.name
-    try:
-        code, _stdout, stderr = await run_cmd(
-            ["gh", "api", endpoint, "--method", "POST", "--input", pf],
-            timeout=30,
-            cwd=REPO_ROOT,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(pf).unlink()
-    if code != 0:
-        raise RuntimeError(f"Workflow dispatch failed (code {code}): {stderr.strip()[:300]}")
-
-
-async def _dispatch_remediation_workflow(
-    repo: str,
-    run_id: int | None,
-    provider: str | None,
-    prompt: str,
-    machine: str = "local",
-    ref: str = "main",
-) -> dict[str, Any]:
-    """Dispatch central CI remediation workflow."""
-    from server import _normalize_repository_input
-
-    _, full_repo = _normalize_repository_input(repo)
-    chosen_provider = (provider or "claude").strip()
-    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Agent-CI-Remediation.yml/dispatches"
-    payload = {
-        "ref": ref or "main",
-        "inputs": {
-            "target_repository": full_repo,
-            "provider": chosen_provider,
-            "run_id": str(run_id or ""),
-            "prompt": prompt[:8000],
-            "machine": machine,
-        },
-    }
-    await _dispatch_workflow_json(endpoint, payload, prefix="remediation-")
-    return {
-        "status": "dispatched",
-        "workflow": "Agent-CI-Remediation.yml",
-        "target_repository": full_repo,
-        "provider": chosen_provider,
-        "run_id": run_id,
-    }
-
-
-async def _dispatch_issue_or_pr_action(
-    kind: str,
-    repo: str,
-    number: int,
-    provider: str | None,
-    model: str | None,
-    prompt: str,
-    role: str | None = None,
-    machine: str = "local",
-) -> dict[str, Any]:
-    """Dispatch workflow action for an issue or pull request."""
-    from server import _normalize_repository_input
-
-    _, full_repo = _normalize_repository_input(repo)
-    envelope_id = uuid4().hex
-    workflow_file = "Agent-Issue-Dispatch.yml" if kind == "issue" else "Agent-PR-Dispatch.yml"
-    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/{workflow_file}/dispatches"
-    inputs = {
-        "target_repository": full_repo,
-        "number": str(number),
-        "provider": (provider or "claude").strip(),
-        "model": model or "",
-        "prompt": prompt[:8000],
-        "role": role or "",
-        "envelope_id": envelope_id,
-    }
-    await _dispatch_workflow_json(endpoint, {"ref": "main", "inputs": inputs}, prefix=f"{kind}-")
-    return {
-        "status": "dispatched",
-        "workflow": workflow_file,
-        "target_repository": full_repo,
-        kind: number,
-        "envelope_id": envelope_id,
-    }
-
-
-async def _dispatch_issue_action(
-    repo: str,
-    issue: int,
-    provider: str | None,
-    model: str | None,
-    prompt: str,
-    role: str | None = None,
-    machine: str = "local",
-) -> dict[str, Any]:
-    return await _dispatch_issue_or_pr_action("issue", repo, issue, provider, model, prompt, role, machine)
-
-
-async def _dispatch_pr_action(
-    repo: str,
-    pr: int,
-    provider: str | None,
-    model: str | None,
-    prompt: str,
-    role: str | None = None,
-    machine: str = "local",
-) -> dict[str, Any]:
-    return await _dispatch_issue_or_pr_action("pr", repo, pr, provider, model, prompt, role, machine)
-
-
-async def _dispatch_code_request_workflow(
-    repo: str,
-    ref: str | None,
-    provider: str | None,
-    model: str | None,
-    profile_id: str | None,
-    prompt: str,
-) -> dict[str, Any]:
-    """Dispatch Code Request implementation workflow."""
-    from code_requests.dispatch import trigger_workflow_dispatch
-
-    branch = ref or "main"
-    chosen_provider = (provider or "claude").strip()
-    code, stderr = await trigger_workflow_dispatch(
-        repo=repo,
-        branch=branch,
-        provider=chosen_provider,
-        full_prompt=prompt,
-        model=model or "",
-        profile_id=profile_id,
-    )
-    if code != 0:
-        raise RuntimeError(f"Code request dispatch failed (code {code}): {stderr.strip()[:300]}")
-    return {
-        "status": "dispatched",
-        "repository": repo,
-        "branch": branch,
-        "provider": chosen_provider,
-        "profile_id": profile_id,
-    }
-
-
-async def _dispatch_assessment_workflow(
-    repo: str,
-    provider: str | None,
-    prompt: str,
-) -> dict[str, Any]:
-    """Dispatch assessment workflow."""
-    chosen_provider = (provider or "jules_api").strip()
-    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Assess-Repo.yml/dispatches"
-    payload = {
-        "ref": "main",
-        "inputs": {"target_repository": f"{ORG}/{repo}", "provider": chosen_provider},
-    }
-    await _dispatch_workflow_json(endpoint, payload, prefix="assessment-")
-    return {
-        "status": "dispatched",
-        "repository": repo,
-        "provider": chosen_provider,
-    }
-
 
 # ─── Action Executors ────────────────────────────────────────────────────────
 
@@ -239,47 +89,108 @@ def execute_ci_remediate(params: dict[str, Any], ctx: ActionContext) -> ActionRe
         return ActionResult(success=False, error=str(exc), failure_class="dispatch_failed")
 
 
+def _run_bulk_dispatches(
+    dispatch_fn: Any,
+    repo: str,
+    target_key: str,
+    targets: list[int],
+    provider: str | None,
+    model: str | None,
+    prompt: str,
+    role: str | None,
+    machine: str,
+) -> ActionResult:
+    from staff.actions import ActionResult
+
+    if not targets:
+        return ActionResult(success=False, error=f"no {target_key} target specified", failure_class="dispatch_failed")
+
+    if len(targets) == 1:
+        try:
+            res = run_on_loop(
+                dispatch_fn,
+                repo,
+                targets[0],
+                str(provider) if provider else None,
+                str(model) if model else None,
+                prompt,
+                str(role) if role else None,
+                machine,
+            )
+            return ActionResult(success=True, result=res)
+        except BridgeUnavailableError as exc:
+            return ActionResult(success=False, error=f"{target_key}.act {exc}", failure_class="bridge_unavailable")
+        except Exception as exc:  # noqa: BLE001
+            return ActionResult(success=False, error=str(exc), failure_class="dispatch_failed")
+
+    dispatched: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for num in targets:
+        try:
+            item_res = run_on_loop(
+                dispatch_fn,
+                repo,
+                num,
+                str(provider) if provider else None,
+                str(model) if model else None,
+                prompt,
+                str(role) if role else None,
+                machine,
+            )
+            dispatched.append(item_res)
+        except Exception as exc:  # noqa: BLE001
+            rejected.append({"number": num, "error": str(exc)})
+
+    bulk_result = {
+        "status": "partial" if rejected and dispatched else ("failed" if not dispatched else "dispatched"),
+        "accepted": len(dispatched),
+        "dispatched": dispatched,
+        "rejected": rejected,
+    }
+    if not dispatched:
+        return ActionResult(
+            success=False,
+            error=f"all {len(targets)} {target_key} targets failed to dispatch",
+            failure_class="dispatch_failed",
+            result=bulk_result,
+        )
+    return ActionResult(success=True, result=bulk_result)
+
+
 def execute_issue_act(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     from staff.actions import ActionResult
 
     repo = str(params.get("repo") or "").strip()
     issue = params.get("issue")
+    issues = [int(i) for i in (params.get("issues") or []) if i is not None]
+    if not issues and issue is not None:
+        issues = [int(issue)]
     provider = params.get("provider")
     model = params.get("model")
     prompt = str(params.get("prompt") or "")
     role = params.get("role")
     machine = str(params.get("machine") or "local")
+    force = bool(params.get("force", False))
+    approved_by = str(params.get("approved_by") or "")
 
     if ctx.dry_run:
         plan = {
             "action": "issue.act",
             "repo": repo,
-            "issue": issue,
+            "issue": issues[0] if len(issues) == 1 else None,
+            "issues": issues,
             "provider": provider or "claude",
             "model": model,
             "prompt": prompt,
             "role": role,
             "machine": machine,
+            "force": force,
+            "approved_by": approved_by,
             "workflow": "Agent-Issue-Dispatch.yml",
         }
         return ActionResult(success=True, result=plan)
 
-    try:
-        res = run_on_loop(
-            _dispatch_issue_action,
-            repo,
-            int(issue) if issue is not None else 0,
-            str(provider) if provider else None,
-            str(model) if model else None,
-            prompt,
-            str(role) if role else None,
-            machine,
-        )
-        return ActionResult(success=True, result=res)
-    except BridgeUnavailableError as exc:
-        return ActionResult(success=False, error=f"issue.act {exc}", failure_class="bridge_unavailable")
-    except Exception as exc:  # noqa: BLE001
-        return ActionResult(success=False, error=str(exc), failure_class="dispatch_failed")
+    return _run_bulk_dispatches(_dispatch_issue_action, repo, "issue", issues, provider, model, prompt, role, machine)
 
 
 def execute_pr_act(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
@@ -287,42 +198,35 @@ def execute_pr_act(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
 
     repo = str(params.get("repo") or "").strip()
     pr = params.get("pr")
+    prs = [int(p) for p in (params.get("prs") or []) if p is not None]
+    if not prs and pr is not None:
+        prs = [int(pr)]
     provider = params.get("provider")
     model = params.get("model")
     prompt = str(params.get("prompt") or "")
     role = params.get("role")
     machine = str(params.get("machine") or "local")
+    force = bool(params.get("force", False))
+    approved_by = str(params.get("approved_by") or "")
 
     if ctx.dry_run:
         plan = {
             "action": "pr.act",
             "repo": repo,
-            "pr": pr,
+            "pr": prs[0] if len(prs) == 1 else None,
+            "prs": prs,
             "provider": provider or "claude",
             "model": model,
             "prompt": prompt,
             "role": role,
             "machine": machine,
+            "force": force,
+            "approved_by": approved_by,
             "workflow": "Agent-PR-Dispatch.yml",
         }
         return ActionResult(success=True, result=plan)
 
-    try:
-        res = run_on_loop(
-            _dispatch_pr_action,
-            repo,
-            int(pr) if pr is not None else 0,
-            str(provider) if provider else None,
-            str(model) if model else None,
-            prompt,
-            str(role) if role else None,
-            machine,
-        )
-        return ActionResult(success=True, result=res)
-    except BridgeUnavailableError as exc:
-        return ActionResult(success=False, error=f"pr.act {exc}", failure_class="bridge_unavailable")
-    except Exception as exc:  # noqa: BLE001
-        return ActionResult(success=False, error=str(exc), failure_class="dispatch_failed")
+    return _run_bulk_dispatches(_dispatch_pr_action, repo, "pr", prs, provider, model, prompt, role, machine)
 
 
 def execute_code_request_dispatch(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
@@ -398,6 +302,18 @@ def execute_assessment_run(params: dict[str, Any], ctx: ActionContext) -> Action
 # ─── Action Registration ─────────────────────────────────────────────────────
 
 
+_ACT_SCHEMA = {
+    "repo": "string",
+    "provider": "string?",
+    "model": "string?",
+    "prompt": "string?",
+    "role": "string?",
+    "machine": "string?",
+    "force": "bool?",
+    "approved_by": "string?",
+}
+
+
 def register_work_request_actions(registry: ActionRegistry) -> None:
     """Register work-request actions with ACTION_REGISTRY."""
     from staff.actions import ActionDefinition, ActionRiskClass
@@ -420,15 +336,7 @@ def register_work_request_actions(registry: ActionRegistry) -> None:
         ActionDefinition(
             name="issue.act",
             description="Dispatch an agent to analyze or remediate an issue.",
-            params_schema={
-                "repo": "string",
-                "issue": "int",
-                "provider": "string?",
-                "model": "string?",
-                "prompt": "string?",
-                "role": "string?",
-                "machine": "string?",
-            },
+            params_schema={**_ACT_SCHEMA, "issue": "int?", "issues": "list[int]?"},
             required_scope="workflows.dispatch",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_issue_act,
@@ -436,15 +344,7 @@ def register_work_request_actions(registry: ActionRegistry) -> None:
         ActionDefinition(
             name="pr.act",
             description="Dispatch an agent to review or act on a pull request.",
-            params_schema={
-                "repo": "string",
-                "pr": "int",
-                "provider": "string?",
-                "model": "string?",
-                "prompt": "string?",
-                "role": "string?",
-                "machine": "string?",
-            },
+            params_schema={**_ACT_SCHEMA, "pr": "int?", "prs": "list[int]?"},
             required_scope="workflows.dispatch",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_pr_act,
@@ -467,11 +367,7 @@ def register_work_request_actions(registry: ActionRegistry) -> None:
         ActionDefinition(
             name="assessment.run",
             description="Run an assessment workflow for a repository.",
-            params_schema={
-                "repo": "string",
-                "provider": "string?",
-                "prompt": "string?",
-            },
+            params_schema={"repo": "string", "provider": "string?", "prompt": "string?"},
             required_scope="assessments.dispatch",
             risk_class=ActionRiskClass.LOW,
             executor=execute_assessment_run,

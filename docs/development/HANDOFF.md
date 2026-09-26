@@ -25,7 +25,149 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — SC-G5-3: Remediation context buttons open a prefilled request (#1499)
+# Current handoff — Wire the mad-scientist staff role (#1562)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1788-mad-scientist-wiring`; Issue #1562 (follow-up to Repository_Management#1788); DL-#1562.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `f5f027d2`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- The owner added a Dr. Frankenstein role (`mad-scientist`, Repository_Management#1788). This PR makes Barb route to it and groups it with the Advisors.
+- `backend/staff/router_models.py` gains distinctive keywords only. Broad words like "experiment" or "can we" would steal routes from other roles.
+- `tests/staff/routing_eval/dataset.py` gains cases lab-01..04; `rosterUtils.ts` adds the role to the Advisors group, with a new `rosterUtils.test.ts`.
+- Labels `lab-experiment`, `lab:promote` and `do-not-merge` now exist in this repository.
+
+## Validation
+
+- RED first: the 4 lab cases failed the deterministic gate (pre-router returned None), and the roster test failed for mad-scientist.
+- `python -m pytest tests/staff -q`: exit 0. `npx vitest run frontend/src/pages/StaffConsole`: 142 passed. tsc, eslint and ruff are clean.
+
+## Next Steps
+
+1. Merge after Repository_Management#1789 (the role file) lands.
+
+---
+
+# Current handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1549`; branch `fix/1549-remove-stale-vite-config`; Issue #1549; DL-#1549.
+
+## Objective and Status
+
+- Scope:
+  1. Removed stale tracked compiled artifacts `vite.config.js` and `vite.config.d.ts` using `git rm`.
+  2. Added `vite.config.js` and `vite.config.d.ts` to `.gitignore`.
+  3. Removed explicit `--config vite.config.ts` flag in `tests/e2e/staff/playwright.config.ts`.
+  4. Updated documentation freshness tests in `tests/test_documentation_freshness.py` to assert `vite.config.ts` and forbid `vite.config.js`.
+  5. Added dedicated regression suite `tests/frontend/test_vite_config.py` verifying no tracked/existing stale files, `.gitignore` entries, backend URL environment variable resolution, and standard Playwright web server command.
+  6. Bumped `SPEC.md` specification version to 2.5.291.
+- Validation:
+  - `python -m pytest tests/frontend/test_vite_config.py tests/test_documentation_freshness.py tests/test_frontend_integrity.py`: 83 passed, 1 xfailed.
+  - `ruff check .`: clean.
+  - `ruff format --check tests/frontend/test_vite_config.py tests/test_documentation_freshness.py`: clean.
+  - Line count audit: all modified/new files <= 500 lines.
+
+## Next Steps
+
+1. Push branch `fix/1549-remove-stale-vite-config` to `origin`.
+2. Open PR referencing `Fixes #1549` and containing `deletions-acknowledged: yes` in the body.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until green and merged.
+5. Release lease for #1549 via `scripts.release_agent_lease`.
+6. Clean up worktree `Runner_Dashboard-1549` and delete local branch.
+
+---
+
+# Past handoff — Web-vitals POST lacks the CSRF header and gets 403 (#1550)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1550`; branch `agy/issue-1550`; Issue #1550; DL-#1550; PR #1558.
+
+## Objective and Status
+
+- Scope:
+  1. Fix 403 Forbidden errors on `POST /api/metrics/web-vitals` caused by missing `X-Requested-With: XMLHttpRequest` CSRF sentinel header.
+  2. Extracted web-vitals reporting from `frontend/src/main.tsx` into modular `frontend/src/lib/webVitals.ts`, routing POST requests through `apiRequest` (reusing existing header logic from `DEFAULT_HEADERS` with no duplicate header definition).
+  3. Added unit tests in `frontend/src/lib/__tests__/webVitals.test.ts` asserting the header is sent, payload shape is correct, zero deltas are preserved, and failures are handled gracefully.
+- Shipped: Merged to `main` via PR #1558.
+
+---
+
+# Past handoff — Restore green main: trim backend/staff/chat.py under 500 lines (#1552)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1552`; branch `fix/1552-trim-chat-py`; Issue #1552; DL-#1552; PR #1554.
+
+## Objective and Status
+
+- Scope:
+  1. Post-merge `ci-health-check` failed on main because `backend/staff/chat.py` was 505 lines (5 lines over the 500-line soft cap).
+  2. Extracted `record_chat_failure_if_pending` helper function from `backend/staff/chat.py` into `backend/staff/chat_failures.py`.
+  3. Reduced `backend/staff/chat.py` to 493 lines ($\le 500$). `backend/staff/chat_failures.py` is 122 lines ($\le 500$).
+  4. Ran full repository line-cap audit confirming no non-exempt source files exceed 500 lines.
+  5. Validated all chat test suites (19 passed, zero regressions).
+- Shipped: Merged to `main` via PR #1554.
+
+---
+
+# Past handoff — SC-G5-4: Remediation Issues and PRs bulk actions go through the request API (#1500)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1500`; branch `feat/1500-remediation-bulk-requests`; Issue #1500; DL-#1500; PR #1545.
+
+## Objective and Status
+
+- Scope:
+  1. Switched `RemediationIssues.tsx` and `RemediationPRs.tsx` from legacy `/api/issues/dispatch` and `/api/prs/dispatch` to the unified work-request API (`POST /api/v1/staff/requests`) using kinds `issue.act` and `pr.act` via `submitStaffRequest`.
+  2. Preserved bulk selection, provider, prompt, `force` and `approved_by` semantics (threaded principal name).
+  3. One work item per bulk request, listing every target number in title (`[issue.act] repo #10, #20 prompt`).
+  4. Extracted underlying workflow dispatch helpers into `backend/staff/work_request_dispatch.py` (192 lines) and frontend helpers into `frontend/src/pages/Remediation/remediationBulkRequest.ts` (133 lines) to satisfy $\le 500$-line limits.
+  5. Vitest tests updated to assert `/api/v1/staff/requests` and partial failure messages per target.
+  6. Backend and integration test suites: `tests/api/test_staff_requests_kinds.py` (single, bulk, force, approved_by, partial failure) and `tests/test_remediation_bulk_requests.py` passing 100%.
+- Shipped: Merged to `main` via PR #1545.
+
+---
+
+# Past handoff — Staff Console e2e suite with fake providers (#1341)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `test/1341-staff-e2e`; PR #1544; DL-#1341; Issue #1341.
+
+## Objective and Status
+
+- Hermetic e2e harness: `tests/e2e/fakes/` (fake `claude` CLI that emits real `stream-json`, fixture roles and identities, `start_staff_backend.py`) and `tests/e2e/staff/` (own Playwright config, principal fixture, 8 specs).
+- Specs cover: a direct reply shown once, fallback past an uninstalled provider, Barb's handoff reply, reply after the SSE stream drops, provider crash and expired login as error cards, backend 500 and viewer 403 keep the draft.
+- The suite found four bugs, each fixed here with a failing test first:
+  1. Claude/cursor replies were shown twice. The CLI repeats the text in its `result` event (`chat_streaming.py`, `TurnStreamOutput.reply_text`).
+  2. A reply stayed pending forever when every runnable provider failed and the last chain entry was skipped (`chat.py`, `_record_if_pending`).
+  3. `staffApi` JSON-encoded POST bodies twice and sent `body_md`, so opening a thread, sending and approving all returned 422.
+  4. A live SSE `{message}` frame crashed the Console tab (`useThreadStream.messageFromFrame`).
+- The main `playwright.config.ts` ignores `tests/e2e/staff/**`. `frontend-tests.yml` has a new `staff-console-e2e` job, gated on frontend, `backend/staff`, staff routers and `tests/e2e` changes.
+- Shipped: Merged to `main` via PR #1544.
+
+---
+
+# Past handoff — SC-G5-3: Remediation context buttons open a prefilled request (#1499)
 
 Last updated: 2026-09-25
 
@@ -40,21 +182,7 @@ Last updated: 2026-09-25
   2. Converted mobile FAB (`shell/MobileShell.tsx`) to **Ask**, opening the composer sheet (`shell/AskSheet.tsx`) targeting kind `staff.dispatch`.
   3. Preserved provider and model options across run remediation flows and track the in-flight work item ID via `InFlightTile.tsx`.
   4. Retired `AgentDispatch.tsx`, its routes and navigation items (`shell/navRegistryData.ts`, `shell/routing.ts`, `shell/RoutedShell.tsx`), with redirects to `/`. Deleted `AgentDispatch.tsx` and its test suites.
-- Validation:
-  - Frontend Vitest: all suites passed.
-  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
-  - Typecheck: `npm run typecheck` clean.
-  - Python tests: `tests/test_retired_agent_dispatch.py`, `tests/frontend/test_badge_pill_primitives.py`, `tests/frontend/test_skeleton.py`, `tests/test_frontend_integrity.py` passed.
-  - Ruff: clean check and format.
-  - Mypy: `mypy backend` clean across 279 source files.
-  - Line count cap: every non-legacy touched file strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push branch `feat/1499-remediation-context-request` to `origin`.
-2. Monitor PR #1539 until auto-merge completes.
-3. Release lease for #1499 via `scripts.release_agent_lease`.
-4. Clean up worktree and local/remote branch.
+- Shipped: Merged to `main` via PR #1539.
 
 ---
 

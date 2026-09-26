@@ -39,6 +39,7 @@ from staff.chat_failures import (
     chat_read_only_tools,
     record_chat_capacity_failure,
     record_chat_failure,
+    record_chat_failure_if_pending,
 )
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
@@ -94,6 +95,7 @@ class ChatTurnResult:
     failure_class: str | None = None
     retryable: bool = False
     remediation: str = ""
+    error: str | None = None
     metrics: dict[str, Any] = field(default_factory=dict)
     replayed_history: bool = False
 
@@ -250,6 +252,16 @@ class ChatTurnRunner:
                 metrics.record_fallback()
 
             if last_failed is not None:
+                await record_chat_failure_if_pending(
+                    self.conv_store,
+                    thread_id,
+                    placeholder_id,
+                    actor=role_name,
+                    failure_class=last_failed.failure_class,
+                    retryable=last_failed.retryable,
+                    detail=last_failed.remediation,
+                    error=last_failed.error,
+                )
                 return last_failed
 
             log.warning(
@@ -339,7 +351,6 @@ class ChatTurnRunner:
             if stream_out.session_id:
                 captured_session_id = stream_out.session_id
             t_first_token = stream_out.t_first_token
-            deltas = stream_out.deltas
 
             t_end = time.monotonic()
             ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
@@ -371,11 +382,11 @@ class ChatTurnRunner:
                     failure_class=classified.failure_class,
                     retryable=classified.retryable,
                     remediation=classified.remediation,
+                    error=classified.error,
                 )
 
             # Parse structured reply contract
-            full_reply_text = "".join(deltas) if deltas else raw_combined
-            parsed = parse_reply(full_reply_text, role=role)
+            parsed = parse_reply(stream_out.reply_text or raw_combined, role=role)
 
             metrics = {
                 "time_to_first_token_seconds": round(ttft, 3),
