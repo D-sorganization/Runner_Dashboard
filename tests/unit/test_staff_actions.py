@@ -28,6 +28,8 @@ from staff.actions import (
 from staff.audit import reset_audit_store
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.roles import RoleSpec
+from staff.runner import StaffRunner, reset_runner
+from staff.store import reset_store
 
 UTC = getattr(_dt, "UTC", _dt.UTC)
 datetime = _dt.datetime
@@ -62,9 +64,14 @@ TEST_OWNER = Principal(
 def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     db_file = tmp_path / "staff_actions_test.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_file))
+    monkeypatch.setattr(StaffRunner, "_worker", lambda *args, **kwargs: None)
+    reset_runner()
+    reset_store()
     reset_conversation_store()
     reset_audit_store()
     yield
+    reset_runner()
+    reset_store()
     reset_conversation_store()
     reset_audit_store()
 

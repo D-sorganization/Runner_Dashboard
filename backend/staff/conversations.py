@@ -71,9 +71,10 @@ class ConversationStore:
         self._lock = threading.RLock()
         self._audit_store = StaffAuditStore(self.path)
         self.status = ConversationStoreStatus()
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
+        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
         self._conn.row_factory = sqlite3.Row
         with self._lock:
+            self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA journal_mode=WAL")
             self.status = run_migrations(self._conn, self.path, self.MIGRATIONS)
 
