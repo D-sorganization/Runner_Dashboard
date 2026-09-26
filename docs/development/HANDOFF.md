@@ -1,4 +1,36 @@
-# Current handoff — Chat proposals render as ActionCards (#1547, slice A)
+# Current handoff — SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API (#1501)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1501`; branch `agy/issue-1501`; Issue #1501; DL-#1501.
+
+## Objective and Status
+
+- Scope:
+  1. Migrated the three remaining single-purpose dispatch buttons to the unified work-request API (`POST /api/v1/staff/requests` via `submitStaffRequest`):
+     - Code Requests (`CodeRequestsPage.tsx`, `CodeRequests.tsx`): kind `code_request.dispatch`, keeping branch/ref, provider, model, `standards[]` injected into prompt under `## Engineering Standards`, `profile_id`, effort, budget, and templates.
+     - Assessments (`AssessmentsPage.tsx`, `Assessments.tsx`): kind `assessment.run` with target `{ repo: payload.repository, ref: "" }` and provider.
+     - Projects "Run steward" (`ProjectsPage.tsx`): kind `staff.dispatch`, role `project-steward`, target `{ repo, ref: "" }`, prompt and machine from `STEWARD_RUN_BODY`.
+  2. Legacy endpoints (`/api/code-requests/dispatch`, `/api/assessments/dispatch`, etc.) remain intact for backwards compatibility until SC-G5-6.
+  3. Preserved user inputs on failure and surfaced classified error alerts (`role="alert"`).
+  4. Adhered strictly to file size caps (all touched and created files $\le 450$ lines, strictly below the 500-line soft cap).
+- Validation:
+  - Vitest: 4 test files passed (`AssessmentsPage.test.tsx`, `Projects.test.tsx`, `CodeRequestsPage.test.tsx`, `CodeRequests.test.tsx`), 38/38 passed.
+  - TypeScript: `npx tsc -p tsconfig.app.json --noEmit` clean (0 errors).
+  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
+  - Backend: `pytest tests/api/test_staff_requests_kinds.py` 13 passed, 0 failures.
+
+## Next Steps
+
+1. Push branch `agy/issue-1501` to `origin`.
+2. Open draft PR with `gh pr create --draft -R D-sorganization/Runner_Dashboard --base main --head agy/issue-1501`.
+3. Frontier agent review and merge.
+
+---
+
+# Past handoff — Chat proposals render as ActionCards (#1547, slice A)
 
 Last updated: 2026-09-25
 

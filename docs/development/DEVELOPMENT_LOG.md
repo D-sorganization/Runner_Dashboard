@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1501 · SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1501
+- **Branch:** `agy/issue-1501`
+- **Paths:** `frontend/src/pages/Assessments.tsx`, `frontend/src/pages/AssessmentsPage.tsx`, `frontend/src/pages/CodeRequests.tsx`, `frontend/src/pages/CodeRequestsPage.tsx`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/codeRequestsTypes.ts`, `frontend/src/pages/__tests__/AssessmentsPage.test.tsx`, `frontend/src/pages/__tests__/CodeRequestsPage.test.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest 4 suites, 38 passed; tsc --noEmit clean; eslint clean; backend test_staff_requests_kinds.py 13 passed; all touched files <= 450 lines)
+- **Summary:** Migrated the three remaining single-purpose dispatch buttons to the unified work-request API (`POST /api/v1/staff/requests` via `submitStaffRequest`). Code Requests dispatches kind `code_request.dispatch` retaining branch/ref, provider, model, `standards[]` injected under `## Engineering Standards`, `profile_id`, effort, budget, and templates. Assessments dispatches kind `assessment.run` with target repo and provider. Projects steward dispatches kind `staff.dispatch` with role `project-steward`, target repo, and `STEWARD_RUN_BODY` prompt and machine. User input is preserved on failure and classified errors are rendered visibly.
+- **Next step:** Push branch, open draft PR referencing Fixes #1501, and frontier agent review.
+
 ### DL-#1547 · Chat proposals render as ActionCards with approve, run card, needs-input and cancel
 
 - **State:** in_progress

@@ -9,6 +9,7 @@ import React, { useEffect, useState } from "react";
 import { IssueGlyph } from "./decompIcons";
 import {
   ALL_STANDARDS,
+  buildCodeRequest,
   type CodeRequestsProps,
   type DispatchStatus,
   type PromptTemplate,
@@ -18,6 +19,7 @@ import {
 import { CodeRequestsHistory } from "./CodeRequestsHistory";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { PromptNotesEditor } from "./CodeRequestsPromptNotes";
+import { errorMessage, submitStaffRequest } from "./Staff/staffApi";
 
 export type * from "./codeRequestsTypes";
 
@@ -94,7 +96,8 @@ export function CodeRequestsTab({
       finalPrompt = promptNotes.notes + "\n\n" + promptText;
     }
     const activeProvider = selProvider || (registry?.providers[0]?.dashboardId || "codex");
-    onDispatch({
+    const dispatchFn = onDispatch ?? ((p) => submitStaffRequest(buildCodeRequest(p)));
+    dispatchFn({
       repository: selRepo,
       branch: selBranch,
       provider: activeProvider,
@@ -107,7 +110,7 @@ export function CodeRequestsTab({
         onRefresh();
       })
       .catch((err: unknown) => {
-        setDispatchError(err instanceof Error ? err.message : "");
+        setDispatchError(errorMessage(err));
         setDispatchStatus("error");
         onRefresh();
       });
