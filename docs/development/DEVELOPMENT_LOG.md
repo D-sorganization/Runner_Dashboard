@@ -20,7 +20,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1548 · Handoff replies post a HandoffCard and move the work to the target role
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1548
 - **Branch:** `fix/1548-chat-handoff`
@@ -29,11 +29,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest staff/chat/routing 1252 passed; vitest StaffConsole 145 passed; staff e2e 8/8)
 - **Summary:** A reply ending `handoff: <role>` posts a handoff card and seeds the target role's direct thread through the router's `execute_handoff` (now parameterised by `from_role`). The card's "Continue with <role>" opens that thread.
-- **Next step:** Merge PR #1568 once CI is green.
+- **Next step:** None (shipped in PR #1568, 4f858a3d).
 
 ### DL-#1504 · SC-G5-7 Playwright journey: context button to prefilled request to run
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1504
 - **Branch:** `feat/1504-request-journey`
@@ -42,11 +42,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (journey spec 2/2 on chromium-desktop; vitest Staff/StaffConsole/Remediation 200 passed; tsc and eslint clean)
 - **Summary:** An end-to-end spec for Remediation "Fix this failed run" through the prefilled Assign form, `POST /api/v1/staff/requests`, and the run card in the thread the response names, plus the 5xx path. A dispatch that names a `thread_id` now opens that thread in the Console (`useStaffConsole` `initialThreadId`, loaded with `fetchThread`).
-- **Next step:** Watch PR #1571 merge and mark this entry shipped.
+- **Next step:** None (shipped in PR #1571, 374ea4f4).
 
 ### DL-#1556 · Staff e2e harness is hermetic
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1556
 - **Branch:** `fix/1556-hermetic-staff-e2e`
@@ -55,11 +55,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (RED: globalTeardown failed on unfixed `backend_env()`, listing real `api.github.com`/tailnet-peer lines; GREEN: `STAFF_E2E_PYTHON="wsl -e ...python" npx playwright test -c tests/e2e/staff/playwright.config.ts --reporter=line` → 12 passed, guard silent; `tests/unit/test_staff_inbox_proposals.py` + inbox/fleet unit tests: 9 passed; ruff check/format clean)
 - **Summary:** The staff e2e backend (real FastAPI app, fake provider CLIs) leaked outside the harness: it fanned out to real tailnet peers, called `api.github.com` for board proposals, and (traced further) for `/api/health`'s runner probe and the hosted-runner billing audit. Fixed by pinning fleet-peer discovery to this node (`AUTODERIVE_FLEET_NODES=0`/`FLEET_NODES=""`), a new `STAFF_INBOX_GITHUB_SOURCES=0` switch disabling the GitHub-backed inbox sources, and an unset `GH_TOKEN` so `gh_client` fails locally instead of round-tripping. A `--log-file` CLI arg plus `globalTeardown.ts` now assert the backend log never mentions a real peer or GitHub.
-- **Next step:** Watch PR #1570 merge and mark this entry shipped.
+- **Next step:** None (shipped in PR #1570, 5cf60512).
 
 ### DL-#1542 · WP-1.1 follow-up: non-blocking startup and guarded verification
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1542
 - **Branch:** `agy/issue-1542`
@@ -68,11 +68,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (tests/staff/test_run_verification.py and tests/api/test_staff_runner.py 95 passed; broader tests -k "verif or reconcile or runner or scheduler" 618 passed, 3 skipped, 1 xfailed)
 - **Summary:** Removed blocking `recheck_runs` subprocess calls from `reconcile_orphaned_runs` on startup so the event loop is never blocked (the scheduler thread already periodically rechecks unverified runs off the loop). Wrapped `verify_and_record` so it never raises, evaluating `opens_pr` lazily inside the guard so exceptions cannot crash the runner worker thread or bypass `handle_run_status_change`.
-- **Next step:** Merge PR #1569 once CI is green.
+- **Next step:** None (shipped in PR #1569, 62ce4d70).
 
 ### DL-#1501 · SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude (first cut antigravity)
 - **Issue:** #1501
 - **Branch:** `agy/issue-1501`
@@ -81,11 +81,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (backend 258 passed; integrity + code requests 225 passed after rebase; vitest pages 735 passed; tsc, eslint, ruff clean; API client regenerated)
 - **Summary:** Code Requests, Assessments and the Projects steward dispatch through `POST /api/v1/staff/requests`. Code-request dispatch has one server-side core (`code_requests/dispatch_service.py`) shared by the legacy route and the request kind: profile defaults, prompt notes, standards injection and the history entry. The Console sends the typed prompt and `standards[]`.
-- **Next step:** Merge PR #1560.
+- **Next step:** None (shipped in PR #1560, b182f790).
 
 ### DL-#1547 · Chat proposals render as ActionCards with approve, run card, needs-input and cancel
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1547 (epic #1354; closes #1341 with #1546)
 - **Branch:** `feat/1547-proposal-cards` (slice A, PR #1557); `feat/1547-run-cards` (slice B)
@@ -94,7 +94,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 at slice A plus `feat/1547-run-cards` (backend 43 passed; StaffConsole vitest 152 passed; staff e2e 15 passed; `tsc`, eslint, ruff clean)
 - **Summary:** Slice A: each proposed action is an `action_proposal` message holding the card; the proposal points at it, decisions rewrite it, and a refused decision re-enables the card. Slice B: live run cards, needs-input answer, and cancel from the card.
-- **Next step:** Merge PR #1566 once CI is green.
+- **Next step:** None (shipped in PR #1557 and #1566, aab8887a).
 
 ### DL-#1551 · Staff chat failure card remediation context: preserve most specific classified failure
 
