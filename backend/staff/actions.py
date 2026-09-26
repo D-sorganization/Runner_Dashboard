@@ -240,7 +240,11 @@ def check_role_permission(
     if role_name == "maintenance" and (act_name.startswith("maintenance.") or act_name in _MAINTENANCE_ACTIONS):
         return True
 
-    if role_name in ("board-secretary", "board_secretary") and act_name in ("board.propose", "staff.dispatch"):
+    if role_name in ("board-secretary", "board_secretary") and act_name in (
+        "board.propose",
+        "submit_proposal",
+        "staff.dispatch",
+    ):
         return True
 
     spec = role_spec or load_roles().get(role_name)
@@ -258,7 +262,29 @@ def check_role_permission(
         if pat.endswith(".*") and act_name.startswith(pat[:-2] + "."):
             return True
 
-    if act_name == "staff.dispatch" and perms.get("can_dispatch", True) and not allowed:
+    if act_name == "notify_user" and perms.get("notify_user", False):
+        return True
+    if act_name == "open_pr" and perms.get("open_pr", False):
+        return True
+    if act_name == "claim_issue" and perms.get("lease", False):
+        return True
+
+    role_tools = set(spec.tools)
+    if isinstance(spec.chat, dict):
+        role_tools |= set(spec.chat.get("tools") or [])
+
+    if act_name in role_tools:
+        return True
+
+    if act_name in ("board.propose", "submit_proposal") and (
+        "submit_proposal" in role_tools
+        or "board.propose" in role_tools
+        or spec.reports_to in ("board-secretary", "board_secretary")
+        or bool(spec.scope.get("proposals_per_run"))
+    ):
+        return True
+
+    if act_name in ("staff.dispatch", "staff.review_pr") and perms.get("can_dispatch", True) and not allowed:
         return True
 
     return False

@@ -384,8 +384,24 @@ def verify_maintenance(
     return True, f"Action '{act}' verified"
 
 
+_FLEET_ALIAS_MAP: dict[str, str] = {
+    "runner.start": "maintenance.runner_start",
+    "runner.stop": "maintenance.runner_stop",
+    "runner.restart": "maintenance.runner_restart",
+    "runner.scale": "maintenance.fleet_control",
+    "fleet.node_up": "maintenance.fleet_control",
+    "fleet.node_down": "maintenance.fleet_control",
+    "queue.purge_stale": "maintenance.queue_purge_stale",
+    "run.cancel": "maintenance.run_cancel",
+    "run.rerun": "maintenance.run_rerun",
+    "queue.diagnose": "maintenance.diagnose",
+    "host.vhdx_compact": "maintenance.vacuum_sqlite",
+    "dashboard.restart": "maintenance.runner_restart",
+}
+
+
 def register_maintenance_actions(registry: ActionRegistry | None = None) -> None:
-    """Register every MAINTENANCE_POLICY row into the ActionRegistry."""
+    """Register every MAINTENANCE_POLICY row and fleet action alias into the ActionRegistry."""
     from staff.actions import ACTION_REGISTRY, ActionDefinition
 
     reg = registry or ACTION_REGISTRY
@@ -401,3 +417,17 @@ def register_maintenance_actions(registry: ActionRegistry | None = None) -> None
                 verifier=lambda r, p, c, _name=name: verify_maintenance(r, p, c, _name),
             )
         )
+    for alias, target_name in _FLEET_ALIAS_MAP.items():
+        policy = MAINTENANCE_POLICY.get(target_name)
+        if policy:
+            reg.register(
+                ActionDefinition(
+                    name=alias,
+                    description=policy.description,
+                    params_schema=dict(policy.params_schema),
+                    required_scope=policy.required_scope,
+                    risk_class=policy.risk_class,
+                    executor=lambda p, c, _t=target_name: execute_maintenance(_t, p, c),
+                    verifier=lambda r, p, c, _t=target_name: verify_maintenance(r, p, c, _t),
+                )
+            )

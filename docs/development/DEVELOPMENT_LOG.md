@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1465 · Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked'
+### DL-#1486 · SC-B1-G3: One action vocabulary for chat replies and the action registry
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1486
+- **Branch:** `feat/1486-one-action-vocabulary`
+- **Paths:** `backend/staff/reply_contract.py`, `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/staff/maintenance.py`, `tests/unit/test_staff_reply_contract.py`, `tests/unit/test_staff_reply_vocabulary.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_reply_*.py 21/21 passed; full staff test suite 763 passed, 12 skipped, 0 failed; ruff check clean; ruff format clean; mypy backend/staff clean in 68 source files; all files <= 500 lines)
+- **Summary:** Established `ACTION_REGISTRY` as the single authoritative action vocabulary across `reply_contract.py` and `actions.py`: chat replies proposing registered actions (`staff.dispatch`, `staff.review_pr`, `maintenance.*`, etc.) are recognized and valid; unknown action names are dropped with descriptive warnings while preserving prose; reply-contract prompt text is generated dynamically from `ACTION_REGISTRY` (DRY); registered legacy actions (`notify_user`, `claim_issue`, `open_pr`, `submit_proposal`) with callable executors and permission checks; registered 12 fleet maintenance aliases; pinned that every reply-contract action has a registered, callable executor.
+- **Next step:** Push branch, open PR referencing Fixes #1486, arm auto-merge, verify CI passes.
+
+### DL-#1465 · Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked'
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1465
 - **Branch:** `fix/1465-staff-actions-db-lock`
@@ -29,7 +41,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest test_staff_actions 30/30 stress-test runs passed with 0 lock errors; ruff check clean; ruff format clean; all files <= 500 lines)
 - **Summary:** Eliminated SQLite database lock contention and test flakes across staff actions and stores: (1) Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` on all staff SQLite connections (`StaffAuditStore`, `ConversationStore`, `RunStore`, `IdempotencyStore`, `WorkItemStore`, maintenance `_vacuum_db`); (2) Reused conversation store's existing audit store instance across proposal state transitions and action context in `execute_proposal`; (3) Isolated `tests/unit/test_staff_actions.py` by resetting stores and runner and mocking background runner worker thread in `clean_env`.
-- **Next step:** Push branch `fix/1465-staff-actions-db-lock`, verify CI completion on PR #1470, and auto-merge.
+- **Next step:** None (shipped in PR #1470).
 
 ### DL-#1497 · SC-G5-1 slice A: one work-request API (`staff.dispatch`)
 

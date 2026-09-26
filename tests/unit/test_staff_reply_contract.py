@@ -306,7 +306,11 @@ def test_robustness_on_edge_cases() -> None:
 def test_action_requirements_vocabulary_completeness() -> None:
     assert len(STANDARD_ACTION_REQUIREMENTS) >= 4
     assert len(FLEET_ACTIONS) == 12
-    assert ALL_KNOWN_ACTIONS == set(STANDARD_ACTION_REQUIREMENTS.keys()) | set(FLEET_ACTIONS)
+    # ALL_KNOWN_ACTIONS is dynamically backed by ACTION_REGISTRY (SC-B1-G3, #1486)
+    assert set(STANDARD_ACTION_REQUIREMENTS.keys()).issubset(ALL_KNOWN_ACTIONS)
+    assert set(FLEET_ACTIONS).issubset(ALL_KNOWN_ACTIONS)
+    assert "staff.dispatch" in ALL_KNOWN_ACTIONS
+    assert len(ALL_KNOWN_ACTIONS) >= 20
 
 
 @pytest.mark.unit
