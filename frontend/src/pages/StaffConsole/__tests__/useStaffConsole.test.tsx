@@ -11,6 +11,7 @@ import type { StaffRoleItem } from "../types";
 
 const api = vi.hoisted(() => ({
   fetchRoster: vi.fn(),
+  fetchThread: vi.fn(),
   fetchThreadMessages: vi.fn(),
   postThreadMessage: vi.fn(),
   decideActionProposal: vi.fn(),
@@ -98,6 +99,29 @@ describe("useStaffConsole", () => {
     expect(result.current.selectedRole).toBe("maintenance");
     await waitFor(() => expect(result.current.messages).toEqual(HISTORY));
     expect(api.fetchThreadMessages).toHaveBeenCalledWith("thr_real_123", expect.anything());
+  });
+
+  it("opens the thread named by initialThreadId from the backend (#1504)", async () => {
+    api.fetchThread.mockResolvedValue({ thread: MAINT_THREAD, messages: HISTORY });
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false, initialThreadId: "thr_real_123" }),
+    );
+
+    await waitFor(() => expect(result.current.activeThread).toEqual(MAINT_THREAD));
+    expect(api.fetchThread).toHaveBeenCalledWith("thr_real_123", expect.anything());
+    await waitFor(() => expect(result.current.messages).toEqual(HISTORY));
+    expect(result.current.error).toBeNull();
+  });
+
+  it("reports an initialThreadId that cannot be loaded and invents no thread (#1504)", async () => {
+    api.fetchThread.mockRejectedValue(new Error("404 thread not found"));
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false, initialThreadId: "thr_gone" }),
+    );
+
+    await waitFor(() => expect(result.current.error?.kind).toBe("thread"));
+    expect(result.current.error?.message).toMatch(/404/);
+    expect(result.current.activeThread).toBeNull();
   });
 
   it("reports a thread that cannot be opened and keeps no fake thread", async () => {

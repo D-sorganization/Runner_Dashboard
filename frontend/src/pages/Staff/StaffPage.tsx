@@ -104,6 +104,7 @@ export function StaffPage() {
   const rosterError = rosterErr ? errorMessage(rosterErr) : null;
   const [initialPrefill] = useState<Partial<WorkRequest> | null>(prefillFromUrl);
   const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
+  const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [section, setSection] = useState<StaffSection>(
     () => sectionFromUrl() || (selectedRun ? "runs" : "console"),
   );
@@ -116,10 +117,17 @@ export function StaffPage() {
   }, []);
 
   const onDispatched = useCallback(
-    (id: string) => {
+    (id: string, threadId?: string) => {
       invalidateStaffQueries(client);
       setRunsRefresh((n) => n + 1);
-      openRun(id);
+      // The run card lands in the thread the request API names; without one,
+      // fall back to the run's own detail view.
+      if (threadId) {
+        setSelectedThread(threadId);
+        setSection("console");
+      } else {
+        openRun(id);
+      }
     },
     [client, openRun],
   );
@@ -142,7 +150,7 @@ export function StaffPage() {
         ariaLabel="Staff sections"
         className="staff__tabs"
       />
-      {section === "console" ? <StaffConsoleDesktop /> : null}
+      {section === "console" ? <StaffConsoleDesktop initialThreadId={selectedThread} /> : null}
       {section === "roster" ? (
         <Roster
           roster={roster}
