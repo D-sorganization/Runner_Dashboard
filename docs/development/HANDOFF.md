@@ -1,4 +1,25 @@
-# Current handoff — Make staff tests hermetic: no real worktrees or gh (#1521)
+# Current handoff — Tests never hold a real GitHub credential (#1528)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1528-hermetic-github-creds`; DL-#1528; Issue #1528.
+
+## Objective and Status
+
+- Running the suite with the developer's `GH_TOKEN` or `gh auth` login visible filed real issues (#1437–#1440, #1452–#1457, since closed as not planned). `gh_utils.gh_api_write` uses the httpx client (token or GitHub App env) and falls back to the `gh` CLI; the unit-lane network guard patches neither.
+- `tests/unit/test_github_test_isolation.py` (RED first): no credential env var is visible, `gh_client._get_token()` raises `GhAuthError`, `GH_CONFIG_DIR` is an empty per-test dir, and a test can still opt into a fake token.
+- `tests/conftest.py::_no_real_github_credentials` (autouse) removes the credential env, sets `GH_CONFIG_DIR` under `tmp_path` and clears `gh_client`'s cached token.
+- The sibling fix for local worktrees is #1521 (PR #1524).
+
+## Next Steps
+
+1. Merge. No production code changes.
+
+---
+
+# Past handoff — Make staff tests hermetic: no real worktrees or gh (#1521)
 
 Last updated: 2026-09-25
 

@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1528 · Tests never hold a real GitHub credential
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1528
+- **Branch:** `fix/1528-hermetic-github-creds`
+- **Paths:** `tests/conftest.py`, `tests/unit/test_github_test_isolation.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/unit/test_github_test_isolation.py` RED 4/4 with `GH_TOKEN` in the parent env, then GREEN; full suite run with a fake parent `GH_TOKEN`)
+- **Summary:** `gh_utils.gh_api_write` reaches GitHub through the httpx client (token or GitHub App env) or the `gh` CLI login; the unit-lane network guard covers neither, so code-request tests created real issues. One autouse fixture removes every credential env var, gives the `gh` CLI an empty `GH_CONFIG_DIR` and clears `gh_client`'s cached token. The junk issues were closed as not planned.
+- **Next step:** Merge.
+
 ### DL-#1521 · Make staff tests hermetic: no real worktrees or gh
 
 - **State:** in_review
