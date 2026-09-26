@@ -295,11 +295,11 @@ def _review_claim(store: Any) -> Iterator[None]:
             yield
             return
         with Path(f"{db_path}.auto-review.lock").open("w") as fh:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
             try:
                 yield
             finally:
-                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
 
 
 def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWER_ROLE) -> bool:

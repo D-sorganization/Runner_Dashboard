@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1299 · SC-B1: ADR for the staff conversation model (retroactive, as built)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1299
+- **Branch:** `docs/1299-staff-conversation-adr`
+- **Paths:** `docs/adr/0006-staff-conversation-model.md`, `docs/adr/README.md`, `docs/assistant-chat-endpoint-design.md`, `docs/assistant-agent-mode-design.md`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-26 a74e6439 (docs only; every cited source and test path checked against `main`)
+- **Summary:** SC-B2/B4/B5/B6/B7 shipped before the ADR, so ADR 0006 records the model as built and lists where the code falls short of it. Eleven follow-ups filed: #1484 (read-only chat enforcement), #1485 (proposal API hardening), #1486 (one action vocabulary), #1487 (action dispatch bypasses /run policy), #1488 (cross-node conversation authority, Open), #1489 (redaction coverage), #1490 (retention and export, Open), #1491 (pending chat reconcile), #1492 (chat pool saturation), #1493 (live token streaming), #1494 (Projects steward Idempotency-Key).
+- **Next step:** Panel review of ADR 0006 on #1299; the owner decides the two Open items (#1488, #1490) and then the PR is merged by hand (not auto-merged).
+
 ### DL-#1577 · Test isolation on fleet nodes (hub proxy, STAFF_REPOS_ROOT, pwsh skip)
 
 - **State:** in_review
@@ -43,18 +55,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-26 (`bb2b6006` baseline; review suites 38 passed incl. 3 new RED→GREEN (thread and process concurrency); staff/api/unit subset 946 passed; ruff and mypy clean)
 - **Summary:** The WP-1.3 reviewer now finds the author in a real `RunStore`, selects from the `code-reviewer` role's providers with an `Agent-Id` trailer fallback, carries the same-provider mark on the run into its stored outcome, and auto-reviews through `runner.submit` with per-PR deduplication. `execute_review_pr` rejects a non-numeric `pr`. The follow-up makes the dedupe atomic across threads and worker processes (a thread lock plus a file lock next to the runs DB, held around check and submit) and keys it on the resolved reviewer role, so a `fleet-critic` fallback counts.
 - **Next step:** Merge the dedupe follow-up PR once CI is green.
+
 ### DL-#1288 · CR-8: First use — submit queued UpstreamDrift dynamics proposals via the suggestion box
 
 - **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1288 (Epic #1279 Wave 5)
 - **Branch:** `agy/issue-1288`
-- **PR:** opened right after this commit
+- **PR:** #1578
 - **Paths:** `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (`fee5b214e` UpstreamDrift baseline; proposals #1792-#1795 created in RM; 2026-10-02 packet verified)
 - **Summary:** First real use of the suggestion box and end-to-end acceptance of the Board Proposals pipeline. Re-verified survey evidence paths in UpstreamDrift origin/main (MJ-X, parameter covariance, GP surrogate, and nonlinear dynamics research bundle). Submitted queued proposals P1–P4 via suggestion box service as research-scout (Repository_Management issues #1792, #1793, #1794, #1795) with board:proposal and needs-decision labels, hidden submitter markers, and linked code requests. Verified appearance in the 2026-10-02 Board meeting packet and queryability via GET /api/proposals.
-- **Next step:** Merge PR and close issue #1288.
+- **Next step:** None (shipped in PR #1578).
 
 ### DL-#1463 · Agent Org Plan: Verify Staff Output, Role Routing, Outcomes API
 

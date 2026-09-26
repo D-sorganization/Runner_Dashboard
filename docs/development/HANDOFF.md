@@ -1,4 +1,26 @@
-# Current handoff — Test isolation on fleet nodes (supersedes staff draft #1577)
+# Current handoff — SC-B1: ADR 0006 staff conversation model (#1299)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1299`; branch `docs/1299-staff-conversation-adr`; commit SELF; PR #1495 (opened unarmed for panel review); Issue #1299; DL-#1299.
+
+## Objective and Status
+
+- SC-B2, B4, B5, B6 and B7 all shipped without the SC-B1 ADR, so `docs/adr/0006-staff-conversation-model.md` is a retroactive record of the model as built: entities and storage, chat turn vs work run, per-provider session resume, node-local state, privacy and retention, read-only enforcement, reply contract, failure-mode table and HTTP surface.
+- The old assistant design docs (#88, #89) are marked superseded; the ADR index lists 0006.
+- Gaps between the code and the model are filed as #1484–#1494 with tier labels (strong: #1484–#1490; cli: #1491–#1494). All mechanical/security gaps (#1484, #1485, #1486, #1487, #1489, #1491, #1492, #1493, #1494) have shipped.
+- Validation: docs only; every cited path checked with `git ls-files`.
+
+## Next steps
+
+1. Panel review on #1299 (the issue carries `panel-review` and `judgement:design`); do not auto-merge.
+2. The owner decides #1488 (conversation authority across nodes) and #1490 (retention windows); amend ADR 0006 accordingly.
+
+---
+
+# Past handoff — Test isolation on fleet nodes (supersedes staff draft #1577)
 
 Last updated: 2026-09-26
 
@@ -92,7 +114,7 @@ Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1288`; PR opened right after this commit; DL-#1288; Issue #1288 (Epic #1279 Wave 5 acceptance).
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1288`; PR #1578 (merged); DL-#1288; Issue #1288 (Epic #1279 Wave 5 acceptance).
 - Baseline `b0ff5c6a`; UpstreamDrift baseline `fee5b214e`.
 
 ## Objective and Status
@@ -119,7 +141,7 @@ Last updated: 2026-09-26
 
 ---
 
-# Current handoff — Agent org implementation plan (#1463)
+# Past handoff — Agent org implementation plan (#1463)
 
 Last updated: 2026-09-25
 
