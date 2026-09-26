@@ -1,4 +1,39 @@
-# Current handoff — WP-1.3: Code-reviewer runtime (#1518)
+# Current handoff — Fleet Maintenance: test isolation fixes (staff/maintenance-task-92e980)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `staff/maintenance-task-92e980`; PR: pending; no governing issue (scheduled maintenance pass).
+
+## Objective and Status
+
+Scheduled Fleet Maintenance pass. Fixed 30+ previously failing tests caused by environment-dependent test isolation gaps.
+
+### Root causes addressed
+
+1. **Proxy bleed-through** (`tests/conftest.py`): Machines with `MACHINE_ROLE=node` and `HUB_URL` set caused `should_proxy_fleet_to_hub()` to return True in tests, silently forwarding API calls to the live hub and returning real runner data. Added autouse `_no_hub_proxy` fixture patching `proxy_utils.MACHINE_ROLE = "hub"` and `proxy_utils.HUB_URL = None` for all tests. Tests that specifically exercise proxy behaviour override this themselves.
+
+2. **`STAFF_REPOS_ROOT` leak** (`tests/conftest.py`): When `STAFF_REPOS_ROOT` is set to a real path in the developer environment, the `_hermetic_staff_workspace` autouse fixture allowed it through into `configured_roots_only()`, causing `workspace.repos_roots()` to return real checkout roots instead of `[]`. Fixed by adding `monkeypatch.delenv("STAFF_REPOS_ROOT", raising=False)` at the start of the fixture.
+
+3. **PowerShell test skip** (`tests/deploy/test_fleet_health_monitor.py`): Three behavioural tests asserted `PWSH is not None` directly in their function body instead of using the `@PWSH_REQUIRED` decorator already defined in the file. Added the decorator; tests now skip cleanly on Linux.
+
+4. **Race condition** (`tests/api/test_staff_runner.py`): `_wait()` returns as soon as the run store shows "succeeded", but `handle_run_status_change` is called a few instructions later by the worker thread. Added a 5-second spin-wait on the `handled` list to close the window.
+
+## Validation
+
+- Target failing tests: `tests/api/test_routers_runners.py` (15), `tests/test_queue_router.py` (8), `tests/test_hub_fleet_aggregation.py` (2), `tests/test_host_volume.py` (1), `tests/unit/test_staff_test_isolation.py` (2), `tests/deploy/test_fleet_health_monitor.py` (3 → skipped), `tests/api/test_staff_runner.py` (1) — all resolved.
+- Full suite (venv Python 3.11): all pass except 2 pre-existing failures in `tests/api/test_auth_loopback.py` (unrelated to this change; fail without it too).
+- `ruff check tests/conftest.py tests/deploy/test_fleet_health_monitor.py tests/api/test_staff_runner.py`: clean.
+
+## Next Steps
+
+1. CI review — confirm the pre-existing `test_auth_loopback.py` failures also fail in CI.
+2. Merge the draft PR.
+
+---
+
+# Past handoff — WP-1.3: Code-reviewer runtime (#1518)
 
 Last updated: 2026-09-26
 
