@@ -18,17 +18,17 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1299 · SC-B1: ADR for the staff conversation model (retroactive, as built)
+### DL-#1488 · SC-B1-G5: Relay forwarded run-card events back to originating thread across peer nodes
 
-- **State:** in_review
-- **Owner:** claude
-- **Issue:** #1299
-- **Branch:** `docs/1299-staff-conversation-adr`
-- **Paths:** `docs/adr/0006-staff-conversation-model.md`, `docs/adr/README.md`, `docs/assistant-chat-endpoint-design.md`, `docs/assistant-agent-mode-design.md`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
-- **Started:** 2026-09-25
-- **Last verified:** 2026-09-26 a74e6439 (docs only; every cited source and test path checked against `main`)
-- **Summary:** SC-B2/B4/B5/B6/B7 shipped before the ADR, so ADR 0006 records the model as built and lists where the code falls short of it. Eleven follow-ups filed: #1484 (read-only chat enforcement), #1485 (proposal API hardening), #1486 (one action vocabulary), #1487 (action dispatch bypasses /run policy), #1488 (cross-node conversation authority, Open), #1489 (redaction coverage), #1490 (retention and export, Open), #1491 (pending chat reconcile), #1492 (chat pool saturation), #1493 (live token streaming), #1494 (Projects steward Idempotency-Key).
-- **Next step:** Panel review of ADR 0006 on #1299; the owner decides the two Open items (#1488, #1490) and then the PR is merged by hand (not auto-merged).
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1488
+- **Branch:** `feat/1488-cross-node-run-cards`
+- **Paths:** `backend/staff/conversation_models.py`, `backend/staff/plan.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/fleet.py`, `backend/routers/staff.py`, `backend/staff/run_link.py`, `backend/routers/staff_threads.py`, `tests/unit/test_staff_run_card_relay.py`, `docs/adr/0006-staff-conversation-model.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (5 passed in `tests/unit/test_staff_run_card_relay.py`; ruff, black, mypy clean)
+- **Summary:** Propagated `origin_node` and `thread_id` on run dispatch. When executing on a remote peer, `handle_run_status_change` posts run card updates to `POST /api/v1/staff/threads/{thread_id}/relay-card` on the originating node. Origination endpoint verifies target thread existence (404), updates card idempotently in place without duplicate messages, and preserves terminal execution status (`completed`, `failed`, `cancelled`) against delayed out-of-order intermediate card deliveries. Relay failure mid-run logs visibly on the executing node without crashing the execution path. ADR 0006 Section 4 amended with Option A decision and semantics.
+- **Next step:** Run quality checks, push branch, open PR with squash auto-merge, verify all CI checks pass.
 
 ### DL-#1577 · Test isolation on fleet nodes (hub proxy, STAFF_REPOS_ROOT, pwsh skip)
 
@@ -2072,6 +2072,19 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1299 · SC-B1: ADR for the staff conversation model (retroactive, as built)
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1299
+- **Branch:** `docs/1299-staff-conversation-adr`
+- **PR:** #1495
+- **Paths:** `docs/adr/0006-staff-conversation-model.md`, `docs/adr/README.md`, `docs/assistant-chat-endpoint-design.md`, `docs/assistant-agent-mode-design.md`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-26
+- **Shipped:** 2026-09-26
+- **Summary:** SC-B2/B4/B5/B6/B7 shipped before the ADR, so ADR 0006 records the model as built and lists where the code falls short of it. Indexed in docs/adr/README.md; supersedes legacy assistant design docs. Approved by owner and squash-merged via PR #1495 (`d1f3e311`).
 
 ### DL-#1513 · Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
 

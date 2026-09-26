@@ -139,6 +139,19 @@ def post_run_card(
 
     msg_id = run_card_id(run.id)
     try:
+        existing = conv_store.get_message(msg_id)
+        if existing and existing.meta:
+            existing_status = existing.meta.get("status")
+            if existing_status in (
+                "succeeded",
+                "failed",
+                "cancelled",
+            ) and status not in (
+                "succeeded",
+                "failed",
+                "cancelled",
+            ):
+                return existing
         saved = conv_store.update_message(msg_id, body_md=body_md, meta=meta) or conv_store.add_message(
             thread_id=thread_id,
             author_kind="role",
@@ -170,24 +183,122 @@ def update_linked_work_item(run: RunRecord, status: str, summary: str | None = N
         if not wi:
             return
         wi_store.add_link(work_item_id, "runs", run.id)
-        if status in ("preparing", "running") and wi.state in ("open", "waiting_on_user"):
-            wi_store.transition_state(work_item_id, "in_progress", actor=run.role, reason=f"Run {run.id} started")
+        if status in ("preparing", "running") and wi.state in (
+            "open",
+            "waiting_on_user",
+        ):
+            wi_store.transition_state(
+                work_item_id,
+                "in_progress",
+                actor=run.role,
+                reason=f"Run {run.id} started",
+            )
         elif status == "needs_input" and wi.state in ("open", "in_progress"):
             wi_store.transition_state(
-                work_item_id, "waiting_on_user", actor=run.role, reason=f"Run {run.id} needs input"
+                work_item_id,
+                "waiting_on_user",
+                actor=run.role,
+                reason=f"Run {run.id} needs input",
             )
-        elif status == "succeeded" and wi.state in ("open", "in_progress", "waiting_on_ci"):
+        elif status == "succeeded" and wi.state in (
+            "open",
+            "in_progress",
+            "waiting_on_ci",
+        ):
             outcome = summary or getattr(run, "outcome", "") or ""
             if "PR #" in outcome or "pull/" in outcome:
                 wi_store.transition_state(
-                    work_item_id, "waiting_on_ci", actor=run.role, reason=f"Run {run.id} opened PR"
+                    work_item_id,
+                    "waiting_on_ci",
+                    actor=run.role,
+                    reason=f"Run {run.id} opened PR",
                 )
             else:
                 wi_store.transition_state(
-                    work_item_id, "done", actor=run.role, reason=f"Run {run.id} completed successfully"
+                    work_item_id,
+                    "done",
+                    actor=run.role,
+                    reason=f"Run {run.id} completed successfully",
                 )
     except Exception as exc:  # noqa: BLE001
-        log.warning("staff.run_link: failed to update work item %s for run %s: %s", work_item_id, run.id, exc)
+        log.warning(
+            "staff.run_link: failed to update work item %s for run %s: %s",
+            work_item_id,
+            run.id,
+            exc,
+        )
+
+
+def relay_run_card_to_origin(
+    run: RunRecord,
+    status: str,
+    question: str | None = None,
+    summary: str | None = None,
+    relay_fn: Any = None,
+) -> bool:
+    """Relay a forwarded run's card event back to the thread's home node (issue #1488)."""
+    origin_node = getattr(run, "origin_node", "") or ""
+    thread_id = getattr(run, "thread_id", "") or ""
+    machine = getattr(run, "machine", "") or ""
+    if not origin_node or not thread_id or origin_node == machine:
+        return False
+
+    from staff import fleet as staff_fleet  # noqa: PLC0415
+
+    nodes = staff_fleet.peer_nodes()
+    origin_url = nodes.get(origin_node)
+    if not origin_url:
+        log.warning(
+            "staff.run_link: cannot relay run card for %s: unknown peer '%s'",
+            run.id,
+            origin_node,
+        )
+        return False
+
+    payload = {
+        "run_id": run.id,
+        "role": run.role,
+        "status": status,
+        "node": machine,
+        "provider": run.provider,
+        "repo": run.repo,
+        "target_ref": run.target_ref,
+        "branch": run.branch,
+        "question": question,
+        "summary": summary,
+        "error": getattr(run, "error", "") or None,
+        "failure_class": getattr(run, "failure_class", "") or None,
+    }
+    headers = staff_fleet.fleet_headers()
+    target_url = f"{origin_url}/api/v1/staff/threads/{thread_id}/relay-card"
+    try:
+        if relay_fn is not None:
+            resp = relay_fn(target_url, payload, headers)
+            status_code = getattr(resp, "status_code", 200)
+        else:
+            import httpx  # noqa: PLC0415
+
+            with httpx.Client(timeout=staff_fleet.PEER_TIMEOUT_SECONDS) as client:
+                resp = client.post(target_url, json=payload, headers=headers)
+                status_code = resp.status_code
+        if status_code >= 400:
+            log.warning(
+                "staff.run_link: peer %s returned HTTP %s for run card relay %s",
+                origin_node,
+                status_code,
+                run.id,
+            )
+            return False
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "staff.run_link: failed to relay run card for %s to %s (%s): %s",
+            run.id,
+            origin_node,
+            target_url,
+            exc,
+        )
+        return False
 
 
 def handle_run_status_change(
@@ -197,10 +308,11 @@ def handle_run_status_change(
     summary: str | None = None,
     store: Any = None,
     bus: Any = None,
+    relay_fn: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
     update_linked_work_item(run, status, summary=summary)
-    return post_run_card(
+    card = post_run_card(
         run,
         status=status,
         question=question,
@@ -208,6 +320,8 @@ def handle_run_status_change(
         store=store,
         bus=bus,
     )
+    relay_run_card_to_origin(run, status, question=question, summary=summary, relay_fn=relay_fn)
+    return card
 
 
 def answer_needs_input(
@@ -261,7 +375,39 @@ def _mark_answered(conv_store: Any, bus: Any, run_id: str, *, answered_by: str, 
     card = conv_store.get_message(run_card_id(run_id))
     if card is None:
         return
-    run = {**(card.meta.get("run") or {}), "answered_by": answered_by, "continued_by": continued_by}
+    run = {
+        **(card.meta.get("run") or {}),
+        "answered_by": answered_by,
+        "continued_by": continued_by,
+    }
     saved = conv_store.update_message(card.id, meta={**card.meta, "run": run})
     if saved is not None:
         bus.publish_message_sync(saved.thread_id, saved.to_dict())
+
+
+def apply_relayed_run_card(store: Any, bus: Any, thread_id: str, req: Any) -> Any:
+    """Apply a relayed run-card update received from an executing peer node."""
+    run_stub = RunRecord(
+        id=req.run_id,
+        role=req.role,
+        provider=req.provider,
+        model=None,
+        machine=req.node,
+        repo=req.repo,
+        target_kind="prompt",
+        target_ref=req.target_ref,
+        prompt="",
+        branch=req.branch,
+        thread_id=thread_id,
+        error=req.error or "",
+        failure_class=req.failure_class or "",
+    )
+    return post_run_card(
+        run_stub,
+        status=req.status,
+        text=req.body_md or "",
+        question=req.question,
+        summary=req.summary,
+        store=store,
+        bus=bus,
+    )

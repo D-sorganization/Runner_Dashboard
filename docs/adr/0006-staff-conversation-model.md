@@ -104,10 +104,25 @@ Runs forwarded to a peer are proxied for detail, SSE and cancel
 (`remote_runs.py`). An unreachable peer gives the classified status
 `node_unreachable` / `failure_class: node_offline`.
 
-**Open:** SC-B1 proposed a single conversation authority node. As built, a
-forwarded run's status cards are written on the _executing_ node and never
-reach the originating thread. The choice between relaying cards home and a
-single hub is #1488.
+**Cross-node Run Cards (Resolved #1488 - Option A):**
+When a staff thread dispatches or forwards a run to a remote peer node, the thread's
+originating node identity (`origin_node`) and `thread_id` are propagated with the
+run dispatch request. When the executing node updates the run status (queued, running,
+completed/failed/cancelled), it records the run card locally and relays the event
+back to the originating node via peer API:
+`POST /api/v1/staff/threads/{thread_id}/relay-card`.
+
+Failure mode handling:
+
+- **Home node offline mid-run:** If the originating node is unreachable when the executing
+  node attempts to relay, the relay failure is logged visibly on the executing node,
+  and local run records retain the canonical execution state.
+- **Duplicate delivery idempotency:** Cards use deterministic IDs (`card_id = run_card_id(run.id)`).
+  Repeated or replayed relay requests update the existing run card message in place rather
+  than creating duplicate entries in the thread.
+- **Out-of-order delivery protection:** If a delayed intermediate update (e.g., `running`)
+  arrives after a terminal card (`completed`, `failed`, `cancelled`) has already been recorded,
+  the originating node preserves the terminal status and discards the stale regression.
 
 ### 5. Privacy and retention
 
@@ -200,8 +215,9 @@ All routes are under `/api/v1/staff` (`server.py`):
   by construction (no worktree, lease or token). Doing work always passes
   through a proposal, the scheduler or an explicit dispatch, so it is audited.
 - Node-local state keeps each node independent, and a single-node install needs
-  no hub. The cost is cross-node visibility (#1488). A hub, if chosen, must
-  arrive as an amendment to this record.
+  no hub. Cross-node visibility for forwarded runs is provided via peer run-card
+  relaying (#1488 - Option A), ensuring threads retain complete execution history
+  even when runs execute remotely.
 - Native resume keeps turns fast and cheap. Replay keeps threads usable when a
   provider loses its session, at the price of bounded context.
 - The read-only guarantee is only as strong as each provider's flags until
