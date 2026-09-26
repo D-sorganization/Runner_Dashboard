@@ -10,8 +10,56 @@ from typing import TYPE_CHECKING
 from staff.thread_bus import get_thread_bus
 
 if TYPE_CHECKING:
+    from staff.chat import ChatTurnResult
     from staff.conversations import ConversationStore
     from staff.roles import RoleSpec
+
+
+FAILURE_SPECIFICITY: dict[str, int] = {
+    "auth_expired": 100,
+    "provider_not_read_only": 100,
+    "invalid_chat_tools": 100,
+    "rate_limited": 90,
+    "needs_input": 90,
+    "lease_blocked": 90,
+    "chat_capacity": 90,
+    "workspace_error": 80,
+    "timeout": 70,
+    "stalled": 70,
+    "unkillable": 70,
+    "orphaned": 70,
+    "unknown": 50,
+    "provider_error": 30,
+    "cli_missing": 20,
+}
+
+
+def failure_specificity(failure_class: str | None) -> int:
+    """Return specificity score for a failure class (higher = more specific/actionable)."""
+    if not failure_class:
+        return 0
+    return FAILURE_SPECIFICITY.get(failure_class, 40)
+
+
+def choose_preferred_chat_failure(
+    existing: tuple[str, ChatTurnResult] | None,
+    candidate: str,
+    candidate_result: ChatTurnResult,
+) -> tuple[str, ChatTurnResult]:
+    """Select the most specific classified failure between candidates (#1551).
+
+    If the candidate's failure has strictly higher specificity than the existing
+    best, it wins. Otherwise, the existing best is preserved because earlier
+    candidates in the provider chain represent the primary / preferred configuration.
+    """
+    if existing is None:
+        return (candidate, candidate_result)
+    _, existing_result = existing
+    existing_score = failure_specificity(existing_result.failure_class)
+    new_score = failure_specificity(candidate_result.failure_class)
+    if new_score > existing_score:
+        return (candidate, candidate_result)
+    return existing
 
 
 async def record_chat_failure(
@@ -41,6 +89,7 @@ async def record_chat_failure(
             "retryable": retryable,
             "actions": [{"name": "retry", "label": "Retry"}],
             "error": error,
+            "remediation": detail,
         },
     )
     message = conv_store.get_message(placeholder_id)
