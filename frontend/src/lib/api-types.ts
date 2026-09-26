@@ -5176,6 +5176,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Outcomes
+         * @description Scorecard per ``group_by`` for runs created since ``since`` (default: 14 days).
+         */
+        get: operations["get_outcomes_api_v1_staff_outcomes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/proposals": {
         parameters: {
             query?: never;
@@ -7845,6 +7865,68 @@ export interface components {
             query: string;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * StaffOutcomeRow
+         * @description One scorecard row per role, provider or repo (#1517). A ``None`` rate means no data.
+         */
+        StaffOutcomeRow: {
+            /** Ci First Pass */
+            ci_first_pass: number;
+            /** Ci First Pass Rate */
+            ci_first_pass_rate: number | null;
+            /** Closed Unmerged */
+            closed_unmerged: number;
+            /** Cost Per Merged Pr */
+            cost_per_merged_pr: number | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Failed Verification */
+            failed_verification: number;
+            /** Fix Within 48H */
+            fix_within_48h: number;
+            /** Fix Within 48H Rate */
+            fix_within_48h_rate: number | null;
+            /** Key */
+            key: string;
+            /** Merge Rate */
+            merge_rate: number | null;
+            /** Merged */
+            merged: number;
+            /** Open */
+            open: number;
+            /** Prs */
+            prs: number;
+            /** Prs Unknown */
+            prs_unknown: number;
+            /** Runs */
+            runs: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Verified */
+            verified: number;
+            /** Verified Rate */
+            verified_rate: number | null;
+        };
+        /**
+         * StaffOutcomesResponse
+         * @description ``GET /api/v1/staff/outcomes`` (#1517).
+         */
+        StaffOutcomesResponse: {
+            /** Group By */
+            group_by: string;
+            /** Machine */
+            machine: string;
+            /**
+             * Prs Truncated
+             * @default false
+             */
+            prs_truncated: boolean;
+            /** Rows */
+            rows: components["schemas"]["StaffOutcomeRow"][];
+            /** Since */
+            since: string;
+            totals: components["schemas"]["StaffOutcomeRow"];
         };
         /**
          * StaffPricingResponse
@@ -15881,6 +15963,38 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_outcomes_api_v1_staff_outcomes_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                group_by?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOutcomesResponse"];
                 };
             };
             /** @description Validation Error */

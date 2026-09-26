@@ -3551,6 +3551,175 @@
         "title": "StaffKnowledgeSearchResponse",
         "type": "object"
       },
+      "StaffOutcomeRow": {
+        "description": "One scorecard row per role, provider or repo (#1517). A ``None`` rate means no data.",
+        "properties": {
+          "ci_first_pass": {
+            "title": "Ci First Pass",
+            "type": "integer"
+          },
+          "ci_first_pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci First Pass Rate"
+          },
+          "closed_unmerged": {
+            "title": "Closed Unmerged",
+            "type": "integer"
+          },
+          "cost_per_merged_pr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Per Merged Pr"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "failed_verification": {
+            "title": "Failed Verification",
+            "type": "integer"
+          },
+          "fix_within_48h": {
+            "title": "Fix Within 48H",
+            "type": "integer"
+          },
+          "fix_within_48h_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix Within 48H Rate"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "merge_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Rate"
+          },
+          "merged": {
+            "title": "Merged",
+            "type": "integer"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "prs": {
+            "title": "Prs",
+            "type": "integer"
+          },
+          "prs_unknown": {
+            "title": "Prs Unknown",
+            "type": "integer"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "integer"
+          },
+          "verified_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Rate"
+          }
+        },
+        "required": [
+          "key",
+          "runs",
+          "succeeded",
+          "verified",
+          "failed_verification",
+          "cost_usd",
+          "prs",
+          "prs_unknown",
+          "merged",
+          "closed_unmerged",
+          "open",
+          "ci_first_pass",
+          "fix_within_48h",
+          "merge_rate",
+          "verified_rate",
+          "ci_first_pass_rate",
+          "fix_within_48h_rate",
+          "cost_per_merged_pr"
+        ],
+        "title": "StaffOutcomeRow",
+        "type": "object"
+      },
+      "StaffOutcomesResponse": {
+        "description": "``GET /api/v1/staff/outcomes`` (#1517).",
+        "properties": {
+          "group_by": {
+            "title": "Group By",
+            "type": "string"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "prs_truncated": {
+            "default": false,
+            "title": "Prs Truncated",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StaffOutcomeRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/StaffOutcomeRow"
+          }
+        },
+        "required": ["machine", "group_by", "since", "rows", "totals"],
+        "title": "StaffOutcomesResponse",
+        "type": "object"
+      },
       "StaffPricingResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/usage/pricing.",
@@ -15540,6 +15709,74 @@
         ],
         "summary": "Detect Stalled Jobs",
         "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/outcomes": {
+      "get": {
+        "description": "Scorecard per ``group_by`` for runs created since ``since`` (default: 14 days).",
+        "operationId": "get_outcomes_api_v1_staff_outcomes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "role",
+              "maxLength": 10,
+              "title": "Group By",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffOutcomesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Outcomes",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/proposals": {

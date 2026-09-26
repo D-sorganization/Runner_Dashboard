@@ -24,6 +24,7 @@ import { AdvancedDispatchForm } from "./AdvancedDispatchForm";
 import { Board } from "./Board";
 import { Holds } from "./Holds";
 import { InboxPanel } from "./InboxPanel";
+import { OutcomesTable } from "./OutcomesTable";
 import { Roster } from "./Roster";
 import { RunDetail } from "./RunDetail";
 import { RunLog } from "./RunLog";
@@ -31,12 +32,13 @@ import { errorMessage } from "./staffApi";
 
 import type { WorkRequest } from "./staffApi";
 
-export type StaffSection = "console" | "roster" | "runs" | "assign" | "holds";
+export type StaffSection = "console" | "roster" | "runs" | "outcomes" | "assign" | "holds";
 
 const SECTION_TABS: { key: StaffSection; label: string }[] = [
   { key: "console", label: "Console" },
   { key: "roster", label: "Roster" },
   { key: "runs", label: "Runs" },
+  { key: "outcomes", label: "Outcomes" },
   { key: "assign", label: "Assign" },
   { key: "holds", label: "Holds" },
 ];
@@ -166,6 +168,7 @@ export function StaffPage() {
       {section === "runs" && !selectedRun ? (
         <RunLog roles={roleNames} onOpenRun={openRun} refreshKey={runsRefresh} />
       ) : null}
+      {section === "outcomes" ? <OutcomesTable /> : null}
       {section === "assign" ? (
         <AdvancedDispatchForm
           roster={roster}

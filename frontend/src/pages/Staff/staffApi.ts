@@ -69,6 +69,8 @@ export type ScheduleResponse = components["schemas"]["StaffScheduleResponse"];
 export type UsageResponse = components["schemas"]["StaffUsageResponse"];
 export type PricingResponse = components["schemas"]["StaffPricingResponse"];
 export type UsageExportResponse = components["schemas"]["StaffUsageExportResponse"];
+export type OutcomeRow = components["schemas"]["StaffOutcomeRow"];
+export type OutcomesResponse = components["schemas"]["StaffOutcomesResponse"];
 
 export type DispatchBody = components["schemas"]["RunBody"];
 export type WorkRequest = components["schemas"]["WorkRequest"];
@@ -139,6 +141,12 @@ export function fetchRuns(filter: RunsFilter = {}, signal?: AbortSignal): Promis
 
 export function fetchRun(id: string, signal?: AbortSignal): Promise<RunDetailResponse> {
   return apiRequest<RunDetailResponse>(`${STAFF_BASE}/runs/${encodeURIComponent(id)}`, { signal });
+}
+
+export type OutcomesGroupBy = "role" | "provider" | "repo";
+
+export function fetchOutcomes(groupBy: OutcomesGroupBy, signal?: AbortSignal): Promise<OutcomesResponse> {
+  return apiRequest<OutcomesResponse>(`${STAFF_BASE}/outcomes?group_by=${groupBy}`, { signal });
 }
 
 export function runStreamUrl(id: string, after = 0): string {
@@ -250,6 +258,11 @@ export function statusTone(status: string): "success" | "warning" | "danger" | "
     default:
       return "neutral";
   }
+}
+
+/** A 0..1 rate as a percentage; "—" when there was no data to rate (#1517). */
+export function formatRate(rate: number | null | undefined): string {
+  return typeof rate === "number" && Number.isFinite(rate) ? `${(rate * 100).toFixed(1)}%` : "—";
 }
 
 const warnedFormatUsdInputs = new Set<string>();
