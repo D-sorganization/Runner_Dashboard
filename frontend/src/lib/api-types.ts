@@ -1184,6 +1184,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/code-requests/{id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plan
+         * @description The planning session: status, attempts, validator errors and the draft plan.
+         */
+        get: operations["get_plan_api_code_requests__id__plan_get"];
+        put?: never;
+        /**
+         * Post Plan
+         * @description Submit planner output; it is validated, then drafted, filed, re-prompted or failed.
+         */
+        post: operations["post_plan_api_code_requests__id__plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/plan/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve
+         * @description Approve the draft: file the epic and children on GitHub and mark the request ``planned``.
+         */
+        post: operations["approve_api_code_requests__id__plan_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/plan/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Draft
+         * @description Replace the draft with an operator's edits; the edited plan is re-validated.
+         */
+        put: operations["put_draft_api_code_requests__id__plan_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/plan/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Plan
+         * @description Submit the newest ``<!-- plan:v1 -->`` comment on the Code Request issue.
+         */
+        post: operations["ingest_plan_api_code_requests__id__plan_ingest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/plan/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Plan
+         * @description Dispatch the planner agent for a Code Request in the ``planning`` state.
+         */
+        post: operations["start_plan_api_code_requests__id__plan_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/code-requests/{id}/route-to-board": {
         parameters: {
             query?: never;
@@ -5084,6 +5188,9 @@ export interface paths {
         /**
          * Create Proposal
          * @description Create a new action proposal within a conversation thread.
+         *
+         *     Pre: ``action`` is registered; ``thread_id`` exists and ``message_id`` is a message in it.
+         *     Post: the proposal is ``proposed`` with the registry's risk class (any caller risk is ignored).
          */
         post: operations["create_proposal_api_v1_staff_proposals_post"];
         delete?: never;
@@ -5124,6 +5231,8 @@ export interface paths {
         /**
          * Decide Proposal
          * @description Decide (approve or deny) an action proposal, optionally executing immediately.
+         *
+         *     A ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).
          */
         post: operations["decide_proposal_api_v1_staff_proposals__proposal_id__decide_post"];
         delete?: never;
@@ -5143,9 +5252,29 @@ export interface paths {
         put?: never;
         /**
          * Execute Approved Proposal
-         * @description Execute an approved proposal through the action registry.
+         * @description Execute an ``approved`` proposal through the action registry (409 for any other live state).
          */
         post: operations["execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Request
+         * @description Request work of any registered kind; see ``staff.work_requests``.
+         */
+        post: operations["create_request_api_v1_staff_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6504,6 +6633,16 @@ export interface components {
             /** Keys */
             keys?: string[] | null;
         };
+        /** DraftEdit */
+        DraftEdit: {
+            /**
+             * Plan
+             * @description The complete edited plan (same shape as the planner output)
+             */
+            plan: {
+                [key: string]: unknown;
+            };
+        };
         /** EvaluateBoardPayload */
         EvaluateBoardPayload: {
             board_route?: components["schemas"]["BoardRoute"] | null;
@@ -6776,6 +6915,14 @@ export interface components {
             state?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** PlanSubmission */
+        PlanSubmission: {
+            /**
+             * Output
+             * @description Planner output containing the JSON plan
+             */
+            output: string;
         };
         /**
          * PoolConfigPatch
@@ -7238,6 +7385,32 @@ export interface components {
              * @default
              */
             updated_handoff: string;
+        };
+        /**
+         * RequestTarget
+         * @description What the work is about. Each kind accepts only the fields it can act on.
+         */
+        RequestTarget: {
+            /** Issue */
+            issue?: number | null;
+            /** Issues */
+            issues?: number[];
+            /** Pr */
+            pr?: number | null;
+            /** Prs */
+            prs?: number[];
+            /**
+             * Ref
+             * @default
+             */
+            ref: string;
+            /**
+             * Repo
+             * @default
+             */
+            repo: string;
+            /** Run Id */
+            run_id?: number | null;
         };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
@@ -8444,6 +8617,41 @@ export interface components {
             route: string;
         };
         /**
+         * WorkRequest
+         * @description The body of ``POST /api/v1/staff/requests``.
+         */
+        WorkRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Kind
+             * @description A request kind; see REQUEST_KINDS
+             */
+            kind: string;
+            /**
+             * Machine
+             * @default local
+             */
+            machine: string;
+            /** Model */
+            model?: string | null;
+            /** Profile Id */
+            profile_id?: string | null;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /** Provider */
+            provider?: string | null;
+            /** Role */
+            role?: string | null;
+            target?: components["schemas"]["RequestTarget"];
+        };
+        /**
          * WorkSummary
          * @description Orchestrator-tracked work classification surfaced on the Conductor tab.
          */
@@ -8522,10 +8730,9 @@ export interface components {
             };
             /**
              * Risk
-             * @description Risk class (read, low, medium, high, owner-only)
-             * @default low
+             * @description Ignored: the risk always comes from the action registry (#1485)
              */
-            risk: string;
+            risk?: string | null;
             /**
              * Thread Id
              * @description Parent thread ID
@@ -10230,6 +10437,212 @@ export interface operations {
             };
         };
     };
+    get_plan_api_code_requests__id__plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_plan_api_code_requests__id__plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanSubmission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_api_code_requests__id__plan_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_draft_api_code_requests__id__plan_draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_plan_api_code_requests__id__plan_ingest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_plan_api_code_requests__id__plan_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     route_to_board_api_code_requests__id__route_to_board_post: {
         parameters: {
             query?: never;
@@ -11500,9 +11913,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
                 };
             };
         };
@@ -11522,9 +11933,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
                 };
             };
         };
@@ -15621,6 +16030,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_request_api_v1_staff_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

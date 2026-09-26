@@ -35,6 +35,7 @@ from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
+from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change
 from staff.store import RunRecord, RunStore, _now, get_store
@@ -379,6 +380,8 @@ class StaffRunner:
                 has_thread=bool(rec.thread_id),
             )
 
+            # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
+            store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
             store.update_run(
                 rec.id,
                 status=status,
@@ -394,7 +397,6 @@ class StaffRunner:
                 outcome=consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 question = None
@@ -434,7 +436,7 @@ class StaffRunner:
             for line in proc.stdout:
                 if watchdog is not None:
                     watchdog.record_output()
-                tf.write(line)
+                tf.write(redact_sensitive_content(line))
                 event = adapter.parse_line(line)
                 if event.get("usage"):
                     usage.update(event["usage"])

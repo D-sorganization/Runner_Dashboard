@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import datetime as _dt
 from collections.abc import Iterator
+from functools import partial
 from pathlib import Path
 from typing import Any
 
+import anyio
+import anyio.to_thread
 import pytest
 from identity import Principal
 from staff.actions import (
@@ -25,6 +28,8 @@ from staff.actions import (
 from staff.audit import reset_audit_store
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.roles import RoleSpec
+from staff.runner import StaffRunner, reset_runner
+from staff.store import reset_store
 
 UTC = getattr(_dt, "UTC", _dt.UTC)
 datetime = _dt.datetime
@@ -59,9 +64,14 @@ TEST_OWNER = Principal(
 def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     db_file = tmp_path / "staff_actions_test.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_file))
+    monkeypatch.setattr(StaffRunner, "_worker", lambda *args, **kwargs: None)
+    reset_runner()
+    reset_store()
     reset_conversation_store()
     reset_audit_store()
     yield
+    reset_runner()
+    reset_store()
     reset_conversation_store()
     reset_audit_store()
 
@@ -192,7 +202,7 @@ def test_proposal_expiry_24h() -> None:
     assert is_proposal_expired(expired_prop)
 
     with pytest.raises(ProposalExpiredError, match="expired"):
-        execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
+        execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
 
     refreshed = store.get_proposal(prop.id)
     assert refreshed is not None
@@ -217,7 +227,7 @@ def test_proposal_replay_protection() -> None:
 
     # Cannot execute denied proposal
     with pytest.raises(ProposalReplayError, match="denied"):
-        execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
+        execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
 
     # Expired proposal cannot be executed
     prop2 = store.create_proposal(
@@ -230,7 +240,7 @@ def test_proposal_replay_protection() -> None:
     )
     store.transition_proposal_state(prop2.id, "expired", reason="expired")
     with pytest.raises(ProposalReplayError, match="expired"):
-        execute_proposal(prop2.id, approver=TEST_APPROVER, store=store)
+        execute_proposal(prop2.id, approver=TEST_APPROVER, store=store, approve=True)
 
 
 def test_execute_staff_dispatch_success_and_thread_messages() -> None:
@@ -246,8 +256,13 @@ def test_execute_staff_dispatch_success_and_thread_messages() -> None:
         principal="barb",
     )
 
-    result = execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
-    assert result.success is True
+    async def off_loop() -> ActionResult:  # as the proposal routes run it (#1448, #1487)
+        return await anyio.to_thread.run_sync(
+            partial(execute_proposal, prop.id, approver=TEST_APPROVER, store=store, approve=True)
+        )
+
+    result = anyio.run(off_loop)
+    assert result.success is True, result.error
     assert result.run_id is not None
     assert result.run_id.startswith("run-") or result.run_id.startswith("run_")
 
@@ -299,7 +314,7 @@ def test_executor_failure_marks_proposal_failed_and_permits_retry() -> None:
         principal="barb",
     )
 
-    result1 = execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
+    result1 = execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
     assert result1.success is False
     assert result1.failure_class == "service_unavailable"
 
@@ -317,6 +332,8 @@ def test_executor_failure_marks_proposal_failed_and_permits_retry() -> None:
             (json.dumps(updated.params), prop.id),
         )
 
+    # A failed proposal only runs again after an explicit retry decision (#1485).
+    store.decide_proposal(prop.id, "approved", decided_by="operator", reason="retry")
     result2 = execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
     assert result2.success is True
     updated2 = store.get_proposal(prop.id)
@@ -353,7 +370,7 @@ def test_verifier_mismatch_fails_action() -> None:
         principal="barb",
     )
 
-    res = execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
+    res = execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
     assert res.success is False
     assert res.verification_ok is False
     assert "mismatch" in (res.error or "").lower()
@@ -376,7 +393,7 @@ def test_staff_hold_and_unhold_lifecycle() -> None:
         principal="barb",
     )
 
-    res_hold = execute_proposal(hold_prop.id, approver=TEST_OWNER, store=store)
+    res_hold = execute_proposal(hold_prop.id, approver=TEST_OWNER, store=store, approve=True)
     assert res_hold.success is True
     assert res_hold.verification_ok is True
 
@@ -390,6 +407,6 @@ def test_staff_hold_and_unhold_lifecycle() -> None:
         principal="barb",
     )
 
-    res_unhold = execute_proposal(unhold_prop.id, approver=TEST_OWNER, store=store)
+    res_unhold = execute_proposal(unhold_prop.id, approver=TEST_OWNER, store=store, approve=True)
     assert res_unhold.success is True
     assert res_unhold.verification_ok is True

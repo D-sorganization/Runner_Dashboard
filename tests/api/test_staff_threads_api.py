@@ -276,3 +276,59 @@ def test_store_unavailable_returns_503(client: TestClient):
     err = resp.json()["error"]
     assert err["retryable"] is True
     assert err["code"] == "conversations_unavailable"
+
+
+def test_reconcile_shows_system_retry_message_in_thread(client: TestClient):
+    """API test: thread shows the system retry message after reconciliation of interrupted reply."""
+    from staff.reconcile import reconcile_interrupted_chat_messages
+
+    # Create thread
+    resp = client.post("/api/v1/staff/threads", json={"title": "Restart Test", "role": "barb"})
+    assert resp.status_code == 201, resp.text
+    thread_id = resp.json()["id"]
+
+    store = get_conversation_store()
+
+    # User message
+    user_msg = store.add_message(
+        thread_id=thread_id,
+        author_kind="user",
+        author="operator-user",
+        body_md="Hello Barb",
+        delivery="complete",
+    )
+
+    # Stuck pending reply message from backend restart
+    reply_placeholder = store.add_message(
+        thread_id=thread_id,
+        author_kind="role",
+        author="barb",
+        kind="text",
+        body_md="",
+        meta={"in_reply_to": user_msg.id},
+        delivery="pending",
+    )
+
+    # Reconcile interrupted messages
+    reconciled = reconcile_interrupted_chat_messages(store)
+    assert reply_placeholder.id in reconciled
+
+    # API test: GET /api/v1/staff/threads/{thread_id} shows system retry message
+    detail_resp = client.get(f"/api/v1/staff/threads/{thread_id}")
+    assert detail_resp.status_code == 200, detail_resp.text
+    data = detail_resp.json()
+    messages = data["messages"]
+
+    # Verify messages
+    assert len(messages) == 3
+    assert messages[0]["id"] == user_msg.id
+    assert messages[0]["delivery"] == "complete"
+
+    assert messages[1]["id"] == reply_placeholder.id
+    assert messages[1]["delivery"] == "failed"
+    assert messages[1]["meta"]["failure_class"] == "interrupted_by_restart"
+
+    system_msg = messages[2]
+    assert system_msg["author_kind"] == "system"
+    assert system_msg["delivery"] == "complete"
+    assert "retry" in system_msg["body_md"].lower() or system_msg["meta"].get("retryable") is True

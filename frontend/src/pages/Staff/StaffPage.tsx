@@ -20,7 +20,7 @@ import {
   useResolvedQueryClient,
   useStaffRoster,
 } from "../../hooks/useStaffQueries";
-import { Assign } from "./Assign";
+import { AdvancedDispatchForm } from "./AdvancedDispatchForm";
 import { Board } from "./Board";
 import { Holds } from "./Holds";
 import { InboxPanel } from "./InboxPanel";
@@ -107,7 +107,7 @@ export function StaffPage() {
       {section === "runs" && !selectedRun ? (
         <RunLog roles={roleNames} onOpenRun={openRun} refreshKey={runsRefresh} />
       ) : null}
-      {section === "assign" ? <Assign roster={roster} initialRole={assignRole} onDispatched={onDispatched} /> : null}
+      {section === "assign" ? <AdvancedDispatchForm roster={roster} initialRole={assignRole} onDispatched={onDispatched} /> : null}
       {section === "holds" ? <Holds roles={roleNames} /> : null}
     </div>
   );

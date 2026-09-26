@@ -25,13 +25,298 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — Restore green main: regenerate API contract types and synchronize openapi schema after #1512 (#1522)
+# Current handoff — SC-G5-2: One Advanced dispatch form (#1498)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1522-api-contract-drift`; DL-#1522; Issue #1522.
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1498`; PR #1529; DL-#1498; Issue #1498.
+
+## Objective and Status
+
+- One dispatch form, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, posts to `POST /api/v1/staff/requests` (`submitStaffRequest`). It replaces `Staff/Assign.tsx` (deleted) in the Staff *Assign* section and the Fleet Command Dispatch panel.
+- First cut by antigravity. The claude review rework:
+  - Offers only the kinds the backend accepts (`Staff/requestKinds.ts`, today `staff.dispatch`); the first cut also listed five kinds the backend rejects.
+  - Shows `approval_required` (202) instead of dropping it.
+  - Moved the plan view to `Staff/DispatchPlan.tsx`, bringing the form under the 500-line cap.
+  - Types the response exactly (`StaffDispatchResult`).
+  - Dropped the `lib/staffApi.ts` re-export and the doc-wide prettier reformat.
+- Validation: vitest `frontend/src/pages/__tests__/` 46 files / 383 passed; `npx tsc -p tsconfig.app.json --noEmit` clean; `npx eslint --max-warnings 0` on the touched files clean.
+
+## Next Steps
+
+1. Auto-merge #1529 on green CI.
+2. When a later SC-G5-1 slice adds a backend kind, add its row (with target fields) to `requestKinds.ts`.
+
+---
+
+# Past handoff — SC-B1-G3: One action vocabulary for chat replies and the action registry (#1486)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1486`; branch `feat/1486-one-action-vocabulary`; Issue #1486; DL-#1486.
+
+## Objective and Status
+
+- Single authoritative action vocabulary across `reply_contract.py` and `actions.py`:
+  1. `get_known_actions(registry)` and `ALL_KNOWN_ACTIONS` dynamically mirror `ACTION_REGISTRY.list_actions()`.
+  2. Chat replies proposing registered actions (`staff.dispatch`, `staff.review_pr`, `maintenance.*`, `code_request.create`, `board.propose`, etc.) parse cleanly as valid action proposals.
+  3. Unregistered action names are dropped with descriptive warnings while preserving the Markdown prose reply.
+  4. Dynamic prompt generation via `generate_chat_contract_text(registry)` creates markdown action tables directly from `ACTION_REGISTRY` (DRY).
+  5. Registered 4 legacy/orphan actions (`notify_user`, `claim_issue`, `open_pr`, `submit_proposal`) with executable implementations and role permissions checks.
+  6. Registered 12 fleet maintenance action aliases (`runner.start`, `run.cancel`, etc.) in `maintenance.py` mapping to `maintenance.*` policies.
+  7. Added unit test suite `tests/unit/test_staff_reply_vocabulary.py` pinning that every reply-contract action has a registered, callable executor.
+- Quality gates:
+  - Unit tests: `tests/unit/test_staff_reply_contract.py` + `tests/unit/test_staff_reply_vocabulary.py` passed (21/21).
+  - Staff test suite: 763 passed, 12 skipped, 0 failed.
+  - Ruff check & format clean.
+  - Mypy: clean (0 issues across 68 files).
+  - File line counts: strictly $\le 500$ lines across all modified/new files.
+
+## Next Steps
+
+1. Push branch `feat/1486-one-action-vocabulary` to `origin`.
+2. Open PR referencing `Fixes #1486`.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until merged.
+5. Release lease for #1486 via `scripts.release_agent_lease`.
+6. Clean up worktree and local/remote branch.
+
+---
+
+# Past handoff — Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked' (#1465)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1465`; branch `fix/1465-staff-actions-db-lock`; PR #1470; Issue #1465; DL-#1465.
+
+## Objective and Status
+
+- Eliminate SQLite database lock contention and test flakes across staff actions and stores:
+  1. Root cause 1: Staff stores (`StaffAuditStore`, `ConversationStore`, `RunStore`, `IdempotencyStore`, `WorkItemStore`, and maintenance `_vacuum_db`) opened SQLite connections to `STAFF_RUNS_DB` without `timeout=30.0` or `PRAGMA busy_timeout = 30000;`. Concurrent writes or transactions failed immediately with `sqlite3.OperationalError: database is locked`.
+  2. Root cause 2: `execute_proposal` passed `audit_store=None`, causing transitions and action executors (`execute_staff_hold`, `execute_staff_unhold`) to instantiate separate stores rather than reusing the conversation store's existing `_audit_store`.
+  3. Root cause 3: In `tests/unit/test_staff_actions.py`, `test_execute_staff_dispatch_success_and_thread_messages` invoked `staff.dispatch`, spawning an unjoined daemon worker thread (`StaffRunner._worker`) that executed in the background and competed for SQLite locks during subsequent tests.
+  4. Fix: Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` across all staff SQLite stores; wired existing audit store instance into `execute_proposal`; mocked `StaffRunner._worker` in `test_staff_actions.py` `clean_env` fixture alongside store/runner resets.
+- Shipped in PR #1470.
+
+---
+
+# Past handoff — SC-G5-1 slice A: one work-request API (#1497)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1497-work-requests` (stacked on the consolidated staff batch #1526); DL-#1497; Issue #1497.
+
+## Objective and Status
+
+- `backend/staff/work_requests.py`: `WorkRequest`/`RequestTarget` (pydantic, `extra=forbid`), `REQUEST_KINDS` (kind → registered action + param builder), `validate_request` (422/403 before anything is recorded), `requests_thread` (one direct thread per principal with `barb`, race-safe), `submit_request` (message → work item → proposal → approval policy → `execute_proposal(approve=True)`).
+- `backend/routers/staff_requests.py`: `POST /api/v1/staff/requests`; 200 plan, 201 executed, 202 approval required; a failed backend returns the v1 error envelope with `error.request` carrying thread, message, work item and proposal ids (the SC-F3 middleware keeps a pre-built envelope and rewrites everything else).
+- `execute_staff_dispatch` forwards `work_item_id` into the `DispatchCommand` and returns the dry-run `plan`.
+- Only kind `staff.dispatch` ships here.
+
+## Next Steps
+
+1. Slice B+: add kinds `ci.remediate`, `issue.act`/`pr.act`, `code_request.dispatch` and `assessment.run`. Each first needs its route logic lifted into a service the registered action can call (then the old endpoint delegates to it, per the acceptance criteria).
+2. SC-G5-2 (the one request form) consumes this endpoint.
+
+---
+
+# Past handoff — SC-B1-G6: Redact secrets everywhere conversations persist (#1489)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1489`; branch `fix/1489-redact-everywhere` (from `origin/main`); PR: see DL-#1489; Issue #1489. Commit: SELF.
+
+## Objective and Status
+
+- Apply the existing redactor at every persistence boundary, not only `messages.body_md`.
+- Done: `redaction.redact_value` walks dicts/lists/tuples and keeps their shape. Applied to thread title (create/update) and meta, message meta (add/update), proposal params and reasons (decide and transition), run `prompt`/`target_ref`/`error`/`last_line`/`remediation` (create/update), run event text, and each transcript line the runner writes.
+- The runner now appends the `exit` event before writing the terminal status, so a reader that sees `succeeded`/`failed` always sees the exit event. The old order raced and the added redaction work widened the window: `test_submit_runs_fake_cli_to_success_with_events_and_cost` failed 1 in 4.
+- `conversations.py` stays at 497 lines (edits are line-neutral); `store.py` keeps its CRLF line endings.
+- Known limits (follow-up): audit-log `detail` fields are not redacted; a PEM key split across transcript lines is redacted per line only, so its body lines are not caught.
+
+## Validation
+
+- WSL venv: `tests/unit/test_staff_redaction_everywhere.py` 15 passed (14 boundary cases were RED first). Staff/conversation/client regression selection run with `HOME`/`USERNAME` isolated (#1521): 795 passed, 15 skipped; the only failure was the exit-event race above, since fixed and passing 6 of 6 reruns.
+- `ruff check`/`ruff format --check` clean on touched files; `py -3.12 -m mypy backend/ --ignore-missing-imports` clean in 253 files.
+
+## Next Steps
+
+1. Merge the PR (arm via `automerge_guard.py`); file the audit-detail and multi-line-PEM follow-up.
+
+---
+
+# Past handoff — SC-B1-G2: Harden the action-proposal API (#1485)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1485`; branch `fix/1485-proposal-hardening` (stacked on `feat/1448-wire-maintenance`, PR #1483); PR: see DL-#1485; Issue #1485. Commit: SELF.
+
+## Objective and Status
+
+- Make the proposal API enforce its documented design.
+- Done:
+  - `POST /proposals` needs `staff.chat`; it refuses (422) an unregistered action, a missing thread, or a message that is missing or in another thread. The caller's `risk` is ignored: `registered_risk(action)` (unknown = high) is the only source, also used by chat replies, Board group-turn proposals, the maintenance detector and the assistant.
+  - `execute_proposal(..., approve=False)`: only `approved` runs; `approve=True` also accepts `proposed` and records the approval after the role and approval-policy checks. Anything else raises `ProposalNotApprovedError` (route → 409). The unused `auto_execute` flag is gone.
+  - `failed` proposals can be decided again (`failed → approved|denied`): approving is the explicit retry.
+  - `check_approval_policy` enforces the action's `required_scope` for non-owners.
+  - Results post only to an existing thread; the assistant path is thread-less (`thread_id=""`) and uses `approve=True`.
+  - The standard action catalogue moved to `action_executors.register_standard_actions` (keeps `actions.py` under the 500-line cap).
+
+## Validation
+
+- WSL venv: `tests/api/test_staff_proposal_hardening.py` 11 passed (RED before). Proposal, maintenance, chat, assistant and client tests: 192 + 214 passed.
+- `ruff check`/`ruff format --check` clean; `py -3.12 -m mypy backend/ --ignore-missing-imports` clean in 250 files.
+
+## Next Steps
+
+1. After #1483 merges, rebase onto `origin/main`, check the doc heading counts, retarget the PR to main, mark it ready and arm it via `automerge_guard.py`.
+
+---
+
+# Past handoff — SC-B1-G4: one staff dispatch policy for /run and staff.dispatch (#1487)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1487`; branch `fix/1487-shared-dispatch`, stacked on `feat/1448-wire-maintenance` (PR #1483); commit SELF; PR: see DL-#1487; Issue #1487; DL-#1487.
+
+## Objective and Status
+
+- Approved `staff.dispatch` proposals called `runner.submit` directly, so they skipped peer forwarding, the rate limit, dry-run and the dispatch audit. Now there is one `dispatch_staff_run` (`backend/staff/dispatch_service.py`), and both the `/run` route (now a thin adapter) and the executor call it.
+- `backend/staff/loop_bridge.py` holds the worker-thread → event-loop bridge. `maintenance_github.call_github` (#1448) now uses it, so the pattern is no longer duplicated.
+- Validation:
+  - `pytest tests/api/test_staff_dispatch_service.py`: 14 passed.
+  - The staff/dispatch/proposal/action/maintenance/fleet selection is green (WSL venv).
+  - `ruff check`/`format` are clean, and `mypy backend/` is clean.
+
+## Risks
+
+- `ActionContext.caller=None`, which only happens on internal auto-execute paths, is charged to a synthetic `staff_action` bot principal for the rate limit and audit.
+- A forwarded proposal's `run_id` is the peer's id. The verifier accepts it without looking it up in the local store.
+
+## Next steps
+
+1. Merge PR #1510 (rebased onto main after #1483 landed; armed).
+2. #1497 (SC-G5 requests API) routes every dispatch surface through `dispatch_staff_run`.
+
+---
+
+# Past handoff — CR-4: Planner stage backend (#1285)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1285`; branch `feat/1285-planner-stage`; PR #1466 (open, auto-merge armed); Issue #1285 (epic #1279); DL-#1285. Commit: SELF.
+
+## Objective and Status
+
+- Planner stage: a strong-tier planner turns a Code Request into a plan epic plus execution-ready child issues with turnover documents; output validated, never trusted.
+- Done (backend):
+  - `plan.py` (JSON contract models, fenced-JSON extraction, dependency waves), `plan_validator.py` (sections, tier/complexity/task-class vocabularies, cycles, turnover rules), `plan_render.py` (epic/child bodies, turnover doc), `handoff_rules.py` (vendored RM `handoff_validator.validate_handoff_content` @ f430564c).
+  - `planner.py` (prompt, `PlanningSession`, pure `receive_plan`: draft / file / reprompt / fail, `MAX_REPROMPTS = 2`), `plan_store.py`, `plan_filing.py` (dup search, epic, children in wave order, turnover comments, sub-issue links; resumable), `plan_service.py` (injected deps), `routers/code_request_plans.py`.
+  - Lifecycle gains `planning → failed` (issue-mandated).
+- Key decisions: complexity uses the fleet taxonomy `trivial/routine/complex/deep` (docs/issue-taxonomy.md gates agent tiers on it), not the issue's older `small/medium/large`; RD renders turnover docs (Identity is facts RD knows; planner supplies decisions and next steps); task_class uses the plain labels the Conductor routes on; dispatch is fire-and-forget, so plans come back via POST or a `<!-- plan:v1 -->` comment.
+- Not done: frontend Plan panel (render, edit, approve).
+
+## Validation
+
+- WSL venv: `pytest tests/code_requests tests/api/test_code_requests.py tests/api/test_code_request_plans_api.py tests/api/test_structural_auth_perimeter.py -o addopts=''` → 93 passed (drift test ran against the local RM checkout).
+- `ruff check backend tests/code_requests` clean; `mypy backend/ --ignore-missing-imports --no-implicit-optional` → no issues (249 files).
+- `gen-api-client.sh --check` (hybrid) → no drift; delta = 5 plan paths, 2 schemas.
+
+## Next Steps
+
+1. PR #1466 is open and armed; watch CI.
+2. Delegate the Plan panel UI to a `tier:cli` agent (agy) with TDD instructions.
+
+---
+
+# Past handoff — SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart (#1491)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1491`; branch `agy/issue-1491`; commit `SELF`; PR not created; Issue #1491; DL-#1491.
+
+## Objective and Status
+
+- Reconcile chat messages stuck in non-terminal delivery states (pending/streaming) across backend restarts (SC-B1-G8, issue #1491):
+  - In `backend/staff/reconcile.py`, implemented `reconcile_interrupted_chat_messages(conv_store)` to find all non-terminal reply messages (excluding user messages) across threads.
+  - Marked non-terminal reply messages as `delivery="failed"`, `kind="error"` with `meta.failure_class="interrupted_by_restart"` and `retryable=True`.
+  - Appended a system message (`author_kind="system"`, `delivery="complete"`) offering a retry to each affected thread.
+  - Audited every state change under SC-A8 (`action="message_reconcile"`, `surface="scheduler"`).
+  - Hooked `reconcile_interrupted_chat_messages` into `reconcile_orphaned_runs(runner, conv_store=conv_store)` so restart reconciliation triggered by `start_scheduler()` automatically covers chat messages.
+  - Added `list_non_terminal_reply_messages` to `ConversationStore` in `backend/staff/conversations.py`.
+  - Added `failure_class` property and `to_dict()` exposure on `MessageRecord` in `backend/staff/conversation_models.py`.
+  - Registered `message_reconcile` in `ALLOWED_ACTIONS` and `MUTATING_ACTIONS` in `backend/staff/audit.py`.
+  - Verification:
+    - Unit test in `tests/unit/test_staff_reconcile.py::test_interrupted_chat_messages_reconciled_to_failed_with_retry` (9/9 passed).
+    - ConversationStore unit test in `tests/unit/test_conversations_store.py::test_list_non_terminal_reply_messages` (14/14 passed).
+    - API test in `tests/api/test_staff_threads_api.py::test_reconcile_shows_system_retry_message_in_thread` (1/1 passed).
+    - Audit store unit tests in `tests/unit/test_staff_audit.py` (7/7 passed).
+    - `ruff check`: clean across all files.
+    - `ruff format --check`: clean across all files.
+    - `mypy`: clean across all files.
+
+## Next Steps
+
+1. Push `agy/issue-1491` to origin.
+2. Open draft PR using `gh pr create --draft -R D-sorganization/Runner_Dashboard --base main --head agy/issue-1491`.
+3. Report result.
+
+---
+
+# Past handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1502-orchestration-false-success`; DL-#1502; Issue #1502.
+
+## Objective and Status
+
+- Fix false successes in Fleet Orchestration dispatch and deploy (Issue #1502):
+  - In `backend/routers/orchestration.py`, updated `fleet_orchestration_dispatch` to return a classified error (`upstream_error` with status code 502) and `dispatched: false` including the `gh` stderr summary whenever `gh` CLI returns non-zero or throws an execution exception.
+  - In `fleet_orchestration_dispatch`, injected `machine_target` into `dispatch_payload["inputs"]["machine_target"]` (if not already present), ensuring the target machine reaches the dispatched GitHub Actions workflow.
+  - In `fleet_orchestration_deploy`, returned 501 `not_wired` with classified error message while preserving the audit attempt logging (`append_orchestration_audit`), replacing the false success message until SC-E maintenance actions are wired.
+  - In `frontend/src/pages/FleetOrchestrationPage.tsx`, added defense-in-depth handling to reject any payload where `dispatched === false` with the API error detail.
+  - Added dedicated API test suite in `tests/api/test_orchestration_dispatch.py` verifying all failure and success branches, input forwarding, 501 responses, and audit logging.
+  - Verified `scripts/gen-api-client.sh --check` passes cleanly with exit code 0.
+  - Bumped `SPEC.md` to `2.5.280`, updated `docs/development/DEVELOPMENT_LOG.md` (DL-#1502 active, DL-#1522 shipped).
+  - All touched source files strictly $\le 500$ lines (`backend/routers/orchestration.py`: 492 lines, `tests/api/test_orchestration_dispatch.py`: 186 lines, `frontend/src/pages/FleetOrchestrationPage.tsx`: 118 lines).
+
+## Next Steps
+
+1. Push branch `fix/1502-orchestration-false-success`.
+2. Open PR referencing `Fixes #1502` and enable auto-merge.
+3. Monitor CI until merged.
+4. Release agent lease for #1502 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — Restore green main: regenerate API contract types and synchronize openapi schema after #1512 (#1522)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1522-api-contract-drift`; DL-#1522; Issue #1522; PR #1523 (merged).
 
 ## Objective and Status
 
@@ -40,13 +325,6 @@ Last updated: 2026-09-25
   - Verified `scripts/gen-api-client.sh --check` passes cleanly with exit code 0.
   - Bumped `SPEC.md` to `2.5.279` and updated `docs/development/DEVELOPMENT_LOG.md` (DL-#1522 active, DL-#1493 shipped).
   - All files strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push branch `fix/1522-api-contract-drift`.
-2. Open PR referencing `Fixes #1522` and enable auto-merge.
-3. Monitor CI until merged to restore green main.
-4. Release agent lease for #1522 via `scripts.release_agent_lease`.
 
 ---
 

@@ -17,6 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from staff import conversation_proposals as _proposals
 from staff.audit import StaffAuditStore, record_audit
 from staff.conversation_migrations import CORE_MIGRATIONS, run_migrations
 from staff.conversation_models import (
@@ -34,22 +35,7 @@ from staff.conversation_models import (
     ThreadRecord,
     _now,
 )
-from staff.conversation_proposals import (
-    create_proposal as _create_proposal,
-)
-from staff.conversation_proposals import (
-    decide_proposal as _decide_proposal,
-)
-from staff.conversation_proposals import (
-    get_proposal as _get_proposal,
-)
-from staff.conversation_proposals import (
-    list_proposals as _list_proposals,
-)
-from staff.conversation_proposals import (
-    transition_proposal_state as _transition_proposal_state,
-)
-from staff.redaction import redact_sensitive_content
+from staff.redaction import redact_sensitive_content, redact_value
 from staff.store import default_db_path
 
 __all__ = [
@@ -85,9 +71,10 @@ class ConversationStore:
         self._lock = threading.RLock()
         self._audit_store = StaffAuditStore(self.path)
         self.status = ConversationStoreStatus()
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
+        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
         self._conn.row_factory = sqlite3.Row
         with self._lock:
+            self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA journal_mode=WAL")
             self.status = run_migrations(self._conn, self.path, self.MIGRATIONS)
 
@@ -116,11 +103,11 @@ class ConversationStore:
         if role and role not in parts:
             parts.append(role)
         unread = {p: 0 for p in parts}
-        meta_dict = dict(meta or {})
+        meta_dict = redact_value(dict(meta or {}))
         now = _now()
         rec = ThreadRecord(
             id=tid,
-            title=title,
+            title=redact_sensitive_content(title),
             kind=kind,
             participants=parts,
             created_by=created_by,
@@ -205,7 +192,7 @@ class ConversationStore:
             updates: dict[str, Any] = {}
             for k, v in fields.items():
                 if k in allowed:
-                    updates[k] = json.dumps(v) if k in {"participants", "unread_counters", "meta"} else v
+                    updates[k] = redact_value(json.dumps(v) if k in {"participants", "unread_counters", "meta"} else v)
             if not updates:
                 return cur
             updates["updated_at"] = _now()
@@ -268,7 +255,7 @@ class ConversationStore:
 
         sanitized_body = redact_sensitive_content(body_md)
         mid = message_id or f"msg_{uuid.uuid4().hex[:12]}"
-        meta_dict = dict(meta or {})
+        meta_dict = redact_value(dict(meta or {}))
 
         with self._lock:
             for attempt in range(10):
@@ -364,7 +351,7 @@ class ConversationStore:
                 return None
             allowed = {"body_md", "kind", "meta", "delivery", "run_id"}
             updates = {
-                k: redact_sensitive_content(v or "") if k == "body_md" else json.dumps(v or {}) if k == "meta" else v
+                k: redact_value(json.dumps(v or {}) if k == "meta" else (v or "") if k == "body_md" else v)
                 for k, v in fields.items()
                 if k in allowed
             }
@@ -374,6 +361,18 @@ class ConversationStore:
             self._conn.execute(f"UPDATE messages SET {sets} WHERE id = ?", (*updates.values(), message_id))  # noqa: S608
             row = self._conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
             return MessageRecord.from_row(row) if row else None
+
+    def list_non_terminal_reply_messages(self) -> list[MessageRecord]:
+        """Post: every non-user message still pending/streaming, by thread then seq (#1491)."""
+        self._ensure_available()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM messages "
+                "WHERE delivery IN ('pending', 'streaming') "
+                "AND author_kind != 'user' "
+                "ORDER BY thread_id, seq ASC"
+            ).fetchall()
+        return [MessageRecord.from_row(r) for r in rows]
 
     # ── ACTION PROPOSALS ─────────────────────────────────────────────────────
 
@@ -388,7 +387,7 @@ class ConversationStore:
         principal: str = "",
     ) -> ActionProposalRecord:
         self._ensure_available()
-        return _create_proposal(
+        return _proposals.create_proposal(
             self._conn,
             self._lock,
             message_id=message_id,
@@ -403,7 +402,7 @@ class ConversationStore:
 
     def get_proposal(self, proposal_id: str) -> ActionProposalRecord | None:
         self._ensure_available()
-        return _get_proposal(self._conn, self._lock, proposal_id)
+        return _proposals.get_proposal(self._conn, self._lock, proposal_id)
 
     def list_proposals(
         self,
@@ -413,7 +412,7 @@ class ConversationStore:
         limit: int = 100,
     ) -> list[ActionProposalRecord]:
         self._ensure_available()
-        return _list_proposals(
+        return _proposals.list_proposals(
             self._conn,
             self._lock,
             thread_id=thread_id,
@@ -428,16 +427,17 @@ class ConversationStore:
         state: str,
         decided_by: str,
         reason: str = "",
+        audit_store: StaffAuditStore | None = None,
     ) -> ActionProposalRecord:
         self._ensure_available()
-        return _decide_proposal(
+        return _proposals.decide_proposal(
             self._conn,
             self._lock,
             proposal_id=proposal_id,
             state=state,
             decided_by=decided_by,
             reason=reason,
-            audit_store=self._audit_store,
+            audit_store=audit_store or self._audit_store,
         )
 
     def transition_proposal_state(
@@ -449,7 +449,7 @@ class ConversationStore:
         audit_store: StaffAuditStore | None = None,
     ) -> ActionProposalRecord:
         self._ensure_available()
-        return _transition_proposal_state(
+        return _proposals.transition_proposal_state(
             self._conn,
             self._lock,
             proposal_id=proposal_id,

@@ -16,6 +16,7 @@ from staff.conversation_models import (
     ActionProposalRecord,
     _now,
 )
+from staff.redaction import redact_sensitive_content, redact_value
 
 if TYPE_CHECKING:
     from staff.audit import StaffAuditStore
@@ -40,7 +41,7 @@ def create_proposal(
 
     pid = proposal_id or f"prop_{uuid.uuid4().hex[:12]}"
     now = _now()
-    param_dict = dict(params or {})
+    param_dict = redact_value(dict(params or {}))
 
     rec = ActionProposalRecord(
         id=pid,
@@ -137,12 +138,13 @@ def decide_proposal(
         prop = get_proposal(conn, lock, proposal_id)
         if not prop:
             raise ValueError(f"Proposal {proposal_id} not found")
-        if prop.state != "proposed":
-            raise ValueError(f"Cannot decide proposal in state '{prop.state}' (must be 'proposed')")
+        # A failed proposal may be decided again: approving it is the explicit retry (#1485).
+        if prop.state not in ("proposed", "failed"):
+            raise ValueError(f"Cannot decide proposal in state '{prop.state}' (must be 'proposed' or 'failed')")
         now = _now()
         conn.execute(
             "UPDATE action_proposals SET state = ?, decided_by = ?, decided_at = ?, reason = ? WHERE id = ?",
-            (state, decided_by, now, reason, proposal_id),
+            (state, decided_by, now, redact_sensitive_content(reason), proposal_id),
         )
         updated = get_proposal(conn, lock, proposal_id)
         assert updated is not None  # noqa: S101
@@ -184,7 +186,7 @@ def transition_proposal_state(
         now = _now()
         dec_by = decided_by or prop.decided_by
         dec_at = now if new_state in {"approved", "denied"} else prop.decided_at
-        r = reason or prop.reason
+        r = redact_sensitive_content(reason) or prop.reason
         conn.execute(
             "UPDATE action_proposals SET state = ?, decided_by = ?, decided_at = ?, reason = ? WHERE id = ?",
             (new_state, dec_by, dec_at, r, proposal_id),

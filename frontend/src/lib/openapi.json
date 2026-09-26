@@ -1144,6 +1144,19 @@
         "title": "DispatchChildrenPayload",
         "type": "object"
       },
+      "DraftEdit": {
+        "properties": {
+          "plan": {
+            "additionalProperties": true,
+            "description": "The complete edited plan (same shape as the planner output)",
+            "title": "Plan",
+            "type": "object"
+          }
+        },
+        "required": ["plan"],
+        "title": "DraftEdit",
+        "type": "object"
+      },
       "EvaluateBoardPayload": {
         "properties": {
           "board_route": {
@@ -1697,6 +1710,20 @@
           }
         },
         "title": "PatchWorkItemRequest",
+        "type": "object"
+      },
+      "PlanSubmission": {
+        "properties": {
+          "output": {
+            "description": "Planner output containing the JSON plan",
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "required": ["output"],
+        "title": "PlanSubmission",
         "type": "object"
       },
       "PoolConfigPatch": {
@@ -2558,6 +2585,74 @@
         },
         "required": ["key", "event"],
         "title": "ReportChildPayload",
+        "type": "object"
+      },
+      "RequestTarget": {
+        "additionalProperties": false,
+        "description": "What the work is about. Each kind accepts only the fields it can act on.",
+        "properties": {
+          "issue": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "issues": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "prs": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Prs",
+            "type": "array"
+          },
+          "ref": {
+            "default": "",
+            "title": "Ref",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "title": "Repo",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "title": "RequestTarget",
         "type": "object"
       },
       "RoleScheduleOverrideBody": {
@@ -4778,6 +4873,83 @@
         "title": "WebVitalsPayload",
         "type": "object"
       },
+      "WorkRequest": {
+        "additionalProperties": false,
+        "description": "The body of ``POST /api/v1/staff/requests``.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "A request kind; see REQUEST_KINDS",
+            "title": "Kind",
+            "type": "string"
+          },
+          "machine": {
+            "default": "local",
+            "title": "Machine",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RequestTarget"
+          }
+        },
+        "required": ["kind"],
+        "title": "WorkRequest",
+        "type": "object"
+      },
       "WorkSummary": {
         "description": "Orchestrator-tracked work classification surfaced on the Conductor tab.",
         "properties": {
@@ -4914,10 +5086,16 @@
             "type": "object"
           },
           "risk": {
-            "default": "low",
-            "description": "Risk class (read, low, medium, high, owner-only)",
-            "title": "Risk",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ignored: the risk always comes from the action registry (#1485)",
+            "title": "Risk"
           },
           "thread_id": {
             "description": "Parent thread ID",
@@ -7288,6 +7466,330 @@
         "tags": ["code-requests-executor"]
       }
     },
+    "/api/code-requests/{id}/plan": {
+      "get": {
+        "description": "The planning session: status, attempts, validator errors and the draft plan.",
+        "operationId": "get_plan_api_code_requests__id__plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Plan Api Code Requests  Id  Plan Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Plan",
+        "tags": ["code_requests"]
+      },
+      "post": {
+        "description": "Submit planner output; it is validated, then drafted, filed, re-prompted or failed.",
+        "operationId": "post_plan_api_code_requests__id__plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Plan Api Code Requests  Id  Plan Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Plan",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/approve": {
+      "post": {
+        "description": "Approve the draft: file the epic and children on GitHub and mark the request ``planned``.",
+        "operationId": "approve_api_code_requests__id__plan_approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Approve Api Code Requests  Id  Plan Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Approve",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/draft": {
+      "put": {
+        "description": "Replace the draft with an operator's edits; the edited plan is re-validated.",
+        "operationId": "put_draft_api_code_requests__id__plan_draft_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Draft Api Code Requests  Id  Plan Draft Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Draft",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/ingest": {
+      "post": {
+        "description": "Submit the newest ``<!-- plan:v1 -->`` comment on the Code Request issue.",
+        "operationId": "ingest_plan_api_code_requests__id__plan_ingest_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ingest Plan Api Code Requests  Id  Plan Ingest Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Plan",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/start": {
+      "post": {
+        "description": "Dispatch the planner agent for a Code Request in the ``planning`` state.",
+        "operationId": "start_plan_api_code_requests__id__plan_start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Start Plan Api Code Requests  Id  Plan Start Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Start Plan",
+        "tags": ["code_requests"]
+      }
+    },
     "/api/code-requests/{id}/route-to-board": {
       "post": {
         "description": "Execute the Board routing gate for a Code Request at triage.",
@@ -8926,11 +9428,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Fleet Orchestration Deploy Api Fleet Orchestration Deploy Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -8956,11 +9454,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Fleet Orchestration Dispatch Api Fleet Orchestration Dispatch Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -15086,7 +15580,7 @@
         "tags": ["staff-proposals"]
       },
       "post": {
-        "description": "Create a new action proposal within a conversation thread.",
+        "description": "Create a new action proposal within a conversation thread.\n\nPre: ``action`` is registered; ``thread_id`` exists and ``message_id`` is a message in it.\nPost: the proposal is ``proposed`` with the registry's risk class (any caller risk is ignored).",
         "operationId": "create_proposal_api_v1_staff_proposals_post",
         "requestBody": {
           "content": {
@@ -15187,7 +15681,7 @@
     },
     "/api/v1/staff/proposals/{proposal_id}/decide": {
       "post": {
-        "description": "Decide (approve or deny) an action proposal, optionally executing immediately.",
+        "description": "Decide (approve or deny) an action proposal, optionally executing immediately.\n\nA ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).",
         "operationId": "decide_proposal_api_v1_staff_proposals__proposal_id__decide_post",
         "parameters": [
           {
@@ -15248,7 +15742,7 @@
     },
     "/api/v1/staff/proposals/{proposal_id}/execute": {
       "post": {
-        "description": "Execute an approved proposal through the action registry.",
+        "description": "Execute an ``approved`` proposal through the action registry (409 for any other live state).",
         "operationId": "execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post",
         "parameters": [
           {
@@ -15295,6 +15789,52 @@
         ],
         "summary": "Execute Approved Proposal",
         "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/requests": {
+      "post": {
+        "description": "Request work of any registered kind; see ``staff.work_requests``.",
+        "operationId": "create_request_api_v1_staff_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Request",
+        "tags": ["staff-requests"]
       }
     },
     "/api/v1/staff/roles": {

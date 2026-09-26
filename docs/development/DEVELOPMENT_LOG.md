@@ -31,17 +31,140 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Dispatch #1516 (WP-1.1, `tier:strong`), the first Phase 1 package; #1517 and #1518 follow it.
 
-### DL-#1522 · Restore green main: regenerate API contract types and synchronize openapi schema after #1512
+### DL-#1498 · SC-G5-2: One Advanced dispatch form
+
+- **State:** in_review
+- **Owner:** antigravity (first cut), claude (review rework)
+- **Issue:** #1498
+- **Branch:** `agy/issue-1498`
+- **PR:** #1529
+- **Paths:** `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `frontend/src/pages/Staff/requestKinds.ts`, `frontend/src/pages/Staff/DispatchPlan.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/FleetCommand/DispatchPanel.tsx`, `frontend/src/pages/__tests__/AdvancedDispatchForm.test.tsx`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest `frontend/src/pages/__tests__/` 46 files / 383 passed; `tsc -p tsconfig.app.json` clean; eslint `--max-warnings 0` clean)
+- **Summary:** One dispatch form for the work-request API; `Staff/Assign.tsx` is gone. Kinds come from `requestKinds.ts`, which lists only what `staff.work_requests.REQUEST_KINDS` accepts (today `staff.dispatch`), so the form never offers a request bound to 422. `approval_required` (202) is shown, not dropped.
+- **Next step:** When a later SC-G5-1 slice adds a backend kind, add its row to `requestKinds.ts` with its target fields.
+
+### DL-#1486 · SC-B1-G3: One action vocabulary for chat replies and the action registry
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1486
+- **Branch:** `feat/1486-one-action-vocabulary`
+- **Paths:** `backend/staff/reply_contract.py`, `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/staff/maintenance.py`, `tests/unit/test_staff_reply_contract.py`, `tests/unit/test_staff_reply_vocabulary.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_reply_*.py 21/21 passed; full staff test suite 763 passed, 12 skipped, 0 failed; ruff check clean; ruff format clean; mypy backend/staff clean in 68 source files; all files <= 500 lines)
+- **Summary:** Established `ACTION_REGISTRY` as the single authoritative action vocabulary across `reply_contract.py` and `actions.py`: chat replies proposing registered actions (`staff.dispatch`, `staff.review_pr`, `maintenance.*`, etc.) are recognized and valid; unknown action names are dropped with descriptive warnings while preserving prose; reply-contract prompt text is generated dynamically from `ACTION_REGISTRY` (DRY); registered legacy actions (`notify_user`, `claim_issue`, `open_pr`, `submit_proposal`) with callable executors and permission checks; registered 12 fleet maintenance aliases; pinned that every reply-contract action has a registered, callable executor.
+- **Next step:** Push branch, open PR referencing Fixes #1486, arm auto-merge, verify CI passes.
+
+### DL-#1465 · Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked'
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1465
+- **Branch:** `fix/1465-staff-actions-db-lock`
+- **PR:** #1470
+- **Paths:** `backend/staff/actions.py`, `backend/staff/audit.py`, `backend/staff/conversations.py`, `backend/staff/idempotency.py`, `backend/staff/maintenance.py`, `backend/staff/store.py`, `backend/staff/work_items.py`, `tests/unit/test_staff_actions.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest test_staff_actions 30/30 stress-test runs passed with 0 lock errors; ruff check clean; ruff format clean; all files <= 500 lines)
+- **Summary:** Eliminated SQLite database lock contention and test flakes across staff actions and stores: (1) Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` on all staff SQLite connections (`StaffAuditStore`, `ConversationStore`, `RunStore`, `IdempotencyStore`, `WorkItemStore`, maintenance `_vacuum_db`); (2) Reused conversation store's existing audit store instance across proposal state transitions and action context in `execute_proposal`; (3) Isolated `tests/unit/test_staff_actions.py` by resetting stores and runner and mocking background runner worker thread in `clean_env`.
+- **Next step:** None (shipped in PR #1470).
+
+### DL-#1497 · SC-G5-1 slice A: one work-request API (`staff.dispatch`)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1497
+- **Branch:** `feat/1497-work-requests`
+- **Paths:** `backend/staff/work_requests.py`, `backend/routers/staff_requests.py`, `backend/server.py`, `backend/staff/action_executors.py`, `tests/api/test_staff_requests_api.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/api/test_staff_requests_api.py` 14 passed; `tests/staff tests/api/test_staff*.py tests/unit/test_staff*.py` 701 passed under WSL with `HOME`/`USERNAME` isolated; ruff and mypy clean)
+- **Summary:** `POST /api/v1/staff/requests` validates per kind, records a user message, Work Item and ActionProposal on the caller's *Requests* thread and executes through the registry, so quota, forwarding and audit happen once in the shared dispatch service (#1487). Approval follows registry risk (#1485). A failed backend blocks the work item and returns the v1 error envelope (SC-F3) with the recorded ids in `error.request`, because the `/api/v1/staff` middleware rewrites any other error body. `execute_staff_dispatch` now forwards `work_item_id` and returns the dry-run `plan`.
+- **Next step:** Later slices add kinds `ci.remediate`, `issue.act`/`pr.act`, `code_request.dispatch` and `assessment.run`; each first needs its route logic lifted into a service the registered action can call.
+
+### DL-#1489 · SC-B1-G6: Redact secrets everywhere conversations and runs persist
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1489
+- **Branch:** `fix/1489-redact-everywhere`
+- **Paths:** `backend/staff/redaction.py`, `backend/staff/conversations.py`, `backend/staff/conversation_proposals.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `tests/unit/test_staff_redaction_everywhere.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new table test 15 passed, RED on all 14 boundaries before; ruff clean; `mypy backend/` clean in 253 files)
+- **Summary:** `redact_value` (shape-preserving) is applied at every write of thread title/meta, message meta, proposal params/reasons, run text columns, run events and transcript lines.
+- **Next step:** Merge the PR, then file a follow-up for audit-log `detail` redaction and multi-line PEM keys in transcripts.
+
+### DL-#1485 · SC-B1-G2: Harden the action-proposal API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1485
+- **Branch:** `fix/1485-proposal-hardening`
+- **Paths:** `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/routers/staff_proposals.py`, `backend/staff/conversation_proposals.py`, `backend/staff/conversation_models.py`, `backend/staff/conversations.py`, `backend/staff/chat.py`, `backend/staff/maintenance_detect.py`, `backend/routers/assistant.py`, `backend/staff/groups.py`, `tests/api/test_staff_proposal_hardening.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (hardening suite 11 passed; proposal/maintenance/chat/assistant/client selection 406 passed; ruff clean; `mypy backend/` clean in 250 files)
+- **Summary:** Proposal creation needs `staff.chat`, a registered action and a real thread/message; risk comes only from the registry; only approved proposals execute (one-step `approve=True` records the decision after policy checks), failed ones need a retry decision; `required_scope` enforced at execute; no results posted to missing threads.
+- **Next step:** After #1483 merges, rebase onto main, retarget the PR to main, mark it ready and arm it.
+
+### DL-#1487 · SC-B1-G4: Shared staff dispatch service
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1487
+- **Branch:** `fix/1487-shared-dispatch` (stacked on `feat/1448-wire-maintenance`, PR #1483)
+- **Paths:** `backend/staff/dispatch_service.py`, `backend/staff/loop_bridge.py`, `backend/staff/action_executors.py`, `backend/staff/maintenance_github.py`, `backend/routers/staff.py`, `tests/api/test_staff_dispatch_service.py`, `tests/staff/routing_eval/test_action_executor_roles.py`, `tests/unit/test_staff_actions.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new suite 14 passed; staff/dispatch/proposal/action/maintenance/fleet selection green in WSL venv; ruff clean; `mypy backend/` clean in 252 files)
+- **Summary:** `/run` and the `staff.dispatch` action share `dispatch_staff_run`: forwarding, rate limit, dry-run and audit apply to approved proposals. Executor runs in the proposal routes' worker thread and reaches the loop via `loop_bridge.run_on_loop`; outside a worker thread it fails as `bridge_unavailable`.
+- **Next step:** Merge PR #1510 (on main, armed), then route the #1497 requests API through `dispatch_staff_run`.
+
+### DL-#1285 · CR-4: Planner stage — high-tier agent authors execution-ready issues and turnover docs
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1285 (epic #1279)
+- **Branch:** `feat/1285-planner-stage`
+- **Paths:** `backend/code_requests/plan.py`, `backend/code_requests/plan_validator.py`, `backend/code_requests/plan_render.py`, `backend/code_requests/handoff_rules.py`, `backend/code_requests/planner.py`, `backend/code_requests/plan_store.py`, `backend/code_requests/plan_filing.py`, `backend/code_requests/plan_service.py`, `backend/code_requests/lifecycle.py`, `backend/routers/code_request_plans.py`, `backend/server.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/code_requests/test_plan_validator.py`, `tests/code_requests/test_planner_stage.py`, `tests/code_requests/test_handoff_rules_drift.py`, `tests/api/test_code_request_plans_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (complexity vocabulary aligned to docs/issue-taxonomy.md; code_requests + code-request API + auth perimeter: 93 passed; ruff and mypy clean; API snapshot regenerated, no drift)
+- **Summary:** Backend of the planner stage: validated JSON plan contract, dashboard-rendered turnover docs checked against the vendored fleet handoff rules, re-prompt loop (2 retries) then `failed`, approval-gated resumable filing with sub-issue links. The draft view in the Code Request detail UI is the remaining slice.
+- **Next step:** Delegate the Code Request detail "Plan" panel (render, inline edit via `PUT .../plan/draft`, approve) to a `tier:cli` agent against the generated `api-types.ts`.
+
+### DL-#1491 · SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1491
+- **Branch:** `agy/issue-1491`
+- **Paths:** `backend/staff/reconcile.py`, `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/audit.py`, `tests/unit/test_staff_reconcile.py`, `tests/unit/test_conversations_store.py`, `tests/api/test_staff_threads_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest unit & api tests passed 33/33; ruff check & format clean; mypy clean in 4 files)
+- **Summary:** Reconcile chat messages stuck in non-terminal delivery states (pending/streaming) across backend restarts. On startup, mark non-terminal reply messages as failed with meta.failure_class='interrupted_by_restart', post a system message offering a retry, and audit every state change under SC-A8 while leaving user messages and complete messages untouched.
+- **Next step:** Push branch agy/issue-1491 and open draft PR.
+
+### DL-#1502 · Fix Fleet Orchestration false successes for dispatch and deploy
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1502
+- **Branch:** `fix/1502-orchestration-false-success`
+- **Paths:** `backend/routers/orchestration.py`, `frontend/src/pages/FleetOrchestrationPage.tsx`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `tests/api/test_orchestration_dispatch.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/api/test_orchestration_dispatch.py 5/5 passed, ruff clean, mypy clean, scripts/gen-api-client.sh --check clean, all files <= 500 lines)
+- **Summary:** Fix false successes in Fleet Orchestration: `/api/fleet/orchestration/dispatch` returns classified 502 `upstream_error` with `dispatched: false` and gh stderr detail when gh fails, injects `machine_target` into workflow dispatch inputs, and `/api/fleet/orchestration/deploy` returns 501 `not_wired` while still recording the audit attempt. Added dedicated API test suite in `tests/api/test_orchestration_dispatch.py`.
+- **Next step:** Push branch, open PR with Fixes #1502, enable auto-merge, verify CI passes.
+
+### DL-#1522 · Restore green main: regenerate API contract types and synchronize openapi schema after #1512
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1522
 - **Branch:** `fix/1522-api-contract-drift`
+- **PR:** #1523
 - **Paths:** `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`scripts/gen-api-client.sh --check` passed cleanly with code 0 under Python 3.11, all files <= 500 lines)
 - **Summary:** Regenerated `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` to remove formatting and trailing whitespace drift introduced in #1512, ensuring `generate-api:check` passes cleanly in `Frontend Tests` CI on `main`.
-- **Next step:** Push branch, open PR with Fixes #1522, enable auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1523).
 
 ### DL-#1493 · SC-B1-G10: Stream chat tokens live instead of after the process exits
 
@@ -295,7 +418,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** #1435
 - **Paths:** `backend/routers/assistant.py`, `backend/staff/adapters.py`, `backend/staff/router_models.py`, `frontend/src/pages/AssistantSidebar.tsx`, `frontend/src/pages/Maxwell/CodebaseChat.tsx`, `frontend/src/pages/MaxwellPanels.tsx`, `frontend/src/pages/__tests__/AssistantSidebar.test.tsx`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/shell/__tests__/HelpAbout.test.tsx`, `tests/test_assistant_retirement.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (pytest test_assistant_retirement 5/5 passing, all affected pytest suites 37/37 passing; vitest 1303/1303 passing; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (Merged to main via PR #1435, all 22 CI checks passed)
 - **Summary:** Folded stray chat surfaces into the Staff Console: (1) Updated `POST /api/assistant/chat` to return HTTP 410 Gone with successor Link header pointing to `/api/v1/staff/threads` and Sunset header; (2) Folded codebase Q&A into Cartographer and Librarian with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; (3) Added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; (4) Added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); (5) Added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`.
 - **Next step:** None (shipped in PR #1435).
 
