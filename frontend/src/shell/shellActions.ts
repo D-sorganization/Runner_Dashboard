@@ -3,14 +3,11 @@
  * (extracted from the shell component so it can be unit-tested and so the
  * shell module only exports components, keeping React Fast Refresh happy).
  *
- * The actions are deliberately self-contained (no reach into the legacy App
- * internals) so the shell stays orthogonal and reversible: Refresh reloads
- * dashboard data, Login/Logout toggles the GitHub session, and "Classic
- * layout" pins the legacy shell via localStorage and reloads — the visible
- * escape hatch back to the old UI.
+ * The actions are deliberately self-contained so the shell stays orthogonal:
+ * Refresh reloads dashboard data and Login/Logout toggles the GitHub session.
+ * The "Classic layout" action was retired with the legacy App (#1345).
  */
 import type { ShellAction } from "./DesktopShell"
-import { LAYOUT_STORAGE_KEY } from "./layoutFlag"
 
 /**
  * Build the modern desktop shell's action bar.
@@ -49,20 +46,6 @@ export function buildShellActions(
         } else {
           window.location.href = "/api/auth/github"
         }
-      },
-    },
-    {
-      id: "classic-layout",
-      label: "Classic layout",
-      tooltip:
-        "Switch back to the legacy top-toolstrip layout (reversible; stored per browser).",
-      onClick: () => {
-        try {
-          window.localStorage.setItem(LAYOUT_STORAGE_KEY, "legacy")
-        } catch {
-          /* storage unavailable — non-fatal */
-        }
-        window.location.reload()
       },
     },
   ]

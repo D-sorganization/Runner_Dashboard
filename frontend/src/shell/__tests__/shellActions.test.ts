@@ -8,10 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { buildShellActions } from "../shellActions"
 
 describe("buildShellActions", () => {
-  it("emits refresh, auth and classic-layout actions with tooltips", () => {
+  it("emits refresh and auth actions with tooltips; Classic layout is retired (#1345)", () => {
     const actions = buildShellActions(false)
     const ids = actions.map((a) => a.id)
-    expect(ids).toEqual(["refresh", "auth", "classic-layout"])
+    expect(ids).toEqual(["refresh", "auth"])
     for (const a of actions) {
       expect(a.tooltip.trim().length).toBeGreaterThan(0)
       expect(a.label.length).toBeGreaterThan(0)
@@ -35,25 +35,6 @@ describe("buildShellActions", () => {
       "/api/auth/logout",
       expect.objectContaining({ method: "POST" }),
     )
-  })
-
-  it("classic-layout pins the legacy layout in localStorage", () => {
-    const reload = vi.fn()
-    const original = window.location
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: { ...original, reload },
-    })
-    try {
-      const action = buildShellActions(false).find((a) => a.id === "classic-layout")!
-      action.onClick()
-      expect(window.localStorage.getItem("dashboard.layout")).toBe("legacy")
-    } finally {
-      Object.defineProperty(window, "location", {
-        configurable: true,
-        value: original,
-      })
-    }
   })
 
   beforeEach(() => {

@@ -99,13 +99,8 @@ def test_remediation_badge_maps_use_tokens() -> None:
     assert "var(--badge-neutral-bg)" in maps, "badge map lost its --badge-* tokens"
     assert "var(--badge-danger-bg)" in maps, "badge map lost semantic danger tokens"
 
-    app = pathlib.Path("frontend/src/legacy/App.tsx").read_text(encoding="utf-8")
     css = pathlib.Path("frontend/src/index.css").read_text(encoding="utf-8")
     assert "--text-on-accent" in css, "#fff-on-accent token missing from CSS"
-    # No quoted hex colour survives outside the allowlisted LANG_COLORS map.
-    stripped = _LANG_COLORS_BLOCK.sub("", app)
-    leftover = _HEX_LITERAL.findall(stripped)
-    assert not leftover, f"legacy/App.tsx still has raw hex outside LANG_COLORS: {leftover}"
 
 
 def test_label_guide_has_no_phantom_tokens() -> None:

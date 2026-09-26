@@ -445,18 +445,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Folded stray chat surfaces into the Staff Console: (1) Updated `POST /api/assistant/chat` to return HTTP 410 Gone with successor Link header pointing to `/api/v1/staff/threads` and Sunset header; (2) Folded codebase Q&A into Cartographer and Librarian with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; (3) Added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; (4) Added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); (5) Added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`.
 - **Next step:** None (shipped in PR #1435).
 
-### DL-#1345 · SC-G7: Mobile Projects renders natively (first step of Classic-layout removal)
+### DL-#1345 · SC-G7: Retire the Classic layout and legacy/App.tsx
 
-- **State:** shipped
+- **State:** in_review
 - **Owner:** claude
 - **Issue:** #1345 (epic #1353)
-- **Branch:** `fix/1345-mobile-projects`
+- **Branch:** `feat/1345-remove-legacy-layout` (first step, mobile Projects, was `fix/1345-mobile-projects`)
 - **PR:** not created
-- **Paths:** `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
+- **Paths:** `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/layoutFlag.ts`, `frontend/src/shell/shellActions.ts`, `frontend/src/shell/SessionExpiredDialog.tsx`, `frontend/src/shell/index.ts`, `frontend/src/main.tsx`, `frontend/src/lib/fetchGuards.ts`, `frontend/src/lib/sessionExpired.ts`, `frontend/src/lib/wheelValueGuard.ts`, `frontend/src/lib/api.ts`, `frontend/src/shell/__tests__/`, `frontend/src/lib/__tests__/`, `tests/test_frontend_integrity.py`, `tests/test_today_ui_redesign.py`, `tests/test_no_duplicate_top_level_functions.py`, `tests/frontend/test_color_literal_budget.py`, `.eslintrc.json`, `vitest.config.ts`, `CLAUDE.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 at `10cd0136` baseline (RoutedShell/MobileShell/Projects vitest 69 passed; tsc clean)
-- **Summary:** The mobile drawer's Projects entry fell back to the legacy App, which has no projects case, so the page was blank. It now renders the native Projects page.
-- **Next step:** Remove the Classic layout once SC-D8/G2/G3 land.
+- **Last verified:** 2026-09-25 at 6f1fe99f plus this branch (vitest 159 files / 1355 passed; frontend static pytest 222 passed; `tsc` and eslint clean; `npm run build` total JS 1,112,452 → 1,007,689 bytes)
+- **Summary:** The mobile drawer's Projects entry fell back to the legacy App, which had no projects case (fixed first). Now `legacy/App.tsx`, `RecoveryDialog` and `visibleInterval` are deleted and nothing imports `legacy/`. Mobile tabs without a mobile page render the desktop page; the Classic layout action is gone and a stored `dashboard.layout` is removed with one notice. `sessionExpired`/`fetchGuards`/`wheelValueGuard` moved to `lib/` and the Session Expired dialog to `shell/`; `main.tsx` installs the guards and `RoutedShell` mounts `SessionExpiredHost`, because before this only the Classic layout did, so an expired session failed silently in the modern shell.
+- **Next step:** Merge, then run SC-G8 (#1346) to delete the modules this leaves unmounted (`AssistantSidebar`, `DashboardHelp`, `AlertsCenter`, `QuickDispatch`).
 
 ### DL-#1340 · SC-C7: Routing evaluation set and regression check for Barb
 

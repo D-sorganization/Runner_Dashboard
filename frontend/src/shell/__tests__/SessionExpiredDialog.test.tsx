@@ -2,21 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SessionExpiredDialog } from "../SessionExpiredDialog";
+import { SessionExpiredDialog, SessionExpiredHost } from "../SessionExpiredDialog";
 import {
   emitSessionExpired,
   shouldIgnoreUnauthorizedResponse,
-  subscribeSessionExpired,
   tryRefreshSession,
-} from "../sessionExpired";
-
-function SessionExpiredHarness() {
-  const [open, setOpen] = React.useState(false);
-
-  React.useEffect(() => subscribeSessionExpired(() => setOpen(true)), []);
-
-  return <SessionExpiredDialog open={open} onClose={() => setOpen(false)} />;
-}
+} from "../../lib/sessionExpired";
 
 describe("SessionExpiredDialog", () => {
   afterEach(() => {
@@ -46,8 +37,17 @@ describe("SessionExpiredDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("the shell host stays closed until a session-expired event (#1345)", () => {
+    render(<SessionExpiredHost />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    act(() => emitSessionExpired());
+
+    expect(screen.getByRole("dialog", { name: "Session Expired" })).toBeInTheDocument();
+  });
+
   it("mounts exactly once after repeated session-expired events", () => {
-    render(<SessionExpiredHarness />);
+    render(<SessionExpiredHost />);
 
     act(() => {
       for (let i = 0; i < 10; i += 1) {

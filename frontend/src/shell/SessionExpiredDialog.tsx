@@ -1,5 +1,6 @@
 import React from "react";
 import { Dialog, DialogContent, DialogTitle, TouchButton } from "../primitives";
+import { subscribeSessionExpired } from "../lib/sessionExpired";
 
 export interface SessionExpiredDialogProps {
   open: boolean;
@@ -45,3 +46,15 @@ export function SessionExpiredDialog({ open, onClose }: SessionExpiredDialogProp
   );
 }
 
+
+/**
+ * Opens the Session Expired dialog when the API layer or the fetch guard emits
+ * a session-expired event (#1345). Mounted once by the shell; before #1345 only
+ * the Classic layout mounted it, so an expired session in the modern shell
+ * failed silently.
+ */
+export function SessionExpiredHost() {
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => subscribeSessionExpired(() => setOpen(true)), []);
+  return <SessionExpiredDialog open={open} onClose={() => setOpen(false)} />;
+}
