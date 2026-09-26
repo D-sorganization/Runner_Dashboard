@@ -639,7 +639,7 @@ def test_assessments_desktop_route_bypasses_legacy_app() -> None:
     assert "return <AssessmentsPage />;" in routed_shell
     assert 'legacyFetch("/api/repos"' in assessments_page
     assert 'legacyFetch("/api/assessments/scores"' in assessments_page
-    assert 'legacyFetch("/api/assessments/dispatch"' in assessments_page
+    assert "submitStaffRequest" in assessments_page
     assert "export function AssessmentsPage" in assessments_page
 
 
@@ -670,7 +670,7 @@ def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
     assert 'legacyFetch("/api/repos"' in code_requests_page
     assert 'legacyFetch("/api/code-requests"' in code_requests_page
     assert 'legacyFetch("/api/code-requests/templates"' in code_requests_page
-    assert 'legacyFetch("/api/code-requests/dispatch"' in code_requests_page
+    assert "submitStaffRequest" in code_requests_page
     assert 'legacyFetch("/api/settings/prompt-notes"' in code_requests_page
     assert 'legacyFetch("/api/prompt-templates"' not in code_requests_page
     assert "export function CodeRequestsPage" in code_requests_page

@@ -149,7 +149,11 @@ describe("ProjectsPage", () => {
       if (url === "/api/projects")
         return Promise.resolve(jsonResponse(RESPONSE));
       return Promise.resolve(
-        jsonResponse({ run: { id: "run-0001-xyz", status: "queued" } }),
+        jsonResponse({
+          state: "executed",
+          run_id: "run-0001-xyz",
+          result: { run_id: "run-0001-xyz", status: "queued" },
+        }),
       );
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -171,7 +175,7 @@ describe("ProjectsPage", () => {
       string,
       RequestInit,
     ];
-    expect(url).toBe("/api/v1/staff/project-steward/run");
+    expect(url).toBe("/api/v1/staff/requests");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["X-Requested-With"]).toBe(
       "XMLHttpRequest",
@@ -180,7 +184,9 @@ describe("ProjectsPage", () => {
       (init.headers as Record<string, string>)["Idempotency-Key"],
     ).toBeTruthy();
     expect(JSON.parse(String(init.body))).toEqual({
-      repo: "Beta",
+      kind: "staff.dispatch",
+      role: "project-steward",
+      target: { repo: "Beta", ref: "" },
       prompt: "Scheduled steward pass",
       machine: "auto",
       dry_run: false,

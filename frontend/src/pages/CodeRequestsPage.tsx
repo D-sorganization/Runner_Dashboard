@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
+import { submitStaffRequest } from "./Staff/staffApi";
+import { CodeRequestsTab } from "./CodeRequests";
 import {
-  CodeRequestsTab,
+  buildCodeRequest,
   type CodeDispatchPayload,
   type CodeRepo,
   type CodeRequestRecord,
   type DispatchTargetStatus,
   type PromptNotes,
   type PromptTemplate,
-} from "./CodeRequests";
+} from "./codeRequestsTypes";
 
 interface ReposPayload {
   repos?: CodeRepo[];
@@ -117,14 +119,7 @@ export function CodeRequestsPage(): React.ReactElement {
   }, []);
 
   const dispatchCodeRequest = useCallback((payload: CodeDispatchPayload) => {
-    return legacyFetch("/api/code-requests/dispatch", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify(payload),
-    }).then((r) => parseJsonOrThrow(r, "dispatch failed"));
+    return submitStaffRequest(buildCodeRequest(payload));
   }, []);
 
   const savePromptTemplate = useCallback(

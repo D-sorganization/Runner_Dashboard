@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
+import { submitStaffRequest } from "./Staff/staffApi";
 import {
   AssessmentsTab,
   type AssessmentDispatch,
@@ -70,25 +71,17 @@ export function AssessmentsPage(): React.ReactElement {
   }, []);
 
   const dispatchAssessment = useCallback((payload: AssessmentDispatch) => {
-    return legacyFetch("/api/assessments/dispatch", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
+    return submitStaffRequest({
+      kind: "assessment.run",
+      target: {
+        repo: payload.repository,
+        ref: "",
       },
-      body: JSON.stringify(payload),
-    }).then((r) =>
-      r.json().then((data: unknown) => {
-        if (!r.ok) {
-          const detail =
-            data && typeof data === "object" && "detail" in data
-              ? String((data as { detail?: unknown }).detail)
-              : "dispatch failed";
-          throw new Error(detail);
-        }
-        return data;
-      }),
-    );
+      provider: payload.provider || null,
+      prompt: "",
+      machine: "local",
+      dry_run: false,
+    });
   }, []);
 
   useEffect(() => {

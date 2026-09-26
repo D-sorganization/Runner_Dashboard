@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from code_requests.dispatch_service import CodeDispatch
+from code_requests.profiles import AgentProfileStore
 from dashboard_config import ORG, REPO_ROOT
 from system_utils import run_cmd
 
@@ -140,35 +142,43 @@ async def _dispatch_pr_action(
     return await _dispatch_issue_or_pr_action("pr", repo, pr, provider, model, prompt, role, machine)
 
 
-async def _dispatch_code_request_workflow(
-    repo: str,
-    ref: str | None,
-    provider: str | None,
-    model: str | None,
-    profile_id: str | None,
-    prompt: str,
-) -> dict[str, Any]:
-    """Dispatch Code Request implementation workflow."""
-    from code_requests.dispatch import trigger_workflow_dispatch
-
-    branch = ref or "main"
-    chosen_provider = (provider or "claude").strip()
-    code, stderr = await trigger_workflow_dispatch(
-        repo=repo,
-        branch=branch,
-        provider=chosen_provider,
-        full_prompt=prompt,
-        model=model or "",
-        profile_id=profile_id,
+def code_dispatch_from_params(params: dict[str, Any]) -> CodeDispatch:
+    """The ``code_request.dispatch`` action params as the shared core's request (#1501)."""
+    standards = params.get("standards")
+    return CodeDispatch(
+        repo=str(params.get("repo") or "").strip(),
+        branch=str(params.get("ref") or "main"),
+        prompt=str(params.get("prompt") or ""),
+        provider=params.get("provider") or None,
+        model=params.get("model") or None,
+        effort=params.get("effort") or None,
+        standards=list(standards) if standards is not None else None,
+        budget=params.get("budget") or None,
+        profile_id=params.get("profile_id") or None,
     )
-    if code != 0:
-        raise RuntimeError(f"Code request dispatch failed (code {code}): {stderr.strip()[:300]}")
+
+
+async def _dispatch_code_request_workflow(req: CodeDispatch, *, principal: str) -> dict[str, Any]:
+    """Dispatch a Code Request through the core the legacy route uses, so it lands in the same history."""
+    from code_requests import dispatch_service as service  # noqa: PLC0415
+
+    outcome = await service.run_code_dispatch(
+        req,
+        principal=principal,
+        profile_store=AgentProfileStore(),
+        prompt_notes_path=service.PROMPT_NOTES_PATH,
+        history_path=service.HISTORY_PATH,
+    )
+    if outcome.code != 0:
+        raise RuntimeError(f"Code request dispatch failed (code {outcome.code}): {outcome.stderr.strip()[:300]}")
     return {
         "status": "dispatched",
-        "repository": repo,
-        "branch": branch,
-        "provider": chosen_provider,
-        "profile_id": profile_id,
+        "repository": req.repo,
+        "branch": req.branch,
+        "provider": outcome.resolved.provider,
+        "model": outcome.resolved.model,
+        "profile_id": outcome.resolved.profile_id,
+        "entry_id": (outcome.entry or {}).get("id", ""),
     }
 
 

@@ -166,7 +166,7 @@ test.describe("accessibility (axe-core)", () => {
   }, testInfo) => {
     await gotoApp(page);
     await page.locator("body").press("?");
-    const dialog = page.getByRole("dialog");
+    const dialog = page.getByRole("dialog", { name: /help/i });
     await expect(dialog).toBeVisible({ timeout: 5000 });
     await expect(dialog).toContainText("Navigate staff roster roles");
     await expectNoSeriousA11yViolations(

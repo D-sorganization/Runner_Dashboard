@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1501 · SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API
+
+- **State:** in_review
+- **Owner:** claude (first cut antigravity)
+- **Issue:** #1501
+- **Branch:** `agy/issue-1501`
+- **PR:** #1560
+- **Paths:** `backend/code_requests/dispatch_service.py`, `backend/routers/code_requests.py`, `backend/staff/work_requests.py`, `backend/staff/work_request_dispatch.py`, `backend/staff/work_request_executors.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `frontend/src/pages/Assessments.tsx`, `frontend/src/pages/AssessmentsPage.tsx`, `frontend/src/pages/CodeRequests.tsx`, `frontend/src/pages/CodeRequestsPage.tsx`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/codeRequestsTypes.ts`, `frontend/src/pages/__tests__/`, `tests/code_requests/test_dispatch_service.py`, `tests/api/test_staff_requests_kinds.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (backend 258 passed; integrity + code requests 225 passed after rebase; vitest pages 735 passed; tsc, eslint, ruff clean; API client regenerated)
+- **Summary:** Code Requests, Assessments and the Projects steward dispatch through `POST /api/v1/staff/requests`. Code-request dispatch has one server-side core (`code_requests/dispatch_service.py`) shared by the legacy route and the request kind: profile defaults, prompt notes, standards injection and the history entry. The Console sends the typed prompt and `standards[]`.
+- **Next step:** Merge PR #1560.
+
 ### DL-#1547 · Chat proposals render as ActionCards with approve, run card, needs-input and cancel
 
 - **State:** in_progress
@@ -33,7 +46,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1551 · Staff chat failure card remediation context: preserve most specific classified failure
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1551
 - **Branch:** `fix/1551-staff-chat-failure-remediation`
@@ -42,7 +55,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_chat_exhausted_chain.py: 4 passed; full chat suites 22 passed; ruff clean; line count chat.py 472 lines, chat_failures.py 172 lines)
 - **Summary:** Preserved the most specific classified failure and remediation across fallback provider chain turns. Added failure specificity ranking (`FAILURE_SPECIFICITY`) and `choose_preferred_chat_failure` in `chat_failures.py`. When a primary provider fails meaningfully (e.g. `auth_expired` with `claude auth login`, or crash `unknown`), subsequent generic or unavailable fallback errors (e.g. `provider_error` / `cli_missing` from `ollama` or `systemctl --user start ollama`) no longer overwrite the root failure or remediation instructions.
-- **Next step:** Push branch, verify PR #1565 CI passes, auto-merge, release lease.
+- **Next step:** None (shipped in PR #1565).
 
 ### DL-#1553 · Remediation bulk actions route each repository's targets to that repository
 
