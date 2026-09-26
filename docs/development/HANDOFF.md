@@ -1,4 +1,34 @@
-# Current handoff — CR-8: Suggestion Box First Use (#1288)
+# Current handoff — Code-reviewer runtime: selection inputs, same-provider mark and auto-review (#1579)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1579`; branch `fix/1579-review-runtime`; PR: see DL-#1579; Issue #1579 (follow-up to WP-1.3 #1518, PR #1576); DL-#1579.
+
+## Objective and Status
+
+- #1576's unit tests mocked the store and the dispatch path, so five runtime defects passed them. All five are fixed, each with a test that failed on `main`:
+  1. `detect_author_provider` called `RunStore.list_runs(repo=...)`, which has no `repo` argument; the `TypeError` was swallowed, so the author was never found. It now filters by repo in Python and is tested against a real `RunStore`.
+  2. Selection ignored the `code-reviewer` role's `providers` and the `Agent-Id` commit trailers. `prepare_review_params` now takes the roster's providers and a `gh_probe`; `GhCliCommitProbe` (a `GhCliPrProbe` subclass, one scoped `gh api` call) reads the PR's commit messages.
+  3. The same-provider mark never reached the stored outcome. A same-family fallback appends `SAME_PROVIDER_TAG` to the review prompt; the runner reads it from `rec.prompt` and passes it to both verdict parsers. A real-runner test checks the stored `outcome`.
+  4. Auto-review called `execute_review_pr` from the runner's plain thread, where the loop bridge is unavailable, and returned `True` anyway. It now submits through `runner.submit` (the scheduler's path), skips a PR that already has a code-reviewer run, logs the outcome, and returns `True` only when a run was queued.
+  5. A non-numeric `pr` raised `ValueError` out of `execute_review_pr`; it is now a failed `ActionResult` with `invalid_params`.
+- The four #1518 `TestAutoReviewTrigger` tests drove the removed `dispatch_fn` seam. They are replaced by a parametrized eligibility test (opt-in off, unranked repo, reviewer's own run, unverified PR) that goes through the runner seam.
+
+## Validation
+
+- WSL rd-test-venv: `pytest tests/unit/test_staff_review_runtime.py tests/api/test_staff_review_runner.py tests/unit/test_staff_review.py tests/staff/routing_eval`: 44 passed, 2 skipped. Before the fix (with inert stubs for the two new names), all 15 new tests failed.
+- `pytest tests -k 'staff and (verif or runner or review or action or scheduler or proposal)'`: 358 passed, 2 skipped.
+- `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: no issues in 288 files. `ruff check` and `ruff format --check` are clean on the changed files.
+
+## Next Steps
+
+1. Merge the #1579 PR once CI is green.
+
+---
+
+# Past handoff — CR-8: Suggestion Box First Use (#1288)
 
 Last updated: 2026-09-26
 
