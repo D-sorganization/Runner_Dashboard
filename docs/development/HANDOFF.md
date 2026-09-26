@@ -1,30 +1,54 @@
-# Current handoff — Remediation bulk actions route each repository's targets to that repository (#1553)
+# Current handoff — Staff chat failure card remediation context: preserve most specific classified failure (#1551)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1553-bulk-act-per-repo`; PR not created yet (opened with this commit); DL-#1553; Issue #1553 (follow-up to #1500 / #1545).
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1551`; branch `fix/1551-staff-chat-failure-remediation`; Issue #1551; DL-#1551.
+
+## Objective and Status
+
+- Scope:
+  1. Solved bug where chat turns falling through provider fallback chain had meaningful root failures (e.g. `auth_expired` with `claude auth login`, or provider crash) overwritten by subsequent unavailable/fallback failures (e.g. `ollama` with `systemctl --user start ollama`).
+  2. Added `FAILURE_SPECIFICITY` priority ranking and `choose_preferred_chat_failure` in `backend/staff/chat_failures.py`.
+  3. Refactored `ChatTurnRunner.execute_turn` in `backend/staff/chat.py` to track `best_failed` with `choose_preferred_chat_failure`, and removed premature inline failure recording from `_run_turn_attempt`.
+  4. Added `remediation` to `MessageRecord.to_dict()` and `meta` in `record_chat_failure`.
+  5. Added comprehensive regression tests in `tests/unit/test_staff_chat_exhausted_chain.py` asserting `auth_expired` beats `provider_error`/`unavailable`, crash beats fallback failure, and primary provider is preferred on equal specificity.
+  6. Added e2e assertion in `tests/e2e/staff/staff-console.spec.ts` asserting the error card contains the primary provider's `claude auth login` remediation.
+  7. Bumped `SPEC.md` to 2.5.294.
+- Validation:
+  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py`: 4 passed.
+  - `python -m pytest tests/unit/test_staff_chat_stream_result.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/api/test_staff_chat_turns.py`: 22 passed.
+  - `ruff check`: clean.
+  - `ruff format --check`: clean across all touched files.
+  - Line count audit: `chat.py` (472 lines), `chat_failures.py` (172 lines), `test_staff_chat_exhausted_chain.py` (192 lines) - all strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push rebased branch `fix/1551-staff-chat-failure-remediation` to `origin`.
+2. Verify PR #1565 CI passes, auto-merges, and release lease.
+
+---
+
+# Past handoff — Remediation bulk actions route each repository's targets to that repository (#1553)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1553-bulk-act-per-repo`; PR #1555 (shipped); DL-#1553; Issue #1553 (follow-up to #1500 / #1545).
 
 ## Objective and Status
 
 - #1545 built one `issue.act` / `pr.act` request from a whole selection with `repo = items[0].repo`, so a selection spanning repositories dispatched agents to the first repository's issue or PR numbers. `RemediationPRs.test.tsx` pinned it.
-- Fixed here, each with a failing test first:
+- Fixed here:
   1. `dispatchBulkByRepo` (`remediationBulkRequest.ts`) sends one request per repository and folds the replies into one message, naming each repository when there are several. A refused request fails all of its targets with the backend's message.
   2. Both tabs keep only the failed rows selected (`keepFailedSelected`), so a retry resends just those.
   3. `RequestTarget.issues` / `prs`: each >= 1, unique, at most `MAX_BULK_TARGETS = 100` (the legacy cap), else 422.
   4. When every target fails, the error names each: `issue.act failed for every target: #42: ...; #43: ...`.
-- Unchanged on purpose: `force` and `approved_by` pass-through (#1500 asked to keep them). The issue asks the owner whether to drop them for the proposal gate.
-
-## Validation
-
-- Backend (WSL venv): `test_staff_requests_kinds.py`, `test_remediation_bulk_requests.py` and `test_frontend_integrity.py`: 99 passed, 1 xfailed (new: 7 invalid-target cases, the 100 cap, the all-failed message; the source-grep tests now require `dispatchBulkByRepo`). ruff check and format clean.
-- vitest `pages/__tests__/Remediation*` and `pages/Remediation/`: 89 passed. `tsc -p tsconfig.app.json` clean; eslint clean. `openapi.json` regenerated (`api-types.ts` unchanged).
-
-## Next Steps
-
-1. Open the PR (Fixes #1553), label it and arm auto-merge.
-2. Owner question on #1553: drop `force` / `approved_by` from `WorkRequest` in favour of the proposal gate?
+- Validation:
+  - Backend (WSL venv): `test_staff_requests_kinds.py`, `test_remediation_bulk_requests.py` and `test_frontend_integrity.py`: 99 passed, 1 xfailed. ruff check and format clean.
+  - vitest `pages/__tests__/Remediation*` and `pages/Remediation/`: 89 passed. `tsc -p tsconfig.app.json` clean; eslint clean.
 
 ---
 
@@ -35,7 +59,7 @@ Last updated: 2026-09-26
 ## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1788-mad-scientist-wiring`; Issue #1562 (follow-up to Repository_Management#1788); DL-#1562.
-- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `f5f027d2`; commit `SELF`; PR: opened right after this commit.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `f5f027d2`; commit `SELF`; PR: #1562 (shipped).
 
 ## Objective and Status
 
@@ -49,19 +73,51 @@ Last updated: 2026-09-26
 - RED first: the 4 lab cases failed the deterministic gate (pre-router returned None), and the roster test failed for mad-scientist.
 - `python -m pytest tests/staff -q`: exit 0. `npx vitest run frontend/src/pages/StaffConsole`: 142 passed. tsc, eslint and ruff are clean.
 
-## Next Steps
-
-1. Merge after Repository_Management#1789 (the role file) lands.
-
 ---
 
-# Current handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
+# Past handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1549`; branch `fix/1549-remove-stale-vite-config`; Issue #1549; DL-#1549.
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1551`; branch `fix/1551-staff-chat-failure-remediation`; Issue #1551; DL-#1551.
+
+## Objective and Status
+
+- Scope:
+  1. Solved bug where chat turns falling through provider fallback chain had meaningful root failures (e.g. `auth_expired` with `claude auth login`, or provider crash) overwritten by subsequent unavailable/fallback failures (e.g. `ollama` with `systemctl --user start ollama`).
+  2. Added `FAILURE_SPECIFICITY` priority ranking and `choose_preferred_chat_failure` in `backend/staff/chat_failures.py`.
+  3. Refactored `ChatTurnRunner.execute_turn` in `backend/staff/chat.py` to track `best_failed` with `choose_preferred_chat_failure`, and removed premature inline failure recording from `_run_turn_attempt`.
+  4. Added `remediation` to `MessageRecord.to_dict()` and `meta` in `record_chat_failure`.
+  5. Added comprehensive regression tests in `tests/unit/test_staff_chat_exhausted_chain.py` asserting `auth_expired` beats `provider_error`/`unavailable`, crash beats fallback failure, and primary provider is preferred on equal specificity.
+  6. Added e2e assertion in `tests/e2e/staff/staff-console.spec.ts` asserting the error card contains the primary provider's `claude auth login` remediation.
+  7. Bumped `SPEC.md` to 2.5.292.
+- Validation:
+  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py`: 4 passed.
+  - `python -m pytest tests/unit/test_staff_chat_stream_result.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/api/test_staff_chat_turns.py`: 22 passed.
+  - `ruff check`: clean.
+  - `ruff format --check`: clean across all touched files.
+  - Line count audit: `chat.py` (472 lines), `chat_failures.py` (172 lines), `test_staff_chat_exhausted_chain.py` (192 lines) - all strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `fix/1551-staff-chat-failure-remediation` to `origin`.
+2. Open PR referencing `Fixes #1551`.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until green and merged.
+5. Release lease for #1551 via `scripts.release_agent_lease`.
+6. Clean up worktree `Runner_Dashboard-1551` and delete local branch.
+
+---
+
+# Past handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1549`; branch `fix/1549-remove-stale-vite-config`; Issue #1549; DL-#1549; PR #1561.
 
 ## Objective and Status
 
@@ -72,20 +128,7 @@ Last updated: 2026-09-25
   4. Updated documentation freshness tests in `tests/test_documentation_freshness.py` to assert `vite.config.ts` and forbid `vite.config.js`.
   5. Added dedicated regression suite `tests/frontend/test_vite_config.py` verifying no tracked/existing stale files, `.gitignore` entries, backend URL environment variable resolution, and standard Playwright web server command.
   6. Bumped `SPEC.md` specification version to 2.5.291.
-- Validation:
-  - `python -m pytest tests/frontend/test_vite_config.py tests/test_documentation_freshness.py tests/test_frontend_integrity.py`: 83 passed, 1 xfailed.
-  - `ruff check .`: clean.
-  - `ruff format --check tests/frontend/test_vite_config.py tests/test_documentation_freshness.py`: clean.
-  - Line count audit: all modified/new files <= 500 lines.
-
-## Next Steps
-
-1. Push branch `fix/1549-remove-stale-vite-config` to `origin`.
-2. Open PR referencing `Fixes #1549` and containing `deletions-acknowledged: yes` in the body.
-3. Arm auto-merge (`gh pr merge --squash --auto`).
-4. Monitor CI until green and merged.
-5. Release lease for #1549 via `scripts.release_agent_lease`.
-6. Clean up worktree `Runner_Dashboard-1549` and delete local branch.
+- Shipped: Merged to `main` via PR #1561.
 
 ---
 

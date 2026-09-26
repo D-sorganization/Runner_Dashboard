@@ -92,6 +92,8 @@ test.describe("provider failures", () => {
     await send(page, `auth ${nonce()} [[e2e:auth]]`);
 
     await expect(alerts).toHaveCount(before + 1);
+    await expect(alerts.last()).toContainText("claude auth login");
+    await expect(alerts.last()).not.toContainText("systemctl");
   });
 });
 

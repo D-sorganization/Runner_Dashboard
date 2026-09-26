@@ -18,43 +18,57 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1553 · Remediation bulk actions route each repository's targets to that repository
+### DL-#1551 · Staff chat failure card remediation context: preserve most specific classified failure
 
 - **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1551
+- **Branch:** `fix/1551-staff-chat-failure-remediation`
+- **PR:** #1565
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `backend/staff/conversation_models.py`, `tests/e2e/staff/staff-console.spec.ts`, `tests/unit/test_staff_chat_exhausted_chain.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_chat_exhausted_chain.py: 4 passed; full chat suites 22 passed; ruff clean; line count chat.py 472 lines, chat_failures.py 172 lines)
+- **Summary:** Preserved the most specific classified failure and remediation across fallback provider chain turns. Added failure specificity ranking (`FAILURE_SPECIFICITY`) and `choose_preferred_chat_failure` in `chat_failures.py`. When a primary provider fails meaningfully (e.g. `auth_expired` with `claude auth login`, or crash `unknown`), subsequent generic or unavailable fallback errors (e.g. `provider_error` / `cli_missing` from `ollama` or `systemctl --user start ollama`) no longer overwrite the root failure or remediation instructions.
+- **Next step:** Push branch, verify PR #1565 CI passes, auto-merge, release lease.
+
+### DL-#1553 · Remediation bulk actions route each repository's targets to that repository
+
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1553 (follow-up to #1500)
 - **Branch:** `fix/1553-bulk-act-per-repo`
-- **PR:** not created (opened with this commit)
+- **PR:** #1555
 - **Paths:** `backend/staff/work_requests.py`, `backend/staff/work_request_executors.py`, `frontend/src/pages/Remediation/remediationBulkRequest.ts`, `frontend/src/pages/RemediationIssues.tsx`, `frontend/src/pages/RemediationPRs.tsx`, `frontend/src/lib/openapi.json`, their tests
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 at 2e851ac9 plus this branch (staff request kinds, bulk request and frontend integrity tests 99 passed, 1 xfailed; Remediation vitest 89 passed; `tsc`, eslint and ruff clean)
 - **Summary:** One request per repository instead of every number under the first item's repo; failed rows stay selected; bulk targets are positive, unique and capped at 100; an all-failed request names each target.
-- **Next step:** Merge, then settle the `force` / `approved_by` question on #1553.
+- **Next step:** Shipped.
 
 ### DL-#1562 · Wire the Mad-Scientist Staff Role into Routing and the Roster
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1562
 - **Branch:** `feat/1788-mad-scientist-wiring`
-- **PR:** not created
+- **PR:** #1562
 - **Paths:** `backend/staff/router_models.py`, `tests/staff/routing_eval/dataset.py`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 at `f5f027d2` baseline (staff pytest green; StaffConsole vitest 142 passed)
 - **Summary:** Barb routes mad-scientist requests by distinctive keywords, and the role sits with the Advisors in the Staff Console roster.
-- **Next step:** Merge the PR.
+- **Next step:** Shipped.
 
 ### DL-#1549 · Remove stale tracked vite.config.js shadowing vite.config.ts
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1549
 - **Branch:** `fix/1549-remove-stale-vite-config`
+- **PR:** #1561
 - **Paths:** `vite.config.js`, `vite.config.d.ts`, `.gitignore`, `tests/e2e/staff/playwright.config.ts`, `tests/frontend/test_vite_config.py`, `tests/test_documentation_freshness.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/frontend/test_vite_config.py tests/test_documentation_freshness.py tests/test_frontend_integrity.py: all passed; no tracked vite.config.js or vite.config.d.ts; gitignore updated; playwright config cleaned up)
 - **Summary:** Removed stale compiled artifacts `vite.config.js` and `vite.config.d.ts` from git tracking and ignored them in `.gitignore`. Vite resolves `.js` before `.ts`, causing dev servers and build scripts to silently ignore `vite.config.ts` changes and environment variables like `VITE_BACKEND_URL`. Removed explicit `--config vite.config.ts` flag in Playwright config and added comprehensive regression tests asserting both file absence and backend URL config honoring.
-- **Next step:** Push branch, open PR referencing Fixes #1549 with deletions-acknowledged: yes, arm auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1561).
 
 ### DL-#1550 · Web-vitals POST lacks the CSRF header and gets 403
 
