@@ -21,7 +21,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from staff.actions import registered_risk
 from staff.adapters import (
     ADAPTERS,
     ChatReadOnlyUnsupportedError,
@@ -61,6 +60,7 @@ from staff.chat_streaming import (
 )
 from staff.classifier import classify_run_failure
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
 from staff.roles import RoleSpec, load_roles
 from staff.thread_bus import get_thread_bus
@@ -392,28 +392,20 @@ class ChatTurnRunner:
                 meta=msg_meta,
             )
 
-            # Create any proposed action proposals in store
+            # Each proposed action becomes an ActionCard message after the reply (#1547)
             created_proposals: list[ProposedAction] = []
             for action in parsed.actions:
                 try:
-                    self.conv_store.create_proposal(
-                        message_id=placeholder_id,
+                    await post_proposal(
+                        self.conv_store,
+                        bus,
                         thread_id=thread_id,
+                        author=role.name if role else "assistant",
                         action=action.action,
                         params=action.params,
-                        risk=registered_risk(action.action),
-                        principal=role.name if role else "assistant",
+                        reason=action.reason,
                     )
                     created_proposals.append(action)
-                    await bus.publish_proposal(
-                        thread_id,
-                        {
-                            "action": action.action,
-                            "params": action.params,
-                            "reason": action.reason,
-                            "message_id": placeholder_id,
-                        },
-                    )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Failed to persist action proposal %s: %s", action.action, exc)
 

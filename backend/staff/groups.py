@@ -17,7 +17,6 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from staff.actions import registered_risk
 from staff.audit import record_audit
 from staff.conversation_models import ThreadRecord
 from staff.conversations import get_conversation_store
@@ -33,6 +32,7 @@ from staff.group_models import (
     get_group_threshold,
     lookup_seat_price,
 )
+from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction
 from staff.thread_bus import get_thread_bus
 
@@ -362,22 +362,14 @@ async def run_group_turn_in_background(
 
         for action in res.proposed_actions:
             try:
-                store.create_proposal(
-                    message_id=placeholder_id,
+                await post_proposal(
+                    store,
+                    bus,
                     thread_id=thread_id,
+                    author=res.coordinator,
                     action=action.action,
                     params=action.params,
-                    risk=registered_risk(action.action),
-                    principal=res.coordinator,
-                )
-                await bus.publish_proposal(
-                    thread_id,
-                    {
-                        "action": action.action,
-                        "params": action.params,
-                        "reason": action.reason,
-                        "message_id": placeholder_id,
-                    },
+                    reason=action.reason,
                 )
             except Exception as exc:  # noqa: BLE001
                 log.warning("Failed to persist group proposal: %s", exc)

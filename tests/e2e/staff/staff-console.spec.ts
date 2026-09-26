@@ -9,8 +9,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
+import { operatorHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
 // The console banner, not an error card from an earlier turn.
@@ -23,6 +24,17 @@ function nonce(): string {
 /** The fake provider's reply to `text`. */
 function reply(text: string): string {
   return `Fake reply: ${text}`;
+}
+
+const BARB = "Ask Barb (auto-route)";
+
+/** Ask Barb for a dispatch and return the ActionCard her reply proposes. */
+async function proposeDispatch(page: Page): Promise<Locator> {
+  const cards = conversation(page).locator(".staff-action-card");
+  const before = await cards.count();
+  await send(page, `dispatch ${nonce()} [[e2e:dispatch]]`);
+  await expect(cards).toHaveCount(before + 1);
+  return cards.nth(before);
 }
 
 /** Occurrences of `needle` in the conversation log's visible text. */
@@ -123,6 +135,59 @@ test.describe("send failures keep the draft", () => {
 
       await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
       await expect(page.getByRole("textbox", { name: COMPOSER })).toHaveValue(text);
+    });
+  });
+});
+
+test.describe("proposals", () => {
+  test("a proposed action appears as an action card, live and after reload", async ({ page }) => {
+    await openThread(page, BARB);
+    const card = await proposeDispatch(page);
+    await expect(card).toContainText("staff.dispatch");
+    await expect(card).toContainText("The analyst can look at the queue.");
+    const id = await card.getAttribute("data-proposal-id");
+
+    await openThread(page, BARB);
+    await expect(page.locator(`[data-proposal-id="${id}"]`)).toContainText("staff.dispatch");
+  });
+
+  test("approving a dispatch proposal executes it", async ({ page }) => {
+    await openThread(page, BARB);
+    const card = await proposeDispatch(page);
+
+    await card.getByRole("button", { name: "Approve" }).click();
+
+    await expect(card).toContainText(/Executed by .*e2e-operator/);
+  });
+
+  test("denying a proposal marks the card denied", async ({ page }) => {
+    await openThread(page, BARB);
+    const card = await proposeDispatch(page);
+
+    await card.getByRole("button", { name: "Deny" }).click();
+
+    await expect(card).toContainText(/Denied by .*e2e-operator/);
+  });
+
+  test.describe("as a viewer", () => {
+    test.use({ principal: "viewer" });
+
+    test("an approval without staff.approve is refused and the card stays actionable", async ({ page, browser }) => {
+      const operator = await browser.newContext();
+      const op = await operator.newPage();
+      await op.route("**/api/**", (route) =>
+        route.continue({ headers: { ...route.request().headers(), ...operatorHeaders } }),
+      );
+      await openThread(op, BARB);
+      const id = await (await proposeDispatch(op)).getAttribute("data-proposal-id");
+      await operator.close();
+
+      await openThread(page, BARB);
+      const card = page.locator(`[data-proposal-id="${id}"]`);
+      await card.getByRole("button", { name: "Approve" }).click();
+
+      await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
+      await expect(card.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     });
   });
 });

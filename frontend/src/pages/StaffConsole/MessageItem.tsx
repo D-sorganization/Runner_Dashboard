@@ -16,6 +16,8 @@ import {
   ErrorCard,
   HandoffCard,
   type HandoffCardData,
+  type ProposalApproveHandler,
+  type ProposalDenyHandler,
   type ProposalStatus,
   ReviewCard,
   type ReviewCardData,
@@ -30,8 +32,8 @@ export interface MessageItemProps {
   isStreaming?: boolean;
   onStopStreaming?: (messageId: string) => void;
   onRetry?: (message: ThreadMessage) => void;
-  onApproveProposal?: (proposalId: string, params?: Record<string, unknown>) => void;
-  onDenyProposal?: (proposalId: string) => void;
+  onApproveProposal?: ProposalApproveHandler;
+  onDenyProposal?: ProposalDenyHandler;
   onCancelRun?: (runId: string) => void;
   onRerouteHandoff?: (targetRole: string) => void;
 }

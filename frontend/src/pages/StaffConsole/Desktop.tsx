@@ -64,8 +64,8 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi }: StaffConsol
                 messages={sc.messages}
                 roles={roles}
                 isReconnecting={sc.isReconnecting}
-                onApproveProposal={(id, params) => void sc.approveProposal(id, params)}
-                onDenyProposal={(id) => void sc.denyProposal(id)}
+                onApproveProposal={sc.approveProposal}
+                onDenyProposal={sc.denyProposal}
               />
             </div>
             <GroupCostConfirm guard={sc.costGuard} />
