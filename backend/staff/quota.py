@@ -358,6 +358,49 @@ def billing(provider: str) -> str:
     return BILLING.get(provider, "unknown")
 
 
+DEFAULT_CEILING_PERCENT = 85.0
+
+
+def ceiling_percent(role_ceiling: float | None = None) -> float:
+    """The window share a run may start at (#1588).
+
+    Post: the role's ``budget.max_window_percent`` when set, else
+    ``STAFF_QUOTA_CEILING_PERCENT``, else 85; always within (0, 100].
+    """
+    if role_ceiling is not None and 0 < role_ceiling <= 100:
+        return float(role_ceiling)
+    try:
+        value = float(os.environ.get("STAFF_QUOTA_CEILING_PERCENT") or DEFAULT_CEILING_PERCENT)
+    except ValueError:
+        value = DEFAULT_CEILING_PERCENT
+    return value if 0 < value <= 100 else DEFAULT_CEILING_PERCENT
+
+
+def headroom(
+    provider: str,
+    ceiling: float,
+    now: datetime | None = None,
+    *,
+    store: QuotaStore | None = None,
+    codex_dirs: Sequence[Path] | None = None,
+) -> tuple[bool, str]:
+    """(ok, reason): whether ``provider``'s plan is under ``ceiling`` percent in every window.
+
+    Unknown quota never blocks: a provider with no readable or no recent source is ok.
+    """
+    snap = for_provider(provider, now or datetime.now(UTC), store=store, codex_dirs=codex_dirs)
+    if snap is None:
+        return True, f"{provider}: no quota data"
+    if snap.limited_until is not None:
+        return False, f"{provider}: plan limit reached until {_iso(snap.limited_until)}"
+    peak = snap.peak()
+    if peak is None:
+        return True, f"{provider}: no open window"
+    if peak.used_percent >= ceiling:
+        return False, f"{provider}: {peak.name} window at {peak.used_percent:g}% (ceiling {ceiling:g}%)"
+    return True, f"{provider}: {peak.name} window at {peak.used_percent:g}% of {ceiling:g}% ceiling"
+
+
 def observe(
     provider: str,
     raw: Mapping[str, Any],

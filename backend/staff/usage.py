@@ -18,10 +18,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from coordination.rm_scripts import python_for_rm
 from staff import workspace
+from staff.budget import day_start_iso
 from staff.pricing import estimate_cost
+from staff.schedule import DEFAULT_TZ
 from staff.store import USAGE_GROUPS, RunStore
 
 log = logging.getLogger("dashboard.staff.usage")
@@ -86,7 +89,8 @@ def budget_per_day() -> float:
 
 
 def today_iso() -> str:
-    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+    """Start of the budget day (local midnight in the schedule timezone) as UTC ISO-Z (#1588)."""
+    return day_start_iso(datetime.now(UTC))
 
 
 def summary(store: RunStore, group: str = "provider", since: str | None = None) -> dict[str, Any]:
@@ -99,6 +103,8 @@ def summary(store: RunStore, group: str = "provider", since: str | None = None) 
         "input_tokens": sum(r["input_tokens"] for r in rows),
         "output_tokens": sum(r["output_tokens"] for r in rows),
         "wall_seconds": round(sum(r["wall_seconds"] for r in rows), 1),
+        # List-price equivalent for comparing effort; subscription seats are not billed per run (#1588).
+        "cost_basis": "notional",
     }
     ceiling = budget_per_day()
     spent_today = store.spend_since(today_iso())["total"]
@@ -134,8 +140,8 @@ def export_to_rm(
     if root is None or not (root / EXPORT_SCRIPT).is_file():
         raise FileNotFoundError("Repository_Management checkout with scripts/append_credit_usage.py not found")
     invoke = run or subprocess.run
-    day = date or today_iso()[:10]
-    rows = store.usage_by("provider", since=f"{day}T00:00:00Z")
+    day = date or datetime.now(ZoneInfo(DEFAULT_TZ)).date().isoformat()
+    rows = store.usage_by("provider", since=today_iso() if date is None else f"{day}T00:00:00Z")
     exported: list[dict[str, Any]] = []
     for row in rows:
         provider = row["key"]

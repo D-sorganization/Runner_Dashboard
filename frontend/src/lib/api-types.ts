@@ -7699,6 +7699,11 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Ignore Budget
+             * @default false
+             */
+            ignore_budget: boolean;
             /** Issue */
             issue?: number | null;
             /**

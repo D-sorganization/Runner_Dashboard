@@ -12,7 +12,7 @@ import { TouchButton } from "../../primitives/TouchButton";
 import { useStaffRuns } from "../../hooks/useStaffQueries";
 import {
   errorMessage,
-  formatUsd,
+  formatEffortUsd,
   RUN_STATUSES,
   statusTone,
   targetLabel,
@@ -144,7 +144,7 @@ export function RunLog({ roles, onOpenRun, refreshKey = 0 }: RunLogProps) {
                   <td>
                     <TimeAgo iso={run.created_at} />
                   </td>
-                  <td>{formatUsd(run.cost_usd)}</td>
+                  <td>{formatEffortUsd(run.cost_usd)}</td>
                   <td data-testid={`run-outcome-${run.id}`}>{run.outcome || "—"}</td>
                   <td className="staff-table__last-line" title={run.last_line}>
                     {run.error || run.last_line || ""}

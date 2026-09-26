@@ -243,6 +243,9 @@ def _validate_dicts(data: dict[str, Any]) -> list[str]:
             val = budget.get(key)
             if not _is_number(val) or val < 0:
                 problems.append(f"budget.{key} must be a number >= 0")
+        pct = budget.get("max_window_percent")
+        if "max_window_percent" in budget and (not _is_number(pct) or not 0 < pct <= 100):
+            problems.append("budget.max_window_percent must be a number in (0, 100]")
 
     permissions = data.get("permissions")
     if not isinstance(permissions, dict) or not set(PERMISSION_KEYS).issubset(set(permissions)):

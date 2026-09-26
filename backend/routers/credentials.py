@@ -530,10 +530,17 @@ async def _probe_cline() -> dict[str, Any]:
     }
 
 
+def _gemini_oauth_present() -> bool:
+    """True when the Gemini CLI holds a Google sign-in (``~/.gemini/oauth_creds.json``)."""
+    home = Path(os.environ.get("GEMINI_CLI_HOME") or Path.home())
+    return (home / ".gemini" / "oauth_creds.json").is_file()
+
+
 def _probe_gemini_cli() -> dict[str, Any]:
-    """Probe Gemini CLI presence and key configuration."""
+    """Probe Gemini CLI presence and sign-in (Google OAuth or ``GOOGLE_API_KEY``)."""
     gemini_binary = shutil.which("gemini")
-    google_key = _env_present("GOOGLE_API_KEY")
+    oauth = _gemini_oauth_present()
+    google_key = _env_present("GOOGLE_API_KEY") or oauth
     return {
         "id": "gemini_cli",
         "label": "Gemini CLI",
@@ -543,20 +550,20 @@ def _probe_gemini_cli() -> dict[str, Any]:
         "reachable": gemini_binary is not None and google_key,
         "usable": gemini_binary is not None and google_key,
         "binary_found": gemini_binary is not None,
-        "key_status": "set" if google_key else "missing",
+        "key_status": "oauth" if oauth else ("set" if google_key else "missing"),
         "status": (
             "ready" if (gemini_binary and google_key) else ("missing_key" if gemini_binary else "not_installed")
         ),
         "detail": (
             "Ready"
             if (gemini_binary and google_key)
-            else ("GOOGLE_API_KEY not set" if gemini_binary else "gemini not found on PATH")
+            else ("not signed in: run `gemini` once" if gemini_binary else "gemini not found on PATH")
         ),
         "config_source": (
             _env_source("GOOGLE_API_KEY") if google_key else ("system" if gemini_binary else "unavailable")
         ),
         "docs_url": "https://aistudio.google.com/apikey",
-        "setup_hint": "npm install -g @google/gemini-cli then set GOOGLE_API_KEY",
+        "setup_hint": "npm install -g @google/gemini-cli, then run `gemini` once to sign in with Google",
         "key_provider": "gemini",
     }
 

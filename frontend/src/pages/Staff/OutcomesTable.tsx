@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useStaffOutcomes } from "../../hooks/useStaffQueries";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
-import { errorMessage, formatRate, formatUsd, type OutcomeRow, type OutcomesGroupBy } from "./staffApi";
+import { errorMessage, formatEffortUsd, formatRate, type OutcomeRow, type OutcomesGroupBy } from "./staffApi";
 
 const GROUPS: readonly { id: OutcomesGroupBy; label: string }[] = [
   { id: "role", label: "By role" },
@@ -30,8 +30,8 @@ function Cells({ row }: { row: OutcomeRow }) {
       <td>{formatRate(row.merge_rate)}</td>
       <td>{formatRate(row.ci_first_pass_rate)}</td>
       <td>{formatRate(row.fix_within_48h_rate)}</td>
-      <td>{row.cost_per_merged_pr == null ? "—" : formatUsd(row.cost_per_merged_pr)}</td>
-      <td>{formatUsd(row.cost_usd)}</td>
+      <td>{row.cost_per_merged_pr == null ? "—" : formatEffortUsd(row.cost_per_merged_pr)}</td>
+      <td>{formatEffortUsd(row.cost_usd)}</td>
     </>
   );
 }

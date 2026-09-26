@@ -76,6 +76,8 @@ class RunBody(BaseModel):
     work_item_id: str | None = Field(default=None, max_length=120)
     origin_node: str | None = Field(default=None, max_length=60)
     dry_run: bool = False
+    # Run even when the role's budget or the provider's plan window is spent (#1588); audited.
+    ignore_budget: bool = False
 
     @field_validator("repo")
     @classmethod
@@ -408,5 +410,6 @@ async def dispatch(
         surface=surface,
         thread_id=thread_id,
         origin_node=origin_node,
+        ignore_budget=body.ignore_budget,
     )
     return await dispatch_staff_run(cmd, caller)

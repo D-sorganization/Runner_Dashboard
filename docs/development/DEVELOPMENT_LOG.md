@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1588 · Budgets as a Share of Plan Windows
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1588
+- **Branch:** `feat/1588-quota-budgets`
+- **PR:** not created
+- **Paths:** `backend/staff/budget.py`, `backend/staff/quota.py`, `backend/staff/runner.py`, `backend/staff/dispatch_service.py`, `backend/staff/usage.py`, `backend/staff/roles.py`, `backend/staff/validator.py`, `backend/staff/schema.json`, `backend/routers/staff.py`, `backend/routers/credentials.py`, `backend/agent_remediation/provider_registry.py`, `frontend/src/pages/Staff/PlanQuota.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/api/test_staff_quota_budget.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `303fc805` (budget, staff and frontend suites green)
+- **Summary:** The scheduler, provider choice and manual dispatch respect a per-role plan-window ceiling (default 85 %) with an audited override. There is one local budget day, dollars are shown as notional `≈ $`, and Gemini uses Google sign-in.
+- **Next step:** Rebase onto main after #1591 merges and open the PR.
+
 ### DL-#1587 · Live Subscription Quota
 
 - **State:** in_review

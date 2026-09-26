@@ -24,6 +24,7 @@ import {
   fetchBoard,
   fetchHolds,
   fetchOutcomes,
+  fetchQuota,
   fetchRoster,
   fetchRun,
   fetchRuns,
@@ -32,6 +33,7 @@ import {
   type HoldsResponse,
   type OutcomesGroupBy,
   type OutcomesResponse,
+  type QuotaReport,
   type RosterResponse,
   type RunDetailResponse,
   type RunEvent,
@@ -54,6 +56,7 @@ export const staffKeys = {
   all: ["staff"] as const,
   roster: () => [...staffKeys.all, "roster"] as const,
   board: () => [...staffKeys.all, "board"] as const,
+  quota: () => [...staffKeys.all, "quota"] as const,
   summary: () => [...staffKeys.all, "summary"] as const,
   runs: (filter: RunsFilter = {}) => [...staffKeys.all, "runs", filter] as const,
   run: (id: string) => [...staffKeys.all, "run", id] as const,
@@ -75,6 +78,21 @@ export function useStaffRoster(): UseQueryResult<RosterResponse, Error> {
       queryFn: ({ signal }) => fetchRoster(signal),
       staleTime: 10_000,
       refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    },
+    client,
+  );
+}
+
+/** Plan quota (#1588): local files only, so polling spends no plan quota. */
+export function useStaffQuota(): UseQueryResult<QuotaReport, Error> {
+  const client = useResolvedQueryClient();
+  return useQuery(
+    {
+      queryKey: staffKeys.quota(),
+      queryFn: ({ signal }) => fetchQuota(signal),
+      staleTime: 30_000,
+      refetchInterval: 60_000,
       refetchIntervalInBackground: false,
     },
     client,

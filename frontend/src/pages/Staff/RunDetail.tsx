@@ -27,7 +27,7 @@ import {
   cancelRun,
   errorMessage,
   fetchRun,
-  formatUsd,
+  formatEffortUsd,
   runStreamUrl,
   statusTone,
   STREAM_EVENT_KINDS,
@@ -208,7 +208,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
         <dd>{run.exit_code ?? "—"}</dd>
         <dt>Cost</dt>
         <dd>
-          {formatUsd(run.cost_usd)} ({run.input_tokens} in / {run.output_tokens} out)
+          {formatEffortUsd(run.cost_usd)} ({run.input_tokens} in / {run.output_tokens} out)
         </dd>
         {run.strategy_mode ? (
           <>
