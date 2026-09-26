@@ -18,18 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1588 · Budgets as a Share of Plan Windows
+### DL-#1490 · SC-B1-G7: Standard 180-day retention window matching audit log (gzip archive older records, add Markdown/JSON thread export)
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1490
+- **Branch:** `feat/1490-retention-and-export`
+- **Paths:** `backend/staff/retention.py`, `backend/routers/staff_export.py`, `backend/server.py`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/StaffConsole/__tests__/Desktop.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/ContextPane.test.tsx`, `tests/unit/test_staff_retention.py`, `tests/api/test_staff_thread_export.py`, `docs/adr/0006-staff-conversation-model.md`, `SPEC.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (12 passed in `test_staff_retention.py` & `test_staff_thread_export.py`; ruff, mypy clean)
+- **Summary:** Added `backend/staff/retention.py` with multi-entity archivers for closed/inactive conversations and messages, terminal action proposals, terminal runs and events, and terminal work items. Older records (>= 180 days) are written to monthly compressed `.jsonl.gz` files before deletion from active SQLite tables. Added thread export formatters (`export_thread_markdown`, `export_thread_json`). Mounted REST endpoints under `/api/v1/staff`: `GET /threads/{id}/export?format=markdown|json` (and `.md`/`.json` aliases), `POST /retention/sweep`, and `GET /retention/status`. Added export buttons in Staff Console desktop header and Context Pane Thread tab. Amended ADR 0006 Section 5 & 9.
+- **Next step:** Run full quality gates (ruff, mypy, pytest), push branch, open PR with squash auto-merge.
+
+### DL-#1588 · Budgets as a Share of Plan Windows
+
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1588
 - **Branch:** `feat/1588-quota-budgets`
-- **PR:** not created
+- **PR:** #1592 (merged)
 - **Paths:** `backend/staff/budget.py`, `backend/staff/quota.py`, `backend/staff/runner.py`, `backend/staff/dispatch_service.py`, `backend/staff/usage.py`, `backend/staff/roles.py`, `backend/staff/validator.py`, `backend/staff/schema.json`, `backend/routers/staff.py`, `backend/routers/credentials.py`, `backend/agent_remediation/provider_registry.py`, `frontend/src/pages/Staff/PlanQuota.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/api/test_staff_quota_budget.py`
 - **Started:** 2026-09-26
-- **Last verified:** 2026-09-26 at `303fc805` (budget, staff and frontend suites green)
+- **Last verified:** 2026-09-26 (#1592 merged; budget, staff and frontend suites green)
 - **Summary:** The scheduler, provider choice and manual dispatch respect a per-role plan-window ceiling (default 85 %) with an audited override. There is one local budget day, dollars are shown as notional `≈ $`, and Gemini uses Google sign-in.
-- **Next step:** Rebase onto main after #1591 merges and open the PR.
+- **Next step:** Watch scheduled runs for budget throttle events.
 
 ### DL-#1587 · Live Subscription Quota
 
@@ -43,6 +55,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-26 (#1591 merged; quota, status-line and usage suites green)
 - **Summary:** Reads Claude and Codex plan windows locally and serves them at `/api/staff/quota` and `/api/usage`. The invented usage fixture is removed.
 - **Next step:** Set the Claude status line and `STAFF_CODEX_SESSION_DIRS` on each staff node.
+
 ### DL-#1586 · Staff Runs Without CLI Permission Bypass
 
 - **State:** shipped
@@ -55,18 +68,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-26 (#1589 merged; staff suites green on the #1588 branch)
 - **Summary:** Every unattended CLI launch uses a declared allow-list or sandbox instead of a bypass flag. agy is chat-only until it supports a headless allow-list.
 - **Next step:** Watch the first scheduled Claude and Codex runs for permission denials in their transcripts.
-
-### DL-#1488 · SC-B1-G5: Relay forwarded run-card events back to originating thread across peer nodes
-
-- **State:** in_progress
-- **Owner:** antigravity
-- **Issue:** #1488
-- **Branch:** `feat/1488-cross-node-run-cards`
-- **Paths:** `backend/staff/conversation_models.py`, `backend/staff/plan.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/fleet.py`, `backend/routers/staff.py`, `backend/staff/run_link.py`, `backend/routers/staff_threads.py`, `tests/unit/test_staff_run_card_relay.py`, `docs/adr/0006-staff-conversation-model.md`
-- **Started:** 2026-09-26
-- **Last verified:** 2026-09-26 (5 passed in `tests/unit/test_staff_run_card_relay.py`; ruff, black, mypy clean)
-- **Summary:** Propagated `origin_node` and `thread_id` on run dispatch. When executing on a remote peer, `handle_run_status_change` posts run card updates to `POST /api/v1/staff/threads/{thread_id}/relay-card` on the originating node. Origination endpoint verifies target thread existence (404), updates card idempotently in place without duplicate messages, and preserves terminal execution status (`completed`, `failed`, `cancelled`) against delayed out-of-order intermediate card deliveries. Relay failure mid-run logs visibly on the executing node without crashing the execution path. ADR 0006 Section 4 amended with Option A decision and semantics.
-- **Next step:** Run quality checks, push branch, open PR with squash auto-merge, verify all CI checks pass.
 
 ### DL-#1577 · Test isolation on fleet nodes (hub proxy, STAFF_REPOS_ROOT, pwsh skip)
 
@@ -2110,6 +2111,19 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1488 · SC-B1-G5: Relay forwarded run-card events back to originating thread across peer nodes
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1488
+- **Branch:** `feat/1488-cross-node-run-cards`
+- **PR:** #1585
+- **Paths:** `backend/staff/conversation_models.py`, `backend/staff/plan.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/fleet.py`, `backend/routers/staff.py`, `backend/staff/run_link.py`, `backend/routers/staff_threads.py`, `tests/unit/test_staff_run_card_relay.py`, `docs/adr/0006-staff-conversation-model.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26
+- **Shipped:** 2026-09-26
+- **Summary:** Propagated `origin_node` and `thread_id` on run dispatch. When executing on a remote peer, `handle_run_status_change` posts run card updates to `POST /api/v1/staff/threads/{thread_id}/relay-card` on the originating node. Origination endpoint verifies target thread existence (404), updates card idempotently in place without duplicate messages, and preserves terminal execution status (`completed`, `failed`, `cancelled`) against delayed out-of-order intermediate card deliveries. Relay failure mid-run logs visibly on the executing node without crashing the execution path. ADR 0006 Section 4 amended with Option A decision and semantics. Squash-merged into `main` via PR #1585 (`cd57aafd`).
 
 ### DL-#1299 · SC-B1: ADR for the staff conversation model (retroactive, as built)
 

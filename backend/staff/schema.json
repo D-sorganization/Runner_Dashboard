@@ -95,7 +95,11 @@
       "properties": {
         "usd_per_run": { "type": "number", "minimum": 0 },
         "usd_per_day": { "type": "number", "minimum": 0 },
-        "max_window_percent": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
+        "max_window_percent": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        }
       }
     },
     "permissions": {

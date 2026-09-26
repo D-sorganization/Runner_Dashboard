@@ -16340,6 +16340,90 @@
         "tags": ["staff-requests"]
       }
     },
+    "/api/v1/staff/retention/status": {
+      "get": {
+        "description": "Return data retention policy and archive directory status.",
+        "operationId": "get_retention_status_api_v1_staff_retention_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Retention Status Api V1 Staff Retention Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Retention Status",
+        "tags": ["staff-export"]
+      }
+    },
+    "/api/v1/staff/retention/sweep": {
+      "post": {
+        "description": "Trigger a manual retention archival sweep across all staff entity stores.",
+        "operationId": "trigger_retention_sweep_api_v1_staff_retention_sweep_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "retention_days",
+            "required": false,
+            "schema": {
+              "default": 180,
+              "maximum": 3650,
+              "minimum": 1,
+              "title": "Retention Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trigger Retention Sweep Api V1 Staff Retention Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Trigger Retention Sweep",
+        "tags": ["staff-export"]
+      }
+    },
     "/api/v1/staff/roles": {
       "get": {
         "operationId": "roster_v1_api_v1_staff_roles_get",
@@ -17356,6 +17440,158 @@
         ],
         "summary": "Update Thread",
         "tags": ["staff-threads"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/export": {
+      "get": {
+        "description": "Export a conversation thread in Markdown or JSON format.",
+        "operationId": "export_thread_api_v1_staff_threads__thread_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "pattern": "^(markdown|md|json)$",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Export Thread",
+        "tags": ["staff-export"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/export.json": {
+      "get": {
+        "description": "Convenience endpoint to download a thread as JSON.",
+        "operationId": "export_thread_json_endpoint_api_v1_staff_threads__thread_id__export_json_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Export Thread Json Endpoint",
+        "tags": ["staff-export"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/export.md": {
+      "get": {
+        "description": "Convenience endpoint to download a thread as Markdown.",
+        "operationId": "export_thread_markdown_endpoint_api_v1_staff_threads__thread_id__export_md_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Export Thread Markdown Endpoint",
+        "tags": ["staff-export"]
       }
     },
     "/api/v1/staff/threads/{thread_id}/messages": {
