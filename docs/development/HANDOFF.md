@@ -1,4 +1,32 @@
-# Current handoff — SC-G5-1 Slice B: Remaining work-request kinds (#1497)
+# Current handoff — SC-G7: retire the Classic layout and legacy/App.tsx (#1345)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1345-remove-legacy-layout`; PR not created yet; DL-#1345; Issue #1345 (SC-G, epic #1353).
+
+## Objective and Status
+
+- Deleted `frontend/src/legacy/` (`App.tsx`, `RecoveryDialog`, `visibleInterval`). Moved `sessionExpired.ts`, `fetchGuards.ts` (`installLegacyFetchGuards` → `installFetchGuards`) and `wheelValueGuard.ts` to `lib/`, and `SessionExpiredDialog.tsx` to `shell/` with a new `SessionExpiredHost`.
+- `main.tsx` installs the fetch and wheel guards; `RoutedShell` mounts `SessionExpiredHost` and calls `retireLegacyLayoutPreference()` once, showing a toast when a Classic preference was stored. Before this, those only ran under the Classic layout.
+- Mobile tabs without a mobile page render `nativeDesktopTabContent(tab)` inside an error boundary; the Classic layout action is gone from `buildShellActions`.
+- Static pytest guards that grepped `legacy/App.tsx` were retargeted or removed (the two-row legacy header, legacy polling and the legacy duplicate-function guard went with the file); a new guard asserts nothing imports `legacy/`.
+
+## Validation
+
+- vitest 159 files / 1355 passed (new: every mobile nav entry renders non-empty content; Classic preference dropped with a notice; `SessionExpiredHost`).
+- `tests/frontend`, `test_frontend_integrity.py`, `test_today_ui_redesign.py`, `test_no_duplicate_top_level_functions.py`, `test_ci_config.py`, `test_frontend_perf_budget.py`: 222 passed.
+- `tsc` and eslint clean; `npm run build` total JS 1,112,452 → 1,007,689 bytes (entry chunk +0.5 kB for the guards).
+
+## Next Steps
+
+1. Open the PR and arm it.
+2. SC-G8 (#1346) deletes the modules left unmounted here (`AssistantSidebar`, `DashboardHelp`, `AlertsCenter`, `QuickDispatch`). The owner should confirm the assistant sidebar is not wanted in the modern shell first.
+
+---
+
+# Past handoff — SC-G5-1 Slice B: Remaining work-request kinds (#1497)
 
 Last updated: 2026-09-25
 

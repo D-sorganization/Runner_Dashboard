@@ -9,10 +9,9 @@
  * previous hand-rolled `window.location.pathname` + React-state navigation in
  * `main.tsx`.
  *
- * The legacy `App` is retained only for the explicit legacy desktop escape
- * hatch and the still-legacy mobile fallback. Modern desktop routes render
- * native page modules directly and never use legacy/App.tsx as a silent
- * desktop fallback (#949).
+ * Every route renders a native page module on desktop and mobile; the legacy
+ * App and its Classic layout were retired (#949, #1345). A mobile tab without
+ * a dedicated mobile page renders its desktop page, which is responsive.
  *
  * Law of Demeter: the shell receives a flat `activeTab` string and an
  * `onSelectTab(tabId)` callback; it never reaches into router internals.
@@ -24,7 +23,8 @@ import { DesktopShell } from "./DesktopShell";
 import { ActiveProviderControl } from "./ActiveProviderControl";
 import { HelpAbout } from "./HelpAbout";
 import { introForTab } from "./intro";
-import { resolveDesktopShellLayout } from "./layoutFlag";
+import { retireLegacyLayoutPreference } from "./layoutFlag";
+import { SessionExpiredHost } from "./SessionExpiredDialog";
 import { buildShellActions } from "./shellActions";
 import {
   DEFAULT_TAB_ID,
@@ -75,9 +75,6 @@ import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
 import { navItemById } from "./navRegistry";
 
-// The legacy App is isolated behind the explicit legacy layout flag and mobile
-// fallback while the modern desktop shell routes registered tabs natively.
-const LazyLegacyApp = React.lazy(() => import("../legacy/App"));
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
 const LazyRemediationPage = React.lazy(
   () => import("../pages/RemediationPage"),
@@ -230,6 +227,16 @@ export function RoutedShell({
     }
   }, [redirect, navigate, showToast]);
 
+  // The Classic layout is gone (#1345): drop a pinned preference, say so once.
+  React.useEffect(() => {
+    if (retireLegacyLayoutPreference()) {
+      showToast(
+        "Classic layout was retired; the dashboard always uses the current layout.",
+        { title: "Layout", variant: "info" },
+      );
+    }
+  }, [showToast]);
+
   const resolvedTab = isNotFoundRoute
     ? undefined
     : pathnameToTabId(location.pathname);
@@ -265,12 +272,15 @@ export function RoutedShell({
   }, [activeTab, isNotFound]);
 
   return (
-    <AppShell
-      activeTab={activeTab}
-      onSelectTab={onSelectTab}
-      isNotFound={isNotFound}
-      unmatchedPath={location.pathname}
-    />
+    <>
+      <AppShell
+        activeTab={activeTab}
+        onSelectTab={onSelectTab}
+        isNotFound={isNotFound}
+        unmatchedPath={location.pathname}
+      />
+      <SessionExpiredHost />
+    </>
   );
 }
 
@@ -304,14 +314,6 @@ export function AppShell({
   const [mobileRemediationDispatches, setMobileRemediationDispatches] =
     React.useState<InFlightDispatch[]>([]);
 
-  // The legacy App emits tab changes through its own toolstrip / mobile UI;
-  // route those through the router so the URL stays authoritative.
-  const handleLegacyTabChange = useCallback(
-    (nextLegacyTab: string) => {
-      onSelectTab(normalizeTabId(nextLegacyTab));
-    },
-    [onSelectTab],
-  );
 
   if (isMobile) {
     if (isNotFound) {
@@ -349,13 +351,18 @@ export function AppShell({
       // The legacy App has no projects case, so falling back rendered blank (#1345).
       projects: <LazyProjectsPage />,
     } as Partial<Record<TabId, React.ReactNode>>;
-    const nativeMobileContent = mobileTabContent[mobileTab];
-    const legacyMobileFallback = nativeMobileContent ? null : (
-      <LazyLegacyApp
-        initialTab={mobileTab}
-        activeTab={mobileTab}
-        onTabChange={handleLegacyTabChange}
-      />
+    // Tabs without a dedicated mobile page render their (responsive) desktop page.
+    const mobileFallback = mobileTabContent[mobileTab] ? null : (
+      <TabErrorBoundary tabName={mobileTab} resetKey={mobileTab}>
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          {nativeDesktopTabContent(mobileTab) ?? (
+            <NotFoundPanel
+              path={unmatchedPath || "/"}
+              onNavigateHome={() => onSelectTab("staff")}
+            />
+          )}
+        </React.Suspense>
+      </TabErrorBoundary>
     );
 
     return (
@@ -364,41 +371,8 @@ export function AppShell({
         onTabChange={(t) => onSelectTab(t)}
         tabContent={mobileTabContent as Record<TabId, React.ReactNode>}
       >
-        {legacyMobileFallback}
+        {mobileFallback}
       </MobileShell>
-    );
-  }
-
-  // Desktop. The modern shell (#802) is the default but fully reversible: when
-  // the layout flag resolves to legacy we render the untouched legacy App with
-  // its own top toolstrip. Otherwise DesktopShell owns navigation and renders
-  // native page content for every registered tab (#949).
-  const env = (import.meta.env as Record<string, string | undefined>)
-    ?.VITE_DESKTOP_SHELL;
-  const useModernShell = resolveDesktopShellLayout({ env });
-
-  if (!useModernShell) {
-    return (
-      <TabErrorBoundary tabName="Legacy Dashboard" resetKey={activeTab}>
-        <React.Suspense
-          fallback={
-            <div
-              role="status"
-              aria-label="Loading legacy dashboard…"
-              className="tab-loading-skeleton"
-              style={{ padding: 24, maxWidth: 1440, margin: "0 auto" }}
-            >
-              <SkeletonCard lines={4} />
-            </div>
-          }
-        >
-          <LazyLegacyApp
-            initialTab={activeTab}
-            activeTab={activeTab}
-            onTabChange={handleLegacyTabChange}
-          />
-        </React.Suspense>
-      </TabErrorBoundary>
     );
   }
 
