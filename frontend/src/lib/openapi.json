@@ -819,46 +819,6 @@
         "title": "ClientErrorPayload",
         "type": "object"
       },
-      "CreateProposalRequest": {
-        "properties": {
-          "action": {
-            "description": "Name of allowlisted action",
-            "title": "Action",
-            "type": "string"
-          },
-          "message_id": {
-            "description": "Originating message ID",
-            "title": "Message Id",
-            "type": "string"
-          },
-          "params": {
-            "additionalProperties": true,
-            "description": "Action parameters",
-            "title": "Params",
-            "type": "object"
-          },
-          "risk": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Ignored: the risk always comes from the action registry (#1485)",
-            "title": "Risk"
-          },
-          "thread_id": {
-            "description": "Parent thread ID",
-            "title": "Thread Id",
-            "type": "string"
-          }
-        },
-        "required": ["message_id", "thread_id", "action"],
-        "title": "CreateProposalRequest",
-        "type": "object"
-      },
       "CreateThreadRequest": {
         "properties": {
           "kind": {
@@ -5141,6 +5101,46 @@
           "estimated_cost",
           "urgency"
         ],
+        "title": "CreateProposalRequest",
+        "type": "object"
+      },
+      "routers__staff_proposals__CreateProposalRequest": {
+        "properties": {
+          "action": {
+            "description": "Name of allowlisted action",
+            "title": "Action",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "Originating message ID",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "Action parameters",
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ignored: the risk always comes from the action registry (#1485)",
+            "title": "Risk"
+          },
+          "thread_id": {
+            "description": "Parent thread ID",
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["message_id", "thread_id", "action"],
         "title": "CreateProposalRequest",
         "type": "object"
       }
@@ -15623,7 +15623,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateProposalRequest"
+                "$ref": "#/components/schemas/routers__staff_proposals__CreateProposalRequest"
               }
             }
           },
