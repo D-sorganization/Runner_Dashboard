@@ -231,8 +231,9 @@ class BarbRouter:
         source_thread_id: str | None = None,
         store: ConversationStore | None = None,
         work_item_store: WorkItemStore | None = None,
+        from_role: str = "barb",
     ) -> HandoffResult:
-        """Create target thread, seed brief, link work item, and post handoff card."""
+        """Create target thread, seed brief, link work item, and post handoff card (sent by *from_role*)."""
         s = store or get_conversation_store()
         w_store = work_item_store or WorkItemStore(s.path)
         target_role = decision.chosen_role or "barb"
@@ -251,7 +252,7 @@ class BarbRouter:
                 title=f"Conversation with {role_title}",
                 kind="direct",
                 participants=[target_role, caller_id],
-                created_by="barb",
+                created_by=from_role,
             )
             target_thread_id = new_th.id
 
@@ -270,11 +271,11 @@ class BarbRouter:
             h_msg = s.add_message(
                 thread_id=source_thread_id,
                 author_kind="role",
-                author="barb",
+                author=from_role,
                 kind="handoff",
-                body_md=decision.handoff_body,
+                body_md=decision.handoff_body_from(from_role),
                 meta={
-                    "from_role": "barb",
+                    "from_role": from_role,
                     "to_role": target_role,
                     "confidence": decision.confidence,
                     "reason": decision.reason,
@@ -291,7 +292,7 @@ class BarbRouter:
 
         # 4. Seed destination thread with request and Barb's brief
         brief_body = (
-            f"**Hand-off from Barb**\n\n"
+            f"**Hand-off from {from_role.replace('-', ' ').title()}**\n\n"
             f"**Request from {caller_id}**:\n> {original_message}\n\n"
             f"**Context / Brief**: {decision.reason}\n"
             f"*Tracked under work item `{wi.id}`*"
@@ -299,7 +300,7 @@ class BarbRouter:
         s.add_message(
             thread_id=target_thread_id,
             author_kind="role",
-            author="barb",
+            author=from_role,
             kind="text",
             body_md=brief_body,
             meta={
@@ -315,7 +316,7 @@ class BarbRouter:
         record_audit(
             action="staff.routing.handoff",
             target=target_role,
-            principal="barb",
+            principal=from_role,
             surface="router",
             outcome="dispatched",
             detail={

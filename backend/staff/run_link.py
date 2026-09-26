@@ -18,6 +18,50 @@ from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.run_link")
 
+# Run status -> RunCard status (``RunStatus`` in StaffConsole/cards/cardTypes.ts).
+_CARD_STATUS = {
+    "queued": "queued",
+    "preparing": "running",
+    "running": "running",
+    "needs_input": "needs_input",
+    "succeeded": "completed",
+    "failed": "failed",
+    "cancelled": "cancelled",
+}
+
+
+def result_summary(result_line: str) -> str | None:
+    """The text of a run's ``STAFF_RESULT:`` line (first line only); ``None`` when it said nothing."""
+    _, sep, rest = (result_line or "").partition("STAFF_RESULT:")
+    text = rest.strip().splitlines()[0].strip() if sep and rest.strip() else ""
+    return text or None
+
+
+def run_card_id(run_id: str) -> str:
+    """The id of the one run card a run has in its thread."""
+    return f"msg-card-{run_id}"
+
+
+def card_run(run: RunRecord, status: str, question: str | None = None, summary: str | None = None) -> dict[str, Any]:
+    """The ``meta.run`` the Console renders (``RunCardData``).
+
+    Post: ``status`` is a ``RunStatus`` (unknown statuses read ``running``); ``question`` is
+    set only while the run needs input.
+    """
+    return {
+        "id": run.id,
+        "status": _CARD_STATUS.get(status, "running"),
+        "role": run.role,
+        "node": run.machine,
+        "provider": run.provider,
+        "repo": run.repo,
+        "thread_id": getattr(run, "thread_id", "") or "",
+        "question": question if status == "needs_input" else None,
+        "summary": summary or getattr(run, "outcome", "") or None,
+        "error": getattr(run, "error", "") or None,
+        "failure_class": getattr(run, "failure_class", "") or None,
+    }
+
 
 def format_run_card_body(
     run: RunRecord,
@@ -64,7 +108,11 @@ def post_run_card(
     store: Any = None,
     bus: Any = None,
 ) -> MessageRecord | None:
-    """Post or update a run_card message in the linked conversation thread."""
+    """Post the run's card in its thread, or rewrite it on a later status (#1547).
+
+    Post: a run has one ``run_card`` message (:func:`run_card_id`), published on the
+    thread bus as a ``message`` event so an open Console updates it in place.
+    """
     thread_id = getattr(run, "thread_id", "") or ""
     if not thread_id:
         return None
@@ -86,11 +134,12 @@ def post_run_card(
         "question": question,
         "summary": summary or getattr(run, "outcome", ""),
         "work_item_id": getattr(run, "work_item_id", ""),
+        "run": card_run(run, status, question=question, summary=summary),
     }
 
-    msg_id = f"msg-card-{run.id}-{status}"
+    msg_id = run_card_id(run.id)
     try:
-        saved = conv_store.add_message(
+        saved = conv_store.update_message(msg_id, body_md=body_md, meta=meta) or conv_store.add_message(
             thread_id=thread_id,
             author_kind="role",
             author=run.role,
@@ -101,8 +150,7 @@ def post_run_card(
             delivery="complete",
             message_id=msg_id,
         )
-        if hasattr(event_bus, "publish_sync"):
-            event_bus.publish_sync(thread_id, "run_card", saved.to_dict())
+        event_bus.publish_message_sync(thread_id, saved.to_dict())
         return saved
     except Exception as exc:  # noqa: BLE001
         log.warning("staff.run_link: failed to post run card for %s: %s", run.id, exc)
@@ -204,4 +252,16 @@ def answer_needs_input(
 
     rec = r_runner.submit(req)
     handle_run_status_change(rec, "queued", store=c_store, bus=get_thread_bus())
+    _mark_answered(c_store, get_thread_bus(), run_id, answered_by=caller_id, continued_by=rec.id)
     return rec
+
+
+def _mark_answered(conv_store: Any, bus: Any, run_id: str, *, answered_by: str, continued_by: str) -> None:
+    """Record on the question's card who answered and which run continues it."""
+    card = conv_store.get_message(run_card_id(run_id))
+    if card is None:
+        return
+    run = {**(card.meta.get("run") or {}), "answered_by": answered_by, "continued_by": continued_by}
+    saved = conv_store.update_message(card.id, meta={**card.meta, "run": run})
+    if saved is not None:
+        bus.publish_message_sync(saved.thread_id, saved.to_dict())

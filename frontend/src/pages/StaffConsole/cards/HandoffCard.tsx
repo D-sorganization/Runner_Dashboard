@@ -4,12 +4,17 @@ import type { HandoffCardData } from "./cardTypes";
 export interface HandoffCardProps {
   handoff: HandoffCardData;
   onReroute?: (targetRole: string) => void;
+  /** Open (or continue) the target role's thread (#1548). */
+  onFollow?: (targetRole: string) => void;
   className?: string;
 }
+
+const roleLabel = (role: string): string => role.charAt(0).toUpperCase() + role.slice(1);
 
 export const HandoffCard: React.FC<HandoffCardProps> = ({
   handoff,
   onReroute,
+  onFollow,
   className = "",
 }) => {
   const [showOverride, setShowOverride] = useState(false);
@@ -28,19 +33,36 @@ export const HandoffCard: React.FC<HandoffCardProps> = ({
     >
       {/* Routing Transition */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
-        <span style={{ color: "var(--accent-blue, #58a6ff)" }}>
-          {handoff.from_role.charAt(0).toUpperCase() + handoff.from_role.slice(1)}
-        </span>
+        <span style={{ color: "var(--accent-blue, #58a6ff)" }}>{roleLabel(handoff.from_role)}</span>
         <span style={{ color: "var(--text-muted, #8b949e)" }}>→</span>
-        <span style={{ color: "var(--accent-purple, #bc8cff)" }}>
-          {handoff.to_role.charAt(0).toUpperCase() + handoff.to_role.slice(1)}
-        </span>
+        <span style={{ color: "var(--accent-purple, #bc8cff)" }}>{roleLabel(handoff.to_role)}</span>
       </div>
 
       {/* Rationale */}
       <div style={{ fontSize: 12, color: "var(--text-secondary, #c9d1d9)", marginBottom: 8, lineHeight: 1.4 }}>
         {handoff.reason}
       </div>
+
+      {/* Follow the handoff into the target role's thread */}
+      {onFollow && (
+        <button
+          type="button"
+          onClick={() => onFollow(handoff.to_role)}
+          style={{
+            background: "rgba(188, 140, 255, 0.15)",
+            border: "1px solid var(--accent-purple, #bc8cff)",
+            color: "var(--accent-purple, #bc8cff)",
+            fontSize: 11,
+            padding: "3px 8px",
+            borderRadius: 4,
+            cursor: "pointer",
+            marginRight: 6,
+            marginBottom: 6,
+          }}
+        >
+          Continue with {roleLabel(handoff.to_role)}
+        </button>
+      )}
 
       {/* Re-route / Override Action */}
       {onReroute && (

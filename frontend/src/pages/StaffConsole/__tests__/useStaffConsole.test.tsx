@@ -11,9 +11,12 @@ import type { StaffRoleItem } from "../types";
 
 const api = vi.hoisted(() => ({
   fetchRoster: vi.fn(),
+  fetchThread: vi.fn(),
   fetchThreadMessages: vi.fn(),
   postThreadMessage: vi.fn(),
   decideActionProposal: vi.fn(),
+  cancelRun: vi.fn(),
+  answerThreadRun: vi.fn(),
 }));
 
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
@@ -63,6 +66,8 @@ beforeEach(() => {
   api.fetchThreadMessages.mockResolvedValue({ messages: HISTORY });
   api.postThreadMessage.mockResolvedValue({ message: { id: "m2" } });
   api.decideActionProposal.mockResolvedValue({});
+  api.cancelRun.mockResolvedValue({ ok: true });
+  api.answerThreadRun.mockResolvedValue({ ok: true, continuation_run_id: "run-2" });
 });
 
 afterEach(() => {
@@ -98,6 +103,29 @@ describe("useStaffConsole", () => {
     expect(result.current.selectedRole).toBe("maintenance");
     await waitFor(() => expect(result.current.messages).toEqual(HISTORY));
     expect(api.fetchThreadMessages).toHaveBeenCalledWith("thr_real_123", expect.anything());
+  });
+
+  it("opens the thread named by initialThreadId from the backend (#1504)", async () => {
+    api.fetchThread.mockResolvedValue({ thread: MAINT_THREAD, messages: HISTORY });
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false, initialThreadId: "thr_real_123" }),
+    );
+
+    await waitFor(() => expect(result.current.activeThread).toEqual(MAINT_THREAD));
+    expect(api.fetchThread).toHaveBeenCalledWith("thr_real_123", expect.anything());
+    await waitFor(() => expect(result.current.messages).toEqual(HISTORY));
+    expect(result.current.error).toBeNull();
+  });
+
+  it("reports an initialThreadId that cannot be loaded and invents no thread (#1504)", async () => {
+    api.fetchThread.mockRejectedValue(new Error("404 thread not found"));
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false, initialThreadId: "thr_gone" }),
+    );
+
+    await waitFor(() => expect(result.current.error?.kind).toBe("thread"));
+    expect(result.current.error?.message).toMatch(/404/);
+    expect(result.current.activeThread).toBeNull();
   });
 
   it("reports a thread that cannot be opened and keeps no fake thread", async () => {
@@ -206,5 +234,56 @@ describe("useStaffConsole", () => {
     await waitFor(() => expect(result.current.error).not.toBeNull());
     act(() => result.current.dismissError());
     expect(result.current.error).toBeNull();
+  });
+
+  // #1547: run cards cancel and answer through the console.
+  it("cancels a run", async () => {
+    const { result } = renderHook(() => useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false }));
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.cancelRun("run-1");
+    });
+
+    expect(ok).toBe(true);
+    expect(api.cancelRun).toHaveBeenCalledWith("run-1");
+  });
+
+  it("reports a refused cancel and resolves false", async () => {
+    api.cancelRun.mockRejectedValue(new Error("403 missing staff.cancel"));
+    const { result } = renderHook(() => useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false }));
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.cancelRun("run-1");
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.error).toEqual({ kind: "run", message: "403 missing staff.cancel" });
+  });
+
+  it("answers a needs-input run in its thread", async () => {
+    const { result } = renderHook(() => useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false }));
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.answerRun("thread-1", "run-1", "Runner_Dashboard");
+    });
+
+    expect(ok).toBe(true);
+    expect(api.answerThreadRun).toHaveBeenCalledWith("thread-1", "run-1", "Runner_Dashboard");
+  });
+
+  it("reports a refused answer and resolves false", async () => {
+    api.answerThreadRun.mockRejectedValue(new Error("404 Run not found"));
+    const { result } = renderHook(() => useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false }));
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.answerRun("thread-1", "run-1", "x");
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.error).toEqual({ kind: "run", message: "404 Run not found" });
   });
 });

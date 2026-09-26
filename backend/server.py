@@ -715,6 +715,7 @@ from routers import staff as _staff_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
 from routers import staff_inbox as _staff_inbox_router  # noqa: E402
+from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
 from routers import staff_proposals as _staff_proposals_router  # noqa: E402
 from routers import staff_requests as _staff_requests_router  # noqa: E402
 from routers import staff_routing as _staff_routing_router  # noqa: E402
@@ -738,6 +739,7 @@ app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
+app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402

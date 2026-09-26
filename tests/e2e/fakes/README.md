@@ -17,16 +17,18 @@ test reaches a real provider, spends money or needs a login.
 A `[[e2e:<scenario>]]` directive anywhere in a message picks the fake's
 behaviour; the last directive wins.
 
-| Scenario       | Chat turn                                         | Work run                                                      |
-| -------------- | ------------------------------------------------- | ------------------------------------------------------------- |
-| _(none)_       | `Fake reply: <your message>`                      | `STAFF_RESULT: fake run finished`                             |
-| `slow`         | Ten chunks, 0.4 s apart                           | —                                                             |
-| `dispatch`     | Proposes `staff.dispatch` to `e2e-analyst`        | —                                                             |
-| `dispatch-ask` | As `dispatch`; the dispatched run asks a question | —                                                             |
-| `ask`          | —                                                 | Ends on a question until the prompt carries the user's answer |
-| `handoff`      | Hands the thread to `e2e-analyst`                 | —                                                             |
-| `crash`        | Exit 1 with a traceback on stderr                 | —                                                             |
-| `auth`         | Exit 1 with the CLI's expired-login message       | —                                                             |
+| Scenario        | Chat turn                                         | Work run                                                      |
+| --------------- | ------------------------------------------------- | ------------------------------------------------------------- |
+| _(none)_        | `Fake reply: <your message>`                      | `STAFF_RESULT: fake run finished`                             |
+| `slow`          | Ten chunks, 0.4 s apart                           | —                                                             |
+| `dispatch`      | Proposes `staff.dispatch` to `e2e-analyst`        | —                                                             |
+| `dispatch-ask`  | As `dispatch`; the dispatched run asks a question | —                                                             |
+| `dispatch-hang` | As `dispatch`; the dispatched run hangs           | —                                                             |
+| `ask`           | —                                                 | Ends on a question until the prompt carries the user's answer |
+| `hang`          | —                                                 | Sleeps a minute before finishing, so it can be cancelled      |
+| `handoff`       | Hands the thread to `e2e-analyst`                 | —                                                             |
+| `crash`         | Exit 1 with a traceback on stderr                 | —                                                             |
+| `auth`          | Exit 1 with the CLI's expired-login message       | —                                                             |
 
 ## Running
 

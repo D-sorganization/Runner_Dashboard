@@ -25,7 +25,248 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — Staff e2e harness is hermetic (#1556)
+# Current handoff — WP-1.2: agent outcome scorecard (#1517)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1517`; PR #1533; DL-#1517; Issue #1517 (Phase 1 of #1463). Built on the #1516 verification fields.
+
+## Objective and Status
+
+- `backend/staff/outcomes.py`: `GROUP_BY` table, `rate` (`None` without a denominator), `aggregate(runs, facts, group_by=)` (a PR shared by retries counts once; unreadable PRs are `prs_unknown`), `prs_to_read` (newest 50, linked issue from the target), `read_pr_fact` (PR state, first commit's check runs, follow-up search within 48 h of the merge; a lookup error leaves that flag unknown) and `read_pr_facts` (4 at a time, cached).
+- `GET /api/v1/staff/outcomes` (`routers/staff_outcomes.py`): 422 on an unknown `group_by` or a non-ISO `since`.
+- Staff **Outcomes** tab: `OutcomesTable` via `useStaffOutcomes(groupBy)`; rows and totals share one renderer; `formatRate` shows "—" for `null`.
+- Replaced the antigravity draft's duplicate verification columns, 0%-for-no-data display, inline styles and manual fetch effect.
+
+## Next Steps
+
+1. Verify local tests and types.
+2. Push rebased branch to `origin agy/issue-1517`.
+3. Check PR #1533 auto-merge.
+
+---
+
+# Past handoff — SC-G5-6 Retire legacy dispatch forms and endpoints (#1503)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1503`; branch `chore/1503-retire-legacy-dispatch`; PR: #1574 (open, auto-merge armed); Issue #1503; epic SC-G5 #1337; DL-#1503.
+
+## Objective and Status
+
+- Retired the obsolete QuickDispatch interface (popover, schemas, styles, and client route `/work/quick-dispatch`, `/quick-dispatch`, `/t/quick-dispatch`) and Jules remediation dispatch (helper `remediationJules.ts`, Run button on RemediationTab, and route).
+- Handled legacy backend endpoints with explicit HTTP 410 Gone responses:
+  - `POST /api/agents/quick-dispatch`
+  - `POST /api/agent-remediation/dispatch-jules`
+    Both provide standard `Link: </api/v1/staff/requests>; rel="successor-version"` and `Sunset` headers and point callers to the Staff Request API (`/api/v1/staff/requests`).
+- Frontend routing redirects all legacy dispatch paths (`/work/quick-dispatch`, `/quick-dispatch`, `/t/quick-dispatch`) to `/` (Staff Console).
+- Modularized router architecture:
+  - Created `backend/routers/remediation_retired.py` (60 LOC) for 410 Gone endpoints.
+  - Extracted `backend/routers/remediation_bulk.py` (106 LOC) for bulk PR/issue dispatch endpoints.
+  - Reduced `backend/routers/remediation.py` from 654 LOC to 443 LOC, ensuring all modules strictly adhere to the <= 500 LOC requirement.
+- Cleaned up obsolete tests (`test_dispatch_backpressure.py`, `QuickDispatch.test.tsx`, `remediationJules.test.ts`, `dispatch.test.ts`) and updated `tests/frontend/test_badge_pill_primitives.py`.
+- Added comprehensive TDD tests:
+  - `tests/test_legacy_dispatch_retirement.py`
+  - `frontend/src/shell/__tests__/retiredLegacyDispatch.test.ts`
+- Regenerated OpenAPI schema (`frontend/src/lib/openapi.json`) and TypeScript client types (`frontend/src/lib/api-types.ts`) via `scripts/gen-api-client.sh`.
+
+## Validation
+
+- `pytest tests/test_legacy_dispatch_retirement.py tests/test_quick_dispatch.py tests/frontend/test_badge_pill_primitives.py tests/test_frontend_integrity.py`: 152 passed, 1 xfailed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 errors, 0 warnings).
+- `npx vitest run`: 166 test files passed, 1,424 tests passed.
+- `py -3.11 -m ruff check backend/ tests/`: clean.
+- `py -3.11 -m ruff format --check backend/ tests/`: clean.
+- `py -3.11 -m mypy backend/routers/remediation.py backend/routers/remediation_bulk.py backend/routers/remediation_retired.py tests/test_legacy_dispatch_retirement.py`: clean (0 issues).
+- `scripts/gen-api-client.sh --check`: passed (schema & client types up to date).
+- Strict <= 500 LOC gate verified on all authored and modified files.
+
+## Next Steps
+
+1. Watch PR #1574 merge with auto-merge.
+2. Verify issue #1503 and parent epic #1337 closure.
+3. Clean up worktree `claude-1503`.
+
+---
+
+# Past handoff — Staff Console development-log reconciliation after the 2026-09-26 merges
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-docsync`; branch `docs/staff-dl-reconcile-2026-09-26`; PR: opened with this commit; governing epic #1354 (Staff Console umbrella). Docs only.
+
+## Objective and Status
+
+- Six Staff Console entries were still `in_review` after their PRs merged. They are now `shipped`, each with its merge commit:
+  - DL-#1504: PR #1571 (374ea4f4). Request journey e2e, and a dispatch's `thread_id` opens that thread.
+  - DL-#1556: PR #1570 (5cf60512). Hermetic staff e2e harness.
+  - DL-#1542: PR #1569 (62ce4d70). Non-blocking startup and guarded verification.
+  - DL-#1501: PR #1560 (b182f790). Steward dispatch through the request API.
+  - DL-#1547: PRs #1557 and #1566 (aab8887a). Run cards with needs-input answer and cancel.
+  - DL-#1548: PR #1568 (4f858a3d). Handoff replies post a HandoffCard.
+- No code, SPEC row or version change.
+
+## Open Items Outside This PR
+
+- Remediation "Fix this failed run": the implicitly selected first run needs an accepted preview while other runs do not. This is a product decision for the owner (noted in PR #1571).
+- The Staff tab crashes on a malformed board response (`board.running is not iterable`). This was seen with a test stub; the real API returns a valid board.
+- `DEVELOPMENT_LOG.md` is over the validator's size ceiling, and DL-#1513 appears twice. Both predate this PR.
+
+## Validation
+
+- `grep -c '^# Current handoff' docs/development/HANDOFF.md` is unchanged from main; each touched DL entry still appears exactly once.
+
+## Next Steps
+
+1. Merge this PR once CI is green.
+
+---
+
+# Past handoff — SC-G8: Delete dead frontend code (#1346)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1346`; PR #1544; DL-#1346; Issue #1346 (SC-G, epic #1353).
+
+## Objective and Status
+
+- Following retirement of the Classic layout and `legacy/App.tsx` (#1345), deleted remaining never-mounted and legacy-only frontend code:
+  - `frontend/src/pages/QuickDispatch.tsx` (and `__tests__/QuickDispatch.test.tsx`)
+  - `frontend/src/primitives/AlertsCenter.tsx` (and `__tests__/AlertsCenter.test.tsx`)
+  - `frontend/src/lib/alertAck.ts` (and `__tests__/alertAck.test.ts`)
+  - `frontend/src/lib/schemas/dispatch.ts` (and `__tests__/dispatch.test.ts`)
+- Removed `AlertsCenter` and `AlertsCenterProps` barrel exports from `frontend/src/primitives/index.ts`.
+- Removed orphaned `.quick-dispatch` styling rules from `frontend/src/index.css`.
+- Removed outdated `test_quick_dispatch_consumes_touch_button_and_scoped_styles` from `tests/frontend/test_badge_pill_primitives.py`.
+- Added regression test `test_dead_frontend_code_retired_issue_1346` to `tests/test_frontend_integrity.py` asserting that never-mounted primitives, schemas, and legacy-only pages remain deleted and are not imported anywhere in `frontend/src/`.
+- Bundle size: JS bundle unchanged at 1,014,235 B (modules were already tree-shaken); index CSS reduced from 83.69 kB to 82.42 kB (-1.27 kB raw, -180 B gzip).
+
+- Review (claude): comments in `AlarmPanel.tsx`, `useFleetEvents.ts`, `fleetEvents.ts` and `fleetAlerts.ts` no longer name the deleted AlertsCenter / alertAck. `FleetAlert.contentHash` now has no production consumer (removal candidate, not done here).
+
+## Validation
+
+- `npx vitest run`: 159 files / 1344 passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: 0 errors.
+- `pytest tests/test_frontend_integrity.py`: 73 passed, 1 xfailed.
+- `pytest tests/frontend/test_badge_pill_primitives.py`: 27 passed.
+- `pytest tests/test_frontend_perf_budget.py`: 11 passed.
+- `ruff check` and `ruff format --check` on touched Python files: clean.
+
+## Next Steps
+
+1. Open draft PR and await frontier agent review.
+
+---
+
+# Past handoff — Handoff replies post a HandoffCard and move the work to the target role (#1548)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1548`; branch `fix/1548-chat-handoff`; PR #1568; Issue #1548; DL-#1548.
+
+## Objective and Status
+
+- Before this change, a reply ending `handoff: <role>` only stored `meta.handoff` on the reply. No `kind="handoff"` message was created, `HandoffCard` never rendered, and nothing reached the target role.
+- Now:
+  1. `backend/staff/chat_handoff.py` `post_reply_handoff` runs after a successful background turn that named a handoff (`run_chat_turn_in_background`). It reuses `BarbRouter.execute_handoff`, which now takes `from_role` (default `barb`): a handoff card in the source thread, the target role's direct thread with the caller (created or continued) seeded with the original request, a work item, and an audit entry. The card is published on the thread bus.
+  2. An unknown target role, or a handoff to itself, is logged and ignored. The card's reason is the reply's first paragraph, capped at 280 characters.
+  3. `HandoffCard` has a "Continue with <role>" button (`onFollow`), wired through `MessageItem` and `Thread` (`onFollowHandoff`) to `openRole` on Desktop and Mobile.
+- Auto-route itself is unchanged. Barb still answers "Ask Barb (auto-route)" first, and its reply's handoff now moves the work. Whether the pre-router should send analysis questions straight to a specialist is a design question, split out as a follow-up.
+- Spotted, not fixed: `BarbRouter.override_routing` calls `update_work_item` with arguments it does not accept, so overrides never reassign the work item. This is suggested as a separate task.
+
+## Validation
+
+- pytest (WSL venv) `tests -k 'staff or chat or rout or handoff'`: 1252 passed, 15 skipped. New: `tests/unit/test_staff_chat_handoff.py` (10).
+- vitest `src/pages/StaffConsole`: 145 passed (new HandoffCard and Thread tests). tsc and eslint clean. ruff clean. mypy reports nothing new (2 pre-existing errors in `override_routing`).
+- Staff e2e: 8/8. The handoff test now asserts the card, clicks "Continue with E2e-analyst", and sees Barb's brief in the analyst's thread.
+
+## Next Steps
+
+1. Merge PR #1568 once CI is green.
+
+---
+
+# Past handoff — Run cards follow the run: needs-input answer and cancel (#1547, slice B)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1547-run-cards` (slice A merged as #1557); PR #1566; DL-#1547; Fixes #1547 (with #1546 this closes #1341).
+
+## Objective and Status
+
+- Before: `execute_proposal` added an `action_result` and a `run_card` message without publishing either, so neither showed until reload. The runner's status changes wrote a new card per status, published from a worker thread with `put_nowait` on an asyncio queue (not thread-safe, so live subscribers could miss them), and a completed run's card had no result because `outcome` is only set for consolidation runs. The card had no needs-input answer and its Cancel did nothing in the Console.
+- Slice B (this branch), each with a failing test first:
+  1. `thread_bus.py`: the bus remembers each subscriber's loop and `publish_sync` hands off with `call_soon_threadsafe` when called off-loop. `publish_message_sync` publishes a `message` event. The unused `publish_run_card` is removed.
+  2. `run_link.py`: a run has one card, `msg-card-<run_id>`, updated in place with `meta.run` (`card_run`: status mapped to the Console's `RunStatus`, question, summary, error). `result_summary` takes the `STAFF_RESULT:` text as the summary. Answering a needs-input run marks its card `answered_by` / `continued_by`.
+  3. `actions.py`: `_post_result` publishes the `action_result` message. The duplicate `run_card` message is gone; the runner posts the card.
+  4. `runner.py`: the final card's summary is `outcome or result_summary(result_line)`.
+  5. Frontend: `RunCard` shows the question with an answer form, the summary and the error; Cancel and Send answer re-enable when refused. `useStaffConsole.cancelRun` / `answerRun` call `cancelRun` and `answerThreadRun` and report a `run` error. Desktop and Mobile pass both handlers.
+  6. e2e: `dispatch-hang` fake scenario; specs for a run card that completes with its result, a needs-input answer whose continuation completes, and a cancel.
+
+## Validation
+
+- pytest (WSL venv): `tests/api/test_staff_thread_runs.py tests/api/test_staff_runner.py`: 43 passed (includes the worker-thread publish test, which hangs on the old bus). ruff check and format clean; mypy on `staff.run_link`, `staff.thread_bus`, `staff.actions`, `staff.runner` reports no errors in those files.
+- vitest `frontend/src/pages/StaffConsole`: 152 passed. `tsc -p tsconfig.app.json` and eslint clean.
+- Staff e2e (`STAFF_E2E_PYTHON="wsl -e <venv>/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts`): 15 passed.
+
+## Next Steps
+
+1. Merge PR #1566 once CI is green.
+2. #1556 (the e2e harness backend calls real fleet peers and GitHub) remains open and independent.
+
+---
+
+# Past handoff — SC-G5-7 Playwright journey: context button to prefilled request to run (#1504)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1504`; branch `feat/1504-request-journey`; PR #1571 (open, auto-merge armed); Issue #1504 (epic SC-G5 #1337); DL-#1504. The spec was drafted by antigravity (Gemini 3.8 Flash) and reviewed and finished by claude.
+
+## Objective and Status
+
+- `tests/e2e/staff-request-journey.spec.ts` is the root frontend lane's (`playwright-e2e`) acceptance test for SC-G5. It opens Remediation with a failed run, previews it, and clicks "Fix this failed run". It then checks that the Assign form is prefilled (repo, run id, and a prompt naming the failure) and that Dispatch sends `POST /api/v1/staff/requests` with `kind=ci.remediate` and the run target. Finally, the run card appears in the Staff thread the response names.
+- A failure path: when the request API answers 500, an alert is shown and the prefilled and edited input is kept.
+- All API responses are stubbed with `page.route` from one `FIXTURES` object. Service workers are blocked.
+- The product gap the spec found: after a dispatch, `StaffPage` always opened the run detail and ignored the response's `thread_id`. Now:
+  - `AdvancedDispatchForm` passes `thread_id` to `onDispatched`.
+  - `StaffPage` switches to the Console on that thread, and falls back to the run detail when there is none.
+  - `useStaffConsole` accepts `initialThreadId` and loads the thread with the existing `fetchThread`. A load failure is reported as a `thread` error; no client-side thread is invented.
+  - `StaffConsoleDesktop` passes `initialThreadId` through.
+- Review decisions:
+  - agy's changes to the root `playwright.config.ts` were reverted: it always started Vite and changed the default base URL.
+  - agy's loosening of the Remediation "Fix" disabled guard was reverted. The spec clicks Preview first instead.
+  - agy's `Desktop` effect, which built a placeholder thread object, was replaced by the `fetchThread`-based option.
+- Spotted, not changed: the first failed run is implicitly selected, so its Fix button stays disabled until a preview is accepted, while other runs' Fix buttons are enabled without a preview. Whether the preview gate should apply uniformly or be dropped (the request form is now the review step) is a product decision.
+- Local run trap: a stale Vite server on `[::1]:5173` from another checkout served pre-#1345 code for `/`. Run the spec against a server you started from this tree, as in Validation below.
+
+## Validation
+
+- `npx vite --port 5199 --strictPort` from the worktree root, then `DASHBOARD_URL=http://localhost:5199 npx playwright test tests/e2e/staff-request-journey.spec.ts --project=chromium-desktop --reporter=line --retries=0`: 2 passed. With the four product files reverted, the happy path fails at the run-card step, which is the RED evidence.
+- vitest (from `frontend/`) `src/pages/StaffConsole src/pages/Staff src/pages/__tests__/StaffPageConsole.test.tsx src/pages/__tests__/Staff.test.tsx src/pages/Remediation`: 200 passed. The 2 new `useStaffConsole` tests were RED before the change.
+- `npx tsc -p ../tsconfig.app.json --noEmit` is clean, and eslint on the changed files is clean.
+
+## Next Steps
+
+1. Watch PR #1571 merge; then mark DL-#1504 shipped.
+
+---
+
+# Past handoff — Staff e2e harness is hermetic (#1556)
 
 Last updated: 2026-09-26
 
@@ -580,7 +821,7 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Owner review: decide whether `STAFF_REPOS_ROOT` should *replace* the default roots instead of prepending to them in production.
+1. Owner review: decide whether `STAFF_REPOS_ROOT` should _replace_ the default roots instead of prepending to them in production.
 2. Address any CI feedback on the draft PR.
 3. Mark the PR ready for review and arm auto-merge once approved.
 
@@ -596,7 +837,7 @@ Last updated: 2026-09-25
 
 ## Objective and Status
 
-- One dispatch form, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, posts to `POST /api/v1/staff/requests` (`submitStaffRequest`). It replaces `Staff/Assign.tsx` (deleted) in the Staff *Assign* section and the Fleet Command Dispatch panel.
+- One dispatch form, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, posts to `POST /api/v1/staff/requests` (`submitStaffRequest`). It replaces `Staff/Assign.tsx` (deleted) in the Staff _Assign_ section and the Fleet Command Dispatch panel.
 - First cut by antigravity. The claude review rework:
   - Offers only the kinds the backend accepts (`Staff/requestKinds.ts`, today `staff.dispatch`); the first cut also listed five kinds the backend rejects.
   - Shows `approval_required` (202) instead of dropping it.

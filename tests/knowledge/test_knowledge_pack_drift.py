@@ -98,23 +98,23 @@ def test_knowledge_pack_drift_against_pinned_tools_sha() -> None:
         vendored_file = vendored_dir / filename
         assert vendored_file.is_file(), f"Vendored file {filename} is missing"
 
-        # Check working tree first, fallback to pinned git commit
+        # Check pinned git commit first, fallback to working tree
         src_path = f"src/shared/python/ai/knowledge/{filename}"
-        disk_file = repo / src_path
-        if disk_file.is_file():
-            source_raw = disk_file.read_text(encoding="utf-8")
-        else:
-            try:
-                res = subprocess.run(
-                    ["git", "-C", str(repo), "show", f"{PINNED_TOOLS_SHA}:{src_path}"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    encoding="utf-8",
-                )
-                source_raw = res.stdout
-            except (subprocess.CalledProcessError, OSError) as exc:
-                pytest.fail(f"Could not read {src_path} from Tools at {PINNED_TOOLS_SHA}: {exc}")
+        try:
+            res = subprocess.run(
+                ["git", "-C", str(repo), "show", f"{PINNED_TOOLS_SHA}:{src_path}"],
+                capture_output=True,
+                text=True,
+                check=True,
+                encoding="utf-8",
+            )
+            source_raw = res.stdout
+        except (subprocess.CalledProcessError, OSError):
+            disk_file = repo / src_path
+            if disk_file.is_file():
+                source_raw = disk_file.read_text(encoding="utf-8")
+            else:
+                pytest.fail(f"Could not read {src_path} from Tools at {PINNED_TOOLS_SHA}")
 
         # Strip header comment lines (added during vendoring) and the local
         # `# fmt: off` / `# fmt: on` formatter directives (added so `ruff format`

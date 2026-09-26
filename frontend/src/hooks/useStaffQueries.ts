@@ -23,12 +23,15 @@ import {
   BOARD_POLL_MS,
   fetchBoard,
   fetchHolds,
+  fetchOutcomes,
   fetchRoster,
   fetchRun,
   fetchRuns,
   isNotFound,
   type BoardResponse,
   type HoldsResponse,
+  type OutcomesGroupBy,
+  type OutcomesResponse,
   type RosterResponse,
   type RunDetailResponse,
   type RunEvent,
@@ -54,6 +57,7 @@ export const staffKeys = {
   summary: () => [...staffKeys.all, "summary"] as const,
   runs: (filter: RunsFilter = {}) => [...staffKeys.all, "runs", filter] as const,
   run: (id: string) => [...staffKeys.all, "run", id] as const,
+  outcomes: (groupBy: OutcomesGroupBy) => [...staffKeys.all, "outcomes", groupBy] as const,
   holds: () => [...staffKeys.all, "holds"] as const,
   threads: () => [...staffKeys.all, "threads"] as const,
   messages: (threadId?: string) => [...staffKeys.all, "messages", threadId ?? "all"] as const,
@@ -115,6 +119,20 @@ export function useStaffRuns(filter: RunsFilter = {}): UseQueryResult<RunsRespon
       queryKey: staffKeys.runs(filter),
       queryFn: ({ signal }) => fetchRuns(filter, signal),
       staleTime: 10_000,
+      refetchIntervalInBackground: false,
+    },
+    client,
+  );
+}
+
+/** Outcome scorecard (#1517). Each group_by is cached for a minute; PR facts cost GitHub calls. */
+export function useStaffOutcomes(groupBy: OutcomesGroupBy): UseQueryResult<OutcomesResponse, Error> {
+  const client = useResolvedQueryClient();
+  return useQuery(
+    {
+      queryKey: staffKeys.outcomes(groupBy),
+      queryFn: ({ signal }) => fetchOutcomes(groupBy, signal),
+      staleTime: 60_000,
       refetchIntervalInBackground: false,
     },
     client,

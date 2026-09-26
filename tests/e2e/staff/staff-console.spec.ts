@@ -29,12 +29,23 @@ function reply(text: string): string {
 const BARB = "Ask Barb (auto-route)";
 
 /** Ask Barb for a dispatch and return the ActionCard her reply proposes. */
-async function proposeDispatch(page: Page): Promise<Locator> {
+async function proposeDispatch(page: Page, scenario = "dispatch"): Promise<Locator> {
   const cards = conversation(page).locator(".staff-action-card");
   const before = await cards.count();
-  await send(page, `dispatch ${nonce()} [[e2e:dispatch]]`);
+  await send(page, `dispatch ${nonce()} [[e2e:${scenario}]]`);
   await expect(cards).toHaveCount(before + 1);
   return cards.nth(before);
+}
+
+/** Approve a proposed dispatch and return the run card of the run it starts (#1547). */
+async function approveAndFollowRun(page: Page, scenario: string): Promise<Locator> {
+  await openThread(page, BARB);
+  const runCards = conversation(page).locator(".staff-run-card");
+  const card = await proposeDispatch(page, scenario);
+  const before = await runCards.count();
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(runCards).toHaveCount(before + 1);
+  return runCards.nth(before);
 }
 
 /** Occurrences of `needle` in the conversation log's visible text. */
@@ -63,12 +74,23 @@ test.describe("chat", () => {
     await expect(conversation(page).getByText(reply(text))).toBeVisible();
   });
 
-  test("Barb's handoff reply is shown", async ({ page }) => {
+  test("Barb's handoff reply posts a handoff card that opens the analyst's thread (#1548)", async ({ page }) => {
     await openThread(page, "Ask Barb (auto-route)");
-    const before = await occurrences(page, "handing it over");
-    await send(page, `analyse the queue ${nonce()} [[e2e:handoff]]`);
+    const cards = conversation(page).locator(".staff-handoff-card");
+    const before = await cards.count();
+    const tag = nonce();
+    await send(page, `analyse the queue ${tag} [[e2e:handoff]]`);
 
-    await expect.poll(() => occurrences(page, "handing it over")).toBe(before + 1);
+    await expect(cards).toHaveCount(before + 1);
+    const card = cards.last();
+    await expect(card).toContainText("handing it over");
+    await card.getByRole("button", { name: "Continue with E2e-analyst" }).click();
+
+    // The analyst's thread opens, seeded with Barb's brief quoting the request.
+    const brief = conversation(page).getByText("Hand-off from Barb").last();
+    await expect(brief).toBeVisible();
+    await expect(conversation(page).getByText(tag)).toBeVisible();
+    await expect(conversation(page).locator(".staff-handoff-card")).toHaveCount(0);
   });
 
   test("the reply arrives after the event stream drops and reconnects", async ({ page }) => {
@@ -189,5 +211,37 @@ test.describe("proposals", () => {
       await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
       await expect(card.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     });
+  });
+});
+
+test.describe("runs", () => {
+  test("an approved dispatch shows a run card that follows the run to its result", async ({ page }) => {
+    const run = await approveAndFollowRun(page, "dispatch");
+
+    await expect(run).toContainText("completed", { timeout: 30_000 });
+    await expect(run).toContainText("fake run finished");
+  });
+
+  test("a run that needs input takes an answer and the continuation completes", async ({ page }) => {
+    const run = await approveAndFollowRun(page, "dispatch-ask");
+    const runCards = conversation(page).locator(".staff-run-card");
+    await expect(run).toContainText("Which repository should I look at?", { timeout: 30_000 });
+    const before = await runCards.count();
+
+    await run.getByRole("textbox", { name: "Answer" }).fill("Runner_Dashboard");
+    await run.getByRole("button", { name: "Send answer" }).click();
+
+    await expect(run).toContainText(/Answered by .*e2e-operator/);
+    await expect(runCards).toHaveCount(before + 1);
+    await expect(runCards.nth(before)).toContainText("fake run finished for Runner_Dashboard", { timeout: 30_000 });
+  });
+
+  test("a running run can be cancelled from its card", async ({ page }) => {
+    const run = await approveAndFollowRun(page, "dispatch-hang");
+    await expect(run).toContainText("running", { timeout: 30_000 });
+
+    await run.getByRole("button", { name: "Cancel run" }).click();
+
+    await expect(run).toContainText("cancelled", { timeout: 30_000 });
   });
 });

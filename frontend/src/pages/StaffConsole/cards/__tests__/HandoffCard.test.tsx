@@ -35,6 +35,21 @@ describe("HandoffCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("offers to continue with the target role (#1548)", () => {
+    const onFollow = vi.fn();
+    render(<HandoffCard handoff={MOCK_HANDOFF} onFollow={onFollow} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Librarian" }));
+
+    expect(onFollow).toHaveBeenCalledWith("librarian");
+  });
+
+  it("has no continue button without a follow handler", () => {
+    render(<HandoffCard handoff={MOCK_HANDOFF} />);
+
+    expect(screen.queryByRole("button", { name: /Continue with/ })).not.toBeInTheDocument();
+  });
+
   it("renders alternative specialists and handles re-routing", () => {
     const handleReroute = vi.fn();
     render(

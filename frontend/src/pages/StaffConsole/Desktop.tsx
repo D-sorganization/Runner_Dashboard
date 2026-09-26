@@ -21,10 +21,12 @@ export interface StaffConsoleDesktopProps {
   /** Seed roster (tests); the console loads `/api/v1/staff/roster` when absent. */
   roles?: StaffRoleItem[];
   threadApi?: ThreadApi;
+  /** Backend thread to open on mount (the thread a dispatched request names, #1504). */
+  initialThreadId?: string | null;
 }
 
-export function StaffConsoleDesktop({ roles: seedRoles, threadApi }: StaffConsoleDesktopProps) {
-  const sc = useStaffConsole({ roles: seedRoles, threadApi });
+export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThreadId }: StaffConsoleDesktopProps) {
+  const sc = useStaffConsole({ roles: seedRoles, threadApi, initialThreadId });
   const [showContext, setShowContext] = useState(true);
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
@@ -66,6 +68,9 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi }: StaffConsol
                 isReconnecting={sc.isReconnecting}
                 onApproveProposal={sc.approveProposal}
                 onDenyProposal={sc.denyProposal}
+                onCancelRun={sc.cancelRun}
+                onAnswerRun={sc.answerRun}
+                onFollowHandoff={(role) => void sc.openRole(role)}
               />
             </div>
             <GroupCostConfirm guard={sc.costGuard} />

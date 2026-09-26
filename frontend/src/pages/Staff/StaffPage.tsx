@@ -24,6 +24,7 @@ import { AdvancedDispatchForm } from "./AdvancedDispatchForm";
 import { Board } from "./Board";
 import { Holds } from "./Holds";
 import { InboxPanel } from "./InboxPanel";
+import { OutcomesTable } from "./OutcomesTable";
 import { Roster } from "./Roster";
 import { RunDetail } from "./RunDetail";
 import { RunLog } from "./RunLog";
@@ -31,12 +32,13 @@ import { errorMessage } from "./staffApi";
 
 import type { WorkRequest } from "./staffApi";
 
-export type StaffSection = "console" | "roster" | "runs" | "assign" | "holds";
+export type StaffSection = "console" | "roster" | "runs" | "outcomes" | "assign" | "holds";
 
 const SECTION_TABS: { key: StaffSection; label: string }[] = [
   { key: "console", label: "Console" },
   { key: "roster", label: "Roster" },
   { key: "runs", label: "Runs" },
+  { key: "outcomes", label: "Outcomes" },
   { key: "assign", label: "Assign" },
   { key: "holds", label: "Holds" },
 ];
@@ -104,6 +106,7 @@ export function StaffPage() {
   const rosterError = rosterErr ? errorMessage(rosterErr) : null;
   const [initialPrefill] = useState<Partial<WorkRequest> | null>(prefillFromUrl);
   const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
+  const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [section, setSection] = useState<StaffSection>(
     () => sectionFromUrl() || (selectedRun ? "runs" : "console"),
   );
@@ -116,10 +119,17 @@ export function StaffPage() {
   }, []);
 
   const onDispatched = useCallback(
-    (id: string) => {
+    (id: string, threadId?: string) => {
       invalidateStaffQueries(client);
       setRunsRefresh((n) => n + 1);
-      openRun(id);
+      // The run card lands in the thread the request API names; without one,
+      // fall back to the run's own detail view.
+      if (threadId) {
+        setSelectedThread(threadId);
+        setSection("console");
+      } else {
+        openRun(id);
+      }
     },
     [client, openRun],
   );
@@ -142,7 +152,7 @@ export function StaffPage() {
         ariaLabel="Staff sections"
         className="staff__tabs"
       />
-      {section === "console" ? <StaffConsoleDesktop /> : null}
+      {section === "console" ? <StaffConsoleDesktop initialThreadId={selectedThread} /> : null}
       {section === "roster" ? (
         <Roster
           roster={roster}
@@ -158,6 +168,7 @@ export function StaffPage() {
       {section === "runs" && !selectedRun ? (
         <RunLog roles={roleNames} onOpenRun={openRun} refreshKey={runsRefresh} />
       ) : null}
+      {section === "outcomes" ? <OutcomesTable /> : null}
       {section === "assign" ? (
         <AdvancedDispatchForm
           roster={roster}

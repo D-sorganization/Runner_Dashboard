@@ -254,7 +254,9 @@ export interface paths {
         put?: never;
         /**
          * Dispatch Jules Workflow
-         * @description Dispatch one of this repo's agent workflows via workflow_dispatch.
+         * @description Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.
+         *
+         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
          */
         post: operations["dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post"];
         delete?: never;
@@ -354,7 +356,9 @@ export interface paths {
         put?: never;
         /**
          * Api Quick Dispatch
-         * @description Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.
+         * @description Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.
+         *
+         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
          */
         post: operations["api_quick_dispatch_api_agents_quick_dispatch_post"];
         delete?: never;
@@ -5172,6 +5176,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Outcomes
+         * @description Scorecard per ``group_by`` for runs created since ``since`` (default: 14 days).
+         */
+        get: operations["get_outcomes_api_v1_staff_outcomes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/proposals": {
         parameters: {
             query?: never;
@@ -7843,6 +7867,68 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * StaffOutcomeRow
+         * @description One scorecard row per role, provider or repo (#1517). A ``None`` rate means no data.
+         */
+        StaffOutcomeRow: {
+            /** Ci First Pass */
+            ci_first_pass: number;
+            /** Ci First Pass Rate */
+            ci_first_pass_rate: number | null;
+            /** Closed Unmerged */
+            closed_unmerged: number;
+            /** Cost Per Merged Pr */
+            cost_per_merged_pr: number | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Failed Verification */
+            failed_verification: number;
+            /** Fix Within 48H */
+            fix_within_48h: number;
+            /** Fix Within 48H Rate */
+            fix_within_48h_rate: number | null;
+            /** Key */
+            key: string;
+            /** Merge Rate */
+            merge_rate: number | null;
+            /** Merged */
+            merged: number;
+            /** Open */
+            open: number;
+            /** Prs */
+            prs: number;
+            /** Prs Unknown */
+            prs_unknown: number;
+            /** Runs */
+            runs: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Verified */
+            verified: number;
+            /** Verified Rate */
+            verified_rate: number | null;
+        };
+        /**
+         * StaffOutcomesResponse
+         * @description ``GET /api/v1/staff/outcomes`` (#1517).
+         */
+        StaffOutcomesResponse: {
+            /** Group By */
+            group_by: string;
+            /** Machine */
+            machine: string;
+            /**
+             * Prs Truncated
+             * @default false
+             */
+            prs_truncated: boolean;
+            /** Rows */
+            rows: components["schemas"]["StaffOutcomeRow"][];
+            /** Since */
+            since: string;
+            totals: components["schemas"]["StaffOutcomeRow"];
+        };
+        /**
          * StaffPricingResponse
          * @description Response model for GET /api/staff/usage/pricing.
          */
@@ -9172,14 +9258,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
                 };
             };
         };
@@ -9282,7 +9366,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15879,6 +15963,38 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_outcomes_api_v1_staff_outcomes_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                group_by?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOutcomesResponse"];
                 };
             };
             /** @description Validation Error */

@@ -4,7 +4,7 @@
  * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Umbrella #1354.
  */
 
-import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
+import type { ProposalApproveHandler, ProposalDenyHandler, RunCancelHandler } from "./cards/cardTypes";
 
 export interface ThreadMessage {
   id: string;
@@ -110,6 +110,9 @@ export interface ThreadProps {
   className?: string;
   onApproveProposal?: ProposalApproveHandler;
   onDenyProposal?: ProposalDenyHandler;
-  onCancelRun?: (runId: string) => void;
+  onCancelRun?: RunCancelHandler;
+  onAnswerRun?: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   onRerouteHandoff?: (targetRole: string) => void;
+  /** Open (or continue) the target role's thread from a handoff card (#1548). */
+  onFollowHandoff?: (targetRole: string) => void;
 }

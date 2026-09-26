@@ -11,6 +11,7 @@ const ACTION_BY_KIND: Record<ConsoleErrorKind, string> = {
   thread: "Could not open the conversation",
   send: "Message not sent",
   decision: "Decision not recorded",
+  run: "Run action refused",
 };
 
 export interface ConsoleErrorBannerProps {

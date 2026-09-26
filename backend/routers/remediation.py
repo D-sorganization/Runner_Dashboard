@@ -9,22 +9,21 @@ import json
 import logging
 import os
 import re
-import secrets
 import tempfile
 from pathlib import Path
 
-import agent_dispatch_router
 import agent_remediation
 import config_schema
-import quick_dispatch as _quick_dispatch
 import quota_enforcement
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 from identity import Principal, require_scope
-from request_context import current_request_id
 from security import check_dispatch_rate, validate_owner_repo_format, validate_repo_slug
 from system_utils import run_cmd
+
+from .remediation_retired import (
+    router as retired_router,
+)
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -42,7 +41,8 @@ DASHBOARD_REPO = os.environ.get("RUNNER_DASHBOARD_REPO_NAME", "Runner_Dashboard"
 
 def workflow_dispatch_endpoint(workflow_file: str) -> str:
     """Return the ``gh api`` path that dispatches ``workflow_file`` in this repo."""
-    assert workflow_file, "workflow_file must be non-empty"
+    if not workflow_file:
+        raise ValueError("workflow_file must be non-empty")
     return f"/repos/{ORG}/{DASHBOARD_REPO}/actions/workflows/{workflow_file}/dispatches"
 
 
@@ -65,10 +65,16 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
     return repo_name, f"{ORG}/{repo_name}"
 
 
+from .remediation_bulk import (  # noqa: E402
+    router as bulk_router,
+)
+
 # Import server lazy imports below if needed
 
 log = logging.getLogger("dashboard.remediation")
 router = APIRouter(tags=["remediation", "agents"])
+router.include_router(bulk_router)
+router.include_router(retired_router)
 
 
 @router.get("/api/agent-remediation/config")
@@ -377,175 +383,6 @@ async def dispatch_agent_remediation(
     return result
 
 
-# ─── Quick Dispatch ───────────────────────────────────────────────────────────
-
-
-@router.post("/api/agents/quick-dispatch", response_model=None)
-async def api_quick_dispatch(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("remediation.dispatch")),  # noqa: B008
-) -> JSONResponse:
-    """Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="expected object body")
-    try:
-        req = _quick_dispatch.QuickDispatchRequest(**body)
-        req.requested_by = principal.id
-        req.principal = principal.id
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    if len(req.prompt.strip()) < 10:
-        raise HTTPException(status_code=400, detail="prompt must be at least 10 characters")
-
-    # Wave 3: Quota and Fair Sharing
-    allowed, reason = quota_enforcement.quota_enforcement.check_dispatch_quota(principal, estimated_cost=0.10)
-    if not allowed:
-        raise HTTPException(status_code=403, detail=f"Quota exceeded: {reason}")
-
-    resp = await _quick_dispatch.quick_dispatch(
-        req,
-        run_cmd_fn=run_cmd,
-        org=ORG,
-        repo_root=REPO_ROOT,
-        normalize_repository_fn=_normalize_repository_input,
-    )
-    if not resp.accepted:
-        if resp.error_code == "not_ready":
-            retry_after = resp.retry_after_seconds or 30
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": "not_ready",
-                    "reason": resp.reason or "readyz_failed",
-                    "retry_after_seconds": retry_after,
-                },
-                headers={"Retry-After": str(retry_after)},
-            )
-        if resp.error_code == "rate_limited":
-            retry_after = resp.retry_after_seconds or 1
-            raise HTTPException(
-                status_code=429,
-                detail={"reason": "rate_limited", "retry_after_seconds": retry_after},
-                headers={"Retry-After": str(retry_after)},
-            )
-        reason = resp.reason or "rejected"
-        if reason.startswith("rate_limited"):
-            retry_after = 1
-            for part in reason.split("="):
-                try:
-                    retry_after = int(part)
-                except ValueError:
-                    pass
-            raise HTTPException(
-                status_code=429,
-                detail={"reason": "rate_limited", "retry_after_seconds": retry_after},
-            )
-        if reason.startswith("workflow_not_configured"):
-            raise HTTPException(
-                status_code=501,
-                detail={
-                    "reason": "workflow_not_configured",
-                    "suggested_workflow": "Agent-Quick-Dispatch.yml",
-                },
-            )
-        if reason.startswith("prompt_too_short"):
-            raise HTTPException(status_code=400, detail=reason)
-        raise HTTPException(status_code=409, detail={"accepted": False, "reason": reason})
-    return JSONResponse(status_code=202, content=resp.model_dump())
-
-
-# ─── Bulk PR / Issue Agent Dispatch ──────────────────────────────────────────
-
-
-@router.post("/api/prs/dispatch", response_model=None)
-async def api_dispatch_to_prs(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("github.dispatch")),  # noqa: B008
-) -> dict:
-    """Dispatch agents to one or more pull requests."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="expected object body")
-    try:
-        req = agent_dispatch_router.PRDispatchRequest(**body)
-        req.principal = principal.id
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    # Wave 3: Quota and Fair Sharing
-    allowed, reason = quota_enforcement.quota_enforcement.check_dispatch_quota(principal, estimated_cost=0.10)
-    if not allowed:
-        raise HTTPException(status_code=403, detail=f"Quota exceeded: {reason}")
-
-    result = await agent_dispatch_router.dispatch_to_prs(
-        req,
-        run_cmd_fn=run_cmd,
-        org=ORG,
-        repo_root=REPO_ROOT,
-        normalize_repository_fn=_normalize_repository_input,
-    )
-    if isinstance(result, dict) and "error" in result:
-        status_code = int(result.get("status_code", 400))
-        if status_code == 429:
-            retry_after = int(result.get("retry_after", 60))
-            return JSONResponse(  # type: ignore[return-value]
-                status_code=429,
-                content={"detail": result["error"], "retry_after_seconds": retry_after},
-                headers={"Retry-After": str(retry_after)},
-            )
-        raise HTTPException(status_code=status_code, detail=result["error"])
-    if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
-        return result.model_dump()
-    return dict(result)
-
-
-@router.post("/api/issues/dispatch", response_model=None)
-async def api_dispatch_to_issues(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("github.dispatch")),  # noqa: B008
-) -> dict:
-    """Dispatch agents to one or more issues."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="expected object body")
-    try:
-        req = agent_dispatch_router.IssueDispatchRequest(**body)
-        req.principal = principal.id
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    # Wave 3: Quota and Fair Sharing
-    allowed, reason = quota_enforcement.quota_enforcement.check_dispatch_quota(principal, estimated_cost=0.10)
-    if not allowed:
-        raise HTTPException(status_code=403, detail=f"Quota exceeded: {reason}")
-
-    result = await agent_dispatch_router.dispatch_to_issues(
-        req,
-        run_cmd_fn=run_cmd,
-        org=ORG,
-        repo_root=REPO_ROOT,
-        normalize_repository_fn=_normalize_repository_input,
-    )
-    if isinstance(result, dict) and "error" in result:
-        status_code = int(result.get("status_code", 400))
-        if status_code == 429:
-            retry_after = int(result.get("retry_after", 60))
-            return JSONResponse(  # type: ignore[return-value]
-                status_code=429,
-                content={"detail": result["error"], "retry_after_seconds": retry_after},
-                headers={"Retry-After": str(retry_after)},
-            )
-        raise HTTPException(status_code=status_code, detail=result["error"])
-    if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
-        return result.model_dump()
-    return dict(result)
-
-
 # ─── Remediation History ──────────────────────────────────────────────────────
 
 _REMEDIATION_HISTORY_PATH = Path(os.environ.get("REMEDIATION_HISTORY_PATH", "")) or (
@@ -568,52 +405,6 @@ async def _append_remediation_history(entry: dict) -> None:
             config_schema.atomic_write_json(_REMEDIATION_HISTORY_PATH, history)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             pass  # history is best-effort
-
-
-# The route path keeps its ``dispatch-jules`` name for one release so the
-# deployed frontend keeps working; the Jules suite it was named for was retired
-# by RM#1483 and the panel now lists this repo's ``agent-*.yml`` workflows.
-@router.post("/api/agent-remediation/dispatch-jules")
-async def dispatch_jules_workflow(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("remediation.dispatch")),  # noqa: B008
-) -> dict:
-    """Dispatch one of this repo's agent workflows via workflow_dispatch."""
-    body = await request.json()
-    workflow_file = str(body.get("workflow_file", "")).strip()
-    ref = str(body.get("ref", "main")).strip()
-    inputs = body.get("inputs", {}) or {}
-    # Issue #331 — use request_id from context var for trusted correlation;
-    # fall back to client-supplied header only when no context is active.
-    correlation_id = current_request_id()
-    if correlation_id == "-":
-        correlation_id = request.headers.get("X-Correlation-Id", secrets.token_hex(8))
-    inputs["correlation_id"] = correlation_id
-    if not workflow_file:
-        raise HTTPException(status_code=422, detail="workflow_file required")
-    endpoint = workflow_dispatch_endpoint(workflow_file)
-    payload = {"ref": ref, "inputs": inputs}
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
-        json.dump(payload, f)
-        pf = f.name
-    try:
-        code, _, stderr = await run_cmd(
-            ["gh", "api", endpoint, "--method", "POST", "--input", pf],
-            timeout=30,
-            cwd=REPO_ROOT,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(pf).unlink()
-    if code != 0:
-        log.warning(
-            "agent workflow dispatch failed: workflow=%s stderr=%s",
-            workflow_file,
-            stderr.strip()[:300],
-        )
-        raise HTTPException(status_code=502, detail="Workflow dispatch failed")
-    return {"status": "dispatched", "workflow_file": workflow_file}
 
 
 @router.get("/api/agent-remediation/history")

@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { RunCard } from "../RunCard";
 import type { RunCardData } from "../cardTypes";
 
@@ -84,5 +84,76 @@ describe("RunCard", () => {
     // Toggle off
     fireEvent.click(logToggleBtn);
     expect(screen.queryByText(/Checking out branch/i)).not.toBeInTheDocument();
+  });
+
+  // #1547: run cards follow the run, answer questions and cancel.
+
+  const ASKING: RunCardData = {
+    id: "run-ask-1",
+    status: "needs_input",
+    node: "DeskComp",
+    provider: "claude",
+    question: "Which repository should I look at?",
+  };
+
+  it("shows a needs-input question and sends the typed answer", async () => {
+    const onAnswer = vi.fn().mockResolvedValue(true);
+    render(<RunCard run={ASKING} onAnswer={onAnswer} />);
+
+    expect(screen.getByText("Which repository should I look at?")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /answer/i }), { target: { value: "Runner_Dashboard" } });
+    fireEvent.click(screen.getByRole("button", { name: /send answer/i }));
+
+    expect(onAnswer).toHaveBeenCalledWith("run-ask-1", "Runner_Dashboard");
+    await waitFor(() => expect(screen.getByText(/answer sent/i)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /send answer/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the answer when it is refused", async () => {
+    const onAnswer = vi.fn().mockResolvedValue(false);
+    render(<RunCard run={ASKING} onAnswer={onAnswer} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /answer/i }), { target: { value: "Runner_Dashboard" } });
+    fireEvent.click(screen.getByRole("button", { name: /send answer/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /send answer/i })).toBeEnabled());
+    expect(screen.getByRole("textbox", { name: /answer/i })).toHaveValue("Runner_Dashboard");
+  });
+
+  it("does not send an empty answer", () => {
+    render(<RunCard run={ASKING} onAnswer={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /send answer/i })).toBeDisabled();
+  });
+
+  it("shows who answered and the continuation instead of the form", () => {
+    render(
+      <RunCard
+        run={{ ...ASKING, answered_by: "human:e2e-operator", continued_by: "run-ask-2" }}
+        onAnswer={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/answered by human:e2e-operator/i)).toBeInTheDocument();
+    expect(screen.getByText(/run-ask-2/)).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /answer/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the result of a completed run and the error of a failed one", () => {
+    const { rerender } = render(<RunCard run={{ id: "r1", status: "completed", summary: "fake run finished" }} />);
+    expect(screen.getByText(/fake run finished/)).toBeInTheDocument();
+
+    rerender(<RunCard run={{ id: "r1", status: "failed", error: "provider crashed" }} />);
+    expect(screen.getByText(/provider crashed/)).toBeInTheDocument();
+  });
+
+  it("re-enables Cancel when the cancel is refused", async () => {
+    const onCancel = vi.fn().mockResolvedValue(false);
+    render(<RunCard run={MOCK_RUN} onCancel={onCancel} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel run/i }));
+
+    expect(screen.getByRole("button", { name: /cancel run/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /cancel run/i })).toBeEnabled());
   });
 });

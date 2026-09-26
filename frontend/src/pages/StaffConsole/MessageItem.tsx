@@ -23,6 +23,7 @@ import {
   type ReviewCardData,
   type ReviewVerdict,
   RunCard,
+  type RunCancelHandler,
   type RunCardData,
   type RunStatus,
 } from "./cards";
@@ -34,8 +35,11 @@ export interface MessageItemProps {
   onRetry?: (message: ThreadMessage) => void;
   onApproveProposal?: ProposalApproveHandler;
   onDenyProposal?: ProposalDenyHandler;
-  onCancelRun?: (runId: string) => void;
+  onCancelRun?: RunCancelHandler;
+  /** Answer a needs-input run in this message's thread (#1547). */
+  onAnswerRun?: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   onRerouteHandoff?: (targetRole: string) => void;
+  onFollowHandoff?: (targetRole: string) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -46,7 +50,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onApproveProposal,
   onDenyProposal,
   onCancelRun,
+  onAnswerRun,
   onRerouteHandoff,
+  onFollowHandoff,
 }) => {
   const isUser = message.author_kind === "user" || message.author === "user";
   const isFailed = message.delivery === "failed" || message.kind === "error";
@@ -116,6 +122,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <RunCard
           run={run}
           onCancel={onCancelRun}
+          onAnswer={onAnswerRun && ((runId, answer) => onAnswerRun(message.thread_id, runId, answer))}
         />
       );
     }
@@ -134,6 +141,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <HandoffCard
           handoff={handoff}
           onReroute={onRerouteHandoff}
+          onFollow={onFollowHandoff}
         />
       );
     }

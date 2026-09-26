@@ -18,11 +18,14 @@ class ThreadEventBus:
 
     def __init__(self) -> None:
         self._subscribers: dict[str, set[asyncio.Queue[dict[str, Any]]]] = {}
+        # The loop each queue was created on: worker threads must hand events to it (#1547).
+        self._loops: dict[asyncio.Queue[dict[str, Any]], asyncio.AbstractEventLoop] = {}
         self._lock = asyncio.Lock()
 
     async def subscribe(self, thread_id: str) -> asyncio.Queue[dict[str, Any]]:
         """Register an async queue to receive live events for a given thread."""
         q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
+        self._loops[q] = asyncio.get_running_loop()
         async with self._lock:
             if thread_id not in self._subscribers:
                 self._subscribers[thread_id] = set()
@@ -33,6 +36,7 @@ class ThreadEventBus:
         """Unregister an async queue when a client disconnects."""
         async with self._lock:
             subs = self._subscribers.get(thread_id)
+            self._loops.pop(q, None)
             if subs and q in subs:
                 subs.remove(q)
                 if not subs:
@@ -73,7 +77,11 @@ class ThreadEventBus:
         data: dict[str, Any],
         event_id: int | str | None = None,
     ) -> int:
-        """Synchronously broadcast an event to active queues without requiring an event loop."""
+        """Broadcast an event from any thread (run workers, action executors).
+
+        Post: each subscriber's queue is fed on the loop that owns it, so a waiting SSE
+        generator wakes; an ``asyncio.Queue`` is not thread-safe to feed directly (#1547).
+        """
         payload = {
             "id": event_id,
             "event": event_type,
@@ -83,11 +91,19 @@ class ThreadEventBus:
         count = 0
         for q in subs:
             try:
-                q.put_nowait(payload)
+                loop = self._loops.get(q)
+                if loop is not None and loop.is_running() and not _on_loop(loop):
+                    loop.call_soon_threadsafe(_put_or_drop, q, payload, thread_id)
+                else:
+                    _put_or_drop(q, payload, thread_id)
                 count += 1
-            except Exception:  # noqa: BLE001
+            except RuntimeError:  # the subscriber's loop has closed
                 pass
         return count
+
+    def publish_message_sync(self, thread_id: str, message_dict: dict[str, Any]) -> int:
+        """:meth:`publish_message` for callers outside the event loop."""
+        return self.publish_sync(thread_id, "message", {"message": message_dict}, event_id=message_dict.get("seq"))
 
     async def publish_token(self, thread_id: str, message_id: str, delta: str) -> int:
         """Helper to broadcast a token delta."""
@@ -106,13 +122,19 @@ class ThreadEventBus:
             event_id=message_dict.get("seq"),
         )
 
-    async def publish_run_card(self, thread_id: str, message_id: str, run_dict: dict[str, Any]) -> int:
-        """Helper to broadcast a run card update."""
-        return await self.publish(
-            thread_id,
-            "run_card",
-            {"message_id": message_id, "run": run_dict},
-        )
+
+def _on_loop(loop: asyncio.AbstractEventLoop) -> bool:
+    try:
+        return asyncio.get_running_loop() is loop
+    except RuntimeError:
+        return False
+
+
+def _put_or_drop(q: asyncio.Queue[dict[str, Any]], payload: dict[str, Any], thread_id: str) -> None:
+    try:
+        q.put_nowait(payload)
+    except asyncio.QueueFull:
+        log.warning("Subscriber queue full for thread %s; dropping event", thread_id)
 
 
 _BUS: ThreadEventBus | None = None

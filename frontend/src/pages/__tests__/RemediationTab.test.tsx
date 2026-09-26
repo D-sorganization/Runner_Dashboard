@@ -13,7 +13,7 @@
  * 6. Workflow-type routing rules render and edit through onSaveConfig.
  * 7. Remediation history, plan preview (blocked + allowed), and provider
  *    availability panels render their data.
- * 8. The Jules workflow-health "Run" button POSTs and flashes a success banner.
+ * 8. The retired Jules workflow-health "Run" button is not rendered (#1503, RM#1483).
  * 9. Tapping a run opens the mobile action sheet; its dispatch path fires onDispatch.
  * 10. Switching to the PRs / Issues sub-tabs mounts the self-contained sub-views.
  */
@@ -24,7 +24,6 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -296,14 +295,8 @@ describe("RemediationTab — agent workflow health", () => {
     render(<RemediationTab {...baseProps({ workflows })} />);
     expect(screen.getByText("all good")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Run"));
-    await waitFor(() => {
-      expect(fetchFn).toHaveBeenCalledWith(
-        "/api/agent-remediation/dispatch-jules",
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
-    expect(await screen.findByText("Dispatched Agent-Lease-Reaper.yml")).toBeInTheDocument();
+    // Retired Jules "Run" button is no longer rendered (#1503, RM#1483)
+    expect(screen.queryByText("Run")).toBeNull();
   });
 });
 
