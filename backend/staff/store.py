@@ -93,6 +93,10 @@ class RunRecord:
     fallback_provider: str = ""
     thread_id: str = ""
     work_item_id: str = ""
+    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | not_applicable.
+    verification: str = ""
+    verification_detail: str = ""
+    pr_number: int | None = None
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
@@ -150,7 +154,7 @@ CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id, seq);
 _COLUMNS = tuple(RunRecord.__dataclass_fields__.keys())
 
 # Free-text run columns that can carry a pasted secret; redacted on every write (#1489).
-_REDACTED_COLUMNS = frozenset({"prompt", "target_ref", "error", "last_line", "remediation"})
+_REDACTED_COLUMNS = frozenset({"prompt", "target_ref", "error", "last_line", "remediation", "verification_detail"})
 
 
 def _redacted(column: str, value: Any) -> Any:
@@ -176,6 +180,9 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("fallback_provider", "TEXT NOT NULL DEFAULT ''"),
     ("thread_id", "TEXT NOT NULL DEFAULT ''"),
     ("work_item_id", "TEXT NOT NULL DEFAULT ''"),
+    ("verification", "TEXT NOT NULL DEFAULT ''"),
+    ("verification_detail", "TEXT NOT NULL DEFAULT ''"),
+    ("pr_number", "INTEGER"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")
@@ -312,6 +319,17 @@ class RunStore:
             rows = self._conn.execute(
                 f"SELECT * FROM runs {where} ORDER BY next_attempt_at ASC",  # noqa: S608
                 params,
+            ).fetchall()
+        return [RunRecord(**dict(r)) for r in rows]
+
+    def runs_awaiting_verification(self, *, machine: str, since: str, limit: int) -> list[RunRecord]:
+        """Finished runs of ``machine`` that ended at/after ``since`` and are unchecked or unverified (#1516)."""
+        marks = ", ".join("?" for _ in ACTIVE_STATUSES)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM runs WHERE machine = ? AND ended_at >= ? AND status NOT IN ({marks}) "  # noqa: S608
+                "AND verification IN ('', 'unverified') ORDER BY ended_at LIMIT ?",
+                (machine, since, *ACTIVE_STATUSES, int(limit)),
             ).fetchall()
         return [RunRecord(**dict(r)) for r in rows]
 

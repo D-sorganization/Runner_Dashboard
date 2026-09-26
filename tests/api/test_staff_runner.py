@@ -474,3 +474,43 @@ def test_exit_zero_without_staff_result_is_failed(
     done = _wait(staff.store, rec.id, ("succeeded", "failed"))
     assert done.status == "failed" and done.exit_code == 0
     assert done.error == runner_mod.NO_RESULT_ERROR
+
+
+# ── post-run verification (#1516) ────────────────────────────────────────
+def _wait_verified(store: store_mod.RunStore, run_id: str, timeout: float = 20.0) -> store_mod.RunRecord:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        rec = store.get_run(run_id)
+        assert rec is not None
+        if rec.verification:
+            return rec
+        time.sleep(0.05)
+    raise AssertionError(f"run {run_id} was never verified")
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("mode", "status", "failure_class"), [("report", "succeeded", ""), ("enforce", "failed", "unverified_output")]
+)
+def test_finished_run_is_verified_and_only_enforce_changes_its_status(
+    staff: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch, mode: str, status: str, failure_class: str
+) -> None:
+    from staff import verification  # noqa: PLC0415
+
+    lookups: list[tuple[str, str]] = []
+
+    class NoPr:
+        def find(self, repo: str, branch: str) -> None:
+            lookups.append((repo, branch))
+
+    monkeypatch.setenv(verification.MODE_ENV, mode)
+    monkeypatch.setattr(verification, "GhCliPrProbe", NoPr)
+    # night-watch opens PRs, but no PR exists for this run's branch.
+    rec = staff.submit(runner_mod.RunRequest(role="night-watch", provider="fake", prompt="sweep"))
+
+    done = _wait_verified(staff.store, rec.id)
+
+    assert (done.verification, done.status, done.failure_class) == ("failed", status, failure_class)
+    assert lookups == [(done.repo, done.branch)]
+    assert "no pull request" in done.verification_detail
+    assert [e["kind"] for e in staff.store.events_after(rec.id)][-1] == "verify"

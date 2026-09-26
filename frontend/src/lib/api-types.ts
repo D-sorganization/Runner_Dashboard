@@ -8223,6 +8223,8 @@ export interface components {
             output_tokens: number;
             /** Pid */
             pid?: number | null;
+            /** Pr Number */
+            pr_number?: number | null;
             /**
              * Prompt
              * @default
@@ -8290,6 +8292,16 @@ export interface components {
              * @default
              */
             transcript_path: string;
+            /**
+             * Verification
+             * @default
+             */
+            verification: string;
+            /**
+             * Verification Detail
+             * @default
+             */
+            verification_detail: string;
             /**
              * Workdir
              * @default

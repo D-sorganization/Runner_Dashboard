@@ -20,13 +20,14 @@ import json
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import consolidation
+from staff import consolidation, verification
 from staff.budget import BudgetGuard
 from staff.holds import HoldsList
 from staff.roles import RoleSpec
@@ -50,6 +51,7 @@ def scheduled_repo(repos: tuple[str, ...] | list[str], now: datetime) -> str:
 
 
 REQUESTED_BY = "scheduler"
+VERIFY_RECHECK_SECONDS = 300.0  # how often unverified staff runs are re-checked against GitHub (#1516)
 
 
 def state_path() -> Path:
@@ -87,6 +89,7 @@ class StaffScheduler:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._next_verify_at = 0.0
 
     # ── lifecycle ────────────────────────────────────────────────────────
     def start(self) -> None:
@@ -111,7 +114,19 @@ class StaffScheduler:
                 self.tick()
             except Exception:  # noqa: BLE001
                 log.exception("staff scheduler tick failed")
+            self.recheck_verification()
             self._stop.wait(self.tick_seconds)
+
+    def recheck_verification(self) -> None:
+        """Re-verify this node's recent unchecked or unverified runs, at most every VERIFY_RECHECK_SECONDS (#1516)."""
+        now = time.monotonic()
+        if now < self._next_verify_at:
+            return
+        self._next_verify_at = now + VERIFY_RECHECK_SECONDS
+        try:
+            verification.recheck_runs(self.runner.store, machine=self.runner.machine, opens_pr=self.runner.opens_pr)
+        except Exception:  # noqa: BLE001
+            log.exception("staff run verification recheck failed")
 
     # ── state ────────────────────────────────────────────────────────────
     @property

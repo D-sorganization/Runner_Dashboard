@@ -88,6 +88,40 @@ def _no_real_network_in_unit_lane(request, monkeypatch):
             pass
 
 
+# Every GitHub credential source the backend can use (#1528): the httpx client
+# reads the token and GitHub App env, and the ``gh`` CLI fallback reads its login
+# from ``GH_CONFIG_DIR``.
+_GITHUB_CREDENTIAL_ENV = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_INSTALLATION_ID",
+    "GITHUB_APP_PRIVATE_KEY",
+    "GITHUB_APP_PRIVATE_KEY_FILE",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_github_credentials(tmp_path, monkeypatch):
+    """Tests never hold a real GitHub credential (#1528).
+
+    With a developer's token or ``gh auth`` login visible, code-request tests
+    created real issues via ``gh_utils.gh_api_write``. Every credential env var is
+    removed, the ``gh`` CLI gets an empty per-test config dir, and ``gh_client``'s
+    cached token is cleared. A test that needs a token sets a fake one itself.
+    """
+    import gh_client  # noqa: PLC0415
+
+    for name in _GITHUB_CREDENTIAL_ENV:
+        monkeypatch.delenv(name, raising=False)
+    gh_config = tmp_path / "gh-config"
+    gh_config.mkdir(exist_ok=True)
+    monkeypatch.setenv("GH_CONFIG_DIR", str(gh_config))
+    monkeypatch.setattr(gh_client, "_cached_token", None)
+    monkeypatch.setattr(gh_client, "_cached_token_expires_at", 0.0)
+
+
 @pytest.fixture(autouse=True)
 def _reset_main_cache_between_tests():
     """Clear the shared backend cache before and after every test."""
@@ -178,6 +212,57 @@ def mock_auth():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_staff_workspace(tmp_path, monkeypatch):
+    """Isolate staff.workspace so tests never touch a real checkout (#1521).
+
+    ``staff.workspace.repos_roots()`` used to always append the developer's
+    real ``~/Repositories`` (and friends) after any configured
+    ``STAFF_REPOS_ROOT``, so a staff test that submitted a run could
+    discover a real checkout and run real ``git worktree add`` / ``gh``
+    against it. This fixture neutralizes discovery for every test: only a
+    test's own ``STAFF_REPOS_ROOT`` is resolved, never the defaults, and
+    worktree/RM-root paths live under this test's own ``tmp_path``.
+
+    A test that genuinely needs a checkout must build a fake one under
+    ``tmp_path`` and monkeypatch the relevant ``staff.workspace`` function
+    itself (several already do this, e.g. ``find_repo_checkout`` /
+    ``add_worktree`` in ``tests/api/test_staff_consolidation.py``) — that
+    per-test monkeypatch simply overrides the default set up here.
+    """
+    from staff import knowledge_refresh as knowledge_refresh_mod  # noqa: PLC0415
+    from staff import workspace as workspace_mod  # noqa: PLC0415
+
+    def configured_roots_only() -> list[Path]:
+        # A test's own STAFF_REPOS_ROOT (a tmp_path corpus) is honoured; the
+        # developer's real ~/Repositories defaults never are.
+        configured = os.environ.get("STAFF_REPOS_ROOT", "")
+        return [Path(p) for p in configured.split(os.pathsep) if p and Path(p).is_dir()]
+
+    monkeypatch.setattr(workspace_mod, "repos_roots", configured_roots_only)
+    # knowledge_refresh binds repos_roots at import time; patch that name too.
+    monkeypatch.setattr(knowledge_refresh_mod, "repos_roots", configured_roots_only)
+    monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(tmp_path / "staff-worktrees"))
+    monkeypatch.setenv("STAFF_RM_ROOT", str(tmp_path / "staff-rm-root"))
+
+    real_add_worktree = workspace_mod.add_worktree
+
+    def _guarded_add_worktree(checkout, worktree, branch):
+        # DbC guard: fail loudly instead of silently shelling out to real
+        # git if a test-created run ever resolves a worktree path outside
+        # this test's own tmp_path.
+        try:
+            Path(worktree).resolve().relative_to(tmp_path.resolve())
+        except ValueError:
+            raise AssertionError(
+                f"add_worktree() target {worktree!r} is outside the pytest tmp_path "
+                f"{tmp_path!r}; staff tests must never create real git worktrees (#1521)."
+            ) from None
+        return real_add_worktree(checkout, worktree, branch)
+
+    monkeypatch.setattr(workspace_mod, "add_worktree", _guarded_add_worktree)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup_stores_session_teardown():
     yield
@@ -193,3 +278,9 @@ def _cleanup_stores_session_teardown():
         reset_audit_store()
     except Exception:
         pass
+
+
+@pytest.fixture(autouse=True)
+def _staff_verification_off(monkeypatch):
+    """Finished test runs never ask GitHub for their PR (#1516); verification tests opt in."""
+    monkeypatch.setenv("STAFF_VERIFY_MODE", "off")

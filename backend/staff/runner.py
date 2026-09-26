@@ -27,7 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, workspace
+from staff import consolidation, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
@@ -83,6 +83,11 @@ class StaffRunner:
     @property
     def store(self) -> RunStore:
         return self._store or get_store()
+
+    def opens_pr(self, role: str) -> bool:
+        """Whether ``role`` is expected to open a PR (its ``permissions.open_pr``; #1516)."""
+        spec = self.roles().get(role)
+        return spec is not None and spec.opens_pr
 
     def roles(self) -> dict[str, RoleSpec]:
         return self._roles_loader()
@@ -397,8 +402,10 @@ class StaffRunner:
                 outcome=consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
+            verification.verify_and_record(store, rec.id, opens_pr=self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
+                status = updated_rec.status  # enforce mode may have failed an unverified success (#1516)
                 question = None
                 if status == "needs_input":
                     from staff.classifier import _extract_last_line_text  # noqa: PLC0415
