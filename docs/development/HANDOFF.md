@@ -1,10 +1,44 @@
-# Current handoff — WP-1.2: agent outcome scorecard (#1517)
+# Current handoff — WP-1.3: Code-reviewer runtime (#1518)
 
 Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1517`; PR #1533; DL-#1517; Issue #1517 (Phase 1 of #1463). Built on the #1516 verification fields.
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1518`; PR: opening right after this commit; DL-#1518; Issue #1518 (Phase 1 of #1463). Built on #1516 (WP-1.1), #1517 (WP-1.2), and Repository_Management #1781.
+
+## Objective and Status
+
+- Default reviewer: `DEFAULT_REVIEWER_ROLE = "code-reviewer"` in `backend/staff/action_executors.py`, with automatic fallback to `fleet-critic` and warning if `code-reviewer` is not loaded in the roster.
+- Provider selection: `staff/review.py` implements `select_reviewer_provider` and `detect_author_provider`. When `staff.review_pr` is dispatched, it looks up the author in the run store by PR number / branch, falls back to `Agent-Id` commit trailers, and picks the first provider in `code-reviewer.providers` from a different provider family. If only the author's family is available, it selects an alternate model on the provider and flags `same_provider`.
+- Verdict parsing: `parse_review_verdict` parses `STAFF_RESULT: review approve|changes|escalate #<pr>`. Normalises into `run.outcome` (`review {verdict} #{pr}` or `review {verdict} #{pr} (same-provider)`). Exiting 0 with a missing verdict line classifies as `needs_input`; malformed lines classify as `failed`.
+- Advisory mode: `prepare_review_params` strips any `request_changes`, `event`, `blocking`, or `enforce` flags, and formats the review instructions to post a plain comment review only.
+- Automatic trigger: `auto_review_if_eligible` in `staff/verification.py` triggers an automatic advisory review when a staff run's PR reaches `verified` on a P0 or P1 repo, behind the `STAFF_AUTO_REVIEW=0/1` setting (default 0).
+
+## Validation
+
+- `py -3.11 -m pytest tests/unit/test_staff_review.py tests/staff/routing_eval/test_action_executor_roles.py`: 25 passed.
+- `py -3.11 -m pytest tests/api/test_staff_outcomes.py tests/unit/test_staff_outcomes_aggregation.py`: 26 passed.
+- `py -3.11 -m ruff check backend/ tests/`: clean.
+- `py -3.11 -m ruff format --check backend/ tests/`: clean.
+- `py -3.11 -m mypy backend/staff/review.py backend/staff/action_executors.py backend/staff/runner.py backend/staff/verification.py backend/staff/roles.py tests/unit/test_staff_review.py`: 0 issues found.
+- `py -3.11 -m bandit backend/staff/review.py`: clean (0 issues).
+- Line count gate: all authored and modified files strictly <= 500 LOC (`review.py` 265 lines, `action_executors.py` 489 lines, `runner.py` 485 lines, `verification.py` 252 lines, `roles.py` 451 lines).
+
+## Next Steps
+
+1. Push branch `agy/issue-1518`.
+2. Open PR for #1518.
+3. Enable squash auto-merge with zero admin bypass.
+
+---
+
+# Past handoff — WP-1.2: agent outcome scorecard (#1517)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1517`; PR #1533 (shipped d6c781da); DL-#1517; Issue #1517 (Phase 1 of #1463). Built on the #1516 verification fields.
 
 ## Objective and Status
 

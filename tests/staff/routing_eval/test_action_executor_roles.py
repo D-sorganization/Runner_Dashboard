@@ -44,8 +44,8 @@ def test_action_executor_default_roles_resolve_and_are_dispatchable() -> None:
         assert spec.dispatchable, f"Default role '{role_name}' is not dispatchable"
 
 
-def test_execute_review_pr_defaults_to_fleet_critic() -> None:
-    """staff.review_pr with no reviewer dispatches a fleet-critic run (via the shared service, #1487)."""
+def test_execute_review_pr_defaults_to_code_reviewer() -> None:
+    """staff.review_pr with no reviewer dispatches a code-reviewer run (via the shared service, #1487, #1518)."""
     seen: list[Any] = []
 
     async def fake_dispatch(cmd: Any, caller: Any) -> dict[str, Any]:
@@ -59,7 +59,7 @@ def test_execute_review_pr_defaults_to_fleet_critic() -> None:
     with patch("staff.dispatch_service.dispatch_staff_run", fake_dispatch):
         result = anyio.run(main)
     assert result.success is True and result.run_id == "run-1474"
-    assert [c.role for c in seen] == ["fleet-critic"]
+    assert [c.role for c in seen] == ["code-reviewer"]
     assert seen[0].repo == "Runner_Dashboard" and seen[0].pr == 42
 
 

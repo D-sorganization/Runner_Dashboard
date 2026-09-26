@@ -161,6 +161,7 @@ def roles_dir() -> Path | None:
         candidates.append(parent.joinpath(*_SIBLING_RELATIVE))
     home = Path.home()
     candidates.append(home / "Repositories" / "Repository_Management" / "staff" / "roles")
+    candidates.append(home / "Repositories" / "Repository_Management-worktrees" / "main" / "staff" / "roles")
     candidates.append(home / "actions-runners" / "Repository_Management" / "staff" / "roles")
     candidates.append(home / ".config" / "runner-dashboard" / "staff" / "roles")
     for c in candidates:

@@ -10,7 +10,8 @@ from staff.audit import record_audit
 
 log = logging.getLogger("dashboard.staff.action_executors")
 
-DEFAULT_REVIEWER_ROLE = "fleet-critic"
+DEFAULT_REVIEWER_ROLE = "code-reviewer"
+FALLBACK_REVIEWER_ROLE = "fleet-critic"
 CODE_REQUEST_OWNER_ROLE = "barb"
 BOARD_PROPOSAL_ROLE = "board-secretary"
 
@@ -47,6 +48,13 @@ def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
     for role_name in ACTION_DEFAULT_ROLES:
         spec = roster.get(role_name)
         if not spec:
+            if role_name == DEFAULT_REVIEWER_ROLE and FALLBACK_REVIEWER_ROLE in roster:
+                log.warning(
+                    "Default reviewer '%s' not loaded; falling back to %s",
+                    role_name,
+                    FALLBACK_REVIEWER_ROLE,
+                )
+                continue
             errors.append(f"Role '{role_name}' does not exist in loaded roster")
         elif not spec.dispatchable:
             errors.append(f"Role '{role_name}' is not dispatchable (retired={spec.retired}, surface={spec.surface})")
@@ -157,17 +165,16 @@ def verify_staff_dispatch(res: ActionResult, params: dict[str, Any], ctx: Action
 
 def execute_review_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     from staff.actions import ActionResult
+    from staff.review import prepare_review_params
+    from staff.roles import load_roles, roles_dir
 
     repo = str(params.get("repo") or "").strip()
     pr = params.get("pr")
     if not repo or not pr:
         return ActionResult(success=False, error="Missing 'repo' or 'pr'", failure_class="invalid_params")
-    reviewer = str(params.get("reviewer") or DEFAULT_REVIEWER_ROLE)
-    focus = str(params.get("focus") or "code review")
-    prompt = f"Review PR #{pr} in {repo}. Focus: {focus}"
-    params_copy = dict(params)
-    params_copy["role"] = reviewer
-    params_copy["prompt"] = prompt
+    r_dir = roles_dir()
+    roster = load_roles(r_dir) if r_dir else None
+    params_copy = prepare_review_params(params, default_role=DEFAULT_REVIEWER_ROLE, roster=roster)
     return execute_staff_dispatch(params_copy, ctx)
 
 
