@@ -2,31 +2,37 @@ Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1593`; branch `fix/1593-restore-green-main`; commit SELF; PR: pending; Issue #1593; DL-#1593.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1595`; branch `fix/1595-split-adapters-under-500-loc`; commit SELF; PR: pending; Issue #1595; DL-#1595.
 
 ## Objective and Status
 
-- Restore green `main` on Runner_Dashboard (#1593): bring `backend/staff/runner.py` and `frontend/src/pages/Staff/staffApi.ts` under the mandatory $\le 500$ LOC threshold, and fix RefreshBadge contrast against white backgrounds.
+- Restore green `main` on Runner_Dashboard (#1595): bring `backend/staff/adapters.py` under the mandatory $\le 500$ LOC threshold so that push events on `main` pass `ci-health-check`.
 - Decomposition & Changes:
-  1. `backend/staff/runner_ops.py` (92 LOC): Extracted `select_first_available_provider`, `resolve_launch_paths`, and `pump_output`.
-  2. `backend/staff/runner.py` (482 LOC, reduced from 528 LOC): Delegated `_first_available`, `_launch_paths`, and `_pump_output` to `runner_ops.py` preserving full backward compatibility for existing callers and tests.
-  3. `frontend/src/pages/Staff/quotaApi.ts` (92 LOC): Extracted `QuotaWindow`, `QuotaSnapshot`, `QuotaReport`, `QuotaRow`, `QUOTA_CEILING_PERCENT`, `fetchQuota`, and `quotaRows`.
-  4. `frontend/src/pages/Staff/staffApi.ts` (488 LOC, reduced from 561 LOC): Re-exported `./quotaApi` preserving backward compatibility.
-  5. `frontend/src/primitives/RefreshBadge.tsx` (120 LOC): Container text color changed to `var(--text-secondary, #8b949e)` (resolving axe-core color contrast against white backgrounds).
-  6. `tests/unit/test_staff_runner_ops.py` (98 LOC): Unit tests for `runner_ops.py`.
+  1. `backend/staff/adapter_policies.py` (177 LOC): Extracted permission allow/deny lists, permission bypass constants, read-only tool vocabulary and flags, and policy generators (`claude_unattended_tools`, `gemini_policy_toml`, `claude_allowed_tools`).
+  2. `backend/staff/adapters.py` (467 LOC, reduced from 603 LOC): Re-exported all extracted symbols via `__all__` preserving 100% backward compatibility.
+  3. `tests/unit/test_staff_adapter_policies.py` (57 LOC): Unit tests for adapter policies.
 - Quality Gates Verified:
-  - All touched files strictly $\le 500$ LOC.
-  - 103 passed pytest tests across runner and quota test suites.
+  - Repo-wide check: ZERO non-exempt files exceed 500 lines across the entire codebase!
+  - 80 passed pytest tests across adapter policies, permissions, and read-only suites.
   - `ruff check` and `ruff format --check` clean.
-  - `mypy` passed with 0 errors across 3 source files.
+  - `mypy` passed with 0 errors across all 3 source files.
 
 ## Next steps
 
-1. Commit and push branch `fix/1593-restore-green-main`.
-2. Open PR with `Fixes #1593` and arm squash auto-merge (`--auto --squash`).
-3. Monitor CI and verify merge into `main` without administrative bypasses.
+1. Commit and push branch `fix/1595-split-adapters-under-500-loc`.
+2. Open PR with `Fixes #1595` and arm squash auto-merge (`--auto --squash`).
+3. Monitor CI and verify merge into `main` without administrative bypasses, restoring `main` push CI to GREEN.
 
 ---
+
+# Past handoff — Split runner.py and staffApi.ts under 500 lines (#1593)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; PR #1594 (merged); Issue #1593; DL-#1593.
+- Shipped into `main` at `c114ee52`. `runner.py` and `staffApi.ts` both brought under 500 LOC.
 
 # Past handoff — Retention window and export (#1490)
 

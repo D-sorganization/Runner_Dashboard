@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1593 · Restore Green Main: Split runner.py and staffApi.ts Under 500 Lines
+### DL-#1595 · Restore Green Main: Split adapters.py Under 500 Lines
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1595
+- **Branch:** `fix/1595-split-adapters-under-500-loc`
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/adapter_policies.py`, `tests/unit/test_staff_adapter_policies.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (80 passed across permissions and adapter unit tests; ruff, mypy clean; 0 non-exempt files > 500 LOC across repo)
+- **Summary:** Extracted permission allow/deny lists, policy generators, and read-only tool mappings from `backend/staff/adapters.py` into `backend/staff/adapter_policies.py` (177 LOC), reducing `adapters.py` from 603 to 467 LOC. Re-exported all extracted symbols from `adapters.py` via `__all__` for 100% backward compatibility. Added unit test suite `tests/unit/test_staff_adapter_policies.py`.
+- **Next step:** Push branch, open PR with squash auto-merge, verify CI passes and PR auto-merges to restore green `main`.
+
+### DL-#1593 · Restore Green Main: Split runner.py and staffApi.ts Under 500 Lines
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1593
 - **Branch:** `fix/1593-restore-green-main`
+- **PR:** #1594 (merged)
 - **Paths:** `backend/staff/runner.py`, `backend/staff/runner_ops.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/quotaApi.ts`, `frontend/src/primitives/RefreshBadge.tsx`, `tests/unit/test_staff_runner_ops.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`
 - **Started:** 2026-09-26
-- **Last verified:** 2026-09-26 (103 passed across runner/quota pytest suites; ruff, mypy clean; all files <= 500 LOC)
+- **Last verified:** 2026-09-26 (#1594 merged into main at c114ee52; runner.py and staffApi.ts under 500 LOC)
 - **Summary:** Extracted `select_first_available_provider`, `resolve_launch_paths`, and `pump_output` from `backend/staff/runner.py` into `backend/staff/runner_ops.py`, reducing `runner.py` from 528 to 482 LOC. Extracted quota interfaces and fetchers from `frontend/src/pages/Staff/staffApi.ts` into `frontend/src/pages/Staff/quotaApi.ts`, reducing `staffApi.ts` from 561 to 488 LOC. Re-exported quota types from `staffApi.ts` for full backward compatibility. Fixed RefreshBadge fresh state container text contrast against white backgrounds. Added direct unit tests in `tests/unit/test_staff_runner_ops.py`.
-- **Next step:** Push branch, open PR with squash auto-merge, verify CI passes and PR auto-merges to restore green `main`.
+- **Next step:** Monitor green CI health checks.
 
 ### DL-#1490 · SC-B1-G7: Standard 180-day retention window matching audit log (gzip archive older records, add Markdown/JSON thread export)
 
