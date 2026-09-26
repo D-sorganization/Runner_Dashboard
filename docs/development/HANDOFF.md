@@ -4,7 +4,7 @@ Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1504`; branch `feat/1504-request-journey`; PR: see DL-#1504; Issue #1504 (epic SC-G5 #1337); DL-#1504. The spec was drafted by antigravity (Gemini 3.8 Flash) and reviewed and finished by claude.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1504`; branch `feat/1504-request-journey`; PR #1571 (open, auto-merge armed); Issue #1504 (epic SC-G5 #1337); DL-#1504. The spec was drafted by antigravity (Gemini 3.8 Flash) and reviewed and finished by claude.
 
 ## Objective and Status
 
@@ -31,7 +31,7 @@ Last updated: 2026-09-26
 
 ## Next Steps
 
-1. Merge the #1504 PR once CI is green.
+1. Watch PR #1571 merge; then mark DL-#1504 shipped.
 
 ---
 

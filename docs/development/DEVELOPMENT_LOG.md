@@ -24,12 +24,12 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1504
 - **Branch:** `feat/1504-request-journey`
-- **PR:** pending
+- **PR:** #1571
 - **Paths:** `tests/e2e/staff-request-journey.spec.ts`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/__tests__/useStaffConsole.test.tsx`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (journey spec 2/2 on chromium-desktop; vitest Staff/StaffConsole/Remediation 200 passed; tsc and eslint clean)
 - **Summary:** An end-to-end spec for Remediation "Fix this failed run" through the prefilled Assign form, `POST /api/v1/staff/requests`, and the run card in the thread the response names, plus the 5xx path. A dispatch that names a `thread_id` now opens that thread in the Console (`useStaffConsole` `initialThreadId`, loaded with `fetchThread`).
-- **Next step:** Merge the #1504 PR once CI is green.
+- **Next step:** Watch PR #1571 merge and mark this entry shipped.
 
 ### DL-#1556 · Staff e2e harness is hermetic
 
