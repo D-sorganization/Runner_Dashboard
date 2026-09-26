@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1463 · Agent Org Plan: Verify Staff Output, Role Routing, Outcomes API
+
+- **State:** proposed
+- **Owner:** claude
+- **Issue:** #1463 (Repository_Management#1766)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** opened right after this commit
+- **Paths:** `docs/plans/2026-09-25-agent-org-implementation-plan.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (docs-only plan; rechecked against `main` `4018454`, where WP-0.1/0.2 have landed)
+- **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
+- **Next step:** Dispatch #1516 (WP-1.1, `tier:strong`), the first Phase 1 package; #1517 and #1518 follow it.
+
 ### DL-#1518 · WP-1.3: Code-reviewer runtime — cross-provider selection and structured verdicts
 
 - **State:** in_progress

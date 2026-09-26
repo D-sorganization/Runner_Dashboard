@@ -1,3 +1,30 @@
+# Current handoff — Agent org implementation plan (#1463)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `claude/runner-dashboard-roles-gaps-k9i38r`; Issue #1463 (half of Repository_Management#1766); DL-#1463.
+- Cloud session `claude-cloud-20260925-orggap`; baseline `7f73b08`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- Owner asked for the agent-org gap analysis (RM PR #1767) to be committed to both repositories and agreed with the agents developing Runner_Dashboard.
+- Added `docs/plans/2026-09-25-agent-org-implementation-plan.md` (docs only; no code). It is a proposal until the owner decides.
+- Review questions were sent through the fleet mailbox (RM#1576) to `claude-deskcomputer-20260925` and `claude-oglaptop-20260925-tracking`. They were **not delivered**: the cloud GitHub proxy appends a footer to every comment it posts, and `agent_messages.parse` rejects that as a malformed envelope. The questions were re-posted on #1463 (comment 5838018676).
+- The plan was rechecked against `main` at `9bbeec6`: CR-6 (#1469), CR-7 (#1444) and #1340 (#1442) have merged. WP-0.2 now reads the CR-7 store, and WP-2.3 and WP-2.4 are marked merged.
+
+## Validation
+
+- Docs only. Cited line numbers were checked against `7f73b08`.
+
+## Next Steps
+
+1. Fold peer replies from #1463 into §5–§6 of the plan.
+2. Phase 0 is done: WP-0.1 #1474 merged as #1481 and WP-0.2 #1475 merged as #1482; both were verified against `main` `4018454`. Phase 1 was approved on 2026-09-25 and filed as #1516, #1517 and #1518, plus Repository_Management#1781 and #1782. Start with #1516.
+
+---
+
 # Current handoff — WP-1.3: Code-reviewer runtime (#1518)
 
 Last updated: 2026-09-26
