@@ -13,11 +13,12 @@ Last updated: 2026-09-26
 - This PR moves the two Codex review fixes from #1580 that #1581 lacks onto `main`:
   - `_AUTO_REVIEW_LOCK` serialises the dedupe check with `runner.submit`, so concurrent verifications of one PR queue a single review.
   - `_already_reviewed` takes the resolved reviewer role, so a `fleet-critic` fallback run counts.
+  - Codex review on #1582: `_review_claim` adds an `fcntl.flock` on `<runs db>.auto-review.lock`, so uvicorn workers (`WORKERS > 1`) sharing the SQLite runs DB are serialised too. There is a two-process test.
 - Open question, not changed here: `_already_reviewed` also counts failed or cancelled review runs, so a failed review is never retried automatically.
 
 ## Validation
 
-- `pytest tests/unit/test_staff_review_runtime.py tests/unit/test_staff_review.py tests/api/test_staff_review_runner.py -q -o addopts=""`: 37 passed. The 2 new tests fail on `main`. The concurrency test passed on three repeated runs.
+- `pytest tests/unit/test_staff_review_runtime.py tests/unit/test_staff_review.py tests/api/test_staff_review_runner.py -q -o addopts=""`: 38 passed. The 3 new tests fail on `main`. The concurrency test passed on three repeated runs.
 - The staff, API and unit subset: 946 passed. `ruff check`, `ruff format --check` and `mypy backend/staff/review.py`: clean.
 
 ## Next Steps

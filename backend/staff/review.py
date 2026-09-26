@@ -6,8 +6,10 @@ import logging
 import os
 import re
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 from staff.verification import GhCliPrProbe
@@ -275,7 +277,29 @@ def prepare_review_params(
 
 # Serialises the dedupe check with the submit that persists the queued run, so two
 # verifications of one PR (a worker finish and a recheck) cannot both pass the check.
+# The thread lock covers one process; ``_review_claim`` adds an ``flock`` on a file next
+# to the shared runs DB so uvicorn workers (``WORKERS > 1``) are serialised too.
 _AUTO_REVIEW_LOCK = threading.Lock()
+
+
+@contextmanager
+def _review_claim(store: Any) -> Iterator[None]:
+    """Hold the auto-review claim across threads and, where ``fcntl`` exists, processes."""
+    with _AUTO_REVIEW_LOCK:
+        db_path = getattr(store, "path", None)
+        try:
+            import fcntl
+        except ImportError:  # pragma: no cover - Windows has no fcntl; one process there
+            fcntl = None  # type: ignore[assignment]
+        if fcntl is None or db_path is None:
+            yield
+            return
+        with Path(f"{db_path}.auto-review.lock").open("w") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWER_ROLE) -> bool:
@@ -333,7 +357,7 @@ def auto_review_if_eligible(
         from staff.plan import RunRequest
 
         reviewer = params["role"]  # code-reviewer, or its fleet-critic fallback
-        with _AUTO_REVIEW_LOCK:
+        with _review_claim(store):
             if _already_reviewed(store, repo, int(pr_number), role=reviewer):
                 log.info("auto-review: PR #%s on %s already has a %s run; skipped", pr_number, repo, reviewer)
                 return False
