@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -272,11 +273,15 @@ def prepare_review_params(
     return clean_params
 
 
-def _already_reviewed(store: Any, repo: str, pr_number: int) -> bool:
+# Serialises the dedupe check with the submit that persists the queued run, so two
+# verifications of one PR (a worker finish and a recheck) cannot both pass the check.
+_AUTO_REVIEW_LOCK = threading.Lock()
+
+
+def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWER_ROLE) -> bool:
+    """Whether a ``role`` review run for this PR exists; ``role`` is the resolved reviewer."""
     target = f"PR #{pr_number}"
-    return any(
-        r.repo == repo and r.target_ref == target for r in store.list_runs(limit=RUN_LOOKUP_LIMIT, role=REVIEWER_ROLE)
-    )
+    return any(r.repo == repo and r.target_ref == target for r in store.list_runs(limit=RUN_LOOKUP_LIMIT, role=role))
 
 
 def auto_review_if_eligible(
@@ -319,9 +324,6 @@ def auto_review_if_eligible(
 
             runner = get_runner()
         store = store if store is not None else runner.store
-        if _already_reviewed(store, repo, int(pr_number)):
-            log.info("auto-review: PR #%s on %s already has a code-reviewer run; skipped", pr_number, repo)
-            return False
         params = prepare_review_params(
             {"repo": repo, "pr": int(pr_number)},
             roster=runner.roles(),
@@ -330,18 +332,23 @@ def auto_review_if_eligible(
         )
         from staff.plan import RunRequest
 
-        run = runner.submit(
-            RunRequest(
-                role=params["role"],
-                provider=params["provider"],
-                model=params.get("model"),
-                repo=repo,
-                pr=int(pr_number),
-                prompt=params["prompt"],
-                requested_by=AUTO_REVIEW_REQUESTER,
-                thread_id=getattr(rec, "thread_id", "") or "",
+        reviewer = params["role"]  # code-reviewer, or its fleet-critic fallback
+        with _AUTO_REVIEW_LOCK:
+            if _already_reviewed(store, repo, int(pr_number), role=reviewer):
+                log.info("auto-review: PR #%s on %s already has a %s run; skipped", pr_number, repo, reviewer)
+                return False
+            run = runner.submit(
+                RunRequest(
+                    role=reviewer,
+                    provider=params["provider"],
+                    model=params.get("model"),
+                    repo=repo,
+                    pr=int(pr_number),
+                    prompt=params["prompt"],
+                    requested_by=AUTO_REVIEW_REQUESTER,
+                    thread_id=getattr(rec, "thread_id", "") or "",
+                )
             )
-        )
     except Exception as exc:  # noqa: BLE001 - auto-review must never break verification
         log.warning("auto-review: PR #%s on %s not dispatched: %s", pr_number, repo, exc, exc_info=True)
         return False
