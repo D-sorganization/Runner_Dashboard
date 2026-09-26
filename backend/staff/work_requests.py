@@ -79,7 +79,7 @@ class WorkRequest(BaseModel):
     prompt: str = Field(default="", max_length=20000)
     dry_run: bool = False
     profile_id: str | None = None
-    force: bool = False
+    force: bool | None = False
     approved_by: str | None = None
 
 

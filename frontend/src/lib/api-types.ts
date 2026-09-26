@@ -8644,7 +8644,7 @@ export interface components {
              * Force
              * @default false
              */
-            force: boolean;
+            force?: boolean | null;
             /**
              * Kind
              * @description A request kind; see REQUEST_KINDS
