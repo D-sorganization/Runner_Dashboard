@@ -819,6 +819,141 @@
         "title": "ClientErrorPayload",
         "type": "object"
       },
+      "CreateActionProposalRequest": {
+        "properties": {
+          "action": {
+            "description": "Name of allowlisted action",
+            "title": "Action",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "Originating message ID",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "Action parameters",
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ignored: the risk always comes from the action registry (#1485)",
+            "title": "Risk"
+          },
+          "thread_id": {
+            "description": "Parent thread ID",
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["message_id", "thread_id", "action"],
+        "title": "CreateActionProposalRequest",
+        "type": "object"
+      },
+      "CreateProposalRequest": {
+        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
+        "properties": {
+          "code_request_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "confirm_not_duplicate": {
+            "default": false,
+            "title": "Confirm Not Duplicate",
+            "type": "boolean"
+          },
+          "estimated_cost": {
+            "enum": ["Low", "Medium", "High"],
+            "title": "Estimated Cost",
+            "type": "string"
+          },
+          "evidence": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "lean": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Lean",
+            "type": "string"
+          },
+          "options_considered": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "enum": ["Routine", "Urgent", "Emergency"],
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "target_repos",
+          "problem",
+          "evidence",
+          "options_considered",
+          "lean",
+          "estimated_cost",
+          "urgency"
+        ],
+        "title": "CreateProposalRequest",
+        "type": "object"
+      },
       "CreateThreadRequest": {
         "properties": {
           "kind": {
@@ -2471,6 +2606,126 @@
         "title": "RegisterCompleteRequest",
         "type": "object"
       },
+      "RelayRunCardRequest": {
+        "description": "POST body for relaying a run card from an executing node back to origin (issue #1488).",
+        "properties": {
+          "body_md": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Md"
+          },
+          "branch": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Branch",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failure_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Class"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta"
+          },
+          "node": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Node",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Provider",
+            "type": "string"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "repo": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Repo",
+            "type": "string"
+          },
+          "role": {
+            "maxLength": 80,
+            "title": "Role",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 120,
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "maxLength": 40,
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "target_ref": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Target Ref",
+            "type": "string"
+          }
+        },
+        "required": ["run_id", "role", "status"],
+        "title": "RelayRunCardRequest",
+        "type": "object"
+      },
       "ReleaseBody": {
         "additionalProperties": false,
         "description": "``release``: drop this session's presence.",
@@ -2862,6 +3117,18 @@
               }
             ],
             "title": "Model"
+          },
+          "origin_node": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Node"
           },
           "pr": {
             "anyOf": [
@@ -3734,6 +4001,27 @@
           }
         },
         "title": "StaffPricingResponse",
+        "type": "object"
+      },
+      "StaffQuotaResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/quota (#1587): live subscription windows per provider.",
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "providers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": ["generated_at"],
+        "title": "StaffQuotaResponse",
         "type": "object"
       },
       "StaffRoleBudget": {
@@ -5223,141 +5511,6 @@
           }
         },
         "title": "WorkSummary",
-        "type": "object"
-      },
-      "proposals__models__CreateProposalRequest": {
-        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
-        "properties": {
-          "code_request_url": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code Request Url"
-          },
-          "confirm_not_duplicate": {
-            "default": false,
-            "title": "Confirm Not Duplicate",
-            "type": "boolean"
-          },
-          "estimated_cost": {
-            "enum": ["Low", "Medium", "High"],
-            "title": "Estimated Cost",
-            "type": "string"
-          },
-          "evidence": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Evidence",
-            "type": "string"
-          },
-          "lean": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Lean",
-            "type": "string"
-          },
-          "options_considered": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Options Considered",
-            "type": "string"
-          },
-          "problem": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Problem",
-            "type": "string"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "target_repos": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Target Repos",
-            "type": "array"
-          },
-          "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "urgency": {
-            "enum": ["Routine", "Urgent", "Emergency"],
-            "title": "Urgency",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "target_repos",
-          "problem",
-          "evidence",
-          "options_considered",
-          "lean",
-          "estimated_cost",
-          "urgency"
-        ],
-        "title": "CreateProposalRequest",
-        "type": "object"
-      },
-      "routers__staff_proposals__CreateProposalRequest": {
-        "properties": {
-          "action": {
-            "description": "Name of allowlisted action",
-            "title": "Action",
-            "type": "string"
-          },
-          "message_id": {
-            "description": "Originating message ID",
-            "title": "Message Id",
-            "type": "string"
-          },
-          "params": {
-            "additionalProperties": true,
-            "description": "Action parameters",
-            "title": "Params",
-            "type": "object"
-          },
-          "risk": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Ignored: the risk always comes from the action registry (#1485)",
-            "title": "Risk"
-          },
-          "thread_id": {
-            "description": "Parent thread ID",
-            "title": "Thread Id",
-            "type": "string"
-          }
-        },
-        "required": ["message_id", "thread_id", "action"],
-        "title": "CreateProposalRequest",
         "type": "object"
       }
     },
@@ -11540,7 +11693,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/proposals__models__CreateProposalRequest"
+                "$ref": "#/components/schemas/CreateProposalRequest"
               }
             }
           },
@@ -13943,6 +14096,34 @@
         "tags": ["staff-inbox"]
       }
     },
+    "/api/staff/quota": {
+      "get": {
+        "description": "Billing kind and current plan windows for every staff provider on this node.\n\nReads local files only (the quota store and Codex session logs); never runs a\nCLI, so asking costs no quota. ``quota`` is null until a source has been seen.",
+        "operationId": "get_quota_api_staff_quota_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffQuotaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Quota",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/roles": {
       "get": {
         "operationId": "roster_api_staff_roles_get",
@@ -15903,7 +16084,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/routers__staff_proposals__CreateProposalRequest"
+                "$ref": "#/components/schemas/CreateActionProposalRequest"
               }
             }
           },
@@ -17297,6 +17478,64 @@
           }
         ],
         "summary": "Mark Thread Read",
+        "tags": ["staff-threads"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/relay-card": {
+      "post": {
+        "description": "Relay run-card state from an executing node back to origin (issue #1488).",
+        "operationId": "relay_thread_run_card_api_v1_staff_threads__thread_id__relay_card_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelayRunCardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Relay Thread Run Card Api V1 Staff Threads  Thread Id  Relay Card Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Relay Thread Run Card",
         "tags": ["staff-threads"]
       }
     },

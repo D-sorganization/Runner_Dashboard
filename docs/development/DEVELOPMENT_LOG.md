@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1587 · Live Subscription Quota
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1587
+- **Branch:** `feat/1587-subscription-quota`
+- **PR:** not created
+- **Paths:** `backend/staff/quota.py`, `backend/staff/runner.py`, `backend/routers/staff_usage.py`, `backend/routers/repos_stats.py`, `backend/usage_monitoring.py`, `config/usage_sources.json`, `scripts/claude_statusline_quota.py`, `tests/api/test_staff_quota.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `cd57aafd` baseline (quota, status-line and usage suites green)
+- **Summary:** Reads Claude and Codex plan windows locally and serves them at `/api/staff/quota` and `/api/usage`. The invented usage fixture is removed.
+- **Next step:** Merge the PR, then build #1588's window-percent gate on `quota.report()`.
+
 ### DL-#1488 · SC-B1-G5: Relay forwarded run-card events back to originating thread across peer nodes
 
 - **State:** in_progress

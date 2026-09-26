@@ -30,6 +30,7 @@ from typing import Any
 from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
+from staff import quota as quota_mod
 from staff import retry as retry_mod
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
@@ -462,6 +463,8 @@ class StaffRunner:
                 event = adapter.parse_line(line)
                 if event.get("usage"):
                     usage.update(event["usage"])
+                if event.get("kind") == "rate_limit_event" and isinstance(event.get("raw"), dict):
+                    quota_mod.observe(rec.provider, event["raw"])  # live plan windows, free (#1587)
                 text = event.get("text") or ""
                 if text.strip():
                     self.store.append_event(rec.id, event.get("kind", "text"), text)

@@ -202,6 +202,38 @@ def normalize_usage_source(
     return summary
 
 
+def quota_usage_sources(quota_report: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Usage-source dicts for subscription plans with a live quota snapshot (#1587).
+
+    Pre: ``quota_report`` is the body of ``GET /api/staff/quota``.
+    Post: one ``<provider>_plan`` source per provider whose quota is known, measured
+    in percent of its fullest window (limit 100), refreshed at the snapshot time.
+    """
+    sources: list[dict[str, Any]] = []
+    for row in quota_report.get("providers") or ():
+        snap = row.get("quota")
+        if not isinstance(snap, Mapping) or snap.get("peak_percent") is None:
+            continue
+        peak = max(snap.get("windows") or (), key=lambda w: w.get("used_percent", 0.0), default={})
+        provider = str(row.get("provider"))
+        sources.append(
+            {
+                "name": f"{provider}_plan",
+                "kind": "subscription",
+                "label": f"{provider} plan ({snap.get('plan') or 'subscription'})",
+                "usage_unit": "percent",
+                "usage_limit": 100,
+                "current_usage": snap["peak_percent"],
+                "current_period": {"label": peak.get("name"), "start": None, "end": peak.get("resets_at")},
+                "last_refresh": snap.get("observed_at"),
+                "confidence": 0.9,
+                "secret_handling": {"requires_secret": False, "secret_env_vars": []},
+                "notes": f"Live plan window from {snap.get('source')}; percent of the fullest window.",
+            }
+        )
+    return sources
+
+
 def normalize_usage_summary(
     config: Any,
     *,

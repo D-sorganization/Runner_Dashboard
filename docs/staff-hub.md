@@ -32,6 +32,7 @@ every run, and streams the output to the operator console.
 | GET    | `/api/staff/usage`            | fleet peer        | Cost and token usage grouped by `provider`, `role` or `day` (`?group=`, `?since=`), with totals and the daily budget percent                                                                             |
 | GET    | `/api/staff/usage/pricing`    | fleet peer        | The price table used for estimates                                                                                                                                                                       |
 | POST   | `/api/staff/usage/export`     | orchestrator peer | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout)                                                   |
+| GET    | `/api/staff/quota`            | fleet peer        | Billing kind and live plan windows per provider (#1587); local files only                                                                                                                                |
 
 POST bodies need the CSRF sentinel header `X-Requested-With: XMLHttpRequest`
 like every other dashboard POST. "Orchestrator peer" means an operator
@@ -202,6 +203,8 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | `STAFF_PEER_TIMEOUT_SECONDS` | `6`                                                                             | Per-peer timeout for board fan-out (forwarded dispatches allow 5×)                 |
 | `STAFF_BUDGET_USD_PER_DAY`   | `0` (unlimited)                                                                 | Fleet-wide daily ceiling reported by `/api/staff/usage`                            |
 | `STAFF_WALL_USD_PER_MIN`     | unset                                                                           | `provider=rate,...` wall-time fallback for providers without token accounting      |
+| `STAFF_QUOTA_STATE`          | `<config dir>/staff_quota.json`                                                 | Newest plan-window snapshot per account (#1587)                                    |
+| `STAFF_CODEX_SESSION_DIRS`   | `$CODEX_HOME/sessions` or `~/.codex/sessions`                                   | Codex session-log dirs read for its plan windows (`os.pathsep` list)               |
 | `CLAUDE_CONFIG_DIR`          | unset (CLI uses `~/.claude`)                                                    | Service-owned Claude seat; required under `ProtectHome=read-only` (see Node setup) |
 | `GIT_CONFIG_GLOBAL`          | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                   |
 
@@ -471,6 +474,30 @@ when only tokens are known, `wall_time` from `STAFF_WALL_USD_PER_MIN`, else
 `GET /api/staff/usage` aggregates the store by provider, role or day and reports
 the `STAFF_BUDGET_USD_PER_DAY` ceiling; `POST /api/staff/usage/export` appends
 today's totals to the Repository_Management credit ledger.
+
+## Subscription quota (#1587)
+
+Every staff provider except the local ones (`ollama`, `claude-ollama`, `maxwell`) runs on a
+subscription seat, so its real budget is a share of the plan's rolling windows, not dollars.
+`GET /api/staff/quota` reports, per provider, its `billing` kind and the newest known windows
+(`five_hour`, `seven_day`, each with `used_percent` and `resets_at`). The route only reads local
+files and never runs a CLI, so asking costs no quota.
+
+| Plan   | Source                                                                                                      |
+| ------ | ----------------------------------------------------------------------------------------------------------- |
+| Claude | `rate_limit_event` lines in every staff run's stream-json, plus `scripts/claude_statusline_quota.py`        |
+| Codex  | `token_count.rate_limits` in the newest session logs under `STAFF_CODEX_SESSION_DIRS` (`~/.codex/sessions`) |
+
+To keep Claude current between staff runs, set the status line of the account the node uses
+(`$CLAUDE_CONFIG_DIR/settings.json`) to
+`{"statusLine": {"type": "command", "command": "python3 <Runner_Dashboard>/scripts/claude_statusline_quota.py"}}`.
+Include the Windows interactive Codex log directory (`/mnt/c/Users/<user>/.codex/sessions`)
+in `STAFF_CODEX_SESSION_DIRS` when Codex is also used from Windows. Windows past their reset
+are dropped. `quota: null` means no source has been seen yet, not zero usage.
+
+`GET /api/usage` now lists each known plan as a `<provider>_plan` percent source. The
+April placeholder figures in `config/usage_sources.json` were removed (it is now an empty list).
+`cost_usd` stays a list-price-equivalent effort figure for comparing runs; it is not a bill.
 
 ## External Agent Clients (SC-F5, #1334)
 

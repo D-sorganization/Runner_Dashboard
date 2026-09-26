@@ -1,3 +1,37 @@
+# Current handoff — Live subscription quota (#1587)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1587-subscription-quota`; Issue #1587; DL-#1587.
+- Worktree `_wt_claude_rd_quota` on OGLaptop; baseline `cd57aafd`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- Owner decision (2026-09-26): budgets are measured as a share of each plan's windows, read locally at no quota cost.
+- New `backend/staff/quota.py`:
+  - Parsers for the Claude stream event, the Claude status line and Codex session-log lines.
+  - A JSON store (`STAFF_QUOTA_STATE`) that keeps the newest snapshot per account.
+  - `report()`.
+- `StaffRunner._pump_output` records `rate_limit_event` lines from Claude runs.
+- New `GET /api/staff/quota` (`StaffQuotaResponse`). `/api/usage` merges `usage_monitoring.quota_usage_sources()`.
+- `config/usage_sources.json` is emptied: its April figures were invented.
+- New `scripts/claude_statusline_quota.py` keeps the store current from interactive Claude sessions.
+- OpenAPI snapshot regenerated. It also picks up routes from earlier PRs whose snapshot refresh was skipped (relay-card, proposals, `RunBody`). The action-proposal body in `routers/staff_proposals.py` is renamed `CreateActionProposalRequest`: two same-named models made FastAPI pick schema names by object identity, so `generate-api:check` failed at random.
+
+## Validation
+
+- RED first: the four wiring tests in `tests/api/test_staff_quota.py` failed before the route, hook and fixture changes.
+- Green: `tests/api/test_staff_quota.py` (23), `tests/test_claude_statusline_quota.py`, `tests/test_usage_monitoring.py`, `tests/test_dashboard_degraded_endpoints.py`, `tests/test_stats_summary_resilience.py`.
+
+## Next Steps
+
+1. Merge, then set the status line on the node's Claude account and `STAFF_CODEX_SESSION_DIRS` in the node env file.
+2. #1588: gate scheduling and dispatch on `max_window_percent` (default 85) using this report.
+
+---
+
 # Current handoff — SC-B1-G5: Cross-node run-card relay (#1488)
 
 Last updated: 2026-09-26

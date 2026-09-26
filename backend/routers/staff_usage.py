@@ -6,6 +6,8 @@ Routes (under ``/api/staff``; the ``/api/staff/`` alt-auth prefix applies):
   GET  /usage/pricing   The price table this node uses to estimate cost.
   POST /usage/export    Append today's per-provider totals to Repository_Management
                         ``data/credit_usage.json`` (subprocess to the RM script).
+  GET  /quota           Live subscription windows per provider (#1587): Claude from its
+                        stream ``rate_limit_event`` / status line, Codex from its session logs.
 
 Kept out of ``routers/staff.py`` so it lands alongside #1195/#1196 without conflicts.
 """
@@ -14,13 +16,16 @@ Kept out of ``routers/staff.py`` so it lands alongside #1195/#1196 without confl
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, require_scope
-from staff import usage
+from staff import quota, usage
+from staff.adapters import ADAPTERS
 from staff.models import (
     StaffPricingResponse,
+    StaffQuotaResponse,
     StaffUsageExportResponse,
     StaffUsageResponse,
 )
@@ -45,6 +50,18 @@ async def get_usage(
     body = usage.summary(runner.store, group=group, since=since or usage.today_iso())
     body["machine"] = runner.machine
     return body
+
+
+@router.get("/quota", response_model=StaffQuotaResponse, response_model_exclude_none=True)
+async def get_quota(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Billing kind and current plan windows for every staff provider on this node.
+
+    Reads local files only (the quota store and Codex session logs); never runs a
+    CLI, so asking costs no quota. ``quota`` is null until a source has been seen.
+    """
+    return quota.report(ADAPTERS, datetime.now(UTC))
 
 
 @router.get(
