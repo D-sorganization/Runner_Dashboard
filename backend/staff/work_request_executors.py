@@ -14,8 +14,11 @@ event loop with :func:`staff.loop_bridge.run_on_loop`.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from code_requests.dispatch_service import resolve_dispatch
+from code_requests.profiles import AgentProfileStore
 from staff.loop_bridge import BridgeUnavailableError, run_on_loop
 from staff.work_request_dispatch import (
     _dispatch_assessment_workflow,
@@ -25,6 +28,7 @@ from staff.work_request_dispatch import (
     _dispatch_pr_action,
     _dispatch_remediation_workflow,
     _dispatch_workflow_json,
+    code_dispatch_from_params,
 )
 
 if TYPE_CHECKING:
@@ -233,34 +237,27 @@ def execute_pr_act(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
 def execute_code_request_dispatch(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     from staff.actions import ActionResult
 
-    repo = str(params.get("repo") or "").strip()
-    ref = str(params.get("ref") or "main")
-    provider = params.get("provider")
-    model = params.get("model")
-    profile_id = params.get("profile_id")
-    prompt = str(params.get("prompt") or "")
+    req = code_dispatch_from_params(params)
 
     if ctx.dry_run:
+        resolved = resolve_dispatch(req, AgentProfileStore())
         plan = {
             "action": "code_request.dispatch",
-            "repo": repo,
-            "ref": ref,
-            "provider": provider or "claude",
-            "model": model,
-            "profile_id": profile_id,
-            "prompt": prompt,
+            "repo": req.repo,
+            "ref": req.branch,
+            "provider": resolved.provider,
+            "model": resolved.model,
+            "effort": resolved.effort,
+            "standards": resolved.standards,
+            "budget": resolved.budget,
+            "profile_id": resolved.profile_id,
+            "prompt": req.prompt,
         }
         return ActionResult(success=True, result=plan)
 
     try:
         res = run_on_loop(
-            _dispatch_code_request_workflow,
-            repo,
-            ref,
-            str(provider) if provider else None,
-            str(model) if model else None,
-            str(profile_id) if profile_id else None,
-            prompt,
+            partial(_dispatch_code_request_workflow, req, principal=ctx.caller.id if ctx.caller else ""),
         )
         return ActionResult(success=True, result=res)
     except BridgeUnavailableError as exc:

@@ -19,6 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any
 
+from code_requests.model import STANDARDS_INJECTION
 from identity import Principal, format_caller, principal_has_scope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from staff.actions import (
@@ -91,6 +92,10 @@ class WorkRequest(BaseModel):
     profile_id: str | None = None
     force: bool | None = None
     approved_by: str | None = None
+    # code_request.dispatch settings; unset ones take the agent profile's defaults (#1501).
+    effort: str | None = None
+    standards: list[str] | None = None
+    budget: dict[str, Any] | None = None
 
 
 class RequestRejectedError(ValueError):
@@ -218,6 +223,9 @@ def _code_request_dispatch_params(req: WorkRequest) -> dict[str, Any]:
         raise RequestRejectedError("kind 'code_request.dispatch' needs a repo")
     if not req.prompt.strip() and not (t.ref or "").strip():
         raise RequestRejectedError("kind 'code_request.dispatch' needs a prompt or a ref")
+    unknown = sorted(set(req.standards or []) - set(STANDARDS_INJECTION))
+    if unknown:
+        raise RequestRejectedError(f"kind 'code_request.dispatch' has unknown standards: {', '.join(unknown)}")
     params = {
         "repo": t.repo,
         "ref": t.ref,
@@ -225,8 +233,12 @@ def _code_request_dispatch_params(req: WorkRequest) -> dict[str, Any]:
         "model": req.model,
         "profile_id": req.profile_id,
         "prompt": req.prompt,
+        "effort": req.effort,
+        "standards": req.standards,
+        "budget": req.budget,
     }
-    return {k: v for k, v in params.items() if v not in (None, "")}
+    # An explicit empty standards list means "none", so it is kept (#1501).
+    return {k: v for k, v in params.items() if v not in (None, "") or k == "standards" and v is not None}
 
 
 def _assessment_run_params(req: WorkRequest) -> dict[str, Any]:

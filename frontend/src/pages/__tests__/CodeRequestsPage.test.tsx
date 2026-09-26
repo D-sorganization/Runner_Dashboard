@@ -71,7 +71,8 @@ function mockCodeRequestFetch() {
           ref: "main",
         },
         provider: "codex",
-        prompt: "Use TDD.\n\nMake it native",
+        // Prompt notes are prepended server-side (build_full_prompt), not here too (#1501).
+        prompt: "Make it native",
       });
       return Promise.resolve(jsonResponse({ state: "executed", run_id: "run-cr-01" }));
     }
@@ -140,10 +141,12 @@ describe("CodeRequestsPage", () => {
         expect.anything(),
       ),
     );
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === "/api/v1/staff/requests");
+    expect(JSON.parse(String(call?.[1]?.body)).prompt).toBe("Make it native");
   });
 
-  it("injects engineering standards into the request body prompt", async () => {
-    let capturedBody: { kind?: string; prompt?: string } | undefined;
+  it("sends the selected standards for the backend to inject", async () => {
+    let capturedBody: { kind?: string; prompt?: string; standards?: string[] } | undefined;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/repos") return Promise.resolve(jsonResponse({ repos: ["Runner_Dashboard"] }));
@@ -173,10 +176,9 @@ describe("CodeRequestsPage", () => {
 
     await waitFor(() => expect(capturedBody).toBeDefined());
     expect(capturedBody.kind).toBe("code_request.dispatch");
-    expect(capturedBody.prompt).toContain("Refactor architecture");
-    expect(capturedBody.prompt).toContain("## Engineering Standards");
-    expect(capturedBody.prompt).toContain("[TDD]");
-    expect(capturedBody.prompt).toContain("[DBC]");
+    // The backend injects the standards text (one copy, shared with the legacy route); the client only names them.
+    expect(capturedBody.prompt).toBe("Refactor architecture");
+    expect(capturedBody.standards).toEqual(["tdd", "dbc"]);
   });
 
   it("surfaces classified error and keeps user input when dispatch fails", async () => {

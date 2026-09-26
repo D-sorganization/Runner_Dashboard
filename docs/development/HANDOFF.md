@@ -4,29 +4,28 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1501`; branch `agy/issue-1501`; Issue #1501; DL-#1501.
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1501`; PR #1560; Issue #1501; DL-#1501. First cut by antigravity, backend half by claude.
 
 ## Objective and Status
 
-- Scope:
-  1. Migrated the three remaining single-purpose dispatch buttons to the unified work-request API (`POST /api/v1/staff/requests` via `submitStaffRequest`):
-     - Code Requests (`CodeRequestsPage.tsx`, `CodeRequests.tsx`): kind `code_request.dispatch`, keeping branch/ref, provider, model, `standards[]` injected into prompt under `## Engineering Standards`, `profile_id`, effort, budget, and templates.
-     - Assessments (`AssessmentsPage.tsx`, `Assessments.tsx`): kind `assessment.run` with target `{ repo: payload.repository, ref: "" }` and provider.
-     - Projects "Run steward" (`ProjectsPage.tsx`): kind `staff.dispatch`, role `project-steward`, target `{ repo, ref: "" }`, prompt and machine from `STEWARD_RUN_BODY`.
-  2. Legacy endpoints (`/api/code-requests/dispatch`, `/api/assessments/dispatch`, etc.) remain intact for backwards compatibility until SC-G5-6.
-  3. Preserved user inputs on failure and surfaced classified error alerts (`role="alert"`).
-  4. Adhered strictly to file size caps (all touched and created files $\le 450$ lines, strictly below the 500-line soft cap).
-- Validation:
-  - Vitest: 4 test files passed (`AssessmentsPage.test.tsx`, `Projects.test.tsx`, `CodeRequestsPage.test.tsx`, `CodeRequests.test.tsx`), 38/38 passed.
-  - TypeScript: `npx tsc -p tsconfig.app.json --noEmit` clean (0 errors).
-  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
-  - Backend: `pytest tests/api/test_staff_requests_kinds.py` 13 passed, 0 failures.
+- The three remaining single-purpose dispatch buttons go through `POST /api/v1/staff/requests`:
+  - Assessments: kind `assessment.run`. Projects "Run steward": kind `staff.dispatch`, role `project-steward`.
+  - Code Requests: kind `code_request.dispatch`. The first cut built the standards text client-side (a second copy of `STANDARDS_INJECTION`) and the request kind skipped profile defaults, prompt notes, effort, budget and the history entry. Now:
+    1. `backend/code_requests/dispatch_service.py` is the one dispatch core: `resolve_dispatch` (explicit settings win, else the profile), `load_prompt_notes`, `build_full_prompt`, the workflow trigger, and the history entry (not recorded on 422/429). `HISTORY_LOCK` serialises every writer.
+    2. `POST /api/code-requests/dispatch` and the request kind both call `run_code_dispatch`, so both land in the same Code Requests history.
+    3. `WorkRequest` carries `effort`, `standards` and `budget`. An unknown standard is rejected (422). A dry run returns the resolved settings.
+    4. The Console sends the typed prompt and `standards[]`. It no longer prepends prompt notes (the server already did, so they were sent twice) or builds the standards text.
+- Legacy endpoints stay until SC-G5-6.
+
+## Validation
+
+- pytest (WSL venv): `tests/api tests/code_requests tests/unit -k "code or request or feature or profile or staff_actions or openapi or contract"`: 258 passed, 1 skipped. New: `tests/code_requests/test_dispatch_service.py` and three kind tests in `tests/api/test_staff_requests_kinds.py`.
+- vitest `frontend/src/pages`: 735 passed. `tsc -p tsconfig.app.json` and eslint clean. ruff check and format clean; mypy reports nothing in the touched modules.
+- API client regenerated (`WorkRequest` gains `effort`, `standards`, `budget`).
 
 ## Next Steps
 
-1. Push branch `agy/issue-1501` to `origin`.
-2. Open draft PR with `gh pr create --draft -R D-sorganization/Runner_Dashboard --base main --head agy/issue-1501`.
-3. Frontier agent review and merge.
+1. Mark PR #1560 ready and arm auto-merge; then dispatch #1504.
 
 ---
 

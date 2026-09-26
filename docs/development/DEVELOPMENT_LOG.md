@@ -21,14 +21,15 @@ reachable from any live state and `abandoned` from `parked`.
 ### DL-#1501 · SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API
 
 - **State:** in_review
-- **Owner:** antigravity
+- **Owner:** claude (first cut antigravity)
 - **Issue:** #1501
 - **Branch:** `agy/issue-1501`
-- **Paths:** `frontend/src/pages/Assessments.tsx`, `frontend/src/pages/AssessmentsPage.tsx`, `frontend/src/pages/CodeRequests.tsx`, `frontend/src/pages/CodeRequestsPage.tsx`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/codeRequestsTypes.ts`, `frontend/src/pages/__tests__/AssessmentsPage.test.tsx`, `frontend/src/pages/__tests__/CodeRequestsPage.test.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **PR:** #1560
+- **Paths:** `backend/code_requests/dispatch_service.py`, `backend/routers/code_requests.py`, `backend/staff/work_requests.py`, `backend/staff/work_request_dispatch.py`, `backend/staff/work_request_executors.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `frontend/src/pages/Assessments.tsx`, `frontend/src/pages/AssessmentsPage.tsx`, `frontend/src/pages/CodeRequests.tsx`, `frontend/src/pages/CodeRequestsPage.tsx`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/codeRequestsTypes.ts`, `frontend/src/pages/__tests__/`, `tests/code_requests/test_dispatch_service.py`, `tests/api/test_staff_requests_kinds.py`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (vitest 4 suites, 38 passed; tsc --noEmit clean; eslint clean; backend test_staff_requests_kinds.py 13 passed; all touched files <= 450 lines)
-- **Summary:** Migrated the three remaining single-purpose dispatch buttons to the unified work-request API (`POST /api/v1/staff/requests` via `submitStaffRequest`). Code Requests dispatches kind `code_request.dispatch` retaining branch/ref, provider, model, `standards[]` injected under `## Engineering Standards`, `profile_id`, effort, budget, and templates. Assessments dispatches kind `assessment.run` with target repo and provider. Projects steward dispatches kind `staff.dispatch` with role `project-steward`, target repo, and `STEWARD_RUN_BODY` prompt and machine. User input is preserved on failure and classified errors are rendered visibly.
-- **Next step:** Push branch, open draft PR referencing Fixes #1501, and frontier agent review.
+- **Last verified:** 2026-09-25 (backend 258 passed; vitest pages 735 passed; tsc, eslint, ruff clean; API client regenerated)
+- **Summary:** Code Requests, Assessments and the Projects steward dispatch through `POST /api/v1/staff/requests`. Code-request dispatch has one server-side core (`code_requests/dispatch_service.py`) shared by the legacy route and the request kind: profile defaults, prompt notes, standards injection and the history entry. The Console sends the typed prompt and `standards[]`.
+- **Next step:** Merge PR #1560.
 
 ### DL-#1547 · Chat proposals render as ActionCards with approve, run card, needs-input and cancel
 

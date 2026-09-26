@@ -91,17 +91,14 @@ export function CodeRequestsTab({
   function doDispatch(): void {
     if (!selRepo || !promptText.trim()) return;
     setDispatchStatus("dispatching");
-    let finalPrompt = promptText;
-    if (promptNotes.enabled && promptNotes.notes.trim()) {
-      finalPrompt = promptNotes.notes + "\n\n" + promptText;
-    }
     const activeProvider = selProvider || (registry?.providers[0]?.dashboardId || "codex");
     const dispatchFn = onDispatch ?? ((p) => submitStaffRequest(buildCodeRequest(p)));
     dispatchFn({
       repository: selRepo,
       branch: selBranch,
       provider: activeProvider,
-      prompt: finalPrompt,
+      // Prompt notes and standards are applied server-side (#1501).
+      prompt: promptText,
       standards: Object.keys(selStds).filter((k) => selStds[k]),
       profile_id: selProfileId || undefined,
     })

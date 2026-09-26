@@ -54,7 +54,6 @@ export interface CodeDispatchPayload {
 }
 export type FeatureDispatchPayload = CodeDispatchPayload;
 
-
 export interface CodeRequestsProps {
   repos?: CodeRepo[];
   requests?: CodeRequestRecord[];
@@ -72,26 +71,8 @@ export type FeatureRequestsProps = CodeRequestsProps;
 
 export const ALL_STANDARDS = ["tdd", "dbc", "dry", "lod", "security", "docs"];
 
-export const STANDARDS_DESCRIPTIONS: Record<string, string> = {
-  tdd: "Follow Test-Driven Development (TDD): write a failing test first, run it to verify failure, make it pass, then refactor.",
-  dbc: "Follow Design by Contract (DbC): validate preconditions at public boundaries, assert invariants, and document postconditions.",
-  dry: "Follow Don't Repeat Yourself (DRY): reuse existing helpers and libraries; do not copy-paste code blocks.",
-  lod: "Follow Law of Demeter (LoD): talk only to immediate collaborators; do not chain calls through deep object graphs.",
-  security: "Enforce strict security: sanitize all user input, prevent SQL/shell injection, never hardcode credentials.",
-  docs: "Keep documentation in sync: update relevant markdown docs, docstrings, and architectural diagrams.",
-};
-
+/** The standards text is injected server-side, once, for both dispatch paths (#1501). */
 export function buildCodeRequest(payload: CodeDispatchPayload): WorkRequest {
-  let prompt = payload.prompt;
-  if (payload.standards && payload.standards.length > 0) {
-    const injected = payload.standards
-      .map((s) => {
-        const desc = STANDARDS_DESCRIPTIONS[s.toLowerCase()] || s;
-        return `[${s.toUpperCase()}] ${desc}`;
-      })
-      .join("\n\n");
-    prompt = `${prompt}\n\n## Engineering Standards\n${injected}`;
-  }
   return {
     kind: "code_request.dispatch",
     target: {
@@ -101,7 +82,8 @@ export function buildCodeRequest(payload: CodeDispatchPayload): WorkRequest {
     provider: payload.provider || null,
     model: payload.model || null,
     profile_id: payload.profile_id || null,
-    prompt,
+    prompt: payload.prompt,
+    standards: payload.standards,
     machine: "local",
     dry_run: false,
   };
