@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover
 
 from fleet_events import EventStore, FleetEvent, get_event_store
 from staff import lease as lease_mod
-from staff import verification, workspace
+from staff import workspace
 from staff.audit import record_audit
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.runner import StaffRunner
@@ -284,9 +284,4 @@ def reconcile_orphaned_runs(
 
     if reconciled_ids:
         log.info("Reconciled %d orphaned staff runs: %s", len(reconciled_ids), reconciled_ids)
-    # Runs that finished while nobody checked their PR are verified now (#1516).
-    try:
-        verification.recheck_runs(store, machine=runner.machine, opens_pr=runner.opens_pr)
-    except Exception:  # noqa: BLE001
-        log.warning("Failed to verify finished staff runs on reconcile", exc_info=True)
     return reconciled_ids

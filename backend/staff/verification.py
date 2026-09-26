@@ -21,6 +21,7 @@ import subprocess
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import quote
 
@@ -146,28 +147,36 @@ def verify_and_record(
     store: RunStore,
     run_id: str,
     *,
-    opens_pr: bool,
+    opens_pr: bool | Callable[[], bool],
     probe: PrProbe | None = None,
     mode: str | None = None,
     now: datetime | None = None,
 ) -> Verdict | None:
     """Verify one finished run and persist the verdict with a ``verify`` event.
 
-    Returns None in ``off`` mode or for an unknown run. Never raises: an unexpected
-    error is recorded as ``unverified`` so the runner's finish path is never affected.
+    Returns None in ``off`` mode, for an unknown run, or on unexpected error.
+    Never raises: an unexpected error in evaluation, resolution, or store persistence
+    is caught and logged, so the runner's finish path is never affected.
+
+    Postcondition: this function never raises an exception.
     """
-    mode = mode or verify_mode()
-    rec = store.get_run(run_id)
-    if mode == "off" or rec is None:
-        return None
     try:
-        verdict = evaluate(rec, opens_pr=opens_pr, probe=probe or GhCliPrProbe(), now=now or datetime.now(UTC))
-    except Exception as exc:  # noqa: BLE001 - verification must never break a run
-        log.exception("verification of run %s failed", run_id)
-        verdict = Verdict("unverified", f"verification error: {exc}")
-    store.update_run(run_id, **updates_for(rec, verdict, mode))
-    store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
-    return verdict
+        mode = mode or verify_mode()
+        rec = store.get_run(run_id)
+        if mode == "off" or rec is None:
+            return None
+        try:
+            is_opens_pr = opens_pr() if callable(opens_pr) else bool(opens_pr)
+            verdict = evaluate(rec, opens_pr=is_opens_pr, probe=probe or GhCliPrProbe(), now=now or datetime.now(UTC))
+        except Exception as exc:  # noqa: BLE001 - verification must never break a run
+            log.exception("verification of run %s failed", run_id)
+            verdict = Verdict("unverified", f"verification error: {exc}")
+        store.update_run(run_id, **updates_for(rec, verdict, mode))
+        store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
+        return verdict
+    except Exception:  # noqa: BLE001 - verification must never break a run
+        log.warning("verify_and_record failed for run %s", run_id, exc_info=True)
+        return None
 
 
 def recheck_runs(
@@ -192,7 +201,7 @@ def recheck_runs(
     probe = probe or GhCliPrProbe()
     runs = store.runs_awaiting_verification(machine=machine, since=since, limit=RECHECK_BATCH)
     for rec in runs:
-        verify_and_record(store, rec.id, opens_pr=opens_pr(rec.role), probe=probe, mode=mode, now=now)
+        verify_and_record(store, rec.id, opens_pr=partial(opens_pr, rec.role), probe=probe, mode=mode, now=now)
     return [rec.id for rec in runs]
 
 
