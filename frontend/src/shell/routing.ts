@@ -118,8 +118,15 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   return table;
 })();
 
-/** Retired pages whose old addresses land on the Staff Console (#1338). */
-const RETIRED_TO_STAFF_CONSOLE = new Set(["/staff/cline-launcher", "/cline-launcher", "/t/cline-launcher"]);
+/** Retired pages whose old addresses land on the Staff Console (#1338, #1499). */
+const RETIRED_TO_STAFF_CONSOLE = new Set([
+  "/staff/cline-launcher",
+  "/cline-launcher",
+  "/t/cline-launcher",
+  "/work/agent-dispatch",
+  "/agent-dispatch",
+  "/t/agent-dispatch",
+]);
 
 /**
  * Determine if a pathname is an old tab route (/t/<tabId>), and return

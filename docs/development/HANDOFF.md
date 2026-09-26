@@ -25,7 +25,239 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — SC-G5-2: One Advanced dispatch form (#1498)
+# Current handoff — SC-G5-3: Remediation context buttons open a prefilled request (#1499)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1499`; branch `feat/1499-remediation-context-request`; Issue #1499; DL-#1499; PR #1539.
+
+## Objective and Status
+
+- Scope:
+  1. Replaced remediation dispatch code on run surfaces (`RemediationPage.tsx`, `RemediationTab.tsx`, `Remediation/Mobile.tsx`, `ActionSheet.tsx`) with a "Fix this failed run" context button that opens the Staff Console composer (or Advanced form on desktop) prefilled with kind `ci.remediate`, the target repo, run_id, workflow name, branch, and log excerpt.
+  2. Converted mobile FAB (`shell/MobileShell.tsx`) to **Ask**, opening the composer sheet (`shell/AskSheet.tsx`) targeting kind `staff.dispatch`.
+  3. Preserved provider and model options across run remediation flows and track the in-flight work item ID via `InFlightTile.tsx`.
+  4. Retired `AgentDispatch.tsx`, its routes and navigation items (`shell/navRegistryData.ts`, `shell/routing.ts`, `shell/RoutedShell.tsx`), with redirects to `/`. Deleted `AgentDispatch.tsx` and its test suites.
+- Validation:
+  - Frontend Vitest: all suites passed.
+  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
+  - Typecheck: `npm run typecheck` clean.
+  - Python tests: `tests/test_retired_agent_dispatch.py`, `tests/frontend/test_badge_pill_primitives.py`, `tests/frontend/test_skeleton.py`, `tests/test_frontend_integrity.py` passed.
+  - Ruff: clean check and format.
+  - Mypy: `mypy backend` clean across 279 source files.
+  - Line count cap: every non-legacy touched file strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `feat/1499-remediation-context-request` to `origin`.
+2. Monitor PR #1539 until auto-merge completes.
+3. Release lease for #1499 via `scripts.release_agent_lease`.
+4. Clean up worktree and local/remote branch.
+
+---
+
+# Past handoff — Board consensus reports the seats' positions (#1540)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1540-board-consensus`; PR #1541; DL-#1540; Issue #1540.
+
+## Objective and Status
+
+- `backend/staff/groups.py`: `collate_consensus` used to return "consensus leans toward approving" for every turn, even when no seat answered. It now uses `_positions_md`, which lists each answering seat's position, or "No quorum" when none answered.
+- `_board_proposal` is built only when a seat answered. Its params are `title` and `proposal` (the question plus the positions); the fixed `target_repos`/`urgency`/`estimated_cost` are gone. `execute_board_propose` only ever read `title` and `proposal`.
+- The summary heading is now `### Board Deliberation`. The SC-D7 card (#1342) strips the `<details>` seat block and renders seats from `meta.seat_replies`, so it is unaffected.
+
+---
+
+# Past handoff — SC-D7: Board group thread UI (#1342)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1342`; PR #1537; DL-#1342; Issue #1342 (SC-D, epic #1350).
+
+## Objective and Status
+
+- Antigravity drafted this (`GroupThread.tsx`, a hardcoded seat price table, inline colours). Claude rewrote it on top of the existing Thread, Composer and ProposalForm. The draft is kept locally as branch `agy-1342-draft-backup` in the `agy-1342` worktree.
+- `groupTurn.ts` (pure): `isGroupThread`/`groupIdOf` mirror the backend's `is_group_thread`. `parseGroupTurn` reads `meta.seat_replies` and drops malformed entries; `consensusMarkdown` and `proposalPrefill` (evidence only) complete the module.
+- `GroupDeliberationCard` is rendered by `MessageItem` for finished group turns; the pending placeholder falls through to the bubble.
+- `useGroupCostGuard` is composed into `useStaffConsole` (`sc.costGuard`). `GroupCostConfirm` renders above the Composer on desktop and mobile.
+- Composer: a send that resolves `{ ok: false }` now fails visibly and keeps the draft. Before, the draft was cleared.
+- `staffApi.errorMessage`: an object `detail` reports its `message`.
+- Filed #1540: the backend `collate_consensus` returns canned approval text, and its auto `board.propose` is unreachable from the UI.
+
+## Validation
+
+- vitest `pages/StaffConsole/__tests__`, `StaffConsole/cards` and `pages/__tests__`: 67 files, 523 passed.
+- `tsc -p tsconfig.app.json` and eslint on the changed files are clean.
+- `tests/frontend`, `test_frontend_integrity.py`, `test_staff_console_design_spec.py`, `test_frontend_perf_budget.py`: 186 passed, 1 xfailed.
+
+---
+
+---
+
+# Past handoff — SC-G7: retire the Classic layout and legacy/App.tsx (#1345)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1345-remove-legacy-layout`; PR not created yet; DL-#1345; Issue #1345 (SC-G, epic #1353).
+
+## Objective and Status
+
+- Deleted `frontend/src/legacy/` (`App.tsx`, `RecoveryDialog`, `visibleInterval`). Moved `sessionExpired.ts`, `fetchGuards.ts` (`installLegacyFetchGuards` → `installFetchGuards`) and `wheelValueGuard.ts` to `lib/`, and `SessionExpiredDialog.tsx` to `shell/` with a new `SessionExpiredHost`.
+- `main.tsx` installs the fetch and wheel guards; `RoutedShell` mounts `SessionExpiredHost` and calls `retireLegacyLayoutPreference()` once, showing a toast when a Classic preference was stored. Before this, those only ran under the Classic layout.
+- Mobile tabs without a mobile page render `nativeDesktopTabContent(tab)` inside an error boundary; the Classic layout action is gone from `buildShellActions`.
+- Static pytest guards that grepped `legacy/App.tsx` were retargeted or removed (the two-row legacy header, legacy polling and the legacy duplicate-function guard went with the file); a new guard asserts nothing imports `legacy/`.
+
+## Validation
+
+- vitest 159 files / 1355 passed (new: every mobile nav entry renders non-empty content; Classic preference dropped with a notice; `SessionExpiredHost`).
+- `tests/frontend`, `test_frontend_integrity.py`, `test_today_ui_redesign.py`, `test_no_duplicate_top_level_functions.py`, `test_ci_config.py`, `test_frontend_perf_budget.py`: 222 passed.
+- `tsc` and eslint clean; `npm run build` total JS 1,112,452 → 1,007,689 bytes (entry chunk +0.5 kB for the guards).
+
+---
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1499`; branch `feat/1499-remediation-context-request`; Issue #1499; DL-#1499.
+
+## Objective and Status
+
+- Scope:
+  1. Replaced remediation dispatch code on run surfaces (`RemediationPage.tsx`, `RemediationTab.tsx`, `Remediation/Mobile.tsx`, `ActionSheet.tsx`) with a "Fix this failed run" context button that opens the Staff Console composer (or Advanced form on desktop) prefilled with kind `ci.remediate`, the target repo, run_id, workflow name, branch, and log excerpt.
+  2. Converted mobile FAB (`shell/MobileShell.tsx`) to **Ask**, opening the composer sheet (`shell/AskSheet.tsx`) targeting kind `staff.dispatch`.
+  3. Preserved provider and model options across run remediation flows and track the in-flight work item ID via `InFlightTile.tsx`.
+  4. Retired `AgentDispatch.tsx`, its routes and navigation items (`shell/navRegistryData.ts`, `shell/routing.ts`, `shell/RoutedShell.tsx`, `legacy/App.tsx`), with redirects to `/`. Deleted `AgentDispatch.tsx` and its test suites.
+- Validation:
+  - Frontend Vitest: all suites passed (149 passed across all touched modules).
+  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
+  - Typecheck: `npm run typecheck` clean.
+  - Python tests: `tests/test_retired_agent_dispatch.py`, `tests/frontend/test_badge_pill_primitives.py`, `tests/frontend/test_skeleton.py` 39/39 passed.
+  - Ruff: clean check and format.
+  - Mypy: `mypy backend` clean across 279 source files.
+  - Line count cap: every non-legacy touched file strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `feat/1499-remediation-context-request` to `origin`.
+2. Open PR with `Fixes #1499`, label `agent:antigravity`, and 9-field parity checklist in body.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until merged.
+5. Release lease for #1499 via `scripts.release_agent_lease`.
+6. Clean up worktree and local/remote branch.
+
+---
+
+# Past handoff — SC-G5-1 Slice B: Remaining work-request kinds (#1497)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1497-work-request-kinds`; Issue #1497; DL-#1497.
+
+## Objective and Status
+
+- Added remaining request kinds to `POST /api/v1/staff/requests`:
+  1. `ci.remediate`: Registered executor `execute_ci_remediate` calling `agent_remediation` workflow via gh api with `remediation.dispatch` scope and HIGH risk.
+  2. `issue.act` / `pr.act`: Registered executors calling `agent_dispatch_router` workflow with `workflows.dispatch` scope and MEDIUM risk.
+  3. `code_request.dispatch`: Registered executor calling `code_request_dispatch` workflow with `code_requests.write` scope and MEDIUM risk.
+  4. `assessment.run`: Registered executor calling `assessment_run` workflow with `assessments.dispatch` scope and LOW risk.
+  5. Parameter builders in `backend/staff/work_requests.py` strictly validate per-kind target constraints (forbidding illegal fields).
+  6. Dry-run previews return the resolved plan without executing or recording anything in stores.
+  7. Real execution links the Work Item to the dispatched workflow run.
+  8. Unprivileged callers receive 202 `approval_required` based on action risk classification.
+  9. Frontend `AdvancedDispatchForm.tsx` and `requestKinds.ts` updated to support all 6 kinds, omitting `role` when the kind does not accept a role.
+- Validation:
+  - Pytest: `tests/api/test_staff_requests_kinds.py` + `tests/api/test_staff_requests_api.py` 24/24 passed.
+  - Ruff check & format clean on modified files.
+  - Mypy: `mypy backend` clean across 278 files.
+  - Line count limits: all touched files strictly $\le 500$ lines.
+
+---
+
+# Past handoff — WP-1.1: post-run verification of staff runs (#1516)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1516-run-verification`; DL-#1516; Issue #1516 (Phase 1 of #1463).
+
+## Objective and Status
+
+- New `backend/staff/verification.py`: pure `decide` (claimed status × `open_pr` × PR × head CI), `ci_state` over check runs (`cancelled`/`stale` ignored as superseded), `evaluate` (GitHub error → `unverified`; CI pending past 6 h → `failed`), `updates_for` (only `enforce` changes a succeeded run to `failed`/`unverified_output`), `verify_and_record` (never raises; writes the fields and a `verify` event), `recheck_runs` (this node, last 24 h, 20 per pass) and `GhCliPrProbe` (sync `gh api`, because the runner's plain worker threads cannot reach the loop-bound `gh_client`).
+- Wired into `StaffRunner` after `classify_execution_result`/`finalize_cost`; the status passed to `handle_run_status_change` is re-read so enforce mode is reflected. `StaffScheduler._loop` calls `recheck_verification()` at most every 5 min; `reconcile_orphaned_runs` rechecks at startup. `RoleSpec.opens_pr` reads `permissions.open_pr`.
+- `verify_staff_dispatch` now reports the run's verification and fails on a `failed` verdict.
+- Run detail shows the verdict, reason and PR link. `tests/conftest.py` defaults `STAFF_VERIFY_MODE=off` so ordinary runner tests never shell out to `gh`.
+
+- Consolidation (#1521 + #1528 + #1516): the #1521 `_hermetic_staff_workspace` fixture blanked `repos_roots()` even when a test set `STAFF_REPOS_ROOT`, which broke `test_refresh_all_packs` and `test_build_knowledge_turn_block_stale_pack` (added on main after #1521 was branched). It now honours a test's own `STAFF_REPOS_ROOT` and still never the developer defaults. `tests/knowledge/test_knowledge_pack_drift.py` fails on main too (needs the pinned Tools checkout) and is out of scope.
+
+## Next Steps
+
+1. Merge, then run report mode on one node and show the owner verdicts on real runs (the issue's last acceptance item).
+2. The owner decides when to set `STAFF_VERIFY_MODE=enforce`.
+
+---
+
+# Past handoff — Tests never hold a real GitHub credential (#1528)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1528-hermetic-github-creds`; DL-#1528; Issue #1528.
+
+## Objective and Status
+
+- Running the suite with the developer's `GH_TOKEN` or `gh auth` login visible filed real issues (#1437–#1440, #1452–#1457, since closed as not planned). `gh_utils.gh_api_write` uses the httpx client (token or GitHub App env) and falls back to the `gh` CLI; the unit-lane network guard patches neither.
+- `tests/unit/test_github_test_isolation.py` (RED first): no credential env var is visible, `gh_client._get_token()` raises `GhAuthError`, `GH_CONFIG_DIR` is an empty per-test dir, and a test can still opt into a fake token.
+- `tests/conftest.py::_no_real_github_credentials` (autouse) removes the credential env, sets `GH_CONFIG_DIR` under `tmp_path` and clears `gh_client`'s cached token.
+- The sibling fix for local worktrees is #1521 (PR #1524).
+
+## Next Steps
+
+1. Merge. No production code changes.
+
+---
+
+# Past handoff — Make staff tests hermetic: no real worktrees or gh (#1521)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1521-hermetic-staff-tests`; DL-#1521; Issue #1521.
+
+## Objective and Status
+
+- Fix `backend/staff/workspace.py::repos_roots()` leaking real developer checkouts into the staff test suite (Issue #1521):
+  - `repos_roots()` always appended `~/Repositories`, `~/actions-runners/repos` and `/mnt/c/Users/$USERNAME/Repositories` after any configured `STAFF_REPOS_ROOT`, so staff tests that submitted a run did real `git worktree add` and spawned real `gh` against a developer's real checkouts.
+  - Added `tests/unit/test_staff_test_isolation.py` (RED first) asserting `staff.workspace.repos_roots()` returns `[]` and `staff_worktrees_root()` resolves under `tmp_path` inside the test session, plus a DbC regression test that `add_worktree()` raises `AssertionError` for a target outside `tmp_path`.
+  - Added one new autouse fixture `_hermetic_staff_workspace` in `tests/conftest.py`: monkeypatches `staff.workspace.repos_roots` to return `[]`, sets `STAFF_WORKTREES_ROOT`/`STAFF_RM_ROOT` to `tmp_path` subdirectories, and wraps `staff.workspace.add_worktree` with a guard that raises `AssertionError` if the target worktree path resolves outside `tmp_path` — unless a test replaces `add_worktree` itself (several already do).
+  - The fixture also patches `staff.knowledge_refresh.repos_roots`, which imports the name directly and so escapes a module-attribute patch; a test covers that binding.
+  - Did **not** change `repos_roots()` production semantics (the prepend-vs-replace question for `STAFF_REPOS_ROOT` is called out as the owner's call in the PR body, per the issue's "Optional, owner's call" note).
+  - Verification: `tests/staff`, `tests/api/test_staff*.py`, `tests/unit/test_staff*.py` all pass under WSL with `HOME`/`USERNAME` isolated; no new `_staff_worktrees/*` or `staff/*` branches created in any real checkout.
+
+## Next Steps
+
+1. Owner review: decide whether `STAFF_REPOS_ROOT` should *replace* the default roots instead of prepending to them in production.
+2. Address any CI feedback on the draft PR.
+3. Mark the PR ready for review and arm auto-merge once approved.
+
+---
+
+# Past handoff — SC-G5-2: One Advanced dispatch form (#1498)
 
 Last updated: 2026-09-25
 

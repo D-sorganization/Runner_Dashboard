@@ -60,7 +60,8 @@ export function ActionSheet({
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <TouchButton
-            aria-label={`Dispatch ${getProviderLabel(providers, recommendedProviderId)} for ${itemTitle}`}
+            aria-label={`Fix this failed run with ${getProviderLabel(providers, recommendedProviderId)}`}
+            data-testid="fix-failed-run"
             disabled={
               dispatching || !availability[recommendedProviderId]?.available
             }
@@ -69,8 +70,8 @@ export function ActionSheet({
             style={{ width: "100%", minHeight: 48, fontSize: 15 }}
           >
             {dispatching
-              ? "Dispatching..."
-              : `Dispatch ${getProviderLabel(providers, recommendedProviderId)}`}
+              ? "Fixing failed run..."
+              : `Fix this failed run (${getProviderLabel(providers, recommendedProviderId)})`}
           </TouchButton>
 
           <TouchButton

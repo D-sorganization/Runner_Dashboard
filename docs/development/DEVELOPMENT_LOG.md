@@ -31,6 +31,79 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Dispatch #1516 (WP-1.1, `tier:strong`), the first Phase 1 package; #1517 and #1518 follow it.
 
+### DL-#1499 · SC-G5-3: Remediation context buttons open a prefilled request: failed runs, mobile, FAB becomes Ask
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1499
+- **Branch:** `feat/1499-remediation-context-request`
+- **Paths:** `frontend/src/pages/Remediation/remediationPrefill.ts`, `frontend/src/pages/Remediation/Mobile.tsx`, `frontend/src/pages/Remediation/ActionSheet.tsx`, `frontend/src/pages/Remediation/InFlightTile.tsx`, `frontend/src/pages/RemediationPage.tsx`, `frontend/src/pages/RemediationTab.tsx`, `frontend/src/shell/MobileShell.tsx`, `frontend/src/shell/AskSheet.tsx`, `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all Vitest suites passed; `npm run lint` clean; `npm run typecheck` clean; pytest passed; ruff check clean; mypy backend clean; all files <= 500 lines)
+- **Summary:** Replaced remediation dispatch code on run surfaces (`RemediationPage`, `RemediationTab`, `Remediation/Mobile`, `ActionSheet`) with "Fix this failed run" context button prefilling Staff Console composer / Advanced form with kind `ci.remediate`, target repo, run_id, branch, workflow name, and log excerpt. Converted mobile FAB (`MobileShell.tsx`) to Ask (`AskSheet.tsx`) submitting `staff.dispatch`. Preserved provider/model choices and track in-flight work item ID on `InFlightTile`. Retired `AgentDispatch.tsx`, its nav entry and routes, adding redirects to Staff Console (`/`).
+- **Next step:** Push branch, open PR referencing Fixes #1499 with 9-field parity checklist, arm auto-merge, verify CI passes.
+
+### DL-#1540 · Board consensus reports the seats' positions, not canned approval
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1540 (SC-B9 follow-up, epic #1354)
+- **Branch:** `fix/1540-board-consensus`
+- **PR:** #1541
+- **Paths:** `backend/staff/groups.py`, `tests/unit/test_staff_group_consensus.py`, `tests/unit/test_staff_groups.py`, `tests/api/test_staff_groups_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at a52a0702 plus this branch (`tests/staff`, group unit and API tests, `test_staff_actions.py`: 279 passed; ruff and mypy clean)
+- **Summary:** `collate_consensus` no longer asserts agreement. The summary lists each answering seat's position (one line, 240 chars) and keeps the full replies in the seat block. With no answers it reports no quorum and creates no proposal. `board.propose` params are the title, question and positions only; the executor never read the removed repo, urgency and cost fields.
+- **Next step:** Merge, then have the coordinator role write a real synthesis over the positions.
+
+### DL-#1342 · SC-D7: Board group thread UI
+
+- **State:** in_review
+- **Owner:** claude (reworked from an antigravity draft)
+- **Issue:** #1342 (SC-D, epic #1350)
+- **Branch:** `agy/issue-1342`
+- **PR:** #1537
+- **Paths:** `frontend/src/pages/StaffConsole/groupTurn.ts`, `frontend/src/pages/StaffConsole/GroupDeliberationCard.tsx`, `frontend/src/pages/StaffConsole/GroupCostConfirm.tsx`, `frontend/src/pages/StaffConsole/useGroupCostGuard.ts`, `frontend/src/pages/StaffConsole/groupTurn.css`, `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/Composer.tsx`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/StaffConsole/__tests__/`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 7dc5df00 plus this branch (vitest StaffConsole + pages 67 files / 523 passed; `tsc` and eslint clean; frontend static pytest 186 passed)
+- **Summary:** A finished group turn (`meta.is_group_turn` with `seat_replies`) renders as `GroupDeliberationCard`: coordinator summary without the duplicated seat block, collapsed seat replies, silent seats marked with their error, and a Board Proposal form (#1284) prefilled only with the seats' replies. `useGroupCostGuard` asks the backend for its estimate before a group send and holds the Composer's send until the user confirms or cancels. The backend guard stays authoritative. The backend summary itself is canned text (#1540).
+- **Next step:** Merge, then fix the canned Board consensus in #1540.
+### DL-#1516 · WP-1.1: post-run verification of staff runs (report mode)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1516
+- **Branch:** `feat/1516-run-verification`
+- **Paths:** `backend/staff/verification.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/roles.py`, `backend/staff/scheduler.py`, `backend/staff/reconcile.py`, `backend/staff/action_executors.py`, `backend/staff/models.py`, `frontend/src/pages/Staff/RunDetail.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/staff/test_run_verification.py`, `tests/api/test_staff_runner.py`, `tests/api/test_staff_dispatch_service.py`, `tests/conftest.py`, `frontend/src/pages/__tests__/StaffRunVerification.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/staff/test_run_verification.py` 74 passed, RED first; runner report/enforce end-to-end and dispatch-verifier tests pass; vitest RunDetail + Staff 18 passed; `tsc`, ruff and mypy clean)
+- **Summary:** A run that exits 0 with `STAFF_RESULT:` is no longer taken at its word: `verification.verify_and_record` checks the PR for its branch and head CI after the runner classifies the run, and records `verification`/`verification_detail`/`pr_number` beside the status. Kept out of the classifier so a GitHub outage can only leave a run `unverified`. Re-checks run from the scheduler loop and startup reconcile, bounded by a 24 h window and 20 runs per pass. `STAFF_VERIFY_MODE=report` is the default; `enforce` exists but stays off until the owner turns it on.
+- **Next step:** After merge, deploy to one node in report mode and let the owner review verdicts on real runs before enabling `enforce`.
+
+### DL-#1528 · Tests never hold a real GitHub credential
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1528
+- **Branch:** `fix/1528-hermetic-github-creds`
+- **Paths:** `tests/conftest.py`, `tests/unit/test_github_test_isolation.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/unit/test_github_test_isolation.py` RED 4/4 with `GH_TOKEN` in the parent env, then GREEN; full suite run with a fake parent `GH_TOKEN`)
+- **Summary:** `gh_utils.gh_api_write` reaches GitHub through the httpx client (token or GitHub App env) or the `gh` CLI login; the unit-lane network guard covers neither, so code-request tests created real issues. One autouse fixture removes every credential env var, gives the `gh` CLI an empty `GH_CONFIG_DIR` and clears `gh_client`'s cached token. The junk issues were closed as not planned.
+- **Next step:** Merge.
+
+### DL-#1521 · Make staff tests hermetic: no real worktrees or gh
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1521
+- **Branch:** `fix/1521-hermetic-staff-tests`
+- **Paths:** `tests/conftest.py`, `tests/unit/test_staff_test_isolation.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (fixture now honours a test's own `STAFF_REPOS_ROOT`, so the knowledge-pack tests that build a tmp corpus pass; `tests/unit/test_staff_test_isolation.py` clean; `tests/staff tests/api/test_staff*.py tests/unit/test_staff*.py` pass under WSL with `HOME`/`USERNAME` isolated)
+- **Summary:** `staff.workspace.repos_roots()` always appended real developer checkout roots after any configured `STAFF_REPOS_ROOT`, so staff tests that submitted a run did real `git worktree add` / `gh` against real checkouts. Added one autouse fixture in `tests/conftest.py` that neutralizes `repos_roots()` to `[]`, isolates `STAFF_WORKTREES_ROOT`/`STAFF_RM_ROOT` under `tmp_path`, and guards `add_worktree()` with a DbC assertion against any target outside `tmp_path`. It also patches the `repos_roots` name that `staff.knowledge_refresh` imports directly.
+- **Next step:** Merge. The prepend-vs-replace question for `STAFF_REPOS_ROOT` in production stays with the owner; this PR changes tests only.
+
 ### DL-#1498 · SC-G5-2: One Advanced dispatch form
 
 - **State:** in_review
@@ -69,17 +142,17 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Eliminated SQLite database lock contention and test flakes across staff actions and stores: (1) Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` on all staff SQLite connections (`StaffAuditStore`, `ConversationStore`, `RunStore`, `IdempotencyStore`, `WorkItemStore`, maintenance `_vacuum_db`); (2) Reused conversation store's existing audit store instance across proposal state transitions and action context in `execute_proposal`; (3) Isolated `tests/unit/test_staff_actions.py` by resetting stores and runner and mocking background runner worker thread in `clean_env`.
 - **Next step:** None (shipped in PR #1470).
 
-### DL-#1497 · SC-G5-1 slice A: one work-request API (`staff.dispatch`)
+### DL-#1497 · SC-G5-1: Work-request API: every dispatch kind as a registered action with a work item
 
-- **State:** in_review
-- **Owner:** claude
+- **State:** in_progress
+- **Owner:** claude (slice A), antigravity (slice B)
 - **Issue:** #1497
-- **Branch:** `feat/1497-work-requests`
-- **Paths:** `backend/staff/work_requests.py`, `backend/routers/staff_requests.py`, `backend/server.py`, `backend/staff/action_executors.py`, `tests/api/test_staff_requests_api.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Branch:** `feat/1497-work-request-kinds`
+- **Paths:** `backend/staff/work_requests.py`, `backend/staff/work_request_executors.py`, `backend/staff/actions.py`, `tests/api/test_staff_requests_kinds.py`, `frontend/src/pages/Staff/requestKinds.ts`, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `frontend/src/pages/__tests__/AdvancedDispatchForm.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`tests/api/test_staff_requests_api.py` 14 passed; `tests/staff tests/api/test_staff*.py tests/unit/test_staff*.py` 701 passed under WSL with `HOME`/`USERNAME` isolated; ruff and mypy clean)
-- **Summary:** `POST /api/v1/staff/requests` validates per kind, records a user message, Work Item and ActionProposal on the caller's *Requests* thread and executes through the registry, so quota, forwarding and audit happen once in the shared dispatch service (#1487). Approval follows registry risk (#1485). A failed backend blocks the work item and returns the v1 error envelope (SC-F3) with the recorded ids in `error.request`, because the `/api/v1/staff` middleware rewrites any other error body. `execute_staff_dispatch` now forwards `work_item_id` and returns the dry-run `plan`.
-- **Next step:** Later slices add kinds `ci.remediate`, `issue.act`/`pr.act`, `code_request.dispatch` and `assessment.run`; each first needs its route logic lifted into a service the registered action can call.
+- **Last verified:** 2026-09-25 (`pytest tests/api/test_staff_requests_kinds.py tests/api/test_staff_requests_api.py` 24 passed; `ruff check .` clean; `ruff format --check` clean on touched files; `mypy backend` clean in 278 files; all files <= 500 lines)
+- **Summary:** Slice B adds all remaining request kinds (`ci.remediate`, `issue.act`, `pr.act`, `code_request.dispatch`, `assessment.run`) to `POST /api/v1/staff/requests`. Registered executors run through `ACTION_REGISTRY` with scoped permissions and risk classifications. Pydantic validation strictly enforces per-kind target and argument constraints (`extra=forbid`). Dry-run previews return the resolved plan without executing. Real execution links the work item to the dispatched workflow run. Frontend `AdvancedDispatchForm` and `requestKinds.ts` support all 6 kinds, omitting `role` when the kind does not take a role.
+- **Next step:** Push branch, open PR with `Fixes #1497`, arm auto-merge, watch CI, release lease.
 
 ### DL-#1489 · SC-B1-G6: Redact secrets everywhere conversations and runs persist
 
@@ -422,18 +495,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Folded stray chat surfaces into the Staff Console: (1) Updated `POST /api/assistant/chat` to return HTTP 410 Gone with successor Link header pointing to `/api/v1/staff/threads` and Sunset header; (2) Folded codebase Q&A into Cartographer and Librarian with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; (3) Added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; (4) Added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); (5) Added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`.
 - **Next step:** None (shipped in PR #1435).
 
-### DL-#1345 · SC-G7: Mobile Projects renders natively (first step of Classic-layout removal)
+### DL-#1345 · SC-G7: Retire the Classic layout and legacy/App.tsx
 
-- **State:** shipped
+- **State:** in_review
 - **Owner:** claude
 - **Issue:** #1345 (epic #1353)
-- **Branch:** `fix/1345-mobile-projects`
+- **Branch:** `feat/1345-remove-legacy-layout` (first step, mobile Projects, was `fix/1345-mobile-projects`)
 - **PR:** not created
-- **Paths:** `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
+- **Paths:** `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/layoutFlag.ts`, `frontend/src/shell/shellActions.ts`, `frontend/src/shell/SessionExpiredDialog.tsx`, `frontend/src/shell/index.ts`, `frontend/src/main.tsx`, `frontend/src/lib/fetchGuards.ts`, `frontend/src/lib/sessionExpired.ts`, `frontend/src/lib/wheelValueGuard.ts`, `frontend/src/lib/api.ts`, `frontend/src/shell/__tests__/`, `frontend/src/lib/__tests__/`, `tests/test_frontend_integrity.py`, `tests/test_today_ui_redesign.py`, `tests/test_no_duplicate_top_level_functions.py`, `tests/frontend/test_color_literal_budget.py`, `.eslintrc.json`, `vitest.config.ts`, `CLAUDE.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 at `10cd0136` baseline (RoutedShell/MobileShell/Projects vitest 69 passed; tsc clean)
-- **Summary:** The mobile drawer's Projects entry fell back to the legacy App, which has no projects case, so the page was blank. It now renders the native Projects page.
-- **Next step:** Remove the Classic layout once SC-D8/G2/G3 land.
+- **Last verified:** 2026-09-25 at 6f1fe99f plus this branch (vitest 159 files / 1355 passed; frontend static pytest 222 passed; `tsc` and eslint clean; `npm run build` total JS 1,112,452 → 1,007,689 bytes)
+- **Summary:** The mobile drawer's Projects entry fell back to the legacy App, which had no projects case (fixed first). Now `legacy/App.tsx`, `RecoveryDialog` and `visibleInterval` are deleted and nothing imports `legacy/`. Mobile tabs without a mobile page render the desktop page; the Classic layout action is gone and a stored `dashboard.layout` is removed with one notice. `sessionExpired`/`fetchGuards`/`wheelValueGuard` moved to `lib/` and the Session Expired dialog to `shell/`; `main.tsx` installs the guards and `RoutedShell` mounts `SessionExpiredHost`, because before this only the Classic layout did, so an expired session failed silently in the modern shell.
+- **Next step:** Merge, then run SC-G8 (#1346) to delete the modules this leaves unmounted (`AssistantSidebar`, `DashboardHelp`, `AlertsCenter`, `QuickDispatch`).
 
 ### DL-#1340 · SC-C7: Routing evaluation set and regression check for Barb
 

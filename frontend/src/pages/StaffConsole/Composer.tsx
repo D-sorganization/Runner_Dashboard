@@ -169,11 +169,15 @@ export const Composer: React.FC<ComposerProps> = ({
     setErrorMessage(null);
 
     try {
-      await onSendMessage({
+      const result = await onSendMessage({
         body: trimmed,
         idempotencyKey: key,
         role: selectedRole,
       });
+      // useStaffConsole reports failure as { ok: false } rather than throwing.
+      if (result && result.ok === false) {
+        throw new Error(typeof result.error === "string" ? result.error : "Failed to send message");
+      }
 
       // Successful send: clear draft and reset input
       clearDraft(threadId);

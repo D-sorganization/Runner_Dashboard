@@ -1,0 +1,82 @@
+/**
+ * groupTurn.css — Board turn card and cost confirmation (SC-D7, #1342).
+ * Colours come from design tokens only.
+ */
+
+.group-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.group-turn__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.group-turn__quorum {
+  font-weight: 600;
+}
+
+.group-turn__cost,
+.group-turn__seat-error {
+  color: var(--text-muted);
+}
+
+.group-turn__seats summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.group-turn__seats ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.group-turn__seat {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.group-turn__seat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: capitalize;
+}
+
+.group-turn__seat-text,
+.group-turn__seat-error {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.group-turn__actions,
+.group-cost-confirm__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.group-cost-confirm {
+  padding: 8px 12px;
+  border: 1px solid var(--accent-yellow);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.group-cost-confirm ul {
+  margin: 4px 0 8px;
+  padding-left: 16px;
+}

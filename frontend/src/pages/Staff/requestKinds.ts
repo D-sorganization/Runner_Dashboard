@@ -17,6 +17,11 @@ export interface RequestKindSpec {
 /** The request kinds the backend accepts (`staff.work_requests.REQUEST_KINDS`). */
 export const REQUEST_KINDS: readonly RequestKindSpec[] = [
   { id: "staff.dispatch", label: "Staff run (staff.dispatch)", fields: ["issue", "pr"] },
+  { id: "ci.remediate", label: "CI Remediation (ci.remediate)", fields: ["run_id"] },
+  { id: "issue.act", label: "Issue action (issue.act)", fields: ["issue"] },
+  { id: "pr.act", label: "PR action (pr.act)", fields: ["pr"] },
+  { id: "code_request.dispatch", label: "Code Request (code_request.dispatch)", fields: [] },
+  { id: "assessment.run", label: "Assessment (assessment.run)", fields: [] },
 ];
 
 export const FIELD_LABELS: Record<TargetField, string> = { issue: "Issue #", pr: "PR #", run_id: "Run ID" };

@@ -25,6 +25,7 @@ from staff.conversation_models import ActionProposalRecord
 from staff.conversations import get_conversation_store
 from staff.maintenance import register_maintenance_actions
 from staff.roles import RoleSpec, load_roles
+from staff.work_request_executors import register_work_request_actions
 
 if TYPE_CHECKING:
     from staff.audit import StaffAuditStore
@@ -465,3 +466,4 @@ def execute_proposal(
 
 register_standard_actions(ACTION_REGISTRY)
 register_maintenance_actions(ACTION_REGISTRY)
+register_work_request_actions(ACTION_REGISTRY)

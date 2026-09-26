@@ -18,7 +18,7 @@
 import React, { useState, ReactNode, useCallback, useEffect, useRef } from 'react'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { FloatingActionButton } from '../primitives/FloatingActionButton'
-import { AgentDispatchPage } from '../pages/AgentDispatch'
+import { AskSheet } from './AskSheet'
 import {
   mobilePrimaryItems,
   mobileDrawerItems,
@@ -80,28 +80,28 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [dispatchOpen, setDispatchOpen] = useState(false)
+  const [askOpen, setAskOpen] = useState(false)
   const [drawerAnnouncement, setDrawerAnnouncement] = useState('')
 
-  const openDispatch = useCallback(() => setDispatchOpen(true), [])
-  const closeDispatch = useCallback(() => setDispatchOpen(false), [])
+  const openAsk = useCallback(() => setAskOpen(true), [])
+  const closeAsk = useCallback(() => setAskOpen(false), [])
 
-  // Close dispatch sheet on Escape
+  // Close ask sheet on Escape
   useEffect(() => {
-    if (!dispatchOpen) return
+    if (!askOpen) return
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        closeDispatch()
+        closeAsk()
       }
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [dispatchOpen, closeDispatch])
+  }, [askOpen, closeAsk])
 
   // Determine whether to show the FAB.
-  // Visible on Fleet, Workflows, Remediation, Queue. Hidden on AgentDispatch itself.
-  const showDispatchFab = !dispatchOpen && FAB_TABS.has(currentTab)
+  // Visible on Fleet, Workflows, Remediation, Queue. Hidden on Staff itself.
+  const showAskFab = !askOpen && FAB_TABS.has(currentTab)
 
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({})
 
@@ -212,44 +212,20 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         </div>
       </nav>
 
-      {/* Floating Action Button — Quick dispatch agent */}
+      {/* Floating Action Button — Ask staff */}
       <FloatingActionButton
-        aria-label="Quick dispatch agent"
-        visible={showDispatchFab}
-        onClick={openDispatch}
-        data-testid="dispatch-fab"
+        aria-label="Ask"
+        visible={showAskFab}
+        onClick={openAsk}
+        data-testid="ask-fab"
       />
 
-      {/* Agent Dispatch Modal Sheet */}
-      {dispatchOpen && (
-        <div className="mobile-shell__sheet-overlay" onClick={closeDispatch} role="presentation">
-          <div
-            className="mobile-shell__sheet"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Agent dispatch"
-          >
-            <div className="mobile-shell__sheet-header">
-              <h2 className="mobile-shell__sheet-title">Quick Dispatch</h2>
-              <button
-                className="mobile-shell__sheet-close"
-                onClick={closeDispatch}
-                type="button"
-                aria-label="Close dispatch sheet"
-              >
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="mobile-shell__sheet-body">
-              <AgentDispatchPage />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Ask Modal Sheet */}
+      <AskSheet
+        isOpen={askOpen}
+        onClose={closeAsk}
+        onOpenStaffConsole={() => onTabChange('staff')}
+      />
 
       {/* Drawer for additional tabs */}
       {drawerOpen && (

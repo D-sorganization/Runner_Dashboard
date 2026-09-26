@@ -185,6 +185,23 @@ export function putHolds(body: { holds: Hold[] } | HoldsResponse, idempotencyKey
   });
 }
 
+/** `GET /groups/{id}/cost-estimate` (SC-B9): the backend's own per-seat spend estimate. */
+export interface GroupCostEstimate {
+  group_id: string;
+  total_cost_usd: number;
+  cost_per_seat: Record<string, number>;
+  exceeds_threshold: boolean;
+  threshold_usd: number;
+  warning?: string | null;
+}
+
+export function fetchGroupCostEstimate(groupId: string, prompt: string, signal?: AbortSignal): Promise<GroupCostEstimate> {
+  const qs = new URLSearchParams({ prompt }).toString();
+  return apiRequest<GroupCostEstimate>(`${STAFF_BASE}/groups/${encodeURIComponent(groupId)}/cost-estimate?${qs}`, {
+    signal,
+  });
+}
+
 export function fetchStaffInbox(signal?: AbortSignal): Promise<InboxAggregate> {
   return apiRequest<InboxAggregate>("/api/v1/staff/inbox", { signal });
 }
@@ -206,7 +223,13 @@ export function isNotFound(err: unknown): boolean {
 }
 
 export function errorMessage(err: unknown): string {
-  if (err instanceof ApiClientError) return err.detail;
+  if (err instanceof ApiClientError) {
+    // FastAPI sends `detail` as an object for structured refusals ({ code, message, ... }).
+    const detail: unknown = err.detail;
+    if (typeof detail === "string") return detail;
+    const message = (detail as { message?: unknown } | null)?.message;
+    return typeof message === "string" ? message : `HTTP ${err.status}`;
+  }
   return err instanceof Error ? err.message : String(err);
 }
 

@@ -72,6 +72,7 @@ describe("OperationsRunnerHoursSection", () => {
     render(<OperationsRunnerHoursSection />);
 
     const applyBtn = await screen.findByRole("button", { name: /Apply Now/i });
+    await waitFor(() => expect(applyBtn).not.toBeDisabled());
     fireEvent.click(applyBtn);
 
     await waitFor(() => {

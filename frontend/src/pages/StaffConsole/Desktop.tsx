@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Composer } from "./Composer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { ContextPane } from "./ContextPane";
+import { GroupCostConfirm } from "./GroupCostConfirm";
 import type { ThreadApi } from "./consoleThreads";
 import { Roster } from "./Roster";
 import { Thread } from "./Thread";
@@ -67,6 +68,7 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi }: StaffConsol
                 onDenyProposal={(id) => void sc.denyProposal(id)}
               />
             </div>
+            <GroupCostConfirm guard={sc.costGuard} />
             <Composer
               threadId={activeThread.id}
               roles={roles}

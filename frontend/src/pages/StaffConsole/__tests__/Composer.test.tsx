@@ -155,4 +155,18 @@ describe("Composer Component", () => {
       expect(secondCallKey).toBe(firstCallKey);
     });
   });
+
+  it("treats a resolved { ok: false } as a failed send and keeps the draft", async () => {
+    const onSend = vi.fn().mockResolvedValue({ ok: false, error: "Message not sent: the Board cost was not confirmed." });
+    render(<Composer threadId="thread-ok-false" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+    fireEvent.change(textarea, { target: { value: "Ask the Board" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/the Board cost was not confirmed/i)).toBeInTheDocument();
+    });
+    expect(textarea).toHaveValue("Ask the Board");
+  });
 });

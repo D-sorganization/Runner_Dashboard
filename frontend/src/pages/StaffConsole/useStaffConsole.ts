@@ -21,6 +21,7 @@ import { AUTO_ROUTE_ROLE, resolveRoleThread, type ThreadApi } from "./consoleThr
 import type { RoleDetail } from "./contextTypes";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
+import { useGroupCostGuard, type GroupCostGuard } from "./useGroupCostGuard";
 import { useThreadStream } from "./useThreadStream";
 
 export type ConsoleErrorKind = "roster" | "thread" | "send" | "decision";
@@ -61,6 +62,8 @@ export interface StaffConsoleState {
   openThread: (thread: ThreadInfo, roleName?: string) => void;
   closeThread: () => void;
   sendMessage: (payload: SendMessagePayload) => Promise<SendResult>;
+  /** A Board message held for cost confirmation (SC-D7); render with `GroupCostConfirm`. */
+  costGuard: Pick<GroupCostGuard, "pending" | "confirm" | "cancel">;
   approveProposal: (proposalId: string, params?: Record<string, unknown>) => Promise<void>;
   denyProposal: (proposalId: string) => Promise<void>;
   dismissError: () => void;
@@ -194,7 +197,7 @@ export function useStaffConsole({
 
   const closeThread = useCallback(() => setActiveThread(null), []);
 
-  const sendMessage = useCallback(
+  const sendNow = useCallback(
     async (payload: SendMessagePayload): Promise<SendResult> => {
       if (onSendMessage) return onSendMessage(payload);
       if (!activeThread) return { ok: false, error: "No conversation is open" };
@@ -211,6 +214,11 @@ export function useStaffConsole({
       }
     },
     [activeThread, onSendMessage, report],
+  );
+
+  const { send: sendMessage, pending: costPending, confirm: confirmCost, cancel: cancelCost } = useGroupCostGuard(
+    activeThread,
+    sendNow,
   );
 
   const decide = useCallback(
@@ -259,6 +267,7 @@ export function useStaffConsole({
     openThread,
     closeThread,
     sendMessage,
+    costGuard: { pending: costPending, confirm: confirmCost, cancel: cancelCost },
     approveProposal,
     denyProposal,
     dismissError: () => setError(null),

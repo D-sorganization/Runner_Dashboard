@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  installLegacyFetchGuards,
+  installFetchGuards,
   shouldBypassServiceWorkerCache,
 } from "../fetchGuards";
 
@@ -20,7 +20,7 @@ describe("fetchGuards", () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const targetWindow = { ...window, fetch: fetchImpl as unknown as typeof fetch };
 
-    installLegacyFetchGuards({
+    installFetchGuards({
       emitSessionExpired: vi.fn(),
       shouldIgnoreUnauthorizedResponse: () => false,
       tryRefreshSession: vi.fn(),
@@ -44,7 +44,7 @@ describe("fetchGuards", () => {
     const tryRefreshSession = vi.fn().mockResolvedValue(true);
     const targetWindow = { ...window, fetch: fetchImpl as unknown as typeof fetch };
 
-    installLegacyFetchGuards({
+    installFetchGuards({
       emitSessionExpired,
       shouldIgnoreUnauthorizedResponse: () => false,
       tryRefreshSession,
@@ -65,7 +65,7 @@ describe("fetchGuards", () => {
     const showToast = vi.fn();
     const targetWindow = { ...window, fetch: fetchImpl as unknown as typeof fetch };
 
-    installLegacyFetchGuards({
+    installFetchGuards({
       emitSessionExpired,
       shouldIgnoreUnauthorizedResponse: () => false,
       tryRefreshSession: vi.fn().mockResolvedValue(false),

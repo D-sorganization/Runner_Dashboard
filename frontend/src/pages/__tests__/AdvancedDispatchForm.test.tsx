@@ -139,7 +139,14 @@ describe("AdvancedDispatchForm", () => {
       render(<AdvancedDispatchForm roster={ROSTER} onDispatched={() => {}} />);
       const kinds = Array.from((screen.getByLabelText("Kind") as HTMLSelectElement).options).map((o) => o.value);
       expect(kinds).toEqual(REQUEST_KINDS.map((k) => k.id));
-      expect(kinds).toEqual(["staff.dispatch"]);
+      expect(kinds).toEqual([
+        "staff.dispatch",
+        "ci.remediate",
+        "issue.act",
+        "pr.act",
+        "code_request.dispatch",
+        "assessment.run",
+      ]);
     });
 
     it("renders repo, issue and PR for staff.dispatch, and no run id", () => {
@@ -149,6 +156,13 @@ describe("AdvancedDispatchForm", () => {
       expect(screen.getByLabelText("Issue #")).toBeInTheDocument();
       expect(screen.getByLabelText("PR #")).toBeInTheDocument();
       expect(screen.queryByLabelText("Run ID")).not.toBeInTheDocument();
+    });
+
+    it("renders Run ID for ci.remediate", () => {
+      render(<AdvancedDispatchForm roster={ROSTER} onDispatched={() => {}} />);
+      fireEvent.change(screen.getByLabelText("Kind"), { target: { value: "ci.remediate" } });
+      expect(screen.getByLabelText("Run ID")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Issue #")).not.toBeInTheDocument();
     });
   });
 
@@ -230,6 +244,42 @@ describe("AdvancedDispatchForm", () => {
           ref: "",
         },
       });
+    });
+
+    it("omits role and includes run_id when previewing ci.remediate", async () => {
+      const calls = stubFetch((url, opts) => {
+        if (url === "/api/v1/staff/requests" && opts?.method === "POST") {
+          return {
+            status: 200,
+            body: {
+              state: "planned",
+              kind: "ci.remediate",
+              action: "ci.remediate",
+              plan: {
+                dry_run: true,
+                machine: "DeskComputer",
+                forwarded_to: null,
+                plan: { action: "remediation.dispatch" },
+              },
+            },
+          };
+        }
+        return undefined;
+      });
+
+      render(<AdvancedDispatchForm roster={ROSTER} onDispatched={() => {}} />);
+      fireEvent.change(screen.getByLabelText("Kind"), { target: { value: "ci.remediate" } });
+      expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Repo"), { target: { value: "UpstreamDrift" } });
+      fireEvent.change(screen.getByLabelText("Run ID"), { target: { value: "9988" } });
+      fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+
+      await waitFor(() => expect(calls).toHaveLength(1));
+      const [, init] = calls[0];
+      const body = JSON.parse(init?.body as string);
+      expect(body.kind).toBe("ci.remediate");
+      expect(body.role).toBeNull();
+      expect(body.target.run_id).toBe(9988);
     });
   });
 
@@ -317,6 +367,30 @@ describe("AdvancedDispatchForm", () => {
       expect(screen.getByLabelText("Issue #")).toHaveValue("1498");
       expect(screen.getByLabelText("Prompt")).toHaveValue("my important prompt");
       expect(screen.getByLabelText("Machine")).toHaveValue("remote-node");
+    });
+  });
+
+  describe("initialValues prefill (#1499)", () => {
+    it("initializes form with prefilled values from initialValues", () => {
+      render(
+        <AdvancedDispatchForm
+          roster={ROSTER}
+          initialValues={{
+            kind: "ci.remediate",
+            target: { repo: "Runner_Dashboard", run_id: 12345 },
+            prompt: "Fix failed run #12345",
+            provider: "claude",
+            model: "claude-3-5-sonnet",
+          }}
+          onDispatched={() => {}}
+        />,
+      );
+
+      expect(screen.getByLabelText("Kind")).toHaveValue("ci.remediate");
+      expect(screen.getByLabelText("Repo")).toHaveValue("Runner_Dashboard");
+      expect(screen.getByLabelText("Run ID")).toHaveValue("12345");
+      expect(screen.getByLabelText("Prompt")).toHaveValue("Fix failed run #12345");
+      expect(screen.getByLabelText("Model")).toHaveValue("claude-3-5-sonnet");
     });
   });
 });
