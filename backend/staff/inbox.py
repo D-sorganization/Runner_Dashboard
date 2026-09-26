@@ -13,6 +13,7 @@ while surviving sources continue to aggregate cleanly.
 """
 
 import logging
+import os
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
@@ -234,6 +235,13 @@ def _collect_escalations(w_store: WorkItemStore) -> list[InboxItem]:
     return items
 
 
+def github_inbox_sources_enabled() -> bool:
+    """False when ``STAFF_INBOX_GITHUB_SOURCES=0`` disables the GitHub-backed
+    inbox sources (project decisions, board proposals). Used by the hermetic
+    staff e2e harness (#1556) so the inbox never reaches api.github.com."""
+    return os.environ.get("STAFF_INBOX_GITHUB_SOURCES", "1").lower() not in {"0", "false", "no", ""}
+
+
 async def _collect_project_decisions() -> list[InboxItem]:
     """Collect decisions needed from repository STATUS.md project charters."""
     items: list[InboxItem] = []
@@ -406,24 +414,31 @@ async def collect_inbox(
         sources["escalations"] = SourceStatus(status="unavailable", count=0, error=str(exc))
 
     # 4. Project Decisions
-    try:
-        pd_items = await _collect_project_decisions()
-        all_items.extend(pd_items)
-        counts["project_decisions"] = len(pd_items)
-        sources["project_decisions"] = SourceStatus(status="ok", count=len(pd_items))
-    except Exception as exc:
-        log.warning("Inbox failed collecting project_decisions: %s", exc)
-        sources["project_decisions"] = SourceStatus(status="unavailable", count=0, error=str(exc))
+    github_sources = github_inbox_sources_enabled()
+    if github_sources:
+        try:
+            pd_items = await _collect_project_decisions()
+            all_items.extend(pd_items)
+            counts["project_decisions"] = len(pd_items)
+            sources["project_decisions"] = SourceStatus(status="ok", count=len(pd_items))
+        except Exception as exc:
+            log.warning("Inbox failed collecting project_decisions: %s", exc)
+            sources["project_decisions"] = SourceStatus(status="unavailable", count=0, error=str(exc))
+    else:
+        sources["project_decisions"] = SourceStatus(status="ok", count=0)
 
     # 5. Board Proposals (CR-7 store, issue #1475)
-    try:
-        bp_items = await _collect_board_proposals()
-        all_items.extend(bp_items)
-        counts["board_proposals"] = len(bp_items)
-        sources["board_proposals"] = SourceStatus(status="ok", count=len(bp_items))
-    except Exception as exc:
-        log.warning("Inbox failed collecting board_proposals: %s", exc)
-        sources["board_proposals"] = SourceStatus(status="unavailable", count=0, error=str(exc))
+    if github_sources:
+        try:
+            bp_items = await _collect_board_proposals()
+            all_items.extend(bp_items)
+            counts["board_proposals"] = len(bp_items)
+            sources["board_proposals"] = SourceStatus(status="ok", count=len(bp_items))
+        except Exception as exc:
+            log.warning("Inbox failed collecting board_proposals: %s", exc)
+            sources["board_proposals"] = SourceStatus(status="unavailable", count=0, error=str(exc))
+    else:
+        sources["board_proposals"] = SourceStatus(status="ok", count=0)
 
     # 6. Auth sign-ins
     try:

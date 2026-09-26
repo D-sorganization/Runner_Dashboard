@@ -1,4 +1,33 @@
-# Current handoff — WP-1.1 follow-up: non-blocking startup and guarded verification (#1542)
+# Current handoff — Staff e2e harness is hermetic (#1556)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1556-hermetic-staff-e2e`; PR: #1570 (open, auto-merge armed); Issue #1556; DL-#1556.
+
+## Objective and Status
+
+- `tests/e2e/fakes/start_staff_backend.py` ran the real FastAPI backend against fake provider CLIs, but the backend itself still reached the real network: it fanned out `GET /api/staff/board?local=1` to real tailnet peers (registry auto-derivation), called `api.github.com` for `board:proposal` issues (401 "Bad credentials" with a placeholder token), and — once traced further — also hit `api.github.com` from `/api/health`'s runner-count probe and the hosted-runner billing-audit background loop.
+- Done:
+  1. `tests/e2e/fakes/start_staff_backend.py`'s `backend_env()` now sets `AUTODERIVE_FLEET_NODES=0` / `FLEET_NODES=""` (the same switches `scripts/gen-api-client.sh` uses) so fleet-peer discovery never leaves this node, sets `STAFF_INBOX_GITHUB_SOURCES=0` (new switch) to disable the GitHub-backed staff inbox sources, and leaves `GH_TOKEN` unset (was a fake non-empty token) so `gh_client` fails locally (`GhAuthError`) before any network call instead of round-tripping to `api.github.com` and getting a 401.
+  2. `backend/staff/inbox.py`: new `github_inbox_sources_enabled()` gate (env `STAFF_INBOX_GITHUB_SOURCES`, default on) skips `_collect_board_proposals` and `_collect_project_decisions`, reporting `SourceStatus(status="ok", count=0)` rather than `"unavailable"` (deliberately disabled, not failed). Unit test: `tests/unit/test_staff_inbox_proposals.py::test_github_sources_disabled_never_call_github`.
+  3. Hermeticity guard: `start_staff_backend.py` now accepts `--log-file PATH` (a CLI arg, not an env var, because `STAFF_E2E_PYTHON` may be a `wsl -e` wrapper that does not forward the launching Windows process's environment) and redirects stdout/stderr there before `execve`. `tests/e2e/staff/playwright.config.ts` wires this to `test-results/staff-e2e-backend.log` and adds `globalTeardown: "./globalTeardown.ts"`. The new `tests/e2e/staff/globalTeardown.ts` scans that log for one `FORBIDDEN_PATTERNS` list (`api.github.com`, `board?local=1`) after the whole suite finishes and throws, listing every offending line, if either appears.
+
+## Validation
+
+- RED: with the three `backend_env()` hermeticity keys removed, `STAFF_E2E_PYTHON="wsl -e /home/dieterolson/.cache/rd-test-venv/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts --reporter=line` → 12 passed (the individual specs don't check this), but the new `globalTeardown` failed, listing real `api.github.com` and fleet-peer (`oglaptop`/`controltower` tailnet hosts) lines from the backend log.
+- GREEN (after restoring the fix): same command → 12 passed, globalTeardown passed silently; `grep -n "api.github.com\|board?local=1" test-results/staff-e2e-backend.log` returns nothing.
+- `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1556 && GH_TOKEN=x HOME=/tmp/rdhome-1556 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_inbox_proposals.py tests/unit -k 'inbox or fleet' -q -o addopts='' -p no:cacheprovider -W ignore"` → 9 passed.
+- `py -3.12 -m ruff check` / `ruff format --diff` on all touched Python files: clean.
+
+## Next Steps
+
+1. Watch PR #1570 merge; then mark DL-#1556 shipped.
+
+---
+
+# Past handoff — WP-1.1 follow-up: non-blocking startup and guarded verification (#1542)
 
 Last updated: 2026-09-26
 

@@ -23,12 +23,21 @@ const INHERITED_ENV = Object.fromEntries(
   Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
 );
 
+// The launched backend's log, relative to the repo root: STAFF_E2E_PYTHON may
+// be a `wsl -e` wrapper, where a Windows absolute path would not resolve.
+// globalTeardown.ts scans it for outbound fleet/GitHub requests (#1556).
+const BACKEND_LOG_FILE_RELATIVE = "test-results/staff-e2e-backend.log";
+if (!process.env.STAFF_E2E_BACKEND_URL) {
+  process.env.STAFF_E2E_BACKEND_LOG = BACKEND_LOG_FILE_RELATIVE;
+}
+
 const backendServer = process.env.STAFF_E2E_BACKEND_URL
   ? []
   : [
       {
-        command: `${PYTHON} tests/e2e/fakes/start_staff_backend.py --port ${BACKEND_PORT}`,
+        command: `${PYTHON} tests/e2e/fakes/start_staff_backend.py --port ${BACKEND_PORT} --log-file ${BACKEND_LOG_FILE_RELATIVE}`,
         cwd: "../../..",
+        env: INHERITED_ENV,
         url: `${BACKEND_URL}/api/health`,
         reuseExistingServer: false,
         timeout: 90_000,
@@ -39,6 +48,7 @@ const backendServer = process.env.STAFF_E2E_BACKEND_URL
 export default defineConfig({
   testDir: ".",
   testMatch: /.*\.spec\.ts$/,
+  globalTeardown: "./globalTeardown.ts",
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
