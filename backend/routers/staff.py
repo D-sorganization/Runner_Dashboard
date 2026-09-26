@@ -74,6 +74,7 @@ class RunBody(BaseModel):
     surface: str | None = Field(default=None, max_length=40)
     thread_id: str | None = Field(default=None, max_length=120)
     work_item_id: str | None = Field(default=None, max_length=120)
+    origin_node: str | None = Field(default=None, max_length=60)
     dry_run: bool = False
 
     @field_validator("repo")
@@ -270,13 +271,22 @@ async def stream_run(
     """SSE feed of run events. Ends with an ``end`` event when the run finishes."""
     store = get_runner().store
     if store.get_run(run_id) is None:
-        from staff.remote_runs import find_remote_run, stream_remote_run  # noqa: PLC0415
+        from staff.remote_runs import (
+            find_remote_run,
+            stream_remote_run,
+        )  # noqa: PLC0415
 
         remote = await find_remote_run(run_id)
         if remote is not None:
             peer_name, peer_url = remote
             return StreamingResponse(
-                stream_remote_run(run_id, after, peer_name, peer_url, caller_id=getattr(_peer, "id", "")),
+                stream_remote_run(
+                    run_id,
+                    after,
+                    peer_name,
+                    peer_url,
+                    caller_id=getattr(_peer, "id", ""),
+                ),
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
@@ -321,7 +331,10 @@ async def stream_run(
 async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("staff.cancel"))) -> dict[str, Any]:
     runner = get_runner()
     if runner.store.get_run(run_id) is None:
-        from staff.remote_runs import find_remote_run, proxy_remote_cancel  # noqa: PLC0415
+        from staff.remote_runs import (
+            find_remote_run,
+            proxy_remote_cancel,
+        )  # noqa: PLC0415
 
         remote = await find_remote_run(run_id)
         if remote is not None:
@@ -369,6 +382,7 @@ async def dispatch(
     is_peer = staff_fleet.is_fleet_peer(caller)
     surface = body.surface or "api"
     thread_id = body.thread_id or ""
+    origin_node = body.origin_node or ""
     on_behalf_of = ""
     obo = staff_fleet.extract_on_behalf_of(request.headers.get("x-staff-on-behalf-of"), is_peer)
     if obo:
@@ -376,6 +390,7 @@ async def dispatch(
         on_behalf_of = obo["principal"]
         surface = obo.get("surface") or surface
         thread_id = obo.get("thread_id") or thread_id
+        origin_node = obo.get("origin_node") or origin_node
 
     cmd = DispatchCommand(
         role=role,
@@ -392,5 +407,6 @@ async def dispatch(
         on_behalf_of=on_behalf_of,
         surface=surface,
         thread_id=thread_id,
+        origin_node=origin_node,
     )
     return await dispatch_staff_run(cmd, caller)

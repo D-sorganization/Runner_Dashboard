@@ -248,3 +248,22 @@ class PostMessageRequest(BaseModel):
 
 class AnswerNeedsInputRequest(BaseModel):
     answer: str
+
+
+class RelayRunCardRequest(BaseModel):
+    """POST body for relaying a run card from an executing node back to origin (issue #1488)."""
+
+    run_id: str = Field(..., max_length=120)
+    role: str = Field(..., max_length=80)
+    status: str = Field(..., max_length=40)
+    node: str = Field(default="", max_length=80)
+    provider: str = Field(default="", max_length=80)
+    repo: str = Field(default="", max_length=120)
+    target_ref: str = Field(default="", max_length=120)
+    branch: str = Field(default="", max_length=120)
+    question: str | None = None
+    summary: str | None = None
+    error: str | None = None
+    failure_class: str | None = None
+    body_md: str | None = None
+    meta: dict[str, Any] | None = None

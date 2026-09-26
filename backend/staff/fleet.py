@@ -196,6 +196,7 @@ def sign_on_behalf_of(
     thread_id: str = "",
     request_id: str = "",
     secret: str | None = None,
+    origin_node: str = "",
 ) -> str:
     """Create a signed X-Staff-On-Behalf-Of header value (issue #1311).
 
@@ -207,6 +208,7 @@ def sign_on_behalf_of(
         "surface": surface,
         "thread_id": thread_id,
         "request_id": request_id,
+        "origin_node": origin_node,
         "iat": int(time.time()),
     }
     payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")

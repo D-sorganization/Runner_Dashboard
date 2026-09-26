@@ -19,7 +19,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from identity import Principal, format_caller, require_scope
+from identity import Principal, format_caller, require_fleet_peer, require_scope
 from staff.audit import record_audit
 from staff.availability import record_fast_acknowledgment
 from staff.budget import get_global_budget_guard
@@ -28,6 +28,7 @@ from staff.conversation_models import (
     AnswerNeedsInputRequest,
     CreateThreadRequest,
     PostMessageRequest,
+    RelayRunCardRequest,
     UpdateThreadRequest,
 )
 from staff.conversations import (
@@ -366,6 +367,37 @@ async def answer_thread_run(
         "ok": True,
         "continuation_run_id": continuation.id,
         "thread_id": thread_id,
+    }
+
+
+@router.post(
+    "/threads/{thread_id}/relay-card",
+    response_model_exclude_none=True,
+)
+async def relay_thread_run_card(
+    thread_id: str,
+    body: RelayRunCardRequest,
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Relay run-card state from an executing node back to origin (issue #1488)."""
+    store = _get_store_or_503()
+    if not store.get_thread(thread_id):
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "thread_not_found",
+                "message": f"Thread {thread_id} not found",
+            },
+        )
+    from staff.run_link import apply_relayed_run_card
+
+    saved = apply_relayed_run_card(store, get_thread_bus(), thread_id, body)
+    return {
+        "ok": True,
+        "thread_id": thread_id,
+        "run_id": body.run_id,
+        "status": body.status,
+        "message_id": saved.id if saved else None,
     }
 
 
