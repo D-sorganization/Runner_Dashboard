@@ -220,9 +220,9 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
     real ``~/Repositories`` (and friends) after any configured
     ``STAFF_REPOS_ROOT``, so a staff test that submitted a run could
     discover a real checkout and run real ``git worktree add`` / ``gh``
-    against it. This fixture neutralizes discovery for every test: no root
-    is ever resolved, and worktree/RM-root paths live under this test's own
-    ``tmp_path``.
+    against it. This fixture neutralizes discovery for every test: only a
+    test's own ``STAFF_REPOS_ROOT`` is resolved, never the defaults, and
+    worktree/RM-root paths live under this test's own ``tmp_path``.
 
     A test that genuinely needs a checkout must build a fake one under
     ``tmp_path`` and monkeypatch the relevant ``staff.workspace`` function
@@ -233,9 +233,15 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
     from staff import knowledge_refresh as knowledge_refresh_mod  # noqa: PLC0415
     from staff import workspace as workspace_mod  # noqa: PLC0415
 
-    monkeypatch.setattr(workspace_mod, "repos_roots", lambda: [])
+    def configured_roots_only() -> list[Path]:
+        # A test's own STAFF_REPOS_ROOT (a tmp_path corpus) is honoured; the
+        # developer's real ~/Repositories defaults never are.
+        configured = os.environ.get("STAFF_REPOS_ROOT", "")
+        return [Path(p) for p in configured.split(os.pathsep) if p and Path(p).is_dir()]
+
+    monkeypatch.setattr(workspace_mod, "repos_roots", configured_roots_only)
     # knowledge_refresh binds repos_roots at import time; patch that name too.
-    monkeypatch.setattr(knowledge_refresh_mod, "repos_roots", lambda: [])
+    monkeypatch.setattr(knowledge_refresh_mod, "repos_roots", configured_roots_only)
     monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(tmp_path / "staff-worktrees"))
     monkeypatch.setenv("STAFF_RM_ROOT", str(tmp_path / "staff-rm-root"))
 

@@ -13,6 +13,8 @@ Last updated: 2026-09-25
 - `verify_staff_dispatch` now reports the run's verification and fails on a `failed` verdict.
 - Run detail shows the verdict, reason and PR link. `tests/conftest.py` defaults `STAFF_VERIFY_MODE=off` so ordinary runner tests never shell out to `gh`.
 
+- Consolidation (#1521 + #1528 + #1516): the #1521 `_hermetic_staff_workspace` fixture blanked `repos_roots()` even when a test set `STAFF_REPOS_ROOT`, which broke `test_refresh_all_packs` and `test_build_knowledge_turn_block_stale_pack` (added on main after #1521 was branched). It now honours a test's own `STAFF_REPOS_ROOT` and still never the developer defaults. `tests/knowledge/test_knowledge_pack_drift.py` fails on main too (needs the pinned Tools checkout) and is out of scope.
+
 ## Next Steps
 
 1. Merge, then run report mode on one node and show the owner verdicts on real runs (the issue's last acceptance item).
