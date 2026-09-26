@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1586 · Staff Runs Without CLI Permission Bypass
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1586
+- **Branch:** `feat/1586-no-permission-bypass`
+- **PR:** not created
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/runner.py`, `backend/staff/retry.py`, `backend/staff/workspace.py`, `tests/api/test_staff_unattended_permissions.py`, `tests/e2e/fakes/bin/claude`, `docs/staff-hub.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `df3f0333` baseline (staff suites green; live CLI probes on OGLaptop)
+- **Summary:** Every unattended CLI launch uses a declared allow-list or sandbox instead of a bypass flag. agy is chat-only until it supports a headless allow-list.
+- **Next step:** Merge the PR and watch the first scheduled runs for permission denials.
+
 ### DL-#1299 · SC-B1: ADR for the staff conversation model (retroactive, as built)
 
 - **State:** in_review

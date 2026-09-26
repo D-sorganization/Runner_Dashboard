@@ -6,15 +6,19 @@ One adapter per CLI. An adapter is pure data + two pure functions:
 * ``parse_line(line)`` → a flat event dict ``{"kind", "text", "usage"?}``.
 
 Adapters never spawn anything themselves; ``runner.py`` owns the subprocess.
-Flags below were verified against the installed CLIs on 2026-09-22:
+Unattended runs never bypass CLI permissions (#1586). Each CLI gets a declared
+allow-list rendered from one shared table; the flags were verified against the
+installed CLIs on 2026-09-26:
 
-  claude  -p --output-format stream-json --verbose --permission-mode bypassPermissions (default model sonnet)
-  codex   exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check (0.156; --full-auto removed)
-  agy     --print --output-format stream-json --dangerously-skip-permissions
-  gemini  -p
-  cursor-agent -p --output-format stream-json --force --trust --workspace <wt> (2026.09.18; Grok via Cursor)
+  claude  -p --output-format stream-json --verbose --permission-mode dontAsk --permission-prompts none
+          --allowedTools <tools> --disallowedTools <tools> (default model sonnet)
+  codex   exec --sandbox workspace-write --add-dir <git common dir> -c sandbox_workspace_write.network_access=true
+          --skip-git-repo-check --json (0.156; --full-auto removed)
+  gemini  -p --approval-mode auto_edit --policy <generated policy> --output-format stream-json
+  cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt> (2026.09.18; Grok via Cursor)
   ollama         codex exec --oss --local-provider ollama (Ollama models inside the Codex agent, #1252)
   claude-ollama  claude on Ollama's Anthropic-compatible API (own CLAUDE_CONFIG_DIR, #1252)
+  agy     chat only: 1.2.11 refuses every shell command headlessly unless --dangerously-skip-permissions is set
 """
 
 from __future__ import annotations
@@ -56,21 +60,134 @@ _CHAT_READ_ONLY_FLAGS: dict[str, tuple[str, ...]] = {
     "gemini": ("--approval-mode", "plan"),
     "cursor-agent": ("--mode", "ask"),
 }
-_CHAT_BYPASS_FLAGS = frozenset(
+# Flags and flag values that switch a CLI's permission checks off. No staff argv,
+# unattended or chat, may contain one (#1586).
+PERMISSION_BYPASS_FLAGS = frozenset(
     {
         "--dangerously-bypass-approvals-and-sandbox",
         "--dangerously-skip-permissions",
+        "--allow-dangerously-skip-permissions",
         "bypassPermissions",
+        "danger-full-access",
         "--force",
-        "--trust",
         "--yolo",
-        "-y",
+        "yolo",
     }
+)
+# Chat turns are read-only, so they also never trust a workspace or auto-confirm.
+_CHAT_BYPASS_FLAGS = PERMISSION_BYPASS_FLAGS | {"--trust", "-y"}
+
+
+# ── Unattended runs (#1586) ─────────────────────────────────────────────────
+# Shell command prefixes an unattended run may execute without a prompt. One
+# table, rendered per provider (Claude tool rules, Gemini policy). Playbooks use
+# curl for the local dashboard API and `git push --force-with-lease` on their
+# own branches, so neither is denied here.
+UNATTENDED_SHELL_ALLOW: tuple[str, ...] = (
+    "git",
+    "gh",
+    "python",
+    "python3",
+    "pytest",
+    "ruff",
+    "black",
+    "mypy",
+    "pre-commit",
+    "uv",
+    "pip",
+    "npm",
+    "npx",
+    "node",
+    "tsc",
+    "make",
+    "curl",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "rg",
+    "find",
+    "wc",
+    "sort",
+    "diff",
+    "mkdir",
+    "cp",
+    "mv",
+    "echo",
+    "sed",
+    "jq",
+)
+# Always refused, whatever the allow-list says.
+UNATTENDED_SHELL_DENY: tuple[str, ...] = (
+    "sudo",
+    "su",
+    "gh repo delete",
+    "gh secret",
+    "gh auth",
+    "gh pr merge --admin",
+    "systemctl",
+    "shutdown",
+    "reboot",
+)
+# Claude tools an unattended run may use besides the allow-listed shell commands.
+_CLAUDE_UNATTENDED_TOOLS: tuple[str, ...] = (
+    "Read",
+    "Grep",
+    "Glob",
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit",
+    "TodoWrite",
+    "Task",
+    "WebFetch",
+    "WebSearch",
 )
 
 
 class ChatReadOnlyUnsupportedError(RuntimeError):
     """The provider has no known read-only mode, so a chat turn must not run on it."""
+
+
+class UnattendedUnsupportedError(RuntimeError):
+    """The provider cannot run unattended without bypassing its permissions (#1586)."""
+
+
+def claude_unattended_tools() -> tuple[str, str]:
+    """``(--allowedTools, --disallowedTools)`` values for an unattended Claude run.
+
+    Post: every shell rule is a ``Bash(<prefix>:*)`` rule; the bare ``Bash`` tool
+    is never allowed, so an unlisted command is refused, not prompted.
+    """
+    allowed = [*_CLAUDE_UNATTENDED_TOOLS, *(f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_ALLOW)]
+    denied = [f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_DENY]
+    return ",".join(allowed), ",".join(denied)
+
+
+def _toml_list(items: Sequence[str]) -> str:
+    return "[" + ", ".join(json.dumps(item) for item in items) + "]"
+
+
+def gemini_policy_toml() -> str:
+    """Gemini CLI policy for unattended runs: allow the shared list, deny above it.
+
+    Headless Gemini treats anything that would ask as a deny, so commands on
+    neither list are refused.
+    """
+    return (
+        "# Generated by Runner_Dashboard backend/staff/adapters.py (#1586). Do not edit.\n"
+        "[[rule]]\n"
+        'toolName = "run_shell_command"\n'
+        f"commandPrefix = {_toml_list(UNATTENDED_SHELL_ALLOW)}\n"
+        'decision = "allow"\n'
+        "priority = 100\n\n"
+        "[[rule]]\n"
+        'toolName = "run_shell_command"\n'
+        f"commandPrefix = {_toml_list(UNATTENDED_SHELL_DENY)}\n"
+        'decision = "deny"\n'
+        "priority = 200\n"
+    )
 
 
 def claude_allowed_tools(read_only_tools: Sequence[str]) -> list[str]:
@@ -95,7 +212,8 @@ class ProviderAdapter:
     provider_id: ProviderId
     label: str
     executable: str
-    # argv template; ``{prompt}``, ``{model}`` and ``{workdir}`` are substituted.
+    # argv template; ``{prompt}``, ``{model}``, ``{workdir}``, ``{gitdir}`` and
+    # ``{policy}`` are substituted.
     argv: tuple[str, ...]
     default_model: str | None = None
     # When True the prompt is written to stdin instead of an argv slot.
@@ -109,6 +227,17 @@ class ProviderAdapter:
 
     # RM agent id used for issue leases; ``None`` means the provider id itself.
     lease_as: str | None = None
+    # False when the CLI cannot run unattended without a permission bypass (#1586).
+    unattended: bool = True
+    # Renders the permission policy file the ``{policy}`` slot points at.
+    policy_text: Callable[[], str] | None = None
+    # Whether chat turns print JSON lines; ``None`` means the same as unattended runs.
+    chat_json_lines: bool | None = None
+
+    @property
+    def chat_json(self) -> bool:
+        """True when :meth:`chat_argv` output is JSON lines (codex chats stay plain text)."""
+        return self.json_lines if self.chat_json_lines is None else self.chat_json_lines
 
     @property
     def lease_agent(self) -> str:
@@ -119,23 +248,49 @@ class ProviderAdapter:
         """Static ``extra_env`` overlaid with the launch-time ``env_builder`` values."""
         return {**self.extra_env, **(self.env_builder() if self.env_builder else {})}
 
-    def build_command(self, prompt: str, workdir: str, model: str | None = None) -> list[str]:
-        """Return argv for one run.
+    def build_command(
+        self,
+        prompt: str,
+        workdir: str,
+        model: str | None = None,
+        *,
+        gitdir: str | None = None,
+        policy: str | None = None,
+    ) -> list[str]:
+        """Return argv for one unattended run.
 
-        Pre: ``prompt`` is non-empty; ``workdir`` is an existing directory path.
-        Post: the returned list never contains an unexpanded ``{...}`` slot.
+        Pre: ``prompt`` is non-empty; ``workdir`` is an existing directory path;
+        ``gitdir`` is the worktree's git common dir (defaults to ``workdir``);
+        ``policy`` is the path the runner wrote ``policy_text()`` to.
+        Post: the returned list never contains an unexpanded ``{...}`` slot nor a
+        :data:`PERMISSION_BYPASS_FLAGS` entry. A provider that cannot run without
+        a bypass raises :class:`UnattendedUnsupportedError`.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
+        if not self.unattended:
+            raise UnattendedUnsupportedError(
+                f"provider {self.provider_id!r} cannot run unattended without bypassing its permissions (#1586)"
+            )
         chosen_model = model or self.default_model or ""
+        slots = {
+            "{prompt}": prompt,
+            "{model}": chosen_model,
+            "{workdir}": workdir,
+            "{gitdir}": gitdir or workdir,
+            "{policy}": policy or "",
+        }
         out: list[str] = [self.executable]
         for part in self.argv:
-            if part == "{model}" and not chosen_model:
-                # Drop the flag that precedes an empty model slot.
+            if part in ("{model}", "{policy}") and not slots[part]:
+                # Drop the flag that precedes an empty slot.
                 if out and out[-1].startswith("-"):
                     out.pop()
                 continue
-            out.append(part.replace("{prompt}", prompt).replace("{model}", chosen_model).replace("{workdir}", workdir))
-        assert not any("{prompt}" in p or "{model}" in p or "{workdir}" in p for p in out)  # noqa: S101
+            for slot, value in slots.items():
+                part = part.replace(slot, value)
+            out.append(part)
+        assert not any(slot in p for p in out for slot in slots)  # noqa: S101
+        assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
         return out
 
     def chat_argv(
@@ -230,6 +385,9 @@ class ProviderAdapter:
 
 def _extract_text(raw: dict[str, Any]) -> str:
     """Best-effort human text from a stream-json event (claude/agy/codex shapes)."""
+    if isinstance(raw.get("item"), dict):  # codex --json: only agent messages are answers
+        item = raw["item"]
+        return str(item.get("text") or "") if item.get("type") == "agent_message" else ""
     for key in (
         "result",
         "text",
@@ -287,6 +445,7 @@ _CAMEL_USAGE = {
     "cacheWriteTokens": "cache_creation_input_tokens",
 }
 
+_CLAUDE_ALLOWED, _CLAUDE_DENIED = claude_unattended_tools()
 _UNATTENDED_CLAUDE = (
     "-p",
     "{prompt}",
@@ -294,11 +453,29 @@ _UNATTENDED_CLAUDE = (
     "stream-json",
     "--verbose",
     "--permission-mode",
-    "bypassPermissions",
+    "dontAsk",
+    "--permission-prompts",
+    "none",
+    "--allowedTools",
+    _CLAUDE_ALLOWED,
+    "--disallowedTools",
+    _CLAUDE_DENIED,
     "--model",
     "{model}",
 )
-_UNATTENDED_CODEX = ("exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check")
+# workspace-write confines writes to the worktree plus its git common dir (where
+# a linked worktree's commits land); the network stays on for push and gh.
+_UNATTENDED_CODEX = (
+    "exec",
+    "--sandbox",
+    "workspace-write",
+    "--add-dir",
+    "{gitdir}",
+    "-c",
+    "sandbox_workspace_write.network_access=true",
+    "--skip-git-repo-check",
+    "--json",
+)
 
 ADAPTERS: dict[ProviderId, ProviderAdapter] = {
     "claude": ProviderAdapter(
@@ -309,8 +486,8 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         default_model="sonnet",
         json_lines=True,
         notes=(
-            "Emits usage + total_cost_usd in the final result event. bypassPermissions because an unattended run "
-            "must commit, push and open its PR inside its own worktree; acceptEdits stalls on the first git call."
+            "Emits usage + total_cost_usd in the final result event. dontAsk with a declared tool allow-list: "
+            "listed tools and shell prefixes run, anything else is refused instead of prompted (#1586)."
         ),
     ),
     "codex": ProviderAdapter(
@@ -318,33 +495,46 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         label="Codex CLI",
         executable="codex",
         argv=(*_UNATTENDED_CODEX, "--model", "{model}", "{prompt}"),
+        json_lines=True,
+        chat_json_lines=False,
         notes=(
-            "Plain text stdout; cost derived from wall time until --json is adopted. Bypass mode for the same reason "
-            "as claude bypassPermissions (commit/push/PR in its own worktree); the systemd unit is the sandbox."
+            "--json events carry the answer (item.completed agent_message) and tokens (turn.completed). The "
+            "workspace-write sandbox replaces the old approvals bypass (#1586)."
         ),
     ),
     "antigravity": ProviderAdapter(
         provider_id="antigravity",
         label="Antigravity CLI (agy)",
         executable="agy",
-        argv=(
-            "--print",
-            "{prompt}",
-            "--output-format",
-            "stream-json",
-            "--dangerously-skip-permissions",
-            "--add-dir",
-            "{workdir}",
-            "--model",
-            "{model}",
-        ),
+        argv=("--print", "{prompt}", "--output-format", "stream-json", "--add-dir", "{workdir}"),
         json_lines=True,
+        unattended=False,
+        notes=(
+            "Chat only (#1586): agy 1.2.11 auto-denies every shell command in headless mode unless "
+            "--dangerously-skip-permissions is set, and ignores settings.json permissions.allow rules."
+        ),
     ),
     "gemini": ProviderAdapter(
         provider_id="gemini",
         label="Gemini CLI",
         executable="gemini",
-        argv=("-p", "{prompt}", "--model", "{model}"),
+        argv=(
+            "-p",
+            "{prompt}",
+            "--approval-mode",
+            "auto_edit",
+            "--policy",
+            "{policy}",
+            "--output-format",
+            "stream-json",
+            "--model",
+            "{model}",
+        ),
+        json_lines=True,
+        policy_text=gemini_policy_toml,
+        # Workspace trust only: an untrusted folder silently resets --approval-mode to default.
+        extra_env={"GEMINI_CLI_TRUST_WORKSPACE": "true"},
+        notes="auto_edit plus a generated policy: edits land, shell commands run only when the policy allows them.",
     ),
     "cursor-agent": ProviderAdapter(
         provider_id="cursor-agent",
@@ -355,7 +545,8 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "{prompt}",
             "--output-format",
             "stream-json",
-            "--force",
+            "--sandbox",
+            "enabled",
             "--trust",
             "--workspace",
             "{workdir}",
@@ -365,7 +556,8 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         json_lines=True,
         notes=(
             "Cursor subscription; Grok models (grok-4.7-*, cursor-grok-4.6-*) are reached here, no separate xAI plan. "
-            "--force/--trust because an unattended run cannot answer command or workspace-trust prompts."
+            "Commands run inside Cursor's sandbox instead of --force (#1586); --trust only answers the "
+            "workspace-trust prompt for the run's own worktree."
         ),
     ),
     "ollama": ProviderAdapter(
@@ -373,6 +565,8 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         label="Ollama models via Codex",
         executable="codex",
         argv=(*_UNATTENDED_CODEX, "--oss", "--local-provider", "ollama", "--model", "{model}", "{prompt}"),
+        json_lines=True,
+        chat_json_lines=False,
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
         env_builder=ollama_env.codex_ollama_env,
         lease_as="local",  # RM has no per-harness id for local models

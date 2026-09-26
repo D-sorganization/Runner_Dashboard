@@ -16,7 +16,7 @@ Chat scenarios:
   crash         exit 1 with a stack-trace style error on stderr
   auth          exit 1 with the CLI's expired-login message
 
-Work runs (argv carries ``bypassPermissions``) finish with a ``STAFF_RESULT:``
+Work runs (argv carries ``--permission-mode dontAsk``; chat turns use ``default``) finish with a ``STAFF_RESULT:``
 line. Under ``ask`` they end on a question instead, which the backend reads as
 needs-input, until the continuation prompt carries the user's answer. Under
 ``hang`` they sleep for a minute first, so a test can cancel them.
@@ -45,6 +45,11 @@ def prompt_from(argv: list[str]) -> str:
         sys.stderr.write("fake claude: -p <prompt> is required\n")
         sys.exit(2)
     return argv[argv.index("-p") + 1]
+
+
+def is_work_run(argv: list[str]) -> bool:
+    """Unattended runs use ``--permission-mode dontAsk`` (#1586); chat turns use ``default``."""
+    return "--permission-mode" in argv and argv[argv.index("--permission-mode") + 1] == "dontAsk"
 
 
 def session_from(argv: list[str]) -> str:
@@ -105,12 +110,12 @@ def main(argv: list[str]) -> int:
         sys.stderr.write("Invalid API key · Please run /login\n")
         return 1
 
-    if scenario == "hang" and "bypassPermissions" in argv:
+    if scenario == "hang" and is_work_run(argv):
         time.sleep(HANG_SECONDS)
 
     session = session_from(argv)
     emit({"type": "system", "subtype": "init", "session_id": session})
-    chunks = run_body(scenario, prompt) if "bypassPermissions" in argv else chat_body(scenario, prompt)
+    chunks = run_body(scenario, prompt) if is_work_run(argv) else chat_body(scenario, prompt)
     for chunk in chunks:
         emit({"type": "assistant", "message": {"content": [{"type": "text", "text": chunk}]}, "session_id": session})
         if scenario == "slow":

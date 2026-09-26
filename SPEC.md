@@ -8,6 +8,7 @@
 ## Change Log
 
 | Date | PR / Issue | Summary |
+| 2026-09-26 | #1586                  | Unattended staff runs no longer bypass CLI permissions: one shared shell allow/deny list rendered per provider (Claude `dontAsk` + `--allowedTools`, Codex `workspace-write` sandbox with `--add-dir <git common dir>` and `--json` tokens, Gemini `auto_edit` + generated policy, Cursor `--sandbox enabled` without `--force`); agy is chat-only; runner and retry fallback skip chat-only providers. |
 | 2026-09-25 | #1299 | SC-B1: retroactive, as-built ADR 0006 for the staff conversation model (threads, messages, action proposals, work items; chat turns vs work runs; per-provider session resume with history-replay fallback; node-local state; privacy, retention and failure-mode table). Indexed in `docs/adr/README.md`; `docs/assistant-chat-endpoint-design.md` and `docs/assistant-agent-mode-design.md` marked superseded. Gaps between the code and the model filed as #1484–#1494. Docs only; no behaviour change. |
 | 2026-09-26 | #1577 | Test isolation on fleet nodes: an autouse fixture clears `HUB_URL` so tests never proxy to a live hub, the staff workspace fixture drops `STAFF_REPOS_ROOT`, PowerShell-only tests skip without `pwsh`, and the runner opens-PR test waits for its hook. |
 | 2026-09-26 | #1579 | Auto-review dedupe follow-up (#1580 review): `_AUTO_REVIEW_LOCK` makes the check and `runner.submit` atomic, so concurrent verifications of one PR queue one review; dedupe keys on the resolved reviewer role, so a `fleet-critic` fallback counts. |

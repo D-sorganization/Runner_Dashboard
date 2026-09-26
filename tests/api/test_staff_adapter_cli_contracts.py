@@ -18,7 +18,7 @@ def test_codex_uses_current_unattended_flags() -> None:
     argv = adapters_mod.ADAPTERS["codex"].build_command("do it", "/tmp/wt", model=None)
     assert argv[:2] == ["codex", "exec"]
     assert "--full-auto" not in argv  # removed in codex 0.156
-    assert "--dangerously-bypass-approvals-and-sandbox" in argv
+    assert argv[argv.index("--sandbox") + 1] == "workspace-write"  # never the approvals bypass (#1586)
     assert "--skip-git-repo-check" in argv  # ad-hoc runs have no repo
     assert argv[-1] == "do it"
 

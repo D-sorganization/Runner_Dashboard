@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -107,20 +108,27 @@ def should_retry(
     return True, "retry allowed"
 
 
-def next_fallback_provider(role: RoleSpec, current_provider: str) -> str | None:
-    """Return the next provider in the role's fallback chain, or None if exhausted."""
+def next_fallback_provider(
+    role: RoleSpec,
+    current_provider: str,
+    usable: Callable[[str], bool] = lambda _pid: True,
+) -> str | None:
+    """Return the next usable provider in the role's fallback chain, or None if exhausted.
+
+    ``usable`` filters out providers that cannot take the run (e.g. chat-only, #1586).
+    """
     fallback_chain = getattr(role, "fallback_providers", ())
     if fallback_chain:
         for p in fallback_chain:
-            if p != current_provider:
+            if p != current_provider and usable(p):
                 return p
         return None
 
     providers = list(role.providers)
     if current_provider in providers:
-        idx = providers.index(current_provider)
-        if idx + 1 < len(providers):
-            return providers[idx + 1]
+        for p in providers[providers.index(current_provider) + 1 :]:
+            if usable(p):
+                return p
 
     return None
 
@@ -226,8 +234,12 @@ def handle_post_execution_retry(
 
     # 2. If same provider retries exhausted, check fallback chain
     if is_retryable_class(latest.failure_class):
-        fallback = next_fallback_provider(role, plan.provider)
-        if fallback and fallback in runner._adapters:
+        fallback = next_fallback_provider(
+            role,
+            plan.provider,
+            usable=lambda pid: pid in runner._adapters and getattr(runner._adapters[pid], "unattended", True),
+        )
+        if fallback:
             can_run, _ = guard.can_run(role)
             if can_run:
                 next_attempt = latest.attempt + 1
