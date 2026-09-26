@@ -4419,6 +4419,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Quota
+         * @description Billing kind and current plan windows for every staff provider on this node.
+         *
+         *     Reads local files only (the quota store and Codex session logs); never runs a
+         *     CLI, so asking costs no quota. ``quota`` is null until a source has been seen.
+         */
+        get: operations["get_quota_api_staff_quota_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/roles": {
         parameters: {
             query?: never;
@@ -5649,6 +5672,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/threads/{thread_id}/relay-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relay Thread Run Card
+         * @description Relay run-card state from an executing node back to origin (issue #1488).
+         */
+        post: operations["relay_thread_run_card_api_v1_staff_threads__thread_id__relay_card_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/threads/{thread_id}/runs/{run_id}/answer": {
         parameters: {
             query?: never;
@@ -6540,6 +6583,73 @@ export interface components {
              */
             stack?: string | null;
         };
+        /** CreateActionProposalRequest */
+        CreateActionProposalRequest: {
+            /**
+             * Action
+             * @description Name of allowlisted action
+             */
+            action: string;
+            /**
+             * Message Id
+             * @description Originating message ID
+             */
+            message_id: string;
+            /**
+             * Params
+             * @description Action parameters
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Risk
+             * @description Ignored: the risk always comes from the action registry (#1485)
+             */
+            risk?: string | null;
+            /**
+             * Thread Id
+             * @description Parent thread ID
+             */
+            thread_id: string;
+        };
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
+        CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Confirm Not Duplicate
+             * @default false
+             */
+            confirm_not_duplicate: boolean;
+            /**
+             * Estimated Cost
+             * @enum {string}
+             */
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "Routine" | "Urgent" | "Emergency";
+        };
         /** CreateThreadRequest */
         CreateThreadRequest: {
             /**
@@ -7345,6 +7455,57 @@ export interface components {
             };
         };
         /**
+         * RelayRunCardRequest
+         * @description POST body for relaying a run card from an executing node back to origin (issue #1488).
+         */
+        RelayRunCardRequest: {
+            /** Body Md */
+            body_md?: string | null;
+            /**
+             * Branch
+             * @default
+             */
+            branch: string;
+            /** Error */
+            error?: string | null;
+            /** Failure Class */
+            failure_class?: string | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Node
+             * @default
+             */
+            node: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /** Question */
+            question?: string | null;
+            /**
+             * Repo
+             * @default
+             */
+            repo: string;
+            /** Role */
+            role: string;
+            /** Run Id */
+            run_id: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Target Ref
+             * @default
+             */
+            target_ref: string;
+        };
+        /**
          * ReleaseBody
          * @description ``release``: drop this session's presence.
          */
@@ -7547,6 +7708,8 @@ export interface components {
             machine: string;
             /** Model */
             model?: string | null;
+            /** Origin Node */
+            origin_node?: string | null;
             /** Pr */
             pr?: number | null;
             /**
@@ -7935,6 +8098,20 @@ export interface components {
         StaffPricingResponse: {
             /** Rows */
             rows?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffQuotaResponse
+         * @description Response model for GET /api/staff/quota (#1587): live subscription windows per provider.
+         */
+        StaffQuotaResponse: {
+            /** Generated At */
+            generated_at: string;
+            /** Providers */
+            providers?: {
                 [key: string]: unknown;
             }[];
         } & {
@@ -8781,73 +8958,6 @@ export interface components {
              * @default 0
              */
             planned: number;
-        };
-        /**
-         * CreateProposalRequest
-         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
-         */
-        proposals__models__CreateProposalRequest: {
-            /** Code Request Url */
-            code_request_url?: string | null;
-            /**
-             * Confirm Not Duplicate
-             * @default false
-             */
-            confirm_not_duplicate: boolean;
-            /**
-             * Estimated Cost
-             * @enum {string}
-             */
-            estimated_cost: "Low" | "Medium" | "High";
-            /** Evidence */
-            evidence: string;
-            /** Lean */
-            lean: string;
-            /** Options Considered */
-            options_considered: string;
-            /** Problem */
-            problem: string;
-            /** Source */
-            source?: string | null;
-            /** Target Repos */
-            target_repos: string[];
-            /** Title */
-            title: string;
-            /**
-             * Urgency
-             * @enum {string}
-             */
-            urgency: "Routine" | "Urgent" | "Emergency";
-        };
-        /** CreateProposalRequest */
-        routers__staff_proposals__CreateProposalRequest: {
-            /**
-             * Action
-             * @description Name of allowlisted action
-             */
-            action: string;
-            /**
-             * Message Id
-             * @description Originating message ID
-             */
-            message_id: string;
-            /**
-             * Params
-             * @description Action parameters
-             */
-            params?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Risk
-             * @description Ignored: the risk always comes from the action registry (#1485)
-             */
-            risk?: string | null;
-            /**
-             * Thread Id
-             * @description Parent thread ID
-             */
-            thread_id: string;
         };
     };
     responses: never;
@@ -13394,7 +13504,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["proposals__models__CreateProposalRequest"];
+                "application/json": components["schemas"]["CreateProposalRequest"];
             };
         };
         responses: {
@@ -14874,6 +14984,26 @@ export interface operations {
             };
         };
     };
+    get_quota_api_staff_quota_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffQuotaResponse"];
+                };
+            };
+        };
+    };
     roster_api_staff_roles_get: {
         parameters: {
             query?: never;
@@ -16054,7 +16184,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["routers__staff_proposals__CreateProposalRequest"];
+                "application/json": components["schemas"]["CreateActionProposalRequest"];
             };
         };
         responses: {
@@ -16832,6 +16962,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relay_thread_run_card_api_v1_staff_threads__thread_id__relay_card_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayRunCardRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

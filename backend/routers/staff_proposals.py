@@ -30,7 +30,7 @@ log = logging.getLogger("dashboard.staff.proposals")
 router = APIRouter(tags=["staff-proposals"])
 
 
-class CreateProposalRequest(BaseModel):
+class CreateActionProposalRequest(BaseModel):
     message_id: str = Field(description="Originating message ID")
     thread_id: str = Field(description="Parent thread ID")
     action: str = Field(description="Name of allowlisted action")
@@ -138,7 +138,7 @@ async def list_proposals(
     response_model_exclude_none=True,
 )
 async def create_proposal(
-    body: CreateProposalRequest,
+    body: CreateActionProposalRequest,
     caller: Principal = Depends(require_scope("staff.chat")),  # noqa: B008
 ) -> dict[str, Any]:
     """Create a new action proposal within a conversation thread.

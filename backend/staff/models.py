@@ -363,6 +363,15 @@ class StaffUsageResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class StaffQuotaResponse(BaseModel):
+    """Response model for GET /api/staff/quota (#1587): live subscription windows per provider."""
+
+    generated_at: str
+    providers: list[dict[str, Any]] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="allow")
+
+
 class StaffPricingResponse(BaseModel):
     """Response model for GET /api/staff/usage/pricing."""
 

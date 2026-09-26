@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -226,6 +227,10 @@ async def get_usage_monitoring(request: Request) -> dict:
     if cached is not None:
         return cached
 
-    summary = usage_monitoring.normalize_usage_summary(usage_monitoring.load_usage_sources_config())
+    from staff import quota  # noqa: PLC0415
+    from staff.adapters import ADAPTERS  # noqa: PLC0415
+
+    live = usage_monitoring.quota_usage_sources(quota.report(ADAPTERS, datetime.now(UTC)))
+    summary = usage_monitoring.normalize_usage_summary([*usage_monitoring.load_usage_sources_config(), *live])
     cache_set("usage_monitoring", summary)
     return summary
