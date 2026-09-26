@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1490 · SC-B1-G7: Standard 180-day retention window matching audit log (gzip archive older records, add Markdown/JSON thread export)
+### DL-#1593 · Restore Green Main: Split runner.py and staffApi.ts Under 500 Lines
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1593
+- **Branch:** `fix/1593-restore-green-main`
+- **Paths:** `backend/staff/runner.py`, `backend/staff/runner_ops.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/quotaApi.ts`, `frontend/src/primitives/RefreshBadge.tsx`, `tests/unit/test_staff_runner_ops.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (103 passed across runner/quota pytest suites; ruff, mypy clean; all files <= 500 LOC)
+- **Summary:** Extracted `select_first_available_provider`, `resolve_launch_paths`, and `pump_output` from `backend/staff/runner.py` into `backend/staff/runner_ops.py`, reducing `runner.py` from 528 to 482 LOC. Extracted quota interfaces and fetchers from `frontend/src/pages/Staff/staffApi.ts` into `frontend/src/pages/Staff/quotaApi.ts`, reducing `staffApi.ts` from 561 to 488 LOC. Re-exported quota types from `staffApi.ts` for full backward compatibility. Fixed RefreshBadge fresh state container text contrast against white backgrounds. Added direct unit tests in `tests/unit/test_staff_runner_ops.py`.
+- **Next step:** Push branch, open PR with squash auto-merge, verify CI passes and PR auto-merges to restore green `main`.
+
+### DL-#1490 · SC-B1-G7: Standard 180-day retention window matching audit log (gzip archive older records, add Markdown/JSON thread export)
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1490
 - **Branch:** `feat/1490-retention-and-export`
+- **PR:** #1590 (merged)
 - **Paths:** `backend/staff/retention.py`, `backend/routers/staff_export.py`, `backend/server.py`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/StaffConsole/__tests__/Desktop.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/ContextPane.test.tsx`, `tests/unit/test_staff_retention.py`, `tests/api/test_staff_thread_export.py`, `docs/adr/0006-staff-conversation-model.md`, `SPEC.md`
 - **Started:** 2026-09-26
-- **Last verified:** 2026-09-26 (12 passed in `test_staff_retention.py` & `test_staff_thread_export.py`; ruff, mypy clean)
+- **Last verified:** 2026-09-26 (#1590 merged into main at 0304ceb9; all 11 SC-B1 gap issues closed)
 - **Summary:** Added `backend/staff/retention.py` with multi-entity archivers for closed/inactive conversations and messages, terminal action proposals, terminal runs and events, and terminal work items. Older records (>= 180 days) are written to monthly compressed `.jsonl.gz` files before deletion from active SQLite tables. Added thread export formatters (`export_thread_markdown`, `export_thread_json`). Mounted REST endpoints under `/api/v1/staff`: `GET /threads/{id}/export?format=markdown|json` (and `.md`/`.json` aliases), `POST /retention/sweep`, and `GET /retention/status`. Added export buttons in Staff Console desktop header and Context Pane Thread tab. Amended ADR 0006 Section 5 & 9.
-- **Next step:** Run full quality gates (ruff, mypy, pytest), push branch, open PR with squash auto-merge.
+- **Next step:** Monitor scheduled retention sweeps.
 
 ### DL-#1588 · Budgets as a Share of Plan Windows
 

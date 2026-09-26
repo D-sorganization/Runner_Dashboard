@@ -2,35 +2,40 @@ Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1490`; branch `feat/1490-retention-and-export`; commit SELF; PR: pending; Issue #1490; DL-#1490.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1593`; branch `fix/1593-restore-green-main`; commit SELF; PR: pending; Issue #1593; DL-#1593.
 
 ## Objective and Status
 
-- SC-B1-G7 (#1490): Implemented standard 180-day retention window matching the audit log, gzip-archiving older records before deletion, and thread export as Markdown and JSON.
-- Built `backend/staff/retention.py` with multi-entity archivers:
-  1. `archive_old_conversations`: archives closed/inactive threads and messages older than 180 days to monthly compressed files (`conversations_archive_{YYYYMM}.jsonl.gz`), deleting records from active tables only after successful gzip write.
-  2. `archive_old_proposals`: archives terminal action proposals (`approved`, `denied`, `executed`, `cancelled`) older than 180 days to `action_proposals_archive_{YYYYMM}.jsonl.gz`.
-  3. `archive_old_runs`: archives terminal runs (`completed`, `failed`, `cancelled`) and events older than 180 days to `staff_runs_archive_{YYYYMM}.jsonl.gz`.
-  4. `archive_old_work_items`: archives terminal work items (`done`, `closed`, `cancelled`) older than 180 days to `work_items_archive_{YYYYMM}.jsonl.gz`.
-  5. `run_retention_archival`: orchestrator running sweeps across all entities and recording audit event.
-  6. `export_thread_markdown` and `export_thread_json`: structured conversation export formatters.
-- Built `backend/routers/staff_export.py` mounted under `/api/v1/staff` and `/api/staff`:
-  1. `GET /threads/{id}/export?format=markdown|json` (and `.md`/`.json` aliases).
-  2. `POST /retention/sweep`: admin-triggered retention archival sweep.
-  3. `GET /retention/status`: policy and storage inspection.
-- Updated frontend:
-  1. `Desktop.tsx`: added export buttons in header.
-  2. `ContextPane.tsx`: added export buttons in Thread tab.
-- Amended ADR 0006 Section 5 & 9 with 180-day retention policy and thread export capabilities.
-- Test coverage: `tests/unit/test_staff_retention.py` (6/6 passing), `tests/api/test_staff_thread_export.py` (6/6 passing).
+- Restore green `main` on Runner_Dashboard (#1593): bring `backend/staff/runner.py` and `frontend/src/pages/Staff/staffApi.ts` under the mandatory $\le 500$ LOC threshold, and fix RefreshBadge contrast against white backgrounds.
+- Decomposition & Changes:
+  1. `backend/staff/runner_ops.py` (92 LOC): Extracted `select_first_available_provider`, `resolve_launch_paths`, and `pump_output`.
+  2. `backend/staff/runner.py` (482 LOC, reduced from 528 LOC): Delegated `_first_available`, `_launch_paths`, and `_pump_output` to `runner_ops.py` preserving full backward compatibility for existing callers and tests.
+  3. `frontend/src/pages/Staff/quotaApi.ts` (92 LOC): Extracted `QuotaWindow`, `QuotaSnapshot`, `QuotaReport`, `QuotaRow`, `QUOTA_CEILING_PERCENT`, `fetchQuota`, and `quotaRows`.
+  4. `frontend/src/pages/Staff/staffApi.ts` (488 LOC, reduced from 561 LOC): Re-exported `./quotaApi` preserving backward compatibility.
+  5. `frontend/src/primitives/RefreshBadge.tsx` (120 LOC): Container text color changed to `var(--text-secondary, #8b949e)` (resolving axe-core color contrast against white backgrounds).
+  6. `tests/unit/test_staff_runner_ops.py` (98 LOC): Unit tests for `runner_ops.py`.
+- Quality Gates Verified:
+  - All touched files strictly $\le 500$ LOC.
+  - 103 passed pytest tests across runner and quota test suites.
+  - `ruff check` and `ruff format --check` clean.
+  - `mypy` passed with 0 errors across 3 source files.
 
 ## Next steps
 
-1. Run quality gates (ruff, mypy, pytest).
-2. Commit and push branch `feat/1490-retention-and-export`.
-3. Open PR with `Fixes #1490` and arm squash auto-merge (`--auto --squash`).
+1. Commit and push branch `fix/1593-restore-green-main`.
+2. Open PR with `Fixes #1593` and arm squash auto-merge (`--auto --squash`).
+3. Monitor CI and verify merge into `main` without administrative bypasses.
 
 ---
+
+# Past handoff — Retention window and export (#1490)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; PR #1590 (merged); Issue #1490; DL-#1490.
+- Shipped into `main` at `0304ceb9`. All 11 SC-B1 gap issues closed.
 
 # Past handoff — Budgets as a share of plan windows (#1588)
 

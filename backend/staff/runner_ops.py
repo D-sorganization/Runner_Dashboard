@@ -1,0 +1,92 @@
+"""Low-level execution helpers for StaffRunner (#1586, #1587, #1588, #1593).
+
+Extracted from staff.runner to keep file lengths within the 500-line budget.
+Contains provider selection, launch arguments resolution, and subprocess output pumping.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from staff import quota as quota_mod
+from staff import workspace
+from staff.adapters import ProviderAdapter
+from staff.redaction import redact_sensitive_content
+from staff.store import RunRecord, RunStore
+from staff.watchdog import StaffWatchdog
+
+
+def select_first_available_provider(
+    adapters: Mapping[str, ProviderAdapter],
+    providers: tuple[str, ...],
+    ceiling: float | None = None,
+) -> str:
+    """First installed, unattended provider whose plan is under ``ceiling`` percent (#1586, #1588).
+
+    Post: when every installed provider is over quota, the first installed one
+    (the gates in the scheduler and dispatch decide whether it may run); when
+    none is installed, the first that can run unattended.
+    """
+    runnable = [pid for pid in providers if pid in adapters and getattr(adapters[pid], "unattended", True)]
+    installed = [pid for pid in runnable if adapters[pid].installed()]
+    limit = quota_mod.ceiling_percent(None) if ceiling is None else ceiling
+    for pid in installed:
+        if quota_mod.headroom(pid, limit)[0]:
+            return pid
+    if installed:
+        return installed[0]
+    if runnable:
+        return runnable[0]
+    return providers[0] if providers else "claude"
+
+
+def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, str]:
+    """``gitdir``/``policy`` keyword arguments for ``adapter.build_command`` (#1586).
+
+    Post: only the slots the adapter's argv actually uses are passed, so an
+    adapter with the older ``build_command(prompt, workdir, model)`` shape still works.
+    """
+    argv = getattr(adapter, "argv", ())
+    paths: dict[str, str] = {}
+    if any("{gitdir}" in part for part in argv):
+        paths["gitdir"] = str(workspace.git_common_dir(workdir))
+    policy_text = getattr(adapter, "policy_text", None)
+    if policy_text is not None and any("{policy}" in part for part in argv):
+        paths["policy"] = str(workspace.write_policy_file(adapter.provider_id, policy_text()))
+    return paths
+
+
+def pump_output(
+    rec: RunRecord,
+    adapter: ProviderAdapter,
+    proc: subprocess.Popen[str],
+    transcript: Path,
+    store: RunStore,
+    watchdog: StaffWatchdog | None = None,
+) -> tuple[dict[str, Any], str]:
+    """Stream stdout lines into the transcript file and the event store.
+
+    Returns the usage the adapter reported and the last ``STAFF_RESULT:`` text seen.
+    """
+    usage: dict[str, Any] = {}
+    result_line = ""
+    assert proc.stdout is not None  # noqa: S101
+    with transcript.open("a", encoding="utf-8") as tf:
+        for line in proc.stdout:
+            if watchdog is not None:
+                watchdog.record_output()
+            tf.write(redact_sensitive_content(line))
+            event = adapter.parse_line(line)
+            if event.get("usage"):
+                usage.update(event["usage"])
+            if event.get("kind") == "rate_limit_event" and isinstance(event.get("raw"), dict):
+                quota_mod.observe(rec.provider, event["raw"])  # live plan windows, free (#1587)
+            text = event.get("text") or ""
+            if text.strip():
+                store.append_event(rec.id, event.get("kind", "text"), text)
+                if "STAFF_RESULT:" in text:
+                    result_line = text[text.index("STAFF_RESULT:") :]
+    return usage, result_line
