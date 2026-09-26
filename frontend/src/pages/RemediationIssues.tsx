@@ -21,8 +21,7 @@ import {
   issueMatchesFilters,
   type IssueRecord,
 } from "./remediationDispatch";
-import { submitStaffRequest } from "./Staff/staffApi";
-import { buildBulkIssueRequest, formatBulkResponseResult } from "./Remediation/remediationBulkRequest";
+import { buildBulkIssueRequest, dispatchBulkByRepo, keepFailedSelected } from "./Remediation/remediationBulkRequest";
 
 export type { IssueRecord, IssueTaxonomy } from "./remediationDispatch";
 
@@ -264,25 +263,21 @@ export function RemediationIssuesSubTab({
   }
 
   function doDispatch(): void {
-    const items = selectedItems.map((i) => ({
-      repo: i.repo || i.repository || repoFilter || "",
-      number: i.number,
-    }));
-    if (!items.length) return;
+    const rows = selectedItems.flatMap((i) =>
+      i.number != null ? [{ key: issueKey(i), target: { repo: i.repo || i.repository || repoFilter || "", number: i.number } }] : [],
+    );
+    if (!rows.length) return;
     setDispatchResult(null);
-    const req = buildBulkIssueRequest(items, {
+    const options = {
       provider: dispatchProvider,
       prompt: dispatchPrompt,
       force: forceDispatch,
       approved_by: principalName || "anonymous",
-    });
-    submitStaffRequest(req)
-      .then((resp) => {
-        const outcome = formatBulkResponseResult(resp, items.length, "issue");
+    };
+    dispatchBulkByRepo(buildBulkIssueRequest, rows.map((r) => r.target), options, "issue")
+      .then(({ outcome, failed }) => {
         setDispatchResult(outcome);
-        if (outcome.type === "success" || (resp.result && (resp.result as { accepted?: number }).accepted)) {
-          setSelected({});
-        }
+        setSelected(keepFailedSelected(rows, failed));
         setShowModal(false);
         setForceDispatch(false);
       })

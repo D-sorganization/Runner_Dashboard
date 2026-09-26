@@ -66,21 +66,19 @@ def client() -> TestClient:
 
 
 def test_remediation_issues_tsx_uses_staff_requests_api() -> None:
-    """RemediationIssues.tsx must use submitStaffRequest and buildBulkIssueRequest."""
+    """RemediationIssues.tsx must dispatch per repository through dispatchBulkByRepo."""
     content = (_FRONTEND_PAGES / "RemediationIssues.tsx").read_text(encoding="utf-8")
     assert "/api/issues/dispatch" not in content, "RemediationIssues.tsx should not call legacy /api/issues/dispatch"
-    assert "submitStaffRequest" in content
+    assert "dispatchBulkByRepo" in content
     assert "buildBulkIssueRequest" in content
-    assert "formatBulkResponseResult" in content
 
 
 def test_remediation_prs_tsx_uses_staff_requests_api() -> None:
-    """RemediationPRs.tsx must use submitStaffRequest and buildBulkPRRequest."""
+    """RemediationPRs.tsx must dispatch per repository through dispatchBulkByRepo."""
     content = (_FRONTEND_PAGES / "RemediationPRs.tsx").read_text(encoding="utf-8")
     assert "/api/prs/dispatch" not in content, "RemediationPRs.tsx should not call legacy /api/prs/dispatch"
-    assert "submitStaffRequest" in content
+    assert "dispatchBulkByRepo" in content
     assert "buildBulkPRRequest" in content
-    assert "formatBulkResponseResult" in content
 
 
 def test_remediation_bulk_request_ts_exists_and_exports_helpers() -> None:
@@ -91,6 +89,8 @@ def test_remediation_bulk_request_ts_exists_and_exports_helpers() -> None:
     assert "export function buildBulkIssueRequest" in content
     assert "export function buildBulkPRRequest" in content
     assert "export function formatBulkResponseResult" in content
+    assert "export async function dispatchBulkByRepo" in content
+    assert "submitStaffRequest" in content
 
 
 def test_bulk_issue_act_creates_single_work_item_listing_all_targets(client: TestClient) -> None:

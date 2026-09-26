@@ -199,6 +199,27 @@ describe("RemediationIssuesSubTab", () => {
     });
   });
 
+  it("dispatches each repository's issues to that repository", async () => {
+    const fetchFn = mockFetch({
+      linearReady: false,
+      issues: [ISSUES[0], { ...ISSUES[0], repo: "org/beta", number: 7, title: "Other task" }],
+    });
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() => expect(screen.getByText("Other task")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+    await waitFor(() => {
+      const targets = fetchFn.mock.calls
+        .filter((c) => String(c[0]).includes("/api/v1/staff/requests"))
+        .map((c) => JSON.parse((c[1] as RequestInit).body as string).target);
+      expect(targets.map((t) => [t.repo, t.issues])).toEqual([
+        ["org/alpha", [5]],
+        ["org/beta", [7]],
+      ]);
+    });
+  });
+
   it("shows partial backend failure per target", async () => {
     mockFetch({
       linearReady: false,

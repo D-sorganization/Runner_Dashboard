@@ -17,10 +17,10 @@ import logging
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from identity import Principal, format_caller, principal_has_scope
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from staff.actions import (
     ACTION_REGISTRY,
     ActionContext,
@@ -40,6 +40,9 @@ if TYPE_CHECKING:
 log = logging.getLogger("dashboard.staff.work_requests")
 
 REQUESTS_THREAD_PREFIX = "th_req_"
+
+# Most issues or PRs one bulk request may target; the legacy bulk dispatch cap.
+MAX_BULK_TARGETS = 100
 
 # How a failed action surfaces over HTTP; anything unlisted is an upstream failure.
 _STATUS_BY_FAILURE_CLASS = {
@@ -61,8 +64,15 @@ class RequestTarget(BaseModel):
     pr: int | None = Field(default=None, ge=1)
     run_id: int | None = Field(default=None, ge=1)
     ref: str = ""
-    issues: list[int] = Field(default_factory=list)
-    prs: list[int] = Field(default_factory=list)
+    issues: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list, max_length=MAX_BULK_TARGETS)
+    prs: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list, max_length=MAX_BULK_TARGETS)
+
+    @field_validator("issues", "prs")
+    @classmethod
+    def _unique(cls, numbers: list[int]) -> list[int]:
+        if len(set(numbers)) != len(numbers):
+            raise ValueError("lists a target more than once")
+        return numbers
 
 
 class WorkRequest(BaseModel):

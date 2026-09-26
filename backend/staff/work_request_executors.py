@@ -150,7 +150,8 @@ def _run_bulk_dispatches(
     if not dispatched:
         return ActionResult(
             success=False,
-            error=f"all {len(targets)} {target_key} targets failed to dispatch",
+            error=f"{target_key}.act failed for every target: "
+            + "; ".join(f"#{r['number']}: {r['error']}" for r in rejected),
             failure_class="dispatch_failed",
             result=bulk_result,
         )

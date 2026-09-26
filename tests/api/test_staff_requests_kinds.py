@@ -334,3 +334,46 @@ def test_unprivileged_requester_triggers_approval_required(client: TestClient) -
     data = resp.json()
     assert data["state"] == "approval_required"
     assert "staff.approve" in data["approval"]
+
+
+# ─── bulk target contract (#1500 follow-up) ────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        {"repo": "Tools", "issues": [0]},
+        {"repo": "Tools", "issues": [-3]},
+        {"repo": "Tools", "issues": [42, 42]},
+        {"repo": "Tools", "issues": list(range(1, 102))},
+        {"repo": "Tools", "prs": [0]},
+        {"repo": "Tools", "prs": [7, 7]},
+        {"repo": "Tools", "prs": list(range(1, 102))},
+    ],
+)
+def test_bulk_act_rejects_invalid_targets(client: TestClient, target: dict[str, Any]) -> None:
+    kind = "issue.act" if "issues" in target else "pr.act"
+    resp = client.post(URL, json={"kind": kind, "target": target, "dry_run": True}, headers=_XHR)
+    assert resp.status_code == 422, resp.text
+
+
+def test_bulk_act_accepts_the_legacy_cap_of_100_targets(client: TestClient) -> None:
+    body = {"kind": "issue.act", "target": {"repo": "Tools", "issues": list(range(1, 101))}, "dry_run": True}
+    resp = client.post(URL, json=body, headers=_XHR)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["plan"]["issues"] == list(range(1, 101))
+
+
+def test_bulk_act_all_failed_names_every_target(client: TestClient) -> None:
+    body = {"kind": "issue.act", "target": {"repo": "Tools", "issues": [42, 43]}, "provider": "claude"}
+
+    async def fail(_repo: str, num: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError(f"no issue {num}")
+
+    with patch("staff.work_request_executors._dispatch_issue_action", side_effect=fail):
+        resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 502, resp.text
+    message = resp.json()["error"]["message"]
+    assert "#42: no issue 42" in message
+    assert "#43: no issue 43" in message
