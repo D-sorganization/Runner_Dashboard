@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1497 · SC-G5-1 slice A: one work-request API (`staff.dispatch`)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1497
+- **Branch:** `feat/1497-work-requests`
+- **Paths:** `backend/staff/work_requests.py`, `backend/routers/staff_requests.py`, `backend/server.py`, `backend/staff/action_executors.py`, `tests/api/test_staff_requests_api.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/api/test_staff_requests_api.py` 14 passed; `tests/staff tests/api/test_staff*.py tests/unit/test_staff*.py` 701 passed under WSL with `HOME`/`USERNAME` isolated; ruff and mypy clean)
+- **Summary:** `POST /api/v1/staff/requests` validates per kind, records a user message, Work Item and ActionProposal on the caller's *Requests* thread and executes through the registry, so quota, forwarding and audit happen once in the shared dispatch service (#1487). Approval follows registry risk (#1485). A failed backend blocks the work item and returns the v1 error envelope (SC-F3) with the recorded ids in `error.request`, because the `/api/v1/staff` middleware rewrites any other error body. `execute_staff_dispatch` now forwards `work_item_id` and returns the dry-run `plan`.
+- **Next step:** Later slices add kinds `ci.remediate`, `issue.act`/`pr.act`, `code_request.dispatch` and `assessment.run`; each first needs its route logic lifted into a service the registered action can call.
+
 ### DL-#1489 · SC-B1-G6: Redact secrets everywhere conversations and runs persist
 
 - **State:** in_review

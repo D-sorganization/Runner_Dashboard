@@ -2587,6 +2587,74 @@
         "title": "ReportChildPayload",
         "type": "object"
       },
+      "RequestTarget": {
+        "additionalProperties": false,
+        "description": "What the work is about. Each kind accepts only the fields it can act on.",
+        "properties": {
+          "issue": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "issues": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "prs": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Prs",
+            "type": "array"
+          },
+          "ref": {
+            "default": "",
+            "title": "Ref",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "title": "Repo",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "title": "RequestTarget",
+        "type": "object"
+      },
       "RoleScheduleOverrideBody": {
         "properties": {
           "enabled": {
@@ -4803,6 +4871,83 @@
         },
         "required": ["metrics"],
         "title": "WebVitalsPayload",
+        "type": "object"
+      },
+      "WorkRequest": {
+        "additionalProperties": false,
+        "description": "The body of ``POST /api/v1/staff/requests``.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "A request kind; see REQUEST_KINDS",
+            "title": "Kind",
+            "type": "string"
+          },
+          "machine": {
+            "default": "local",
+            "title": "Machine",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RequestTarget"
+          }
+        },
+        "required": ["kind"],
+        "title": "WorkRequest",
         "type": "object"
       },
       "WorkSummary": {
@@ -15644,6 +15789,52 @@
         ],
         "summary": "Execute Approved Proposal",
         "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/requests": {
+      "post": {
+        "description": "Request work of any registered kind; see ``staff.work_requests``.",
+        "operationId": "create_request_api_v1_staff_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Request",
+        "tags": ["staff-requests"]
       }
     },
     "/api/v1/staff/roles": {

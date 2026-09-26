@@ -5261,6 +5261,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Request
+         * @description Request work of any registered kind; see ``staff.work_requests``.
+         */
+        post: operations["create_request_api_v1_staff_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/roles": {
         parameters: {
             query?: never;
@@ -7366,6 +7386,32 @@ export interface components {
              */
             updated_handoff: string;
         };
+        /**
+         * RequestTarget
+         * @description What the work is about. Each kind accepts only the fields it can act on.
+         */
+        RequestTarget: {
+            /** Issue */
+            issue?: number | null;
+            /** Issues */
+            issues?: number[];
+            /** Pr */
+            pr?: number | null;
+            /** Prs */
+            prs?: number[];
+            /**
+             * Ref
+             * @default
+             */
+            ref: string;
+            /**
+             * Repo
+             * @default
+             */
+            repo: string;
+            /** Run Id */
+            run_id?: number | null;
+        };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
             /** Enabled */
@@ -8569,6 +8615,41 @@ export interface components {
              * @default
              */
             route: string;
+        };
+        /**
+         * WorkRequest
+         * @description The body of ``POST /api/v1/staff/requests``.
+         */
+        WorkRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Kind
+             * @description A request kind; see REQUEST_KINDS
+             */
+            kind: string;
+            /**
+             * Machine
+             * @default local
+             */
+            machine: string;
+            /** Model */
+            model?: string | null;
+            /** Profile Id */
+            profile_id?: string | null;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /** Provider */
+            provider?: string | null;
+            /** Role */
+            role?: string | null;
+            target?: components["schemas"]["RequestTarget"];
         };
         /**
          * WorkSummary
@@ -15949,6 +16030,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_request_api_v1_staff_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
