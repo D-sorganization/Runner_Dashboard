@@ -1,10 +1,44 @@
-# Current handoff — Staff Console e2e suite with fake providers (#1341)
+# Current handoff — SC-G5-4: Remediation Issues and PRs bulk actions go through the request API (#1500)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `test/1341-staff-e2e`; PR not created yet (opened with this commit); DL-#1341; Issue #1341 (Part of, not Fixes).
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1500`; branch `feat/1500-remediation-bulk-requests`; Issue #1500; DL-#1500.
+
+## Objective and Status
+
+- Scope:
+  1. Switched `RemediationIssues.tsx` and `RemediationPRs.tsx` from legacy `/api/issues/dispatch` and `/api/prs/dispatch` to the unified work-request API (`POST /api/v1/staff/requests`) using kinds `issue.act` and `pr.act` via `submitStaffRequest`.
+  2. Preserved bulk selection, provider, prompt, `force` and `approved_by` semantics (threaded principal name).
+  3. One work item per bulk request, listing every target number in title (`[issue.act] repo #10, #20 prompt`).
+  4. Extracted underlying workflow dispatch helpers into `backend/staff/work_request_dispatch.py` (192 lines) and frontend helpers into `frontend/src/pages/Remediation/remediationBulkRequest.ts` (133 lines) to satisfy $\le 500$-line limits.
+  5. Vitest tests updated to assert `/api/v1/staff/requests` and partial failure messages per target.
+  6. Backend and integration test suites: `tests/api/test_staff_requests_kinds.py` (single, bulk, force, approved_by, partial failure) and `tests/test_remediation_bulk_requests.py` passing 100%.
+- Validation:
+  - `python -m pytest tests/api/test_staff_requests_kinds.py tests/test_remediation_bulk_requests.py`: 18 passed.
+  - `python -m pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
+  - Ruff: `ruff check` and `ruff format --check` clean.
+  - Line count cap: every modified and new file strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `feat/1500-remediation-bulk-requests` to `origin`.
+2. Open PR referencing Fixes #1500 with 9-field parity checklist.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until green and merged.
+5. Release lease for #1500 via `scripts.release_agent_lease`.
+6. Clean up worktree and delete local branch.
+
+---
+
+# Past handoff — Staff Console e2e suite with fake providers (#1341)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `test/1341-staff-e2e`; PR #1544; DL-#1341; Issue #1341.
 
 ## Objective and Status
 
@@ -16,17 +50,7 @@ Last updated: 2026-09-25
   3. `staffApi` JSON-encoded POST bodies twice and sent `body_md`, so opening a thread, sending and approving all returned 422.
   4. A live SSE `{message}` frame crashed the Console tab (`useThreadStream.messageFromFrame`).
 - The main `playwright.config.ts` ignores `tests/e2e/staff/**`. `frontend-tests.yml` has a new `staff-console-e2e` job, gated on frontend, `backend/staff`, staff routers and `tests/e2e` changes.
-
-## Validation
-
-- Playwright on Windows, backend in WSL: `STAFF_E2E_PYTHON="wsl -e <venv>/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts` passes 8/8, and 16/16 with `--repeat-each=2`.
-- Backend unit tests (`test_staff_chat_stream_result.py`, `test_staff_chat_exhausted_chain.py`, chat, availability and groups): 77 passed. vitest Staff, StaffConsole and hooks dirs: 213 passed. `tsc` clean. ruff clean.
-
-## Next Steps
-
-1. Open the PR (Part of #1341), label it and arm auto-merge.
-2. File follow-ups: chat proposals never become proposal-kind messages, so approve, run card, needs-input and cancel cannot be reached in the UI; handoff meta produces no handoff card; the stale tracked `vite.config.js` overrides `vite.config.ts`; the web-vitals POST lacks the CSRF header; the failure remediation names the last fallback provider (an expired Claude login says "start ollama").
-3. Once proposals render, add the approval, run-card, needs-input and cancel specs to close #1341.
+- Shipped: Merged to `main` via PR #1544.
 
 ---
 
@@ -45,21 +69,7 @@ Last updated: 2026-09-25
   2. Converted mobile FAB (`shell/MobileShell.tsx`) to **Ask**, opening the composer sheet (`shell/AskSheet.tsx`) targeting kind `staff.dispatch`.
   3. Preserved provider and model options across run remediation flows and track the in-flight work item ID via `InFlightTile.tsx`.
   4. Retired `AgentDispatch.tsx`, its routes and navigation items (`shell/navRegistryData.ts`, `shell/routing.ts`, `shell/RoutedShell.tsx`), with redirects to `/`. Deleted `AgentDispatch.tsx` and its test suites.
-- Validation:
-  - Frontend Vitest: all suites passed.
-  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
-  - Typecheck: `npm run typecheck` clean.
-  - Python tests: `tests/test_retired_agent_dispatch.py`, `tests/frontend/test_badge_pill_primitives.py`, `tests/frontend/test_skeleton.py`, `tests/test_frontend_integrity.py` passed.
-  - Ruff: clean check and format.
-  - Mypy: `mypy backend` clean across 279 source files.
-  - Line count cap: every non-legacy touched file strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push branch `feat/1499-remediation-context-request` to `origin`.
-2. Monitor PR #1539 until auto-merge completes.
-3. Release lease for #1499 via `scripts.release_agent_lease`.
-4. Clean up worktree and local/remote branch.
+- Shipped: Merged to `main` via PR #1539.
 
 ---
 

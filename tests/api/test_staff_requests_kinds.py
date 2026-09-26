@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -151,6 +152,23 @@ def test_issue_act_dry_run_returns_plan(client: TestClient) -> None:
     assert data["plan"]["issue"] == 42
 
 
+def test_issue_act_preserves_force_and_approved_by(client: TestClient) -> None:
+    body = {
+        "kind": "issue.act",
+        "target": {"repo": "Tools", "issue": 42},
+        "provider": "claude",
+        "prompt": "Investigate bug",
+        "force": True,
+        "approved_by": "dieter",
+        "dry_run": True,
+    }
+    resp = client.post(URL, json=body, headers=_XHR)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["plan"]["force"] is True
+    assert data["plan"]["approved_by"] == "dieter"
+
+
 def test_issue_act_executes_and_records_work_item(client: TestClient) -> None:
     body = {
         "kind": "issue.act",
@@ -166,6 +184,34 @@ def test_issue_act_executes_and_records_work_item(client: TestClient) -> None:
     data = resp.json()
     assert data["state"] == "executed"
     assert data["action"] == "issue.act"
+
+
+def test_issue_act_bulk_execution_and_partial_failure(client: TestClient) -> None:
+    body = {
+        "kind": "issue.act",
+        "target": {"repo": "Tools", "issues": [10, 20]},
+        "provider": "claude",
+        "prompt": "Investigate issues in bulk",
+    }
+
+    async def side_effect(_repo: str, num: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        if num == 10:
+            return {"status": "dispatched", "envelope_id": "env-10"}
+        raise RuntimeError("Issue #20 does not exist")
+
+    with patch("staff.work_request_executors._dispatch_issue_action", side_effect=side_effect):
+        resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["state"] == "executed"
+    result = data["result"]
+    assert result["accepted"] == 1
+    assert len(result["dispatched"]) == 1
+    assert result["dispatched"][0]["envelope_id"] == "env-10"
+    assert len(result["rejected"]) == 1
+    assert result["rejected"][0]["number"] == 20
+    assert "Issue #20 does not exist" in result["rejected"][0]["error"]
 
 
 def test_pr_act_dry_run_and_execution(client: TestClient) -> None:
@@ -185,6 +231,33 @@ def test_pr_act_dry_run_and_execution(client: TestClient) -> None:
         resp = client.post(URL, json={**body, "dry_run": False}, headers=_XHR)
     assert resp.status_code == 201, resp.text
     assert resp.json()["state"] == "executed"
+
+
+def test_pr_act_bulk_execution_and_partial_failure(client: TestClient) -> None:
+    body = {
+        "kind": "pr.act",
+        "target": {"repo": "Tools", "prs": [101, 102]},
+        "provider": "claude",
+        "prompt": "Review PRs in bulk",
+    }
+
+    async def side_effect(_repo: str, num: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        if num == 101:
+            return {"status": "dispatched", "envelope_id": "env-101"}
+        raise RuntimeError("PR #102 merge conflict")
+
+    with patch("staff.work_request_executors._dispatch_pr_action", side_effect=side_effect):
+        resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["state"] == "executed"
+    result = data["result"]
+    assert result["accepted"] == 1
+    assert len(result["dispatched"]) == 1
+    assert len(result["rejected"]) == 1
+    assert result["rejected"][0]["number"] == 102
+    assert "PR #102 merge conflict" in result["rejected"][0]["error"]
 
 
 # ─── code_request.dispatch tests ───────────────────────────────────────────────

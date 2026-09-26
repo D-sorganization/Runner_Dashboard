@@ -53,15 +53,37 @@ const PRS = [
   },
 ];
 
-function mockFetch(opts: { prs?: unknown; prsOk?: boolean; dispatchOk?: boolean }) {
+function mockFetch(opts: {
+  prs?: unknown;
+  prsOk?: boolean;
+  dispatchOk?: boolean;
+  staffRequestResult?: unknown;
+}) {
   const fn = vi.fn((url: string) => {
-    if (url.includes("/api/prs/dispatch")) {
+    if (url.includes("/api/v1/staff/requests")) {
+      if (opts.dispatchOk === false) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: "boom" }),
+        } as Response);
+      }
       return Promise.resolve({
-        ok: opts.dispatchOk !== false,
-        status: opts.dispatchOk === false ? 500 : 200,
+        ok: true,
+        status: 200,
         json: () =>
           Promise.resolve(
-            opts.dispatchOk === false ? { detail: "boom" } : { dispatched: 1 },
+            opts.staffRequestResult ?? {
+              state: "executed",
+              kind: "pr.act",
+              action: "pr.act",
+              result: {
+                status: "dispatched",
+                accepted: 1,
+                dispatched: [{ number: 11 }],
+                rejected: [],
+              },
+            },
           ),
       } as Response);
     }
@@ -153,12 +175,46 @@ describe("RemediationPRsSubTab", () => {
 
     await waitFor(() => {
       const call = fetchFn.mock.calls.find((c) =>
-        String(c[0]).includes("/api/prs/dispatch"),
+        String(c[0]).includes("/api/v1/staff/requests"),
       );
       expect(call).toBeTruthy();
       const body = JSON.parse((call![1] as RequestInit).body as string);
-      expect(body.confirmation.approved_by).toBe("dieter");
+      expect(body.kind).toBe("pr.act");
+      expect(body.target.repo).toBe("org/alpha");
+      expect(body.target.prs).toEqual([11]);
+      expect(body.approved_by).toBe("dieter");
       expect(body.provider).toBe("jules_api");
+    });
+  });
+
+  it("shows partial backend failure per target", async () => {
+    mockFetch({
+      staffRequestResult: {
+        state: "executed",
+        kind: "pr.act",
+        result: {
+          status: "partial",
+          accepted: 1,
+          dispatched: [{ number: 11 }],
+          rejected: [{ number: 22, error: "Merge conflict" }],
+        },
+      },
+    });
+    render(<RemediationPRsSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Fix flaky test")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTitle("Select all"));
+    expect(screen.getByText(/PR\(s\) selected/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/Dispatch to selected/));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Confirm dispatch"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Dispatched 1 of 1 PR\(s\)\. Failed \(1\): #22: Merge conflict/),
+      ).toBeInTheDocument();
     });
   });
 

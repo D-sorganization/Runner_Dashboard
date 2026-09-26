@@ -5,7 +5,7 @@
  *
  * Self-contained tab: owns its own data fetch (`GET /api/prs`), repo/author/
  * draft filtering, column sorting, multi-select, and a bulk-dispatch modal that
- * POSTs to `/api/prs/dispatch`. The legacy version read no props; the only piece
+ * POSTs to `/api/v1/staff/requests` (kind `pr.act`). The legacy version read no props; the only piece
  * of ambient App state it touched was the signed-in `principal` (used as the
  * dispatch `approved_by`), now threaded in as an explicit `principalName` prop
  * defaulting to "anonymous" — preserving the original fallback exactly.
@@ -22,6 +22,8 @@ import {
   prRowId,
   type PullRequest,
 } from "./remediationDispatch";
+import { submitStaffRequest } from "./Staff/staffApi";
+import { buildBulkPRRequest, formatBulkResponseResult } from "./Remediation/remediationBulkRequest";
 
 export type { PullRequest } from "./remediationDispatch";
 
@@ -160,48 +162,29 @@ export function RemediationPRsSubTab({
   function doDispatch(): void {
     if (!dispatchModal || !dispatchModal.items.length) return;
     setDispatching(true);
-    const payload = {
-      selection: {
-        mode: "list",
-        items: dispatchModal.items.map((pr) => ({
-          repo: pr.repo || pr.repository || pr.full_name,
-          number: pr.number || pr.pr_number,
-          title: pr.title,
-        })),
-      },
+    const items = dispatchModal.items.map((pr) => ({
+      repo: pr.repo || pr.repository || pr.full_name || repoFilter || "",
+      number: pr.number || pr.pr_number || 0,
+    }));
+    const req = buildBulkPRRequest(items, {
       provider: modalProvider,
       prompt: modalPrompt,
-      confirmation: { approved_by: principalName || "anonymous" },
-    };
-    legacyFetch("/api/prs/dispatch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then((r) => {
-        if (!r.ok)
-          return r.json().then((e: { detail?: string }) => {
-            throw new Error(e.detail || String(r.status));
-          });
-        return r.json();
-      })
-      .then(() => {
-        setDispatchMsg({
-          type: "success",
-          text:
-            "Dispatched " +
-            dispatchModal.items.length +
-            " PR(s) to " +
-            modalProvider,
-        });
+      approved_by: principalName || "anonymous",
+    });
+    submitStaffRequest(req)
+      .then((resp) => {
+        const outcome = formatBulkResponseResult(resp, items.length, "PR");
+        setDispatchMsg(outcome);
         setDispatchModal(null);
-        setSelected({});
+        if (outcome.type === "success" || (resp.result && (resp.result as { accepted?: number }).accepted)) {
+          setSelected({});
+        }
         setTimeout(() => {
           setDispatchMsg(null);
-        }, 6000);
+        }, 8000);
       })
       .catch((err: Error) => {
-        setDispatchMsg({ type: "error", text: "Dispatch failed: " + err.message });
+        setDispatchMsg({ type: "error", text: "Dispatch failed: " + (err.message || String(err)) });
         setTimeout(() => {
           setDispatchMsg(null);
         }, 8000);
