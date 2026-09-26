@@ -24,12 +24,12 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1556
 - **Branch:** `fix/1556-hermetic-staff-e2e`
-- **PR:** pending
+- **PR:** #1570
 - **Paths:** `tests/e2e/fakes/start_staff_backend.py`, `backend/staff/inbox.py`, `tests/unit/test_staff_inbox_proposals.py`, `tests/e2e/staff/playwright.config.ts`, `tests/e2e/staff/globalTeardown.ts`, `.gitignore`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (RED: globalTeardown failed on unfixed `backend_env()`, listing real `api.github.com`/tailnet-peer lines; GREEN: `STAFF_E2E_PYTHON="wsl -e ...python" npx playwright test -c tests/e2e/staff/playwright.config.ts --reporter=line` → 12 passed, guard silent; `tests/unit/test_staff_inbox_proposals.py` + inbox/fleet unit tests: 9 passed; ruff check/format clean)
 - **Summary:** The staff e2e backend (real FastAPI app, fake provider CLIs) leaked outside the harness: it fanned out to real tailnet peers, called `api.github.com` for board proposals, and (traced further) for `/api/health`'s runner probe and the hosted-runner billing audit. Fixed by pinning fleet-peer discovery to this node (`AUTODERIVE_FLEET_NODES=0`/`FLEET_NODES=""`), a new `STAFF_INBOX_GITHUB_SOURCES=0` switch disabling the GitHub-backed inbox sources, and an unset `GH_TOKEN` so `gh_client` fails locally instead of round-tripping. A `--log-file` CLI arg plus `globalTeardown.ts` now assert the backend log never mentions a real peer or GitHub.
-- **Next step:** Open the PR and arm auto-merge.
+- **Next step:** Watch PR #1570 merge and mark this entry shipped.
 
 ### DL-#1542 · WP-1.1 follow-up: non-blocking startup and guarded verification
 

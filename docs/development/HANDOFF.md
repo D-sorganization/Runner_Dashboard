@@ -4,7 +4,7 @@ Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1556-hermetic-staff-e2e`; PR: pending; Issue #1556; DL-#1556.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1556-hermetic-staff-e2e`; PR: #1570 (open, auto-merge armed); Issue #1556; DL-#1556.
 
 ## Objective and Status
 
@@ -23,7 +23,7 @@ Last updated: 2026-09-26
 
 ## Next Steps
 
-1. Open the PR for `fix/1556-hermetic-staff-e2e` and arm auto-merge.
+1. Watch PR #1570 merge; then mark DL-#1556 shipped.
 
 ---
 
