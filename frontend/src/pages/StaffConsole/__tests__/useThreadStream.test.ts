@@ -167,4 +167,54 @@ describe("useThreadStream", () => {
     expect(MockEventSource.instances).toHaveLength(2);
     vi.useRealTimers();
   });
+
+  // Replay frames carry the bare message; live frames wrap it as {message} (thread_bus.publish_message).
+  // Treating the wrapper as a message appended an author-less entry and crashed the tab (#1341).
+  const REPLY: ThreadMessage = {
+    id: "msg-2",
+    thread_id: "thread-abc",
+    author: "e2e-analyst",
+    author_kind: "role",
+    kind: "text",
+    body_md: "Fake reply",
+    delivery: "complete",
+    seq: 2,
+  };
+
+  it("applies a live {message} frame as the message it wraps", () => {
+    const { result } = renderHook(() =>
+      useThreadStream({ threadId: "thread-abc", initialMessages: INITIAL_MESSAGES })
+    );
+
+    act(() => {
+      MockEventSource.instances[0].emit("message", { message: REPLY }, "2");
+    });
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[1]).toMatchObject({ id: "msg-2", author: "e2e-analyst", body_md: "Fake reply" });
+  });
+
+  it("applies a bare replay frame", () => {
+    const { result } = renderHook(() =>
+      useThreadStream({ threadId: "thread-abc", initialMessages: INITIAL_MESSAGES })
+    );
+
+    act(() => {
+      MockEventSource.instances[0].emit("message", REPLY, "2");
+    });
+
+    expect(result.current.messages[1]).toMatchObject({ id: "msg-2", author: "e2e-analyst" });
+  });
+
+  it("ignores a frame that is not a message", () => {
+    const { result } = renderHook(() =>
+      useThreadStream({ threadId: "thread-abc", initialMessages: INITIAL_MESSAGES })
+    );
+
+    act(() => {
+      MockEventSource.instances[0].emit("message", { proposal: { id: "p1" } });
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+  });
 });

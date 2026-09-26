@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1341 · SC-E: Staff Console e2e suite against fake providers
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1341 (epic #1354)
+- **Branch:** `test/1341-staff-e2e`
+- **PR:** not created (opened with this commit)
+- **Paths:** `tests/e2e/fakes/`, `tests/e2e/staff/`, `playwright.config.ts`, `.github/workflows/frontend-tests.yml`, `backend/staff/chat.py`, `backend/staff/chat_streaming.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/useThreadStream.ts`, `tests/unit/test_staff_chat_stream_result.py`, `tests/unit/test_staff_chat_exhausted_chain.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 7f417623 plus this branch (Staff e2e 8/8 and 16/16 repeated; backend chat tests 77 passed; vitest Staff/StaffConsole/hooks 213 passed; `tsc` and ruff clean)
+- **Summary:** Real backend, fake provider CLIs. The suite drives chat, fallback, handoff text, SSE resume, provider failures and send failures in a browser. It fixed four bugs: doubled Claude replies, a reply left pending after the whole chain failed, double-encoded Staff POST bodies, and a Console crash on live SSE frames. Approval and run flows wait on proposals being rendered.
+- **Next step:** Merge, then render chat proposals as ActionCards and add the approval, run-card, needs-input and cancel specs.
+
 ### DL-#1499 · SC-G5-3: Remediation context buttons open a prefilled request: failed runs, mobile, FAB becomes Ask
 
 - **State:** in_progress

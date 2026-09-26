@@ -1,0 +1,39 @@
+# Fixture role for the Staff Console e2e suite (#1341). Not a real staff role.
+name: barb
+title: Barb - Front Door
+summary: E2E front door that routes requests to the analyst.
+playbook: docs/fleet-e2e.md
+prompt_template: null
+instructions: |
+  Fixture role. The fake provider CLI in tests/e2e/fakes/bin decides every reply.
+providers:
+  - claude
+model: default
+schedule: null
+window: null
+repos:
+  - e2e-fixture
+scope: {}
+budget:
+  usd_per_run: 0.5
+  usd_per_day: 2.0
+permissions:
+  lease: false
+  push_branch: false
+  open_pr: false
+  merge: false
+  host_shell: false
+  notify_user: true
+reports_to: user
+holds: []
+surface: both
+persona:
+  voice: "Plain."
+  greeting: "Barb - Front Door here."
+  answers:
+    - "test questions"
+  defers_to: []
+chat:
+  providers:
+    - claude
+  tools: []

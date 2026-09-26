@@ -99,7 +99,7 @@ describe("StaffConsoleDesktop", () => {
     await waitFor(() =>
       expect(api.postThreadMessage).toHaveBeenCalledWith(
         "thr_maint_1",
-        expect.objectContaining({ body_md: "compact CT disk" }),
+        expect.objectContaining({ body: "compact CT disk" }),
         expect.any(String),
       ),
     );
@@ -145,7 +145,7 @@ describe("StaffConsoleDesktop", () => {
     await waitFor(() =>
       expect(api.postThreadMessage).toHaveBeenCalledWith(
         "thr_maint_1",
-        expect.objectContaining({ body_md: "adopt X?", meta: { confirm_cost: true } }),
+        expect.objectContaining({ body: "adopt X?", meta: { confirm_cost: true } }),
         expect.any(String),
       ),
     );

@@ -414,20 +414,25 @@ export function fetchThreadMessages(
   return fetchThread(threadId, signal).then(({ messages }) => ({ messages }));
 }
 
+/** The backend's `PostMessageRequest`; the author is the caller, never the client. */
+export type PostThreadMessageBody = Pick<components["schemas"]["PostMessageRequest"], "body" | "meta"> &
+  Partial<Pick<components["schemas"]["PostMessageRequest"], "kind">>;
+
+// `apiRequest` serialises `body`; passing a string here would double-encode it (#1341).
 export function postThreadMessage(
   threadId: string,
-  body: { body_md: string; author?: string; author_kind?: string; meta?: Record<string, unknown> },
+  body: PostThreadMessageBody,
   idempotencyKey?: string,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {};
   if (idempotencyKey) {
     headers["Idempotency-Key"] = idempotencyKey;
   }
   return apiRequest<unknown>(`${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/messages`, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body,
     signal,
   });
 }
@@ -436,12 +441,7 @@ export function createThread(
   body: { title?: string; kind?: string; participants?: string[]; role?: string },
   signal?: AbortSignal,
 ): Promise<ThreadInfo> {
-  return apiRequest<ThreadInfo>(`${STAFF_BASE}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
+  return apiRequest<ThreadInfo>(`${STAFF_BASE}/threads`, { method: "POST", body, signal });
 }
 
 export function decideActionProposal(
@@ -453,8 +453,7 @@ export function decideActionProposal(
 ): Promise<unknown> {
   return apiRequest<unknown>(`${STAFF_BASE}/proposals/${encodeURIComponent(proposalId)}/decide`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision, reason, execute }),
+    body: { decision, reason, execute },
     signal,
   });
 }

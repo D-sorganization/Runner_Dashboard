@@ -1,0 +1,19 @@
+{
+  "_comment": "Fixture principals for the Staff Console e2e suite (#1341). The tokens are fixed test values, valid only against the throwaway state directory start_staff_backend.py creates.",
+  "principals": [
+    {
+      "id": "e2e-operator",
+      "name": "E2E Operator",
+      "roles": ["operator"],
+      "scopes": ["staff.approve"],
+      "token": "e2e-operator-fixture"
+    },
+    {
+      "id": "e2e-viewer",
+      "name": "E2E Viewer",
+      "roles": ["viewer"],
+      "scopes": [],
+      "token": "e2e-viewer-fixture"
+    }
+  ]
+}
