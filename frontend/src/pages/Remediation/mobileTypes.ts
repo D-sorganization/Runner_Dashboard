@@ -66,6 +66,8 @@ export interface InFlightDispatch {
   lastHeartbeat: number;
   status: "dispatched" | "running" | "done" | "error";
   fingerprint?: string;
+  workItemId?: string;
+  model?: string | null;
 }
 
 export interface ActionSheetItem {

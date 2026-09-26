@@ -68,6 +68,8 @@ export function InFlightTile({ dispatch }: InFlightTileProps) {
         }}
       >
         <span>Agent: {dispatch.providerLabel}</span>
+        {dispatch.model ? <span>Model: {dispatch.model}</span> : null}
+        {dispatch.workItemId ? <span>Work Item: {dispatch.workItemId}</span> : null}
         <span>Repo: {dispatch.repository}</span>
         <span>Elapsed: {elapsedLabel(dispatch.startedAt)}</span>
         <span>Heartbeat: {elapsedLabel(dispatch.lastHeartbeat)} ago</span>

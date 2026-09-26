@@ -94,11 +94,10 @@ describe("nav registry — DbC invariants", () => {
     expect(primary.length).toBeLessThan(NAV_ITEMS.length);
   });
 
-  it("surfaces the on-call operator controls in the mobile drawer (issue #821)", () => {
+  it("surfaces the on-call operator controls in the mobile drawer (issue #821, #1499)", () => {
     const drawerTabIds = NAV_ITEMS.filter((i) => i.mobileDrawer).map((i) => i.tabId);
-    for (const expected of ["operations", "agent-dispatch"]) {
-      expect(drawerTabIds).toContain(expected);
-    }
+    expect(drawerTabIds).toContain("operations");
+    expect(drawerTabIds).not.toContain("agent-dispatch");
   });
 
   it("un-orphans LinearSetup and PushSettings via settings nav entries (issue #825)", () => {

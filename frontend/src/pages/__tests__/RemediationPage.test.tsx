@@ -151,28 +151,36 @@ describe("RemediationPage", () => {
     );
   });
 
-  it("previews and dispatches remediation through native handlers", async () => {
-    const fetchMock = mockRemediationFetch();
+  it("previews and navigates to prefilled Staff Console with Fix this failed run (#1499)", async () => {
+    mockRemediationFetch();
+    const assignMock = vi.fn();
+    const originalLocation = window.location;
+    // @ts-expect-error test override
+    delete window.location;
+    window.location = { ...originalLocation, assign: assignMock } as Location;
 
-    render(<RemediationPage />);
+    try {
+      render(<RemediationPage />);
 
-    await screen.findByText("Manual Dispatch");
-    await screen.findByText(/alpha · CI Standard · fix\/thing #4242/);
-    fireEvent.click(screen.getByText("Preview"));
-    expect(await screen.findByText("fix alpha")).toBeInTheDocument();
+      await screen.findByText("Manual Dispatch");
+      await screen.findByText(/alpha · CI Standard · fix\/thing #4242/);
+      fireEvent.click(screen.getByText("Preview"));
+      expect(await screen.findByText("fix alpha")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Dispatch"));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent-remediation/dispatch",
-        expect.objectContaining({ method: "POST" }),
-      ),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getAllByText("Dispatched jules_api through remediation.yml.")
-          .length,
-      ).toBeGreaterThan(0),
-    );
+      const fixButton = screen.getByRole("button", { name: "Fix this failed run" });
+      fireEvent.click(fixButton);
+
+      expect(assignMock).toHaveBeenCalledWith(
+        expect.stringContaining("kind=ci.remediate"),
+      );
+      expect(assignMock).toHaveBeenCalledWith(
+        expect.stringContaining("repo=alpha"),
+      );
+      expect(assignMock).toHaveBeenCalledWith(
+        expect.stringContaining("run_id=4242"),
+      );
+    } finally {
+      window.location = originalLocation;
+    }
   });
 });

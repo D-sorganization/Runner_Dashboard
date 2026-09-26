@@ -369,4 +369,28 @@ describe("AdvancedDispatchForm", () => {
       expect(screen.getByLabelText("Machine")).toHaveValue("remote-node");
     });
   });
+
+  describe("initialValues prefill (#1499)", () => {
+    it("initializes form with prefilled values from initialValues", () => {
+      render(
+        <AdvancedDispatchForm
+          roster={ROSTER}
+          initialValues={{
+            kind: "ci.remediate",
+            target: { repo: "Runner_Dashboard", run_id: 12345 },
+            prompt: "Fix failed run #12345",
+            provider: "claude",
+            model: "claude-3-5-sonnet",
+          }}
+          onDispatched={() => {}}
+        />,
+      );
+
+      expect(screen.getByLabelText("Kind")).toHaveValue("ci.remediate");
+      expect(screen.getByLabelText("Repo")).toHaveValue("Runner_Dashboard");
+      expect(screen.getByLabelText("Run ID")).toHaveValue("12345");
+      expect(screen.getByLabelText("Prompt")).toHaveValue("Fix failed run #12345");
+      expect(screen.getByLabelText("Model")).toHaveValue("claude-3-5-sonnet");
+    });
+  });
 });

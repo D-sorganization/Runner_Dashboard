@@ -29,6 +29,8 @@ import { RunDetail } from "./RunDetail";
 import { RunLog } from "./RunLog";
 import { errorMessage } from "./staffApi";
 
+import type { WorkRequest } from "./staffApi";
+
 export type StaffSection = "console" | "roster" | "runs" | "assign" | "holds";
 
 const SECTION_TABS: { key: StaffSection; label: string }[] = [
@@ -45,6 +47,52 @@ function runFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get("run") || null;
 }
 
+function prefillFromUrl(): Partial<WorkRequest> | null {
+  if (typeof window === "undefined") return null;
+  const p = new URLSearchParams(window.location.search);
+  const kind = p.get("kind");
+  const repo = p.get("repo");
+  const runId = p.get("run_id");
+  const issue = p.get("issue");
+  const pr = p.get("pr");
+  const prompt = p.get("prompt");
+  const provider = p.get("provider");
+  const model = p.get("model");
+  const role = p.get("role");
+  const machine = p.get("machine");
+
+  if (!kind && !repo && !runId && !issue && !pr && !prompt) return null;
+
+  return {
+    kind: kind || undefined,
+    role: role || undefined,
+    provider: provider || undefined,
+    model: model || undefined,
+    machine: machine || undefined,
+    prompt: prompt || undefined,
+    target: {
+      repo: repo || "",
+      ref: p.get("ref") || "",
+      run_id: runId ? Number(runId) : undefined,
+      issue: issue ? Number(issue) : undefined,
+      pr: pr ? Number(pr) : undefined,
+    },
+  };
+}
+
+function sectionFromUrl(): StaffSection | null {
+  if (typeof window === "undefined") return null;
+  const p = new URLSearchParams(window.location.search);
+  const s = p.get("section");
+  if (s === "assign" || s === "roster" || s === "runs" || s === "console" || s === "holds") {
+    return s;
+  }
+  if (p.get("kind") || p.get("run_id") || p.get("prompt")) {
+    return "assign";
+  }
+  return null;
+}
+
 export function StaffPage() {
   const client = useResolvedQueryClient();
   const {
@@ -54,8 +102,11 @@ export function StaffPage() {
     refetch: refetchRoster,
   } = useStaffRoster();
   const rosterError = rosterErr ? errorMessage(rosterErr) : null;
+  const [initialPrefill] = useState<Partial<WorkRequest> | null>(prefillFromUrl);
   const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
-  const [section, setSection] = useState<StaffSection>(() => (selectedRun ? "runs" : "console"));
+  const [section, setSection] = useState<StaffSection>(
+    () => sectionFromUrl() || (selectedRun ? "runs" : "console"),
+  );
   const [assignRole, setAssignRole] = useState<string | undefined>(undefined);
   const [runsRefresh, setRunsRefresh] = useState(0);
 
@@ -107,7 +158,14 @@ export function StaffPage() {
       {section === "runs" && !selectedRun ? (
         <RunLog roles={roleNames} onOpenRun={openRun} refreshKey={runsRefresh} />
       ) : null}
-      {section === "assign" ? <AdvancedDispatchForm roster={roster} initialRole={assignRole} onDispatched={onDispatched} /> : null}
+      {section === "assign" ? (
+        <AdvancedDispatchForm
+          roster={roster}
+          initialRole={assignRole}
+          initialValues={initialPrefill ?? undefined}
+          onDispatched={onDispatched}
+        />
+      ) : null}
       {section === "holds" ? <Holds roles={roleNames} /> : null}
     </div>
   );

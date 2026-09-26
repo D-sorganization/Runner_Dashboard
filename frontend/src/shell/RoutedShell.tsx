@@ -53,7 +53,6 @@ import {
   RemediationMobile,
   type InFlightDispatch,
 } from "../pages/Remediation/Mobile";
-import { AgentDispatchPage } from "../pages/AgentDispatch";
 import { AnalysisTab } from "../pages/Analysis";
 import { AssessmentsPage } from "../pages/AssessmentsPage";
 import { CredentialsPage } from "../pages/CredentialsPage";
@@ -129,8 +128,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
   switch (normalizeTabId(tabId)) {
     case "overview":
       return <LazyOverviewPage />;
-    case "agent-dispatch":
-      return <AgentDispatchPage />;
     case "insights":
     case "analysis":
     case "reports":

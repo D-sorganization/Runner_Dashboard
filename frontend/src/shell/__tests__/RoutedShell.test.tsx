@@ -19,11 +19,6 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 const breakpointMock = vi.fn(() => "lg");
 
-vi.mock("../../pages/AgentDispatch", () => ({
-  AgentDispatchPage: () => (
-    <div data-testid="native-agent-dispatch">Agent Dispatch</div>
-  ),
-}));
 
 vi.mock("../../pages/Analysis", () => ({
   AnalysisTab: (props: { activeTab?: string }) => (
@@ -297,7 +292,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["staff", "native-staff"],
     ["overview", "native-overview"],
     ["operations", "native-operations"],
-    ["agent-dispatch", "native-agent-dispatch"],
     ["insights", "native-analysis"],
     ["assessments", "native-assessments"],
     ["credentials", "native-credentials"],

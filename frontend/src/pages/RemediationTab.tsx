@@ -393,7 +393,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                       fontSize: 13,
                     },
                   },
-                  "Dispatch " + providerLabel(recommendedId),
+                  "Fix this failed run (" + providerLabel(recommendedId) + ")",
                 ),
                 h(
                   "button",
@@ -743,6 +743,8 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                       "button",
                       {
                         className: "btn",
+                        "aria-label": "Fix this failed run",
+                        "data-testid": "fix-failed-run",
                         onClick: function (e: any) {
                           e.stopPropagation();
                           setSelectedRunId(String(run.id));
@@ -757,7 +759,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                               : undefined,
                         },
                       },
-                      "Dispatch",
+                      "Fix this failed run",
                     ),
                   );
                 }),
