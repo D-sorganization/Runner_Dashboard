@@ -235,6 +235,19 @@ def test_verify_and_record_never_raises(store: RunStore) -> None:
     assert store.get_run("run_1").status == "succeeded"  # type: ignore[union-attr]
 
 
+def test_verify_and_record_returns_without_raising_when_store_update_run_raises(
+    store: RunStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store.create_run(_rec())
+    probe = FakeProbe(v.PullRequest(12, "merged", "green"))
+
+    def exploding_update(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("database error during update_run")
+
+    monkeypatch.setattr(store, "update_run", exploding_update)
+    assert v.verify_and_record(store, "run_1", opens_pr=True, probe=probe, mode="report", now=NOW) is None
+
+
 def test_new_columns_round_trip(store: RunStore) -> None:
     store.create_run(_rec(verification="failed", verification_detail="x", pr_number=5))
     rec = store.get_run("run_1")
@@ -335,15 +348,17 @@ def test_the_scheduler_rechecks_at_most_once_per_interval(monkeypatch: pytest.Mo
     assert calls == ["TestNode"]
 
 
-def test_startup_reconcile_rechecks_runs_that_finished_unchecked(
-    monkeypatch: pytest.MonkeyPatch, store: RunStore
-) -> None:
+def test_reconcile_orphaned_runs_makes_no_gh_probe_call(monkeypatch: pytest.MonkeyPatch, store: RunStore) -> None:
     from staff import reconcile  # noqa: PLC0415
 
-    calls: list[str] = []
-    monkeypatch.setattr(v, "recheck_runs", lambda s, **kw: calls.append(kw["machine"]) or [])
+    class ProbeCalledError(BaseException):
+        pass
+
+    def exploding_recheck(*args: Any, **kwargs: Any) -> list[str]:
+        raise ProbeCalledError("reconcile_orphaned_runs must not call recheck_runs or any probe")
+
+    monkeypatch.setattr(v, "recheck_runs", exploding_recheck)
     runner = SimpleNamespace(store=store, machine="TestNode", opens_pr=lambda role: True)
 
-    reconcile.reconcile_orphaned_runs(runner, event_store=object())  # type: ignore[arg-type]
-
-    assert calls == ["TestNode"]
+    reconciled = reconcile.reconcile_orphaned_runs(runner, event_store=object())  # type: ignore[arg-type]
+    assert reconciled == []

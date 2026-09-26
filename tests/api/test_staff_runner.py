@@ -13,6 +13,7 @@ import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -353,6 +354,40 @@ def test_cancel_terminates_running_process(staff: runner_mod.StaffRunner) -> Non
     done = _wait(staff.store, rec.id, ("cancelled", "failed", "succeeded"))
     assert done.status == "cancelled"
     assert staff.cancel(rec.id) is False  # nothing left to cancel
+
+
+@pytest.mark.integration
+def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises(
+    staff: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    handled: list[tuple[str, str]] = []
+    orig_handle = runner_mod.handle_run_status_change
+
+    def fake_handle(*args: Any, **kwargs: Any) -> None:
+        rec = args[0] if args else kwargs.get("run")
+        st = args[1] if len(args) > 1 else kwargs.get("status", "")
+        if rec is not None:
+            handled.append((rec.id, st))
+        orig_handle(*args, **kwargs)
+
+    monkeypatch.setattr(runner_mod, "handle_run_status_change", fake_handle)
+
+    def exploding_opens_pr(role: str) -> bool:
+        raise RuntimeError("broken opens_pr resolver")
+
+    monkeypatch.setattr(staff, "opens_pr", exploding_opens_pr)
+
+    rec = staff.submit(
+        runner_mod.RunRequest(
+            role="night-watch",
+            provider="fake",
+            prompt="sweep the backlog",
+            requested_by="tester",
+        )
+    )
+    done = _wait(staff.store, rec.id, ("succeeded", "failed"))
+    assert done.status == "succeeded"
+    assert any(h[0] == rec.id and h[1] == "succeeded" for h in handled)
 
 
 # ── routes ───────────────────────────────────────────────────────────────

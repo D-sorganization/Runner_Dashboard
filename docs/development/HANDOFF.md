@@ -1,4 +1,40 @@
-# Current handoff — SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API (#1501)
+# Current handoff — WP-1.1 follow-up: non-blocking startup and guarded verification (#1542)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1542`; PR #1569; Issue #1542; DL-#1542. Implemented by antigravity.
+
+## Objective and Status
+
+- Startup no longer blocks the event loop:
+  - Removed `verification.recheck_runs` from `reconcile_orphaned_runs` in `backend/staff/reconcile.py` (which previously made up to 20 runs x 2 `gh` subprocess calls with 30s timeouts on the event loop during server startup).
+  - Confirmed the scheduler thread's `recheck_verification` (`backend/staff/scheduler.py`, in `_loop`) already runs rechecks off the event loop every `VERIFY_RECHECK_SECONDS`.
+- Runner finish path is fully guarded:
+  - Wrapped the entire body of `verify_and_record` in `backend/staff/verification.py` in a `try...except Exception:` block so that it strictly adheres to its "never raises" postcondition contract and logs unexpected errors with `log.warning(..., exc_info=True)`.
+  - Updated `verify_and_record` to accept `opens_pr: bool | Callable[[], bool]` and resolve `opens_pr` inside the guard.
+  - Updated `backend/staff/runner.py` line 405 to pass `opens_pr=lambda: self.opens_pr(rec.role)`, ensuring exceptions resolving role permissions cannot crash the worker thread or bypass `handle_run_status_change`.
+  - Updated `recheck_runs` in `backend/staff/verification.py` to pass `opens_pr=_make_opens_pr_checker(opens_pr, rec.role)` for guarded per-run resolution.
+
+## Validation
+
+- pytest (WSL venv):
+  - `tests/staff/test_run_verification.py tests/api/test_staff_runner.py`: 95 passed in 26.18s.
+  - Broader suite `tests -k "verif or reconcile or runner or scheduler"`: 618 passed, 3 skipped, 4075 deselected, 1 xfailed in 251.91s.
+- Ruff lint & format:
+  - `py -3.12 -m ruff check backend/staff/reconcile.py backend/staff/runner.py backend/staff/verification.py tests/staff/test_run_verification.py tests/api/test_staff_runner.py` passed with 0 errors.
+  - `py -3.12 -m ruff format backend/staff/reconcile.py backend/staff/runner.py backend/staff/verification.py tests/staff/test_run_verification.py tests/api/test_staff_runner.py` clean.
+- Mypy type-check:
+  - `py -3.12 -m mypy backend/staff/reconcile.py backend/staff/runner.py backend/staff/verification.py --ignore-missing-imports`: Success (no issues found in 3 source files).
+
+## Next Steps
+
+1. Review and merge PR for issue #1542.
+
+---
+
+# Past handoff — SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API (#1501)
 
 Last updated: 2026-09-25
 

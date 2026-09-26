@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1542 · WP-1.1 follow-up: non-blocking startup and guarded verification
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1542
+- **Branch:** `agy/issue-1542`
+- **PR:** #1569
+- **Paths:** `backend/staff/reconcile.py`, `backend/staff/runner.py`, `backend/staff/verification.py`, `tests/staff/test_run_verification.py`, `tests/api/test_staff_runner.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (tests/staff/test_run_verification.py and tests/api/test_staff_runner.py 95 passed; broader tests -k "verif or reconcile or runner or scheduler" 618 passed, 3 skipped, 1 xfailed)
+- **Summary:** Removed blocking `recheck_runs` subprocess calls from `reconcile_orphaned_runs` on startup so the event loop is never blocked (the scheduler thread already periodically rechecks unverified runs off the loop). Wrapped `verify_and_record` so it never raises, evaluating `opens_pr` lazily inside the guard so exceptions cannot crash the runner worker thread or bypass `handle_run_status_change`.
+- **Next step:** Merge PR #1569 once CI is green.
+
 ### DL-#1501 · SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API
 
 - **State:** in_review
