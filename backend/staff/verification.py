@@ -173,6 +173,13 @@ def verify_and_record(
             verdict = Verdict("unverified", f"verification error: {exc}")
         store.update_run(run_id, **updates_for(rec, verdict, mode))
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
+        if verdict.verification == "verified":
+            try:
+                from staff.review import auto_review_if_eligible
+
+                auto_review_if_eligible(rec, verdict, store=store)
+            except Exception:  # noqa: BLE001
+                log.warning("auto_review_if_eligible failed for run %s", run_id, exc_info=True)
         return verdict
     except Exception:  # noqa: BLE001 - verification must never break a run
         log.warning("verify_and_record failed for run %s", run_id, exc_info=True)

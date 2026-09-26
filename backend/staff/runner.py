@@ -27,7 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, verification, workspace
+from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
@@ -385,6 +385,18 @@ class StaffRunner:
                 has_thread=bool(rec.thread_id),
             )
 
+            if rec.role == "code-reviewer" and rc == 0:
+                review_verdict = review.parse_review_verdict(result_line)
+                if review_verdict.status == "needs_input":
+                    status = "needs_input"
+                    failure_class = "needs_input"
+                    remediation = "Review completed without emitting a STAFF_RESULT verdict line."
+                elif review_verdict.status == "failed":
+                    status = "failed"
+                    failure_class = "invalid_output"
+                    error = review_verdict.error or "Malformed review verdict line"
+                    remediation = "Review completed with a malformed STAFF_RESULT line."
+
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
             store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
             store.update_run(
@@ -399,7 +411,7 @@ class StaffRunner:
                 cost_usd=float(usage.get("cost_usd", 0.0)),
                 input_tokens=int(usage.get("input_tokens", 0)),
                 output_tokens=int(usage.get("output_tokens", 0)),
-                outcome=consolidation.parse_outcome(result_line),
+                outcome=review.parse_outcome(result_line) or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
             verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))

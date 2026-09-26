@@ -31,9 +31,22 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Dispatch #1516 (WP-1.1, `tier:strong`), the first Phase 1 package; #1517 and #1518 follow it.
 
+### DL-#1518 · WP-1.3: Code-reviewer runtime — cross-provider selection and structured verdicts
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1518
+- **Branch:** `agy/issue-1518`
+- **PR:** #1576
+- **Paths:** `backend/staff/review.py`, `backend/staff/action_executors.py`, `backend/staff/runner.py`, `backend/staff/verification.py`, `backend/staff/roles.py`, `tests/unit/test_staff_review.py`, `tests/staff/routing_eval/test_action_executor_roles.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (`d6c781da` baseline; unit tests 25 passed; ruff & mypy clean; bandit clean; strictly <= 500 LOC)
+- **Summary:** Advisory checklist review runtime for code-reviewer staff role. Default reviewer set to code-reviewer with automatic fallback to fleet-critic when unloaded. Cross-provider selection avoids author's provider family (falling back to Agent-Id commit trailers), falling back to alternate models on same-provider and flagging it. Parses structured STAFF_RESULT review verdicts into run outcome, sets needs_input on missing verdict, and enforces comment reviews only (never request-changes). Supports optional automatic review trigger (STAFF_AUTO_REVIEW) for verified runs on P0/P1 repos.
+- **Next step:** Arm squash auto-merge, monitor CI.
+
 ### DL-#1517 · WP-1.2: agent outcome scorecard
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude (reworked from an antigravity draft)
 - **Issue:** #1517
 - **Branch:** `agy/issue-1517`
@@ -42,7 +55,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-26 rebased onto main
 - **Summary:** Per role, provider or repo: runs, verified rate (from #1516's verdicts), PRs, merge rate, CI first-pass rate, fix-within-48h rate and cost per merged PR over a 14-day default window. Pure `aggregate` over runs and `PrFact`s; GitHub is read only for PRs the runs recorded, capped at 50 per request with a per-PR cache. No data means `null`/"—", never 0%; unreadable PRs count as unknown, never as failures.
-- **Next step:** Merge PR #1533.
+- **Next step:** Shipped in PR #1533 (d6c781da).
 
 ### DL-#1503 · SC-G5-6 Retire legacy dispatch forms and endpoints
 
