@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from staff.thread_bus import get_thread_bus
 
 if TYPE_CHECKING:
+    from staff.chat import ChatTurnResult
     from staff.conversations import ConversationStore
     from staff.roles import RoleSpec
 
@@ -41,6 +42,7 @@ async def record_chat_failure(
             "retryable": retryable,
             "actions": [{"name": "retry", "label": "Retry"}],
             "error": error,
+            "remediation": detail,
         },
     )
     message = conv_store.get_message(placeholder_id)
@@ -120,3 +122,36 @@ async def record_chat_failure_if_pending(
         detail=detail or "Failed to complete reply",
         error=error,
     )
+
+
+def failure_specificity(failure_class: str | None) -> int:
+    """Return specificity score for a failure class (SC-A6, #1551).
+
+    Higher score means more specific:
+    - 2: specific classified root-causes (auth_expired, rate_limited, cli_missing, etc.)
+    - 1: generic provider/connection error (provider_error)
+    - 0: unclassified or missing (unknown, None, "")
+    """
+    if not failure_class or failure_class == "unknown":
+        return 0
+    if failure_class == "provider_error":
+        return 1
+    return 2
+
+
+def select_best_failure(
+    failed_attempts: list[tuple[int, str, ChatTurnResult]],
+) -> tuple[int, str, ChatTurnResult]:
+    """Select the most specific classified failure from fallback attempts (#1551).
+
+    Pre: failed_attempts is non-empty.
+    Post: returns (chain_index, provider_name, result) tuple with maximum specificity.
+    Tie-breaking: earlier provider in the fallback chain (lower chain index) wins.
+    """
+    assert failed_attempts, "failed_attempts must be non-empty"  # noqa: S101
+    best = max(
+        failed_attempts,
+        key=lambda item: (failure_specificity(item[2].failure_class), -item[0]),
+    )
+    assert best in failed_attempts  # noqa: S101
+    return best

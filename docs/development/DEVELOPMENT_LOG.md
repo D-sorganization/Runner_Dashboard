@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1551 · Staff chat failure card shows real root-cause failure and remediation
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1551
+- **Branch:** `agy/issue-1551`
+- **PR:** #1563
+- **Paths:** `backend/staff/chat_failures.py`, `backend/staff/chat.py`, `backend/staff/conversation_models.py`, `tests/unit/test_staff_chat_exhausted_chain.py`, `tests/e2e/staff/staff-console.spec.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 after review (chat unit and turn tests 20 passed; unused `ChatTurnResult.provider` removed; ruff clean)
+- **Summary:** When all providers in a fallback chain fail, the recorded turn failure now preserves the most specific classified failure and its remediation (e.g. auth_expired beats generic provider_error/unavailable, with earlier provider tie-breaking). Implemented failure_specificity and select_best_failure in chat_failures.py, updated execute_turn in chat.py to record the best candidate failure, and exposed remediation on MessageRecord.
+- **Next step:** Merge PR #1563 (armed for auto-merge).
+
 ### DL-#1562 · Wire the Mad-Scientist Staff Role into Routing and the Roster
 
 - **State:** in_review

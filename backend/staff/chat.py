@@ -38,8 +38,8 @@ from staff.availability import (
 from staff.chat_failures import (
     chat_read_only_tools,
     record_chat_capacity_failure,
-    record_chat_failure,
     record_chat_failure_if_pending,
+    select_best_failure,
 )
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
@@ -175,9 +175,9 @@ class ChatTurnRunner:
 
         try:
             fallback_steps = 0
-            last_failed: ChatTurnResult | None = None
+            failed_attempts: list[tuple[int, str, ChatTurnResult]] = []
 
-            for candidate in chain:
+            for idx, candidate in enumerate(chain):
                 if not is_provider_healthy(candidate):
                     log.info("Provider %s is unhealthy/disabled; skipping", candidate)
                     fallback_steps += 1
@@ -229,7 +229,6 @@ class ChatTurnRunner:
                     session_id=None,
                     is_resume=False,
                     replayed_history=was_fallback,
-                    update_on_failure=(candidate == chain[-1]),
                 )
                 if result.ok:
                     record_successful_turn(
@@ -242,7 +241,7 @@ class ChatTurnRunner:
                     )
                     return result
 
-                last_failed = result
+                failed_attempts.append((idx, candidate, result))
                 log.warning(
                     "Turn attempt failed on %s: %s; falling back",
                     candidate,
@@ -251,18 +250,19 @@ class ChatTurnRunner:
                 fallback_steps += 1
                 metrics.record_fallback()
 
-            if last_failed is not None:
+            if failed_attempts:
+                _, _, best_failed = select_best_failure(failed_attempts)
                 await record_chat_failure_if_pending(
                     self.conv_store,
                     thread_id,
                     placeholder_id,
                     actor=role_name,
-                    failure_class=last_failed.failure_class,
-                    retryable=last_failed.retryable,
-                    detail=last_failed.remediation,
-                    error=last_failed.error,
+                    failure_class=best_failed.failure_class,
+                    retryable=best_failed.retryable,
+                    detail=best_failed.remediation or best_failed.error or "Failed to complete reply",
+                    error=best_failed.error,
                 )
-                return last_failed
+                return best_failed
 
             log.warning(
                 "All providers unavailable for thread %s; triggering degraded mode",
@@ -289,7 +289,6 @@ class ChatTurnRunner:
         session_id: str | None,
         is_resume: bool,
         replayed_history: bool = False,
-        update_on_failure: bool = True,
     ) -> ChatTurnResult:
         scratch_dir = tempfile.mkdtemp(prefix="staff_chat_")
         bus = get_thread_bus()
@@ -316,22 +315,12 @@ class ChatTurnRunner:
                     "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
                 )
                 remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
-                if update_on_failure:
-                    await record_chat_failure(
-                        self.conv_store,
-                        thread_id,
-                        placeholder_id,
-                        actor=role.name if role else adapter.provider_id,
-                        failure_class=failure_class,
-                        retryable=False,
-                        detail=remediation,
-                        error=str(exc),
-                    )
                 return ChatTurnResult(
                     ok=False,
                     failure_class=failure_class,
                     retryable=False,
                     remediation=remediation,
+                    error=str(exc),
                 )
             env = {**os.environ, **adapter.runtime_env()}
 
@@ -365,18 +354,6 @@ class ChatTurnRunner:
                     output_text=raw_combined,
                     error_message="".join(stderr_text),
                 )
-                if not is_resume and update_on_failure:
-                    await record_chat_failure(
-                        self.conv_store,
-                        thread_id,
-                        placeholder_id,
-                        actor=role.name if role else adapter.provider_id,
-                        failure_class=classified.failure_class,
-                        retryable=classified.retryable,
-                        detail=classified.remediation or classified.error or "Failed to complete reply",
-                        error=classified.error,
-                    )
-
                 return ChatTurnResult(
                     ok=False,
                     failure_class=classified.failure_class,

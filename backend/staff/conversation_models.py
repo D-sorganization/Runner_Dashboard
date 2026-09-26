@@ -135,6 +135,10 @@ class MessageRecord:
     def failure_class(self) -> str | None:
         return self.meta.get("failure_class")
 
+    @property
+    def remediation(self) -> str | None:
+        return self.meta.get("remediation")
+
     def to_dict(self) -> dict[str, Any]:
         d = {
             "id": self.id,
@@ -152,6 +156,8 @@ class MessageRecord:
         }
         if "failure_class" in self.meta:
             d["failure_class"] = self.meta["failure_class"]
+        if "remediation" in self.meta:
+            d["remediation"] = self.meta["remediation"]
         return d
 
     @classmethod

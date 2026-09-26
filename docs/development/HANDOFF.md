@@ -1,4 +1,36 @@
-# Current handoff — Wire the mad-scientist staff role (#1562)
+# Current handoff — Staff chat failure card shows real root-cause failure and remediation (#1551)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1551`; branch `agy/issue-1551`; Issue #1551; DL-#1551.
+
+## Objective and Status
+
+- Scope:
+  1. The recorded chat turn failure across an exhausted provider fallback chain now preserves the most specific classified failure and its remediation (e.g. `auth_expired` beats generic `provider_error`/`unavailable`, with earlier provider tie-breaking).
+  2. Added `failure_specificity` and `select_best_failure` to `backend/staff/chat_failures.py`.
+  3. Updated `execute_turn` in `backend/staff/chat.py` to record the best candidate's failure class, remediation, and error.
+  4. Exposed `remediation` property on `MessageRecord` in `backend/staff/conversation_models.py` and included it in dictionary serialization.
+  5. Added unit tests for specific failure preservation and tie-breaking in `tests/unit/test_staff_chat_exhausted_chain.py` and e2e remediation assertions in `tests/e2e/staff/staff-console.spec.ts`.
+- Validation:
+  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py`: 3 passed.
+  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat_stream_result.py tests/api/test_staff_chat_turns.py`: 25 passed.
+  - `ruff check` on modified python files: clean.
+  - `ruff format --check` on modified python files: clean.
+  - `npx tsc -p tsconfig.app.json --noEmit`: clean.
+  - Line count audit: `chat.py` 473 lines, `chat_failures.py` 157 lines, `conversation_models.py` 254 lines (all $\le 500$).
+
+- Review (claude): removed the unused `ChatTurnResult.provider` field the first cut added; chat unit and turn tests 20 passed after the change.
+
+## Next Steps
+
+1. PR #1563 is reviewed, marked ready and armed for auto-merge; nothing else remains for #1551.
+
+---
+
+# Past handoff — Wire the mad-scientist staff role (#1562)
 
 Last updated: 2026-09-26
 
