@@ -177,7 +177,7 @@ def verify_and_record(
             try:
                 from staff.review import auto_review_if_eligible
 
-                auto_review_if_eligible(rec, verdict, store=store)
+                auto_review_if_eligible(rec, verdict, store=store, gh_probe=GhCliPrProbe())
             except Exception:  # noqa: BLE001
                 log.warning("auto_review_if_eligible failed for run %s", run_id, exc_info=True)
         return verdict
@@ -250,3 +250,9 @@ class GhCliPrProbe:
         state = "merged" if pr.get("merged_at") else str(pr.get("state") or "open")
         checks = self._api(f"/repos/{full}/commits/{pr['head']['sha']}/check-runs?per_page=100")
         return PullRequest(number=int(pr["number"]), state=state, ci=ci_state(checks.get("check_runs") or []))
+
+    def get_commit_messages(self, repo: str, pr_number: int) -> list[str]:
+        """Commit messages of one PR (one scoped REST call), for the reviewer's author lookup (#1579)."""
+        full = repo if "/" in repo else f"{self.org}/{repo}"
+        commits = self._api(f"/repos/{full}/pulls/{int(pr_number)}/commits?per_page=100")
+        return [str((c.get("commit") or {}).get("message") or "") for c in commits or []]

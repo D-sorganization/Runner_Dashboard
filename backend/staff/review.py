@@ -60,6 +60,13 @@ _VERDICT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Appended to a review prompt when no other provider family was available; the runner
+# reads it back so the stored outcome says ``(same-provider)`` (#1579).
+SAME_PROVIDER_TAG = "[review:same-provider]"
+
+# How many recent runs the author lookup scans (``RunStore.list_runs`` has no repo filter).
+AUTHOR_LOOKUP_LIMIT = 500
+
 _TRAILER_RE = re.compile(
     r"Agent-Id:\s*([a-zA-Z0-9_-]+)",
     re.IGNORECASE,
@@ -121,9 +128,9 @@ def detect_author_provider(
     """Detect the provider that created the PR from the run store or commit trailers."""
     if store is not None:
         try:
-            runs = store.list_runs(repo=repo, limit=200)
+            runs = store.list_runs(limit=AUTHOR_LOOKUP_LIMIT)
             for r in runs:
-                if getattr(r, "role", "") == "code-reviewer":
+                if getattr(r, "role", "") == "code-reviewer" or not _same_repo(getattr(r, "repo", ""), repo):
                     continue
                 if getattr(r, "pr_number", None) == pr_number or (branch and getattr(r, "branch", "") == branch):
                     prov = getattr(r, "provider", None)
@@ -178,6 +185,16 @@ def parse_review_verdict(text: str, *, same_provider: bool = False) -> ReviewVer
     )
 
 
+def _same_repo(a: str, b: str) -> bool:
+    """Whether two repo names match, ignoring an ``owner/`` prefix and case."""
+    return bool(a and b) and a.rsplit("/", 1)[-1].lower() == b.rsplit("/", 1)[-1].lower()
+
+
+def review_outcome(prompt: str, result_line: str) -> str:
+    """The stored outcome for a finished run, flagged same-provider when its prompt says so (#1579)."""
+    return parse_outcome(result_line, same_provider=SAME_PROVIDER_TAG in (prompt or ""))
+
+
 def parse_outcome(text: str, *, same_provider: bool = False) -> str:
     """Extract queryable outcome string for a review run; empty if absent or invalid."""
     res = parse_review_verdict(text, same_provider=same_provider)
@@ -189,6 +206,7 @@ def prepare_review_params(
     default_role: str = "code-reviewer",
     roster: Mapping[str, Any] | None = None,
     store: Any = None,
+    gh_probe: Any = None,
 ) -> dict[str, Any]:
     """Validate, filter and enrich parameters for staff.review_pr dispatch."""
     clean_params = {k: v for k, v in params.items() if k not in FORBIDDEN_REVIEW_KEYS}
@@ -209,13 +227,36 @@ def prepare_review_params(
     )
 
     if not clean_params.get("provider"):
-        author = detect_author_provider(repo=repo, pr_number=int(pr), store=store) if pr and repo else None
-        sel = select_reviewer_provider(author)
+        author = (
+            detect_author_provider(repo=repo, pr_number=int(pr), store=store, gh_probe=gh_probe)
+            if pr and repo
+            else None
+        )
+        role_spec = roster.get(role) if roster is not None else None
+        role_providers = [str(p) for p in getattr(role_spec, "providers", None) or []] or None
+        sel = select_reviewer_provider(author, role_providers)
         clean_params["provider"] = sel.provider
         if sel.model:
             clean_params["model"] = sel.model
+        if sel.same_provider:
+            clean_params["prompt"] = f"{clean_params['prompt']} {SAME_PROVIDER_TAG}"
 
     return clean_params
+
+
+def _already_reviewed(store: Any, repo: str, pr_number: int) -> bool:
+    """Whether a code-reviewer run for this PR is already queued, running or done."""
+    if store is None:
+        return False
+    target = f"PR #{pr_number}"
+    for r in store.list_runs(role="code-reviewer", limit=AUTHOR_LOOKUP_LIMIT):
+        if (
+            _same_repo(getattr(r, "repo", ""), repo)
+            and getattr(r, "target_ref", "") == target
+            and getattr(r, "status", "") not in ("failed", "cancelled")
+        ):
+            return True
+    return False
 
 
 def auto_review_if_eligible(
@@ -224,8 +265,15 @@ def auto_review_if_eligible(
     *,
     store: Any = None,
     dispatch_fn: Any = None,
+    runner: Any = None,
+    gh_probe: Any = None,
 ) -> bool:
-    """Optionally trigger automatic code review when a run's PR reaches 'verified' on a P0/P1 repo."""
+    """Optionally start a code review when a run's PR reaches 'verified' on a P0/P1 repo.
+
+    Called from the runner's and scheduler's plain threads, so it submits through
+    ``Runner.submit`` (the scheduler's thread-safe path), not the event-loop bridge.
+    Returns True only when a review was actually submitted; never raises.
+    """
     setting = os.environ.get("STAFF_AUTO_REVIEW", "0").strip().lower()
     if setting not in ("1", "true", "yes"):
         return False
@@ -253,13 +301,35 @@ def auto_review_if_eligible(
             log.warning("Failed to auto-dispatch review for PR #%s on %s", pr_number, repo, exc_info=True)
             return False
 
-    # Default runtime auto-dispatch via ActionContext and execute_review_pr
     try:
-        from staff.action_executors import execute_review_pr
-        from staff.actions import ActionContext
+        if _already_reviewed(store, repo, int(pr_number)):
+            log.info("auto-review: %s PR #%s already has a code-reviewer run; skipping", repo, pr_number)
+            return False
+        from staff.plan import RunRequest
 
-        ctx = ActionContext(caller=None, thread_id=getattr(rec, "thread_id", None))
-        execute_review_pr({"repo": repo, "pr": pr_number, "reviewer": "code-reviewer"}, ctx)
+        if runner is None:
+            from staff.runner import get_runner
+
+            runner = get_runner()
+        roles = runner.roles() if callable(getattr(runner, "roles", None)) else None
+        params = prepare_review_params(
+            {"repo": repo, "pr": int(pr_number), "reviewer": "code-reviewer"},
+            roster=roles if isinstance(roles, Mapping) else None,
+            store=store,
+            gh_probe=gh_probe,
+        )
+        run = runner.submit(
+            RunRequest(
+                role=str(params["role"]),
+                provider=params.get("provider"),
+                model=params.get("model"),
+                repo=repo,
+                pr=int(pr_number),
+                prompt=str(params["prompt"]),
+                requested_by="auto-review",
+            )
+        )
+        log.info("auto-review: submitted %s for %s PR #%s", getattr(run, "id", "run"), repo, pr_number)
         return True
     except Exception:
         log.warning("Failed to auto-dispatch review for PR #%s on %s", pr_number, repo, exc_info=True)

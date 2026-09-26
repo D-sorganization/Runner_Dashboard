@@ -172,9 +172,26 @@ def execute_review_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResul
     pr = params.get("pr")
     if not repo or not pr:
         return ActionResult(success=False, error="Missing 'repo' or 'pr'", failure_class="invalid_params")
+    try:
+        pr_number = int(pr)
+    except (TypeError, ValueError):
+        return ActionResult(success=False, error=f"'pr' must be a number, got {pr!r}", failure_class="invalid_params")
     r_dir = roles_dir()
     roster = load_roles(r_dir) if r_dir else None
-    params_copy = prepare_review_params(params, default_role=DEFAULT_REVIEWER_ROLE, roster=roster)
+    from staff.runner import get_runner
+    from staff.verification import GhCliPrProbe
+
+    try:
+        store = get_runner().store
+    except Exception:  # noqa: BLE001 - the author lookup is best-effort
+        store = None
+    params_copy = prepare_review_params(
+        {**params, "pr": pr_number},
+        default_role=DEFAULT_REVIEWER_ROLE,
+        roster=roster,
+        store=store,
+        gh_probe=GhCliPrProbe(),
+    )
     return execute_staff_dispatch(params_copy, ctx)
 
 

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1579 · WP-1.3 Follow-Up: Reviewer Provider Selection and Auto-Review Runtime Wiring
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1579 (parent #1463)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** opened right after this commit
+- **Paths:** `backend/staff/review.py`, `backend/staff/verification.py`, `backend/staff/action_executors.py`, `backend/staff/runner.py`, `tests/unit/test_staff_review.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (`a117f377` baseline; test_staff_review 26 passed, 6 new RED→GREEN; full suite same 9 environment-only failures before and after)
+- **Summary:** #1576 (WP-1.3) passed its mocked tests, but at runtime the author lookup always failed (`list_runs(repo=…)` TypeError, swallowed), the roster providers and the trailer probe were never used, the same-provider mark was lost, and auto-review never dispatched from plain threads. This PR fixes all of them.
+- **Next step:** Merge the PR once CI is green.
+
 ### DL-#1288 · CR-8: First use — submit queued UpstreamDrift dynamics proposals via the suggestion box
 
 - **State:** shipped

@@ -411,7 +411,7 @@ class StaffRunner:
                 cost_usd=float(usage.get("cost_usd", 0.0)),
                 input_tokens=int(usage.get("input_tokens", 0)),
                 output_tokens=int(usage.get("output_tokens", 0)),
-                outcome=review.parse_outcome(result_line) or consolidation.parse_outcome(result_line),
+                outcome=review.review_outcome(rec.prompt, result_line) or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
             verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))

@@ -262,3 +262,84 @@ class TestAutoReviewTrigger:
             result = auto_review_if_eligible(rec, verdict, dispatch_fn=lambda p: dispatched.append(p))
             assert result is False
             assert len(dispatched) == 0
+
+
+class TestRuntimeWiring:
+    """Runtime wiring the mocked tests above missed (#1579)."""
+
+    def test_detect_author_against_a_real_run_store(self, tmp_path: Any) -> None:
+        from staff.store import RunStore
+
+        store = RunStore(tmp_path / "runs.sqlite3")
+        try:
+            store.create_run(make_run(id="run-a", repo="Tools", provider="gemini", pr_number=42))
+            store.create_run(make_run(id="run-b", repo="Runner_Dashboard", provider="codex", pr_number=42))
+            author = detect_author_provider(repo="Runner_Dashboard", pr_number=42, store=store)
+        finally:
+            store.close()
+        assert author == "codex"
+
+    def test_selection_uses_roster_providers_and_trailer_probe(self) -> None:
+        role = MagicMock()
+        role.providers = ("gemini", "antigravity", "claude")
+        probe = MagicMock()
+        probe.get_commit_messages.return_value = ["feat: x\n\nAgent-Id: gemini"]
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42},
+            roster={"code-reviewer": role},
+            gh_probe=probe,
+        )
+        assert prepared["provider"] == "claude"
+
+    def test_same_provider_review_is_tagged_and_reaches_the_outcome(self) -> None:
+        from staff.review import SAME_PROVIDER_TAG, review_outcome
+
+        role = MagicMock()
+        role.providers = ("claude",)
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42, "provider": None},
+            roster={"code-reviewer": role},
+            store=MagicMock(list_runs=MagicMock(return_value=[make_run(provider="claude", pr_number=42)])),
+        )
+        assert SAME_PROVIDER_TAG in prepared["prompt"]
+        outcome = review_outcome(prepared["prompt"], "STAFF_RESULT: review approve #42")
+        assert outcome == "review approve #42 (same-provider)"
+        assert review_outcome("plain prompt", "STAFF_RESULT: review approve #42") == "review approve #42"
+
+    def test_auto_review_submits_through_the_runner_and_dedupes(self, tmp_path: Any) -> None:
+        from staff.store import RunStore
+
+        rec = make_run(id="run-1", role="pragmatic-programmer", repo="Runner_Dashboard", pr_number=42)
+        verdict = MagicMock(verification="verified", pr_number=42)
+        runner = MagicMock()
+        store = RunStore(tmp_path / "runs.sqlite3")
+        try:
+            with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "1"}):
+                assert auto_review_if_eligible(rec, verdict, store=store, runner=runner) is True
+                req = runner.submit.call_args.args[0]
+                assert (req.role, req.repo, req.pr) == ("code-reviewer", "Runner_Dashboard", 42)
+
+                store.create_run(
+                    make_run(id="run-rev", role="code-reviewer", repo="Runner_Dashboard", target_ref="PR #42")
+                )
+                runner.reset_mock()
+                assert auto_review_if_eligible(rec, verdict, store=store, runner=runner) is False
+                runner.submit.assert_not_called()
+        finally:
+            store.close()
+
+    def test_auto_review_reports_a_failed_submit(self) -> None:
+        rec = make_run(id="run-1", repo="Runner_Dashboard", pr_number=42)
+        verdict = MagicMock(verification="verified", pr_number=42)
+        runner = MagicMock()
+        runner.submit.side_effect = ValueError("provider unavailable")
+        store = MagicMock(list_runs=MagicMock(return_value=[]))
+        with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "1"}):
+            assert auto_review_if_eligible(rec, verdict, store=store, runner=runner) is False
+
+    def test_non_numeric_pr_is_an_invalid_param_not_a_crash(self) -> None:
+        from staff.action_executors import execute_review_pr
+
+        res = execute_review_pr({"repo": "Runner_Dashboard", "pr": "abc"}, MagicMock())
+        assert res.success is False
+        assert res.failure_class == "invalid_params"
