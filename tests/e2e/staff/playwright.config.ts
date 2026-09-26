@@ -59,8 +59,7 @@ export default defineConfig({
   webServer: [
     ...backendServer,
     {
-      // Name the config: a stale tracked vite.config.js wins over vite.config.ts and ignores VITE_BACKEND_URL.
-      command: `npx vite --config vite.config.ts --port ${UI_PORT} --strictPort`,
+      command: `npx vite --port ${UI_PORT} --strictPort`,
       cwd: "../../..",
       env: { ...INHERITED_ENV, VITE_BACKEND_URL: BACKEND_URL },
       url: `http://localhost:${UI_PORT}`,

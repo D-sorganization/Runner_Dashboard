@@ -1,10 +1,44 @@
-# Current handoff — Web-vitals POST lacks the CSRF header and gets 403 (#1550)
+# Current handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1550`; branch `agy/issue-1550`; Issue #1550; DL-#1550; PR #1558 (draft).
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1549`; branch `fix/1549-remove-stale-vite-config`; Issue #1549; DL-#1549.
+
+## Objective and Status
+
+- Scope:
+  1. Removed stale tracked compiled artifacts `vite.config.js` and `vite.config.d.ts` using `git rm`.
+  2. Added `vite.config.js` and `vite.config.d.ts` to `.gitignore`.
+  3. Removed explicit `--config vite.config.ts` flag in `tests/e2e/staff/playwright.config.ts`.
+  4. Updated documentation freshness tests in `tests/test_documentation_freshness.py` to assert `vite.config.ts` and forbid `vite.config.js`.
+  5. Added dedicated regression suite `tests/frontend/test_vite_config.py` verifying no tracked/existing stale files, `.gitignore` entries, backend URL environment variable resolution, and standard Playwright web server command.
+  6. Bumped `SPEC.md` specification version to 2.5.291.
+- Validation:
+  - `python -m pytest tests/frontend/test_vite_config.py tests/test_documentation_freshness.py tests/test_frontend_integrity.py`: 83 passed, 1 xfailed.
+  - `ruff check .`: clean.
+  - `ruff format --check tests/frontend/test_vite_config.py tests/test_documentation_freshness.py`: clean.
+  - Line count audit: all modified/new files <= 500 lines.
+
+## Next Steps
+
+1. Push branch `fix/1549-remove-stale-vite-config` to `origin`.
+2. Open PR referencing `Fixes #1549` and containing `deletions-acknowledged: yes` in the body.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until green and merged.
+5. Release lease for #1549 via `scripts.release_agent_lease`.
+6. Clean up worktree `Runner_Dashboard-1549` and delete local branch.
+
+---
+
+# Past handoff — Web-vitals POST lacks the CSRF header and gets 403 (#1550)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1550`; branch `agy/issue-1550`; Issue #1550; DL-#1550; PR #1558.
 
 ## Objective and Status
 
@@ -12,18 +46,7 @@ Last updated: 2026-09-25
   1. Fix 403 Forbidden errors on `POST /api/metrics/web-vitals` caused by missing `X-Requested-With: XMLHttpRequest` CSRF sentinel header.
   2. Extracted web-vitals reporting from `frontend/src/main.tsx` into modular `frontend/src/lib/webVitals.ts`, routing POST requests through `apiRequest` (reusing existing header logic from `DEFAULT_HEADERS` with no duplicate header definition).
   3. Added unit tests in `frontend/src/lib/__tests__/webVitals.test.ts` asserting the header is sent, payload shape is correct, zero deltas are preserved, and failures are handled gracefully.
-- Validation:
-  - `npx vitest run frontend/src/lib/__tests__/webVitals.test.ts`: 6 passed.
-  - `npx vitest run frontend/src/lib/__tests__/webVitals.test.ts frontend/src/lib/__tests__/api.test.ts frontend/src/lib/__tests__/legacyFetch.test.ts frontend/src/pages/__tests__/Analysis.test.tsx`: 37 passed.
-  - `npm run lint`: clean (0 errors, 0 warnings).
-  - `npx tsc -p tsconfig.app.json --noEmit`: clean (0 errors).
-  - WSL pytest `tests/api/test_structural_auth_perimeter.py`: 13 passed.
-  - WSL pytest `tests/test_ci_config.py`: 29 passed.
-
-## Next Steps
-
-1. Wait for CI to run and pass on PR #1558.
-2. Frontier review and undraft.
+- Shipped: Merged to `main` via PR #1558.
 
 ---
 
@@ -33,7 +56,7 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1552`; branch `fix/1552-trim-chat-py`; Issue #1552; DL-#1552.
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1552`; branch `fix/1552-trim-chat-py`; Issue #1552; DL-#1552; PR #1554.
 
 ## Objective and Status
 
@@ -43,21 +66,7 @@ Last updated: 2026-09-25
   3. Reduced `backend/staff/chat.py` to 493 lines ($\le 500$). `backend/staff/chat_failures.py` is 122 lines ($\le 500$).
   4. Ran full repository line-cap audit confirming no non-exempt source files exceed 500 lines.
   5. Validated all chat test suites (19 passed, zero regressions).
-- Validation:
-  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py tests/unit/test_staff_chat_stream_result.py`: 4 passed.
-  - `python -m pytest tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/api/test_staff_chat_turns.py`: 19 passed.
-  - `ruff check backend/staff/chat.py backend/staff/chat_failures.py`: clean.
-  - `ruff format --check backend/staff/chat.py backend/staff/chat_failures.py`: clean.
-  - Line count audit: `chat.py` 493 lines, `chat_failures.py` 122 lines.
-
-## Next Steps
-
-1. Push branch `fix/1552-trim-chat-py` to `origin`.
-2. Open PR referencing Fixes #1552 with 9-field parity checklist.
-3. Arm auto-merge (`gh pr merge --squash --auto`).
-4. Monitor CI until green and merged.
-5. Release lease for #1552 via `scripts.release_agent_lease`.
-6. Clean up worktree and delete local branch.
+- Shipped: Merged to `main` via PR #1554.
 
 ---
 
