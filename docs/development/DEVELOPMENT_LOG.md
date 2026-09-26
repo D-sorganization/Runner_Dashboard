@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1540 · Board consensus reports the seats' positions, not canned approval
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1540 (SC-B9 follow-up, epic #1354)
+- **Branch:** `fix/1540-board-consensus`
+- **PR:** #1541
+- **Paths:** `backend/staff/groups.py`, `tests/unit/test_staff_group_consensus.py`, `tests/unit/test_staff_groups.py`, `tests/api/test_staff_groups_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at a52a0702 plus this branch (`tests/staff`, group unit and API tests, `test_staff_actions.py`: 279 passed; ruff and mypy clean)
+- **Summary:** `collate_consensus` no longer asserts agreement. The summary lists each answering seat's position (one line, 240 chars) and keeps the full replies in the seat block. With no answers it reports no quorum and creates no proposal. `board.propose` params are the title, question and positions only; the executor never read the removed repo, urgency and cost fields.
+- **Next step:** Merge, then have the coordinator role write a real synthesis over the positions.
+
 ### DL-#1342 · SC-D7: Board group thread UI
 
 - **State:** in_review

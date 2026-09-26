@@ -185,12 +185,46 @@ async def _default_seat_runner(seat: SeatSpec, prompt: str, thread_id: str) -> S
 # ── FANOUT & CONSENSUS COLLATION ─────────────────────────────────────────────
 
 
+POSITION_CHARS = 240
+
+
+def _seat_title(group: GroupDefinition, seat_name: str) -> str:
+    seat = next((s for s in group.seats if s.name == seat_name), None)
+    return seat.title if seat else seat_name.title()
+
+
+def _position(text: str) -> str:
+    """A seat's reply on one line, cut to :data:`POSITION_CHARS`."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= POSITION_CHARS else flat[: POSITION_CHARS - 1].rstrip() + "…"
+
+
+def _positions_md(group: GroupDefinition, responded: list[SeatReply]) -> str:
+    """Each answering seat's own position. It reports what was said and never claims agreement (#1540)."""
+    if not responded:
+        return "#### No quorum\nNo seat answered, so the Board has no position on this question."
+    lines = [f"- **{_seat_title(group, r.seat_name)}:** {_position(r.text)}" for r in responded]
+    return "#### Where the seats stand\n" + "\n".join(lines)
+
+
+def _board_proposal(prompt: str, positions: str) -> ProposedAction:
+    """A `board.propose` built only from the discussion; the approver decides scope and urgency."""
+    words = re.sub(r"[^\w\s-]", "", prompt).split()[:6]
+    title_short = " ".join(words) or "Board Decision"
+    title = title_short if title_short.lower().startswith("adopt") else f"Adopt {title_short}"
+    return ProposedAction(
+        action="board.propose",
+        params={"title": title, "proposal": f"Question: {prompt}\n\n{positions}"},
+        reason="Board seats answered; the user decides whether to make it a formal proposal",
+    )
+
+
 def collate_consensus(
     group: GroupDefinition,
     prompt: str,
     replies: list[SeatReply],
 ) -> ConsensusResult:
-    """Collate seat replies, evaluate quorum, and synthesize consensus summary."""
+    """Collate seat replies, evaluate quorum, and report each answering seat's position."""
     responded = [r for r in replies if r.status == "ok"]
     failed = [r for r in replies if r.status != "ok"]
     total = len(group.seats)
@@ -211,8 +245,7 @@ def collate_consensus(
 
     seat_views_md = [f"<details>\n<summary>Seat Replies ({len(responded)}/{total})</summary>\n"]
     for r in replies:
-        seat_obj = next((s for s in group.seats if s.name == r.seat_name), None)
-        title = seat_obj.title if seat_obj else r.seat_name.title()
+        title = _seat_title(group, r.seat_name)
         if r.status == "ok":
             seat_views_md.append(f"#### {title}\n{r.text}\n")
         elif r.status == "timeout":
@@ -221,37 +254,9 @@ def collate_consensus(
             seat_views_md.append(f"#### {title}\n*(No response - error: {r.error_detail or 'unspecified'})*\n")
     seat_views_md.append("</details>")
 
-    synthesis = (
-        f'The Board discussed: "{prompt}". '
-        f"Based on input from {len(responded)} seats, consensus leans toward approving the direction "
-        f"with clear evaluation gates and risk controls."
-    )
-
-    summary_md = (
-        f"### Board Deliberation & Consensus Summary\n\n"
-        f"**Quorum:** {quorum_str}\n\n"
-        f"#### Consensus Recommendation\n{synthesis}\n\n"
-        f"{''.join(seat_views_md)}"
-    )
-
-    proposed_actions: list[ProposedAction] = []
-    clean_title = re.sub(r"[^\w\s-]", "", prompt).strip()
-    words = clean_title.split()[:6]
-    title_short = " ".join(words) if words else "Board Decision"
-    prop_title = f"Adopt {title_short}" if not title_short.lower().startswith("adopt") else title_short
-
-    action = ProposedAction(
-        action="board.propose",
-        params={
-            "title": prop_title,
-            "proposal": synthesis,
-            "target_repos": ["Repository_Management"],
-            "urgency": "Routine",
-            "estimated_cost": "Medium",
-        },
-        reason="Board consensus recommendation for formal outcome",
-    )
-    proposed_actions.append(action)
+    positions = _positions_md(group, responded)
+    summary_md = f"### Board Deliberation\n\n**Quorum:** {quorum_str}\n\n{positions}\n\n{''.join(seat_views_md)}"
+    proposed_actions = [_board_proposal(prompt, positions)] if responded else []
 
     total_cost = sum(r.cost_usd for r in replies)
     return ConsensusResult(
