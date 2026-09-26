@@ -88,6 +88,40 @@ def _no_real_network_in_unit_lane(request, monkeypatch):
             pass
 
 
+# Every GitHub credential source the backend can use (#1528): the httpx client
+# reads the token and GitHub App env, and the ``gh`` CLI fallback reads its login
+# from ``GH_CONFIG_DIR``.
+_GITHUB_CREDENTIAL_ENV = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_INSTALLATION_ID",
+    "GITHUB_APP_PRIVATE_KEY",
+    "GITHUB_APP_PRIVATE_KEY_FILE",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_github_credentials(tmp_path, monkeypatch):
+    """Tests never hold a real GitHub credential (#1528).
+
+    With a developer's token or ``gh auth`` login visible, code-request tests
+    created real issues via ``gh_utils.gh_api_write``. Every credential env var is
+    removed, the ``gh`` CLI gets an empty per-test config dir, and ``gh_client``'s
+    cached token is cleared. A test that needs a token sets a fake one itself.
+    """
+    import gh_client  # noqa: PLC0415
+
+    for name in _GITHUB_CREDENTIAL_ENV:
+        monkeypatch.delenv(name, raising=False)
+    gh_config = tmp_path / "gh-config"
+    gh_config.mkdir(exist_ok=True)
+    monkeypatch.setenv("GH_CONFIG_DIR", str(gh_config))
+    monkeypatch.setattr(gh_client, "_cached_token", None)
+    monkeypatch.setattr(gh_client, "_cached_token_expires_at", 0.0)
+
+
 @pytest.fixture(autouse=True)
 def _reset_main_cache_between_tests():
     """Clear the shared backend cache before and after every test."""
