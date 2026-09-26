@@ -15,11 +15,12 @@ Last updated: 2026-09-26
   - A same-provider review gets `SAME_PROVIDER_TAG` appended to its prompt. `runner` stores `review.review_outcome(rec.prompt, result_line)`, so the outcome reads `(same-provider)`.
   - `auto_review_if_eligible` submits through `Runner.submit`, the scheduler's thread-safe path, instead of the event-loop bridge, which is unavailable on plain threads. It skips a PR that already has a live code-reviewer run, logs what it did, and returns True only when it actually submitted.
   - `execute_review_pr` rejects a non-numeric `pr` as `invalid_params`.
+  - Codex review on #1580: the dedupe check and `Runner.submit` run together under `_AUTO_REVIEW_LOCK`, so concurrent verifications of one PR submit a single review. The check uses the effective reviewer role, so a `fleet-critic` fallback run also counts.
 - Not changed (noted in the PR): `ALTERNATE_MODELS` holds 2024 model ids, and the P0/P1 set is hardcoded instead of being read from config.
 
 ## Validation
 
-- `python -m pytest tests/unit/test_staff_review.py -q -o addopts=""`: 26 passed. The 6 new tests fail on `main`.
+- `python -m pytest tests/unit/test_staff_review.py -q -o addopts=""`: 28 passed. The 8 new tests fail on `main`.
 - Full `pytest tests --ignore=tests/e2e`: the same 9 failures on `main` and on this branch. They are environment-only: conductor sibling-checkout drift, and deploy/autoscaler tests that depend on host paths.
 - `ruff check`, `ruff format --check` and `mypy` on the touched modules: clean.
 

@@ -343,3 +343,56 @@ class TestRuntimeWiring:
         res = execute_review_pr({"repo": "Runner_Dashboard", "pr": "abc"}, MagicMock())
         assert res.success is False
         assert res.failure_class == "invalid_params"
+
+    def test_dedupe_covers_the_fallback_reviewer_role(self, tmp_path: Any) -> None:
+        from staff.store import RunStore
+
+        rec = make_run(id="run-1", repo="Runner_Dashboard", pr_number=42)
+        verdict = MagicMock(verification="verified", pr_number=42)
+        runner = MagicMock()
+        runner.roles.return_value = {"fleet-critic": MagicMock(providers=("codex",))}
+        store = RunStore(tmp_path / "runs.sqlite3")
+        try:
+            store.create_run(make_run(id="run-fc", role="fleet-critic", repo="Runner_Dashboard", target_ref="PR #42"))
+            with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "1"}):
+                assert auto_review_if_eligible(rec, verdict, store=store, runner=runner) is False
+            runner.submit.assert_not_called()
+        finally:
+            store.close()
+
+    def test_concurrent_triggers_submit_one_review(self, tmp_path: Any) -> None:
+        import threading
+        import time
+
+        from staff.store import RunStore
+
+        rec = make_run(id="run-1", repo="Runner_Dashboard", pr_number=42)
+        verdict = MagicMock(verification="verified", pr_number=42)
+        store = RunStore(tmp_path / "runs.sqlite3")
+        submitted: list[Any] = []
+
+        def slow_submit(req: Any) -> Any:
+            time.sleep(0.05)  # widen the check-then-submit window
+            submitted.append(req)
+            return store.create_run(
+                make_run(id=f"run-rev-{len(submitted)}", role=req.role, repo=req.repo, target_ref=f"PR #{req.pr}")
+            )
+
+        runner = MagicMock()
+        runner.roles.return_value = {"code-reviewer": MagicMock(providers=("claude",))}
+        runner.submit.side_effect = slow_submit
+        try:
+            with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "1"}):
+                threads = [
+                    threading.Thread(
+                        target=auto_review_if_eligible, args=(rec, verdict), kwargs={"store": store, "runner": runner}
+                    )
+                    for _ in range(4)
+                ]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            assert len(submitted) == 1
+        finally:
+            store.close()

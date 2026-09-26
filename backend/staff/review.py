@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -244,12 +245,17 @@ def prepare_review_params(
     return clean_params
 
 
-def _already_reviewed(store: Any, repo: str, pr_number: int) -> bool:
-    """Whether a code-reviewer run for this PR is already queued, running or done."""
+# Serialises the dedupe check with the submit that persists the queued run, so two
+# verifications of one PR cannot both pass the check (#1580 review). One process per node.
+_AUTO_REVIEW_LOCK = threading.Lock()
+
+
+def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = "code-reviewer") -> bool:
+    """Whether a ``role`` review run for this PR is already queued, running or done."""
     if store is None:
         return False
     target = f"PR #{pr_number}"
-    for r in store.list_runs(role="code-reviewer", limit=AUTHOR_LOOKUP_LIMIT):
+    for r in store.list_runs(role=role, limit=AUTHOR_LOOKUP_LIMIT):
         if (
             _same_repo(getattr(r, "repo", ""), repo)
             and getattr(r, "target_ref", "") == target
@@ -302,9 +308,6 @@ def auto_review_if_eligible(
             return False
 
     try:
-        if _already_reviewed(store, repo, int(pr_number)):
-            log.info("auto-review: %s PR #%s already has a code-reviewer run; skipping", repo, pr_number)
-            return False
         from staff.plan import RunRequest
 
         if runner is None:
@@ -318,17 +321,22 @@ def auto_review_if_eligible(
             store=store,
             gh_probe=gh_probe,
         )
-        run = runner.submit(
-            RunRequest(
-                role=str(params["role"]),
-                provider=params.get("provider"),
-                model=params.get("model"),
-                repo=repo,
-                pr=int(pr_number),
-                prompt=str(params["prompt"]),
-                requested_by="auto-review",
+        reviewer = str(params["role"])  # code-reviewer, or its fleet-critic fallback
+        with _AUTO_REVIEW_LOCK:
+            if _already_reviewed(store, repo, int(pr_number), role=reviewer):
+                log.info("auto-review: %s PR #%s already has a %s run; skipping", repo, pr_number, reviewer)
+                return False
+            run = runner.submit(
+                RunRequest(
+                    role=reviewer,
+                    provider=params.get("provider"),
+                    model=params.get("model"),
+                    repo=repo,
+                    pr=int(pr_number),
+                    prompt=str(params["prompt"]),
+                    requested_by="auto-review",
+                )
             )
-        )
         log.info("auto-review: submitted %s for %s PR #%s", getattr(run, "id", "run"), repo, pr_number)
         return True
     except Exception:
