@@ -1,35 +1,28 @@
-# Current handoff — Staff Console development-log reconciliation after the 2026-09-26 merges
+# Current handoff — PR Remediator pass 2026-09-26 (rebased #1544)
 
 Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-docsync`; branch `docs/staff-dl-reconcile-2026-09-26`; PR: opened with this commit; governing epic #1354 (Staff Console umbrella). Docs only.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-run-894f15f98bbc`; branch `staff/pr-remediator-task-515bf7`; role `pr-remediator` run 894f15f98bbc.
 
 ## Objective and Status
 
-- Six Staff Console entries were still `in_review` after their PRs merged. They are now `shipped`, each with its merge commit:
-  - DL-#1504: PR #1571 (374ea4f4). Request journey e2e, and a dispatch's `thread_id` opens that thread.
-  - DL-#1556: PR #1570 (5cf60512). Hermetic staff e2e harness.
-  - DL-#1542: PR #1569 (62ce4d70). Non-blocking startup and guarded verification.
-  - DL-#1501: PR #1560 (b182f790). Steward dispatch through the request API.
-  - DL-#1547: PRs #1557 and #1566 (aab8887a). Run cards with needs-input answer and cancel.
-  - DL-#1548: PR #1568 (4f858a3d). Handoff replies post a HandoffCard.
-- No code, SPEC row or version change.
-
-## Open Items Outside This PR
-
-- Remediation "Fix this failed run": the implicitly selected first run needs an accepted preview while other runs do not. This is a product decision for the owner (noted in PR #1571).
-- The Staff tab crashes on a malformed board response (`board.running is not iterable`). This was seen with a test stub; the real API returns a valid board.
-- `DEVELOPMENT_LOG.md` is over the validator's size ceiling, and DL-#1513 appears twice. Both predate this PR.
+- Scheduled PR Remediator pass on Runner_Dashboard, serial mode (4 open PRs < 6).
+- PR #1495 (`docs/1299-staff-conversation-adr`): skipped — `panel-review` + `tier:strong` labels.
+- PR #1464 (`claude/runner-dashboard-roles-gaps-k9i38r`): all CI green, no action needed.
+- PR #1544 (`agy/issue-1346`, SC-G8 dead frontend code deletion): was CONFLICTING; rebased cleanly onto main (SPEC.md rows merged, HANDOFF.md SC-G8 section demoted to past handoff). Force-pushed with `--force-with-lease`.
+- PR #1533 (`agy/issue-1517`, SC-D9 outcomes endpoint): CONFLICTING; not yet attempted (deferred — evaluate after #1544 CI clears).
 
 ## Validation
 
-- `grep -c '^# Current handoff' docs/development/HANDOFF.md` is unchanged from main; each touched DL entry still appears exactly once.
+- Rebase of `agy/issue-1346` applied cleanly: 1 commit, 19 files, 0 merge errors.
+- No conflict markers remain in SPEC.md or HANDOFF.md.
 
 ## Next Steps
 
-1. Merge this PR once CI is green.
+1. Monitor PR #1544 CI; arm auto-merge when green.
+2. If CI green, attempt rebase of PR #1533 (`agy/issue-1517`) in a follow-up remediator pass.
 
 ---
 
