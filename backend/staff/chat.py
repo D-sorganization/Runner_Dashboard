@@ -39,6 +39,7 @@ from staff.chat_failures import (
     chat_read_only_tools,
     record_chat_capacity_failure,
     record_chat_failure,
+    record_chat_failure_if_pending,
 )
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
@@ -251,7 +252,16 @@ class ChatTurnRunner:
                 metrics.record_fallback()
 
             if last_failed is not None:
-                await self._record_if_pending(thread_id, placeholder_id, role_name, last_failed)
+                await record_chat_failure_if_pending(
+                    self.conv_store,
+                    thread_id,
+                    placeholder_id,
+                    actor=role_name,
+                    failure_class=last_failed.failure_class,
+                    retryable=last_failed.retryable,
+                    detail=last_failed.remediation,
+                    error=last_failed.error,
+                )
                 return last_failed
 
             log.warning(
@@ -268,28 +278,6 @@ class ChatTurnRunner:
         finally:
             if acquired:
                 self.pool.release(role_name)
-
-    async def _record_if_pending(
-        self, thread_id: str, placeholder_id: str, role_name: str, failed: ChatTurnResult
-    ) -> None:
-        """Record the chain's last failure when no attempt recorded one (#1341).
-
-        Only the chain's last entry records its own failure, so a skipped last
-        entry left the reply pending forever. Post: the placeholder is not pending.
-        """
-        placeholder = self.conv_store.get_message(placeholder_id)
-        if placeholder is None or placeholder.delivery != "pending":
-            return
-        await record_chat_failure(
-            self.conv_store,
-            thread_id,
-            placeholder_id,
-            actor=role_name,
-            failure_class=failed.failure_class or "unknown",
-            retryable=failed.retryable,
-            detail=failed.remediation or "Failed to complete reply",
-            error=failed.error,
-        )
 
     async def _run_turn_attempt(
         self,
