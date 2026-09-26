@@ -111,15 +111,19 @@ def _no_real_github_credentials(tmp_path, monkeypatch):
     removed, the ``gh`` CLI gets an empty per-test config dir, and ``gh_client``'s
     cached token is cleared. A test that needs a token sets a fake one itself.
     """
-    import gh_client  # noqa: PLC0415
+    try:
+        import gh_client  # noqa: PLC0415
+    except ImportError:
+        gh_client = None  # noqa: N816
 
     for name in _GITHUB_CREDENTIAL_ENV:
         monkeypatch.delenv(name, raising=False)
     gh_config = tmp_path / "gh-config"
     gh_config.mkdir(exist_ok=True)
     monkeypatch.setenv("GH_CONFIG_DIR", str(gh_config))
-    monkeypatch.setattr(gh_client, "_cached_token", None)
-    monkeypatch.setattr(gh_client, "_cached_token_expires_at", 0.0)
+    if gh_client is not None:
+        monkeypatch.setattr(gh_client, "_cached_token", None)
+        monkeypatch.setattr(gh_client, "_cached_token_expires_at", 0.0)
 
 
 @pytest.fixture(autouse=True)
