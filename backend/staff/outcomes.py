@@ -110,7 +110,8 @@ def aggregate(runs: Sequence[RunRecord], facts: Mapping[PrKey, PrFact], *, group
 
     Pre: ``group_by`` is a key of GROUP_BY. Pure: no I/O.
     """
-    assert group_by in GROUP_BY, f"group_by must be one of {sorted(GROUP_BY)}"  # noqa: S101
+    if group_by not in GROUP_BY:
+        raise ValueError(f"group_by must be one of {sorted(GROUP_BY)}")
     groups: dict[str, list[RunRecord]] = {}
     for rec in runs:
         groups.setdefault(GROUP_BY[group_by](rec), []).append(rec)

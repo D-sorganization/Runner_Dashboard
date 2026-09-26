@@ -109,7 +109,7 @@ def test_rows_are_grouped_and_sorted(group_by: str) -> None:
 
 
 def test_unknown_group_by_violates_the_contract() -> None:
-    with pytest.raises(AssertionError):
+    with pytest.raises((ValueError, AssertionError)):
         aggregate([], {}, group_by="machine")
 
 
@@ -140,7 +140,8 @@ class FakeGitHub:
     """Answers gh_client.get from a path-prefix table and records every call."""
 
     def __init__(self, table: dict[str, Any]) -> None:
-        self.table, self.calls = table, []
+        self.table: dict[str, Any] = table
+        self.calls: list[str] = []
 
     async def get(self, path: str) -> Any:
         self.calls.append(path)
