@@ -447,15 +447,22 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 
 ## Provider Options (#1252)
 
-| Provider        | Launch                                                                                        | Models                                          |
+| Provider        | Launch (unattended; never a permission bypass, #1586)                                         | Models                                          |
 | --------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `claude`        | `claude -p --output-format stream-json --permission-mode bypassPermissions`                   | Claude seat (`CLAUDE_CONFIG_DIR` service copy)  |
-| `codex`         | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check` (0.156+)        | ChatGPT seat                                    |
-| `antigravity`   | `agy --print --output-format stream-json --dangerously-skip-permissions`                      | Google sign-in (replaces the older Gemini CLI)  |
-| `cursor-agent`  | `cursor-agent -p --output-format stream-json --force --trust --workspace <wt>`                | Cursor subscription, incl. Grok (`grok-4.7-*`)  |
+| `claude`        | `claude -p --permission-mode dontAsk --permission-prompts none --allowedTools <list>`         | Claude seat (`CLAUDE_CONFIG_DIR` service copy)  |
+| `codex`         | `codex exec --sandbox workspace-write --add-dir <git common dir> --json` (0.156+)             | ChatGPT seat                                    |
+| `antigravity`   | Chat only: agy 1.2.11 cannot run shell commands headlessly without a bypass                   | Google sign-in                                  |
+| `cursor-agent`  | `cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt>`      | Cursor subscription, incl. Grok (`grok-4.7-*`)  |
 | `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`              | Any Ollama model; default `glm-5.3-flash:cloud` |
 | `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`) | Any Ollama model; default `glm-5.3-flash:cloud` |
-| `gemini`        | `gemini -p` (legacy; prefer `antigravity`)                                                    | Google                                          |
+| `gemini`        | `gemini -p --approval-mode auto_edit --policy <generated> --output-format stream-json`        | Google                                          |
+
+Unattended runs use one shared shell allow-list and deny-list (`UNATTENDED_SHELL_ALLOW` /
+`UNATTENDED_SHELL_DENY` in `backend/staff/adapters.py`), rendered as Claude `Bash(<prefix>:*)` tool rules
+and as a Gemini policy file written to `<STAFF_WORKTREES_ROOT>/.policies/gemini.toml`. Anything
+unlisted is refused, not prompted. Codex relies on its `workspace-write` sandbox (the worktree plus its
+git common dir, network on) and Cursor on `--sandbox enabled`. A test fails if any unattended or chat
+argv carries a bypass flag (`PERMISSION_BYPASS_FLAGS`).
 
 Ollama models always run inside an agent harness (Codex or Claude Code), so they can edit, commit and
 open PRs; bare `ollama run` chat cannot. On a NAT-mode WSL node the server is the Windows Ollama app,

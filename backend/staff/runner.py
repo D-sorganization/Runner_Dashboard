@@ -157,14 +157,39 @@ class StaffRunner:
         if req.provider and req.provider not in role.providers and role.name != "ad-hoc":
             allowed = ", ".join(role.providers)
             raise ValueError(f"provider '{req.provider}' is not allowed for role '{role.name}' (allowed: {allowed})")
+        if not getattr(self._adapters[provider], "unattended", True):
+            raise ValueError(
+                f"provider '{provider}' is chat-only: it cannot run unattended without bypassing permissions"
+            )
         return provider
 
     def _first_available(self, providers: tuple[str, ...]) -> str:
-        for pid in providers:
-            adapter = self._adapters.get(pid)
-            if adapter is not None and adapter.installed():
+        """First installed provider that can run unattended (#1586), else the first that can."""
+        runnable = [
+            pid for pid in providers if pid in self._adapters and getattr(self._adapters[pid], "unattended", True)
+        ]
+        for pid in runnable:
+            if self._adapters[pid].installed():
                 return pid
+        if runnable:
+            return runnable[0]
         return providers[0] if providers else "claude"
+
+    @staticmethod
+    def _launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, str]:
+        """``gitdir``/``policy`` keyword arguments for ``adapter.build_command`` (#1586).
+
+        Post: only the slots the adapter's argv actually uses are passed, so an
+        adapter with the older ``build_command(prompt, workdir, model)`` shape still works.
+        """
+        argv = getattr(adapter, "argv", ())
+        paths: dict[str, str] = {}
+        if any("{gitdir}" in part for part in argv):
+            paths["gitdir"] = str(workspace.git_common_dir(workdir))
+        policy_text = getattr(adapter, "policy_text", None)
+        if policy_text is not None and any("{policy}" in part for part in argv):
+            paths["policy"] = str(workspace.write_policy_file(adapter.provider_id, policy_text()))
+        return paths
 
     # ── submission ───────────────────────────────────────────────────────
     def submit(self, req: RunRequest) -> RunRecord:
@@ -289,7 +314,7 @@ class StaffRunner:
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
         )
-        argv = adapter.build_command(prompt, str(workdir), plan.model)
+        argv = adapter.build_command(prompt, str(workdir), plan.model, **self._launch_paths(adapter, workdir))
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))

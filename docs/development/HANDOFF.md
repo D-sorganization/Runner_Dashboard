@@ -32,6 +32,41 @@ Last updated: 2026-09-26
 
 ---
 
+# Current handoff — Staff runs without CLI permission bypass (#1586)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1586-no-permission-bypass`; Issue #1586; DL-#1586.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `df3f0333`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- Owner decision (2026-09-26): no fleet agent is launched with its permission checks switched off.
+- `backend/staff/adapters.py`: `PERMISSION_BYPASS_FLAGS`, a shared `UNATTENDED_SHELL_ALLOW` / `UNATTENDED_SHELL_DENY`, and per-provider rendering.
+  - Claude `dontAsk` plus tool rules. Codex `workspace-write` sandbox, with the git common dir added and the network on, plus `--json`.
+  - Gemini `auto_edit` plus a generated policy. Cursor `--sandbox enabled`.
+  - agy is chat-only (`unattended=False`).
+- `build_command` gains `gitdir` and `policy` slots. The runner fills them (`workspace.git_common_dir`, `workspace.write_policy_file`).
+- The runner and the retry fallback skip chat-only providers.
+- Verified live on OGLaptop with each CLI running `git --version` and writing a file:
+  - Claude, Codex and Cursor passed.
+  - agy auto-denied every command, even with `permissions.allow`.
+  - Gemini in WSL has no login, so it was not exercised.
+
+## Validation
+
+- RED first: `tests/api/test_staff_unattended_permissions.py` failed on import before the change.
+- The staff, adapter, provider, retry, chat and runner suites pass. The conductor-enum tests are environmental and failed before this change too.
+
+## Next Steps
+
+1. Merge, then watch the next scheduled Claude and Codex runs for permission denials in their transcripts.
+2. Re-test agy when it ships a headless allow-list.
+
+---
+
 # Current handoff — SC-B1-G5: Cross-node run-card relay (#1488)
 
 Last updated: 2026-09-26
