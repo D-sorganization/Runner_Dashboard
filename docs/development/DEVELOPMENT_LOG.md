@@ -26,9 +26,35 @@ reachable from any live state and `abandoned` from `parked`.
 - **Branch:** `docs/1299-staff-conversation-adr`
 - **Paths:** `docs/adr/0006-staff-conversation-model.md`, `docs/adr/README.md`, `docs/assistant-chat-endpoint-design.md`, `docs/assistant-agent-mode-design.md`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-26 df6e566e (docs only; every cited source and test path checked against `main`)
+- **Last verified:** 2026-09-26 a74e6439 (docs only; every cited source and test path checked against `main`)
 - **Summary:** SC-B2/B4/B5/B6/B7 shipped before the ADR, so ADR 0006 records the model as built and lists where the code falls short of it. Eleven follow-ups filed: #1484 (read-only chat enforcement), #1485 (proposal API hardening), #1486 (one action vocabulary), #1487 (action dispatch bypasses /run policy), #1488 (cross-node conversation authority, Open), #1489 (redaction coverage), #1490 (retention and export, Open), #1491 (pending chat reconcile), #1492 (chat pool saturation), #1493 (live token streaming), #1494 (Projects steward Idempotency-Key).
 - **Next step:** Panel review of ADR 0006 on #1299; the owner decides the two Open items (#1488, #1490) and then the PR is merged by hand (not auto-merged).
+
+### DL-#1577 · Test isolation on fleet nodes (hub proxy, STAFF_REPOS_ROOT, pwsh skip)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1577 (Staff Hub maintenance draft PR; this entry tracks the superseding PR)
+- **Branch:** `fix/test-isolation-node-env`
+- **PR:** pending
+- **Paths:** `tests/conftest.py`, `tests/unit/test_hub_proxy_isolation.py`, `tests/api/test_staff_runner.py`, `tests/deploy/test_fleet_health_monitor.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (node-env RED 6 failed on main; GREEN 102 passed, 10 skipped; ruff clean)
+- **Summary:** Tests no longer proxy to a live hub or read an operator's `STAFF_REPOS_ROOT` on a fleet node; PowerShell-only tests skip without `pwsh`; the runner opens-PR test waits for its hook.
+- **Next step:** Merge the superseding PR once CI is green.
+
+### DL-#1579 · Code-reviewer runtime: selection inputs, same-provider mark and auto-review
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1579
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r` (follow-up; #1581 merged from `fix/1579-review-runtime`)
+- **PR:** #1581 merged; the #1580 review follow-up opens right after this commit
+- **Paths:** `backend/staff/review.py`, `backend/staff/action_executors.py`, `backend/staff/runner.py`, `tests/unit/test_staff_review_runtime.py`, `tests/api/test_staff_review_runner.py`, `tests/unit/test_staff_review.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (`bb2b6006` baseline; review suites 38 passed incl. 3 new RED→GREEN (thread and process concurrency); staff/api/unit subset 946 passed; ruff and mypy clean)
+- **Summary:** The WP-1.3 reviewer now finds the author in a real `RunStore`, selects from the `code-reviewer` role's providers with an `Agent-Id` trailer fallback, carries the same-provider mark on the run into its stored outcome, and auto-reviews through `runner.submit` with per-PR deduplication. `execute_review_pr` rejects a non-numeric `pr`. The follow-up makes the dedupe atomic across threads and worker processes (a thread lock plus a file lock next to the runs DB, held around check and submit) and keys it on the resolved reviewer role, so a `fleet-critic` fallback counts.
+- **Next step:** Merge the dedupe follow-up PR once CI is green.
 
 ### DL-#1288 · CR-8: First use — submit queued UpstreamDrift dynamics proposals via the suggestion box
 

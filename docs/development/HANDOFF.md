@@ -20,6 +20,94 @@ Last updated: 2026-09-26
 
 ---
 
+# Past handoff — Test isolation on fleet nodes (supersedes staff draft #1577)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1577`; branch `fix/test-isolation-node-env`; PR: see DL-#1577; governing item: Staff Hub draft PR #1577 (branch `staff/maintenance-task-92e980`, not pushed to); DL-#1577.
+
+## Objective and Status
+
+- On a fleet node (`MACHINE_ROLE=node`, `HUB_URL` set, operator `STAFF_REPOS_ROOT`) the suite forwarded fleet requests to the live hub and read real checkouts. This PR carries #1577's fixes with a regression test:
+  1. Autouse `_no_hub_proxy` clears `proxy_utils.HUB_URL` (and `server.HUB_URL` when loaded). Every proxy path requires `HUB_URL`, so the staff PR's extra `MACHINE_ROLE="hub"` patch is not needed. Proxy tests that patch `HUB_URL` themselves still override it.
+  2. `_hermetic_staff_workspace` deletes `STAFF_REPOS_ROOT`; corpus tests set their own.
+  3. `@PWSH_REQUIRED` on the three fleet-health-monitor behaviour tests (skip, not fail, without PowerShell).
+  4. A 5 s spin-wait on `handled` in the runner's opens-PR test (the worker calls the hook after the store update).
+- New `tests/unit/test_hub_proxy_isolation.py` fails without the fixture under `MACHINE_ROLE=node HUB_URL=http://127.0.0.1:9`.
+
+## Validation
+
+- RED on `main` with `MACHINE_ROLE=node HUB_URL=http://127.0.0.1:9 STAFF_REPOS_ROOT=/tmp`: 6 failed (runners router, 2 staff isolation, 3 fleet-health-monitor); the new test file: 2 failed.
+- GREEN, same env, same files plus queue router, hub aggregation, host volume and staff runner: 102 passed, 10 skipped.
+- `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Merge once CI is green; the owner decides whether to close staff draft #1577.
+
+---
+
+# Past handoff — WP-1.3 follow-up: atomic auto-review dedupe (#1579)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `claude/runner-dashboard-roles-gaps-k9i38r`; Issue #1579 (parent #1463); DL-#1579.
+- Cloud session; baseline `bb2b6006` (#1581 merged); commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- #1581 and this session's #1580 fixed #1579 in parallel. #1581 merged first, so #1580 was closed as superseded.
+- This PR moves the two Codex review fixes from #1580 that #1581 lacks onto `main`:
+  - `_AUTO_REVIEW_LOCK` serialises the dedupe check with `runner.submit`, so concurrent verifications of one PR queue a single review.
+  - `_already_reviewed` takes the resolved reviewer role, so a `fleet-critic` fallback run counts.
+  - Codex review on #1582: `_review_claim` adds an `fcntl.flock` on `<runs db>.auto-review.lock`, so uvicorn workers (`WORKERS > 1`) sharing the SQLite runs DB are serialised too. There is a two-process test.
+- Open question, not changed here: `_already_reviewed` also counts failed or cancelled review runs, so a failed review is never retried automatically.
+
+## Validation
+
+- `pytest tests/unit/test_staff_review_runtime.py tests/unit/test_staff_review.py tests/api/test_staff_review_runner.py -q -o addopts=""`: 38 passed. The 3 new tests fail on `main`. The concurrency test passed on three repeated runs.
+- The staff, API and unit subset: 946 passed. `ruff check`, `ruff format --check` and `mypy backend/staff/review.py`: clean.
+
+## Next Steps
+
+1. Merge once CI is green, then close parent #1463.
+
+---
+
+# Current handoff — Code-reviewer runtime: selection inputs, same-provider mark and auto-review (#1579)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1579`; branch `fix/1579-review-runtime`; PR: see DL-#1579; Issue #1579 (follow-up to WP-1.3 #1518, PR #1576); DL-#1579.
+
+## Objective and Status
+
+- #1576's unit tests mocked the store and the dispatch path, so five runtime defects passed them. All five are fixed, each with a test that failed on `main`:
+  1. `detect_author_provider` called `RunStore.list_runs(repo=...)`, which has no `repo` argument; the `TypeError` was swallowed, so the author was never found. It now filters by repo in Python and is tested against a real `RunStore`.
+  2. Selection ignored the `code-reviewer` role's `providers` and the `Agent-Id` commit trailers. `prepare_review_params` now takes the roster's providers and a `gh_probe`; `GhCliCommitProbe` (a `GhCliPrProbe` subclass, one scoped `gh api` call) reads the PR's commit messages.
+  3. The same-provider mark never reached the stored outcome. A same-family fallback appends `SAME_PROVIDER_TAG` to the review prompt; the runner reads it from `rec.prompt` and passes it to both verdict parsers. A real-runner test checks the stored `outcome`.
+  4. Auto-review called `execute_review_pr` from the runner's plain thread, where the loop bridge is unavailable, and returned `True` anyway. It now submits through `runner.submit` (the scheduler's path), skips a PR that already has a code-reviewer run, logs the outcome, and returns `True` only when a run was queued.
+  5. A non-numeric `pr` raised `ValueError` out of `execute_review_pr`; it is now a failed `ActionResult` with `invalid_params`.
+- The four #1518 `TestAutoReviewTrigger` tests drove the removed `dispatch_fn` seam. They are replaced by a parametrized eligibility test (opt-in off, unranked repo, reviewer's own run, unverified PR) that goes through the runner seam.
+
+## Validation
+
+- WSL rd-test-venv: `pytest tests/unit/test_staff_review_runtime.py tests/api/test_staff_review_runner.py tests/unit/test_staff_review.py tests/staff/routing_eval`: 44 passed, 2 skipped. Before the fix (with inert stubs for the two new names), all 15 new tests failed.
+- `pytest tests -k 'staff and (verif or runner or review or action or scheduler or proposal)'`: 358 passed, 2 skipped.
+- `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: no issues in 288 files. `ruff check` and `ruff format --check` are clean on the changed files.
+
+## Next Steps
+
+1. Merge the #1579 PR once CI is green.
+
+---
+
 # Past handoff — CR-8: Suggestion Box First Use (#1288)
 
 Last updated: 2026-09-26

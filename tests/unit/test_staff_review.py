@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from staff.action_executors import DEFAULT_REVIEWER_ROLE
 from staff.review import (
     DEFAULT_REVIEW_FOCUS,
     PROVIDER_FAMILY,
-    auto_review_if_eligible,
     detect_author_provider,
     parse_outcome,
     parse_review_verdict,
@@ -178,87 +177,3 @@ class TestReviewExecutor:
         assert "enforce" not in prepared
         assert prepared.get("role") == "code-reviewer"
         assert "Advisory only" in prepared.get("prompt", "") or DEFAULT_REVIEW_FOCUS in prepared.get("prompt", "")
-
-
-class TestAutoReviewTrigger:
-    def test_auto_review_triggered_when_verified_on_p0_p1_repo(self) -> None:
-        rec = make_run(
-            id="run-1",
-            role="pragmatic-programmer",
-            repo="Runner_Dashboard",
-            status="succeeded",
-            branch="feat/test",
-            pr_number=42,
-        )
-        verdict = MagicMock()
-        verdict.verification = "verified"
-        verdict.pr_number = 42
-
-        dispatched: list[dict[str, Any]] = []
-
-        def fake_dispatch(params: dict[str, Any]) -> None:
-            dispatched.append(params)
-
-        with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "1"}):
-            result = auto_review_if_eligible(rec, verdict, dispatch_fn=fake_dispatch)
-            assert result is True
-            assert len(dispatched) == 1
-            assert dispatched[0]["repo"] == "Runner_Dashboard"
-            assert dispatched[0]["pr"] == 42
-
-    def test_auto_review_not_triggered_when_setting_is_off(self) -> None:
-        rec = make_run(
-            id="run-1",
-            role="pragmatic-programmer",
-            repo="Runner_Dashboard",
-            status="succeeded",
-            branch="feat/test",
-            pr_number=42,
-        )
-        verdict = MagicMock()
-        verdict.verification = "verified"
-        verdict.pr_number = 42
-
-        dispatched: list[dict[str, Any]] = []
-        with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "0"}):
-            result = auto_review_if_eligible(rec, verdict, dispatch_fn=lambda p: dispatched.append(p))
-            assert result is False
-            assert len(dispatched) == 0
-
-    def test_auto_review_not_triggered_on_unranked_repo(self) -> None:
-        rec = make_run(
-            id="run-1",
-            role="pragmatic-programmer",
-            repo="Random_Unranked_Repo",
-            status="succeeded",
-            branch="feat/test",
-            pr_number=42,
-        )
-        verdict = MagicMock()
-        verdict.verification = "verified"
-        verdict.pr_number = 42
-
-        dispatched: list[dict[str, Any]] = []
-        with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "1"}):
-            result = auto_review_if_eligible(rec, verdict, dispatch_fn=lambda p: dispatched.append(p))
-            assert result is False
-            assert len(dispatched) == 0
-
-    def test_auto_review_not_triggered_on_reviewer_itself(self) -> None:
-        rec = make_run(
-            id="run-1",
-            role="code-reviewer",
-            repo="Runner_Dashboard",
-            status="succeeded",
-            branch="feat/test",
-            pr_number=42,
-        )
-        verdict = MagicMock()
-        verdict.verification = "verified"
-        verdict.pr_number = 42
-
-        dispatched: list[dict[str, Any]] = []
-        with patch.dict("os.environ", {"STAFF_AUTO_REVIEW": "1"}):
-            result = auto_review_if_eligible(rec, verdict, dispatch_fn=lambda p: dispatched.append(p))
-            assert result is False
-            assert len(dispatched) == 0

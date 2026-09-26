@@ -5,13 +5,26 @@ from __future__ import annotations
 import logging
 import os
 import re
-from collections.abc import Mapping
+import threading
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
+
+from staff.verification import GhCliPrProbe
 
 log = logging.getLogger("dashboard.staff.review")
 
 DEFAULT_REVIEW_FOCUS = "code review"
+DEFAULT_REVIEWER_PROVIDERS: tuple[str, ...] = ("claude", "codex", "gemini", "antigravity")
+REVIEWER_ROLE = "code-reviewer"
+AUTO_REVIEW_REQUESTER = "staff:auto-review"
+# Carried in the review prompt so the runner, which only sees the run record, knows the
+# verdict came from the author's own provider family (#1579).
+SAME_PROVIDER_TAG = "[review:same-provider]"
+# How many recent runs the author and dedup lookups scan.
+RUN_LOOKUP_LIMIT = 200
 
 PROVIDER_FAMILY: dict[str, str] = {
     "claude": "anthropic",
@@ -66,6 +79,22 @@ _TRAILER_RE = re.compile(
 )
 
 
+class CommitTrailerProbe(Protocol):
+    def get_commit_messages(self, repo: str, pr_number: int) -> list[str]: ...
+
+
+class GhCliCommitProbe(GhCliPrProbe):
+    """Reads a PR's commit messages with one scoped ``gh api`` REST call.
+
+    Reuses ``GhCliPrProbe``'s CLI plumbing, so it works from the runner's plain threads.
+    """
+
+    def get_commit_messages(self, repo: str, pr_number: int) -> list[str]:
+        full = repo if "/" in repo else f"{self.org}/{repo}"
+        commits = self._api(f"/repos/{full}/pulls/{int(pr_number)}/commits?per_page=100") or []
+        return [str((c.get("commit") or {}).get("message") or "") for c in commits]
+
+
 @dataclass(frozen=True)
 class ReviewSelection:
     provider: str
@@ -92,7 +121,7 @@ def select_reviewer_provider(
     If only one provider family is available, uses an alternate model and flags same-provider.
     If the author is unknown, uses the first listed provider in role_providers.
     """
-    providers = list(role_providers or ["claude", "codex", "gemini", "antigravity"])
+    providers = list(role_providers or DEFAULT_REVIEWER_PROVIDERS)
     if not providers:
         return ReviewSelection(provider="claude", model=None, same_provider=False)
 
@@ -118,12 +147,14 @@ def detect_author_provider(
     store: Any = None,
     gh_probe: Any = None,
 ) -> str | None:
-    """Detect the provider that created the PR from the run store or commit trailers."""
+    """Detect the provider that created the PR from the run store or commit trailers.
+
+    ``RunStore.list_runs`` has no repo filter, so runs are filtered by repo here.
+    """
     if store is not None:
         try:
-            runs = store.list_runs(repo=repo, limit=200)
-            for r in runs:
-                if getattr(r, "role", "") == "code-reviewer":
+            for r in store.list_runs(limit=RUN_LOOKUP_LIMIT):
+                if getattr(r, "repo", "") != repo or getattr(r, "role", "") == REVIEWER_ROLE:
                     continue
                 if getattr(r, "pr_number", None) == pr_number or (branch and getattr(r, "branch", "") == branch):
                     prov = getattr(r, "provider", None)
@@ -143,6 +174,11 @@ def detect_author_provider(
             log.warning("Failed to inspect commit trailers for PR #%s in repo %s", pr_number, repo, exc_info=True)
 
     return None
+
+
+def is_same_provider_review(prompt: str) -> bool:
+    """Whether a review run's prompt carries the same-provider mark set at selection."""
+    return SAME_PROVIDER_TAG in (prompt or "")
 
 
 def parse_review_verdict(text: str, *, same_provider: bool = False) -> ReviewVerdict:
@@ -184,13 +220,27 @@ def parse_outcome(text: str, *, same_provider: bool = False) -> str:
     return res.outcome if res.status == "succeeded" else ""
 
 
+def _role_providers(roster: Mapping[str, Any] | None, role: str) -> list[str] | None:
+    spec = roster.get(role) if roster is not None else None
+    providers = getattr(spec, "providers", None)
+    return list(providers) if providers else None
+
+
 def prepare_review_params(
     params: dict[str, Any],
-    default_role: str = "code-reviewer",
+    default_role: str = REVIEWER_ROLE,
     roster: Mapping[str, Any] | None = None,
     store: Any = None,
+    gh_probe: CommitTrailerProbe | None = None,
 ) -> dict[str, Any]:
-    """Validate, filter and enrich parameters for staff.review_pr dispatch."""
+    """Validate, filter and enrich parameters for staff.review_pr dispatch.
+
+    Pre: ``params["pr"]``, when present, is an integer PR number (callers validate it).
+    Post: ``provider`` is set. The reviewer comes from the role's ``providers`` in
+    ``roster`` and differs in family from the author found in ``store`` or in the PR's
+    ``Agent-Id`` trailers via ``gh_probe``; a same-family fallback tags the prompt with
+    ``SAME_PROVIDER_TAG``.
+    """
     clean_params = {k: v for k, v in params.items() if k not in FORBIDDEN_REVIEW_KEYS}
 
     role = str(clean_params.get("reviewer") or default_role)
@@ -202,20 +252,60 @@ def prepare_review_params(
     pr = clean_params.get("pr")
     focus = str(clean_params.get("focus") or DEFAULT_REVIEW_FOCUS)
     clean_params["role"] = role
-    clean_params["prompt"] = (
+    prompt = (
         f"Review PR #{pr} in {repo}. Focus: {focus}. "
         f"Advisory only: post a comment review ending in 'STAFF_RESULT: review approve|changes|escalate #{pr}'. "
         "Never request changes or block."
     )
 
     if not clean_params.get("provider"):
-        author = detect_author_provider(repo=repo, pr_number=int(pr), store=store) if pr and repo else None
-        sel = select_reviewer_provider(author)
+        author = (
+            detect_author_provider(repo=repo, pr_number=int(pr), store=store, gh_probe=gh_probe)
+            if pr and repo
+            else None
+        )
+        sel = select_reviewer_provider(author, _role_providers(roster, role))
         clean_params["provider"] = sel.provider
         if sel.model:
             clean_params["model"] = sel.model
+        if sel.same_provider:
+            prompt = f"{prompt} {SAME_PROVIDER_TAG}"
 
+    clean_params["prompt"] = prompt
     return clean_params
+
+
+# Serialises the dedupe check with the submit that persists the queued run, so two
+# verifications of one PR (a worker finish and a recheck) cannot both pass the check.
+# The thread lock covers one process; ``_review_claim`` adds an ``flock`` on a file next
+# to the shared runs DB so uvicorn workers (``WORKERS > 1``) are serialised too.
+_AUTO_REVIEW_LOCK = threading.Lock()
+
+
+@contextmanager
+def _review_claim(store: Any) -> Iterator[None]:
+    """Hold the auto-review claim across threads and, where ``fcntl`` exists, processes."""
+    with _AUTO_REVIEW_LOCK:
+        db_path = getattr(store, "path", None)
+        try:
+            import fcntl
+        except ImportError:  # pragma: no cover - Windows has no fcntl; one process there
+            fcntl = None  # type: ignore[assignment]
+        if fcntl is None or db_path is None:
+            yield
+            return
+        with Path(f"{db_path}.auto-review.lock").open("w") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWER_ROLE) -> bool:
+    """Whether a ``role`` review run for this PR exists; ``role`` is the resolved reviewer."""
+    target = f"PR #{pr_number}"
+    return any(r.repo == repo and r.target_ref == target for r in store.list_runs(limit=RUN_LOOKUP_LIMIT, role=role))
 
 
 def auto_review_if_eligible(
@@ -223,9 +313,17 @@ def auto_review_if_eligible(
     verdict: Any,
     *,
     store: Any = None,
-    dispatch_fn: Any = None,
+    runner: Any = None,
+    gh_probe: CommitTrailerProbe | None = None,
 ) -> bool:
-    """Optionally trigger automatic code review when a run's PR reaches 'verified' on a P0/P1 repo."""
+    """Submit an advisory code review when a run's PR reaches 'verified' on a P0/P1 repo.
+
+    Opt-in via ``STAFF_AUTO_REVIEW``. Submits through ``runner.submit``, the thread-safe
+    path the scheduler uses, because verification runs on plain threads where the
+    event-loop bridge is unavailable (#1579). A PR that already has a code-reviewer run
+    is skipped, so ``recheck_runs`` re-verifying it never queues a second review.
+    Post: returns True only when a review run was queued; never raises.
+    """
     setting = os.environ.get("STAFF_AUTO_REVIEW", "0").strip().lower()
     if setting not in ("1", "true", "yes"):
         return False
@@ -237,30 +335,46 @@ def auto_review_if_eligible(
     if not pr_number:
         return False
 
-    role = getattr(rec, "role", "")
-    if role == "code-reviewer":
+    if getattr(rec, "role", "") == REVIEWER_ROLE:
         return False
 
     repo = getattr(rec, "repo", "")
     if repo not in P0_P1_REPOS:
         return False
 
-    if dispatch_fn is not None:
-        try:
-            dispatch_fn({"repo": repo, "pr": pr_number, "reviewer": "code-reviewer"})
-            return True
-        except Exception:
-            log.warning("Failed to auto-dispatch review for PR #%s on %s", pr_number, repo, exc_info=True)
-            return False
-
-    # Default runtime auto-dispatch via ActionContext and execute_review_pr
     try:
-        from staff.action_executors import execute_review_pr
-        from staff.actions import ActionContext
+        if runner is None:
+            from staff.runner import get_runner
 
-        ctx = ActionContext(caller=None, thread_id=getattr(rec, "thread_id", None))
-        execute_review_pr({"repo": repo, "pr": pr_number, "reviewer": "code-reviewer"}, ctx)
-        return True
-    except Exception:
-        log.warning("Failed to auto-dispatch review for PR #%s on %s", pr_number, repo, exc_info=True)
+            runner = get_runner()
+        store = store if store is not None else runner.store
+        params = prepare_review_params(
+            {"repo": repo, "pr": int(pr_number)},
+            roster=runner.roles(),
+            store=store,
+            gh_probe=gh_probe if gh_probe is not None else GhCliCommitProbe(),
+        )
+        from staff.plan import RunRequest
+
+        reviewer = params["role"]  # code-reviewer, or its fleet-critic fallback
+        with _review_claim(store):
+            if _already_reviewed(store, repo, int(pr_number), role=reviewer):
+                log.info("auto-review: PR #%s on %s already has a %s run; skipped", pr_number, repo, reviewer)
+                return False
+            run = runner.submit(
+                RunRequest(
+                    role=reviewer,
+                    provider=params["provider"],
+                    model=params.get("model"),
+                    repo=repo,
+                    pr=int(pr_number),
+                    prompt=params["prompt"],
+                    requested_by=AUTO_REVIEW_REQUESTER,
+                    thread_id=getattr(rec, "thread_id", "") or "",
+                )
+            )
+    except Exception as exc:  # noqa: BLE001 - auto-review must never break verification
+        log.warning("auto-review: PR #%s on %s not dispatched: %s", pr_number, repo, exc, exc_info=True)
         return False
+    log.info("auto-review: queued %s for PR #%s on %s with %s", run.id, pr_number, repo, params["provider"])
+    return True

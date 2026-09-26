@@ -164,17 +164,27 @@ def verify_staff_dispatch(res: ActionResult, params: dict[str, Any], ctx: Action
 
 
 def execute_review_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    from staff import review, roles
     from staff.actions import ActionResult
-    from staff.review import prepare_review_params
-    from staff.roles import load_roles, roles_dir
+    from staff.runner import get_runner
 
     repo = str(params.get("repo") or "").strip()
-    pr = params.get("pr")
-    if not repo or not pr:
+    if not repo or not params.get("pr"):
         return ActionResult(success=False, error="Missing 'repo' or 'pr'", failure_class="invalid_params")
-    r_dir = roles_dir()
-    roster = load_roles(r_dir) if r_dir else None
-    params_copy = prepare_review_params(params, default_role=DEFAULT_REVIEWER_ROLE, roster=roster)
+    pr = _optional_int(params.get("pr"))
+    if pr is None:
+        return ActionResult(
+            success=False, error=f"'pr' must be a PR number, got {params.get('pr')!r}", failure_class="invalid_params"
+        )
+    r_dir = roles.roles_dir()
+    roster = roles.load_roles(r_dir) if r_dir else None
+    params_copy = review.prepare_review_params(
+        {**params, "pr": pr},
+        default_role=DEFAULT_REVIEWER_ROLE,
+        roster=roster,
+        store=get_runner().store,
+        gh_probe=review.GhCliCommitProbe(),
+    )
     return execute_staff_dispatch(params_copy, ctx)
 
 
