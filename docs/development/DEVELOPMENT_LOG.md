@@ -56,17 +56,17 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Eliminated SQLite database lock contention and test flakes across staff actions and stores: (1) Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` on all staff SQLite connections (`StaffAuditStore`, `ConversationStore`, `RunStore`, `IdempotencyStore`, `WorkItemStore`, maintenance `_vacuum_db`); (2) Reused conversation store's existing audit store instance across proposal state transitions and action context in `execute_proposal`; (3) Isolated `tests/unit/test_staff_actions.py` by resetting stores and runner and mocking background runner worker thread in `clean_env`.
 - **Next step:** None (shipped in PR #1470).
 
-### DL-#1497 · SC-G5-1 slice A: one work-request API (`staff.dispatch`)
+### DL-#1497 · SC-G5-1: Work-request API: every dispatch kind as a registered action with a work item
 
-- **State:** in_review
-- **Owner:** claude
+- **State:** in_progress
+- **Owner:** claude (slice A), antigravity (slice B)
 - **Issue:** #1497
-- **Branch:** `feat/1497-work-requests`
-- **Paths:** `backend/staff/work_requests.py`, `backend/routers/staff_requests.py`, `backend/server.py`, `backend/staff/action_executors.py`, `tests/api/test_staff_requests_api.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Branch:** `feat/1497-work-request-kinds`
+- **Paths:** `backend/staff/work_requests.py`, `backend/staff/work_request_executors.py`, `backend/staff/actions.py`, `tests/api/test_staff_requests_kinds.py`, `frontend/src/pages/Staff/requestKinds.ts`, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `frontend/src/pages/__tests__/AdvancedDispatchForm.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`tests/api/test_staff_requests_api.py` 14 passed; `tests/staff tests/api/test_staff*.py tests/unit/test_staff*.py` 701 passed under WSL with `HOME`/`USERNAME` isolated; ruff and mypy clean)
-- **Summary:** `POST /api/v1/staff/requests` validates per kind, records a user message, Work Item and ActionProposal on the caller's *Requests* thread and executes through the registry, so quota, forwarding and audit happen once in the shared dispatch service (#1487). Approval follows registry risk (#1485). A failed backend blocks the work item and returns the v1 error envelope (SC-F3) with the recorded ids in `error.request`, because the `/api/v1/staff` middleware rewrites any other error body. `execute_staff_dispatch` now forwards `work_item_id` and returns the dry-run `plan`.
-- **Next step:** Later slices add kinds `ci.remediate`, `issue.act`/`pr.act`, `code_request.dispatch` and `assessment.run`; each first needs its route logic lifted into a service the registered action can call.
+- **Last verified:** 2026-09-25 (`pytest tests/api/test_staff_requests_kinds.py tests/api/test_staff_requests_api.py` 24 passed; `ruff check .` clean; `ruff format --check` clean on touched files; `mypy backend` clean in 278 files; all files <= 500 lines)
+- **Summary:** Slice B adds all remaining request kinds (`ci.remediate`, `issue.act`, `pr.act`, `code_request.dispatch`, `assessment.run`) to `POST /api/v1/staff/requests`. Registered executors run through `ACTION_REGISTRY` with scoped permissions and risk classifications. Pydantic validation strictly enforces per-kind target and argument constraints (`extra=forbid`). Dry-run previews return the resolved plan without executing. Real execution links the work item to the dispatched workflow run. Frontend `AdvancedDispatchForm` and `requestKinds.ts` support all 6 kinds, omitting `role` when the kind does not take a role.
+- **Next step:** Push branch, open PR with `Fixes #1497`, arm auto-merge, watch CI, release lease.
 
 ### DL-#1489 · SC-B1-G6: Redact secrets everywhere conversations and runs persist
 

@@ -78,8 +78,10 @@ export function AdvancedDispatchForm({ roster, initialRole, onDispatched }: Adva
     }
   }, [providerOptions, provider]);
 
+  const needsRole = kind.id === "staff.dispatch" || kind.id === "issue.act" || kind.id === "pr.act";
   const hasTarget = prompt.trim().length > 0 || kind.fields.some((f) => parseNumber(numbers[f]) !== null);
-  const canSubmit = Boolean(spec?.dispatchable) && hasTarget && busy === null;
+  const roleOk = !needsRole || Boolean(spec?.dispatchable);
+  const canSubmit = roleOk && hasTarget && busy === null;
 
   const buildRequest = useCallback(
     (dryRun: boolean): WorkRequest => {
@@ -87,7 +89,7 @@ export function AdvancedDispatchForm({ roster, initialRole, onDispatched }: Adva
       for (const f of kind.fields) target[f] = parseNumber(numbers[f]);
       return {
         kind: kind.id,
-        role: role || null,
+        role: needsRole ? (role || null) : null,
         provider: provider || null,
         model: model.trim() || null,
         machine: machine.trim() || "local",
@@ -96,7 +98,7 @@ export function AdvancedDispatchForm({ roster, initialRole, onDispatched }: Adva
         target,
       };
     },
-    [kind, role, provider, model, machine, repo, numbers, prompt],
+    [kind, needsRole, role, provider, model, machine, repo, numbers, prompt],
   );
 
   const submit = useCallback(
@@ -139,7 +141,7 @@ export function AdvancedDispatchForm({ roster, initialRole, onDispatched }: Adva
     <div className="glass-card staff-panel staff-assign">
       <div className="staff-panel__header">
         <h3 className="staff-panel__title">Dispatch</h3>
-        {spec && !spec.dispatchable ? (
+        {needsRole && spec && !spec.dispatchable ? (
           <Badge tone="warning" size="sm">
             role not dispatchable
           </Badge>
@@ -172,26 +174,28 @@ export function AdvancedDispatchForm({ roster, initialRole, onDispatched }: Adva
             ))}
           </select>
         </div>
-        <div className="form-row">
-          <label className="form-label" htmlFor="staff-assign-role">
-            Role
-          </label>
-          <select
-            id="staff-assign-role"
-            className="form-select"
-            value={role}
-            onChange={(e) => {
-              setRole(e.target.value);
-              clearPreview();
-            }}
-          >
-            {roles.map((r) => (
-              <option key={r.name} value={r.name}>
-                {r.title} ({r.name})
-              </option>
-            ))}
-          </select>
-        </div>
+        {needsRole ? (
+          <div className="form-row">
+            <label className="form-label" htmlFor="staff-assign-role">
+              Role
+            </label>
+            <select
+              id="staff-assign-role"
+              className="form-select"
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value);
+                clearPreview();
+              }}
+            >
+              {roles.map((r) => (
+                <option key={r.name} value={r.name}>
+                  {r.title} ({r.name})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="form-row">
           <label className="form-label" htmlFor="staff-assign-provider">
             Provider
