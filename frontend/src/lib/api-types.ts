@@ -8640,10 +8640,7 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
-            /**
-             * Force
-             * @default false
-             */
+            /** Force */
             force?: boolean | null;
             /**
              * Kind

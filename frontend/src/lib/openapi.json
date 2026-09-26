@@ -4923,7 +4923,7 @@
                 "type": "null"
               }
             ],
-            "default": false,
+            "default": null,
             "title": "Force"
           },
           "kind": {
