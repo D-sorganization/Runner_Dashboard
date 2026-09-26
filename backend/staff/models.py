@@ -127,6 +127,10 @@ class StaffRunRecord(BaseModel):
     max_attempts: int = 2
     next_attempt_at: str | None = None
     fallback_provider: str = ""
+    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | not_applicable.
+    verification: str = ""
+    verification_detail: str = ""
+    pr_number: int | None = None
 
     model_config = ConfigDict(extra="allow")
 

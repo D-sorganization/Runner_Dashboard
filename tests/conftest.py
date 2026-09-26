@@ -193,3 +193,9 @@ def _cleanup_stores_session_teardown():
         reset_audit_store()
     except Exception:
         pass
+
+
+@pytest.fixture(autouse=True)
+def _staff_verification_off(monkeypatch):
+    """Finished test runs never ask GitHub for their PR (#1516); verification tests opt in."""
+    monkeypatch.setenv("STAFF_VERIFY_MODE", "off")

@@ -148,7 +148,11 @@ def verify_staff_dispatch(res: ActionResult, params: dict[str, Any], ctx: Action
     run = get_runner().store.get_run(res.run_id)
     if not run:
         return False, f"Run {res.run_id} not found in store"
-    return True, f"Run {res.run_id} verified in state {run.status}"
+    # Report the post-run verification of its output (#1516); a failed verdict fails the check.
+    if run.verification == "failed":
+        return False, f"Run {res.run_id} ({run.status}) failed output verification: {run.verification_detail}"
+    output = f"{run.verification}: {run.verification_detail}" if run.verification else "output not yet verified"
+    return True, f"Run {res.run_id} verified in state {run.status}; {output}"
 
 
 def execute_review_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:

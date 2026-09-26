@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
+import { GITHUB_ORG } from "../FleetCommand/fleetApi";
 import {
   invalidateStaffQueries,
   updateStaffRunFromEvent,
@@ -37,6 +38,11 @@ import {
 export interface RunDetailProps {
   runId: string;
   onBack: () => void;
+}
+
+function pullUrl(repo: string, pr: number): string {
+  const full = repo.includes("/") ? repo : `${GITHUB_ORG}/${repo}`;
+  return `https://github.com/${full}/pull/${pr}`;
 }
 
 function mergeEvents(existing: RunEvent[], incoming: RunEvent): RunEvent[] {
@@ -235,6 +241,22 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
           <>
             <dt>Remediation</dt>
             <dd data-testid="run-remediation">{run.remediation}</dd>
+          </>
+        ) : null}
+        {run.verification ? (
+          <>
+            <dt>Verification</dt>
+            <dd data-testid="run-verification">
+              <code>{run.verification}</code> {run.verification_detail}
+              {run.pr_number ? (
+                <>
+                  {" "}
+                  <a href={pullUrl(run.repo ?? "", run.pr_number)} target="_blank" rel="noreferrer">
+                    #{run.pr_number}
+                  </a>
+                </>
+              ) : null}
+            </dd>
           </>
         ) : null}
       </dl>

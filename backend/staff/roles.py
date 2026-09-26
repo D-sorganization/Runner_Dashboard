@@ -70,6 +70,11 @@ class RoleSpec:
     source_path: str = ""
 
     @property
+    def opens_pr(self) -> bool:
+        """Runs of this role promise a pull request (``permissions.open_pr``; #1516)."""
+        return bool(self.permissions.get("open_pr"))
+
+    @property
     def fleet_actions(self) -> tuple[str, ...]:
         """Allowed fleet maintenance actions (RM#1734, RD#1310)."""
         actions = self.permissions.get("fleet_actions")
