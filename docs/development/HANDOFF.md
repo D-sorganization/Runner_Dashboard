@@ -1,10 +1,44 @@
-# Current handoff — SC-G5-4: Remediation Issues and PRs bulk actions go through the request API (#1500)
+# Current handoff — Restore green main: trim backend/staff/chat.py under 500 lines (#1552)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1500`; branch `feat/1500-remediation-bulk-requests`; Issue #1500; DL-#1500.
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1552`; branch `fix/1552-trim-chat-py`; Issue #1552; DL-#1552.
+
+## Objective and Status
+
+- Scope:
+  1. Post-merge `ci-health-check` failed on main because `backend/staff/chat.py` was 505 lines (5 lines over the 500-line soft cap).
+  2. Extracted `record_chat_failure_if_pending` helper function from `backend/staff/chat.py` into `backend/staff/chat_failures.py`.
+  3. Reduced `backend/staff/chat.py` to 493 lines ($\le 500$). `backend/staff/chat_failures.py` is 122 lines ($\le 500$).
+  4. Ran full repository line-cap audit confirming no non-exempt source files exceed 500 lines.
+  5. Validated all chat test suites (19 passed, zero regressions).
+- Validation:
+  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py tests/unit/test_staff_chat_stream_result.py`: 4 passed.
+  - `python -m pytest tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/api/test_staff_chat_turns.py`: 19 passed.
+  - `ruff check backend/staff/chat.py backend/staff/chat_failures.py`: clean.
+  - `ruff format --check backend/staff/chat.py backend/staff/chat_failures.py`: clean.
+  - Line count audit: `chat.py` 493 lines, `chat_failures.py` 122 lines.
+
+## Next Steps
+
+1. Push branch `fix/1552-trim-chat-py` to `origin`.
+2. Open PR referencing Fixes #1552 with 9-field parity checklist.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until green and merged.
+5. Release lease for #1552 via `scripts.release_agent_lease`.
+6. Clean up worktree and delete local branch.
+
+---
+
+# Past handoff — SC-G5-4: Remediation Issues and PRs bulk actions go through the request API (#1500)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1500`; branch `feat/1500-remediation-bulk-requests`; Issue #1500; DL-#1500; PR #1545.
 
 ## Objective and Status
 
@@ -15,20 +49,7 @@ Last updated: 2026-09-25
   4. Extracted underlying workflow dispatch helpers into `backend/staff/work_request_dispatch.py` (192 lines) and frontend helpers into `frontend/src/pages/Remediation/remediationBulkRequest.ts` (133 lines) to satisfy $\le 500$-line limits.
   5. Vitest tests updated to assert `/api/v1/staff/requests` and partial failure messages per target.
   6. Backend and integration test suites: `tests/api/test_staff_requests_kinds.py` (single, bulk, force, approved_by, partial failure) and `tests/test_remediation_bulk_requests.py` passing 100%.
-- Validation:
-  - `python -m pytest tests/api/test_staff_requests_kinds.py tests/test_remediation_bulk_requests.py`: 18 passed.
-  - `python -m pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
-  - Ruff: `ruff check` and `ruff format --check` clean.
-  - Line count cap: every modified and new file strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push branch `feat/1500-remediation-bulk-requests` to `origin`.
-2. Open PR referencing Fixes #1500 with 9-field parity checklist.
-3. Arm auto-merge (`gh pr merge --squash --auto`).
-4. Monitor CI until green and merged.
-5. Release lease for #1500 via `scripts.release_agent_lease`.
-6. Clean up worktree and delete local branch.
+- Shipped: Merged to `main` via PR #1545.
 
 ---
 

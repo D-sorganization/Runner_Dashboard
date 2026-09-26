@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1552 · Restore green main: trim backend/staff/chat.py under 500 lines
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1552
+- **Branch:** `fix/1552-trim-chat-py`
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (chat unit tests 19 passed; line count chat.py 493 lines, chat_failures.py 122 lines; ruff clean; full codebase line-cap check clean)
+- **Summary:** Extracted `record_chat_failure_if_pending` helper logic from `backend/staff/chat.py` into `backend/staff/chat_failures.py`, reducing `chat.py` from 505 to 493 lines to satisfy the 500-line soft cap enforced by `ci-health-check`.
+- **Next step:** Push branch, open PR referencing Fixes #1552, arm auto-merge, verify CI passes.
+
 ### DL-#1500 · SC-G5-4: Remediation Issues and PRs bulk actions go through the request API
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1500
 - **Branch:** `feat/1500-remediation-bulk-requests`
+- **PR:** #1545
 - **Paths:** `backend/staff/work_requests.py`, `backend/staff/work_request_executors.py`, `backend/staff/work_request_dispatch.py`, `frontend/src/pages/RemediationIssues.tsx`, `frontend/src/pages/RemediationPRs.tsx`, `frontend/src/pages/Remediation/remediationBulkRequest.ts`, `frontend/src/pages/Remediation/__tests__/remediationBulkRequest.test.ts`, `frontend/src/pages/__tests__/RemediationIssues.test.tsx`, `frontend/src/pages/__tests__/RemediationPRs.test.tsx`, `tests/api/test_staff_requests_kinds.py`, `tests/test_remediation_bulk_requests.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/api/test_staff_requests_kinds.py and tests/test_remediation_bulk_requests.py: 18 passed; test_frontend_integrity.py: 72 passed, 1 xfailed; ruff check clean; ruff format clean; all touched/new files <= 500 lines)
 - **Summary:** Migrated `RemediationIssues.tsx` and `RemediationPRs.tsx` from legacy `/api/issues/dispatch` and `/api/prs/dispatch` to `POST /api/v1/staff/requests` (kinds `issue.act` and `pr.act` via `submitStaffRequest`). Forwarded multi-target selection, provider, prompt, `force` override and `approved_by` principal into WorkRequest. Created single WorkItem per bulk request enumerating all target numbers. Extracted reusable workflow dispatch helpers to `backend/staff/work_request_dispatch.py` (192 lines) and frontend formatting to `remediationBulkRequest.ts` (133 lines) to satisfy $\le 500$-line limits. Surfaced partial failures per target visibly without losing user input.
-- **Next step:** Push branch, open PR with Fixes #1500, arm auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1545).
 
 ### DL-#1341 · SC-E: Staff Console e2e suite against fake providers
 
