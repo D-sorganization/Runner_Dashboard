@@ -128,8 +128,114 @@ def _staff_dispatch_params(req: WorkRequest) -> dict[str, Any]:
     return {k: v for k, v in params.items() if v not in (None, "")}
 
 
+def _ci_remediate_params(req: WorkRequest) -> dict[str, Any]:
+    t = req.target
+    if t.issue is not None or t.pr is not None or t.issues or t.prs:
+        raise RequestRejectedError("kind 'ci.remediate' does not accept issue or pr targets")
+    if t.ref or req.profile_id or req.role:
+        raise RequestRejectedError("kind 'ci.remediate' does not accept ref, profile_id or role")
+    if not (t.repo or "").strip():
+        raise RequestRejectedError("kind 'ci.remediate' needs a repo")
+    if t.run_id is None and not req.prompt.strip():
+        raise RequestRejectedError("kind 'ci.remediate' needs a run_id or a prompt")
+    params = {
+        "repo": t.repo,
+        "run_id": t.run_id,
+        "provider": req.provider,
+        "prompt": req.prompt,
+        "machine": req.machine,
+    }
+    return {k: v for k, v in params.items() if v not in (None, "")}
+
+
+def _issue_act_params(req: WorkRequest) -> dict[str, Any]:
+    t = req.target
+    if t.pr is not None or t.prs:
+        raise RequestRejectedError("kind 'issue.act' does not accept pr targets")
+    if t.run_id is not None or t.ref or req.profile_id:
+        raise RequestRejectedError("kind 'issue.act' does not accept run_id, ref or profile_id")
+    if not (t.repo or "").strip():
+        raise RequestRejectedError("kind 'issue.act' needs a repo")
+    if t.issue is None and not t.issues:
+        raise RequestRejectedError("kind 'issue.act' needs an issue target")
+    params = {
+        "repo": t.repo,
+        "issue": t.issue or (t.issues[0] if t.issues else None),
+        "issues": t.issues,
+        "provider": req.provider,
+        "model": req.model,
+        "prompt": req.prompt,
+        "role": req.role,
+        "machine": req.machine,
+    }
+    return {k: v for k, v in params.items() if v not in (None, "", [])}
+
+
+def _pr_act_params(req: WorkRequest) -> dict[str, Any]:
+    t = req.target
+    if t.issue is not None or t.issues:
+        raise RequestRejectedError("kind 'pr.act' does not accept issue targets")
+    if t.run_id is not None or t.ref or req.profile_id:
+        raise RequestRejectedError("kind 'pr.act' does not accept run_id, ref or profile_id")
+    if not (t.repo or "").strip():
+        raise RequestRejectedError("kind 'pr.act' needs a repo")
+    if t.pr is None and not t.prs:
+        raise RequestRejectedError("kind 'pr.act' needs a pr target")
+    params = {
+        "repo": t.repo,
+        "pr": t.pr or (t.prs[0] if t.prs else None),
+        "prs": t.prs,
+        "provider": req.provider,
+        "model": req.model,
+        "prompt": req.prompt,
+        "role": req.role,
+        "machine": req.machine,
+    }
+    return {k: v for k, v in params.items() if v not in (None, "", [])}
+
+
+def _code_request_dispatch_params(req: WorkRequest) -> dict[str, Any]:
+    t = req.target
+    if t.issue is not None or t.pr is not None or t.issues or t.prs or t.run_id is not None:
+        raise RequestRejectedError("kind 'code_request.dispatch' does not accept issue, pr, or run_id")
+    if not (t.repo or "").strip():
+        raise RequestRejectedError("kind 'code_request.dispatch' needs a repo")
+    if not req.prompt.strip() and not (t.ref or "").strip():
+        raise RequestRejectedError("kind 'code_request.dispatch' needs a prompt or a ref")
+    params = {
+        "repo": t.repo,
+        "ref": t.ref,
+        "provider": req.provider,
+        "model": req.model,
+        "profile_id": req.profile_id,
+        "prompt": req.prompt,
+    }
+    return {k: v for k, v in params.items() if v not in (None, "")}
+
+
+def _assessment_run_params(req: WorkRequest) -> dict[str, Any]:
+    t = req.target
+    if t.issue is not None or t.pr is not None or t.issues or t.prs or t.run_id is not None or t.ref:
+        raise RequestRejectedError("kind 'assessment.run' only accepts repo")
+    if req.profile_id or req.role:
+        raise RequestRejectedError("kind 'assessment.run' does not accept profile_id or role")
+    if not (t.repo or "").strip():
+        raise RequestRejectedError("kind 'assessment.run' needs a repo")
+    params = {
+        "repo": t.repo,
+        "provider": req.provider,
+        "prompt": req.prompt,
+    }
+    return {k: v for k, v in params.items() if v not in (None, "")}
+
+
 REQUEST_KINDS: dict[str, RequestKind] = {
     "staff.dispatch": RequestKind(action="staff.dispatch", build_params=_staff_dispatch_params),
+    "ci.remediate": RequestKind(action="ci.remediate", build_params=_ci_remediate_params),
+    "issue.act": RequestKind(action="issue.act", build_params=_issue_act_params),
+    "pr.act": RequestKind(action="pr.act", build_params=_pr_act_params),
+    "code_request.dispatch": RequestKind(action="code_request.dispatch", build_params=_code_request_dispatch_params),
+    "assessment.run": RequestKind(action="assessment.run", build_params=_assessment_run_params),
 }
 
 
