@@ -162,6 +162,16 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
         "what should we explore",
         "vision",
     ),
+    # Repository_Management#1788: contained cross-field prototyping.
+    "mad-scientist": (
+        "mad scientist",
+        "frankenstein",
+        "crazy prototype",
+        "wild idea",
+        "lab bench",
+        "lab experiment",
+        "lab:promote",
+    ),
 }
 
 CODE_CHANGE_KEYWORDS: tuple[str, ...] = (

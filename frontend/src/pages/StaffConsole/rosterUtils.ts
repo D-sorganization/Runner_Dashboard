@@ -111,7 +111,12 @@ export function categorizeRole(role: StaffRoleItem): RosterGroupKey {
   if (name === "barb" || name === "board" || name === "orchestrator") {
     return "leadership";
   }
-  if (name === "disciple" || name === "vision-quest" || name === "vision_quest") {
+  if (
+    name === "disciple" ||
+    name === "vision-quest" ||
+    name === "vision_quest" ||
+    name === "mad-scientist"
+  ) {
     return "advisors";
   }
   if (name.includes("steward") || name.includes("project")) {

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1562 · Wire the Mad-Scientist Staff Role into Routing and the Roster
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1562
+- **Branch:** `feat/1788-mad-scientist-wiring`
+- **PR:** not created
+- **Paths:** `backend/staff/router_models.py`, `tests/staff/routing_eval/dataset.py`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `f5f027d2` baseline (staff pytest green; StaffConsole vitest 142 passed)
+- **Summary:** Barb routes mad-scientist requests by distinctive keywords, and the role sits with the Advisors in the Staff Console roster.
+- **Next step:** Merge the PR.
+
 ### DL-#1549 · Remove stale tracked vite.config.js shadowing vite.config.ts
 
 - **State:** in_progress
