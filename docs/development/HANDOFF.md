@@ -1,4 +1,38 @@
-# Current handoff — Budgets as a share of plan windows (#1588)
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1490`; branch `feat/1490-retention-and-export`; commit SELF; PR: pending; Issue #1490; DL-#1490.
+
+## Objective and Status
+
+- SC-B1-G7 (#1490): Implemented standard 180-day retention window matching the audit log, gzip-archiving older records before deletion, and thread export as Markdown and JSON.
+- Built `backend/staff/retention.py` with multi-entity archivers:
+  1. `archive_old_conversations`: archives closed/inactive threads and messages older than 180 days to monthly compressed files (`conversations_archive_{YYYYMM}.jsonl.gz`), deleting records from active tables only after successful gzip write.
+  2. `archive_old_proposals`: archives terminal action proposals (`approved`, `denied`, `executed`, `cancelled`) older than 180 days to `action_proposals_archive_{YYYYMM}.jsonl.gz`.
+  3. `archive_old_runs`: archives terminal runs (`completed`, `failed`, `cancelled`) and events older than 180 days to `staff_runs_archive_{YYYYMM}.jsonl.gz`.
+  4. `archive_old_work_items`: archives terminal work items (`done`, `closed`, `cancelled`) older than 180 days to `work_items_archive_{YYYYMM}.jsonl.gz`.
+  5. `run_retention_archival`: orchestrator running sweeps across all entities and recording audit event.
+  6. `export_thread_markdown` and `export_thread_json`: structured conversation export formatters.
+- Built `backend/routers/staff_export.py` mounted under `/api/v1/staff` and `/api/staff`:
+  1. `GET /threads/{id}/export?format=markdown|json` (and `.md`/`.json` aliases).
+  2. `POST /retention/sweep`: admin-triggered retention archival sweep.
+  3. `GET /retention/status`: policy and storage inspection.
+- Updated frontend:
+  1. `Desktop.tsx`: added export buttons in header.
+  2. `ContextPane.tsx`: added export buttons in Thread tab.
+- Amended ADR 0006 Section 5 & 9 with 180-day retention policy and thread export capabilities.
+- Test coverage: `tests/unit/test_staff_retention.py` (6/6 passing), `tests/api/test_staff_thread_export.py` (6/6 passing).
+
+## Next steps
+
+1. Run quality gates (ruff, mypy, pytest).
+2. Commit and push branch `feat/1490-retention-and-export`.
+3. Open PR with `Fixes #1490` and arm squash auto-merge (`--auto --squash`).
+
+---
+
+# Past handoff — Budgets as a share of plan windows (#1588)
 
 Last updated: 2026-09-26
 
@@ -41,7 +75,7 @@ Last updated: 2026-09-26
 
 ---
 
-# Current handoff — Live subscription quota (#1587)
+# Past handoff — Live subscription quota (#1587)
 
 Last updated: 2026-09-26
 
@@ -76,14 +110,16 @@ Last updated: 2026-09-26
 
 ---
 
-# Current handoff — Staff runs without CLI permission bypass (#1586)
+# Past handoff — Staff runs without CLI permission bypass (#1586)
+---
+
+# Past handoff — Staff runs without CLI permission bypass (#1586)
 
 Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1586-no-permission-bypass`; Issue #1586; DL-#1586.
-- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `df3f0333`; commit `SELF`; PR: opened right after this commit.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1586-no-permission-bypass`; PR #1589 (merged); Issue #1586; DL-#1586.
 
 ## Objective and Status
 
@@ -94,30 +130,17 @@ Last updated: 2026-09-26
   - agy is chat-only (`unattended=False`).
 - `build_command` gains `gitdir` and `policy` slots. The runner fills them (`workspace.git_common_dir`, `workspace.write_policy_file`).
 - The runner and the retry fallback skip chat-only providers.
-- Verified live on OGLaptop with each CLI running `git --version` and writing a file:
-  - Claude, Codex and Cursor passed.
-  - agy auto-denied every command, even with `permissions.allow`.
-  - Gemini in WSL has no login, so it was not exercised.
-
-## Validation
-
-- RED first: `tests/api/test_staff_unattended_permissions.py` failed on import before the change.
-- The staff, adapter, provider, retry, chat and runner suites pass. The conductor-enum tests are environmental and failed before this change too.
-
-## Next Steps
-
-1. Merge, then watch the next scheduled Claude and Codex runs for permission denials in their transcripts.
-2. Re-test agy when it ships a headless allow-list.
+- Merged via PR #1589 (`25cd686f`).
 
 ---
 
-# Current handoff — SC-B1-G5: Cross-node run-card relay (#1488)
+# Past handoff — SC-B1-G5: Cross-node run-card relay (#1488)
 
 Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1488`; branch `feat/1488-cross-node-run-cards`; commit SELF; PR: pending; Issue #1488; DL-#1488.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1488`; branch `feat/1488-cross-node-run-cards`; commit `cd57aafd`; PR #1585 (merged); Issue #1488; DL-#1488.
 
 ## Objective and Status
 
@@ -130,14 +153,7 @@ Last updated: 2026-09-26
   4. Failure mode: if the home node is unreachable mid-run, the relay error is logged visibly on the executing node while canonical execution continues.
 - Amended ADR 0006 Section 4 with Option A decision and failure semantics.
 - Updated `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`.
-- Test coverage: `tests/unit/test_staff_run_card_relay.py` (5/5 passing).
-
-## Next steps
-
-1. Pass pre-commit checks (ruff check, ruff format --check, black --check, mypy).
-2. Commit, push branch `feat/1488-cross-node-run-cards` to origin.
-3. Open PR with `Fixes #1488`, arm squash auto-merge (`gh pr merge --auto --squash`).
-4. Proceed to SC-B1-G7 (#1490: retention and export policy).
+- Test coverage: `tests/unit/test_staff_run_card_relay.py` (5/5 passing). Shipped in PR #1585 (`cd57aafd`).
 
 ---
 
