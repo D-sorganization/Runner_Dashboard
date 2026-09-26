@@ -17,6 +17,7 @@
 | 2026-09-26 | #1504 | SC-G5-7: Playwright journey `tests/e2e/staff-request-journey.spec.ts` (Remediation context button to prefilled request, to `POST /api/v1/staff/requests`, to the run card in the named thread, plus the 5xx path). A dispatch response's `thread_id` now opens that thread in the Staff Console (`useStaffConsole` `initialThreadId`). |
 | 2026-09-26 | #1556 | Staff e2e harness (`tests/e2e/fakes/start_staff_backend.py`) is hermetic: fleet-peer discovery is pinned to this node (`AUTODERIVE_FLEET_NODES=0`/`FLEET_NODES=""`), a new `STAFF_INBOX_GITHUB_SOURCES` switch disables the GitHub-backed staff inbox sources (board proposals, project decisions), and `GH_TOKEN` is left unset so other GitHub calls fail locally. A `globalTeardown` guard fails the suite if the backend log ever mentions a real fleet peer or `api.github.com`. |
 | 2026-09-26 | #1542 | WP-1.1 follow-up: non-blocking startup and guarded verification. `reconcile_orphaned_runs` no longer calls `recheck_runs` on the event loop (the scheduler thread already rechecks unverified runs off the loop). `verify_and_record` wraps its entire body to never raise, evaluating `opens_pr` lazily inside the guard so exceptions never interrupt the finish path or bypass `handle_run_status_change`. |
+| 2026-09-26 | #1288 | CR-8: First use — submit queued UpstreamDrift dynamics proposals via the suggestion box. Re-verified dynamics survey paths against UpstreamDrift `origin/main` (`fee5b214e`), and submitted queued proposals P1–P4 via suggestion box service as `research-scout` (Repository_Management issues #1792, #1793, #1794, #1795) labelled `board:proposal` and `needs-decision` with hidden submitter markers and linked issues. Ingested into the 2026-10-02 Board meeting packet (`docs/board-meetings/2026-10-02/packet.md`). |
 | 2026-09-25 | #1501 | SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API (`code_request.dispatch`, `assessment.run`, `staff.dispatch` role `project-steward`). Code-request dispatch has one server-side core, `code_requests/dispatch_service.py`, shared by `POST /api/code-requests/dispatch` and the request kind: profile defaults, prompt notes, standards injection and the Code Requests history entry. `WorkRequest` carries `effort`, `standards` and `budget`, and unknown standards are rejected. The Console sends the typed prompt and `standards[]` instead of building the text client-side. |
 | 2026-09-25 | #1551 | Staff chat failure card remediation context: preserve most specific classified failure across fallback provider chain. Added failure specificity ranking (`FAILURE_SPECIFICITY`) and `choose_preferred_chat_failure`, ensuring meaningful failures (e.g. `auth_expired` with `claude auth login`, primary crashes) are not shadowed by fallback unavailability or generic errors (e.g. `systemctl --user start ollama`). |
 | 2026-09-25 | #1553 | Remediation bulk actions send one `issue.act` / `pr.act` request per repository instead of putting every selected number under the first item's repo; failed rows stay selected; `RequestTarget.issues` / `prs` are positive, unique and capped at 100 (422 otherwise); a request whose every target failed names each target in its error. |
@@ -3129,6 +3130,18 @@ inline style objects.
 | POST   | `/api/proposals`          | Submit a suggestion to the Board (`proposals.write` scope); rate-limited (per submitter marker), duplicate-checked, 503 on GitHub read failure |
 | GET    | `/api/proposals`          | List proposals with optional `state` (open\|decided) and `repo` filter; 503 on GitHub read failure                                             |
 | GET    | `/api/proposals/{number}` | Proposal detail with Board-Secretary comments; 503 on GitHub read failure                                                                      |
+
+#### First Use & Acceptance (issue #1288, CR-8)
+
+End-to-end acceptance run for the suggestion box and proposal intake pipeline:
+
+- Verified UpstreamDrift evidence paths across `src/shared/python/estimation/multi_trial.py`, `src/shared/python/estimation/identifiability.py`, `src/shared/python/motion_matching/identifiability.py`, `src/shared/python/motion_matching/contact_identification.py`, `src/bunkershot3d/study/optimisation.py`, `src/bunkershot3d/study/surrogate.py`, `src/shared/python/neural_motion/surrogates/comparison.py`, `src/shared/python/analysis/phase_detection.py`, `src/shared/python/data_io/swing_capture_import.py`, `src/shared/python/injury/injury_risk.py`, `src/shared/python/biomechanics/kinematic_sequence.py`, and `src/shared/python/physics_informed/`.
+- Submitted proposals:
+  - **P1**: Promote MJX gradient optimiser into production matching pipeline (`Repository_Management#1792`).
+  - **P2**: Report parameter uncertainty on main motion-matching fits (`Repository_Management#1793`, linked to UpstreamDrift #10375).
+  - **P3**: Predict fit convergence, tune fit settings, and check calibration (`Repository_Management#1794`).
+  - **P4**: Research bundle on nonlinear dynamics (`Repository_Management#1795`).
+- Verified proposals appear in the 2026-10-02 Board meeting packet and are queryable via `GET /api/proposals?repo=UpstreamDrift`.
 
 ### Local Apps
 

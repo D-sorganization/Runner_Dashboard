@@ -1,3 +1,36 @@
+# Current handoff — CR-8: Suggestion Box First Use (#1288)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1288`; PR opened right after this commit; DL-#1288; Issue #1288 (Epic #1279 Wave 5 acceptance).
+- Baseline `b0ff5c6a`; UpstreamDrift baseline `fee5b214e`.
+
+## Objective and Status
+
+- Completed first real use and end-to-end acceptance of the Board Proposals suggestion box (CR-7 / BP-1 / BP-2).
+- Re-verified all 4 queued UpstreamDrift dynamics proposals against current `UpstreamDrift` `origin/main` (`fee5b214e`):
+  - **P1**: `docs/development/full_body_models/evidence/ground_support/mjx_trajectory_optimisation.py`, `tests/unit/motion_matching/test_mjx_optimisation.py`, `src/shared/python/simulation_backends/mjx_backend.py`.
+  - **P2**: `src/shared/python/estimation/multi_trial.py:131,189,276,440`, `src/shared/python/estimation/identifiability.py:258`, `src/shared/python/motion_matching/identifiability.py:286`, `src/shared/python/motion_matching/contact_identification.py:175`.
+  - **P3**: `src/bunkershot3d/study/optimisation.py`, `src/bunkershot3d/study/surrogate.py:187`.
+  - **P4**: `src/shared/python/neural_motion/surrogates/comparison.py:62`, `src/shared/python/analysis/phase_detection.py:15`, `src/shared/python/data_io/swing_capture_import.py:588`, `src/shared/python/motion_matching/loaders/_align.py:22`, `src/motion_capture/reconstruct/analytics.py:251`, `src/shared/python/injury/injury_risk.py:358`, `src/shared/python/biomechanics/kinematic_sequence.py:357`, `src/shared/python/physics_informed/`, `src/shared/python/motion_matching/pipeline/reference.py:76`.
+- Submitted P1–P4 via suggestion box service as `research-scout`:
+  - `Repository_Management#1792`: Promote the MJX gradient optimiser into the production matching pipeline
+  - `Repository_Management#1793`: Report parameter uncertainty on the main motion-matching fits (linked to UpstreamDrift #10375)
+  - `Repository_Management#1794`: Predict fit convergence, tune fit settings, and check calibration
+  - `Repository_Management#1795`: Research bundle on nonlinear dynamics (Board to split or rank)
+- Verified proposals appear in the 2026-10-02 Board meeting packet (`docs/board-meetings/2026-10-02/packet.md`) and queryable via `GET /api/proposals?repo=UpstreamDrift`.
+
+## Validation
+
+- Proposals created in `D-sorganization/Repository_Management` with `board:proposal` and `needs-decision` labels.
+- Proposals parsed and listed cleanly by `proposals.service.list_proposals`.
+- Scaffolding of `docs/board-meetings/2026-10-02/` verified with `init_meeting_packet`.
+- All repo line counts strictly $\le 500$ LOC.
+
+---
+
 # Current handoff — Agent org implementation plan (#1463)
 
 Last updated: 2026-09-25
