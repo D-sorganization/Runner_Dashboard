@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1486 · SC-B1-G3: One action vocabulary for chat replies and the action registry
+### DL-#1498 · SC-G5-2: One Advanced dispatch form (replaces Staff Assign and the Fleet Command Dispatch tab)
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1498
+- **Branch:** `feat/1498-advanced-dispatch-form`
+- **Paths:** `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `frontend/src/pages/Staff/Assign.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/index.ts`, `frontend/src/pages/FleetCommand/DispatchPanel.tsx`, `frontend/src/pages/__tests__/AdvancedDispatchForm.test.tsx`, `frontend/src/pages/__tests__/Staff.test.tsx`, `frontend/src/pages/__tests__/FleetCommandOps.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (npm test frontend 160/160 test files passed; npm run lint clean; npm run typecheck clean; ruff and mypy clean; all files <= 500 lines)
+- **Summary:** Built unified `AdvancedDispatchForm` component that posts to the work-request API (`POST /api/v1/staff/requests`). Supports kinds `staff.dispatch`, `ci.remediate`, `issue.act`, `pr.act`, `code_request.dispatch`, `assessment.run`; dynamically adapts visible target fields per kind; preserves peer-node forwarding, dry-run preview with plan rendering, Idempotency-Key protection, classified server error preservation; replaced legacy `Assign.tsx` and updated `DispatchPanel.tsx` and `StaffPage.tsx`; zero remaining imports of old Assign form.
+- **Next step:** Push branch, open PR referencing Fixes #1498, arm auto-merge, verify CI passes.
+
+### DL-#1486 · SC-B1-G3: One action vocabulary for chat replies and the action registry
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1486
 - **Branch:** `feat/1486-one-action-vocabulary`
+- **PR:** #1530
 - **Paths:** `backend/staff/reply_contract.py`, `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/staff/maintenance.py`, `tests/unit/test_staff_reply_contract.py`, `tests/unit/test_staff_reply_vocabulary.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_reply_*.py 21/21 passed; full staff test suite 763 passed, 12 skipped, 0 failed; ruff check clean; ruff format clean; mypy backend/staff clean in 68 source files; all files <= 500 lines)
 - **Summary:** Established `ACTION_REGISTRY` as the single authoritative action vocabulary across `reply_contract.py` and `actions.py`: chat replies proposing registered actions (`staff.dispatch`, `staff.review_pr`, `maintenance.*`, etc.) are recognized and valid; unknown action names are dropped with descriptive warnings while preserving prose; reply-contract prompt text is generated dynamically from `ACTION_REGISTRY` (DRY); registered legacy actions (`notify_user`, `claim_issue`, `open_pr`, `submit_proposal`) with callable executors and permission checks; registered 12 fleet maintenance aliases; pinned that every reply-contract action has a registered, callable executor.
-- **Next step:** Push branch, open PR referencing Fixes #1486, arm auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1530).
 
 ### DL-#1465 · Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked'
 

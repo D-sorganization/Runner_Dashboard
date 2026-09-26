@@ -150,14 +150,15 @@ describe("FleetCommandPage — claims", () => {
 describe("FleetCommandPage — dispatch", () => {
   it("previews with dry_run then dispatches and links to the Staff tab run", async () => {
     const fetchMock = stubFetch((url, opts) => {
-      if (url !== "/api/staff/night-watch/run" && url !== "/api/v1/staff/night-watch/run") return undefined;
+      if (url !== "/api/staff/requests" && url !== "/api/v1/staff/requests") return undefined;
       const body = JSON.parse(String(opts?.body));
       return body.dry_run
         ? {
             status: 200,
             body: {
-              dry_run: true,
-              machine: "local",
+              kind: "staff.dispatch",
+              action: "staff.dispatch",
+              state: "planned",
               plan: {
                 role: "night-watch",
                 provider: "claude",
@@ -172,7 +173,15 @@ describe("FleetCommandPage — dispatch", () => {
               },
             },
           }
-        : { status: 200, body: { dry_run: false, machine: "local", run: { id: "run-77" } } };
+        : {
+            status: 200,
+            body: {
+              kind: "staff.dispatch",
+              action: "staff.dispatch",
+              state: "executed",
+              run_id: "run-77",
+            },
+          };
     });
     render(<FleetCommandPage />);
     openSection("Dispatch");

@@ -1,10 +1,46 @@
-# Current handoff — SC-B1-G3: One action vocabulary for chat replies and the action registry (#1486)
+# Current handoff — SC-G5-2: One Advanced dispatch form (replaces Staff Assign and the Fleet Command Dispatch tab) (#1498)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1486`; branch `feat/1486-one-action-vocabulary`; Issue #1486; DL-#1486.
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1498`; branch `feat/1498-advanced-dispatch-form`; Issue #1498; DL-#1498.
+
+## Objective and Status
+
+- Unified `AdvancedDispatchForm` replacing `Staff/Assign.tsx` and updating `FleetCommand/DispatchPanel.tsx` and `StaffPage.tsx`:
+  1. Posts to work-request API (`POST /api/v1/staff/requests`).
+  2. Supports request kinds: `staff.dispatch`, `ci.remediate`, `issue.act`, `pr.act`, `code_request.dispatch`, `assessment.run`.
+  3. Dynamic field rendering: kind selector controls visible target inputs (repo, issue/PR, run_id, ref/profile_id, prompt) preventing invalid combinations.
+  4. Preserves Assign capabilities: peer-node forwarding via machine input, dry-run preview with plan rendering, Idempotency-Key header on mutations, classified server error preservation.
+  5. Preserves Fleet Command Dispatch run link to open dispatched run in Staff tab (`/?run=<id>`).
+  6. Zero remaining imports of `Assign.tsx` across the codebase.
+- Quality gates:
+  - Unit tests: `frontend/src/pages/__tests__/AdvancedDispatchForm.test.tsx` (5/5 passing), `frontend/src/pages/__tests__/Staff.test.tsx` (16/16 passing), `frontend/src/pages/__tests__/FleetCommandOps.test.tsx` (6/6 passing).
+  - Full frontend suite: 160/160 test files passed (1344 tests passing).
+  - TypeScript: `tsc -p tsconfig.app.json` passed with 0 errors.
+  - ESLint: passed with 0 warnings, 0 errors.
+  - Backend: `ruff check` and `mypy` passed with 0 issues.
+  - File line counts: strictly $\le 500$ lines across all modified/new files.
+
+## Next Steps
+
+1. Push branch `feat/1498-advanced-dispatch-form` to `origin`.
+2. Open PR referencing `Fixes #1498`.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until merged.
+5. Release lease for #1498 via `scripts.release_agent_lease`.
+6. Clean up worktree and local/remote branch.
+
+---
+
+# Past handoff — SC-B1-G3: One action vocabulary for chat replies and the action registry (#1486)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1486`; branch `feat/1486-one-action-vocabulary`; PR #1530; Issue #1486; DL-#1486.
 
 ## Objective and Status
 
@@ -22,17 +58,7 @@ Last updated: 2026-09-25
   - Ruff check & format clean.
   - Mypy: clean (0 issues across 68 files).
   - File line counts: strictly $\le 500$ lines across all modified/new files.
-
-## Next Steps
-
-1. Push branch `feat/1486-one-action-vocabulary` to `origin`.
-2. Open PR referencing `Fixes #1486`.
-3. Arm auto-merge (`gh pr merge --squash --auto`).
-4. Monitor CI until merged.
-5. Release lease for #1486 via `scripts.release_agent_lease`.
-6. Clean up worktree and local/remote branch.
-
----
+  - Shipped in PR #1530.
 
 # Past handoff — Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked' (#1465)
 

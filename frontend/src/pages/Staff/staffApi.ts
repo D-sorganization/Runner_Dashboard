@@ -71,6 +71,23 @@ export type PricingResponse = components["schemas"]["StaffPricingResponse"];
 export type UsageExportResponse = components["schemas"]["StaffUsageExportResponse"];
 
 export type DispatchBody = components["schemas"]["RunBody"];
+export type WorkRequest = components["schemas"]["WorkRequest"];
+export type RequestTarget = components["schemas"]["RequestTarget"];
+
+export interface WorkRequestResult {
+  kind: string;
+  action: string;
+  state: "planned" | "executed" | "approval_required" | "failed";
+  plan?: RunPlan | null;
+  run_id?: string | null;
+  thread_id?: string;
+  message_id?: string;
+  work_item_id?: string;
+  proposal_id?: string;
+  result?: unknown;
+  error?: string;
+  failure_class?: string;
+}
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
@@ -126,6 +143,18 @@ export function dispatchRun(role: string, body: DispatchBody, idempotencyKey?: s
   return apiRequest<DispatchResponse>(`${STAFF_BASE}/${encodeURIComponent(role)}/run`, {
     body,
     headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
+  });
+}
+
+export function submitWorkRequest(
+  body: WorkRequest,
+  idempotencyKey?: string,
+  signal?: AbortSignal,
+): Promise<WorkRequestResult> {
+  return apiRequest<WorkRequestResult>(`${STAFF_BASE}/requests`, {
+    body,
+    headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
+    signal,
   });
 }
 

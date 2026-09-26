@@ -1,18 +1,5 @@
 // @vitest-environment jsdom
-/**
- * Behaviour tests for pages/Staff — the Staff tab (issue #1198, epic #1192).
- *
- * Covers:
- * 1. Roster renders one card per role with installed-provider badges.
- * 2. Board shows spend today and per-machine running/queued counts.
- * 3. Assign "Preview" POSTs dry_run:true with the CSRF header and shows the plan.
- * 4. Run detail shows the stored events and appends SSE events while alive.
- * 5. Cancel POSTs /api/staff/runs/{id}/cancel with the CSRF header.
- * 6. Holds 404 renders the "unavailable" state, not an error.
- * 7. Board lists late/dead scheduled roles as liveness alerts (#1209).
- * 8. PR consolidation (#1213): roster shows the threshold, the plan shows the decision,
- *    run log and run detail show the outcome.
- */
+/** Behaviour tests for pages/Staff — Staff tab (issues #1198, #1209, #1213, #1498). */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -23,14 +10,12 @@ import { StaffPage } from "../Staff";
 afterEach(() => {
   cleanup();
   queryClient.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-});
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
 const ROSTER = {
@@ -358,8 +343,14 @@ describe("StaffPage", () => {
 
   it("assign preview posts dry_run with CSRF header and shows the plan", async () => {
     const fetchMock = stubFetch((url, opts) => {
-      if ((url === "/api/staff/night-watch/run" || url === "/api/v1/staff/night-watch/run") && opts?.method === "POST") {
-        return { status: 200, body: { dry_run: true, plan: PLAN, machine: "DeskComputer" } };
+      if (
+        (url === "/api/staff/requests" ||
+          url === "/api/v1/staff/requests" ||
+          url === "/api/staff/night-watch/run" ||
+          url === "/api/v1/staff/night-watch/run") &&
+        opts?.method === "POST"
+      ) {
+        return { status: 200, body: { dry_run: true, plan: PLAN, machine: "DeskComputer", state: "planned" } };
       }
       return undefined;
     });
@@ -382,22 +373,30 @@ describe("StaffPage", () => {
     expect(screen.getByTestId("plan-branch")).toHaveTextContent("staff/night-watch-10622-preview");
 
     const [url, opts] = postCalls(fetchMock)[0];
-    expect(url).toBe("/api/v1/staff/night-watch/run");
+    expect(url).toBe("/api/v1/staff/requests");
     expect((opts.headers as Record<string, string>)["X-Requested-With"]).toBe("XMLHttpRequest");
     expect(JSON.parse(opts.body as string)).toMatchObject({
       dry_run: true,
-      provider: "claude",
-      repo: "UpstreamDrift",
-      issue: 10622,
-      pr: null,
+      kind: "staff.dispatch",
+      role: "night-watch",
+      target: {
+        repo: "UpstreamDrift",
+        issue: 10622,
+      },
       machine: "local",
     });
   });
 
   it("dispatch posts for real and navigates to the new run", async () => {
     stubFetch((url, opts) => {
-      if ((url === "/api/staff/night-watch/run" || url === "/api/v1/staff/night-watch/run") && opts?.method === "POST") {
-        return { status: 200, body: { dry_run: false, run: RUN, machine: "DeskComputer" } };
+      if (
+        (url === "/api/staff/requests" ||
+          url === "/api/v1/staff/requests" ||
+          url === "/api/staff/night-watch/run" ||
+          url === "/api/v1/staff/night-watch/run") &&
+        opts?.method === "POST"
+      ) {
+        return { status: 201, body: { dry_run: false, run_id: "run-1", state: "executed", machine: "DeskComputer" } };
       }
       return undefined;
     });
