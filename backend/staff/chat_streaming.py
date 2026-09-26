@@ -138,6 +138,21 @@ class TurnStreamOutput:
     session_id: str | None = None
     t_first_token: float | None = None
     deltas: list[str] = field(default_factory=list)
+    # Full text of the terminal ``result`` event, which repeats everything already streamed.
+    result_text: str = ""
+    json_lines: bool = False
+
+    @property
+    def reply_text(self) -> str:
+        """The reply exactly once (#1341).
+
+        Post: a JSON-lines stream yields its ``result`` text when it has one,
+        else its streamed deltas; a plain-text stream yields stdout verbatim, so
+        line breaks and blank lines survive.
+        """
+        if not self.json_lines:
+            return "".join(self.stdout_lines)
+        return self.result_text or "".join(self.deltas)
 
 
 async def stream_turn_output(
@@ -152,6 +167,7 @@ async def stream_turn_output(
     deltas: list[str] = []
     t_first_token: float | None = None
     captured_session_id: str | None = None
+    result_text = ""
 
     async for line in reader.stream_lines():
         stdout_text.append(line)
@@ -162,6 +178,11 @@ async def stream_turn_output(
             captured_session_id = detected_sid
 
         delta = event.get("text", "")
+        if adapter.json_lines and event.get("kind") == "result":
+            # The result event repeats the whole reply; stream it only when nothing was streamed before.
+            result_text = delta
+            if deltas:
+                continue
         if delta:
             deltas.append(delta)
             if t_first_token is None:
@@ -175,4 +196,6 @@ async def stream_turn_output(
         session_id=captured_session_id,
         t_first_token=t_first_token,
         deltas=deltas,
+        result_text=result_text,
+        json_lines=adapter.json_lines,
     )

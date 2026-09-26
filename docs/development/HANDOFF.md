@@ -1,4 +1,36 @@
-# Current handoff — SC-G5-3: Remediation context buttons open a prefilled request (#1499)
+# Current handoff — Staff Console e2e suite with fake providers (#1341)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `test/1341-staff-e2e`; PR not created yet (opened with this commit); DL-#1341; Issue #1341 (Part of, not Fixes).
+
+## Objective and Status
+
+- Hermetic e2e harness: `tests/e2e/fakes/` (fake `claude` CLI that emits real `stream-json`, fixture roles and identities, `start_staff_backend.py`) and `tests/e2e/staff/` (own Playwright config, principal fixture, 8 specs).
+- Specs cover: a direct reply shown once, fallback past an uninstalled provider, Barb's handoff reply, reply after the SSE stream drops, provider crash and expired login as error cards, backend 500 and viewer 403 keep the draft.
+- The suite found four bugs, each fixed here with a failing test first:
+  1. Claude/cursor replies were shown twice. The CLI repeats the text in its `result` event (`chat_streaming.py`, `TurnStreamOutput.reply_text`).
+  2. A reply stayed pending forever when every runnable provider failed and the last chain entry was skipped (`chat.py`, `_record_if_pending`).
+  3. `staffApi` JSON-encoded POST bodies twice and sent `body_md`, so opening a thread, sending and approving all returned 422.
+  4. A live SSE `{message}` frame crashed the Console tab (`useThreadStream.messageFromFrame`).
+- The main `playwright.config.ts` ignores `tests/e2e/staff/**`. `frontend-tests.yml` has a new `staff-console-e2e` job, gated on frontend, `backend/staff`, staff routers and `tests/e2e` changes.
+
+## Validation
+
+- Playwright on Windows, backend in WSL: `STAFF_E2E_PYTHON="wsl -e <venv>/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts` passes 8/8, and 16/16 with `--repeat-each=2`.
+- Backend unit tests (`test_staff_chat_stream_result.py`, `test_staff_chat_exhausted_chain.py`, chat, availability and groups): 77 passed. vitest Staff, StaffConsole and hooks dirs: 213 passed. `tsc` clean. ruff clean.
+
+## Next Steps
+
+1. Open the PR (Part of #1341), label it and arm auto-merge.
+2. File follow-ups: chat proposals never become proposal-kind messages, so approve, run card, needs-input and cancel cannot be reached in the UI; handoff meta produces no handoff card; the stale tracked `vite.config.js` overrides `vite.config.ts`; the web-vitals POST lacks the CSRF header; the failure remediation names the last fallback provider (an expired Claude login says "start ollama").
+3. Once proposals render, add the approval, run-card, needs-input and cancel specs to close #1341.
+
+---
+
+# Past handoff — SC-G5-3: Remediation context buttons open a prefilled request (#1499)
 
 Last updated: 2026-09-25
 

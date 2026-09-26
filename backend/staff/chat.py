@@ -94,6 +94,7 @@ class ChatTurnResult:
     failure_class: str | None = None
     retryable: bool = False
     remediation: str = ""
+    error: str | None = None
     metrics: dict[str, Any] = field(default_factory=dict)
     replayed_history: bool = False
 
@@ -250,6 +251,7 @@ class ChatTurnRunner:
                 metrics.record_fallback()
 
             if last_failed is not None:
+                await self._record_if_pending(thread_id, placeholder_id, role_name, last_failed)
                 return last_failed
 
             log.warning(
@@ -266,6 +268,28 @@ class ChatTurnRunner:
         finally:
             if acquired:
                 self.pool.release(role_name)
+
+    async def _record_if_pending(
+        self, thread_id: str, placeholder_id: str, role_name: str, failed: ChatTurnResult
+    ) -> None:
+        """Record the chain's last failure when no attempt recorded one (#1341).
+
+        Only the chain's last entry records its own failure, so a skipped last
+        entry left the reply pending forever. Post: the placeholder is not pending.
+        """
+        placeholder = self.conv_store.get_message(placeholder_id)
+        if placeholder is None or placeholder.delivery != "pending":
+            return
+        await record_chat_failure(
+            self.conv_store,
+            thread_id,
+            placeholder_id,
+            actor=role_name,
+            failure_class=failed.failure_class or "unknown",
+            retryable=failed.retryable,
+            detail=failed.remediation or "Failed to complete reply",
+            error=failed.error,
+        )
 
     async def _run_turn_attempt(
         self,
@@ -339,7 +363,6 @@ class ChatTurnRunner:
             if stream_out.session_id:
                 captured_session_id = stream_out.session_id
             t_first_token = stream_out.t_first_token
-            deltas = stream_out.deltas
 
             t_end = time.monotonic()
             ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
@@ -371,11 +394,11 @@ class ChatTurnRunner:
                     failure_class=classified.failure_class,
                     retryable=classified.retryable,
                     remediation=classified.remediation,
+                    error=classified.error,
                 )
 
             # Parse structured reply contract
-            full_reply_text = "".join(deltas) if deltas else raw_combined
-            parsed = parse_reply(full_reply_text, role=role)
+            parsed = parse_reply(stream_out.reply_text or raw_combined, role=role)
 
             metrics = {
                 "time_to_first_token_seconds": round(ttft, 3),

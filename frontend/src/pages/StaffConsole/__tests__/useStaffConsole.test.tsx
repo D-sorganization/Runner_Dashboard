@@ -130,7 +130,7 @@ describe("useStaffConsole", () => {
     expect(outcome?.ok).toBe(true);
     expect(api.postThreadMessage).toHaveBeenCalledWith(
       "thr_real_123",
-      expect.objectContaining({ body_md: "restart CT", author_kind: "user" }),
+      { body: "restart CT", meta: undefined },
       "k-1",
     );
   });
