@@ -1,4 +1,30 @@
-# Current handoff — SC-D7: Board group thread UI (#1342)
+# Current handoff — Board consensus reports the seats' positions (#1540)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1540-board-consensus`; PR #1541; DL-#1540; Issue #1540.
+
+## Objective and Status
+
+- `backend/staff/groups.py`: `collate_consensus` used to return "consensus leans toward approving" for every turn, even when no seat answered. It now uses `_positions_md`, which lists each answering seat's position, or "No quorum" when none answered.
+- `_board_proposal` is built only when a seat answered. Its params are `title` and `proposal` (the question plus the positions); the fixed `target_repos`/`urgency`/`estimated_cost` are gone. `execute_board_propose` only ever read `title` and `proposal`.
+- The summary heading is now `### Board Deliberation`. The SC-D7 card (#1342) strips the `<details>` seat block and renders seats from `meta.seat_replies`, so it is unaffected.
+
+## Validation
+
+- `tests/unit/test_staff_group_consensus.py` (new, 4 tests, red before the fix), `tests/unit/test_staff_groups.py`, `tests/api/test_staff_groups_api.py`, `tests/staff`, `tests/unit/test_staff_actions.py`: 279 passed, 14 skipped.
+- ruff check and format, and mypy on `groups.py`, are clean.
+
+## Next Steps
+
+1. PR #1541 is open with auto-merge armed.
+2. Follow-up (not filed yet): have the coordinator role synthesize a recommendation over the positions.
+
+---
+
+# Past handoff — SC-D7: Board group thread UI (#1342)
 
 Last updated: 2026-09-25
 

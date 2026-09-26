@@ -118,7 +118,7 @@ async def test_execute_group_turn_all_seats_succeed() -> None:
     assert len(res.seat_replies) == 4
     assert all(r.status == "ok" for r in res.seat_replies)
     assert "4/4 seats answered" in res.quorum
-    assert "Consensus" in res.summary
+    assert "Where the seats stand" in res.summary
     assert "Alpha" in res.summary
     assert "Bravo" in res.summary
     assert "Charlie" in res.summary

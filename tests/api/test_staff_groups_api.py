@@ -7,7 +7,7 @@ Covers:
 - POST /api/v1/staff/threads (create group thread with kind="group" or role="board")
 - POST /api/v1/staff/threads/{id}/messages (cost guard threshold enforcement, bypass with confirm_cost)
 - End-to-end group turn execution: placeholder created, background coordinator runs,
-  collates seat replies, writes consensus summary, generates "board.propose" action proposal,
+  collates seat replies, reports each seat's position, generates "board.propose" action proposal,
   and executing the proposal creates a Board Proposal work item.
 """
 
@@ -228,7 +228,8 @@ async def test_group_turn_e2e_and_proposal_creation(client: TestClient) -> None:
     completed = store.get_message(placeholder_id)
     assert completed is not None
     assert completed.delivery == "complete"
-    assert "Board Deliberation & Consensus Summary" in completed.body_md
+    assert "### Board Deliberation" in completed.body_md
+    assert "Where the seats stand" in completed.body_md
     assert "Quorum:" in completed.body_md
     assert "4/4 seats answered" in completed.body_md
     assert "Seat Replies" in completed.body_md
