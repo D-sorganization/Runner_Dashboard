@@ -7,6 +7,7 @@ passed them. These tests use a real ``RunStore`` and the real selection inputs.
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -325,6 +326,7 @@ def _review_in_subprocess(db_path: str, start_at: float) -> int:
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="fork context and fcntl cross-process locks are POSIX-only")
 def test_auto_review_dedupe_holds_across_worker_processes(tmp_path: Path) -> None:
     import multiprocessing
     import time
