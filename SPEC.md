@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.296
+**Spec Version:** 2.5.297
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-26T00:00:00-07:00
 **Status:** Active
@@ -8,6 +8,7 @@
 ## Change Log
 
 | Date | PR / Issue | Summary |
+| 2026-09-26 | #1595 | Restore green main: split `backend/staff/adapters.py` (603 -> 467 lines) under the mandatory <= 500 LOC threshold. Extracted permission policies, shared shell allow/deny lists, permission bypass constants, and read-only tool mappings to `backend/staff/adapter_policies.py` (177 lines), re-exported from `adapters.py`. Added unit test suite `tests/unit/test_staff_adapter_policies.py`. |
 | 2026-09-26 | #1593 | Restore green main: split `backend/staff/runner.py` (528 -> 482 lines) and `frontend/src/pages/Staff/staffApi.ts` (561 -> 488 lines) under the mandatory <= 500 LOC threshold. Extracted `select_first_available_provider`, `resolve_launch_paths`, and `pump_output` to `backend/staff/runner_ops.py` (92 lines) with backward-compatible delegation methods on `StaffRunner`. Extracted `QuotaWindow`, `QuotaSnapshot`, `QuotaReport`, `QuotaRow`, `QUOTA_CEILING_PERCENT`, `fetchQuota`, and `quotaRows` to `frontend/src/pages/Staff/quotaApi.ts` (92 lines), re-exported via `staffApi.ts`. Fixed RefreshBadge fresh state container text contrast against white backgrounds. Added unit test suite `tests/unit/test_staff_runner_ops.py`. |
 | 2026-09-26 | #1490 | SC-B1-G7: Standard 180-day retention window matching audit log (gzip archive older records, add Markdown/JSON thread export). Added `backend/staff/retention.py` with multi-entity archivers for closed/inactive conversations and messages, terminal action proposals, terminal runs and events, and terminal work items. Archival writes to monthly compressed `.jsonl.gz` files before deleting from active SQLite tables. Added export formatters for structured Markdown (`export_thread_markdown`) and JSON (`export_thread_json`). Mounted REST endpoints under `/api/v1/staff`: `GET /threads/{id}/export?format=markdown|json` (with `.md` and `.json` aliases), `POST /retention/sweep` (manual archival sweep trigger), and `GET /retention/status` (policy inspection). Added thread export actions in Staff Console desktop header and Context Pane Thread tab. Amended ADR 0006 (§5, §9). |
 | 2026-09-26 | #1588 | Budgets as a share of plan windows: role `budget.max_window_percent` (default 85 %, `STAFF_QUOTA_CEILING_PERCENT`) gates the scheduler, provider choice and manual dispatch (429 unless `ignore_budget`, audited); one local budget/usage day; `≈ $` notional labels and a Board Plan quota panel; Gemini signs in with Google (`auth_mode` local, OAuth probe). |

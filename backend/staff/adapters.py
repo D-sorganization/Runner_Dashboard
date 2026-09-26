@@ -30,179 +30,43 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from staff import ollama_env
+from staff.adapter_policies import (
+    _CHAT_BYPASS_FLAGS,
+    _CHAT_READ_ONLY_FLAGS,
+    CHAT_READ_ONLY_TOOLS,
+    CLAUDE_WRITE_TOOLS,
+    PERMISSION_BYPASS_FLAGS,
+    UNATTENDED_SHELL_ALLOW,
+    UNATTENDED_SHELL_DENY,
+    ChatReadOnlyUnsupportedError,
+    UnattendedUnsupportedError,
+    claude_allowed_tools,
+    claude_unattended_tools,
+    gemini_policy_toml,
+)
 
 # Provider ids used by staff roles. They intentionally match the
 # ``dashboard_id`` values in agent_remediation/provider_registry.py where an
 # entry exists there (claude_code_cli → "claude", codex_cli → "codex").
 ProviderId = str
 
-
-# ── Read-only chat turns (#1484) ────────────────────────────────────────────
-# Provider-neutral read-only tool vocabulary for ``chat.read_only_tools`` in role
-# files, mapped to Claude Code tool names. One table serves the adapter and the
-# role validator (DRY). Anything not listed here is not read-only by definition.
-CHAT_READ_ONLY_TOOLS: dict[str, tuple[str, ...]] = {
-    "view_file": ("Read",),
-    "search_code": ("Grep", "Glob"),
-    "list_files": ("Glob",),
-    "web_fetch": ("WebFetch",),
-    "web_search": ("WebSearch",),
-}
-# Always denied on Claude chat turns, whatever the host's settings allow.
-CLAUDE_WRITE_TOOLS: tuple[str, ...] = ("Edit", "Write", "MultiEdit", "NotebookEdit")
-# The explicit read-only flag each chat-capable provider gets on every turn.
-_CHAT_READ_ONLY_FLAGS: dict[str, tuple[str, ...]] = {
-    "claude": ("--permission-mode", "default"),
-    "claude-ollama": ("--permission-mode", "default"),
-    "codex": ("--sandbox", "read-only"),
-    "ollama": ("--sandbox", "read-only"),
-    "antigravity": ("--mode", "plan"),
-    "gemini": ("--approval-mode", "plan"),
-    "cursor-agent": ("--mode", "ask"),
-}
-# Flags and flag values that switch a CLI's permission checks off. No staff argv,
-# unattended or chat, may contain one (#1586).
-PERMISSION_BYPASS_FLAGS = frozenset(
-    {
-        "--dangerously-bypass-approvals-and-sandbox",
-        "--dangerously-skip-permissions",
-        "--allow-dangerously-skip-permissions",
-        "bypassPermissions",
-        "danger-full-access",
-        "--force",
-        "--yolo",
-        "yolo",
-    }
-)
-# Chat turns are read-only, so they also never trust a workspace or auto-confirm.
-_CHAT_BYPASS_FLAGS = PERMISSION_BYPASS_FLAGS | {"--trust", "-y"}
-
-
-# ── Unattended runs (#1586) ─────────────────────────────────────────────────
-# Shell command prefixes an unattended run may execute without a prompt. One
-# table, rendered per provider (Claude tool rules, Gemini policy). Playbooks use
-# curl for the local dashboard API and `git push --force-with-lease` on their
-# own branches, so neither is denied here.
-UNATTENDED_SHELL_ALLOW: tuple[str, ...] = (
-    "git",
-    "gh",
-    "python",
-    "python3",
-    "pytest",
-    "ruff",
-    "black",
-    "mypy",
-    "pre-commit",
-    "uv",
-    "pip",
-    "npm",
-    "npx",
-    "node",
-    "tsc",
-    "make",
-    "curl",
-    "ls",
-    "cat",
-    "head",
-    "tail",
-    "grep",
-    "rg",
-    "find",
-    "wc",
-    "sort",
-    "diff",
-    "mkdir",
-    "cp",
-    "mv",
-    "echo",
-    "sed",
-    "jq",
-)
-# Always refused, whatever the allow-list says.
-UNATTENDED_SHELL_DENY: tuple[str, ...] = (
-    "sudo",
-    "su",
-    "gh repo delete",
-    "gh secret",
-    "gh auth",
-    "gh pr merge --admin",
-    "systemctl",
-    "shutdown",
-    "reboot",
-)
-# Claude tools an unattended run may use besides the allow-listed shell commands.
-_CLAUDE_UNATTENDED_TOOLS: tuple[str, ...] = (
-    "Read",
-    "Grep",
-    "Glob",
-    "Edit",
-    "Write",
-    "MultiEdit",
-    "NotebookEdit",
-    "TodoWrite",
-    "Task",
-    "WebFetch",
-    "WebSearch",
-)
-
-
-class ChatReadOnlyUnsupportedError(RuntimeError):
-    """The provider has no known read-only mode, so a chat turn must not run on it."""
-
-
-class UnattendedUnsupportedError(RuntimeError):
-    """The provider cannot run unattended without bypassing its permissions (#1586)."""
-
-
-def claude_unattended_tools() -> tuple[str, str]:
-    """``(--allowedTools, --disallowedTools)`` values for an unattended Claude run.
-
-    Post: every shell rule is a ``Bash(<prefix>:*)`` rule; the bare ``Bash`` tool
-    is never allowed, so an unlisted command is refused, not prompted.
-    """
-    allowed = [*_CLAUDE_UNATTENDED_TOOLS, *(f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_ALLOW)]
-    denied = [f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_DENY]
-    return ",".join(allowed), ",".join(denied)
-
-
-def _toml_list(items: Sequence[str]) -> str:
-    return "[" + ", ".join(json.dumps(item) for item in items) + "]"
-
-
-def gemini_policy_toml() -> str:
-    """Gemini CLI policy for unattended runs: allow the shared list, deny above it.
-
-    Headless Gemini treats anything that would ask as a deny, so commands on
-    neither list are refused.
-    """
-    return (
-        "# Generated by Runner_Dashboard backend/staff/adapters.py (#1586). Do not edit.\n"
-        "[[rule]]\n"
-        'toolName = "run_shell_command"\n'
-        f"commandPrefix = {_toml_list(UNATTENDED_SHELL_ALLOW)}\n"
-        'decision = "allow"\n'
-        "priority = 100\n\n"
-        "[[rule]]\n"
-        'toolName = "run_shell_command"\n'
-        f"commandPrefix = {_toml_list(UNATTENDED_SHELL_DENY)}\n"
-        'decision = "deny"\n'
-        "priority = 200\n"
-    )
-
-
-def claude_allowed_tools(read_only_tools: Sequence[str]) -> list[str]:
-    """Map provider-neutral read-only tool names to Claude tool names, in order.
-
-    Pre: every name is a key of :data:`CHAT_READ_ONLY_TOOLS` (``ValueError`` otherwise).
-    Post: no duplicates; never contains a :data:`CLAUDE_WRITE_TOOLS` entry.
-    """
-    unknown = [name for name in read_only_tools if name not in CHAT_READ_ONLY_TOOLS]
-    if unknown:
-        raise ValueError(f"not read-only chat tools: {unknown}; known: {sorted(CHAT_READ_ONLY_TOOLS)}")
-    out: list[str] = []
-    for name in read_only_tools:
-        out.extend(tool for tool in CHAT_READ_ONLY_TOOLS[name] if tool not in out)
-    return out
+__all__ = [
+    "ADAPTERS",
+    "CHAT_READ_ONLY_TOOLS",
+    "CLAUDE_WRITE_TOOLS",
+    "ChatReadOnlyUnsupportedError",
+    "PERMISSION_BYPASS_FLAGS",
+    "ProviderAdapter",
+    "ProviderId",
+    "UNATTENDED_SHELL_ALLOW",
+    "UNATTENDED_SHELL_DENY",
+    "UnattendedUnsupportedError",
+    "_CHAT_BYPASS_FLAGS",
+    "_CHAT_READ_ONLY_FLAGS",
+    "claude_allowed_tools",
+    "claude_unattended_tools",
+    "gemini_policy_toml",
+]
 
 
 @dataclass(frozen=True)
