@@ -1,4 +1,51 @@
-# Current handoff — Staff Console development-log reconciliation after the 2026-09-26 merges
+# Current handoff — SC-G5-6 Retire legacy dispatch forms and endpoints (#1503)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1503`; branch `chore/1503-retire-legacy-dispatch`; PR: to be opened; Issue #1503; epic SC-G5 #1337; DL-#1503.
+
+## Objective and Status
+
+- Retired the obsolete QuickDispatch interface (popover, schemas, styles, and client route `/work/quick-dispatch`, `/quick-dispatch`, `/t/quick-dispatch`) and Jules remediation dispatch (helper `remediationJules.ts`, Run button on RemediationTab, and route).
+- Handled legacy backend endpoints with explicit HTTP 410 Gone responses:
+  - `POST /api/agents/quick-dispatch`
+  - `POST /api/agent-remediation/dispatch-jules`
+    Both provide standard `Link: </api/v1/staff/requests>; rel="successor-version"` and `Sunset` headers and point callers to the Staff Request API (`/api/v1/staff/requests`).
+- Frontend routing redirects all legacy dispatch paths (`/work/quick-dispatch`, `/quick-dispatch`, `/t/quick-dispatch`) to `/` (Staff Console).
+- Modularized router architecture:
+  - Created `backend/routers/remediation_retired.py` (60 LOC) for 410 Gone endpoints.
+  - Extracted `backend/routers/remediation_bulk.py` (104 LOC) for bulk PR/issue dispatch endpoints.
+  - Reduced `backend/routers/remediation.py` from 654 LOC to 396 LOC, ensuring all modules strictly adhere to the <= 500 LOC requirement.
+- Cleaned up obsolete tests (`test_dispatch_backpressure.py`, `QuickDispatch.test.tsx`, `remediationJules.test.ts`, `dispatch.test.ts`) and updated `tests/frontend/test_badge_pill_primitives.py`.
+- Added comprehensive TDD tests:
+  - `tests/test_legacy_dispatch_retirement.py`
+  - `frontend/src/shell/__tests__/retiredLegacyDispatch.test.ts`
+- Regenerated OpenAPI schema (`frontend/src/lib/openapi.json`) and TypeScript client types (`frontend/src/lib/api-types.ts`) via `scripts/gen-api-client.sh`.
+
+## Validation
+
+- `pytest tests/test_legacy_dispatch_retirement.py tests/test_quick_dispatch.py tests/frontend/test_badge_pill_primitives.py`: 45 passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 errors, 0 warnings).
+- `npx vitest run`: 166 test files passed, 1,410 tests passed.
+- `py -3.12 -m ruff check backend/ tests/`: clean.
+- `py -3.12 -m ruff format --check backend/ tests/`: clean.
+- `py -3.12 -m mypy backend/routers/remediation.py backend/routers/remediation_bulk.py backend/routers/remediation_retired.py tests/test_legacy_dispatch_retirement.py`: clean (0 issues).
+- `scripts/gen-api-client.sh --check`: passed (schema & client types up to date).
+- Strict <= 500 LOC gate verified on all authored and modified files.
+
+## Next Steps
+
+1. Commit and push branch `chore/1503-retire-legacy-dispatch`.
+2. Open PR using `gh pr create` with proof that no internal consumers remain for retired endpoints.
+3. Enable auto-merge (`--squash --auto`).
+4. Monitor CI until merged; verify issue #1503 and epic #1337 closure.
+
+---
+
+# Past handoff — Staff Console development-log reconciliation after the 2026-09-26 merges
 
 Last updated: 2026-09-26
 
@@ -725,7 +772,7 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Owner review: decide whether `STAFF_REPOS_ROOT` should *replace* the default roots instead of prepending to them in production.
+1. Owner review: decide whether `STAFF_REPOS_ROOT` should _replace_ the default roots instead of prepending to them in production.
 2. Address any CI feedback on the draft PR.
 3. Mark the PR ready for review and arm auto-merge once approved.
 
@@ -741,7 +788,7 @@ Last updated: 2026-09-25
 
 ## Objective and Status
 
-- One dispatch form, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, posts to `POST /api/v1/staff/requests` (`submitStaffRequest`). It replaces `Staff/Assign.tsx` (deleted) in the Staff *Assign* section and the Fleet Command Dispatch panel.
+- One dispatch form, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, posts to `POST /api/v1/staff/requests` (`submitStaffRequest`). It replaces `Staff/Assign.tsx` (deleted) in the Staff _Assign_ section and the Fleet Command Dispatch panel.
 - First cut by antigravity. The claude review rework:
   - Offers only the kinds the backend accepts (`Staff/requestKinds.ts`, today `staff.dispatch`); the first cut also listed five kinds the backend rejects.
   - Shows `approval_required` (202) instead of dropping it.

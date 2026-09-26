@@ -56,7 +56,6 @@ export default defineConfig({
           normalizedId.includes('/frontend/src/pages/RemediationPRs') ||
           normalizedId.includes('/frontend/src/pages/RemediationIssues') ||
           normalizedId.includes('/frontend/src/pages/remediationDispatch') ||
-          normalizedId.includes('/frontend/src/lib/remediationJules') ||
           normalizedId.includes('/frontend/src/lib/providerModels')
         ) {
           return 'remediation'

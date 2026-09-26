@@ -216,6 +216,12 @@ def test_push_settings_consumes_empty_state_and_touch_button() -> None:
     assert "style={{" not in source
 
 
+def test_quick_dispatch_is_retired() -> None:
+    """SC-G5-6 (issue #1503): QuickDispatch popover has been deleted."""
+    assert not (SRC_DIR / "pages" / "QuickDispatch.tsx").exists()
+
+
+
 def test_density_toggle_consumes_touch_button_and_scoped_styles() -> None:
     """Issue #834 migration: DensityToggle should use shared primitives."""
     source = _read(SRC_DIR / "components" / "DensityToggle.tsx")

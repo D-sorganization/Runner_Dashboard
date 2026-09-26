@@ -254,7 +254,9 @@ export interface paths {
         put?: never;
         /**
          * Dispatch Jules Workflow
-         * @description Dispatch one of this repo's agent workflows via workflow_dispatch.
+         * @description Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.
+         *
+         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
          */
         post: operations["dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post"];
         delete?: never;
@@ -354,7 +356,9 @@ export interface paths {
         put?: never;
         /**
          * Api Quick Dispatch
-         * @description Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.
+         * @description Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.
+         *
+         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
          */
         post: operations["api_quick_dispatch_api_agents_quick_dispatch_post"];
         delete?: never;
@@ -9172,14 +9176,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
                 };
             };
         };
@@ -9282,7 +9284,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
