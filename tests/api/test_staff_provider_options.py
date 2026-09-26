@@ -20,7 +20,7 @@ def test_cursor_agent_runs_unattended_with_stream_json() -> None:
     argv = adapters_mod.ADAPTERS["cursor-agent"].build_command("fix it", "/tmp/wt", model="grok-4.7-high")
     assert argv[:3] == ["cursor-agent", "-p", "fix it"]
     assert argv[argv.index("--output-format") + 1] == "stream-json"
-    assert "--force" in argv and "--trust" in argv
+    assert "--force" not in argv and "--trust" in argv  # sandboxed, never forced (#1586)
     assert argv[argv.index("--workspace") + 1] == "/tmp/wt"
     assert argv[-2:] == ["--model", "grok-4.7-high"]
 
@@ -69,7 +69,7 @@ def test_claude_ollama_uses_its_own_config_dir(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     adapter = adapters_mod.ADAPTERS["claude-ollama"]
     argv = adapter.build_command("fix it", "/tmp/wt", model=None)
-    assert argv[0] == "claude" and argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
+    assert argv[0] == "claude" and argv[argv.index("--permission-mode") + 1] == "dontAsk"
     assert argv[-2:] == ["--model", ollama_env.DEFAULT_OLLAMA_MODEL]
     env = adapter.runtime_env()
     assert env["ANTHROPIC_BASE_URL"] == "http://10.0.0.1:11434"

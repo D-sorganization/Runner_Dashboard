@@ -168,6 +168,7 @@ async def stream_turn_output(
     t_first_token: float | None = None
     captured_session_id: str | None = None
     result_text = ""
+    chat_json = getattr(adapter, "chat_json", adapter.json_lines)  # codex chats are plain text (#1586)
 
     async for line in reader.stream_lines():
         stdout_text.append(line)
@@ -178,7 +179,7 @@ async def stream_turn_output(
             captured_session_id = detected_sid
 
         delta = event.get("text", "")
-        if adapter.json_lines and event.get("kind") == "result":
+        if chat_json and event.get("kind") == "result":
             # The result event repeats the whole reply; stream it only when nothing was streamed before.
             result_text = delta
             if deltas:
@@ -197,5 +198,5 @@ async def stream_turn_output(
         t_first_token=t_first_token,
         deltas=deltas,
         result_text=result_text,
-        json_lines=adapter.json_lines,
+        json_lines=chat_json,
     )

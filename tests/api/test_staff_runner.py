@@ -222,7 +222,7 @@ def test_build_command_substitutes_and_drops_empty_model_flag() -> None:
         "--model",
         "sonnet",
     ]  # role model "default" never falls through to the CLI's own default
-    assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"  # allow-listed, never bypassed (#1586)
     assert "do the thing" in argv
     codex = adapters_mod.ADAPTERS["codex"]
     assert "--model" not in codex.build_command("x", "/tmp/wt", model=None)
@@ -253,8 +253,8 @@ def test_parse_line_json_text_and_usage() -> None:
     assert ev["usage"] == {"input_tokens": 5, "output_tokens": 7, "cost_usd": 0.5}
     assert claude.parse_line("not json") == {"kind": "text", "text": "not json"}
     assert claude.parse_line("{broken") == {"kind": "text", "text": "{broken"}
-    codex = adapters_mod.ADAPTERS["codex"]
-    assert codex.parse_line('{"type": "x"}')["kind"] == "text"  # plain-text provider never parses
+    maxwell = adapters_mod.ADAPTERS["maxwell"]
+    assert maxwell.parse_line('{"type": "x"}')["kind"] == "text"  # plain-text provider never parses
 
 
 @pytest.mark.unit

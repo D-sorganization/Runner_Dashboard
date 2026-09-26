@@ -79,6 +79,42 @@ def staff_worktrees_root() -> Path:
     return base / "_staff_worktrees"
 
 
+def git_common_dir(worktree: Path) -> Path:
+    """Absolute git common dir of ``worktree`` (where a linked worktree's commits land).
+
+    Post: returns ``worktree`` itself when it is not inside a git repository, so a
+    sandbox scoped to the result never widens beyond the run's own directory.
+    """
+    try:
+        proc = subprocess.run(  # noqa: S603
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],  # noqa: S607
+            cwd=str(worktree),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return worktree
+    out = proc.stdout.strip()
+    return Path(out) if out else worktree
+
+
+def write_policy_file(provider: str, text: str) -> Path:
+    """Write a provider's generated permission policy outside every worktree (#1586).
+
+    Post: ``<staff worktrees root>/.policies/<provider>.toml`` holds exactly
+    ``text``; it sits outside the run's checkout so no agent can commit it.
+    """
+    path = staff_worktrees_root() / ".policies" / f"{provider}.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file() or path.read_text(encoding="utf-8") != text:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    return path
+
+
 def find_repo_checkout(repo: str) -> Path | None:
     for root in repos_roots():
         cand = root / repo
