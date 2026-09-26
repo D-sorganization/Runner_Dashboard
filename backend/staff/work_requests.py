@@ -79,6 +79,8 @@ class WorkRequest(BaseModel):
     prompt: str = Field(default="", max_length=20000)
     dry_run: bool = False
     profile_id: str | None = None
+    force: bool | None = None
+    approved_by: str | None = None
 
 
 class RequestRejectedError(ValueError):
@@ -167,6 +169,8 @@ def _issue_act_params(req: WorkRequest) -> dict[str, Any]:
         "prompt": req.prompt,
         "role": req.role,
         "machine": req.machine,
+        "force": req.force,
+        "approved_by": req.approved_by,
     }
     return {k: v for k, v in params.items() if v not in (None, "", [])}
 
@@ -190,6 +194,8 @@ def _pr_act_params(req: WorkRequest) -> dict[str, Any]:
         "prompt": req.prompt,
         "role": req.role,
         "machine": req.machine,
+        "force": req.force,
+        "approved_by": req.approved_by,
     }
     return {k: v for k, v in params.items() if v not in (None, "", [])}
 
@@ -318,7 +324,19 @@ def submit_request(
         body_md=f"**Request** `{req.kind}`\n\n{req.prompt}".rstrip(),
         meta={"request": req.model_dump()},
     )
-    title = f"[{req.kind}] {req.target.repo or req.role or ''} {req.prompt[:60]}".strip()
+    targets_label = ""
+    if req.target.issues:
+        targets_label = f" #{', #'.join(str(n) for n in req.target.issues)}"
+    elif req.target.issue:
+        targets_label = f" #{req.target.issue}"
+    elif req.target.prs:
+        targets_label = f" PR #{', PR #'.join(str(n) for n in req.target.prs)}"
+    elif req.target.pr:
+        targets_label = f" PR #{req.target.pr}"
+    elif req.target.run_id:
+        targets_label = f" run {req.target.run_id}"
+
+    title = f"[{req.kind}] {req.target.repo or req.role or ''}{targets_label} {req.prompt[:60]}".strip()
     wi = work_items.create_work_item(
         title=title[:200], requested_by=principal, thread_id=thread.id, owner_role=str(params.get("role") or "")
     )

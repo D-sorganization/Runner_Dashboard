@@ -6,7 +6,7 @@
  * Self-contained tab: owns its own data fetch (`GET /api/issues`), discovers
  * available sources via `GET /api/linear/workspaces`, persists its filters to
  * localStorage, supports multi-select with pickability/judgement guards, and a
- * force-dispatch confirmation modal that POSTs to `/api/issues/dispatch`. The
+ * force-dispatch confirmation modal that POSTs to `/api/v1/staff/requests` (kind `issue.act`). The
  * legacy version read no props; the only ambient App state it touched was the
  * signed-in `principal` (used as the dispatch `approved_by`), now threaded in as
  * an explicit `principalName` prop defaulting to "anonymous".
@@ -21,6 +21,8 @@ import {
   issueMatchesFilters,
   type IssueRecord,
 } from "./remediationDispatch";
+import { submitStaffRequest } from "./Staff/staffApi";
+import { buildBulkIssueRequest, formatBulkResponseResult } from "./Remediation/remediationBulkRequest";
 
 export type { IssueRecord, IssueTaxonomy } from "./remediationDispatch";
 
@@ -263,45 +265,29 @@ export function RemediationIssuesSubTab({
 
   function doDispatch(): void {
     const items = selectedItems.map((i) => ({
-      repo: i.repo || i.repository || "",
+      repo: i.repo || i.repository || repoFilter || "",
       number: i.number,
     }));
+    if (!items.length) return;
     setDispatchResult(null);
-    legacyFetch("/api/issues/dispatch", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify({
-        selection: { mode: "list", items },
-        provider: dispatchProvider,
-        prompt: dispatchPrompt,
-        force: forceDispatch,
-        confirmation: { approved_by: principalName || "anonymous" },
-      }),
-    })
-      .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
-      .then((result) => {
-        if (result.ok) {
-          setDispatchResult({
-            type: "success",
-            text: "Dispatched " + items.length + " issue(s) successfully.",
-          });
+    const req = buildBulkIssueRequest(items, {
+      provider: dispatchProvider,
+      prompt: dispatchPrompt,
+      force: forceDispatch,
+      approved_by: principalName || "anonymous",
+    });
+    submitStaffRequest(req)
+      .then((resp) => {
+        const outcome = formatBulkResponseResult(resp, items.length, "issue");
+        setDispatchResult(outcome);
+        if (outcome.type === "success" || (resp.result && (resp.result as { accepted?: number }).accepted)) {
           setSelected({});
-        } else {
-          setDispatchResult({
-            type: "error",
-            text:
-              "Dispatch failed: " +
-              (result.data.detail || JSON.stringify(result.data)),
-          });
         }
         setShowModal(false);
         setForceDispatch(false);
       })
       .catch((err: Error) => {
-        setDispatchResult({ type: "error", text: "Dispatch error: " + err.message });
+        setDispatchResult({ type: "error", text: "Dispatch error: " + (err.message || String(err)) });
         setShowModal(false);
       });
   }
