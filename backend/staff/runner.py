@@ -385,8 +385,9 @@ class StaffRunner:
                 has_thread=bool(rec.thread_id),
             )
 
+            same_provider = review.is_same_provider_review(rec.prompt)
             if rec.role == "code-reviewer" and rc == 0:
-                review_verdict = review.parse_review_verdict(result_line)
+                review_verdict = review.parse_review_verdict(result_line, same_provider=same_provider)
                 if review_verdict.status == "needs_input":
                     status = "needs_input"
                     failure_class = "needs_input"
@@ -411,7 +412,8 @@ class StaffRunner:
                 cost_usd=float(usage.get("cost_usd", 0.0)),
                 input_tokens=int(usage.get("input_tokens", 0)),
                 output_tokens=int(usage.get("output_tokens", 0)),
-                outcome=review.parse_outcome(result_line) or consolidation.parse_outcome(result_line),
+                outcome=review.parse_outcome(result_line, same_provider=same_provider)
+                or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
             verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
