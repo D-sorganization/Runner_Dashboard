@@ -12,6 +12,7 @@ import { ROSTER_GROUPS } from "./types";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import { Thread } from "./Thread";
 import { Composer } from "./Composer";
+import { GroupCostConfirm } from "./GroupCostConfirm";
 import { ContextPane } from "./ContextPane";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { InboxPanel } from "../Staff/InboxPanel";
@@ -220,6 +221,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             className="staff-mobile__composer-container"
             data-testid="staff-mobile-composer-container"
           >
+            <GroupCostConfirm guard={sc.costGuard} />
             <Composer
               threadId={activeThread.id}
               roles={roles}

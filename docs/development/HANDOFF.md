@@ -1,4 +1,34 @@
-# Current handoff — SC-G7: retire the Classic layout and legacy/App.tsx (#1345)
+# Current handoff — SC-D7: Board group thread UI (#1342)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1342`; PR #1537; DL-#1342; Issue #1342 (SC-D, epic #1350).
+
+## Objective and Status
+
+- Antigravity drafted this (`GroupThread.tsx`, a hardcoded seat price table, inline colours). Claude rewrote it on top of the existing Thread, Composer and ProposalForm. The draft is kept locally as branch `agy-1342-draft-backup` in the `agy-1342` worktree.
+- `groupTurn.ts` (pure): `isGroupThread`/`groupIdOf` mirror the backend's `is_group_thread`. `parseGroupTurn` reads `meta.seat_replies` and drops malformed entries; `consensusMarkdown` and `proposalPrefill` (evidence only) complete the module.
+- `GroupDeliberationCard` is rendered by `MessageItem` for finished group turns; the pending placeholder falls through to the bubble.
+- `useGroupCostGuard` is composed into `useStaffConsole` (`sc.costGuard`). `GroupCostConfirm` renders above the Composer on desktop and mobile.
+- Composer: a send that resolves `{ ok: false }` now fails visibly and keeps the draft. Before, the draft was cleared.
+- `staffApi.errorMessage`: an object `detail` reports its `message`.
+- Filed #1540: the backend `collate_consensus` returns canned approval text, and its auto `board.propose` is unreachable from the UI.
+
+## Validation
+
+- vitest `pages/StaffConsole/__tests__`, `StaffConsole/cards` and `pages/__tests__`: 67 files, 523 passed.
+- `tsc -p tsconfig.app.json` and eslint on the changed files are clean.
+- `tests/frontend`, `test_frontend_integrity.py`, `test_staff_console_design_spec.py`, `test_frontend_perf_budget.py`: 186 passed, 1 xfailed.
+
+## Next Steps
+
+1. Merge PR #1537, then take #1540 (backend consensus synthesis).
+
+---
+
+# Past handoff — SC-G7: retire the Classic layout and legacy/App.tsx (#1345)
 
 Last updated: 2026-09-25
 

@@ -7,6 +7,8 @@ import React from "react";
 import type { ThreadMessage } from "./threadTypes";
 import { ThreadMarkdown } from "./threadMarkdown";
 import { formatMessageTime } from "./threadUtils";
+import { GroupDeliberationCard } from "./GroupDeliberationCard";
+import { parseGroupTurn } from "./groupTurn";
 import {
   ActionCard,
   type ActionProposalData,
@@ -151,6 +153,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           review={review}
         />
       );
+    }
+
+    // 6. Board group turn (SC-D7, #1342); the pending placeholder falls through to the bubble.
+    const groupTurn = parseGroupTurn(message);
+    if (groupTurn) {
+      return <GroupDeliberationCard message={message} turn={groupTurn} />;
     }
 
     // Default: Chat Bubble with Markdown or Plain Text

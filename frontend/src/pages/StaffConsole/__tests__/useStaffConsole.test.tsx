@@ -21,6 +21,7 @@ vi.mock("../../Staff/staffApi", async (importOriginal) => ({
   ...api,
 }));
 
+import { ApiClientError } from "../../../lib/api";
 import { useStaffConsole } from "../useStaffConsole";
 
 const ROLES: StaffRoleItem[] = [
@@ -150,6 +151,27 @@ describe("useStaffConsole", () => {
 
     expect(outcome).toEqual({ ok: false, error: "500 Internal Server Error" });
     expect(result.current.error).toEqual({ kind: "send", message: "500 Internal Server Error" });
+  });
+
+  it("reports a structured API refusal by its message, not [object Object] (SC-D7 cost guard)", async () => {
+    const detail = { code: "group_cost_guard_threshold_exceeded", message: "Estimated group turn cost $0.84 exceeds threshold $0.50." };
+    api.postThreadMessage.mockRejectedValue(
+      new ApiClientError(400, detail as unknown as string, "/api/v1/staff/threads/thr_real_123/messages"),
+    );
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false }),
+    );
+    await act(async () => {
+      await result.current.openRole("maintenance");
+    });
+
+    let outcome: { ok: boolean; error?: unknown } | undefined;
+    await act(async () => {
+      outcome = await result.current.sendMessage({ body: "hi", idempotencyKey: "k-4" });
+    });
+
+    expect(outcome).toEqual({ ok: false, error: detail.message });
+    expect(result.current.error).toEqual({ kind: "send", message: detail.message });
   });
 
   it("refuses to send without an open thread", async () => {
