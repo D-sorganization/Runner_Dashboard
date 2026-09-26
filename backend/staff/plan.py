@@ -29,6 +29,7 @@ class RunRequest:
     work_item_id: str = ""
     # PR-consolidation decision from ``staff.consolidation.decide`` (#1213); None when not applicable.
     consolidation: dict[str, Any] | None = None
+    origin_node: str = ""
 
     @property
     def target_kind(self) -> str:
@@ -58,6 +59,7 @@ class RunPlan:
     focus: str = ""  # board priorities + directives for this repo (#1239)
     thread_id: str = ""
     work_item_id: str = ""
+    origin_node: str = ""
 
     @property
     def strategy_mode(self) -> str:

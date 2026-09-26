@@ -97,6 +97,7 @@ class RunRecord:
     verification: str = ""
     verification_detail: str = ""
     pr_number: int | None = None
+    origin_node: str = ""
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
@@ -183,6 +184,7 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("verification", "TEXT NOT NULL DEFAULT ''"),
     ("verification_detail", "TEXT NOT NULL DEFAULT ''"),
     ("pr_number", "INTEGER"),
+    ("origin_node", "TEXT NOT NULL DEFAULT ''"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")

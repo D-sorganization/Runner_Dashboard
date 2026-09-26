@@ -33,13 +33,43 @@ Last updated: 2026-09-26
 
 ---
 
-# Current handoff — SC-B1: ADR 0006 staff conversation model (#1299)
+# Current handoff — SC-B1-G5: Cross-node run-card relay (#1488)
 
 Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1299`; branch `docs/1299-staff-conversation-adr`; commit SELF; PR #1495 (opened unarmed for panel review); Issue #1299; DL-#1299.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1488`; branch `feat/1488-cross-node-run-cards`; commit SELF; PR: pending; Issue #1488; DL-#1488.
+
+## Objective and Status
+
+- SC-B1-G5 (#1488): When a staff thread dispatches or forwards a run to a remote peer node, the thread's originating node identity (`origin_node`) and `thread_id` are propagated with the run dispatch request.
+- When the remote node executes the run, `handle_run_status_change` records run cards locally and relays the event back to the originating node via peer API: `POST /api/v1/staff/threads/{thread_id}/relay-card`.
+- The originating node endpoint:
+  1. Validates thread existence (404 Not Found if thread missing).
+  2. Updates run card idempotently in place without duplicating messages (`run_card_id(run.id)`).
+  3. Enforces out-of-order protection: preserves terminal execution status (`completed`, `failed`, `cancelled`) against delayed intermediate updates (e.g. `running`).
+  4. Failure mode: if the home node is unreachable mid-run, the relay error is logged visibly on the executing node while canonical execution continues.
+- Amended ADR 0006 Section 4 with Option A decision and failure semantics.
+- Updated `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`.
+- Test coverage: `tests/unit/test_staff_run_card_relay.py` (5/5 passing).
+
+## Next steps
+
+1. Pass pre-commit checks (ruff check, ruff format --check, black --check, mypy).
+2. Commit, push branch `feat/1488-cross-node-run-cards` to origin.
+3. Open PR with `Fixes #1488`, arm squash auto-merge (`gh pr merge --auto --squash`).
+4. Proceed to SC-B1-G7 (#1490: retention and export policy).
+
+---
+
+# Past handoff — SC-B1: ADR 0006 staff conversation model (#1299)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1299`; branch `docs/1299-staff-conversation-adr`; commit SELF; PR #1495 (merged); Issue #1299; DL-#1299.
 
 ## Objective and Status
 
@@ -50,8 +80,7 @@ Last updated: 2026-09-26
 
 ## Next steps
 
-1. Panel review on #1299 (the issue carries `panel-review` and `judgement:design`); do not auto-merge.
-2. The owner decides #1488 (conversation authority across nodes) and #1490 (retention windows); amend ADR 0006 accordingly.
+1. Shipped in PR #1495 (`d1f3e311`). Owner approved Option A for #1488 and 180-day retention for #1490.
 
 ---
 

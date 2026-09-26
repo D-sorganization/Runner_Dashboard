@@ -57,6 +57,7 @@ class DispatchCommand:
     on_behalf_of: str = ""
     surface: str = "api"
     thread_id: str = ""
+    origin_node: str = ""
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -152,6 +153,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         thread_id=cmd.thread_id,
         work_item_id=cmd.work_item_id,
         consolidation=decision,
+        origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
     )
     try:
         plan = runner.plan(req)
@@ -160,7 +162,12 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     check_rate_limit("dispatches", caller)
     target = await _resolve_target(runner, cmd.machine, plan.provider)
     if target != "local":
-        obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id)
+        obo_hdr = staff_fleet.sign_on_behalf_of(
+            cmd.requested_by,
+            cmd.surface,
+            cmd.thread_id,
+            origin_node=cmd.origin_node or runner.machine,
+        )
         return await _forward(target, cmd, obo_hdr)
     if cmd.dry_run:
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
@@ -175,7 +182,12 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         request_id=rec.id,
         run_id=rec.id,
         outcome="success",
-        detail={"repo": rec.repo, "target_ref": rec.target_ref, "provider": rec.provider, "machine": rec.machine},
+        detail={
+            "repo": rec.repo,
+            "target_ref": rec.target_ref,
+            "provider": rec.provider,
+            "machine": rec.machine,
+        },
         fail_closed=True,
     )
     log.info(

@@ -213,6 +213,7 @@ class StaffRunner:
             max_attempts=max_att,
             thread_id=req.thread_id,
             work_item_id=req.work_item_id,
+            origin_node=getattr(req, "origin_node", "") or "",
         )
         self.store.create_run(rec)
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
