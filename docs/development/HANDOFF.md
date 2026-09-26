@@ -4,7 +4,7 @@ Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1542`; PR: pending; Issue #1542; DL-#1542. Implemented by antigravity.
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1542`; PR #1569; Issue #1542; DL-#1542. Implemented by antigravity.
 
 ## Objective and Status
 
