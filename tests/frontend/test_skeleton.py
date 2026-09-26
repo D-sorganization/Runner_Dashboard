@@ -18,7 +18,6 @@ PRIMITIVES_INDEX = REPO_ROOT / "frontend" / "src" / "primitives" / "index.ts"
 INDEX_CSS = REPO_ROOT / "frontend" / "src" / "index.css"
 
 TARGET_PAGES = (
-    REPO_ROOT / "frontend" / "src" / "pages" / "AgentDispatch.tsx",
     REPO_ROOT / "frontend" / "src" / "pages" / "Fleet" / "Mobile.tsx",
     REPO_ROOT / "frontend" / "src" / "pages" / "LinearSetup.tsx",
 )

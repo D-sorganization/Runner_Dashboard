@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1499 · SC-G5-3: Remediation context buttons open a prefilled request: failed runs, mobile, FAB becomes Ask
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1499
+- **Branch:** `feat/1499-remediation-context-request`
+- **Paths:** `frontend/src/pages/Remediation/remediationPrefill.ts`, `frontend/src/pages/Remediation/Mobile.tsx`, `frontend/src/pages/Remediation/ActionSheet.tsx`, `frontend/src/pages/Remediation/InFlightTile.tsx`, `frontend/src/pages/RemediationPage.tsx`, `frontend/src/pages/RemediationTab.tsx`, `frontend/src/shell/MobileShell.tsx`, `frontend/src/shell/AskSheet.tsx`, `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all Vitest suites passed; `npm run lint` clean; `npm run typecheck` clean; pytest passed; ruff check clean; mypy backend clean; all files <= 500 lines)
+- **Summary:** Replaced remediation dispatch code on run surfaces (`RemediationPage`, `RemediationTab`, `Remediation/Mobile`, `ActionSheet`) with "Fix this failed run" context button prefilling Staff Console composer / Advanced form with kind `ci.remediate`, target repo, run_id, branch, workflow name, and log excerpt. Converted mobile FAB (`MobileShell.tsx`) to Ask (`AskSheet.tsx`) submitting `staff.dispatch`. Preserved provider/model choices and track in-flight work item ID on `InFlightTile`. Retired `AgentDispatch.tsx`, its nav entry and routes, adding redirects to Staff Console (`/`).
+- **Next step:** Push branch, open PR referencing Fixes #1499 with 9-field parity checklist, arm auto-merge, verify CI passes.
+
 ### DL-#1540 · Board consensus reports the seats' positions, not canned approval
 
 - **State:** in_review
@@ -43,7 +55,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 at 7dc5df00 plus this branch (vitest StaffConsole + pages 67 files / 523 passed; `tsc` and eslint clean; frontend static pytest 186 passed)
 - **Summary:** A finished group turn (`meta.is_group_turn` with `seat_replies`) renders as `GroupDeliberationCard`: coordinator summary without the duplicated seat block, collapsed seat replies, silent seats marked with their error, and a Board Proposal form (#1284) prefilled only with the seats' replies. `useGroupCostGuard` asks the backend for its estimate before a group send and holds the Composer's send until the user confirms or cancels. The backend guard stays authoritative. The backend summary itself is canned text (#1540).
 - **Next step:** Merge, then fix the canned Board consensus in #1540.
-
 ### DL-#1516 · WP-1.1: post-run verification of staff runs (report mode)
 
 - **State:** in_review

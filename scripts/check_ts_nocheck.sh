@@ -23,7 +23,7 @@ for arg in "$@"; do
 done
 
 # Count files (not lines) that contain @ts-nocheck anywhere.
-NEW_COUNT=$(grep -rl "@ts-nocheck" frontend/src/ 2>/dev/null | wc -l | tr -d ' ')
+NEW_COUNT=$( (grep -rl "@ts-nocheck" frontend/src/ 2>/dev/null || true) | wc -l | tr -d ' ')
 
 if [ ! -f "$BASELINE_FILE" ]; then
   echo "No baseline found at $BASELINE_FILE; writing initial baseline of $NEW_COUNT"

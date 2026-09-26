@@ -27,6 +27,7 @@ export interface AdvancedDispatchFormProps {
   roster: RosterResponse | null;
   /** Pre-selected role (e.g. from a Roster card's Assign button). */
   initialRole?: string;
+  initialValues?: Partial<WorkRequest>;
   onDispatched: (runId: string) => void;
 }
 
@@ -37,16 +38,20 @@ function parseNumber(value: string): number | null {
   return Number.isInteger(n) && n >= 1 ? n : null;
 }
 
-export function AdvancedDispatchForm({ roster, initialRole, onDispatched }: AdvancedDispatchFormProps) {
+export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDispatched }: AdvancedDispatchFormProps) {
   const roles = useMemo(() => (roster?.roles ?? []).filter((r) => !r.retired && r.dispatchable), [roster]);
-  const [kindId, setKindId] = useState(REQUEST_KINDS[0].id);
-  const [role, setRole] = useState(initialRole ?? "");
-  const [provider, setProvider] = useState("");
-  const [model, setModel] = useState("");
-  const [machine, setMachine] = useState("local");
-  const [repo, setRepo] = useState("");
-  const [numbers, setNumbers] = useState<Record<TargetField, string>>({ issue: "", pr: "", run_id: "" });
-  const [prompt, setPrompt] = useState("");
+  const [kindId, setKindId] = useState(() => initialValues?.kind ?? REQUEST_KINDS[0].id);
+  const [role, setRole] = useState(() => initialRole ?? initialValues?.role ?? "");
+  const [provider, setProvider] = useState(() => initialValues?.provider ?? "");
+  const [model, setModel] = useState(() => initialValues?.model ?? "");
+  const [machine, setMachine] = useState(() => initialValues?.machine ?? "local");
+  const [repo, setRepo] = useState(() => initialValues?.target?.repo ?? "");
+  const [numbers, setNumbers] = useState<Record<TargetField, string>>(() => ({
+    issue: initialValues?.target?.issue != null ? String(initialValues.target.issue) : "",
+    pr: initialValues?.target?.pr != null ? String(initialValues.target.pr) : "",
+    run_id: initialValues?.target?.run_id != null ? String(initialValues.target.run_id) : "",
+  }));
+  const [prompt, setPrompt] = useState(() => initialValues?.prompt ?? "");
   const [preview, setPreview] = useState<StaffDispatchResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,29 +61,53 @@ export function AdvancedDispatchForm({ roster, initialRole, onDispatched }: Adva
     if (initialRole) setRole(initialRole);
   }, [initialRole]);
 
-  // Default to the first role once the roster arrives.
+  useEffect(() => {
+    if (initialValues) {
+      if (initialValues.kind) setKindId(initialValues.kind);
+      if (initialValues.role) setRole(initialValues.role);
+      if (initialValues.provider) setProvider(initialValues.provider);
+      if (initialValues.model) setModel(initialValues.model);
+      if (initialValues.machine) setMachine(initialValues.machine);
+      if (initialValues.target?.repo) setRepo(initialValues.target.repo);
+      if (initialValues.target) {
+        setNumbers({
+          issue: initialValues.target.issue != null ? String(initialValues.target.issue) : "",
+          pr: initialValues.target.pr != null ? String(initialValues.target.pr) : "",
+          run_id: initialValues.target.run_id != null ? String(initialValues.target.run_id) : "",
+        });
+      }
+      if (initialValues.prompt) setPrompt(initialValues.prompt);
+    }
+  }, [initialValues]);
+
+  // Default to the first role once the roster arrives if needed.
   useEffect(() => {
     if (!role && roles.length > 0) setRole(roles[0].name);
   }, [role, roles]);
 
   const kind = REQUEST_KINDS.find((k) => k.id === kindId) ?? REQUEST_KINDS[0];
+  const needsRole = kind.id === "staff.dispatch" || kind.id === "issue.act" || kind.id === "pr.act";
   const spec = roles.find((r) => r.name === role) ?? null;
   const installed = useMemo(() => roster?.providers ?? {}, [roster]);
   const providerOptions = useMemo(() => {
-    const list = spec?.providers ?? [];
-    return [...list].sort((a, b) => Number(Boolean(installed[b])) - Number(Boolean(installed[a])));
-  }, [spec, installed]);
+    const list = needsRole ? (spec?.providers ?? []) : Object.keys(installed);
+    const sorted = [...list].sort((a, b) => Number(Boolean(installed[b])) - Number(Boolean(installed[a])));
+    if (provider && !sorted.includes(provider)) {
+      return [provider, ...sorted];
+    }
+    return sorted;
+  }, [needsRole, spec, installed, provider]);
 
   // Keep the provider inside the role's allowed list.
   useEffect(() => {
     if (providerOptions.length === 0) {
+      if (!needsRole && provider) return;
       setProvider("");
     } else if (!providerOptions.includes(provider)) {
       setProvider(providerOptions[0]);
     }
-  }, [providerOptions, provider]);
+  }, [providerOptions, provider, needsRole]);
 
-  const needsRole = kind.id === "staff.dispatch" || kind.id === "issue.act" || kind.id === "pr.act";
   const hasTarget = prompt.trim().length > 0 || kind.fields.some((f) => parseNumber(numbers[f]) !== null);
   const roleOk = !needsRole || Boolean(spec?.dispatchable);
   const canSubmit = roleOk && hasTarget && busy === null;

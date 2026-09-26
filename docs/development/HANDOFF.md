@@ -1,4 +1,37 @@
-# Current handoff — Board consensus reports the seats' positions (#1540)
+# Current handoff — SC-G5-3: Remediation context buttons open a prefilled request (#1499)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1499`; branch `feat/1499-remediation-context-request`; Issue #1499; DL-#1499; PR #1539.
+
+## Objective and Status
+
+- Scope:
+  1. Replaced remediation dispatch code on run surfaces (`RemediationPage.tsx`, `RemediationTab.tsx`, `Remediation/Mobile.tsx`, `ActionSheet.tsx`) with a "Fix this failed run" context button that opens the Staff Console composer (or Advanced form on desktop) prefilled with kind `ci.remediate`, the target repo, run_id, workflow name, branch, and log excerpt.
+  2. Converted mobile FAB (`shell/MobileShell.tsx`) to **Ask**, opening the composer sheet (`shell/AskSheet.tsx`) targeting kind `staff.dispatch`.
+  3. Preserved provider and model options across run remediation flows and track the in-flight work item ID via `InFlightTile.tsx`.
+  4. Retired `AgentDispatch.tsx`, its routes and navigation items (`shell/navRegistryData.ts`, `shell/routing.ts`, `shell/RoutedShell.tsx`), with redirects to `/`. Deleted `AgentDispatch.tsx` and its test suites.
+- Validation:
+  - Frontend Vitest: all suites passed.
+  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
+  - Typecheck: `npm run typecheck` clean.
+  - Python tests: `tests/test_retired_agent_dispatch.py`, `tests/frontend/test_badge_pill_primitives.py`, `tests/frontend/test_skeleton.py`, `tests/test_frontend_integrity.py` passed.
+  - Ruff: clean check and format.
+  - Mypy: `mypy backend` clean across 279 source files.
+  - Line count cap: every non-legacy touched file strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `feat/1499-remediation-context-request` to `origin`.
+2. Monitor PR #1539 until auto-merge completes.
+3. Release lease for #1499 via `scripts.release_agent_lease`.
+4. Clean up worktree and local/remote branch.
+
+---
+
+# Past handoff — Board consensus reports the seats' positions (#1540)
 
 Last updated: 2026-09-25
 
@@ -11,16 +44,6 @@ Last updated: 2026-09-25
 - `backend/staff/groups.py`: `collate_consensus` used to return "consensus leans toward approving" for every turn, even when no seat answered. It now uses `_positions_md`, which lists each answering seat's position, or "No quorum" when none answered.
 - `_board_proposal` is built only when a seat answered. Its params are `title` and `proposal` (the question plus the positions); the fixed `target_repos`/`urgency`/`estimated_cost` are gone. `execute_board_propose` only ever read `title` and `proposal`.
 - The summary heading is now `### Board Deliberation`. The SC-D7 card (#1342) strips the `<details>` seat block and renders seats from `meta.seat_replies`, so it is unaffected.
-
-## Validation
-
-- `tests/unit/test_staff_group_consensus.py` (new, 4 tests, red before the fix), `tests/unit/test_staff_groups.py`, `tests/api/test_staff_groups_api.py`, `tests/staff`, `tests/unit/test_staff_actions.py`: 279 passed, 14 skipped.
-- ruff check and format, and mypy on `groups.py`, are clean.
-
-## Next Steps
-
-1. PR #1541 is open with auto-merge armed.
-2. Follow-up (not filed yet): have the coordinator role synthesize a recommendation over the positions.
 
 ---
 
@@ -48,9 +71,7 @@ Last updated: 2026-09-25
 - `tsc -p tsconfig.app.json` and eslint on the changed files are clean.
 - `tests/frontend`, `test_frontend_integrity.py`, `test_staff_console_design_spec.py`, `test_frontend_perf_budget.py`: 186 passed, 1 xfailed.
 
-## Next Steps
-
-1. Merge PR #1537, then take #1540 (backend consensus synthesis).
+---
 
 ---
 
@@ -75,10 +96,38 @@ Last updated: 2026-09-25
 - `tests/frontend`, `test_frontend_integrity.py`, `test_today_ui_redesign.py`, `test_no_duplicate_top_level_functions.py`, `test_ci_config.py`, `test_frontend_perf_budget.py`: 222 passed.
 - `tsc` and eslint clean; `npm run build` total JS 1,112,452 → 1,007,689 bytes (entry chunk +0.5 kB for the guards).
 
+---
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1499`; branch `feat/1499-remediation-context-request`; Issue #1499; DL-#1499.
+
+## Objective and Status
+
+- Scope:
+  1. Replaced remediation dispatch code on run surfaces (`RemediationPage.tsx`, `RemediationTab.tsx`, `Remediation/Mobile.tsx`, `ActionSheet.tsx`) with a "Fix this failed run" context button that opens the Staff Console composer (or Advanced form on desktop) prefilled with kind `ci.remediate`, the target repo, run_id, workflow name, branch, and log excerpt.
+  2. Converted mobile FAB (`shell/MobileShell.tsx`) to **Ask**, opening the composer sheet (`shell/AskSheet.tsx`) targeting kind `staff.dispatch`.
+  3. Preserved provider and model options across run remediation flows and track the in-flight work item ID via `InFlightTile.tsx`.
+  4. Retired `AgentDispatch.tsx`, its routes and navigation items (`shell/navRegistryData.ts`, `shell/routing.ts`, `shell/RoutedShell.tsx`, `legacy/App.tsx`), with redirects to `/`. Deleted `AgentDispatch.tsx` and its test suites.
+- Validation:
+  - Frontend Vitest: all suites passed (149 passed across all touched modules).
+  - ESLint: `npm run lint` clean (0 errors, 0 warnings).
+  - Typecheck: `npm run typecheck` clean.
+  - Python tests: `tests/test_retired_agent_dispatch.py`, `tests/frontend/test_badge_pill_primitives.py`, `tests/frontend/test_skeleton.py` 39/39 passed.
+  - Ruff: clean check and format.
+  - Mypy: `mypy backend` clean across 279 source files.
+  - Line count cap: every non-legacy touched file strictly $\le 500$ lines.
+
 ## Next Steps
 
-1. Open the PR and arm it.
-2. SC-G8 (#1346) deletes the modules left unmounted here (`AssistantSidebar`, `DashboardHelp`, `AlertsCenter`, `QuickDispatch`). The owner should confirm the assistant sidebar is not wanted in the modern shell first.
+1. Push branch `feat/1499-remediation-context-request` to `origin`.
+2. Open PR with `Fixes #1499`, label `agent:antigravity`, and 9-field parity checklist in body.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until merged.
+5. Release lease for #1499 via `scripts.release_agent_lease`.
+6. Clean up worktree and local/remote branch.
 
 ---
 
@@ -88,7 +137,7 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1497`; branch `feat/1497-work-request-kinds`; Issue #1497; DL-#1497.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1497-work-request-kinds`; Issue #1497; DL-#1497.
 
 ## Objective and Status
 
@@ -107,15 +156,6 @@ Last updated: 2026-09-25
   - Ruff check & format clean on modified files.
   - Mypy: `mypy backend` clean across 278 files.
   - Line count limits: all touched files strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push branch `feat/1497-work-request-kinds` to `origin`.
-2. Open PR with `Fixes #1497` and label `agent:antigravity`.
-3. Arm auto-merge (`gh pr merge --squash --auto`).
-4. Monitor CI until merged.
-5. Release lease for #1497 via `scripts.release_agent_lease`.
-6. Clean up worktree and local/remote branch.
 
 ---
 

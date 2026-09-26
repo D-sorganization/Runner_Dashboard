@@ -147,12 +147,12 @@ describe("RemediationTab — automations view", () => {
     // Selected run with no accepting plan -> disabled.
     const blocked = baseProps({ selectedRunId: "4242", plan: { decision: { accepted: false } } });
     const { unmount } = render(<RemediationTab {...blocked} />);
-    expect(screen.getByText("Dispatch").closest("button")).toBeDisabled();
+    expect(screen.getByText("Fix this failed run").closest("button")).toBeDisabled();
     unmount();
 
     const allowed = baseProps({ selectedRunId: "4242", plan: { decision: { accepted: true } } });
     render(<RemediationTab {...allowed} />);
-    const dispatchBtn = screen.getByText("Dispatch").closest("button")!;
+    const dispatchBtn = screen.getByText("Fix this failed run").closest("button")!;
     expect(dispatchBtn).not.toBeDisabled();
     fireEvent.click(dispatchBtn);
     expect(allowed.onDispatch).toHaveBeenCalledWith(
@@ -317,7 +317,7 @@ describe("RemediationTab — mobile action sheet", () => {
     expect(sheet).toBeInTheDocument();
     expect(props.setSelectedRunId).toHaveBeenCalledWith("4242");
     // Dispatch button label includes the recommended provider.
-    fireEvent.click(within(sheet).getByText(/^Dispatch /));
+    fireEvent.click(within(sheet).getByText(/^Fix this failed run/));
     expect(props.onDispatch).toHaveBeenCalledWith(
       expect.objectContaining({ id: 4242 }),
     );

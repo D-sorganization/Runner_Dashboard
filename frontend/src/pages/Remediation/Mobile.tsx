@@ -7,6 +7,8 @@ import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance"
 
 import { ActionSheet } from "./ActionSheet";
 import { AutomationsList, IssuesList, PRsList } from "./RemediationLists";
+import { buildPrefilledRemediationRequest } from "./remediationPrefill";
+import { errorMessage, submitStaffRequest } from "../Staff/staffApi";
 import type {
   ActionSheetItem,
   AgentProvider,
@@ -108,37 +110,26 @@ export function RemediationMobile({
   }, [fetchData]);
 
   const handleDispatch = useCallback(
-    async (providerId: string) => {
+    async (providerId: string, model?: string) => {
       if (!actionSheetItem) return;
       setDispatching(true);
       try {
-        const payload = {
-          repository: actionSheetItem.repository,
-          workflow_name: actionSheetItem.workflowName ?? "unknown",
-          branch: actionSheetItem.branch ?? "main",
-          failure_reason: `Mobile dispatch for ${actionSheetItem.title}`,
-          log_excerpt: `Dispatched via mobile remediation flow. Item ID: ${actionSheetItem.id}`,
-          run_id: actionSheetItem.runId,
-          provider: providerId,
-          dispatch_origin: "manual",
-        };
-
-        const resp = await fetch("/api/agent-remediation/dispatch", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
+        const req = buildPrefilledRemediationRequest(
+          {
+            id: actionSheetItem.runId ?? actionSheetItem.id,
+            repository: { name: actionSheetItem.repository },
+            workflow_name: actionSheetItem.workflowName,
+            head_branch: actionSheetItem.branch,
+            failure_reason: `Mobile remediation for ${actionSheetItem.title}`,
+            log_excerpt: `Dispatched via mobile remediation flow. Item ID: ${actionSheetItem.id}`,
           },
-          body: JSON.stringify(payload),
-        });
+          { provider: providerId, model: model || null },
+        );
 
-        const data = await resp.json();
-        if (!resp.ok) {
-          throw new Error(data.detail ?? `Dispatch failed: HTTP ${resp.status}`);
-        }
+        const resp = await submitStaffRequest(req);
 
         const inflight: InFlightDispatch = {
-          id: `${actionSheetItem.id}-${Date.now()}`,
+          id: resp.work_item_id || `${actionSheetItem.id}-${Date.now()}`,
           itemId: actionSheetItem.id,
           itemTitle: actionSheetItem.title,
           provider: providerId,
@@ -147,19 +138,19 @@ export function RemediationMobile({
           startedAt: Date.now(),
           lastHeartbeat: Date.now(),
           status: "dispatched",
-          fingerprint: data.fingerprint,
+          workItemId: resp.work_item_id,
+          model: model || null,
         };
         onAddInFlight(inflight);
 
         showToast(
-          data.note ??
-            `Dispatched ${getProviderLabel(providers, providerId)} for ${actionSheetItem.title}`,
-          { variant: "success", title: "Dispatch submitted" },
+          `Dispatch submitted for ${actionSheetItem.title} (${getProviderLabel(providers, providerId)}). Waiting for agent heartbeat.`,
+          { variant: "success", title: "Remediation submitted" },
         );
         setActionSheetItem(null);
       } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : "Dispatch failed";
-        showToast(message, { variant: "error", title: "Dispatch failed" });
+        const message = errorMessage(e);
+        showToast(message, { variant: "error", title: "Remediation failed" });
       } finally {
         setDispatching(false);
       }

@@ -732,7 +732,7 @@ def test_remediation_desktop_route_bypasses_legacy_app() -> None:
     assert 'getJson("/api/agent-remediation/history"' in remediation_page
     assert 'legacyFetch("/api/agent-remediation/config"' in remediation_page
     assert 'legacyFetch("/api/agent-remediation/plan"' in remediation_page
-    assert 'legacyFetch("/api/agent-remediation/dispatch"' in remediation_page
+    assert "buildPrefilledRemediationUrl" in remediation_page
     assert "export function RemediationPage" in remediation_page
     assert "return 'remediation'" in vite_config
 
