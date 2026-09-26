@@ -1,22 +1,22 @@
-# Current handoff — SC-B1: ADR 0006 staff conversation model (#1299)
+# Current handoff — Test isolation: handle missing proxy_utils in conftest (#1584)
 
 Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1299`; branch `docs/1299-staff-conversation-adr`; commit SELF; PR #1495 (opened unarmed for panel review); Issue #1299; DL-#1299.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1299`; branch `fix/conftest-proxy-utils-import`; PR #1584; DL-#1577.
 
 ## Objective and Status
 
-- SC-B2, B4, B5, B6 and B7 all shipped without the SC-B1 ADR, so `docs/adr/0006-staff-conversation-model.md` is a retroactive record of the model as built: entities and storage, chat turn vs work run, per-provider session resume, node-local state, privacy and retention, read-only enforcement, reply contract, failure-mode table and HTTP surface.
-- The old assistant design docs (#88, #89) are marked superseded; the ADR index lists 0006.
-- Gaps between the code and the model are filed as #1484–#1494 with tier labels (strong: #1484–#1490; cli: #1491–#1494). All mechanical/security gaps (#1484, #1485, #1486, #1487, #1489, #1491, #1492, #1493, #1494) have shipped.
-- Validation: docs only; every cited path checked with `git ls-files`.
+- When running minimal test environments (such as `.github/workflows/architecture-map-contract.yml`) that do not install `fastapi`, the autouse `_no_hub_proxy` fixture in `tests/conftest.py` failed with `ModuleNotFoundError: No module named 'fastapi'`.
+- Wrapped `import proxy_utils` with `try ... except ImportError: return` so tests in minimal environments proceed cleanly without web dependencies.
+- Cleaned stale merge conflict prefixes in `SPEC.md` and added change log entry for #1584.
+- Validation: `pytest tests/test_architecture_map_contract.py -v` (4 passed); all pre-push hooks green.
 
 ## Next steps
 
-1. Panel review on #1299 (the issue carries `panel-review` and `judgement:design`); do not auto-merge.
-2. The owner decides #1488 (conversation authority across nodes) and #1490 (retention windows); amend ADR 0006 accordingly.
+- Merge PR #1584 via auto-merge once CI passes.
+- Proceed to implement owner decision on SC-B1-G5 (#1488, Option A: relay run-card events across peer nodes) and SC-B1-G7 (#1490, 180-day retention).
 
 ---
 
