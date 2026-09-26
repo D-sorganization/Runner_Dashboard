@@ -1,22 +1,18 @@
 """Verify there are no duplicate top-level function declarations.
 
-Two guards:
-
-1. ``legacy/App.tsx`` has no duplicate top-level ``function <Name>``.
-2. ``backend/**/*.py`` has no *body-identical* twin of a top-level function
-   defined in another module — the copy-paste-drift pattern called out in
-   issue #941. Same-named twins drift independently: a fix lands in one copy and
-   not the runtime one (the proxy_to_hub credential leak was exactly this). The
-   ``server.py`` wiring module is held to a stricter rule: it must contain no
-   function body-identical to any other backend module (it is a wiring layer,
-   not a home for logic).
+Guard: ``backend/**/*.py`` has no *body-identical* twin of a top-level function
+defined in another module — the copy-paste-drift pattern called out in issue
+#941. Same-named twins drift independently: a fix lands in one copy and not the
+runtime one (the proxy_to_hub credential leak was exactly this). The ``server.py``
+wiring module is held to a stricter rule: it must contain no function
+body-identical to any other backend module (it is a wiring layer, not a home for
+logic). The legacy/App.tsx guard went with that file (#1345).
 """
 
 from __future__ import annotations
 
 import ast
 import hashlib
-import re
 from pathlib import Path
 
 _BACKEND = Path(__file__).parent.parent / "backend"
@@ -102,27 +98,3 @@ def test_no_new_body_identical_backend_duplicates() -> None:
         "New body-identical cross-module duplicates (extract to a shared module, "
         "or add to the allowlist with a tracking issue):\n" + "\n".join(sorted(offenders))
     )
-
-
-def test_no_duplicate_top_level_functions_in_legacy() -> None:
-    """Every top-level ``function <Name>(...)`` must appear exactly once."""
-    src = Path(__file__).parent.parent / "frontend" / "src" / "legacy" / "App.tsx"
-    assert src.exists(), f"Source file not found: {src}"
-
-    content = src.read_text(encoding="utf-8")
-
-    # Match line-anchored function declarations (not inside block comments)
-    # Use MULTILINE so ^ matches start of each line.
-    pattern = re.compile(r"^function (\w+)\b", re.MULTILINE)
-
-    names: list[str] = pattern.findall(content)
-
-    # Build a set of duplicates
-    seen: set[str] = set()
-    duplicates: set[str] = set()
-    for n in names:
-        if n in seen:
-            duplicates.add(n)
-        seen.add(n)
-
-    assert not duplicates, f"Duplicate top-level functions in legacy/App.tsx: {sorted(duplicates)}"

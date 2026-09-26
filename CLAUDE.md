@@ -130,7 +130,6 @@ runner-dashboard/
 │   │   ├── primitives/         Reusable UI primitives
 │   │   ├── design/             Design tokens / theming
 │   │   ├── hooks/              React hooks
-│   │   ├── legacy/             Legacy `App.tsx` retained during migration
 │   │   └── index.css           Global styles
 │   ├── public/             Static assets copied verbatim by Vite
 │   ├── manifest.webmanifest    PWA manifest
@@ -269,11 +268,10 @@ CI remediation now runs through the Claude/Codex providers in
   production bundle is produced by `vite build` and consumed by the
   FastAPI backend as static assets.
 - **TypeScript everywhere.** New components are `.tsx`; shared logic and
-  hooks are `.ts`. No new plain-JS files; legacy code under
-  `frontend/src/legacy/` is being migrated, not extended.
+  hooks are `.ts`. No new plain-JS files.
 - **JSX is the norm.** Write components as JSX/TSX; do not hand-roll
-  `React.createElement`. The legacy `h()` pattern only survives in
-  `frontend/src/legacy/` during the migration and must not spread.
+  `React.createElement` (the legacy `h()` pattern went with
+  `frontend/src/legacy/`, retired in #1345).
 - **npm dependencies.** Add packages via `package.json` and lockfile;
   do not introduce ad-hoc CDN `<script>` tags.
 - State managed with React hooks (`useState`, `useEffect`, `useCallback`)

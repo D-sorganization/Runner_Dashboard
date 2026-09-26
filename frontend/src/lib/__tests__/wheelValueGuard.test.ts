@@ -14,7 +14,8 @@ class WheelEventPolyfill extends Event {
     this.deltaZ = options?.deltaZ ?? 0;
   }
 }
-const WheelEvent = (globalThis as any).WheelEvent ?? WheelEventPolyfill;
+const WheelEvent =
+  (globalThis as { WheelEvent?: typeof WheelEventPolyfill }).WheelEvent ?? WheelEventPolyfill;
 
 describe("installWheelValueGuard", () => {
   afterEach(() => {

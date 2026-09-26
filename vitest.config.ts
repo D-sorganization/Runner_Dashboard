@@ -22,11 +22,9 @@ export default defineConfig({
       include: ['frontend/src/**/*.{ts,tsx}'],
       exclude: [
         'frontend/src/**/__tests__/**',
-        'frontend/src/legacy/**',
         'frontend/src/main.tsx',
       ],
-      // Non-legacy coverage floor. legacy/ (the App.tsx still under migration)
-      // is excluded above; these gate the migrated TS/TSX surface. Raised from
+      // Coverage floor for the TS/TSX surface (legacy/ was retired in #1345). Raised from
       // 30 -> 70 lines per issue #832; the secondary metrics are pinned just
       // under their current values to lock in the gains without flaking on
       // minor drift.

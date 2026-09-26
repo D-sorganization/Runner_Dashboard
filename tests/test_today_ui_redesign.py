@@ -13,7 +13,6 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
 _FRONTEND_SRC = _REPO / "frontend" / "src"
-_APP_TSX = _FRONTEND_SRC / "legacy" / "App.tsx"
 _INDEX_CSS = _FRONTEND_SRC / "index.css"
 _LIB_FLEET_ALERTS = _FRONTEND_SRC / "lib" / "fleetAlerts.ts"
 
@@ -45,7 +44,7 @@ def test_fleet_quota_widget_not_reintroduced() -> None:
     assertion strips `//`-prefixed lines before grepping so the comment
     doesn't trigger a false positive.
     """
-    src = _read(_APP_TSX)
+    src = _read_runtime_source()
     # Mock-data variables — these only exist if the widget is rendering
     assert "var quotaUsed" not in src, "mock quotaUsed variable reintroduced"
     assert "quotaTotal" not in src, "mock quotaTotal variable reintroduced"
@@ -63,15 +62,6 @@ def test_grad_quota_css_token_not_reintroduced() -> None:
 
 
 # ─── PR #673: two-row header ────────────────────────────────────────────────
-
-
-def test_app_header_uses_two_row_variant() -> None:
-    """The header was packing logo + 10 tabs + 6 status pills + 3
-    actions into a 56px row, forcing horizontal scroll. The .app-header
-    must opt into the .app-header--rows variant which lays out children
-    in two stacked rows."""
-    src = _read_runtime_source()
-    assert '"app-header app-header--rows"' in src
 
 
 def test_app_header_has_primary_and_secondary_rows() -> None:

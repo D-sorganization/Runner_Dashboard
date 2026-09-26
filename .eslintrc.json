@@ -28,7 +28,6 @@
   "overrides": [
     {
       "files": ["frontend/src/**/*.{ts,tsx}"],
-      "excludedFiles": ["frontend/src/legacy/**"],
       "rules": {
         "@typescript-eslint/ban-ts-comment": [
           "error",
@@ -39,15 +38,6 @@
             "minimumDescriptionLength": 10
           }
         ]
-      }
-    },
-    {
-      "files": ["frontend/src/legacy/**/*.{ts,tsx}"],
-      "rules": {
-        "@typescript-eslint/ban-ts-comment": "off",
-        "@typescript-eslint/no-explicit-any": "off",
-        "@typescript-eslint/no-unused-vars": "off",
-        "no-console": "off"
       }
     },
     {

@@ -34,7 +34,7 @@ export type InstallFetchGuardsOptions = {
   targetWindow?: Window & typeof globalThis;
 };
 
-export function installLegacyFetchGuards(options: InstallFetchGuardsOptions): typeof fetch {
+export function installFetchGuards(options: InstallFetchGuardsOptions): typeof fetch {
   const targetWindow = options.targetWindow ?? window;
   const originalFetch = options.fetchImpl ?? targetWindow.fetch.bind(targetWindow);
 
@@ -45,6 +45,7 @@ export function installLegacyFetchGuards(options: InstallFetchGuardsOptions): ty
     const resp = await originalFetch(url, guardedOptions);
 
     if (resp.status === 401 && !options.shouldIgnoreUnauthorizedResponse(url)) {
+      // eslint-disable-next-line no-console
       console.warn("[auth] 401 Unauthorized from", url);
       if (await options.tryRefreshSession(originalFetch)) {
         return originalFetch(url, guardedOptions);
@@ -61,6 +62,7 @@ export function installLegacyFetchGuards(options: InstallFetchGuardsOptions): ty
           );
         }
       } catch (toastErr) {
+        // eslint-disable-next-line no-console
         console.warn("[auth] Failed to emit 401 toast:", toastErr);
       }
       options.emitSessionExpired();
