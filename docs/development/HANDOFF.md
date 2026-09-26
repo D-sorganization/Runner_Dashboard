@@ -24,6 +24,7 @@ Last updated: 2026-09-26
 
 - RED first: the four wiring tests in `tests/api/test_staff_quota.py` failed before the route, hook and fixture changes.
 - Green: `tests/api/test_staff_quota.py` (23), `tests/test_claude_statusline_quota.py`, `tests/test_usage_monitoring.py`, `tests/test_dashboard_degraded_endpoints.py`, `tests/test_stats_summary_resilience.py`.
+- `mypy backend/ --ignore-missing-imports --no-implicit-optional`: clean. `max(..., default=None)` needs an explicit empty check so mypy does not union the key's argument with `None`.
 
 ## Next Steps
 

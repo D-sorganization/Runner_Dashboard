@@ -214,7 +214,7 @@ def quota_usage_sources(quota_report: Mapping[str, Any]) -> list[dict[str, Any]]
         snap = row.get("quota")
         if not isinstance(snap, Mapping) or snap.get("peak_percent") is None:
             continue
-        peak = max(snap.get("windows") or (), key=lambda w: w.get("used_percent", 0.0), default={})
+        peak: Mapping[str, Any] = max(snap.get("windows") or (), key=lambda w: w.get("used_percent", 0.0), default={})
         provider = str(row.get("provider"))
         sources.append(
             {

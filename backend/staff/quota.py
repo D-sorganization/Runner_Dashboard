@@ -123,7 +123,9 @@ class QuotaSnapshot:
 
     def peak(self) -> QuotaWindow | None:
         """The fullest window, or None when no window is known."""
-        return max(self.windows, key=lambda w: w.used_percent, default=None)
+        if not self.windows:
+            return None
+        return max(self.windows, key=lambda w: w.used_percent)
 
     def to_dict(self) -> dict[str, Any]:
         peak = self.peak()
@@ -286,7 +288,9 @@ def read_codex_sessions(dirs: Sequence[Path] | None = None) -> QuotaSnapshot | N
         for path in _newest_session_files(dirs if dirs is not None else codex_session_dirs(), _CODEX_FILES_SCANNED)
         if (snap := _last_snapshot_in(path)) is not None
     ]
-    return max(found, key=lambda s: s.observed_at, default=None)
+    if not found:
+        return None
+    return max(found, key=lambda s: s.observed_at)
 
 
 # ── store ────────────────────────────────────────────────────────────────
