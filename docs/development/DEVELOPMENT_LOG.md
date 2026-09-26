@@ -20,16 +20,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1503 · SC-G5-6 Retire legacy dispatch forms and endpoints
 
-- **State:** in_progress
+- **State:** in_review
 - **Owner:** antigravity
 - **Issue:** #1503
 - **Branch:** `chore/1503-retire-legacy-dispatch`
-- **PR:** (pending)
+- **PR:** #1574
 - **Paths:** `backend/routers/remediation.py`, `backend/routers/remediation_retired.py`, `backend/routers/remediation_bulk.py`, `frontend/src/pages/RemediationTab.tsx`, `frontend/src/shell/routing.ts`, `frontend/src/index.css`, `tests/test_legacy_dispatch_retirement.py`, `frontend/src/shell/__tests__/retiredLegacyDispatch.test.ts`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (pytest 45/45 passed; npm run typecheck clean; npm run lint clean; vitest 1410 passed; ruff check & format clean; mypy clean)
 - **Summary:** Retired QuickDispatch (popover, schemas, CSS, route) and Jules remediation dispatch (helper, Run button, route). `POST /api/agents/quick-dispatch` and `POST /api/agent-remediation/dispatch-jules` return HTTP 410 Gone with Link (`/api/v1/staff/requests`) and Sunset headers. Legacy frontend dispatch routes redirect to `/`. Decomposed `remediation.py` into `remediation_bulk.py` and `remediation_retired.py` keeping all modules strictly <= 500 LOC.
-- **Next step:** Open PR and enable auto-merge.
+- **Next step:** Watch PR #1574 merge and mark this entry shipped.
 
 ### DL-#1548 · Handoff replies post a HandoffCard and move the work to the target role
 
