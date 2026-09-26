@@ -49,6 +49,8 @@ class RoleSpec:
     budget_usd_per_run: float = 0.0
     budget_usd_per_day: float = 0.0
     budget_max_minutes: float = 240.0
+    # Highest share (percent) of any plan window a run may start at (#1588); None = node default.
+    budget_max_window_percent: float | None = None
     idle_minutes: float = 20.0
     permissions: dict[str, Any] = field(default_factory=dict)
     reports_to: str = ""
@@ -122,6 +124,7 @@ class RoleSpec:
                 "usd_per_run": self.budget_usd_per_run,
                 "usd_per_day": self.budget_usd_per_day,
                 "max_minutes": self.budget_max_minutes,
+                "max_window_percent": self.budget_max_window_percent,
                 "idle_minutes": self.idle_minutes,
             },
             "idle_minutes": self.idle_minutes,
@@ -259,6 +262,12 @@ def parse_role(
     except (TypeError, ValueError):
         max_m = 240.0
     try:
+        window_pct: float | None = float(budget["max_window_percent"])
+    except (KeyError, TypeError, ValueError):
+        window_pct = None
+    if window_pct is not None and not 0 < window_pct <= 100:
+        window_pct = None
+    try:
         idle_m = float(idle_minutes)
     except (TypeError, ValueError):
         idle_m = 20.0
@@ -302,6 +311,7 @@ def parse_role(
         budget_usd_per_run=usd_run,
         budget_usd_per_day=usd_day,
         budget_max_minutes=max_m,
+        budget_max_window_percent=window_pct,
         idle_minutes=idle_m,
         permissions=_parse_permissions(perms),
         reports_to=str(data.get("reports_to") or ""),

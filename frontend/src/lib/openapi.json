@@ -3088,6 +3088,11 @@
             "title": "Dry Run",
             "type": "boolean"
           },
+          "ignore_budget": {
+            "default": false,
+            "title": "Ignore Budget",
+            "type": "boolean"
+          },
           "issue": {
             "anyOf": [
               {

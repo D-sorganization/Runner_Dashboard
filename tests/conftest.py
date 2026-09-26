@@ -127,6 +127,14 @@ def _no_real_github_credentials(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_plan_quota(tmp_path, monkeypatch):
+    """Quota gates read an empty per-test store, never the node's real plan windows (#1588)."""
+    monkeypatch.setenv("STAFF_QUOTA_STATE", str(tmp_path / "staff_quota.json"))
+    monkeypatch.setenv("STAFF_CODEX_SESSION_DIRS", str(tmp_path / "no-codex-sessions"))
+    monkeypatch.delenv("STAFF_QUOTA_CEILING_PERCENT", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _reset_main_cache_between_tests():
     """Clear the shared backend cache before and after every test."""
     from cache_utils import cache_clear  # noqa: PLC0415

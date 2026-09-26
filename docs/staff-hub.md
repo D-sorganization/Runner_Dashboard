@@ -186,27 +186,28 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 
 ## Environment
 
-| Variable                     | Default                                                                         | Meaning                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `STAFF_SCHEDULER_ENABLED`    | `1`                                                                             | `0`/`false` keeps the scheduler thread from starting                               |
-| `STAFF_HOLDS_FILE`           | `<config dir>/staff_holds.json`                                                 | Holds list                                                                         |
-| `STAFF_SCHEDULE_STATE`       | `<config dir>/staff_schedule_state.json`                                        | Per-role cursor / last fired                                                       |
-| `STAFF_ROLES_DIR`            | sibling `Repository_Management/staff/roles`                                     | Role YAML directory                                                                |
-| `STAFF_RUNS_DB`              | `<config dir>/staff_runs.sqlite3`                                               | Run store                                                                          |
-| `STAFF_REPOS_ROOT`           | `~/Repositories`, `~/actions-runners/repos`, `/mnt/c/Users/<user>/Repositories` | Where checkouts live (`os.pathsep` list)                                           |
-| `STAFF_OLLAMA_URL`           | `127.0.0.1:11434` if listening, else the WSL default gateway `:11434`           | Ollama server for the `ollama` and `claude-ollama` providers                       |
-| `STAFF_WORKTREES_ROOT`       | `<first repos root>/_staff_worktrees`                                           | Worktree location                                                                  |
-| `STAFF_RM_ROOT`              | sibling `Repository_Management`                                                 | Lease ritual scripts                                                               |
-| `STAFF_RM_PYTHON`            | `python3` / `python`                                                            | Interpreter for the RM scripts                                                     |
-| `STAFF_MAX_CONCURRENT_RUNS`  | `3`                                                                             | Runs executing at once on this node                                                |
-| `STAFF_RUN_TIMEOUT_SECONDS`  | `14400`                                                                         | Hard stop per run                                                                  |
-| `STAFF_PEER_TIMEOUT_SECONDS` | `6`                                                                             | Per-peer timeout for board fan-out (forwarded dispatches allow 5×)                 |
-| `STAFF_BUDGET_USD_PER_DAY`   | `0` (unlimited)                                                                 | Fleet-wide daily ceiling reported by `/api/staff/usage`                            |
-| `STAFF_WALL_USD_PER_MIN`     | unset                                                                           | `provider=rate,...` wall-time fallback for providers without token accounting      |
-| `STAFF_QUOTA_STATE`          | `<config dir>/staff_quota.json`                                                 | Newest plan-window snapshot per account (#1587)                                    |
-| `STAFF_CODEX_SESSION_DIRS`   | `$CODEX_HOME/sessions` or `~/.codex/sessions`                                   | Codex session-log dirs read for its plan windows (`os.pathsep` list)               |
-| `CLAUDE_CONFIG_DIR`          | unset (CLI uses `~/.claude`)                                                    | Service-owned Claude seat; required under `ProtectHome=read-only` (see Node setup) |
-| `GIT_CONFIG_GLOBAL`          | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                   |
+| Variable                      | Default                                                                         | Meaning                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `STAFF_SCHEDULER_ENABLED`     | `1`                                                                             | `0`/`false` keeps the scheduler thread from starting                                      |
+| `STAFF_HOLDS_FILE`            | `<config dir>/staff_holds.json`                                                 | Holds list                                                                                |
+| `STAFF_SCHEDULE_STATE`        | `<config dir>/staff_schedule_state.json`                                        | Per-role cursor / last fired                                                              |
+| `STAFF_ROLES_DIR`             | sibling `Repository_Management/staff/roles`                                     | Role YAML directory                                                                       |
+| `STAFF_RUNS_DB`               | `<config dir>/staff_runs.sqlite3`                                               | Run store                                                                                 |
+| `STAFF_REPOS_ROOT`            | `~/Repositories`, `~/actions-runners/repos`, `/mnt/c/Users/<user>/Repositories` | Where checkouts live (`os.pathsep` list)                                                  |
+| `STAFF_OLLAMA_URL`            | `127.0.0.1:11434` if listening, else the WSL default gateway `:11434`           | Ollama server for the `ollama` and `claude-ollama` providers                              |
+| `STAFF_WORKTREES_ROOT`        | `<first repos root>/_staff_worktrees`                                           | Worktree location                                                                         |
+| `STAFF_RM_ROOT`               | sibling `Repository_Management`                                                 | Lease ritual scripts                                                                      |
+| `STAFF_RM_PYTHON`             | `python3` / `python`                                                            | Interpreter for the RM scripts                                                            |
+| `STAFF_MAX_CONCURRENT_RUNS`   | `3`                                                                             | Runs executing at once on this node                                                       |
+| `STAFF_RUN_TIMEOUT_SECONDS`   | `14400`                                                                         | Hard stop per run                                                                         |
+| `STAFF_PEER_TIMEOUT_SECONDS`  | `6`                                                                             | Per-peer timeout for board fan-out (forwarded dispatches allow 5×)                        |
+| `STAFF_BUDGET_USD_PER_DAY`    | `0` (unlimited)                                                                 | Fleet-wide daily ceiling reported by `/api/staff/usage`                                   |
+| `STAFF_WALL_USD_PER_MIN`      | unset                                                                           | `provider=rate,...` wall-time fallback for providers without token accounting             |
+| `STAFF_QUOTA_STATE`           | `<config dir>/staff_quota.json`                                                 | Newest plan-window snapshot per account (#1587)                                           |
+| `STAFF_CODEX_SESSION_DIRS`    | `$CODEX_HOME/sessions` or `~/.codex/sessions`                                   | Codex session-log dirs read for its plan windows (`os.pathsep` list)                      |
+| `STAFF_QUOTA_CEILING_PERCENT` | `85`                                                                            | Window share a run may start at when the role sets no `budget.max_window_percent` (#1588) |
+| `CLAUDE_CONFIG_DIR`           | unset (CLI uses `~/.claude`)                                                    | Service-owned Claude seat; required under `ProtectHome=read-only` (see Node setup)        |
+| `GIT_CONFIG_GLOBAL`           | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                          |
 
 ## Fleet focus (#1239)
 
@@ -505,6 +506,25 @@ are dropped. `quota: null` means no source has been seen yet, not zero usage.
 `GET /api/usage` now lists each known plan as a `<provider>_plan` percent source. The
 April placeholder figures in `config/usage_sources.json` were removed (it is now an empty list).
 `cost_usd` stays a list-price-equivalent effort figure for comparing runs; it is not a bill.
+
+### Budget gate (#1588)
+
+The plan windows are the budget. A role's ceiling is `budget.max_window_percent` in its role
+file, else `STAFF_QUOTA_CEILING_PERCENT` on the node, else **85 %**.
+
+- **Scheduler:** a role is due only while at least one of its providers is under the ceiling in
+  every window. Otherwise the schedule shows `budget_reason: "quota: ..."`.
+- **Provider choice:** the runner picks the first installed provider under the ceiling, so a role
+  listing `claude, codex` moves to Codex while Claude's seven-day window is spent.
+- **Manual dispatch** (`POST /api/staff/{role}/run`) answers **429** `budget_exceeded` when the
+  chosen provider is over its ceiling or the role's USD cap is spent. Send `"ignore_budget": true`
+  to run anyway; the dispatch audit entry then carries `ignore_budget` and the reason.
+- Unknown quota never blocks: a provider with no source seen (Gemini, Cursor, agy) is treated as under.
+
+Dollars are a notional effort figure: the Staff tab prints them as `≈ $`, and
+`/api/staff/usage` totals carry `cost_basis: "notional"`. The budget day and the usage day
+are the same: local midnight in the schedule timezone (`America/Los_Angeles`).
+The Board shows a **Plan quota** panel from `GET /api/staff/quota`.
 
 ## External Agent Clients (SC-F5, #1334)
 

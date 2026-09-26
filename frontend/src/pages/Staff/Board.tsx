@@ -12,10 +12,11 @@ import { TimeAgo } from "../../primitives/TimeAgo";
 import { Tooltip } from "../../primitives/Tooltip";
 import { useStalenessWarning } from "../../hooks/useStalenessWarning";
 import { useStaffBoard } from "../../hooks/useStaffQueries";
+import { PlanQuota } from "./PlanQuota";
 import {
   errorMessage,
+  formatEffortUsd,
   formatSpendSummary,
-  formatUsd,
   groupByMachine,
   livenessAlerts,
   statusTone,
@@ -69,12 +70,12 @@ export function Board({ onOpenRun }: BoardProps) {
                   tabIndex={0}
                   style={{ cursor: "help" }}
                 >
-                  {formatUsd(spendSummary.total)}
+                  {formatEffortUsd(spendSummary.total)}
                 </strong>
               </Tooltip>
             ) : (
               <strong data-testid="board-spend">
-                {formatUsd(spendSummary.total)}
+                {formatEffortUsd(spendSummary.total)}
               </strong>
             )}
             {" · "}
@@ -83,6 +84,7 @@ export function Board({ onOpenRun }: BoardProps) {
         ) : null}
       </div>
       {error ? <p className="staff-muted">Board unavailable: {error}</p> : null}
+      <PlanQuota />
       {!board && !error ? <p className="staff-muted">Loading board...</p> : null}
       {board && livenessAlerts(board).length > 0 ? (
         <ul className="staff-board__alerts" data-testid="board-liveness-alerts" aria-label="Liveness alerts">

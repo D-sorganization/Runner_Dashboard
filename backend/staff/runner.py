@@ -151,7 +151,9 @@ class StaffRunner:
         return role
 
     def _resolve_provider(self, req: RunRequest, role: RoleSpec) -> str:
-        provider = req.provider or self._first_available(role.providers)
+        provider = req.provider or self._first_available(
+            role.providers, quota_mod.ceiling_percent(role.budget_max_window_percent)
+        )
         if provider not in self._adapters:
             raise ValueError(f"unknown provider '{provider}'")
         if req.provider and req.provider not in role.providers and role.name != "ad-hoc":
@@ -163,14 +165,23 @@ class StaffRunner:
             )
         return provider
 
-    def _first_available(self, providers: tuple[str, ...]) -> str:
-        """First installed provider that can run unattended (#1586), else the first that can."""
+    def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
+        """First installed, unattended provider whose plan is under ``ceiling`` percent (#1586, #1588).
+
+        Post: when every installed provider is over quota, the first installed one
+        (the gates in the scheduler and dispatch decide whether it may run); when
+        none is installed, the first that can run unattended.
+        """
         runnable = [
             pid for pid in providers if pid in self._adapters and getattr(self._adapters[pid], "unattended", True)
         ]
-        for pid in runnable:
-            if self._adapters[pid].installed():
+        installed = [pid for pid in runnable if self._adapters[pid].installed()]
+        limit = quota_mod.ceiling_percent(None) if ceiling is None else ceiling
+        for pid in installed:
+            if quota_mod.headroom(pid, limit)[0]:
                 return pid
+        if installed:
+            return installed[0]
         if runnable:
             return runnable[0]
         return providers[0] if providers else "claude"

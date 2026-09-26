@@ -18,30 +18,43 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1588 · Budgets as a Share of Plan Windows
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1588
+- **Branch:** `feat/1588-quota-budgets`
+- **PR:** not created
+- **Paths:** `backend/staff/budget.py`, `backend/staff/quota.py`, `backend/staff/runner.py`, `backend/staff/dispatch_service.py`, `backend/staff/usage.py`, `backend/staff/roles.py`, `backend/staff/validator.py`, `backend/staff/schema.json`, `backend/routers/staff.py`, `backend/routers/credentials.py`, `backend/agent_remediation/provider_registry.py`, `frontend/src/pages/Staff/PlanQuota.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/api/test_staff_quota_budget.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `303fc805` (budget, staff and frontend suites green)
+- **Summary:** The scheduler, provider choice and manual dispatch respect a per-role plan-window ceiling (default 85 %) with an audited override. There is one local budget day, dollars are shown as notional `≈ $`, and Gemini uses Google sign-in.
+- **Next step:** Rebase onto main after #1591 merges and open the PR.
+
 ### DL-#1587 · Live Subscription Quota
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1587
 - **Branch:** `feat/1587-subscription-quota`
-- **PR:** not created
+- **PR:** #1591 (merged)
 - **Paths:** `backend/staff/quota.py`, `backend/staff/runner.py`, `backend/routers/staff_usage.py`, `backend/routers/repos_stats.py`, `backend/usage_monitoring.py`, `config/usage_sources.json`, `scripts/claude_statusline_quota.py`, `tests/api/test_staff_quota.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-26
-- **Last verified:** 2026-09-26 at `cd57aafd` baseline (quota, status-line and usage suites green)
+- **Last verified:** 2026-09-26 (#1591 merged; quota, status-line and usage suites green)
 - **Summary:** Reads Claude and Codex plan windows locally and serves them at `/api/staff/quota` and `/api/usage`. The invented usage fixture is removed.
-- **Next step:** Merge the PR, then build #1588's window-percent gate on `quota.report()`.
+- **Next step:** Set the Claude status line and `STAFF_CODEX_SESSION_DIRS` on each staff node.
 ### DL-#1586 · Staff Runs Without CLI Permission Bypass
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1586
 - **Branch:** `feat/1586-no-permission-bypass`
-- **PR:** not created
+- **PR:** #1589 (merged)
 - **Paths:** `backend/staff/adapters.py`, `backend/staff/runner.py`, `backend/staff/retry.py`, `backend/staff/workspace.py`, `tests/api/test_staff_unattended_permissions.py`, `tests/e2e/fakes/bin/claude`, `docs/staff-hub.md`
 - **Started:** 2026-09-26
-- **Last verified:** 2026-09-26 at `df3f0333` baseline (staff suites green; live CLI probes on OGLaptop)
+- **Last verified:** 2026-09-26 (#1589 merged; staff suites green on the #1588 branch)
 - **Summary:** Every unattended CLI launch uses a declared allow-list or sandbox instead of a bypass flag. agy is chat-only until it supports a headless allow-list.
-- **Next step:** Merge the PR and watch the first scheduled runs for permission denials.
+- **Next step:** Watch the first scheduled Claude and Codex runs for permission denials in their transcripts.
 
 ### DL-#1488 · SC-B1-G5: Relay forwarded run-card events back to originating thread across peer nodes
 

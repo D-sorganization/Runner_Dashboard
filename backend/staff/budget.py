@@ -8,6 +8,10 @@ memory — the shape Maxwell_Daemon uses for its own spend alarms, kept small.
 
 Alerts go to an injectable sink (default: the dashboard log). The fleet event
 log's ``FleetEvent.kind`` enum has no staff kind, so it is not used here.
+
+Subscription plans (#1588): a role also needs one provider whose plan windows are
+under its ceiling (``budget.max_window_percent``, default 85 %). Dollars stay a
+notional effort figure; the plan windows are the real budget.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from staff import quota
 from staff.roles import RoleSpec
 from staff.schedule import DEFAULT_TZ
 from staff.store import RunStore
@@ -27,6 +32,7 @@ ALERT_THRESHOLDS = (0.75, 0.9, 1.0)
 ALERT_DEBOUNCE = timedelta(hours=6)
 
 AlertSink = Callable[[str, str, float], None]  # (role, message, fraction)
+QuotaCheck = Callable[[str, float], tuple[bool, str]]  # (provider, ceiling) -> (ok, reason)
 
 
 def _log_alert(role: str, message: str, fraction: float) -> None:
@@ -52,6 +58,7 @@ class BudgetGuard:
         clock: Callable[[], datetime] | None = None,
         tz: str = DEFAULT_TZ,
         role_budgets: dict[str, float] | None = None,
+        quota_check: QuotaCheck | None = None,
     ) -> None:
         self._store = store
         self._sink = alert_sink
@@ -59,6 +66,7 @@ class BudgetGuard:
         self._tz = tz
         self._last_alert: dict[tuple[str, float], datetime] = {}
         self._role_budgets: dict[str, float] = dict(role_budgets or {})
+        self._quota_check: QuotaCheck = quota_check or (lambda provider, ceiling: quota.headroom(provider, ceiling))
 
     def set_role_budget(self, role: str, budget_usd: float) -> None:
         """Register or override a role's daily USD budget cap."""
@@ -71,13 +79,41 @@ class BudgetGuard:
     def can_run(self, role: RoleSpec) -> tuple[bool, str]:
         """(ok, reason). Also emits threshold alerts as a side effect.
 
-        Post: ok is True whenever the role has no daily budget (``usd_per_day <= 0``).
+        Post: ok needs the USD cap (none when ``usd_per_day <= 0``) and at least one
+        of the role's providers under its plan-window ceiling; a quota refusal
+        starts with ``quota:``.
         """
+        ok, reason = self._usd_ok(role)
+        if not ok:
+            return ok, reason
+        ceiling = quota.ceiling_percent(role.budget_max_window_percent)
+        checks = [self._quota_check(provider, ceiling) for provider in role.providers]
+        if checks and not any(fits for fits, _ in checks):
+            return False, "quota: " + "; ".join(why for _, why in checks)
+        return True, reason
+
+    def can_dispatch(self, role: RoleSpec | None, provider: str) -> tuple[bool, str]:
+        """(ok, reason) for a manual dispatch to the already-chosen ``provider`` (#1588).
+
+        Pre: ``provider`` is the planned provider. Post: checks the role's USD cap
+        (no alerts) and that provider's plan windows only.
+        """
+        reason = "no role budget"
+        if role is not None:
+            ok, reason = self._usd_ok(role, alerts=False)
+            if not ok:
+                return ok, reason
+        ceiling = quota.ceiling_percent(role.budget_max_window_percent if role else None)
+        fits, why = self._quota_check(provider, ceiling)
+        return (True, reason) if fits else (False, f"quota: {why}")
+
+    def _usd_ok(self, role: RoleSpec, *, alerts: bool = True) -> tuple[bool, str]:
         if role.budget_usd_per_day <= 0:
             return True, "no daily budget"
         spent = self.spent_today(role.name)
         cap = role.budget_usd_per_day
-        self.check_alerts(role.name, spent, cap)
+        if alerts:
+            self.check_alerts(role.name, spent, cap)
         if spent >= cap:
             return False, f"daily budget ${cap:.2f} reached (spent ${spent:.2f})"
         if role.budget_usd_per_run > 0 and spent + role.budget_usd_per_run > cap:

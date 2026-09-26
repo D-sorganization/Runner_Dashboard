@@ -21,6 +21,7 @@ from identity import Principal, format_caller
 from staff import consolidation
 from staff import fleet as staff_fleet
 from staff.audit import record_audit
+from staff.budget import BudgetGuard
 from staff.rate_limit import check_rate_limit
 from staff.runner import RunRequest, StaffRunner, get_runner
 
@@ -58,6 +59,8 @@ class DispatchCommand:
     surface: str = "api"
     thread_id: str = ""
     origin_node: str = ""
+    # Dispatch even when the role's budget or the provider's plan window is spent (#1588); audited.
+    ignore_budget: bool = False
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -171,6 +174,12 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         return await _forward(target, cmd, obo_hdr)
     if cmd.dry_run:
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
+    budget_ok, budget_reason = BudgetGuard(runner.store).can_dispatch(spec, plan.provider)
+    if not budget_ok and not cmd.ignore_budget:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "budget_exceeded", "message": f"{budget_reason}; resend with ignore_budget to override"},
+        )
     rec = runner.submit(req)
     record_audit(
         action="dispatch",
@@ -187,6 +196,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             "target_ref": rec.target_ref,
             "provider": rec.provider,
             "machine": rec.machine,
+            **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
         },
         fail_closed=True,
     )

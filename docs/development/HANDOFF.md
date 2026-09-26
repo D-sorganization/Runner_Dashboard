@@ -1,3 +1,46 @@
+# Current handoff — Budgets as a share of plan windows (#1588)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1588-quota-budgets` (from `feat/1587-subscription-quota`); Issue #1588; DL-#1588.
+- Worktree `_wt_claude_rd_budget` on OGLaptop; base `303fc805`; commit `SELF`; PR: opened after #1591 (#1587) merges.
+
+## Objective and Status
+
+- Owner decision (2026-09-26): a run may start only while its plan is under a share of every window. The default is 85 %; a role sets `budget.max_window_percent`. Manual dispatch is gated too, with an audited override.
+- `staff/quota.py`: `ceiling_percent()` and `headroom()`.
+- `staff/budget.py`: `can_run` needs one provider with headroom (`quota:` reason). New `can_dispatch(role, provider)` checks the chosen provider.
+- `staff/runner.py`: `_first_available` prefers a provider with headroom.
+- `staff/dispatch_service.py`: 429 `budget_exceeded` unless `ignore_budget`; the audit detail records the override.
+- `RunBody.ignore_budget`, `DispatchCommand.ignore_budget`.
+- `staff/usage.py`:
+  - `today_iso()` is local midnight via `budget.day_start_iso`.
+  - The export date is the local date.
+  - Totals carry `cost_basis: "notional"`.
+- Gemini `auth_mode` changed `api_key` to `local` (the CLI's own Google sign-in; `AUTH_KINDS` mirrors Conductor, which has no `oauth` kind). The credential probe accepts `~/.gemini/oauth_creds.json`.
+- Role field `budget.max_window_percent` added to `roles.py`, the validator and `schema.json`. The RM companion PR updates RM's schema and `staff_roles.py`, which currently rejects extra budget keys.
+- Frontend:
+  - `formatEffortUsd` (`≈ $`) on run costs in the Board, RunLog, RunDetail and Outcomes views.
+  - New `PlanQuota` panel on the Board, fed by `useStaffQuota`.
+- `tests/conftest.py`: an autouse fixture points the quota store and Codex log dirs at empty temp paths, so no test reads the node's real plan.
+
+## Validation
+
+- RED first: `tests/api/test_staff_quota_budget.py` (12 tests) and `frontend/src/pages/__tests__/StaffQuota.test.tsx` (3) failed before the change.
+- Green:
+  - The `staff or usage or budget or credential or provider or dispatch or schedul or quota or roles` selection passes, apart from failures that already exist on main (`TestConductorEnumDrift` ×2, `routing_eval` ×2, `test_security` key-map).
+  - Staff vitest: 24 files, 168 tests.
+  - `npm run typecheck`, eslint and `generate-api:check` (twice).
+
+## Next Steps
+
+1. After #1591 merges: rebase onto main, open the PR (`Fixes #1588`), then arm auto-merge.
+2. Merge the RM companion schema PR so roles can set `budget.max_window_percent`.
+
+---
+
 # Current handoff — Live subscription quota (#1587)
 
 Last updated: 2026-09-26
