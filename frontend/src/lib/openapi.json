@@ -4242,6 +4242,17 @@
             ],
             "title": "Pid"
           },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Number"
+          },
           "prompt": {
             "default": "",
             "title": "Prompt",
@@ -4316,6 +4327,16 @@
           "transcript_path": {
             "default": "",
             "title": "Transcript Path",
+            "type": "string"
+          },
+          "verification": {
+            "default": "",
+            "title": "Verification",
+            "type": "string"
+          },
+          "verification_detail": {
+            "default": "",
+            "title": "Verification Detail",
             "type": "string"
           },
           "workdir": {

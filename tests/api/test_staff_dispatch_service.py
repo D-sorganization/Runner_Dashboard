@@ -194,3 +194,48 @@ def test_verifier_accepts_forwarded_and_dry_runs_only_with_evidence(
     res = ActionResult(success=True, result=result, run_id=run_id)
     verified, message = verify_staff_dispatch(res, {}, _ctx())
     assert verified is ok, message
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("verification", "detail", "ok", "fragment"),
+    [
+        ("", "", True, "not yet verified"),
+        ("unverified", "PR #4 head CI is still pending", True, "unverified"),
+        ("verified", "PR #4 is open with head CI green", True, "verified: PR #4"),
+        ("failed", "no pull request found for branch b", False, "no pull request"),
+    ],
+)
+def test_verifier_reports_the_runs_output_verification(
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    verification: str,
+    detail: str,
+    ok: bool,
+    fragment: str,
+) -> None:
+    """#1516: the dispatch verifier reports the run's post-run verification, not only that it exists."""
+    from staff.action_executors import verify_staff_dispatch
+    from staff.store import RunRecord
+
+    staff.store.create_run(
+        RunRecord(
+            id="run_local",
+            role="ad-hoc",
+            provider="fake",
+            model=None,
+            machine="TestNode",
+            repo="R",
+            target_kind="prompt",
+            target_ref="",
+            prompt="p",
+            status="succeeded",
+            verification=verification,
+            verification_detail=detail,
+        )
+    )
+    res = ActionResult(success=True, result={"forwarded_to": None, "dry_run": False}, run_id="run_local")
+
+    verified, message = verify_staff_dispatch(res, {}, _ctx())
+
+    assert verified is ok, message
+    assert fragment in message

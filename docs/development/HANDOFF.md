@@ -35,7 +35,102 @@ Last updated: 2026-09-25
 
 ---
 
+# Past handoff — WP-1.1: post-run verification of staff runs (#1516)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1516-run-verification`; DL-#1516; Issue #1516 (Phase 1 of #1463).
+
+## Objective and Status
+
+- New `backend/staff/verification.py`: pure `decide` (claimed status × `open_pr` × PR × head CI), `ci_state` over check runs (`cancelled`/`stale` ignored as superseded), `evaluate` (GitHub error → `unverified`; CI pending past 6 h → `failed`), `updates_for` (only `enforce` changes a succeeded run to `failed`/`unverified_output`), `verify_and_record` (never raises; writes the fields and a `verify` event), `recheck_runs` (this node, last 24 h, 20 per pass) and `GhCliPrProbe` (sync `gh api`, because the runner's plain worker threads cannot reach the loop-bound `gh_client`).
+- Wired into `StaffRunner` after `classify_execution_result`/`finalize_cost`; the status passed to `handle_run_status_change` is re-read so enforce mode is reflected. `StaffScheduler._loop` calls `recheck_verification()` at most every 5 min; `reconcile_orphaned_runs` rechecks at startup. `RoleSpec.opens_pr` reads `permissions.open_pr`.
+- `verify_staff_dispatch` now reports the run's verification and fails on a `failed` verdict.
+- Run detail shows the verdict, reason and PR link. `tests/conftest.py` defaults `STAFF_VERIFY_MODE=off` so ordinary runner tests never shell out to `gh`.
+
+- Consolidation (#1521 + #1528 + #1516): the #1521 `_hermetic_staff_workspace` fixture blanked `repos_roots()` even when a test set `STAFF_REPOS_ROOT`, which broke `test_refresh_all_packs` and `test_build_knowledge_turn_block_stale_pack` (added on main after #1521 was branched). It now honours a test's own `STAFF_REPOS_ROOT` and still never the developer defaults. `tests/knowledge/test_knowledge_pack_drift.py` fails on main too (needs the pinned Tools checkout) and is out of scope.
+
+## Next Steps
+
+1. Merge, then run report mode on one node and show the owner verdicts on real runs (the issue's last acceptance item).
+2. The owner decides when to set `STAFF_VERIFY_MODE=enforce`.
+
+---
+
+# Past handoff — Tests never hold a real GitHub credential (#1528)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1528-hermetic-github-creds`; DL-#1528; Issue #1528.
+
+## Objective and Status
+
+- Running the suite with the developer's `GH_TOKEN` or `gh auth` login visible filed real issues (#1437–#1440, #1452–#1457, since closed as not planned). `gh_utils.gh_api_write` uses the httpx client (token or GitHub App env) and falls back to the `gh` CLI; the unit-lane network guard patches neither.
+- `tests/unit/test_github_test_isolation.py` (RED first): no credential env var is visible, `gh_client._get_token()` raises `GhAuthError`, `GH_CONFIG_DIR` is an empty per-test dir, and a test can still opt into a fake token.
+- `tests/conftest.py::_no_real_github_credentials` (autouse) removes the credential env, sets `GH_CONFIG_DIR` under `tmp_path` and clears `gh_client`'s cached token.
+- The sibling fix for local worktrees is #1521 (PR #1524).
+
+## Next Steps
+
+1. Merge. No production code changes.
+
+---
+
+# Past handoff — Make staff tests hermetic: no real worktrees or gh (#1521)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1521-hermetic-staff-tests`; DL-#1521; Issue #1521.
+
+## Objective and Status
+
+- Fix `backend/staff/workspace.py::repos_roots()` leaking real developer checkouts into the staff test suite (Issue #1521):
+  - `repos_roots()` always appended `~/Repositories`, `~/actions-runners/repos` and `/mnt/c/Users/$USERNAME/Repositories` after any configured `STAFF_REPOS_ROOT`, so staff tests that submitted a run did real `git worktree add` and spawned real `gh` against a developer's real checkouts.
+  - Added `tests/unit/test_staff_test_isolation.py` (RED first) asserting `staff.workspace.repos_roots()` returns `[]` and `staff_worktrees_root()` resolves under `tmp_path` inside the test session, plus a DbC regression test that `add_worktree()` raises `AssertionError` for a target outside `tmp_path`.
+  - Added one new autouse fixture `_hermetic_staff_workspace` in `tests/conftest.py`: monkeypatches `staff.workspace.repos_roots` to return `[]`, sets `STAFF_WORKTREES_ROOT`/`STAFF_RM_ROOT` to `tmp_path` subdirectories, and wraps `staff.workspace.add_worktree` with a guard that raises `AssertionError` if the target worktree path resolves outside `tmp_path` — unless a test replaces `add_worktree` itself (several already do).
+  - The fixture also patches `staff.knowledge_refresh.repos_roots`, which imports the name directly and so escapes a module-attribute patch; a test covers that binding.
+  - Did **not** change `repos_roots()` production semantics (the prepend-vs-replace question for `STAFF_REPOS_ROOT` is called out as the owner's call in the PR body, per the issue's "Optional, owner's call" note).
+  - Verification: `tests/staff`, `tests/api/test_staff*.py`, `tests/unit/test_staff*.py` all pass under WSL with `HOME`/`USERNAME` isolated; no new `_staff_worktrees/*` or `staff/*` branches created in any real checkout.
+
+## Next Steps
+
+1. Owner review: decide whether `STAFF_REPOS_ROOT` should *replace* the default roots instead of prepending to them in production.
+2. Address any CI feedback on the draft PR.
+3. Mark the PR ready for review and arm auto-merge once approved.
+
+---
+
 # Past handoff — SC-G5-2: One Advanced dispatch form (#1498)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1498`; PR #1529; DL-#1498; Issue #1498.
+
+## Objective and Status
+
+- One dispatch form, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, posts to `POST /api/v1/staff/requests` (`submitStaffRequest`). It replaces `Staff/Assign.tsx` (deleted) in the Staff *Assign* section and the Fleet Command Dispatch panel.
+- First cut by antigravity. The claude review rework:
+  - Offers only the kinds the backend accepts (`Staff/requestKinds.ts`, today `staff.dispatch`); the first cut also listed five kinds the backend rejects.
+  - Shows `approval_required` (202) instead of dropping it.
+  - Moved the plan view to `Staff/DispatchPlan.tsx`, bringing the form under the 500-line cap.
+  - Types the response exactly (`StaffDispatchResult`).
+  - Dropped the `lib/staffApi.ts` re-export and the doc-wide prettier reformat.
+- Validation: vitest `frontend/src/pages/__tests__/` 46 files / 383 passed; `npx tsc -p tsconfig.app.json --noEmit` clean; `npx eslint --max-warnings 0` on the touched files clean.
+
+## Next Steps
+
+1. Auto-merge #1529 on green CI.
+2. When a later SC-G5-1 slice adds a backend kind, add its row (with target fields) to `requestKinds.ts`.
+
+---
 
 # Past handoff — SC-B1-G3: One action vocabulary for chat replies and the action registry (#1486)
 

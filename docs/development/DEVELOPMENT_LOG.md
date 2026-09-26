@@ -18,6 +18,42 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1516 · WP-1.1: post-run verification of staff runs (report mode)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1516
+- **Branch:** `feat/1516-run-verification`
+- **Paths:** `backend/staff/verification.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/roles.py`, `backend/staff/scheduler.py`, `backend/staff/reconcile.py`, `backend/staff/action_executors.py`, `backend/staff/models.py`, `frontend/src/pages/Staff/RunDetail.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/staff/test_run_verification.py`, `tests/api/test_staff_runner.py`, `tests/api/test_staff_dispatch_service.py`, `tests/conftest.py`, `frontend/src/pages/__tests__/StaffRunVerification.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/staff/test_run_verification.py` 74 passed, RED first; runner report/enforce end-to-end and dispatch-verifier tests pass; vitest RunDetail + Staff 18 passed; `tsc`, ruff and mypy clean)
+- **Summary:** A run that exits 0 with `STAFF_RESULT:` is no longer taken at its word: `verification.verify_and_record` checks the PR for its branch and head CI after the runner classifies the run, and records `verification`/`verification_detail`/`pr_number` beside the status. Kept out of the classifier so a GitHub outage can only leave a run `unverified`. Re-checks run from the scheduler loop and startup reconcile, bounded by a 24 h window and 20 runs per pass. `STAFF_VERIFY_MODE=report` is the default; `enforce` exists but stays off until the owner turns it on.
+- **Next step:** After merge, deploy to one node in report mode and let the owner review verdicts on real runs before enabling `enforce`.
+
+### DL-#1528 · Tests never hold a real GitHub credential
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1528
+- **Branch:** `fix/1528-hermetic-github-creds`
+- **Paths:** `tests/conftest.py`, `tests/unit/test_github_test_isolation.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/unit/test_github_test_isolation.py` RED 4/4 with `GH_TOKEN` in the parent env, then GREEN; full suite run with a fake parent `GH_TOKEN`)
+- **Summary:** `gh_utils.gh_api_write` reaches GitHub through the httpx client (token or GitHub App env) or the `gh` CLI login; the unit-lane network guard covers neither, so code-request tests created real issues. One autouse fixture removes every credential env var, gives the `gh` CLI an empty `GH_CONFIG_DIR` and clears `gh_client`'s cached token. The junk issues were closed as not planned.
+- **Next step:** Merge.
+
+### DL-#1521 · Make staff tests hermetic: no real worktrees or gh
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1521
+- **Branch:** `fix/1521-hermetic-staff-tests`
+- **Paths:** `tests/conftest.py`, `tests/unit/test_staff_test_isolation.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (fixture now honours a test's own `STAFF_REPOS_ROOT`, so the knowledge-pack tests that build a tmp corpus pass; `tests/unit/test_staff_test_isolation.py` clean; `tests/staff tests/api/test_staff*.py tests/unit/test_staff*.py` pass under WSL with `HOME`/`USERNAME` isolated)
+- **Summary:** `staff.workspace.repos_roots()` always appended real developer checkout roots after any configured `STAFF_REPOS_ROOT`, so staff tests that submitted a run did real `git worktree add` / `gh` against real checkouts. Added one autouse fixture in `tests/conftest.py` that neutralizes `repos_roots()` to `[]`, isolates `STAFF_WORKTREES_ROOT`/`STAFF_RM_ROOT` under `tmp_path`, and guards `add_worktree()` with a DbC assertion against any target outside `tmp_path`. It also patches the `repos_roots` name that `staff.knowledge_refresh` imports directly.
+- **Next step:** Merge. The prepend-vs-replace question for `STAFF_REPOS_ROOT` in production stays with the owner; this PR changes tests only.
+
 ### DL-#1498 · SC-G5-2: One Advanced dispatch form
 
 - **State:** in_review
