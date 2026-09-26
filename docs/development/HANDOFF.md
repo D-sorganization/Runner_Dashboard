@@ -4,7 +4,7 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1548`; branch `fix/1548-chat-handoff`; PR: see DL-#1548; Issue #1548; DL-#1548.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1548`; branch `fix/1548-chat-handoff`; PR #1568; Issue #1548; DL-#1548.
 
 ## Objective and Status
 
@@ -24,7 +24,7 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Merge the #1548 PR once CI is green.
+1. Merge PR #1568 once CI is green.
 
 ---
 
