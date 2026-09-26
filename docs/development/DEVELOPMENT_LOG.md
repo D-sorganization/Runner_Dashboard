@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1288 · CR-8: First use — submit queued UpstreamDrift dynamics proposals via the suggestion box
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1288 (Epic #1279 Wave 5)
+- **Branch:** `agy/issue-1288`
+- **PR:** opened right after this commit
+- **Paths:** `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (`fee5b214e` UpstreamDrift baseline; proposals #1792-#1795 created in RM; 2026-10-02 packet verified)
+- **Summary:** First real use of the suggestion box and end-to-end acceptance of the Board Proposals pipeline. Re-verified survey evidence paths in UpstreamDrift origin/main (MJ-X, parameter covariance, GP surrogate, and nonlinear dynamics research bundle). Submitted queued proposals P1–P4 via suggestion box service as research-scout (Repository_Management issues #1792, #1793, #1794, #1795) with board:proposal and needs-decision labels, hidden submitter markers, and linked code requests. Verified appearance in the 2026-10-02 Board meeting packet and queryability via GET /api/proposals.
+- **Next step:** Merge PR and close issue #1288.
+
 ### DL-#1463 · Agent Org Plan: Verify Staff Output, Role Routing, Outcomes API
 
 - **State:** proposed
