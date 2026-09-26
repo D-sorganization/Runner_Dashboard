@@ -111,9 +111,6 @@ Last updated: 2026-09-26
 ---
 
 # Past handoff — Staff runs without CLI permission bypass (#1586)
----
-
-# Past handoff — Staff runs without CLI permission bypass (#1586)
 
 Last updated: 2026-09-26
 
