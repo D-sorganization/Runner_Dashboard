@@ -26,7 +26,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Branch:** `docs/1299-staff-conversation-adr`
 - **Paths:** `docs/adr/0006-staff-conversation-model.md`, `docs/adr/README.md`, `docs/assistant-chat-endpoint-design.md`, `docs/assistant-agent-mode-design.md`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-26 (docs only; every cited source and test path checked against `main`)
+- **Last verified:** 2026-09-26 df6e566e (docs only; every cited source and test path checked against `main`)
 - **Summary:** SC-B2/B4/B5/B6/B7 shipped before the ADR, so ADR 0006 records the model as built and lists where the code falls short of it. Eleven follow-ups filed: #1484 (read-only chat enforcement), #1485 (proposal API hardening), #1486 (one action vocabulary), #1487 (action dispatch bypasses /run policy), #1488 (cross-node conversation authority, Open), #1489 (redaction coverage), #1490 (retention and export, Open), #1491 (pending chat reconcile), #1492 (chat pool saturation), #1493 (live token streaming), #1494 (Projects steward Idempotency-Key).
 - **Next step:** Panel review of ADR 0006 on #1299; the owner decides the two Open items (#1488, #1490) and then the PR is merged by hand (not auto-merged).
 
