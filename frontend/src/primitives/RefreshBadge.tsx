@@ -47,7 +47,7 @@ export function RefreshBadge({ staleness, onRetry }: RefreshBadgeProps) {
         aria-live="polite"
         style={{
           ...containerStyle,
-          color: "var(--status-healthy-fg, #3fb950)",
+          color: "var(--text-secondary, #8b949e)",
         }}
       >
         <span
