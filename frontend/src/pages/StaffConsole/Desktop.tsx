@@ -68,6 +68,8 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
                 isReconnecting={sc.isReconnecting}
                 onApproveProposal={sc.approveProposal}
                 onDenyProposal={sc.denyProposal}
+                onCancelRun={sc.cancelRun}
+                onAnswerRun={sc.answerRun}
               />
             </div>
             <GroupCostConfirm guard={sc.costGuard} />

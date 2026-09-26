@@ -299,6 +299,16 @@ def _result_thread(s: ConversationStore, prop: ActionProposalRecord) -> str:
     return prop.thread_id
 
 
+def _post_result(s: ConversationStore, thread_id: str, *, body_md: str, meta: dict[str, Any]) -> None:
+    """Post an ``action_result`` message and publish it, so an open Console shows it (#1547)."""
+    from staff.thread_bus import get_thread_bus  # noqa: PLC0415
+
+    msg = s.add_message(
+        thread_id=thread_id, author_kind="system", author="system", kind="action_result", body_md=body_md, meta=meta
+    )
+    get_thread_bus().publish_message_sync(thread_id, msg.to_dict())
+
+
 def execute_proposal(
     proposal_id: str,
     approver: Principal,
@@ -412,29 +422,19 @@ def execute_proposal(
         s.transition_proposal_state(proposal_id, "done", audit_store=a_store)
         if thread_id:
             formatted_res = json.dumps(res.result) if isinstance(res.result, dict) else str(res.result)
-            s.add_message(
-                thread_id=thread_id,
-                author_kind="system",
-                author="system",
-                kind="action_result",
+            # A dispatched run posts its own run card (staff.run_link), so none is added here.
+            _post_result(
+                s,
+                thread_id,
                 body_md=f"**Action Executed**: `{prop.action}`\n\nResult: {formatted_res}",
                 meta={
                     "proposal_id": prop.id,
                     "action": prop.action,
                     "success": True,
                     "result": res.result,
+                    "run_id": res.run_id,
                 },
             )
-            if res.run_id:
-                s.add_message(
-                    thread_id=thread_id,
-                    author_kind="system",
-                    author="system",
-                    kind="run_card",
-                    run_id=res.run_id,
-                    body_md=f"**Staff Run Started**: `{res.run_id}`",
-                    meta={"run_id": res.run_id, "action": prop.action},
-                )
     else:
         s.transition_proposal_state(
             proposal_id,
@@ -443,11 +443,9 @@ def execute_proposal(
             audit_store=a_store,
         )
         if thread_id:
-            s.add_message(
-                thread_id=thread_id,
-                author_kind="system",
-                author="system",
-                kind="action_result",
+            _post_result(
+                s,
+                thread_id,
                 body_md=f"**Action Failed**: `{prop.action}`\n\nError: {res.error}\n\n*You can retry this action.*",
                 meta={
                     "proposal_id": prop.id,

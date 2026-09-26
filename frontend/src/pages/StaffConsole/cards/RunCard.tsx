@@ -1,11 +1,55 @@
 import React, { useState } from "react";
-import type { RunCardData, RunStatus } from "./cardTypes";
+import type { RunAnswerHandler, RunCancelHandler, RunCardData, RunStatus } from "./cardTypes";
 
 export interface RunCardProps {
   run: RunCardData;
-  onCancel?: (runId: string) => void;
+  onCancel?: RunCancelHandler;
+  onAnswer?: RunAnswerHandler;
   className?: string;
 }
+
+/** The question of a needs-input run, and the answer form until it is answered (#1547). */
+const RunQuestion: React.FC<{ run: RunCardData; onAnswer?: RunAnswerHandler }> = ({ run, onAnswer }) => {
+  const [answer, setAnswer] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const answered = Boolean(run.continued_by);
+
+  const submit = async () => {
+    if (!onAnswer || !answer.trim()) return;
+    setSending(true);
+    const ok = await onAnswer(run.id, answer.trim());
+    setSending(false);
+    setSent(ok);
+  };
+
+  return (
+    <div className="staff-run-card__question" style={{ margin: "6px 0 8px", fontSize: 13 }}>
+      <div style={{ color: "var(--text-primary, #c9d1d9)", marginBottom: 6 }}>{run.question}</div>
+      {answered ? (
+        <div style={{ fontSize: 12, color: "var(--text-muted, #8b949e)" }}>
+          Answered by {run.answered_by || "an operator"}; continued in run {run.continued_by}.
+        </div>
+      ) : sent ? (
+        <div style={{ fontSize: 12, color: "var(--text-muted, #8b949e)" }}>Answer sent.</div>
+      ) : onAnswer ? (
+        <div style={{ display: "flex", gap: 6 }}>
+          <textarea
+            aria-label="Answer"
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            rows={2}
+            disabled={sending}
+            style={{ flex: 1, fontSize: 12 }}
+          />
+          <button type="button" onClick={submit} disabled={sending || !answer.trim()}>
+            Send answer
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 function getStatusBadgeStyle(status: RunStatus): { bg: string; text: string; border: string } {
   switch (status) {
@@ -34,11 +78,21 @@ function formatDuration(seconds?: number): string {
 export const RunCard: React.FC<RunCardProps> = ({
   run,
   onCancel,
+  onAnswer,
   className = "",
 }) => {
   const [showLogs, setShowLogs] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const statusStyle = getStatusBadgeStyle(run.status);
   const isActive = run.status === "running" || run.status === "queued";
+
+  const cancel = async () => {
+    if (!onCancel) return;
+    setCancelling(true);
+    const ok = await onCancel(run.id);
+    // A refused cancel re-enables the button; an accepted one waits for the card update.
+    if (ok === false) setCancelling(false);
+  };
 
   return (
     <div
@@ -92,6 +146,16 @@ export const RunCard: React.FC<RunCardProps> = ({
           </div>
         )}
       </div>
+
+      {run.status === "needs_input" && run.question && <RunQuestion run={run} onAnswer={onAnswer} />}
+      {run.status === "completed" && run.summary && (
+        <div style={{ fontSize: 12, color: "var(--text-secondary, #c9d1d9)", marginBottom: 8 }}>{run.summary}</div>
+      )}
+      {run.status === "failed" && run.error && (
+        <div role="alert" style={{ fontSize: 12, color: "var(--accent-red, #f85149)", marginBottom: 8 }}>
+          {run.error}
+        </div>
+      )}
 
       {/* Expandable Logs Tail */}
       {run.logs_tail && run.logs_tail.length > 0 && (
@@ -159,7 +223,8 @@ export const RunCard: React.FC<RunCardProps> = ({
         {isActive && onCancel && (
           <button
             type="button"
-            onClick={() => onCancel(run.id)}
+            onClick={cancel}
+            disabled={cancelling}
             style={{
               background: "transparent",
               color: "var(--accent-red, #f85149)",

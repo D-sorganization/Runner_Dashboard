@@ -6,7 +6,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Thread } from "../Thread";
 import type { ThreadMessage, ThreadInfo } from "../threadTypes";
 
@@ -299,5 +299,40 @@ describe("Thread Component", () => {
     expect(screen.getByText(/Documentation review needed/i)).toBeInTheDocument();
     expect(screen.getByText(/PR #1413/i)).toBeInTheDocument();
     expect(screen.getByText(/Clean tests/i)).toBeInTheDocument();
+  });
+
+  it("routes a run card's answer and cancel with the card's thread (#1547)", async () => {
+    const onAnswerRun = vi.fn().mockResolvedValue(true);
+    const onCancelRun = vi.fn().mockResolvedValue(true);
+    const cards: ThreadMessage[] = [
+      {
+        id: "msg-card-run-ask",
+        thread_id: MOCK_THREAD.id,
+        author: "e2e-analyst",
+        author_kind: "staff",
+        kind: "run_card",
+        body_md: "",
+        delivery: "complete",
+        meta: { run: { id: "run-ask", status: "needs_input", question: "Which repository?" } },
+      },
+      {
+        id: "msg-card-run-busy",
+        thread_id: MOCK_THREAD.id,
+        author: "e2e-analyst",
+        author_kind: "staff",
+        kind: "run_card",
+        body_md: "",
+        delivery: "complete",
+        meta: { run: { id: "run-busy", status: "running" } },
+      },
+    ];
+    render(<Thread thread={MOCK_THREAD} messages={cards} onAnswerRun={onAnswerRun} onCancelRun={onCancelRun} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /answer/i }), { target: { value: "Runner_Dashboard" } });
+    fireEvent.click(screen.getByRole("button", { name: /send answer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel run/i }));
+
+    await waitFor(() => expect(onAnswerRun).toHaveBeenCalledWith(MOCK_THREAD.id, "run-ask", "Runner_Dashboard"));
+    expect(onCancelRun).toHaveBeenCalledWith("run-busy");
   });
 });

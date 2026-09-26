@@ -9,6 +9,8 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  answerThreadRun,
+  cancelRun as cancelStaffRun,
   createThread,
   decideActionProposal,
   errorMessage,
@@ -26,7 +28,7 @@ import type { StaffRoleItem } from "./types";
 import { useGroupCostGuard, type GroupCostGuard } from "./useGroupCostGuard";
 import { useThreadStream } from "./useThreadStream";
 
-export type ConsoleErrorKind = "roster" | "thread" | "send" | "decision";
+export type ConsoleErrorKind = "roster" | "thread" | "send" | "decision" | "run";
 
 export interface ConsoleError {
   kind: ConsoleErrorKind;
@@ -71,6 +73,9 @@ export interface StaffConsoleState {
   /** Resolves `false` when the decision was refused, so the card can re-enable. */
   approveProposal: (proposalId: string, params?: Record<string, unknown>) => Promise<boolean>;
   denyProposal: (proposalId: string) => Promise<boolean>;
+  /** Run-card actions (#1547); each resolves `false` when refused. */
+  cancelRun: (runId: string) => Promise<boolean>;
+  answerRun: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   dismissError: () => void;
 }
 
@@ -272,6 +277,32 @@ export function useStaffConsole({
     [onDenyProposal, decide],
   );
 
+  const cancelRun = useCallback(
+    async (runId: string) => {
+      try {
+        await cancelStaffRun(runId);
+        return true;
+      } catch (err) {
+        report("run", err);
+        return false;
+      }
+    },
+    [report],
+  );
+
+  const answerRun = useCallback(
+    async (threadId: string, runId: string, answer: string) => {
+      try {
+        await answerThreadRun(threadId, runId, answer);
+        return true;
+      } catch (err) {
+        report("run", err);
+        return false;
+      }
+    },
+    [report],
+  );
+
   const barb = roleByName(AUTO_ROUTE_ROLE) ?? FALLBACK_BARB;
   const currentRole = (selectedRole && roleByName(selectedRole)) || barb;
   const roleDetail = useMemo(() => toRoleDetail(currentRole), [currentRole]);
@@ -294,6 +325,8 @@ export function useStaffConsole({
     costGuard: { pending: costPending, confirm: confirmCost, cancel: cancelCost },
     approveProposal,
     denyProposal,
+    cancelRun,
+    answerRun,
     dismissError: () => setError(null),
   };
 }

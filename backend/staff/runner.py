@@ -37,7 +37,7 @@ from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec, load_roles
-from staff.run_link import handle_run_status_change
+from staff.run_link import handle_run_status_change, result_summary
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import mint_run_token, revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -419,7 +419,7 @@ class StaffRunner:
                     updated_rec,
                     status=status,
                     question=question,
-                    summary=updated_rec.outcome,
+                    summary=updated_rec.outcome or result_summary(result_line),
                 )
         finally:
             revoke_run_token(rec.id)

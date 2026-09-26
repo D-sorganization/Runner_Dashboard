@@ -51,6 +51,7 @@ export interface ActionProposalData {
 export type RunStatus =
   | "queued"
   | "running"
+  | "needs_input"
   | "completed"
   | "failed"
   | "cancelled";
@@ -68,7 +69,19 @@ export interface RunCardData {
   pr_number?: number | string;
   pr_url?: string;
   run_url?: string;
+  /** Set while the run needs input (#1547). */
+  question?: string | null;
+  summary?: string | null;
+  error?: string | null;
+  /** Set once the question was answered: who answered and the run that continues it. */
+  answered_by?: string | null;
+  continued_by?: string | null;
 }
+
+/** Cancel a run. Resolves `false` when the cancel was refused, so the card re-enables. */
+export type RunCancelHandler = (runId: string) => void | Promise<boolean | void>;
+/** Answer a needs-input run. Resolves `false` when the answer was refused (#1547). */
+export type RunAnswerHandler = (runId: string, answer: string) => Promise<boolean>;
 
 export interface HandoffCardData {
   from_role: string;
