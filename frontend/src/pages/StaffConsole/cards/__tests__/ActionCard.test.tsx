@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ActionCard } from "../ActionCard";
 import type { ActionProposalData } from "../cardTypes";
 
@@ -54,6 +54,26 @@ describe("ActionCard", () => {
 
     expect(handleApprove).toHaveBeenCalledTimes(1);
     expect(handleApprove).toHaveBeenCalledWith("prop-123", MOCK_PROPOSAL.params);
+  });
+
+  it("re-enables its buttons when the approval is refused (#1547)", async () => {
+    const handleApprove = vi.fn(async () => false);
+    render(<ActionCard proposal={MOCK_PROPOSAL} onApprove={handleApprove} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^approve$/i })).toBeEnabled());
+    expect(screen.getByRole("button", { name: /deny/i })).toBeEnabled();
+  });
+
+  it("stays disabled while an accepted approval executes", async () => {
+    const handleApprove = vi.fn(async () => true);
+    render(<ActionCard proposal={MOCK_PROPOSAL} onApprove={handleApprove} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+
+    await waitFor(() => expect(handleApprove).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: /executing/i })).toBeDisabled();
   });
 
   it("calls onDeny when Deny button is clicked", () => {

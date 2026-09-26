@@ -244,6 +244,12 @@ async def test_api_chat_turn_action_proposals(monkeypatch: pytest.MonkeyPatch) -
             assert len(proposals) == 1
             assert proposals[0].action == "runner.restart"
             assert proposals[0].params == {"runner": "runner-1"}
+            # #1547: the proposal is its own ActionCard message in the thread.
+            card_msg = store.get_message(proposals[0].message_id)
+            assert card_msg is not None and card_msg.kind == "action_proposal"
+            assert card_msg.meta["proposal"]["id"] == proposals[0].id
+            assert card_msg.meta["proposal"]["status"] == "pending"
+            assert card_msg.body_md == "stalled"
 
 
 @pytest.mark.asyncio

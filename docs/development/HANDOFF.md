@@ -1,4 +1,35 @@
-# Current handoff — Staff chat failure card remediation context: preserve most specific classified failure (#1551)
+# Current handoff — Chat proposals render as ActionCards (#1547, slice A)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1547-proposal-cards`; PR not created yet (opened with this commit); DL-#1547; Issue #1547 (Part of, not Fixes).
+
+## Objective and Status
+
+- Before: a chat reply's `staff-actions` block created proposals, but no message had kind `action_proposal`, so the Console never rendered an ActionCard and approval was unreachable. The SSE `proposal` event it published had no consumer.
+- Slice A (this branch), each with a failing test first:
+  1. `backend/staff/proposal_cards.py`: `post_proposal` posts each proposed action as its own `action_proposal` message (author = the proposing role) holding `meta.proposal` (the card), and the proposal's `message_id` is that message. `refresh_proposal_card` rewrites the card from the proposal's state. Both publish the message on the thread bus, so live and reload show the same card.
+  2. `chat.py` and `groups.py` use `post_proposal`. The unused `ThreadEventBus.publish_proposal` is removed.
+  3. `POST /proposals/{id}/decide` and `/execute` refresh the card in a `finally`, so denied, executed, failed and refused decisions all show.
+  4. `ActionCard` re-enables its buttons when a decision is refused. `useStaffConsole.approveProposal` / `denyProposal` resolve `false` on failure, and `ProposalApproveHandler` / `ProposalDenyHandler` in `cardTypes.ts` type every hop.
+- Slice B (next): live run cards (the `run_card` SSE event and the `action_result` / `run_card` messages `execute_proposal` adds without publishing), `needs_input` status and answer on the card, cancel from the card, and their e2e specs (`dispatch-ask`).
+
+## Validation
+
+- pytest (WSL venv): `tests/unit/test_staff_proposal_cards.py` (10), `tests/api/test_staff_proposals_api.py` (3 new), `tests/api/test_staff_chat_turns.py` (card assertion): 23 passed. Broader `tests/api tests/unit tests/code_requests tests/clients -k "staff or proposal or group or chat or thread or board"`: 687 passed, 1 skipped.
+- vitest `frontend/src/pages/StaffConsole`: 141 passed. `tsc -p tsconfig.app.json` and eslint clean.
+- Staff e2e (`STAFF_E2E_PYTHON="wsl -e <venv>/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts`): 12 passed. New specs: card live and after reload, approve executes, deny, viewer refused with the card still actionable.
+
+## Next Steps
+
+1. Open the PR (Part of #1547), label it and arm auto-merge.
+2. Slice B as above; #1556 (the harness backend calls real fleet peers and GitHub) can land independently.
+
+---
+
+# Past handoff — Staff chat failure card remediation context: preserve most specific classified failure (#1551)
 
 Last updated: 2026-09-25
 

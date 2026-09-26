@@ -4,6 +4,8 @@
  * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Umbrella #1354.
  */
 
+import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
+
 export interface ThreadMessage {
   id: string;
   thread_id: string;
@@ -106,8 +108,8 @@ export interface ThreadProps {
   onSendMessage?: (payload: SendMessagePayload) => Promise<{ ok: boolean; [key: string]: unknown }>;
   roles?: import("./types").StaffRoleItem[];
   className?: string;
-  onApproveProposal?: (proposalId: string, params?: Record<string, unknown>) => void;
-  onDenyProposal?: (proposalId: string) => void;
+  onApproveProposal?: ProposalApproveHandler;
+  onDenyProposal?: ProposalDenyHandler;
   onCancelRun?: (runId: string) => void;
   onRerouteHandoff?: (targetRole: string) => void;
 }
