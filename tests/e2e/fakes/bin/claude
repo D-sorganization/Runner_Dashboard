@@ -11,13 +11,15 @@ Chat scenarios:
   slow          stream ten deltas 0.4 s apart (cancel and SSE-drop tests)
   dispatch      propose a ``staff.dispatch`` of ``e2e-analyst`` (needs approval)
   dispatch-ask  the same, but the dispatched run asks a question first
+  dispatch-hang the same, but the dispatched run hangs until it is cancelled
   handoff       hand the thread to ``e2e-analyst``
   crash         exit 1 with a stack-trace style error on stderr
   auth          exit 1 with the CLI's expired-login message
 
 Work runs (argv carries ``bypassPermissions``) finish with a ``STAFF_RESULT:``
 line. Under ``ask`` they end on a question instead, which the backend reads as
-needs-input, until the continuation prompt carries the user's answer.
+needs-input, until the continuation prompt carries the user's answer. Under
+``hang`` they sleep for a minute first, so a test can cancel them.
 """
 
 from __future__ import annotations
@@ -60,12 +62,17 @@ def actions_block(actions: list[dict]) -> str:
     return "```staff-actions\n" + json.dumps(actions) + "\n```\n"
 
 
+# Chat scenario that proposes a dispatch -> the directive its dispatched run carries.
+RUN_DIRECTIVE = {"dispatch": "", "dispatch-ask": " [[e2e:ask]]", "dispatch-hang": " [[e2e:hang]]"}
+HANG_SECONDS = 60
+
+
 def chat_body(scenario: str, prompt: str) -> list[str]:
     """A chat reply as the chunks the fake streams, one ``assistant`` event each."""
     if scenario == "slow":
         return [f"Chunk {n}. " for n in range(1, 11)]
-    if scenario in ("dispatch", "dispatch-ask"):
-        run_prompt = "Summarise the queue" + (" [[e2e:ask]]" if scenario == "dispatch-ask" else "")
+    if scenario in RUN_DIRECTIVE:
+        run_prompt = "Summarise the queue" + RUN_DIRECTIVE[scenario]
         action = {
             "action": "staff.dispatch",
             "params": {"role": "e2e-analyst", "prompt": run_prompt},
@@ -97,6 +104,9 @@ def main(argv: list[str]) -> int:
     if scenario == "auth":
         sys.stderr.write("Invalid API key · Please run /login\n")
         return 1
+
+    if scenario == "hang" and "bypassPermissions" in argv:
+        time.sleep(HANG_SECONDS)
 
     session = session_from(argv)
     emit({"type": "system", "subtype": "init", "session_id": session})

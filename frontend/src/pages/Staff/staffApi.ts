@@ -437,6 +437,12 @@ export function postThreadMessage(
   });
 }
 
+/** Answer a needs-input run; the backend starts its continuation run (#1547). */
+export function answerThreadRun(threadId: string, runId: string, answer: string): Promise<unknown> {
+  const path = `${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/answer`;
+  return apiRequest<unknown>(path, { method: "POST", body: { answer } });
+}
+
 export function createThread(
   body: { title?: string; kind?: string; participants?: string[]; role?: string },
   signal?: AbortSignal,

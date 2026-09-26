@@ -72,16 +72,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1547 · Chat proposals render as ActionCards with approve, run card, needs-input and cancel
 
-- **State:** in_progress
+- **State:** in_review
 - **Owner:** claude
 - **Issue:** #1547 (epic #1354; closes #1341 with #1546)
-- **Branch:** `feat/1547-proposal-cards`
-- **PR:** not created (opened with this commit)
-- **Paths:** `backend/staff/proposal_cards.py`, `backend/staff/chat.py`, `backend/staff/groups.py`, `backend/staff/thread_bus.py`, `backend/routers/staff_proposals.py`, `frontend/src/pages/StaffConsole/cards/`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/{Desktop,Mobile,MessageItem}.tsx`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `tests/unit/test_staff_proposal_cards.py`, `tests/api/test_staff_proposals_api.py`, `tests/api/test_staff_chat_turns.py`, `tests/e2e/staff/staff-console.spec.ts`
+- **Branch:** `feat/1547-proposal-cards` (slice A, PR #1557); `feat/1547-run-cards` (slice B)
+- **PR:** #1557 (slice A, merged); #1566 (slice B)
+- **Paths:** `backend/staff/proposal_cards.py`, `backend/staff/chat.py`, `backend/staff/groups.py`, `backend/staff/thread_bus.py`, `backend/routers/staff_proposals.py`, `frontend/src/pages/StaffConsole/cards/`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/{Desktop,Mobile,MessageItem}.tsx`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `tests/unit/test_staff_proposal_cards.py`, `tests/api/test_staff_proposals_api.py`, `tests/api/test_staff_chat_turns.py`, `tests/e2e/staff/staff-console.spec.ts`, `backend/staff/run_link.py`, `backend/staff/actions.py`, `backend/staff/runner.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/StaffConsole/{Thread,ConsoleErrorBanner}.tsx`, `tests/api/test_staff_thread_runs.py`, `tests/e2e/fakes/`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 at 2e851ac9 plus this branch (backend 23 passed; StaffConsole vitest 141 passed; staff e2e 12 passed; `tsc`, eslint, ruff clean)
+- **Last verified:** 2026-09-25 at slice A plus `feat/1547-run-cards` (backend 43 passed; StaffConsole vitest 152 passed; staff e2e 15 passed; `tsc`, eslint, ruff clean)
 - **Summary:** Slice A: each proposed action is an `action_proposal` message holding the card; the proposal points at it, decisions rewrite it, and a refused decision re-enables the card. Slice B: live run cards, needs-input answer, and cancel from the card.
-- **Next step:** Publish the `action_result` and `run_card` messages `execute_proposal` adds, and render run status updates on the card.
+- **Next step:** Merge PR #1566 once CI is green.
 
 ### DL-#1551 · Staff chat failure card remediation context: preserve most specific classified failure
 

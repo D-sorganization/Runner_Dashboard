@@ -50,6 +50,7 @@ export const Thread: React.FC<ThreadProps> = ({
   onApproveProposal,
   onDenyProposal,
   onCancelRun,
+  onAnswerRun,
   onRerouteHandoff,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -224,6 +225,7 @@ export const Thread: React.FC<ThreadProps> = ({
                   onApproveProposal={onApproveProposal}
                   onDenyProposal={onDenyProposal}
                   onCancelRun={onCancelRun}
+                  onAnswerRun={onAnswerRun}
                   onRerouteHandoff={onRerouteHandoff}
                 />
               </div>

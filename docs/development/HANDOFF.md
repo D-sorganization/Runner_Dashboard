@@ -1,4 +1,36 @@
-# Current handoff — SC-G5-7 Playwright journey: context button to prefilled request to run (#1504)
+# Current handoff — Run cards follow the run: needs-input answer and cancel (#1547, slice B)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1547-run-cards` (slice A merged as #1557); PR #1566; DL-#1547; Fixes #1547 (with #1546 this closes #1341).
+
+## Objective and Status
+
+- Before: `execute_proposal` added an `action_result` and a `run_card` message without publishing either, so neither showed until reload. The runner's status changes wrote a new card per status, published from a worker thread with `put_nowait` on an asyncio queue (not thread-safe, so live subscribers could miss them), and a completed run's card had no result because `outcome` is only set for consolidation runs. The card had no needs-input answer and its Cancel did nothing in the Console.
+- Slice B (this branch), each with a failing test first:
+  1. `thread_bus.py`: the bus remembers each subscriber's loop and `publish_sync` hands off with `call_soon_threadsafe` when called off-loop. `publish_message_sync` publishes a `message` event. The unused `publish_run_card` is removed.
+  2. `run_link.py`: a run has one card, `msg-card-<run_id>`, updated in place with `meta.run` (`card_run`: status mapped to the Console's `RunStatus`, question, summary, error). `result_summary` takes the `STAFF_RESULT:` text as the summary. Answering a needs-input run marks its card `answered_by` / `continued_by`.
+  3. `actions.py`: `_post_result` publishes the `action_result` message. The duplicate `run_card` message is gone; the runner posts the card.
+  4. `runner.py`: the final card's summary is `outcome or result_summary(result_line)`.
+  5. Frontend: `RunCard` shows the question with an answer form, the summary and the error; Cancel and Send answer re-enable when refused. `useStaffConsole.cancelRun` / `answerRun` call `cancelRun` and `answerThreadRun` and report a `run` error. Desktop and Mobile pass both handlers.
+  6. e2e: `dispatch-hang` fake scenario; specs for a run card that completes with its result, a needs-input answer whose continuation completes, and a cancel.
+
+## Validation
+
+- pytest (WSL venv): `tests/api/test_staff_thread_runs.py tests/api/test_staff_runner.py`: 43 passed (includes the worker-thread publish test, which hangs on the old bus). ruff check and format clean; mypy on `staff.run_link`, `staff.thread_bus`, `staff.actions`, `staff.runner` reports no errors in those files.
+- vitest `frontend/src/pages/StaffConsole`: 152 passed. `tsc -p tsconfig.app.json` and eslint clean.
+- Staff e2e (`STAFF_E2E_PYTHON="wsl -e <venv>/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts`): 15 passed.
+
+## Next Steps
+
+1. Merge PR #1566 once CI is green.
+2. #1556 (the e2e harness backend calls real fleet peers and GitHub) remains open and independent.
+
+---
+
+# Past handoff — SC-G5-7 Playwright journey: context button to prefilled request to run (#1504)
 
 Last updated: 2026-09-26
 
