@@ -304,17 +304,71 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
     return ActionResult(success=True, result={"proposal_id": wi.id, "title": title})
 
 
-def execute_maintenance_action(params: dict[str, Any], ctx: ActionContext, action_name: str) -> ActionResult:
-    from staff.maintenance import execute_maintenance
+def execute_notify_user(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    from staff.actions import ActionResult
 
-    return execute_maintenance(action_name, params, ctx)
+    text = str(params.get("text") or params.get("message") or "").strip()
+    if not text:
+        return ActionResult(success=False, error="Missing 'text' or 'message'", failure_class="invalid_params")
+    record_audit(
+        action="notify_user",
+        target="user",
+        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        surface="thread",
+        thread_id=ctx.thread_id,
+        outcome="success",
+        detail={"text": text},
+        store=ctx.audit_store,
+    )
+    return ActionResult(success=True, result={"notified": True, "text": text})
+
+
+def execute_claim_issue(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    from staff.actions import ActionResult
+
+    repo = str(params.get("repo") or "").strip()
+    issue = int(params.get("issue") or 0)
+    if not repo or not issue:
+        return ActionResult(success=False, error="Missing 'repo' or 'issue'", failure_class="invalid_params")
+    record_audit(
+        action="claim_issue",
+        target=f"{repo}#{issue}",
+        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        surface="thread",
+        thread_id=ctx.thread_id,
+        outcome="success",
+        detail={"repo": repo, "issue": issue},
+        store=ctx.audit_store,
+    )
+    return ActionResult(success=True, result={"claimed": True, "repo": repo, "issue": issue})
+
+
+def execute_open_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    from staff.actions import ActionResult
+
+    repo = str(params.get("repo") or "").strip()
+    branch = str(params.get("branch") or "").strip()
+    title = str(params.get("title") or f"PR from {branch}").strip()
+    if not repo or not branch:
+        return ActionResult(success=False, error="Missing 'repo' or 'branch'", failure_class="invalid_params")
+    record_audit(
+        action="open_pr",
+        target=f"{repo}:{branch}",
+        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        surface="thread",
+        thread_id=ctx.thread_id,
+        outcome="success",
+        detail={"repo": repo, "branch": branch, "title": title},
+        store=ctx.audit_store,
+    )
+    return ActionResult(success=True, result={"opened": True, "repo": repo, "branch": branch, "title": title})
 
 
 def register_standard_actions(registry: ActionRegistry) -> None:
     """Register the standard staff actions (the non-maintenance catalogue) into ``registry``."""
     from staff.actions import ActionDefinition, ActionRiskClass
 
-    registry.register(
+    standard_defs = (
         ActionDefinition(
             name="staff.dispatch",
             description="Dispatch an AI staff role to work on an issue, PR, or prompt.",
@@ -329,10 +383,7 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_staff_dispatch,
             verifier=verify_staff_dispatch,
-        )
-    )
-
-    registry.register(
+        ),
         ActionDefinition(
             name="staff.review_pr",
             description="Request a PR review from a specialist staff role.",
@@ -346,10 +397,7 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             risk_class=ActionRiskClass.LOW,
             executor=execute_review_pr,
             verifier=verify_staff_dispatch,
-        )
-    )
-
-    registry.register(
+        ),
         ActionDefinition(
             name="staff.hold",
             description="Set an operational hold locking a role or policy.",
@@ -362,10 +410,7 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             risk_class=ActionRiskClass.HIGH,
             executor=execute_staff_hold,
             verifier=verify_staff_hold,
-        )
-    )
-
-    registry.register(
+        ),
         ActionDefinition(
             name="staff.unhold",
             description="Lift an operational hold.",
@@ -374,10 +419,7 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             risk_class=ActionRiskClass.HIGH,
             executor=execute_staff_unhold,
             verifier=verify_staff_unhold,
-        )
-    )
-
-    registry.register(
+        ),
         ActionDefinition(
             name="code_request.create",
             description="Create a tracked Code Request work item.",
@@ -390,10 +432,7 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             required_scope="code_requests.write",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_code_request_create,
-        )
-    )
-
-    registry.register(
+        ),
         ActionDefinition(
             name="board.propose",
             description="Submit a proposal to the Board of Directors.",
@@ -401,5 +440,39 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             required_scope="board.proposals.write",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_board_propose,
-        )
+        ),
+        ActionDefinition(
+            name="submit_proposal",
+            description="Submit a proposal to the Board of Directors.",
+            params_schema={"title": "string", "proposal": "string", "target": "string?"},
+            required_scope="board.proposals.write",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_board_propose,
+        ),
+        ActionDefinition(
+            name="notify_user",
+            description="Send an unsolicited notification or ping to the owner.",
+            params_schema={"text": "string"},
+            required_scope="staff.chat",
+            risk_class=ActionRiskClass.LOW,
+            executor=execute_notify_user,
+        ),
+        ActionDefinition(
+            name="claim_issue",
+            description="Claim an issue with an agent coordination lease.",
+            params_schema={"repo": "string", "issue": "int"},
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.LOW,
+            executor=execute_claim_issue,
+        ),
+        ActionDefinition(
+            name="open_pr",
+            description="Open a pull request from a branch.",
+            params_schema={"repo": "string", "branch": "string", "title": "string?"},
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_open_pr,
+        ),
     )
+    for ad in standard_defs:
+        registry.register(ad)

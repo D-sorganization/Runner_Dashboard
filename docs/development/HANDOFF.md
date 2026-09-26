@@ -1,4 +1,40 @@
-# Current handoff — Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked' (#1465)
+# Current handoff — SC-B1-G3: One action vocabulary for chat replies and the action registry (#1486)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1486`; branch `feat/1486-one-action-vocabulary`; Issue #1486; DL-#1486.
+
+## Objective and Status
+
+- Single authoritative action vocabulary across `reply_contract.py` and `actions.py`:
+  1. `get_known_actions(registry)` and `ALL_KNOWN_ACTIONS` dynamically mirror `ACTION_REGISTRY.list_actions()`.
+  2. Chat replies proposing registered actions (`staff.dispatch`, `staff.review_pr`, `maintenance.*`, `code_request.create`, `board.propose`, etc.) parse cleanly as valid action proposals.
+  3. Unregistered action names are dropped with descriptive warnings while preserving the Markdown prose reply.
+  4. Dynamic prompt generation via `generate_chat_contract_text(registry)` creates markdown action tables directly from `ACTION_REGISTRY` (DRY).
+  5. Registered 4 legacy/orphan actions (`notify_user`, `claim_issue`, `open_pr`, `submit_proposal`) with executable implementations and role permissions checks.
+  6. Registered 12 fleet maintenance action aliases (`runner.start`, `run.cancel`, etc.) in `maintenance.py` mapping to `maintenance.*` policies.
+  7. Added unit test suite `tests/unit/test_staff_reply_vocabulary.py` pinning that every reply-contract action has a registered, callable executor.
+- Quality gates:
+  - Unit tests: `tests/unit/test_staff_reply_contract.py` + `tests/unit/test_staff_reply_vocabulary.py` passed (21/21).
+  - Staff test suite: 763 passed, 12 skipped, 0 failed.
+  - Ruff check & format clean.
+  - Mypy: clean (0 issues across 68 files).
+  - File line counts: strictly $\le 500$ lines across all modified/new files.
+
+## Next Steps
+
+1. Push branch `feat/1486-one-action-vocabulary` to `origin`.
+2. Open PR referencing `Fixes #1486`.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until merged.
+5. Release lease for #1486 via `scripts.release_agent_lease`.
+6. Clean up worktree and local/remote branch.
+
+---
+
+# Past handoff — Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked' (#1465)
 
 Last updated: 2026-09-25
 
@@ -13,17 +49,7 @@ Last updated: 2026-09-25
   2. Root cause 2: `execute_proposal` passed `audit_store=None`, causing transitions and action executors (`execute_staff_hold`, `execute_staff_unhold`) to instantiate separate stores rather than reusing the conversation store's existing `_audit_store`.
   3. Root cause 3: In `tests/unit/test_staff_actions.py`, `test_execute_staff_dispatch_success_and_thread_messages` invoked `staff.dispatch`, spawning an unjoined daemon worker thread (`StaffRunner._worker`) that executed in the background and competed for SQLite locks during subsequent tests.
   4. Fix: Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` across all staff SQLite stores; wired existing audit store instance into `execute_proposal`; mocked `StaffRunner._worker` in `test_staff_actions.py` `clean_env` fixture alongside store/runner resets.
-- Quality gates:
-  - 30 consecutive stress-test runs of `test_staff_actions.py` passed with 0 failures or database lock errors.
-  - Ruff check & format passing.
-  - All modified files strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push rebased branch `fix/1465-staff-actions-db-lock` to origin with lease.
-2. Enable auto-merge on PR #1470 (`gh pr merge 1470 --squash --auto`).
-3. Monitor CI checks until merged.
-4. Release lease for #1465 via `scripts.release_agent_lease`.
+- Shipped in PR #1470.
 
 ---
 

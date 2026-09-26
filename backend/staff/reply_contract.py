@@ -24,15 +24,18 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterator, Set
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from staff.roles import RoleSpec
 
+if TYPE_CHECKING:
+    from staff.actions import ActionRegistry
+
 logger = logging.getLogger(__name__)
 
-# Standard action permissions requirements (field, key)
+# Standard action permissions requirements (retained for backward compatibility)
 STANDARD_ACTION_REQUIREMENTS: dict[str, tuple[str, str]] = {
     "claim_issue": ("permissions", "lease"),
     "open_pr": ("permissions", "open_pr"),
@@ -56,32 +59,103 @@ FLEET_ACTIONS: tuple[str, ...] = (
     "dashboard.restart",
 )
 
-ALL_KNOWN_ACTIONS: frozenset[str] = frozenset(set(STANDARD_ACTION_REQUIREMENTS.keys()) | set(FLEET_ACTIONS))
+
+def get_known_actions(registry: ActionRegistry | None = None) -> frozenset[str]:
+    """Return the set of all action names registered in the action registry (SC-B1-G3, #1486)."""
+    from staff.actions import ACTION_REGISTRY
+
+    reg = registry or ACTION_REGISTRY
+    return frozenset(a.name for a in reg.list_actions())
+
+
+class _DynamicKnownActions(Set[str]):
+    """Dynamic Set view that mirrors the action registry."""
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(get_known_actions())
+
+    def __contains__(self, item: object) -> bool:
+        return item in get_known_actions()
+
+    def __len__(self) -> int:
+        return len(get_known_actions())
+
+    def __repr__(self) -> str:
+        return repr(get_known_actions())
+
+    def __eq__(self, other: object) -> bool:
+        return get_known_actions() == other
+
+
+ALL_KNOWN_ACTIONS: _DynamicKnownActions = _DynamicKnownActions()
 
 _HANDOFF_RE = re.compile(r"^\s*handoff:\s*([a-zA-Z0-9_-]+)\s*$", re.IGNORECASE)
 _QUESTION_RE = re.compile(r"^\s*question:\s*(.+)$", re.IGNORECASE)
 
-CHAT_CONTRACT_FALLBACK = """# Chat Reply Contract (Shared Fragment)
 
-A reply is plain markdown prose, optionally followed by up to three trailing parts:
-1. One fenced ```staff-actions block holding a JSON array: [{"action": "...", "params": {...}, "reason": "..."}]
+def generate_chat_contract_text(registry: ActionRegistry | None = None) -> str:
+    """Generate the chat reply contract prompt dynamically from the action registry (DRY)."""
+    from staff.actions import ACTION_REGISTRY
+
+    reg = registry or ACTION_REGISTRY
+    actions = reg.list_actions()
+
+    rows = []
+    for a in actions:
+        desc = a.description.replace("|", "\\|").strip()
+        rows.append(f"| `{a.name}` | {a.risk_class} | `{a.required_scope}` | {desc} |")
+    action_table = "\n".join(rows)
+
+    return f"""# Chat Reply Contract (Shared Fragment)
+
+A reply is **plain markdown prose**, optionally followed by up to three trailing parts:
+1. One fenced ```staff-actions block holding a JSON array: [{{"action": "...", "params": {{...}}, "reason": "..."}}]
 2. One handoff: <role> line naming the role for the next turn.
 3. One question: <text> line asking the owner one thing.
-"""
+
+The prose is the answer. The trailing parts are optional and never a substitute for answering.
+
+## The `staff-actions` Block
+
+```staff-actions
+[
+  {{
+    "action": "staff.dispatch",
+    "params": {{"role": "planner", "prompt": "Analyze issue #1486"}},
+    "reason": "One sentence: why this, why now."
+  }}
+]
+```
+
+- **Propose, never perform.** An action in the block is a request for owner approval.
+- **One reason per action**, concrete and checkable.
+- **Strict JSON.** No comments, no trailing commas, no single quotes.
+- Actions are validated against the organization action registry and the role's declared permissions.
+
+### Actions You May Propose
+
+| Action | Risk | Required Scope | Description |
+| ------ | ---- | -------------- | ----------- |
+{action_table}
+
+## `handoff:`
+
+handoff: <role>
+Name one role from your `persona.defers_to` when the next step belongs to another role's lane.
+
+## `question:`
+
+question: <text>
+Ask the owner one question when you cannot proceed without an owner decision.
+""".strip()
 
 
-def get_chat_contract_text(rel: str = "staff/prompts/_chat_contract.md") -> str:
-    """Retrieve the chat reply contract fragment from Repository_Management or fallback."""
-    from staff.workspace import rm_root
-
-    root = rm_root()
-    if root is not None and rel and not Path(rel).is_absolute() and ".." not in Path(rel).parts:
-        path = root / rel
-        try:
-            return path.read_text(encoding="utf-8").strip()
-        except OSError:
-            pass
-    return CHAT_CONTRACT_FALLBACK.strip()
+def get_chat_contract_text(
+    rel: str = "staff/prompts/_chat_contract.md",
+    registry: ActionRegistry | None = None,
+) -> str:
+    """Retrieve the chat reply contract fragment generated dynamically from the action registry."""
+    return generate_chat_contract_text(registry=registry)
 
 
 @dataclass(frozen=True)
@@ -121,33 +195,29 @@ class ParsedReply:
         }
 
 
-def is_action_allowed_for_role(action: str, role: RoleSpec | dict[str, Any]) -> bool:
-    """Check whether a role is authorized to propose ``action``."""
-    if isinstance(role, dict):
-        perms = role.get("permissions") or {}
-        tools = list(role.get("tools") or [])
-        chat = role.get("chat") or {}
-        chat_tools = list(chat.get("tools") or [])
-        fleet_actions = set(perms.get("fleet_actions") or [])
-    else:
-        perms = role.permissions
-        tools = list(getattr(role, "tools", ()))
-        chat = role.chat
-        chat_tools = list(chat.get("tools") or [])
-        fleet_actions = set(role.fleet_actions)
+def is_action_allowed_for_role(
+    action: str,
+    role: RoleSpec | dict[str, Any],
+    registry: ActionRegistry | None = None,
+) -> bool:
+    """Check whether a role is authorized to propose ``action`` using registry policy (SC-B1-G3)."""
+    from staff.actions import ACTION_REGISTRY, check_role_permission
+    from staff.roles import RoleSpec, parse_role
 
-    all_tools = set(tools) | set(chat_tools)
-
-    if action in STANDARD_ACTION_REQUIREMENTS:
-        field_name, key = STANDARD_ACTION_REQUIREMENTS[action]
-        if field_name == "permissions":
-            return bool(perms.get(key))
-        if field_name == "tools":
-            return key in all_tools
+    reg = registry or ACTION_REGISTRY
+    action_def = reg.get(action)
+    if not action_def:
         return False
 
-    if action in FLEET_ACTIONS:
-        return action in fleet_actions
+    if isinstance(role, RoleSpec):
+        return check_role_permission(action_def, role.name, role_spec=role)
+    elif isinstance(role, dict):
+        role_name = str(role.get("name") or "")
+        try:
+            role_spec = parse_role(role)
+        except Exception:
+            role_spec = None
+        return check_role_permission(action_def, role_name, role_spec=role_spec)
 
     return False
 
@@ -171,6 +241,7 @@ def _is_fence_line(line: str) -> tuple[bool, str]:
 def parse_reply(
     raw_text: str | None,
     role: RoleSpec | dict[str, Any] | None = None,
+    registry: ActionRegistry | None = None,
 ) -> ParsedReply:
     """Parse a conversational turn reply into prose, actions, handoff, and question.
 
@@ -258,13 +329,14 @@ def parse_reply(
                         warnings.append(f"Action '{action_name}' params must be an object")
                         continue
 
-                    # Vocabulary check
-                    if action_name not in ALL_KNOWN_ACTIONS:
+                    # Vocabulary check (SC-B1-G3: single action registry vocabulary)
+                    known_actions = get_known_actions(registry)
+                    if action_name not in known_actions:
                         warnings.append(f"Action '{action_name}' is unknown and was dropped.")
                         continue
 
                     # Authorization check against role
-                    if role is not None and not is_action_allowed_for_role(action_name, role):
+                    if role is not None and not is_action_allowed_for_role(action_name, role, registry=registry):
                         role_name = getattr(
                             role,
                             "name",
