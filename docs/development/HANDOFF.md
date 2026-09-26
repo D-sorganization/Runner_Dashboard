@@ -33,6 +33,44 @@ Last updated: 2026-09-26
 
 ---
 
+# Past handoff — SC-G8: Delete dead frontend code (#1346)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1346`; PR #1544; DL-#1346; Issue #1346 (SC-G, epic #1353).
+
+## Objective and Status
+
+- Following retirement of the Classic layout and `legacy/App.tsx` (#1345), deleted remaining never-mounted and legacy-only frontend code:
+  - `frontend/src/pages/QuickDispatch.tsx` (and `__tests__/QuickDispatch.test.tsx`)
+  - `frontend/src/primitives/AlertsCenter.tsx` (and `__tests__/AlertsCenter.test.tsx`)
+  - `frontend/src/lib/alertAck.ts` (and `__tests__/alertAck.test.ts`)
+  - `frontend/src/lib/schemas/dispatch.ts` (and `__tests__/dispatch.test.ts`)
+- Removed `AlertsCenter` and `AlertsCenterProps` barrel exports from `frontend/src/primitives/index.ts`.
+- Removed orphaned `.quick-dispatch` styling rules from `frontend/src/index.css`.
+- Removed outdated `test_quick_dispatch_consumes_touch_button_and_scoped_styles` from `tests/frontend/test_badge_pill_primitives.py`.
+- Added regression test `test_dead_frontend_code_retired_issue_1346` to `tests/test_frontend_integrity.py` asserting that never-mounted primitives, schemas, and legacy-only pages remain deleted and are not imported anywhere in `frontend/src/`.
+- Bundle size: JS bundle unchanged at 1,014,235 B (modules were already tree-shaken); index CSS reduced from 83.69 kB to 82.42 kB (-1.27 kB raw, -180 B gzip).
+
+- Review (claude): comments in `AlarmPanel.tsx`, `useFleetEvents.ts`, `fleetEvents.ts` and `fleetAlerts.ts` no longer name the deleted AlertsCenter / alertAck. `FleetAlert.contentHash` now has no production consumer (removal candidate, not done here).
+
+## Validation
+
+- `npx vitest run`: 159 files / 1344 passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: 0 errors.
+- `pytest tests/test_frontend_integrity.py`: 73 passed, 1 xfailed.
+- `pytest tests/frontend/test_badge_pill_primitives.py`: 27 passed.
+- `pytest tests/test_frontend_perf_budget.py`: 11 passed.
+- `ruff check` and `ruff format --check` on touched Python files: clean.
+
+## Next Steps
+
+1. Open draft PR and await frontier agent review.
+
+---
+
 # Past handoff — Handoff replies post a HandoffCard and move the work to the target role (#1548)
 
 Last updated: 2026-09-25

@@ -12,7 +12,7 @@
  *     localStorage (best-effort; degrades to a no-op when unavailable).
  *   - `filterBySeverity` — the severity filter the EventLog UI applies.
  *   - `eventsToAlerts` — folds the *active* offline/disk events into the
- *     AlertsCenter `FleetAlert` model so the header pill surfaces
+ *     `FleetAlert` model so the AlarmPanel surfaces
  *     "runner(s) offline — disk pressure" without a pop-up.
  *
  * Contract: every exported function is pure except the storage helpers, which
@@ -178,8 +178,8 @@ export function activeConditions(
 }
 
 /**
- * Fold active offline/disk conditions into AlertsCenter `FleetAlert`s so the
- * header pill surfaces them as concise, dismissible rows (issue #863). Returns
+ * Fold active offline/disk conditions into `FleetAlert`s so the
+ * AlarmPanel surfaces them as concise, dismissible rows (issue #863). Returns
  * at most two synthetic alerts: a disk-pressure alert (when any node is offline
  * due to disk OR under low-disk pressure) and a generic runners-offline alert
  * (for non-disk offline nodes). Pure.
