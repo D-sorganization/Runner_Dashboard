@@ -36,9 +36,13 @@ from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
-from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
+from staff.runner_ops import (
+    pump_output,
+    resolve_launch_paths,
+    select_first_available_provider,
+)
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import mint_run_token, revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -166,41 +170,13 @@ class StaffRunner:
         return provider
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
-        """First installed, unattended provider whose plan is under ``ceiling`` percent (#1586, #1588).
-
-        Post: when every installed provider is over quota, the first installed one
-        (the gates in the scheduler and dispatch decide whether it may run); when
-        none is installed, the first that can run unattended.
-        """
-        runnable = [
-            pid for pid in providers if pid in self._adapters and getattr(self._adapters[pid], "unattended", True)
-        ]
-        installed = [pid for pid in runnable if self._adapters[pid].installed()]
-        limit = quota_mod.ceiling_percent(None) if ceiling is None else ceiling
-        for pid in installed:
-            if quota_mod.headroom(pid, limit)[0]:
-                return pid
-        if installed:
-            return installed[0]
-        if runnable:
-            return runnable[0]
-        return providers[0] if providers else "claude"
+        """First installed, unattended provider whose plan is under ``ceiling`` percent (#1586, #1588)."""
+        return select_first_available_provider(self._adapters, providers, ceiling)
 
     @staticmethod
     def _launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, str]:
-        """``gitdir``/``policy`` keyword arguments for ``adapter.build_command`` (#1586).
-
-        Post: only the slots the adapter's argv actually uses are passed, so an
-        adapter with the older ``build_command(prompt, workdir, model)`` shape still works.
-        """
-        argv = getattr(adapter, "argv", ())
-        paths: dict[str, str] = {}
-        if any("{gitdir}" in part for part in argv):
-            paths["gitdir"] = str(workspace.git_common_dir(workdir))
-        policy_text = getattr(adapter, "policy_text", None)
-        if policy_text is not None and any("{policy}" in part for part in argv):
-            paths["policy"] = str(workspace.write_policy_file(adapter.provider_id, policy_text()))
-        return paths
+        """``gitdir``/``policy`` keyword arguments for ``adapter.build_command`` (#1586)."""
+        return resolve_launch_paths(adapter, workdir)
 
     # ── submission ───────────────────────────────────────────────────────
     def submit(self, req: RunRequest) -> RunRecord:
@@ -484,29 +460,8 @@ class StaffRunner:
         transcript: Path,
         watchdog: StaffWatchdog | None = None,
     ) -> tuple[dict[str, Any], str]:
-        """Stream stdout lines into the transcript file and the event store.
-
-        Returns the usage the adapter reported and the last ``STAFF_RESULT:`` text seen.
-        """
-        usage: dict[str, Any] = {}
-        result_line = ""
-        assert proc.stdout is not None  # noqa: S101
-        with transcript.open("a", encoding="utf-8") as tf:
-            for line in proc.stdout:
-                if watchdog is not None:
-                    watchdog.record_output()
-                tf.write(redact_sensitive_content(line))
-                event = adapter.parse_line(line)
-                if event.get("usage"):
-                    usage.update(event["usage"])
-                if event.get("kind") == "rate_limit_event" and isinstance(event.get("raw"), dict):
-                    quota_mod.observe(rec.provider, event["raw"])  # live plan windows, free (#1587)
-                text = event.get("text") or ""
-                if text.strip():
-                    self.store.append_event(rec.id, event.get("kind", "text"), text)
-                    if "STAFF_RESULT:" in text:
-                        result_line = text[text.index("STAFF_RESULT:") :]
-        return usage, result_line
+        """Stream stdout lines into the transcript file and the event store (#1587, #1593)."""
+        return pump_output(rec, adapter, proc, transcript, self.store, watchdog)
 
 
 _runner: StaffRunner | None = None
