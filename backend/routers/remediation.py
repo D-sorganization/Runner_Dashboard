@@ -41,7 +41,8 @@ DASHBOARD_REPO = os.environ.get("RUNNER_DASHBOARD_REPO_NAME", "Runner_Dashboard"
 
 def workflow_dispatch_endpoint(workflow_file: str) -> str:
     """Return the ``gh api`` path that dispatches ``workflow_file`` in this repo."""
-    assert workflow_file, "workflow_file must be non-empty"
+    if not workflow_file:
+        raise ValueError("workflow_file must be non-empty")
     return f"/repos/{ORG}/{DASHBOARD_REPO}/actions/workflows/{workflow_file}/dispatches"
 
 
