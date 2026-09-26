@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import { TouchButton } from "../../primitives/TouchButton";
-import { Assign } from "../Staff/Assign";
+import { AdvancedDispatchForm } from "../Staff/AdvancedDispatchForm";
 import { fetchRoster } from "../Staff/staffApi";
 import { staffRunHref, useResource } from "./fleetApi";
 import { PanelFrame } from "./PanelFrame";
@@ -45,7 +45,7 @@ export function DispatchPanel() {
           <TouchButton onClick={() => setRunId(null)}>Dismiss</TouchButton>
         </div>
       ) : null}
-      <Assign roster={roster.data} onDispatched={setRunId} />
+      <AdvancedDispatchForm roster={roster.data} onDispatched={setRunId} />
     </div>
   );
 }

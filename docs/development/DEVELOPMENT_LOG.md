@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1498 · SC-G5-2: One Advanced dispatch form
+
+- **State:** in_review
+- **Owner:** antigravity (first cut), claude (review rework)
+- **Issue:** #1498
+- **Branch:** `agy/issue-1498`
+- **PR:** #1529
+- **Paths:** `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, `frontend/src/pages/Staff/requestKinds.ts`, `frontend/src/pages/Staff/DispatchPlan.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/FleetCommand/DispatchPanel.tsx`, `frontend/src/pages/__tests__/AdvancedDispatchForm.test.tsx`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest `frontend/src/pages/__tests__/` 46 files / 383 passed; `tsc -p tsconfig.app.json` clean; eslint `--max-warnings 0` clean)
+- **Summary:** One dispatch form for the work-request API; `Staff/Assign.tsx` is gone. Kinds come from `requestKinds.ts`, which lists only what `staff.work_requests.REQUEST_KINDS` accepts (today `staff.dispatch`), so the form never offers a request bound to 422. `approval_required` (202) is shown, not dropped.
+- **Next step:** When a later SC-G5-1 slice adds a backend kind, add its row to `requestKinds.ts` with its target fields.
+
 ### DL-#1486 · SC-B1-G3: One action vocabulary for chat replies and the action registry
 
 - **State:** in_progress
