@@ -146,7 +146,10 @@ def _no_hub_proxy(monkeypatch):
     requires ``HUB_URL``, so clearing it is enough. Tests of the proxy itself
     set ``HUB_URL`` with ``patch.object``, which overrides this default.
     """
-    import proxy_utils  # noqa: PLC0415
+    try:
+        import proxy_utils  # noqa: PLC0415
+    except ImportError:
+        return
 
     monkeypatch.setattr(proxy_utils, "HUB_URL", None)
     server = sys.modules.get("server")  # heavy: patch only when a test loaded it
