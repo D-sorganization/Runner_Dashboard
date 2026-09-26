@@ -1,10 +1,46 @@
-# Current handoff — Restore green main: trim backend/staff/chat.py under 500 lines (#1552)
+# Current handoff — Remove stale tracked vite.config.js that shadows vite.config.ts (#1549)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1552`; branch `fix/1552-trim-chat-py`; Issue #1552; DL-#1552.
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1549`; branch `agy/issue-1549`; Issue #1549; DL-#1549; PR not created.
+
+## Objective and Status
+
+- Scope:
+  1. Removed stale tracked `vite.config.js` and `vite.config.d.ts` from repository root.
+  2. Confirmed nothing imports `vite.config.js` or `vite.config.d.ts`, and added both to `.gitignore` so future build/tsc invocations do not leave untracked/committed artifacts.
+  3. Dropped redundant `--config vite.config.ts` workaround from `tests/e2e/staff/playwright.config.ts`.
+  4. Added test suite in `tests/frontend/test_vite_config.py` asserting no stale config files exist or are tracked, `.gitignore` entries are present, `vite.config.ts` contracts are upheld, and the `--config` workaround is removed.
+  5. Added Vitest unit test in `frontend/src/shell/__tests__/viteDevProxy.test.ts` verifying `vite.config.ts` is the active resolved configuration.
+  6. Updated `tests/test_documentation_freshness.py` to assert `vite.config.ts` exists and `vite.config.js`/`d.ts` are absent.
+- Validation:
+  - `wsl.exe -d Ubuntu-22.04 ... pytest tests/test_documentation_freshness.py tests/frontend/test_vite_config.py`: 11 passed, 1 skipped.
+  - `wsl.exe -d Ubuntu-22.04 ... pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
+  - `wsl.exe -d Ubuntu-22.04 ... pytest tests/test_ci_config.py`: 29 passed.
+  - `wsl.exe -d Ubuntu-22.04 ... pytest tests/test_staff_console_design_spec.py`: 8 passed.
+  - `npx vitest run frontend/src/shell/__tests__/viteDevProxy.test.ts`: 1 passed.
+  - `npx tsc -p tsconfig.app.json --noEmit`: 0 errors.
+  - `ruff check tests/test_documentation_freshness.py tests/frontend/test_vite_config.py`: clean.
+  - `ruff format --check tests/test_documentation_freshness.py tests/frontend/test_vite_config.py`: clean.
+
+## Next Steps
+
+1. Commit changes following Conventional Commits (`fix(build): remove stale tracked vite.config.js shadowing vite.config.ts (#1549)`).
+2. Push branch `agy/issue-1549` to origin.
+3. Open Draft PR referencing Fixes #1549 with `deletions-acknowledged: yes` and test run summaries.
+4. Verify CI status on GitHub Actions.
+
+---
+
+# Past handoff — Restore green main: trim backend/staff/chat.py under 500 lines (#1552)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1552`; branch `fix/1552-trim-chat-py`; Issue #1552; DL-#1552; PR #1554.
 
 ## Objective and Status
 

@@ -68,6 +68,8 @@ pip-wheel-metadata/
 *.db
 *.sqlite3
 *.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 
 # Agent-local permission state. This file records approved tool calls
 # verbatim, so it can capture a credential that appeared in a command.

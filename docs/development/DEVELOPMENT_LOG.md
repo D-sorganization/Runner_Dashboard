@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1552 · Restore green main: trim backend/staff/chat.py under 500 lines
+### DL-#1549 · Remove stale tracked vite.config.js that shadows vite.config.ts
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1549
+- **Branch:** `agy/issue-1549`
+- **Paths:** `vite.config.js`, `vite.config.d.ts`, `.gitignore`, `tests/e2e/staff/playwright.config.ts`, `tests/test_documentation_freshness.py`, `tests/frontend/test_vite_config.py`, `frontend/src/shell/__tests__/viteDevProxy.test.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/frontend/test_vite_config.py and tests/test_documentation_freshness.py: 11 passed, 1 skipped; test_frontend_integrity.py: 72 passed, 1 xfailed; vitest viteDevProxy.test.ts: 1 passed; tsc app: clean; ruff check & format: clean)
+- **Summary:** Removed stale tracked `vite.config.js` and `vite.config.d.ts` at repository root that shadowed `vite.config.ts` during dev server startup, which caused the Vite dev proxy to ignore `VITE_BACKEND_URL` and hardcode `/api` to `http://localhost:5001`. Ignored `vite.config.js` and `vite.config.d.ts` in `.gitignore`. Dropped redundant `--config vite.config.ts` workaround from `tests/e2e/staff/playwright.config.ts`. Added test suites verifying `vite.config.ts` resolution and proxy configuration.
+- **Next step:** Push branch `agy/issue-1549`, open draft PR referencing Fixes #1549, and verify CI status.
+
+### DL-#1552 · Restore green main: trim backend/staff/chat.py under 500 lines
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1552
 - **Branch:** `fix/1552-trim-chat-py`
+- **PR:** #1554
 - **Paths:** `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (chat unit tests 19 passed; line count chat.py 493 lines, chat_failures.py 122 lines; ruff clean; full codebase line-cap check clean)
 - **Summary:** Extracted `record_chat_failure_if_pending` helper logic from `backend/staff/chat.py` into `backend/staff/chat_failures.py`, reducing `chat.py` from 505 to 493 lines to satisfy the 500-line soft cap enforced by `ci-health-check`.
-- **Next step:** Push branch, open PR referencing Fixes #1552, arm auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1554).
 
 ### DL-#1500 · SC-G5-4: Remediation Issues and PRs bulk actions go through the request API
 

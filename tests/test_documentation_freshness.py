@@ -202,8 +202,12 @@ def test_readme_security_section_describes_real_auth_stack() -> None:
 
 def test_frontend_actually_uses_vite_and_typescript() -> None:
     """Sanity check: the truth that backs the doc claims above."""
-    assert (REPO_ROOT / "vite.config.ts").is_file() or (REPO_ROOT / "vite.config.js").is_file(), (
-        "Expected a vite.config.{ts,js} at repo root"
+    assert (REPO_ROOT / "vite.config.ts").is_file(), "Expected vite.config.ts at repo root"
+    assert not (REPO_ROOT / "vite.config.js").exists(), (
+        "Stale vite.config.js shadows vite.config.ts and ignores VITE_BACKEND_URL (#1549)"
+    )
+    assert not (REPO_ROOT / "vite.config.d.ts").exists(), (
+        "Generated vite.config.d.ts must not be committed to repo root (#1549)"
     )
     assert (REPO_ROOT / "tsconfig.json").is_file(), "Expected tsconfig.json at repo root"
     assert (REPO_ROOT / "frontend" / "src" / "main.tsx").is_file(), "Expected frontend/src/main.tsx as the Vite entry"
