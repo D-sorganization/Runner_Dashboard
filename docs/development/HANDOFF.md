@@ -1,4 +1,34 @@
-# Current handoff — SC-G5-6 Retire legacy dispatch forms and endpoints (#1503)
+# Current handoff — Sanitation: DEVELOPMENT_LOG.md duplicate-entry cleanup
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-run-aed83392417c`; branch `staff/sanitation-task-65785a`; PR: draft (see STAFF_RESULT line); no governing issue (fleet sanitation sweep).
+
+## Objective and Status
+
+Removed two duplicate/phantom entries from `docs/development/DEVELOPMENT_LOG.md` that were called out in the previous handoff as pre-existing issues. The file was at 199,867 bytes — 133 bytes below the 200,000-byte validator ceiling — with two redundant blocks consuming ~3,500 bytes.
+
+**Removed:**
+1. **DL-#1513 duplicate in Active section** (lines 452–463 before edit): The canonical shipped record lives in the `## Shipped (Last 90 Days)` section at the end of the file. The Active-section copy had no `Issue:` field and listed only PR #1519; the canonical copy has both PRs (#1515 and #1519) and a `Shipped:` date.
+2. **Phantom DL-#1339 entry** (lines 477–488 before edit): The heading read `DL-#1339 · SC-B9: Group threads…` but the body (owner `claude`, issue `#1479`, branch `agy/issue-1479`, knowledge-pack paths, state `in_review`) was entirely DL-#1479 content — mislabeled, stale, and superseded by the correct DL-#1479 entry (shipped, PR #1512) immediately above it and the correct DL-#1339 entry (shipped, PR #1480) immediately below it.
+
+## Validation
+
+- `wc -c docs/development/DEVELOPMENT_LOG.md` → 196,405 bytes (was 199,867; under the 200,000-byte ceiling).
+- `grep -c "^### DL-#1513" DEVELOPMENT_LOG.md` → 1 (in Shipped section).
+- `grep -c "^### DL-#1339" DEVELOPMENT_LOG.md` → 1 (shipped, PR #1480).
+- No backend source files changed; spec-check and CI quality-gate are not affected.
+
+## Next Steps
+
+1. Merge this draft PR after CI passes (docs-only; no logic changes).
+2. No follow-up work needed — the duplicate-entry issue is resolved.
+
+---
+
+# Past handoff — SC-G5-6 Retire legacy dispatch forms and endpoints (#1503)
 
 Last updated: 2026-09-26
 
