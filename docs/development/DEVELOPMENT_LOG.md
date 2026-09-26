@@ -27,7 +27,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** #1560
 - **Paths:** `backend/code_requests/dispatch_service.py`, `backend/routers/code_requests.py`, `backend/staff/work_requests.py`, `backend/staff/work_request_dispatch.py`, `backend/staff/work_request_executors.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `frontend/src/pages/Assessments.tsx`, `frontend/src/pages/AssessmentsPage.tsx`, `frontend/src/pages/CodeRequests.tsx`, `frontend/src/pages/CodeRequestsPage.tsx`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/codeRequestsTypes.ts`, `frontend/src/pages/__tests__/`, `tests/code_requests/test_dispatch_service.py`, `tests/api/test_staff_requests_kinds.py`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (backend 258 passed; vitest pages 735 passed; tsc, eslint, ruff clean; API client regenerated)
+- **Last verified:** 2026-09-25 (backend 258 passed; integrity + code requests 225 passed after rebase; vitest pages 735 passed; tsc, eslint, ruff clean; API client regenerated)
 - **Summary:** Code Requests, Assessments and the Projects steward dispatch through `POST /api/v1/staff/requests`. Code-request dispatch has one server-side core (`code_requests/dispatch_service.py`) shared by the legacy route and the request kind: profile defaults, prompt notes, standards injection and the history entry. The Console sends the typed prompt and `standards[]`.
 - **Next step:** Merge PR #1560.
 

@@ -22,6 +22,7 @@ Last updated: 2026-09-25
 - pytest (WSL venv): `tests/api tests/code_requests tests/unit -k "code or request or feature or profile or staff_actions or openapi or contract"`: 258 passed, 1 skipped. New: `tests/code_requests/test_dispatch_service.py` and three kind tests in `tests/api/test_staff_requests_kinds.py`.
 - vitest `frontend/src/pages`: 735 passed. `tsc -p tsconfig.app.json` and eslint clean. ruff check and format clean; mypy reports nothing in the touched modules.
 - API client regenerated (`WorkRequest` gains `effort`, `standards`, `budget`).
+- A second agent's CI fixes on this branch (desktop-route integrity assertions for `submitStaffRequest`; e2e loopback auth) were overwritten by a rebase push, then restored by cherry-pick. `tests/test_frontend_integrity.py` passes with the code-request tests (225 passed). The restored commit's `Spec Version` bump is reverted: that field is release-derived.
 
 ## Next Steps
 
