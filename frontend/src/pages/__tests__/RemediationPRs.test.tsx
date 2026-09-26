@@ -181,7 +181,7 @@ describe("RemediationPRsSubTab", () => {
       const body = JSON.parse((call![1] as RequestInit).body as string);
       expect(body.kind).toBe("pr.act");
       expect(body.target.repo).toBe("org/alpha");
-      expect(body.target.prs).toEqual([11]);
+      expect(body.target.prs).toEqual([11, 22]);
       expect(body.approved_by).toBe("dieter");
       expect(body.provider).toBe("jules_api");
     });
@@ -213,7 +213,7 @@ describe("RemediationPRsSubTab", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Dispatched 1 of 1 PR\(s\)\. Failed \(1\): #22: Merge conflict/),
+        screen.getByText(/Dispatched 1 of 2 PR\(s\)\. Failed \(1\): #22: Merge conflict/),
       ).toBeInTheDocument();
     });
   });
