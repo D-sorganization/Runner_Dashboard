@@ -3,7 +3,7 @@
  *
  * Polls `GET /api/events`, merges the freshly-fetched events into the retained
  * (localStorage-persisted) history via the pure `mergeEvents`, and exposes the
- * newest-first list plus the event-derived AlertsCenter alerts. Both the
+ * newest-first list plus the event-derived fleet alerts. Both the
  * Overview AlarmPanel and the dedicated Events tab consume this single hook so
  * they never diverge (DRY).
  *
@@ -25,7 +25,7 @@ import {
 export interface UseFleetEventsResult {
   /** Retained events, newest-first. */
   events: FleetEvent[];
-  /** Event-derived alerts for the AlertsCenter pill / AlarmPanel. */
+  /** Event-derived alerts for the AlarmPanel. */
   alerts: FleetAlert[];
   /** True while the first fetch is in flight. */
   loading: boolean;

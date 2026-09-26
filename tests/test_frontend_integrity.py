@@ -139,6 +139,42 @@ def test_legacy_app_is_retired() -> None:
         assert not re.search(r"""from ["'][./]*legacy/""", text), f"{path} imports from legacy/"
 
 
+def test_dead_frontend_code_retired_issue_1346() -> None:
+    """Never-mounted primitives, dead schemas, and legacy-only pages are retired (#1346)."""
+    dead_files = [
+        _SRC_DIR / "pages" / "QuickDispatch.tsx",
+        _SRC_DIR / "primitives" / "AlertsCenter.tsx",
+        _SRC_DIR / "lib" / "alertAck.ts",
+        _SRC_DIR / "lib" / "schemas" / "dispatch.ts",
+        _SRC_DIR / "primitives" / "DataTable.tsx",
+        _SRC_DIR / "primitives" / "OfflineQueueIndicator.tsx",
+        _SRC_DIR / "primitives" / "CredentialKeyModal.tsx",
+        _SRC_DIR / "primitives" / "SaveIndicator.tsx",
+    ]
+    for path in dead_files:
+        assert not path.exists(), f"Expected dead file {path.name} to be removed"
+
+    # Primitives barrel does not re-export dead components
+    primitives_index = (_PRIMITIVES_DIR / "index.ts").read_text(encoding="utf-8")
+    assert "AlertsCenter" not in primitives_index
+    assert "DataTable" not in primitives_index
+    assert "OfflineQueueIndicator" not in primitives_index
+    assert "CredentialKeyModal" not in primitives_index
+    assert "SaveIndicator" not in primitives_index
+
+    # Nothing in frontend/src imports dead components or modules
+    dead_import_patterns = [
+        re.compile(r"""from ["'][./]*primitives/AlertsCenter["']"""),
+        re.compile(r"""from ["'][./]*pages/QuickDispatch["']"""),
+        re.compile(r"""from ["'][./]*lib/alertAck["']"""),
+        re.compile(r"""from ["'][./]*lib/schemas/dispatch["']"""),
+    ]
+    for path in _SRC_DIR.rglob("*.ts*"):
+        text = path.read_text(encoding="utf-8")
+        for pattern in dead_import_patterns:
+            assert not pattern.search(text), f"{path} imports dead module matching {pattern.pattern}"
+
+
 def test_fleet_and_remediation_tabs_are_page_modules() -> None:
     """Fleet and Remediation are page modules (#949)."""
     fleet_page = _FLEET_TAB.read_text(encoding="utf-8")
@@ -377,7 +413,7 @@ def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
         "Feature request history",
     ]:
         assert f'"aria-label": "{label}"' in content or f'aria-label="{label}"' in content
-    assert content.count('"aria-modal": "true"') >= 2
+    assert (content.count('"aria-modal": "true"') + content.count('aria-modal="true"')) >= 2
 
 
 def test_mobile_design_token_modules_exist() -> None:

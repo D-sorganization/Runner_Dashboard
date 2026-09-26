@@ -713,18 +713,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (Merged to main via PR #1444, all 21 CI checks passed)
 - **Summary:** Implemented suggestion box for humans and agents submitting proposals to the Board stored as GitHub issues in `D-sorganization/Repository_Management` with label `board:proposal` and `needs-decision`.
 
-### DL-#1346 · SC-G8: Delete dead frontend code
+### DL-#1346 · SC-G8: Delete dead frontend code (never-mounted primitives, dead hooks, orphaned legacy pages)
 
-- **State:** shipped
-- **Owner:** claude
-- **Issue:** #1346 (epic #1353)
-- **Branch:** `chore/1346-dead-frontend`
-- **PR:** #1451
-- **Paths:** `frontend/src/primitives/`, `frontend/src/lib/schemas/dispatch.ts`, `package.json`, `package-lock.json`
+- **State:** in_review
+- **Owner:** antigravity (reviewed by claude)
+- **Issue:** #1346 (SC-G, epic #1353)
+- **Branch:** `agy/issue-1346`
+- **PR:** #1544
+- **Paths:** `frontend/src/pages/QuickDispatch.tsx`, `frontend/src/primitives/AlertsCenter.tsx`, `frontend/src/lib/alertAck.ts`, `frontend/src/lib/schemas/dispatch.ts`, `frontend/src/primitives/index.ts`, `frontend/src/index.css`, `frontend/src/lib/fleetAlerts.ts`, `frontend/src/lib/fleetEvents.ts`, `frontend/src/hooks/useFleetEvents.ts`, `frontend/src/components/AlarmPanel.tsx`, `tests/frontend/test_badge_pill_primitives.py`, `tests/test_frontend_integrity.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 at `a34c322b` baseline (vitest 1299 passed; tsc clean; bundle 1,169,405 B before and after)
-- **Summary:** Removes the never-mounted primitives and the dependencies only they used. QuickDispatch and AlertsCenter remain until the legacy App is removed.
-- **Next step:** Merged PR #1451, delete QuickDispatch and AlertsCenter together with `legacy/App.tsx` under #1345.
+- **Last verified:** 2026-09-25 at 7f417623 plus this branch (vitest 159 files / 1344 passed; tsc clean; test_frontend_integrity 73 passed; test_badge_pill_primitives 27 passed; test_frontend_perf_budget 11 passed; ruff clean; JS bundle 1,014,235 B unchanged, CSS reduced by 1.27 kB)
+- **Summary:** Deletes remaining legacy-only and never-mounted frontend code after Classic layout retirement (#1345): removed `QuickDispatch.tsx`, `AlertsCenter.tsx`, `alertAck.ts`, `schemas/dispatch.ts`, their tests, the `AlertsCenter` barrel export in `primitives/index.ts`, and orphaned `.quick-dispatch` CSS styles. Added static integrity test guarding against re-introduction of dead frontend primitives and pages. Comments no longer name the deleted modules; `FleetAlert.contentHash` has no production consumer since `alertAck.ts` went and is a removal candidate.
+- **Next step:** Merge PR #1544.
 
 ### DL-#1282 · CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record
 
