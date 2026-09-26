@@ -1,4 +1,34 @@
-# Current handoff — Wire the mad-scientist staff role (#1562)
+# Current handoff — Remediation bulk actions route each repository's targets to that repository (#1553)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1553-bulk-act-per-repo`; PR not created yet (opened with this commit); DL-#1553; Issue #1553 (follow-up to #1500 / #1545).
+
+## Objective and Status
+
+- #1545 built one `issue.act` / `pr.act` request from a whole selection with `repo = items[0].repo`, so a selection spanning repositories dispatched agents to the first repository's issue or PR numbers. `RemediationPRs.test.tsx` pinned it.
+- Fixed here, each with a failing test first:
+  1. `dispatchBulkByRepo` (`remediationBulkRequest.ts`) sends one request per repository and folds the replies into one message, naming each repository when there are several. A refused request fails all of its targets with the backend's message.
+  2. Both tabs keep only the failed rows selected (`keepFailedSelected`), so a retry resends just those.
+  3. `RequestTarget.issues` / `prs`: each >= 1, unique, at most `MAX_BULK_TARGETS = 100` (the legacy cap), else 422.
+  4. When every target fails, the error names each: `issue.act failed for every target: #42: ...; #43: ...`.
+- Unchanged on purpose: `force` and `approved_by` pass-through (#1500 asked to keep them). The issue asks the owner whether to drop them for the proposal gate.
+
+## Validation
+
+- Backend (WSL venv): `test_staff_requests_kinds.py`, `test_remediation_bulk_requests.py` and `test_frontend_integrity.py`: 99 passed, 1 xfailed (new: 7 invalid-target cases, the 100 cap, the all-failed message; the source-grep tests now require `dispatchBulkByRepo`). ruff check and format clean.
+- vitest `pages/__tests__/Remediation*` and `pages/Remediation/`: 89 passed. `tsc -p tsconfig.app.json` clean; eslint clean. `openapi.json` regenerated (`api-types.ts` unchanged).
+
+## Next Steps
+
+1. Open the PR (Fixes #1553), label it and arm auto-merge.
+2. Owner question on #1553: drop `force` / `approved_by` from `WorkRequest` in favour of the proposal gate?
+
+---
+
+# Past handoff — Wire the mad-scientist staff role (#1562)
 
 Last updated: 2026-09-26
 

@@ -22,8 +22,7 @@ import {
   prRowId,
   type PullRequest,
 } from "./remediationDispatch";
-import { submitStaffRequest } from "./Staff/staffApi";
-import { buildBulkPRRequest, formatBulkResponseResult } from "./Remediation/remediationBulkRequest";
+import { buildBulkPRRequest, dispatchBulkByRepo, keepFailedSelected } from "./Remediation/remediationBulkRequest";
 
 export type { PullRequest } from "./remediationDispatch";
 
@@ -162,23 +161,16 @@ export function RemediationPRsSubTab({
   function doDispatch(): void {
     if (!dispatchModal || !dispatchModal.items.length) return;
     setDispatching(true);
-    const items = dispatchModal.items.map((pr) => ({
-      repo: pr.repo || pr.repository || pr.full_name || repoFilter || "",
-      number: pr.number || pr.pr_number || 0,
+    const rows = dispatchModal.items.map((pr) => ({
+      key: prRowId(pr),
+      target: { repo: pr.repo || pr.repository || pr.full_name || repoFilter || "", number: pr.number || pr.pr_number || 0 },
     }));
-    const req = buildBulkPRRequest(items, {
-      provider: modalProvider,
-      prompt: modalPrompt,
-      approved_by: principalName || "anonymous",
-    });
-    submitStaffRequest(req)
-      .then((resp) => {
-        const outcome = formatBulkResponseResult(resp, items.length, "PR");
+    const options = { provider: modalProvider, prompt: modalPrompt, approved_by: principalName || "anonymous" };
+    dispatchBulkByRepo(buildBulkPRRequest, rows.map((r) => r.target), options, "PR")
+      .then(({ outcome, failed }) => {
         setDispatchMsg(outcome);
         setDispatchModal(null);
-        if (outcome.type === "success" || (resp.result && (resp.result as { accepted?: number }).accepted)) {
-          setSelected({});
-        }
+        setSelected(keepFailedSelected(rows, failed));
         setTimeout(() => {
           setDispatchMsg(null);
         }, 8000);

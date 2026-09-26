@@ -2605,8 +2605,10 @@
           },
           "issues": {
             "items": {
+              "minimum": 1.0,
               "type": "integer"
             },
+            "maxItems": 100,
             "title": "Issues",
             "type": "array"
           },
@@ -2624,8 +2626,10 @@
           },
           "prs": {
             "items": {
+              "minimum": 1.0,
               "type": "integer"
             },
+            "maxItems": 100,
             "title": "Prs",
             "type": "array"
           },

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1553 · Remediation bulk actions route each repository's targets to that repository
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1553 (follow-up to #1500)
+- **Branch:** `fix/1553-bulk-act-per-repo`
+- **PR:** not created (opened with this commit)
+- **Paths:** `backend/staff/work_requests.py`, `backend/staff/work_request_executors.py`, `frontend/src/pages/Remediation/remediationBulkRequest.ts`, `frontend/src/pages/RemediationIssues.tsx`, `frontend/src/pages/RemediationPRs.tsx`, `frontend/src/lib/openapi.json`, their tests
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 2e851ac9 plus this branch (staff request kinds, bulk request and frontend integrity tests 99 passed, 1 xfailed; Remediation vitest 89 passed; `tsc`, eslint and ruff clean)
+- **Summary:** One request per repository instead of every number under the first item's repo; failed rows stay selected; bulk targets are positive, unique and capped at 100; an all-failed request names each target.
+- **Next step:** Merge, then settle the `force` / `approved_by` question on #1553.
+
 ### DL-#1562 · Wire the Mad-Scientist Staff Role into Routing and the Roster
 
 - **State:** in_review

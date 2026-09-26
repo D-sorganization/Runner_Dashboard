@@ -159,7 +159,7 @@ describe("RemediationPRsSubTab", () => {
     expect(screen.getByText("Fix flaky test")).toBeInTheDocument();
   });
 
-  it("selects a row and dispatches with the principal as approved_by", async () => {
+  it("dispatches each repository's PRs to that repository", async () => {
     const fetchFn = mockFetch({});
     render(<RemediationPRsSubTab principalName="dieter" />);
     await waitFor(() =>
@@ -174,21 +174,22 @@ describe("RemediationPRsSubTab", () => {
     fireEvent.click(screen.getByText("Confirm dispatch"));
 
     await waitFor(() => {
-      const call = fetchFn.mock.calls.find((c) =>
-        String(c[0]).includes("/api/v1/staff/requests"),
-      );
-      expect(call).toBeTruthy();
-      const body = JSON.parse((call![1] as RequestInit).body as string);
-      expect(body.kind).toBe("pr.act");
-      expect(body.target.repo).toBe("org/alpha");
-      expect(body.target.prs).toEqual([11, 22]);
-      expect(body.approved_by).toBe("dieter");
-      expect(body.provider).toBe("jules_api");
+      const bodies = fetchFn.mock.calls
+        .filter((c) => String(c[0]).includes("/api/v1/staff/requests"))
+        .map((c) => JSON.parse((c[1] as RequestInit).body as string));
+      expect(bodies.map((b) => [b.target.repo, b.target.prs])).toEqual([
+        ["org/alpha", [11]],
+        ["org/beta", [22]],
+      ]);
+      expect(bodies.every((b) => b.kind === "pr.act")).toBe(true);
+      expect(bodies.every((b) => b.approved_by === "dieter")).toBe(true);
+      expect(bodies.every((b) => b.provider === "jules_api")).toBe(true);
     });
   });
 
-  it("shows partial backend failure per target", async () => {
+  it("shows partial backend failure per target and keeps the failed PR selected", async () => {
     mockFetch({
+      prs: PRS.map((pr) => ({ ...pr, repository: "org/alpha" })),
       staffRequestResult: {
         state: "executed",
         kind: "pr.act",
@@ -216,6 +217,7 @@ describe("RemediationPRsSubTab", () => {
         screen.getByText(/Dispatched 1 of 2 PR\(s\)\. Failed \(1\): #22: Merge conflict/),
       ).toBeInTheDocument();
     });
+    expect(screen.getByText(/1 PR\(s\) selected/)).toBeInTheDocument();
   });
 
   it("renders the inline error banner when the fetch fails", async () => {
