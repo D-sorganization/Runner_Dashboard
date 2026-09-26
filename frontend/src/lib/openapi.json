@@ -5742,17 +5742,13 @@
     },
     "/api/agent-remediation/dispatch-jules": {
       "post": {
-        "description": "Dispatch one of this repo's agent workflows via workflow_dispatch.",
+        "description": "Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
         "operationId": "dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post",
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Dispatch Jules Workflow Api Agent Remediation Dispatch Jules Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -5767,7 +5763,7 @@
           }
         ],
         "summary": "Dispatch Jules Workflow",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/agent-remediation/history": {
@@ -5868,10 +5864,10 @@
     },
     "/api/agents/quick-dispatch": {
       "post": {
-        "description": "Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.",
+        "description": "Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
         "operationId": "api_quick_dispatch_api_agents_quick_dispatch_post",
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
                 "schema": {}
@@ -5889,7 +5885,7 @@
           }
         ],
         "summary": "Api Quick Dispatch",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/analysis/workflow-machines": {
@@ -9944,7 +9940,7 @@
           }
         ],
         "summary": "Api Dispatch To Issues",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/launchers/generate": {
@@ -11585,7 +11581,7 @@
           }
         ],
         "summary": "Api Dispatch To Prs",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/prs/{owner}/{repo_name}/{number}": {

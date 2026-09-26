@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1503 · SC-G5-6 Retire legacy dispatch forms and endpoints
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1503
+- **Branch:** `chore/1503-retire-legacy-dispatch`
+- **PR:** #1574
+- **Paths:** `backend/routers/remediation.py`, `backend/routers/remediation_retired.py`, `backend/routers/remediation_bulk.py`, `frontend/src/pages/RemediationTab.tsx`, `frontend/src/shell/routing.ts`, `frontend/src/index.css`, `tests/test_legacy_dispatch_retirement.py`, `frontend/src/shell/__tests__/retiredLegacyDispatch.test.ts`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (pytest 45/45 passed; npm run typecheck clean; npm run lint clean; vitest 1410 passed; ruff check & format clean; mypy clean)
+- **Summary:** Retired QuickDispatch (popover, schemas, CSS, route) and Jules remediation dispatch (helper, Run button, route). `POST /api/agents/quick-dispatch` and `POST /api/agent-remediation/dispatch-jules` return HTTP 410 Gone with Link (`/api/v1/staff/requests`) and Sunset headers. Legacy frontend dispatch routes redirect to `/`. Decomposed `remediation.py` into `remediation_bulk.py` and `remediation_retired.py` keeping all modules strictly <= 500 LOC.
+- **Next step:** Watch PR #1574 merge and mark this entry shipped.
+
 ### DL-#1548 · Handoff replies post a HandoffCard and move the work to the target role
 
 - **State:** shipped
@@ -238,6 +251,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 at 7dc5df00 plus this branch (vitest StaffConsole + pages 67 files / 523 passed; `tsc` and eslint clean; frontend static pytest 186 passed)
 - **Summary:** A finished group turn (`meta.is_group_turn` with `seat_replies`) renders as `GroupDeliberationCard`: coordinator summary without the duplicated seat block, collapsed seat replies, silent seats marked with their error, and a Board Proposal form (#1284) prefilled only with the seats' replies. `useGroupCostGuard` asks the backend for its estimate before a group send and holds the Composer's send until the user confirms or cancels. The backend guard stays authoritative. The backend summary itself is canned text (#1540).
 - **Next step:** Merge, then fix the canned Board consensus in #1540.
+
 ### DL-#1516 · WP-1.1: post-run verification of staff runs (report mode)
 
 - **State:** in_review
@@ -295,7 +309,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Branch:** `feat/1486-one-action-vocabulary`
 - **Paths:** `backend/staff/reply_contract.py`, `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/staff/maintenance.py`, `tests/unit/test_staff_reply_contract.py`, `tests/unit/test_staff_reply_vocabulary.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_reply_*.py 21/21 passed; full staff test suite 763 passed, 12 skipped, 0 failed; ruff check clean; ruff format clean; mypy backend/staff clean in 68 source files; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (pytest tests/unit/test*staff_reply*\*.py 21/21 passed; full staff test suite 763 passed, 12 skipped, 0 failed; ruff check clean; ruff format clean; mypy backend/staff clean in 68 source files; all files <= 500 lines)
 - **Summary:** Established `ACTION_REGISTRY` as the single authoritative action vocabulary across `reply_contract.py` and `actions.py`: chat replies proposing registered actions (`staff.dispatch`, `staff.review_pr`, `maintenance.*`, etc.) are recognized and valid; unknown action names are dropped with descriptive warnings while preserving prose; reply-contract prompt text is generated dynamically from `ACTION_REGISTRY` (DRY); registered legacy actions (`notify_user`, `claim_issue`, `open_pr`, `submit_proposal`) with callable executors and permission checks; registered 12 fleet maintenance aliases; pinned that every reply-contract action has a registered, callable executor.
 - **Next step:** Push branch, open PR referencing Fixes #1486, arm auto-merge, verify CI passes.
 
@@ -1980,7 +1994,6 @@ Entries stay here for 90 days after merge, then move to the archive.
 - **Last verified:** 2026-09-25
 - **Shipped:** 2026-09-25
 - **Summary:** Aligned `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` under Python 3.11 to capture `/api/v1/staff/groups/{group_id}/threads` and disambiguate `proposals__models__CreateProposalRequest`, restoring green main across all CI workflows.
-
 
 ## Archive
 
