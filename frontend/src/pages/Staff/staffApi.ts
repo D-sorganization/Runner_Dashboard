@@ -71,6 +71,37 @@ export type PricingResponse = components["schemas"]["StaffPricingResponse"];
 export type UsageExportResponse = components["schemas"]["StaffUsageExportResponse"];
 
 export type DispatchBody = components["schemas"]["RunBody"];
+export type WorkRequest = components["schemas"]["WorkRequest"];
+export type RequestTarget = components["schemas"]["RequestTarget"];
+
+/** The `staff.dispatch` action result: `plan` on a dry run, `run_id` on a real dispatch. */
+export interface StaffDispatchResult {
+  run_id?: string | null;
+  role?: string;
+  repo?: string;
+  status?: string | null;
+  machine?: string | null;
+  forwarded_to?: string | null;
+  dry_run?: boolean;
+  plan?: RunPlan | null;
+}
+
+/** `POST /api/v1/staff/requests` success body (`staff.work_requests.submit_request`). */
+export interface StaffRequestResponse {
+  state: "planned" | "executed" | "approval_required";
+  kind: string;
+  action: string;
+  risk?: string;
+  params?: Record<string, unknown>;
+  thread_id?: string;
+  message_id?: string;
+  work_item_id?: string;
+  proposal_id?: string;
+  run_id?: string | null;
+  approval?: string;
+  plan?: StaffDispatchResult;
+  result?: StaffDispatchResult;
+}
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
@@ -126,6 +157,19 @@ export function dispatchRun(role: string, body: DispatchBody, idempotencyKey?: s
   return apiRequest<DispatchResponse>(`${STAFF_BASE}/${encodeURIComponent(role)}/run`, {
     body,
     headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
+  });
+}
+
+export function submitStaffRequest(
+  body: WorkRequest,
+  idempotencyKey?: string,
+  signal?: AbortSignal,
+): Promise<StaffRequestResponse> {
+  return apiRequest<StaffRequestResponse>(`${STAFF_BASE}/requests`, {
+    method: "POST",
+    body,
+    headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
+    signal,
   });
 }
 

@@ -1,4 +1,30 @@
-# Current handoff — SC-B1-G3: One action vocabulary for chat replies and the action registry (#1486)
+# Current handoff — SC-G5-2: One Advanced dispatch form (#1498)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1498`; PR #1529; DL-#1498; Issue #1498.
+
+## Objective and Status
+
+- One dispatch form, `frontend/src/pages/Staff/AdvancedDispatchForm.tsx`, posts to `POST /api/v1/staff/requests` (`submitStaffRequest`). It replaces `Staff/Assign.tsx` (deleted) in the Staff *Assign* section and the Fleet Command Dispatch panel.
+- First cut by antigravity. The claude review rework:
+  - Offers only the kinds the backend accepts (`Staff/requestKinds.ts`, today `staff.dispatch`); the first cut also listed five kinds the backend rejects.
+  - Shows `approval_required` (202) instead of dropping it.
+  - Moved the plan view to `Staff/DispatchPlan.tsx`, bringing the form under the 500-line cap.
+  - Types the response exactly (`StaffDispatchResult`).
+  - Dropped the `lib/staffApi.ts` re-export and the doc-wide prettier reformat.
+- Validation: vitest `frontend/src/pages/__tests__/` 46 files / 383 passed; `npx tsc -p tsconfig.app.json --noEmit` clean; `npx eslint --max-warnings 0` on the touched files clean.
+
+## Next Steps
+
+1. Auto-merge #1529 on green CI.
+2. When a later SC-G5-1 slice adds a backend kind, add its row (with target fields) to `requestKinds.ts`.
+
+---
+
+# Past handoff — SC-B1-G3: One action vocabulary for chat replies and the action registry (#1486)
 
 Last updated: 2026-09-25
 
