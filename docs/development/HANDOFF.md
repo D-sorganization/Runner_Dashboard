@@ -1,4 +1,34 @@
-# Current handoff — Run cards follow the run: needs-input answer and cancel (#1547, slice B)
+# Current handoff — Handoff replies post a HandoffCard and move the work to the target role (#1548)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1548`; branch `fix/1548-chat-handoff`; PR #1568; Issue #1548; DL-#1548.
+
+## Objective and Status
+
+- Before this change, a reply ending `handoff: <role>` only stored `meta.handoff` on the reply. No `kind="handoff"` message was created, `HandoffCard` never rendered, and nothing reached the target role.
+- Now:
+  1. `backend/staff/chat_handoff.py` `post_reply_handoff` runs after a successful background turn that named a handoff (`run_chat_turn_in_background`). It reuses `BarbRouter.execute_handoff`, which now takes `from_role` (default `barb`): a handoff card in the source thread, the target role's direct thread with the caller (created or continued) seeded with the original request, a work item, and an audit entry. The card is published on the thread bus.
+  2. An unknown target role, or a handoff to itself, is logged and ignored. The card's reason is the reply's first paragraph, capped at 280 characters.
+  3. `HandoffCard` has a "Continue with <role>" button (`onFollow`), wired through `MessageItem` and `Thread` (`onFollowHandoff`) to `openRole` on Desktop and Mobile.
+- Auto-route itself is unchanged. Barb still answers "Ask Barb (auto-route)" first, and its reply's handoff now moves the work. Whether the pre-router should send analysis questions straight to a specialist is a design question, split out as a follow-up.
+- Spotted, not fixed: `BarbRouter.override_routing` calls `update_work_item` with arguments it does not accept, so overrides never reassign the work item. This is suggested as a separate task.
+
+## Validation
+
+- pytest (WSL venv) `tests -k 'staff or chat or rout or handoff'`: 1252 passed, 15 skipped. New: `tests/unit/test_staff_chat_handoff.py` (10).
+- vitest `src/pages/StaffConsole`: 145 passed (new HandoffCard and Thread tests). tsc and eslint clean. ruff clean. mypy reports nothing new (2 pre-existing errors in `override_routing`).
+- Staff e2e: 8/8. The handoff test now asserts the card, clicks "Continue with E2e-analyst", and sees Barb's brief in the analyst's thread.
+
+## Next Steps
+
+1. Merge PR #1568 once CI is green.
+
+---
+
+# Past handoff — Run cards follow the run: needs-input answer and cancel (#1547, slice B)
 
 Last updated: 2026-09-25
 

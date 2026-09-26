@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1548 · Handoff replies post a HandoffCard and move the work to the target role
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1548
+- **Branch:** `fix/1548-chat-handoff`
+- **PR:** #1568
+- **Paths:** `backend/staff/chat_handoff.py`, `backend/staff/chat.py`, `backend/staff/router.py`, `backend/staff/router_models.py`, `frontend/src/pages/StaffConsole/cards/HandoffCard.tsx`, `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/Thread.tsx`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `tests/unit/test_staff_chat_handoff.py`, `tests/e2e/staff/staff-console.spec.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest staff/chat/routing 1252 passed; vitest StaffConsole 145 passed; staff e2e 8/8)
+- **Summary:** A reply ending `handoff: <role>` posts a handoff card and seeds the target role's direct thread through the router's `execute_handoff` (now parameterised by `from_role`). The card's "Continue with <role>" opens that thread.
+- **Next step:** Merge PR #1568 once CI is green.
+
 ### DL-#1504 · SC-G5-7 Playwright journey: context button to prefilled request to run
 
 - **State:** in_review

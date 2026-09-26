@@ -39,6 +39,7 @@ export interface MessageItemProps {
   /** Answer a needs-input run in this message's thread (#1547). */
   onAnswerRun?: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   onRerouteHandoff?: (targetRole: string) => void;
+  onFollowHandoff?: (targetRole: string) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -51,6 +52,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onCancelRun,
   onAnswerRun,
   onRerouteHandoff,
+  onFollowHandoff,
 }) => {
   const isUser = message.author_kind === "user" || message.author === "user";
   const isFailed = message.delivery === "failed" || message.kind === "error";
@@ -139,6 +141,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <HandoffCard
           handoff={handoff}
           onReroute={onRerouteHandoff}
+          onFollow={onFollowHandoff}
         />
       );
     }

@@ -209,8 +209,13 @@ class RoutingDecision:
 
     @property
     def handoff_body(self) -> str:
+        return self.handoff_body_from("barb")
+
+    def handoff_body_from(self, from_role: str) -> str:
+        """Card text for a handoff sent by *from_role* (Barb's router or a role's own reply, #1548)."""
+        source = from_role.replace("-", " ").title()
         target = (self.chosen_role or "unknown").replace("-", " ").title()
-        return f"Barb → {target}: {self.reason}"
+        return f"{source} → {target}: {self.reason}"
 
     def to_dict(self) -> dict[str, Any]:
         return {

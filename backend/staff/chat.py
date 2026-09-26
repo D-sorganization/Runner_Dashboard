@@ -40,6 +40,7 @@ from staff.chat_failures import (
     record_chat_capacity_failure,
     record_chat_failure_if_pending,
 )
+from staff.chat_handoff import post_reply_handoff
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
     extract_session_id,
@@ -447,12 +448,21 @@ async def run_chat_turn_in_background(
     """Async background task invoked by POST /threads/{id}/messages to execute reply."""
     try:
         runner = ChatTurnRunner()
-        await runner.execute_turn(
+        result = await runner.execute_turn(
             thread_id=thread_id,
             user_message_id=user_message_id,
             placeholder_id=placeholder_id,
             role_name=role_name,
         )
+        if result.ok and result.handoff:
+            await post_reply_handoff(
+                thread_id=thread_id,
+                user_message_id=user_message_id,
+                from_role=role_name,
+                to_role=result.handoff,
+                reply=result.reply,
+                caller_id=caller_id,
+            )
     except Exception as exc:  # noqa: BLE001
         log.error(
             "Unhandled error during chat turn for thread %s: %s",

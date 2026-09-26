@@ -217,6 +217,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               onDenyProposal={handleDenyProposal}
               onCancelRun={sc.cancelRun}
               onAnswerRun={sc.answerRun}
+              onFollowHandoff={(role) => void sc.openRole(role)}
             />
           </div>
 
