@@ -63,6 +63,7 @@ class RequestTarget(BaseModel):
     ref: str = ""
     issues: list[int] = Field(default_factory=list)
     prs: list[int] = Field(default_factory=list)
+    force: bool | None = None
 
 
 class WorkRequest(BaseModel):
@@ -79,6 +80,9 @@ class WorkRequest(BaseModel):
     prompt: str = Field(default="", max_length=20000)
     dry_run: bool = False
     profile_id: str | None = None
+    force: bool | None = None
+    approved_by: str | None = None
+    confirmation: dict[str, Any] | None = None
 
 
 class RequestRejectedError(ValueError):
@@ -158,6 +162,7 @@ def _issue_act_params(req: WorkRequest) -> dict[str, Any]:
         raise RequestRejectedError("kind 'issue.act' needs a repo")
     if t.issue is None and not t.issues:
         raise RequestRejectedError("kind 'issue.act' needs an issue target")
+    approved_by = req.approved_by or (req.confirmation.get("approved_by") if req.confirmation else None)
     params = {
         "repo": t.repo,
         "issue": t.issue or (t.issues[0] if t.issues else None),
@@ -167,6 +172,8 @@ def _issue_act_params(req: WorkRequest) -> dict[str, Any]:
         "prompt": req.prompt,
         "role": req.role,
         "machine": req.machine,
+        "force": bool(req.force or t.force),
+        "approved_by": approved_by,
     }
     return {k: v for k, v in params.items() if v not in (None, "", [])}
 
@@ -181,6 +188,7 @@ def _pr_act_params(req: WorkRequest) -> dict[str, Any]:
         raise RequestRejectedError("kind 'pr.act' needs a repo")
     if t.pr is None and not t.prs:
         raise RequestRejectedError("kind 'pr.act' needs a pr target")
+    approved_by = req.approved_by or (req.confirmation.get("approved_by") if req.confirmation else None)
     params = {
         "repo": t.repo,
         "pr": t.pr or (t.prs[0] if t.prs else None),
@@ -190,6 +198,8 @@ def _pr_act_params(req: WorkRequest) -> dict[str, Any]:
         "prompt": req.prompt,
         "role": req.role,
         "machine": req.machine,
+        "force": bool(req.force or t.force),
+        "approved_by": approved_by,
     }
     return {k: v for k, v in params.items() if v not in (None, "", [])}
 
@@ -309,7 +319,8 @@ def submit_request(
     if req.dry_run:
         return _plan(req, kind, params, caller)
 
-    principal = format_caller(caller)
+    approved_by = req.approved_by or (req.confirmation.get("approved_by") if req.confirmation else None)
+    principal = approved_by or format_caller(caller)
     thread = requests_thread(store, caller)
     msg = store.add_message(
         thread_id=thread.id,
@@ -318,10 +329,34 @@ def submit_request(
         body_md=f"**Request** `{req.kind}`\n\n{req.prompt}".rstrip(),
         meta={"request": req.model_dump()},
     )
-    title = f"[{req.kind}] {req.target.repo or req.role or ''} {req.prompt[:60]}".strip()
+    targets_desc = ""
+    if req.target.issues:
+        targets_desc = " #" + ", #".join(str(i) for i in req.target.issues)
+    elif req.target.prs:
+        targets_desc = " PR#" + ", PR#".join(str(p) for p in req.target.prs)
+    elif req.target.issue:
+        targets_desc = f" #{req.target.issue}"
+    elif req.target.pr:
+        targets_desc = f" PR#{req.target.pr}"
+
+    title = f"[{req.kind}] {req.target.repo or req.role or ''}{targets_desc} {req.prompt[:60]}".strip()
     wi = work_items.create_work_item(
         title=title[:200], requested_by=principal, thread_id=thread.id, owner_role=str(params.get("role") or "")
     )
+    if req.target.issues:
+        for num in req.target.issues:
+            ref = f"{req.target.repo}#{num}" if req.target.repo else str(num)
+            work_items.add_link(wi.id, "issues", ref)
+    elif req.target.issue:
+        ref = f"{req.target.repo}#{req.target.issue}" if req.target.repo else str(req.target.issue)
+        work_items.add_link(wi.id, "issues", ref)
+    if req.target.prs:
+        for num in req.target.prs:
+            ref = f"{req.target.repo}#{num}" if req.target.repo else str(num)
+            work_items.add_link(wi.id, "prs", ref)
+    elif req.target.pr:
+        ref = f"{req.target.repo}#{req.target.pr}" if req.target.repo else str(req.target.pr)
+        work_items.add_link(wi.id, "prs", ref)
     params = {**params, "work_item_id": wi.id}
     prop = store.create_proposal(
         message_id=msg.id,

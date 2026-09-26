@@ -239,90 +239,98 @@ def execute_ci_remediate(params: dict[str, Any], ctx: ActionContext) -> ActionRe
         return ActionResult(success=False, error=str(exc), failure_class="dispatch_failed")
 
 
-def execute_issue_act(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+def _execute_item_act(kind: str, params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     from staff.actions import ActionResult
 
     repo = str(params.get("repo") or "").strip()
-    issue = params.get("issue")
+    plural = "issues" if kind == "issue" else "prs"
+    single = kind
+    items_list: list[int] = params.get(plural) or []
+    if not items_list and params.get(single) is not None:
+        items_list = [int(params[single])]
     provider = params.get("provider")
     model = params.get("model")
     prompt = str(params.get("prompt") or "")
     role = params.get("role")
     machine = str(params.get("machine") or "local")
+    workflow = "Agent-Issue-Dispatch.yml" if kind == "issue" else "Agent-PR-Dispatch.yml"
 
     if ctx.dry_run:
-        plan = {
-            "action": "issue.act",
+        plan: dict[str, Any] = {
+            "action": f"{kind}.act",
             "repo": repo,
-            "issue": issue,
+            single: items_list[0] if items_list else None,
             "provider": provider or "claude",
             "model": model,
             "prompt": prompt,
             "role": role,
             "machine": machine,
-            "workflow": "Agent-Issue-Dispatch.yml",
+            "workflow": workflow,
         }
+        if len(items_list) > 1:
+            plan[plural] = items_list
         return ActionResult(success=True, result=plan)
 
-    try:
-        res = run_on_loop(
-            _dispatch_issue_action,
-            repo,
-            int(issue) if issue is not None else 0,
-            str(provider) if provider else None,
-            str(model) if model else None,
-            prompt,
-            str(role) if role else None,
-            machine,
+    dispatch_fn = _dispatch_issue_action if kind == "issue" else _dispatch_pr_action
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    targets_map: dict[str, Any] = {}
+
+    for num in items_list:
+        try:
+            res = run_on_loop(
+                dispatch_fn,
+                repo,
+                int(num),
+                str(provider) if provider else None,
+                str(model) if model else None,
+                prompt,
+                str(role) if role else None,
+                machine,
+            )
+            accepted.append(res)
+            targets_map[str(num)] = {"status": "dispatched", **res}
+        except BridgeUnavailableError as exc:
+            rejected.append({single: num, "number": num, "reason": str(exc), "failure_class": "bridge_unavailable"})
+            targets_map[str(num)] = {"status": "failed", "error": str(exc), "failure_class": "bridge_unavailable"}
+        except Exception as exc:  # noqa: BLE001
+            rejected.append({single: num, "number": num, "reason": str(exc), "failure_class": "dispatch_failed"})
+            targets_map[str(num)] = {"status": "failed", "error": str(exc), "failure_class": "dispatch_failed"}
+
+    if len(items_list) <= 1:
+        if rejected:
+            err = rejected[0]["reason"]
+            fc = rejected[0].get("failure_class", "dispatch_failed")
+            return ActionResult(success=False, error=f"{kind}.act {err}", failure_class=fc)
+        return ActionResult(success=True, result=accepted[0] if accepted else {})
+
+    if not accepted:
+        err_msg = "; ".join(f"#{r['number']}: {r['reason']}" for r in rejected) or "all dispatches failed"
+        fc = rejected[0].get("failure_class", "dispatch_failed") if rejected else "dispatch_failed"
+        return ActionResult(
+            success=False,
+            error=err_msg,
+            failure_class=fc,
+            result={"accepted": [], "rejected": rejected, "targets": targets_map},
         )
-        return ActionResult(success=True, result=res)
-    except BridgeUnavailableError as exc:
-        return ActionResult(success=False, error=f"issue.act {exc}", failure_class="bridge_unavailable")
-    except Exception as exc:  # noqa: BLE001
-        return ActionResult(success=False, error=str(exc), failure_class="dispatch_failed")
+
+    return ActionResult(
+        success=True,
+        result={
+            "status": "partial" if rejected else "dispatched",
+            "accepted": accepted,
+            "rejected": rejected,
+            "targets": targets_map,
+        },
+    )
+
+
+def execute_issue_act(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    return _execute_item_act("issue", params, ctx)
 
 
 def execute_pr_act(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
-    from staff.actions import ActionResult
-
-    repo = str(params.get("repo") or "").strip()
-    pr = params.get("pr")
-    provider = params.get("provider")
-    model = params.get("model")
-    prompt = str(params.get("prompt") or "")
-    role = params.get("role")
-    machine = str(params.get("machine") or "local")
-
-    if ctx.dry_run:
-        plan = {
-            "action": "pr.act",
-            "repo": repo,
-            "pr": pr,
-            "provider": provider or "claude",
-            "model": model,
-            "prompt": prompt,
-            "role": role,
-            "machine": machine,
-            "workflow": "Agent-PR-Dispatch.yml",
-        }
-        return ActionResult(success=True, result=plan)
-
-    try:
-        res = run_on_loop(
-            _dispatch_pr_action,
-            repo,
-            int(pr) if pr is not None else 0,
-            str(provider) if provider else None,
-            str(model) if model else None,
-            prompt,
-            str(role) if role else None,
-            machine,
-        )
-        return ActionResult(success=True, result=res)
-    except BridgeUnavailableError as exc:
-        return ActionResult(success=False, error=f"pr.act {exc}", failure_class="bridge_unavailable")
-    except Exception as exc:  # noqa: BLE001
-        return ActionResult(success=False, error=str(exc), failure_class="dispatch_failed")
+    return _execute_item_act("pr", params, ctx)
 
 
 def execute_code_request_dispatch(params: dict[str, Any], ctx: ActionContext) -> ActionResult:

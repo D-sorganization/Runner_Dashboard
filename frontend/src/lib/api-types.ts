@@ -7391,6 +7391,8 @@ export interface components {
          * @description What the work is about. Each kind accepts only the fields it can act on.
          */
         RequestTarget: {
+            /** Force */
+            force?: boolean | null;
             /** Issue */
             issue?: number | null;
             /** Issues */
@@ -8633,11 +8635,19 @@ export interface components {
          * @description The body of ``POST /api/v1/staff/requests``.
          */
         WorkRequest: {
+            /** Approved By */
+            approved_by?: string | null;
+            /** Confirmation */
+            confirmation?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Dry Run
              * @default false
              */
             dry_run: boolean;
+            /** Force */
+            force?: boolean | null;
             /**
              * Kind
              * @description A request kind; see REQUEST_KINDS
@@ -17391,6 +17401,7 @@ export interface operations {
         };
     };
 }
+
 
 // ── Client compatibility aliases ─────────────────────────────────────────────
 // These aliases keep the hand-written API client on stable names while the

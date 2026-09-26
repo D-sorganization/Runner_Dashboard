@@ -53,15 +53,25 @@ const PRS = [
   },
 ];
 
-function mockFetch(opts: { prs?: unknown; prsOk?: boolean; dispatchOk?: boolean }) {
+function mockFetch(opts: {
+  prs?: unknown;
+  prsOk?: boolean;
+  dispatchOk?: boolean;
+  dispatchResponse?: unknown;
+}) {
   const fn = vi.fn((url: string) => {
-    if (url.includes("/api/prs/dispatch")) {
+    if (url.includes("/api/v1/staff/requests") || url.includes("/api/prs/dispatch")) {
+      if (opts.dispatchResponse) {
+        return Promise.resolve(opts.dispatchResponse as Response);
+      }
       return Promise.resolve({
         ok: opts.dispatchOk !== false,
-        status: opts.dispatchOk === false ? 500 : 200,
+        status: opts.dispatchOk === false ? 500 : 201,
         json: () =>
           Promise.resolve(
-            opts.dispatchOk === false ? { detail: "boom" } : { dispatched: 1 },
+            opts.dispatchOk === false
+              ? { detail: "boom" }
+              : { state: "executed", result: { status: "dispatched" } },
           ),
       } as Response);
     }
@@ -137,7 +147,7 @@ describe("RemediationPRsSubTab", () => {
     expect(screen.getByText("Fix flaky test")).toBeInTheDocument();
   });
 
-  it("selects a row and dispatches with the principal as approved_by", async () => {
+  it("selects a row and dispatches with the principal as approved_by via work-request API", async () => {
     const fetchFn = mockFetch({});
     render(<RemediationPRsSubTab principalName="dieter" />);
     await waitFor(() =>
@@ -153,12 +163,68 @@ describe("RemediationPRsSubTab", () => {
 
     await waitFor(() => {
       const call = fetchFn.mock.calls.find((c) =>
-        String(c[0]).includes("/api/prs/dispatch"),
+        String(c[0]).includes("/api/v1/staff/requests"),
       );
       expect(call).toBeTruthy();
       const body = JSON.parse((call![1] as RequestInit).body as string);
-      expect(body.confirmation.approved_by).toBe("dieter");
+      expect(body.kind).toBe("pr.act");
+      expect(body.target.prs).toEqual([11, 22]);
+      expect(body.approved_by).toBe("dieter");
       expect(body.provider).toBe("jules_api");
+    });
+  });
+
+  it("produces one request with all targets for a bulk selection", async () => {
+    const fetchFn = mockFetch({});
+    render(<RemediationPRsSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Fix flaky test")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTitle("Select all"));
+    await waitFor(() =>
+      expect(screen.getByText(/2 PR\(s\) selected/)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText(/Dispatch to selected/));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Confirm dispatch"));
+
+    await waitFor(() => {
+      const calls = fetchFn.mock.calls.filter((c) =>
+        String(c[0]).includes("/api/v1/staff/requests"),
+      );
+      expect(calls.length).toBe(1);
+      const body = JSON.parse((calls[0][1] as RequestInit).body as string);
+      expect(body.kind).toBe("pr.act");
+      expect(body.target.prs).toEqual([11, 22]);
+    });
+  });
+
+  it("shows partial backend failure per target", async () => {
+    mockFetch({
+      dispatchResponse: {
+        ok: true,
+        status: 201,
+        json: () =>
+          Promise.resolve({
+            state: "executed",
+            result: {
+              status: "partial",
+              accepted: [{ pr: 11, status: "dispatched" }],
+              rejected: [{ pr: 22, reason: "rate limit exceeded" }],
+            },
+          }),
+      },
+    });
+    render(<RemediationPRsSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Fix flaky test")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTitle("Select all"));
+    fireEvent.click(screen.getByText(/Dispatch to selected/));
+    fireEvent.click(screen.getByText("Confirm dispatch"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/PR #22: rate limit exceeded/)).toBeInTheDocument();
     });
   });
 

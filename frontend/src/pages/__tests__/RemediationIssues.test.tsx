@@ -61,6 +61,7 @@ function mockFetch(opts: {
   issues?: unknown;
   issuesOk?: boolean;
   dispatchOk?: boolean;
+  dispatchResponse?: unknown;
 }) {
   const fn = vi.fn((url: string) => {
     if (url.includes("/api/linear/workspaces")) {
@@ -75,13 +76,18 @@ function mockFetch(opts: {
           }),
       } as Response);
     }
-    if (url.includes("/api/issues/dispatch")) {
+    if (url.includes("/api/v1/staff/requests") || url.includes("/api/issues/dispatch")) {
+      if (opts.dispatchResponse) {
+        return Promise.resolve(opts.dispatchResponse as Response);
+      }
       return Promise.resolve({
         ok: opts.dispatchOk !== false,
-        status: opts.dispatchOk === false ? 500 : 200,
+        status: opts.dispatchOk === false ? 500 : 201,
         json: () =>
           Promise.resolve(
-            opts.dispatchOk === false ? { detail: "nope" } : { ok: true },
+            opts.dispatchOk === false
+              ? { detail: "nope" }
+              : { state: "executed", result: { status: "dispatched" } },
           ),
       } as Response);
     }
@@ -150,7 +156,7 @@ describe("RemediationIssuesSubTab", () => {
     expect(disabled.length).toBe(1);
   });
 
-  it("dispatches the selected pickable issue with principal as approved_by", async () => {
+  it("dispatches the selected pickable issue via work-request API with principal as approved_by", async () => {
     const fetchFn = mockFetch({ linearReady: false });
     render(<RemediationIssuesSubTab principalName="dieter" />);
     await waitFor(() =>
@@ -170,11 +176,108 @@ describe("RemediationIssuesSubTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
     await waitFor(() => {
       const call = fetchFn.mock.calls.find((c) =>
-        String(c[0]).includes("/api/issues/dispatch"),
+        String(c[0]).includes("/api/v1/staff/requests"),
       );
       expect(call).toBeTruthy();
       const body = JSON.parse((call![1] as RequestInit).body as string);
-      expect(body.confirmation.approved_by).toBe("dieter");
+      expect(body.kind).toBe("issue.act");
+      expect(body.target.issues).toEqual([5]);
+      expect(body.approved_by).toBe("dieter");
+    });
+  });
+
+  it("produces one request with all targets for a bulk selection", async () => {
+    const multiIssues = [
+      {
+        repo: "org/alpha",
+        number: 5,
+        title: "Task 5",
+        pickable: true,
+        taxonomy: { type: "task", complexity: "routine", judgement: "objective" },
+      },
+      {
+        repo: "org/alpha",
+        number: 7,
+        title: "Task 7",
+        pickable: true,
+        taxonomy: { type: "task", complexity: "routine", judgement: "objective" },
+      },
+    ];
+    const fetchFn = mockFetch({ linearReady: false, issues: multiIssues });
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Task 5")).toBeInTheDocument(),
+    );
+    // Select all pickable issues
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+    await waitFor(() =>
+      expect(screen.getByText(/2 issues selected/)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+
+    await waitFor(() => {
+      const calls = fetchFn.mock.calls.filter((c) =>
+        String(c[0]).includes("/api/v1/staff/requests"),
+      );
+      expect(calls.length).toBe(1);
+      const body = JSON.parse((calls[0][1] as RequestInit).body as string);
+      expect(body.kind).toBe("issue.act");
+      expect(body.target.issues).toEqual([5, 7]);
+      expect(body.target.repo).toBe("org/alpha");
+    });
+  });
+
+  it("shows partial backend failure per target", async () => {
+    const multiIssues = [
+      {
+        repo: "org/alpha",
+        number: 5,
+        title: "Task 5",
+        pickable: true,
+        taxonomy: { type: "task", complexity: "routine", judgement: "objective" },
+      },
+      {
+        repo: "org/alpha",
+        number: 7,
+        title: "Task 7",
+        pickable: true,
+        taxonomy: { type: "task", complexity: "routine", judgement: "objective" },
+      },
+    ];
+    mockFetch({
+      linearReady: false,
+      issues: multiIssues,
+      dispatchResponse: {
+        ok: true,
+        status: 201,
+        json: () =>
+          Promise.resolve({
+            state: "executed",
+            result: {
+              status: "partial",
+              accepted: [{ issue: 5, status: "dispatched" }],
+              rejected: [{ issue: 7, reason: "claimed by codex" }],
+            },
+          }),
+      },
+    });
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Task 5")).toBeInTheDocument(),
+    );
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+    await waitFor(() =>
+      expect(screen.getByText(/2 issues selected/)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/#7: claimed by codex/)).toBeInTheDocument();
     });
   });
 

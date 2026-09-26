@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -185,6 +186,65 @@ def test_pr_act_dry_run_and_execution(client: TestClient) -> None:
         resp = client.post(URL, json={**body, "dry_run": False}, headers=_XHR)
     assert resp.status_code == 201, resp.text
     assert resp.json()["state"] == "executed"
+
+
+def test_issue_act_bulk_executes_and_handles_partial_failure(client: TestClient) -> None:
+    body = {
+        "kind": "issue.act",
+        "target": {"repo": "Tools", "issues": [42, 43]},
+        "provider": "claude",
+        "prompt": "Investigate bug",
+        "approved_by": "dieter",
+    }
+    with patch("staff.work_request_executors._dispatch_issue_action", new_callable=AsyncMock) as mock_disp:
+
+        async def side_effect(repo: str, issue: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            if issue == 42:
+                return {"status": "dispatched", "envelope_id": "env-42", "issue": 42}
+            raise RuntimeError("API timeout")
+
+        mock_disp.side_effect = side_effect
+        resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["state"] == "executed"
+    assert data["result"]["status"] == "partial"
+    assert len(data["result"]["accepted"]) == 1
+    assert len(data["result"]["rejected"]) == 1
+    assert data["result"]["rejected"][0]["number"] == 43
+
+    wi = get_work_item_store().get_work_item(data["work_item_id"])
+    assert wi is not None
+    assert wi.requested_by == "dieter"
+    assert "Tools#42" in wi.links.get("issues", [])
+    assert "Tools#43" in wi.links.get("issues", [])
+
+
+def test_pr_act_bulk_executes_and_handles_partial_failure(client: TestClient) -> None:
+    body = {
+        "kind": "pr.act",
+        "target": {"repo": "Tools", "prs": [101, 102]},
+        "provider": "claude",
+        "prompt": "Review PRs",
+    }
+    with patch("staff.work_request_executors._dispatch_pr_action", new_callable=AsyncMock) as mock_disp:
+
+        async def side_effect(repo: str, pr: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            if pr == 101:
+                return {"status": "dispatched", "envelope_id": "env-101", "pr": 101}
+            raise RuntimeError("PR conflict")
+
+        mock_disp.side_effect = side_effect
+        resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["state"] == "executed"
+    assert data["result"]["status"] == "partial"
+    assert len(data["result"]["accepted"]) == 1
+    assert len(data["result"]["rejected"]) == 1
+    assert data["result"]["rejected"][0]["number"] == 102
 
 
 # ─── code_request.dispatch tests ───────────────────────────────────────────────

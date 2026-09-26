@@ -38,9 +38,18 @@ interface SourceOption {
   label: string;
 }
 
+interface RejectedTarget {
+  number?: number;
+  issue?: number;
+  pr?: number;
+  reason?: string;
+  error?: string;
+}
+
 interface DispatchResult {
-  type: "success" | "error";
+  type: "success" | "error" | "warning";
   text: string;
+  failures?: RejectedTarget[];
 }
 
 export interface RemediationIssuesProps {
@@ -266,36 +275,105 @@ export function RemediationIssuesSubTab({
       repo: i.repo || i.repository || "",
       number: i.number,
     }));
+    const issues = items.map((i) => i.number);
+    const repo = items[0]?.repo || repoFilter || "";
     setDispatchResult(null);
-    legacyFetch("/api/issues/dispatch", {
+
+    const payload = {
+      kind: "issue.act",
+      provider: dispatchProvider,
+      prompt: dispatchPrompt,
+      force: forceDispatch,
+      approved_by: principalName || "anonymous",
+      confirmation: { approved_by: principalName || "anonymous" },
+      target: {
+        repo,
+        issues,
+        force: forceDispatch,
+      },
+    };
+
+    legacyFetch("/api/v1/staff/requests", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Requested-With": "XMLHttpRequest",
       },
-      body: JSON.stringify({
-        selection: { mode: "list", items },
-        provider: dispatchProvider,
-        prompt: dispatchPrompt,
-        force: forceDispatch,
-        confirmation: { approved_by: principalName || "anonymous" },
-      }),
+      body: JSON.stringify(payload),
     })
-      .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+      .then((r) => r.json().then((d) => ({ ok: r.ok, status: r.status, data: d })))
       .then((result) => {
         if (result.ok) {
-          setDispatchResult({
-            type: "success",
-            text: "Dispatched " + items.length + " issue(s) successfully.",
-          });
-          setSelected({});
+          const res = result.data.result || result.data;
+          const rejected: RejectedTarget[] = res.rejected || [];
+          const accepted = res.accepted || [];
+          const acceptedCount = Array.isArray(accepted)
+            ? accepted.length
+            : (typeof accepted === "number" ? accepted : items.length - rejected.length);
+
+          if (rejected.length > 0 && acceptedCount > 0) {
+            const failMsgs = rejected
+              .map((rej) => `#${rej.number || rej.issue || "?"}: ${rej.reason || rej.error || "failed"}`)
+              .join(", ");
+            setDispatchResult({
+              type: "warning",
+              text: `Dispatched ${acceptedCount} issue(s). Partial failure: ${failMsgs}`,
+              failures: rejected,
+            });
+            // Keep rejected items selected
+            const acceptedNums = new Set(
+              Array.isArray(accepted)
+                ? accepted.map((a: any) => a.issue || a.number)
+                : items.filter((i) => !rejected.some((r) => (r.number || r.issue) === i.number)).map((i) => i.number),
+            );
+            setSelected((prev) => {
+              const next = { ...prev };
+              for (const item of selectedItems) {
+                if (acceptedNums.has(item.number)) {
+                  delete next[issueKey(item)];
+                }
+              }
+              return next;
+            });
+          } else if (rejected.length > 0 && acceptedCount === 0) {
+            const failMsgs = rejected
+              .map((rej) => `#${rej.number || rej.issue || "?"}: ${rej.reason || rej.error || "failed"}`)
+              .join(", ");
+            setDispatchResult({
+              type: "error",
+              text: `Dispatch failed: ${failMsgs}`,
+              failures: rejected,
+            });
+          } else {
+            setDispatchResult({
+              type: "success",
+              text: "Dispatched " + items.length + " issue(s) successfully.",
+            });
+            setSelected({});
+          }
         } else {
-          setDispatchResult({
-            type: "error",
-            text:
-              "Dispatch failed: " +
-              (result.data.detail || JSON.stringify(result.data)),
-          });
+          const res = result.data.result || result.data;
+          const rejected: RejectedTarget[] = res.rejected || (result.data.error?.request?.rejected) || [];
+          if (rejected.length > 0) {
+            const failMsgs = rejected
+              .map((rej) => `#${rej.number || rej.issue || "?"}: ${rej.reason || rej.error || "failed"}`)
+              .join(", ");
+            setDispatchResult({
+              type: "error",
+              text: `Dispatch failed: ${failMsgs}`,
+              failures: rejected,
+            });
+          } else {
+            const detailMsg =
+              result.data.detail ||
+              result.data.error?.message ||
+              result.data.error ||
+              (typeof result.data === "string" ? result.data : JSON.stringify(result.data));
+            setDispatchResult({
+              type: "error",
+              text: `Dispatch failed: ${typeof detailMsg === "string" ? detailMsg : JSON.stringify(detailMsg)}`,
+            });
+          }
         }
         setShowModal(false);
         setForceDispatch(false);
@@ -390,6 +468,7 @@ export function RemediationIssuesSubTab({
 
       {dispatchResult ? (
         <div
+          role="alert"
           style={{
             marginBottom: 10,
             padding: "8px 12px",
@@ -398,11 +477,22 @@ export function RemediationIssuesSubTab({
             background:
               dispatchResult.type === "success"
                 ? "rgba(63,185,80,0.12)"
-                : "rgba(248,81,73,0.12)",
+                : dispatchResult.type === "warning"
+                  ? "rgba(210,153,34,0.12)"
+                  : "rgba(248,81,73,0.12)",
             color:
               dispatchResult.type === "success"
                 ? "var(--accent-green)"
-                : "var(--accent-red)",
+                : dispatchResult.type === "warning"
+                  ? "var(--accent-yellow, #d29922)"
+                  : "var(--accent-red)",
+            border:
+              "1px solid " +
+              (dispatchResult.type === "success"
+                ? "var(--accent-green)"
+                : dispatchResult.type === "warning"
+                  ? "var(--accent-yellow, #d29922)"
+                  : "var(--accent-red)"),
           }}
         >
           {dispatchResult.text}

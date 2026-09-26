@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1500 · SC-G5-4: Remediation Issues and PRs bulk actions go through the request API
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1500 (SC-G5, epic #1337)
+- **Branch:** `agy/issue-1500`
+- **Paths:** `frontend/src/pages/RemediationIssues.tsx`, `frontend/src/pages/RemediationPRs.tsx`, `backend/staff/work_requests.py`, `backend/staff/work_request_executors.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `frontend/src/pages/__tests__/RemediationIssues.test.tsx`, `frontend/src/pages/__tests__/RemediationPRs.test.tsx`, `tests/api/test_staff_requests_kinds.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 2f8876d6 plus this branch (vitest RemediationIssues/PRs 17 passed; full vitest 1386 passed; pytest `test_staff_requests_kinds.py` 12 passed; pytest `test_staff*` 222 passed; tsc, ruff and mypy clean)
+- **Summary:** Switched `RemediationIssues.tsx` and `RemediationPRs.tsx` from posting to `/api/issues/dispatch` and `/api/prs/dispatch` to using `POST /api/v1/staff/requests` with kinds `issue.act` and `pr.act`. Bulk selections create a single work item listing all target links. Partial failures are reported per target with classified failure messages, keeping un-dispatched items selected in the table.
+- **Next step:** Open draft PR.
+
 ### DL-#1540 · Board consensus reports the seats' positions, not canned approval
 
 - **State:** in_review

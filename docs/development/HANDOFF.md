@@ -1,4 +1,33 @@
-# Current handoff — Board consensus reports the seats' positions (#1540)
+# Current handoff — SC-G5-4: Remediation Issues and PRs bulk actions via request API (#1500)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1500`; DL-#1500; Issue #1500 (SC-G5, epic #1337).
+
+## Objective and Status
+
+- Switched `RemediationIssues.tsx` and `RemediationPRs.tsx` from `/api/issues/dispatch` and `/api/prs/dispatch` to the unified work-request API (`POST /api/v1/staff/requests`) using kinds `issue.act` and `pr.act`.
+- Preserved bulk selection, provider, prompt, `force`, and `approved_by` semantics.
+- Updated `backend/staff/work_requests.py` and `backend/staff/work_request_executors.py` to support multi-target dispatch (`issues` and `prs` lists) with per-target failure reporting and work item link recording.
+- Synchronized OpenAPI snapshot (`openapi.json`) and TypeScript definitions (`api-types.ts`).
+- Updated frontend UI in both subtabs to show partial backend failure per target with warning styling, keeping un-dispatched items selected.
+
+## Validation
+
+- Vitest: `frontend/src/pages/__tests__/RemediationIssues.test.tsx` and `frontend/src/pages/__tests__/RemediationPRs.test.tsx` (17 passed). Full vitest suite (163 files, 1386 passed).
+- Backend pytest: `tests/api/test_staff_requests_kinds.py` (12 passed). `tests/unit/test_staff*` (222 passed).
+- Linting & Types: `ruff check` (clean), `ruff format --check` (clean), `mypy` (clean), `npx tsc -p tsconfig.app.json --noEmit` (clean).
+- Line caps: all changed backend files strictly <= 500 lines (`work_request_executors.py` 489, `work_requests.py` 393).
+
+## Next Steps
+
+1. Review and merge draft PR for #1500.
+
+---
+
+# Past handoff — Board consensus reports the seats' positions (#1540)
 
 Last updated: 2026-09-25
 

@@ -2591,6 +2591,17 @@
         "additionalProperties": false,
         "description": "What the work is about. Each kind accepts only the fields it can act on.",
         "properties": {
+          "force": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force"
+          },
           "issue": {
             "anyOf": [
               {
@@ -4898,10 +4909,44 @@
         "additionalProperties": false,
         "description": "The body of ``POST /api/v1/staff/requests``.",
         "properties": {
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "confirmation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation"
+          },
           "dry_run": {
             "default": false,
             "title": "Dry Run",
             "type": "boolean"
+          },
+          "force": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force"
           },
           "kind": {
             "description": "A request kind; see REQUEST_KINDS",

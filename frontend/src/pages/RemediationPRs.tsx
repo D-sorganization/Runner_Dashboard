@@ -27,9 +27,18 @@ export type { PullRequest } from "./remediationDispatch";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface RejectedTarget {
+  number?: number;
+  issue?: number;
+  pr?: number;
+  reason?: string;
+  error?: string;
+}
+
 interface DispatchMsg {
-  type: "success" | "error";
+  type: "success" | "error" | "warning";
   text: string;
+  failures?: RejectedTarget[];
 }
 
 interface DispatchModalState {
@@ -160,45 +169,128 @@ export function RemediationPRsSubTab({
   function doDispatch(): void {
     if (!dispatchModal || !dispatchModal.items.length) return;
     setDispatching(true);
+    const items = dispatchModal.items;
+    const prs = items
+      .map((pr) => pr.number || pr.pr_number || 0)
+      .filter((n) => n > 0);
+    const repo =
+      items[0]?.repo ||
+      items[0]?.repository ||
+      items[0]?.full_name ||
+      repoFilter ||
+      "";
+
     const payload = {
-      selection: {
-        mode: "list",
-        items: dispatchModal.items.map((pr) => ({
-          repo: pr.repo || pr.repository || pr.full_name,
-          number: pr.number || pr.pr_number,
-          title: pr.title,
-        })),
-      },
+      kind: "pr.act",
       provider: modalProvider,
       prompt: modalPrompt,
+      approved_by: principalName || "anonymous",
       confirmation: { approved_by: principalName || "anonymous" },
+      target: {
+        repo,
+        prs,
+      },
     };
-    legacyFetch("/api/prs/dispatch", {
+
+    legacyFetch("/api/v1/staff/requests", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
       body: JSON.stringify(payload),
     })
-      .then((r) => {
-        if (!r.ok)
-          return r.json().then((e: { detail?: string }) => {
-            throw new Error(e.detail || String(r.status));
-          });
-        return r.json();
-      })
-      .then(() => {
-        setDispatchMsg({
-          type: "success",
-          text:
-            "Dispatched " +
-            dispatchModal.items.length +
-            " PR(s) to " +
-            modalProvider,
-        });
+      .then((r) => r.json().then((d) => ({ ok: r.ok, status: r.status, data: d })))
+      .then((result) => {
+        if (result.ok) {
+          const res = result.data.result || result.data;
+          const rejected: RejectedTarget[] = res.rejected || [];
+          const accepted = res.accepted || [];
+          const acceptedCount = Array.isArray(accepted)
+            ? accepted.length
+            : typeof accepted === "number"
+              ? accepted
+              : items.length - rejected.length;
+
+          if (rejected.length > 0 && acceptedCount > 0) {
+            const failMsgs = rejected
+              .map((rej) => `PR #${rej.pr || rej.number || "?"}: ${rej.reason || rej.error || "failed"}`)
+              .join(", ");
+            setDispatchMsg({
+              type: "warning",
+              text: `Dispatched ${acceptedCount} PR(s) to ${modalProvider}. Partial failure: ${failMsgs}`,
+              failures: rejected,
+            });
+            const acceptedNums = new Set(
+              Array.isArray(accepted)
+                ? accepted.map((a: any) => a.pr || a.number)
+                : items
+                    .filter((p) => !rejected.some((r) => (r.pr || r.number) === (p.number || p.pr_number)))
+                    .map((p) => p.number || p.pr_number),
+            );
+            setSelected((prev) => {
+              const next = { ...prev };
+              for (const item of items) {
+                const num = item.number || item.pr_number;
+                if (acceptedNums.has(num)) {
+                  delete next[prRowId(item)];
+                }
+              }
+              return next;
+            });
+            setTimeout(() => {
+              setDispatchMsg(null);
+            }, 10000);
+          } else if (rejected.length > 0 && acceptedCount === 0) {
+            const failMsgs = rejected
+              .map((rej) => `PR #${rej.pr || rej.number || "?"}: ${rej.reason || rej.error || "failed"}`)
+              .join(", ");
+            setDispatchMsg({
+              type: "error",
+              text: `Dispatch failed: ${failMsgs}`,
+              failures: rejected,
+            });
+            setTimeout(() => {
+              setDispatchMsg(null);
+            }, 8000);
+          } else {
+            setDispatchMsg({
+              type: "success",
+              text: `Dispatched ${items.length} PR(s) to ${modalProvider}`,
+            });
+            setSelected({});
+            setTimeout(() => {
+              setDispatchMsg(null);
+            }, 6000);
+          }
+        } else {
+          const res = result.data.result || result.data;
+          const rejected: RejectedTarget[] = res?.rejected || (result.data.error?.request?.rejected) || [];
+          if (rejected.length > 0) {
+            const failMsgs = rejected
+              .map((rej) => `PR #${rej.pr || rej.number || "?"}: ${rej.reason || rej.error || "failed"}`)
+              .join(", ");
+            setDispatchMsg({
+              type: "error",
+              text: `Dispatch failed: ${failMsgs}`,
+              failures: rejected,
+            });
+          } else {
+            const detailMsg =
+              result.data.detail ||
+              result.data.error?.message ||
+              result.data.error ||
+              (typeof result.data === "string" ? result.data : JSON.stringify(result.data));
+            setDispatchMsg({
+              type: "error",
+              text: `Dispatch failed: ${typeof detailMsg === "string" ? detailMsg : JSON.stringify(detailMsg)}`,
+            });
+          }
+          setTimeout(() => {
+            setDispatchMsg(null);
+          }, 8000);
+        }
         setDispatchModal(null);
-        setSelected({});
-        setTimeout(() => {
-          setDispatchMsg(null);
-        }, 6000);
       })
       .catch((err: Error) => {
         setDispatchMsg({ type: "error", text: "Dispatch failed: " + err.message });
@@ -223,16 +315,22 @@ export function RemediationPRsSubTab({
             background:
               dispatchMsg.type === "error"
                 ? "rgba(248,81,73,0.15)"
-                : "rgba(63,185,80,0.15)",
+                : dispatchMsg.type === "warning"
+                  ? "rgba(210,153,34,0.15)"
+                  : "rgba(63,185,80,0.15)",
             color:
               dispatchMsg.type === "error"
                 ? "var(--accent-red)"
-                : "var(--accent-green)",
+                : dispatchMsg.type === "warning"
+                  ? "var(--accent-yellow, #d29922)"
+                  : "var(--accent-green)",
             border:
               "1px solid " +
               (dispatchMsg.type === "error"
                 ? "var(--accent-red)"
-                : "var(--accent-green)"),
+                : dispatchMsg.type === "warning"
+                  ? "var(--accent-yellow, #d29922)"
+                  : "var(--accent-green)"),
             fontSize: 13,
           }}
         >
