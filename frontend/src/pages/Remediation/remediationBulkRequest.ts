@@ -50,6 +50,8 @@ export function buildBulkIssueRequest(
     prompt: options.prompt || "",
     force: Boolean(options.force),
     approved_by: options.approved_by || "anonymous",
+    dry_run: false,
+    machine: "local",
   };
 }
 
@@ -74,6 +76,8 @@ export function buildBulkPRRequest(
     prompt: options.prompt || "",
     force: Boolean(options.force),
     approved_by: options.approved_by || "anonymous",
+    dry_run: false,
+    machine: "local",
   };
 }
 

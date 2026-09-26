@@ -31,6 +31,8 @@ describe("remediationBulkRequest", () => {
         prompt: "Fix bugs",
         force: true,
         approved_by: "dieter",
+        dry_run: false,
+        machine: "local",
       });
     });
 
@@ -44,6 +46,8 @@ describe("remediationBulkRequest", () => {
       expect(req.target?.issues).toEqual([45]);
       expect(req.force).toBe(false);
       expect(req.approved_by).toBe("anonymous");
+      expect(req.dry_run).toBe(false);
+      expect(req.machine).toBe("local");
     });
   });
 
@@ -70,6 +74,8 @@ describe("remediationBulkRequest", () => {
         prompt: "Review PRs",
         force: false,
         approved_by: "alice",
+        dry_run: false,
+        machine: "local",
       });
     });
   });

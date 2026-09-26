@@ -6516,6 +6516,36 @@ export interface components {
              */
             stack?: string | null;
         };
+        /** CreateProposalRequest */
+        CreateProposalRequest: {
+            /**
+             * Action
+             * @description Name of allowlisted action
+             */
+            action: string;
+            /**
+             * Message Id
+             * @description Originating message ID
+             */
+            message_id: string;
+            /**
+             * Params
+             * @description Action parameters
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Risk
+             * @description Ignored: the risk always comes from the action registry (#1485)
+             */
+            risk?: string | null;
+            /**
+             * Thread Id
+             * @description Parent thread ID
+             */
+            thread_id: string;
+        };
         /** CreateThreadRequest */
         CreateThreadRequest: {
             /**
@@ -8633,11 +8663,18 @@ export interface components {
          * @description The body of ``POST /api/v1/staff/requests``.
          */
         WorkRequest: {
+            /** Approved By */
+            approved_by?: string | null;
             /**
              * Dry Run
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
             /**
              * Kind
              * @description A request kind; see REQUEST_KINDS
@@ -8720,36 +8757,6 @@ export interface components {
              * @enum {string}
              */
             urgency: "Routine" | "Urgent" | "Emergency";
-        };
-        /** CreateProposalRequest */
-        routers__staff_proposals__CreateProposalRequest: {
-            /**
-             * Action
-             * @description Name of allowlisted action
-             */
-            action: string;
-            /**
-             * Message Id
-             * @description Originating message ID
-             */
-            message_id: string;
-            /**
-             * Params
-             * @description Action parameters
-             */
-            params?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Risk
-             * @description Ignored: the risk always comes from the action registry (#1485)
-             */
-            risk?: string | null;
-            /**
-             * Thread Id
-             * @description Parent thread ID
-             */
-            thread_id: string;
         };
     };
     responses: never;
@@ -15926,7 +15933,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["routers__staff_proposals__CreateProposalRequest"];
+                "application/json": components["schemas"]["CreateProposalRequest"];
             };
         };
         responses: {
