@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1550 · Web-vitals POST lacks the CSRF header and gets 403
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1550
+- **Branch:** `agy/issue-1550`
+- **PR:** #1558
+- **Paths:** `frontend/src/lib/webVitals.ts`, `frontend/src/lib/__tests__/webVitals.test.ts`, `frontend/src/main.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Vitest webVitals 6 passed, related lib/pages suites 37 passed; npm run lint clean; npx tsc clean; backend auth perimeter 13 passed)
+- **Summary:** Extracted web-vitals reporting into `frontend/src/lib/webVitals.ts` using `apiRequest` to include the mandatory `X-Requested-With: XMLHttpRequest` CSRF sentinel header on `POST /api/metrics/web-vitals`. Added unit tests in `webVitals.test.ts` asserting CSRF header presence, body payload structure, and failure resilience.
+- **Next step:** Wait for CI to pass on PR #1558, frontier review and undraft.
+
 ### DL-#1552 · Restore green main: trim backend/staff/chat.py under 500 lines
 
 - **State:** in_progress

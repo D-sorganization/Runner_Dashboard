@@ -16,6 +16,7 @@ import {
   tryRefreshSession,
 } from './lib/sessionExpired'
 import { installWheelValueGuard } from './lib/wheelValueGuard'
+import { initWebVitals } from './lib/webVitals'
 import './index.css'
 
 // Global guards the Classic layout used to install (#1345): credential API
@@ -24,32 +25,8 @@ import './index.css'
 // focused number input.
 installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
 installWheelValueGuard(document)
-// Web Vitals — send metrics to backend (issue #385)
-import { onCLS, onINP, onFCP, onLCP } from 'web-vitals'
-
-function sendWebVitals(metric: { name: string; value: number; rating?: string; delta?: number; id?: string; navigationType?: string }) {
-  const payload = {
-    route: window.location.pathname,
-    metrics: [{
-      name: metric.name,
-      value: metric.value,
-      rating: metric.rating || '',
-      delta: metric.delta || null,
-      id: metric.id || '',
-      navigation_type: metric.navigationType || '',
-    }],
-  }
-  fetch('/api/metrics/web-vitals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }).catch(() => {})
-}
-
-onCLS(sendWebVitals)
-onINP(sendWebVitals)
-onFCP(sendWebVitals)
-onLCP(sendWebVitals)
+// Web Vitals — send metrics to backend (issues #385, #1550)
+initWebVitals()
 
 // Service Worker Registration
 // Provides offline support, caching, and PWA installability.

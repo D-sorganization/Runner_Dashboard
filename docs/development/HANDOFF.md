@@ -1,4 +1,33 @@
-# Current handoff — Restore green main: trim backend/staff/chat.py under 500 lines (#1552)
+# Current handoff — Web-vitals POST lacks the CSRF header and gets 403 (#1550)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1550`; branch `agy/issue-1550`; Issue #1550; DL-#1550; PR #1558 (draft).
+
+## Objective and Status
+
+- Scope:
+  1. Fix 403 Forbidden errors on `POST /api/metrics/web-vitals` caused by missing `X-Requested-With: XMLHttpRequest` CSRF sentinel header.
+  2. Extracted web-vitals reporting from `frontend/src/main.tsx` into modular `frontend/src/lib/webVitals.ts`, routing POST requests through `apiRequest` (reusing existing header logic from `DEFAULT_HEADERS` with no duplicate header definition).
+  3. Added unit tests in `frontend/src/lib/__tests__/webVitals.test.ts` asserting the header is sent, payload shape is correct, zero deltas are preserved, and failures are handled gracefully.
+- Validation:
+  - `npx vitest run frontend/src/lib/__tests__/webVitals.test.ts`: 6 passed.
+  - `npx vitest run frontend/src/lib/__tests__/webVitals.test.ts frontend/src/lib/__tests__/api.test.ts frontend/src/lib/__tests__/legacyFetch.test.ts frontend/src/pages/__tests__/Analysis.test.tsx`: 37 passed.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npx tsc -p tsconfig.app.json --noEmit`: clean (0 errors).
+  - WSL pytest `tests/api/test_structural_auth_perimeter.py`: 13 passed.
+  - WSL pytest `tests/test_ci_config.py`: 29 passed.
+
+## Next Steps
+
+1. Wait for CI to run and pass on PR #1558.
+2. Frontier review and undraft.
+
+---
+
+# Past handoff — Restore green main: trim backend/staff/chat.py under 500 lines (#1552)
 
 Last updated: 2026-09-25
 
