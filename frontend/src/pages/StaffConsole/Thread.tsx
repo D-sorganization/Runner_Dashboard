@@ -52,6 +52,7 @@ export const Thread: React.FC<ThreadProps> = ({
   onCancelRun,
   onAnswerRun,
   onRerouteHandoff,
+  onFollowHandoff,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const unreadTargetRef = useRef<HTMLDivElement>(null);
@@ -227,6 +228,7 @@ export const Thread: React.FC<ThreadProps> = ({
                   onCancelRun={onCancelRun}
                   onAnswerRun={onAnswerRun}
                   onRerouteHandoff={onRerouteHandoff}
+                  onFollowHandoff={onFollowHandoff}
                 />
               </div>
             );

@@ -74,12 +74,23 @@ test.describe("chat", () => {
     await expect(conversation(page).getByText(reply(text))).toBeVisible();
   });
 
-  test("Barb's handoff reply is shown", async ({ page }) => {
+  test("Barb's handoff reply posts a handoff card that opens the analyst's thread (#1548)", async ({ page }) => {
     await openThread(page, "Ask Barb (auto-route)");
-    const before = await occurrences(page, "handing it over");
-    await send(page, `analyse the queue ${nonce()} [[e2e:handoff]]`);
+    const cards = conversation(page).locator(".staff-handoff-card");
+    const before = await cards.count();
+    const tag = nonce();
+    await send(page, `analyse the queue ${tag} [[e2e:handoff]]`);
 
-    await expect.poll(() => occurrences(page, "handing it over")).toBe(before + 1);
+    await expect(cards).toHaveCount(before + 1);
+    const card = cards.last();
+    await expect(card).toContainText("handing it over");
+    await card.getByRole("button", { name: "Continue with E2e-analyst" }).click();
+
+    // The analyst's thread opens, seeded with Barb's brief quoting the request.
+    const brief = conversation(page).getByText("Hand-off from Barb").last();
+    await expect(brief).toBeVisible();
+    await expect(conversation(page).getByText(tag)).toBeVisible();
+    await expect(conversation(page).locator(".staff-handoff-card")).toHaveCount(0);
   });
 
   test("the reply arrives after the event stream drops and reconnects", async ({ page }) => {

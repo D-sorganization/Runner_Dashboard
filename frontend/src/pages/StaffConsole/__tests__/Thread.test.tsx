@@ -335,4 +335,31 @@ describe("Thread Component", () => {
     await waitFor(() => expect(onAnswerRun).toHaveBeenCalledWith(MOCK_THREAD.id, "run-ask", "Runner_Dashboard"));
     expect(onCancelRun).toHaveBeenCalledWith("run-busy");
   });
+
+  it("renders a reply handoff from its flat meta and follows it to the target role (#1548)", () => {
+    const onFollowHandoff = vi.fn();
+    const handoff: ThreadMessage = {
+      id: "msg-reply-handoff",
+      thread_id: "thread-123",
+      author: "barb",
+      author_kind: "role",
+      kind: "handoff",
+      body_md: "Barb → E2E Analyst: That is an analysis question.",
+      delivery: "complete",
+      created_at: "2026-09-25T08:40:00Z",
+      seq: 6,
+      meta: {
+        from_role: "barb",
+        to_role: "e2e-analyst",
+        reason: "That is an analysis question.",
+        target_thread_id: "thread-analyst",
+      },
+    };
+
+    render(<Thread thread={MOCK_THREAD} messages={[...MOCK_MESSAGES, handoff]} onFollowHandoff={onFollowHandoff} />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue with E2e-analyst" }));
+
+    expect(screen.getByText("That is an analysis question.")).toBeInTheDocument();
+    expect(onFollowHandoff).toHaveBeenCalledWith("e2e-analyst");
+  });
 });

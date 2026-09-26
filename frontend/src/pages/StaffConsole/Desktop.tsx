@@ -70,6 +70,7 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
                 onDenyProposal={sc.denyProposal}
                 onCancelRun={sc.cancelRun}
                 onAnswerRun={sc.answerRun}
+                onFollowHandoff={(role) => void sc.openRole(role)}
               />
             </div>
             <GroupCostConfirm guard={sc.costGuard} />

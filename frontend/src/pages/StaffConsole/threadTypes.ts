@@ -113,4 +113,6 @@ export interface ThreadProps {
   onCancelRun?: RunCancelHandler;
   onAnswerRun?: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   onRerouteHandoff?: (targetRole: string) => void;
+  /** Open (or continue) the target role's thread from a handoff card (#1548). */
+  onFollowHandoff?: (targetRole: string) => void;
 }
