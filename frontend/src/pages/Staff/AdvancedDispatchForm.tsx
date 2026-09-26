@@ -28,7 +28,7 @@ export interface AdvancedDispatchFormProps {
   /** Pre-selected role (e.g. from a Roster card's Assign button). */
   initialRole?: string;
   initialValues?: Partial<WorkRequest>;
-  onDispatched: (runId: string) => void;
+  onDispatched: (runId: string, threadId?: string) => void;
 }
 
 function parseNumber(value: string): number | null {
@@ -141,7 +141,11 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
           if (resp.state === "approval_required") {
             setNotice(`Awaiting approval: ${resp.approval ?? "the request needs an approver"}`);
           } else if (!dryRun && resp.run_id) {
-            onDispatched(resp.run_id);
+            if (resp.thread_id) {
+              onDispatched(resp.run_id, resp.thread_id);
+            } else {
+              onDispatched(resp.run_id);
+            }
           }
         })
         .catch((e: unknown) => setError(errorMessage(e)))

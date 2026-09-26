@@ -1,4 +1,41 @@
-# Current handoff — Staff e2e harness is hermetic (#1556)
+# Current handoff — SC-G5-7 Playwright journey: context button to prefilled request to run (#1504)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1504`; branch `feat/1504-request-journey`; PR: see DL-#1504; Issue #1504 (epic SC-G5 #1337); DL-#1504. The spec was drafted by antigravity (Gemini 3.8 Flash) and reviewed and finished by claude.
+
+## Objective and Status
+
+- `tests/e2e/staff-request-journey.spec.ts` is the root frontend lane's (`playwright-e2e`) acceptance test for SC-G5. It opens Remediation with a failed run, previews it, and clicks "Fix this failed run". It then checks that the Assign form is prefilled (repo, run id, and a prompt naming the failure) and that Dispatch sends `POST /api/v1/staff/requests` with `kind=ci.remediate` and the run target. Finally, the run card appears in the Staff thread the response names.
+- A failure path: when the request API answers 500, an alert is shown and the prefilled and edited input is kept.
+- All API responses are stubbed with `page.route` from one `FIXTURES` object. Service workers are blocked.
+- The product gap the spec found: after a dispatch, `StaffPage` always opened the run detail and ignored the response's `thread_id`. Now:
+  - `AdvancedDispatchForm` passes `thread_id` to `onDispatched`.
+  - `StaffPage` switches to the Console on that thread, and falls back to the run detail when there is none.
+  - `useStaffConsole` accepts `initialThreadId` and loads the thread with the existing `fetchThread`. A load failure is reported as a `thread` error; no client-side thread is invented.
+  - `StaffConsoleDesktop` passes `initialThreadId` through.
+- Review decisions:
+  - agy's changes to the root `playwright.config.ts` were reverted: it always started Vite and changed the default base URL.
+  - agy's loosening of the Remediation "Fix" disabled guard was reverted. The spec clicks Preview first instead.
+  - agy's `Desktop` effect, which built a placeholder thread object, was replaced by the `fetchThread`-based option.
+- Spotted, not changed: the first failed run is implicitly selected, so its Fix button stays disabled until a preview is accepted, while other runs' Fix buttons are enabled without a preview. Whether the preview gate should apply uniformly or be dropped (the request form is now the review step) is a product decision.
+- Local run trap: a stale Vite server on `[::1]:5173` from another checkout served pre-#1345 code for `/`. Run the spec against a server you started from this tree, as in Validation below.
+
+## Validation
+
+- `npx vite --port 5199 --strictPort` from the worktree root, then `DASHBOARD_URL=http://localhost:5199 npx playwright test tests/e2e/staff-request-journey.spec.ts --project=chromium-desktop --reporter=line --retries=0`: 2 passed. With the four product files reverted, the happy path fails at the run-card step, which is the RED evidence.
+- vitest (from `frontend/`) `src/pages/StaffConsole src/pages/Staff src/pages/__tests__/StaffPageConsole.test.tsx src/pages/__tests__/Staff.test.tsx src/pages/Remediation`: 200 passed. The 2 new `useStaffConsole` tests were RED before the change.
+- `npx tsc -p ../tsconfig.app.json --noEmit` is clean, and eslint on the changed files is clean.
+
+## Next Steps
+
+1. Merge the #1504 PR once CI is green.
+
+---
+
+# Past handoff — Staff e2e harness is hermetic (#1556)
 
 Last updated: 2026-09-26
 

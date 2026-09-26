@@ -13,6 +13,7 @@ import {
   decideActionProposal,
   errorMessage,
   fetchRoster,
+  fetchThread,
   fetchThreadMessages,
   fetchThreads,
   postThreadMessage,
@@ -39,6 +40,8 @@ export interface UseStaffConsoleOptions {
   roles?: StaffRoleItem[];
   initialRole?: string;
   initialThread?: ThreadInfo;
+  /** Open this backend thread on mount, e.g. the thread a request response names (#1504). */
+  initialThreadId?: string | null;
   initialMessages?: ThreadMessage[];
   /** Live SSE updates for the open thread (default true). */
   streamEnabled?: boolean;
@@ -106,6 +109,7 @@ export function useStaffConsole({
   roles: suppliedRoles,
   initialRole,
   initialThread,
+  initialThreadId,
   initialMessages = NO_MESSAGES,
   streamEnabled = true,
   threadApi = DEFAULT_THREAD_API,
@@ -146,6 +150,22 @@ export function useStaffConsole({
       cancelled = true;
     };
   }, [hasSuppliedRoles, report]);
+
+  // A thread named by id (a request response's thread_id) is loaded from the
+  // backend, never built client-side: a failure is reported, not faked.
+  useEffect(() => {
+    if (!initialThreadId || initialThread) return;
+    const controller = new AbortController();
+    fetchThread(initialThreadId, controller.signal)
+      .then((res) => {
+        setHistory(res?.messages ?? NO_MESSAGES);
+        setActiveThread(res.thread);
+      })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) report("thread", err);
+      });
+    return () => controller.abort();
+  }, [initialThreadId, initialThread, report]);
 
   // History for the open thread. The seeded thread keeps its seeded messages.
   const threadId = activeThread?.id ?? "";
