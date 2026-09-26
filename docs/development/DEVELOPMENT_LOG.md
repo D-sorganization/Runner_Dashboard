@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1342 · SC-D7: Board group thread UI
+
+- **State:** in_review
+- **Owner:** claude (reworked from an antigravity draft)
+- **Issue:** #1342 (SC-D, epic #1350)
+- **Branch:** `agy/issue-1342`
+- **PR:** #1537
+- **Paths:** `frontend/src/pages/StaffConsole/groupTurn.ts`, `frontend/src/pages/StaffConsole/GroupDeliberationCard.tsx`, `frontend/src/pages/StaffConsole/GroupCostConfirm.tsx`, `frontend/src/pages/StaffConsole/useGroupCostGuard.ts`, `frontend/src/pages/StaffConsole/groupTurn.css`, `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/Composer.tsx`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/StaffConsole/__tests__/`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 7dc5df00 plus this branch (vitest StaffConsole + pages 67 files / 523 passed; `tsc` and eslint clean; frontend static pytest 186 passed)
+- **Summary:** A finished group turn (`meta.is_group_turn` with `seat_replies`) renders as `GroupDeliberationCard`: coordinator summary without the duplicated seat block, collapsed seat replies, silent seats marked with their error, and a Board Proposal form (#1284) prefilled only with the seats' replies. `useGroupCostGuard` asks the backend for its estimate before a group send and holds the Composer's send until the user confirms or cancels. The backend guard stays authoritative. The backend summary itself is canned text (#1540).
+- **Next step:** Merge, then fix the canned Board consensus in #1540.
+
 ### DL-#1516 · WP-1.1: post-run verification of staff runs (report mode)
 
 - **State:** in_review

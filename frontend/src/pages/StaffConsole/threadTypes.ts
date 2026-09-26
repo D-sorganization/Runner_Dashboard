@@ -33,6 +33,8 @@ export interface ThreadInfo {
   updated_at?: string;
   last_message_at?: string;
   unread_count?: number;
+  /** Group threads carry `group`, `coordinator` and `seats` (SC-B9). */
+  meta?: Record<string, unknown>;
 }
 
 export interface SlashCommand {
