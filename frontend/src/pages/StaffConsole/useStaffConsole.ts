@@ -18,6 +18,7 @@ import {
   postThreadMessage,
 } from "../Staff/staffApi";
 import { AUTO_ROUTE_ROLE, resolveRoleThread, type ThreadApi } from "./consoleThreads";
+import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { RoleDetail } from "./contextTypes";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
@@ -43,8 +44,8 @@ export interface UseStaffConsoleOptions {
   streamEnabled?: boolean;
   threadApi?: ThreadApi;
   onSendMessage?: (payload: SendMessagePayload) => Promise<SendResult>;
-  onApproveProposal?: (proposalId: string, params?: Record<string, unknown>) => void;
-  onDenyProposal?: (proposalId: string) => void;
+  onApproveProposal?: ProposalApproveHandler;
+  onDenyProposal?: ProposalDenyHandler;
 }
 
 export interface StaffConsoleState {
@@ -64,8 +65,9 @@ export interface StaffConsoleState {
   sendMessage: (payload: SendMessagePayload) => Promise<SendResult>;
   /** A Board message held for cost confirmation (SC-D7); render with `GroupCostConfirm`. */
   costGuard: Pick<GroupCostGuard, "pending" | "confirm" | "cancel">;
-  approveProposal: (proposalId: string, params?: Record<string, unknown>) => Promise<void>;
-  denyProposal: (proposalId: string) => Promise<void>;
+  /** Resolves `false` when the decision was refused, so the card can re-enable. */
+  approveProposal: (proposalId: string, params?: Record<string, unknown>) => Promise<boolean>;
+  denyProposal: (proposalId: string) => Promise<boolean>;
   dismissError: () => void;
 }
 
@@ -222,11 +224,13 @@ export function useStaffConsole({
   );
 
   const decide = useCallback(
-    async (proposalId: string, decision: "approved" | "denied") => {
+    async (proposalId: string, decision: "approved" | "denied"): Promise<boolean> => {
       try {
         await decideActionProposal(proposalId, decision, `${decision} in the Staff Console`);
+        return true;
       } catch (err) {
         report("decision", err);
+        return false;
       }
     },
     [report],
@@ -234,16 +238,16 @@ export function useStaffConsole({
 
   const approveProposal = useCallback(
     async (proposalId: string, params?: Record<string, unknown>) => {
-      if (onApproveProposal) return onApproveProposal(proposalId, params);
-      await decide(proposalId, "approved");
+      if (onApproveProposal) return (await onApproveProposal(proposalId, params)) !== false;
+      return decide(proposalId, "approved");
     },
     [onApproveProposal, decide],
   );
 
   const denyProposal = useCallback(
     async (proposalId: string) => {
-      if (onDenyProposal) return onDenyProposal(proposalId);
-      await decide(proposalId, "denied");
+      if (onDenyProposal) return (await onDenyProposal(proposalId)) !== false;
+      return decide(proposalId, "denied");
     },
     [onDenyProposal, decide],
   );

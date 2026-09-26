@@ -2605,8 +2605,10 @@
           },
           "issues": {
             "items": {
+              "minimum": 1.0,
               "type": "integer"
             },
+            "maxItems": 100,
             "title": "Issues",
             "type": "array"
           },
@@ -2624,8 +2626,10 @@
           },
           "prs": {
             "items": {
+              "minimum": 1.0,
               "type": "integer"
             },
+            "maxItems": 100,
             "title": "Prs",
             "type": "array"
           },
@@ -4909,10 +4913,33 @@
             ],
             "title": "Approved By"
           },
+          "budget": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
           "dry_run": {
             "default": false,
             "title": "Dry Run",
             "type": "boolean"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
           },
           "force": {
             "anyOf": [
@@ -4984,6 +5011,20 @@
               }
             ],
             "title": "Role"
+          },
+          "standards": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standards"
           },
           "target": {
             "$ref": "#/components/schemas/RequestTarget"

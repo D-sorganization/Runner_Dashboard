@@ -2,6 +2,8 @@
  * codeRequestsTypes.ts — Types and helpers for Code Requests (CR-1, #1281).
  */
 
+import type { WorkRequest } from "./Staff/staffApi";
+
 /** A repo entry may be a bare name string or an object carrying a `name`. */
 export type CodeRepo = string | { name?: string };
 export type FeatureRepo = CodeRepo;
@@ -60,7 +62,7 @@ export interface CodeRequestsProps {
   standards?: unknown;
   loading?: boolean;
   promptNotes?: PromptNotes;
-  onDispatch: (payload: CodeDispatchPayload) => Promise<unknown>;
+  onDispatch?: (payload: CodeDispatchPayload) => Promise<unknown>;
   onSaveTemplate: (template: PromptTemplate) => Promise<unknown>;
   onSavePromptNotes: (notes: PromptNotes) => Promise<unknown>;
   onRefresh: () => void;
@@ -68,6 +70,24 @@ export interface CodeRequestsProps {
 export type FeatureRequestsProps = CodeRequestsProps;
 
 export const ALL_STANDARDS = ["tdd", "dbc", "dry", "lod", "security", "docs"];
+
+/** The standards text is injected server-side, once, for both dispatch paths (#1501). */
+export function buildCodeRequest(payload: CodeDispatchPayload): WorkRequest {
+  return {
+    kind: "code_request.dispatch",
+    target: {
+      repo: payload.repository,
+      ref: payload.branch,
+    },
+    provider: payload.provider || null,
+    model: payload.model || null,
+    profile_id: payload.profile_id || null,
+    prompt: payload.prompt,
+    standards: payload.standards,
+    machine: "local",
+    dry_run: false,
+  };
+}
 
 export type DispatchStatus = "dispatching" | "ok" | "error" | null;
 export type SaveStatus = "saving" | "ok" | "error" | null;

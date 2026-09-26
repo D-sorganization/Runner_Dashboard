@@ -10,6 +10,7 @@ Covers kinds:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,7 @@ UNPRIVILEGED_DISPATCHER = Principal(
 @pytest.fixture(autouse=True)
 def _stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "staff_runs.sqlite3"))
+    monkeypatch.setattr("code_requests.profiles._DEFAULT_PROFILES_PATH", tmp_path / "profiles.json")
     reset_conversation_store()
     reset_work_item_store()
     reset_thread_bus()
@@ -283,6 +285,69 @@ def test_code_request_dispatch_dry_run_and_execution(client: TestClient) -> None
     assert resp.json()["state"] == "executed"
 
 
+def test_code_request_dispatch_carries_standards_effort_and_budget(client: TestClient) -> None:
+    """The request kind passes the form's settings to the shared dispatch core (#1501)."""
+    body = {
+        "kind": "code_request.dispatch",
+        "target": {"repo": "Tools", "ref": "main"},
+        "prompt": "Implement calculator",
+        "standards": ["tdd", "dbc"],
+        "effort": "high",
+        "budget": {"max_cost": 2.0},
+    }
+    with patch("staff.work_request_executors._dispatch_code_request_workflow", new_callable=AsyncMock) as mock_disp:
+        mock_disp.return_value = {"status": "dispatched"}
+        resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 201, resp.text
+    req = mock_disp.call_args.args[0]
+    assert req.standards == ["tdd", "dbc"]
+    assert (req.effort, req.budget) == ("high", {"max_cost": 2.0})
+    assert mock_disp.call_args.kwargs["principal"] == "operator-user"
+
+
+def test_code_request_dispatch_rejects_an_unknown_standard(client: TestClient) -> None:
+    body = {
+        "kind": "code_request.dispatch",
+        "target": {"repo": "Tools"},
+        "prompt": "x",
+        "standards": ["tdd", "vibes"],
+        "dry_run": True,
+    }
+    resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 422, resp.text
+    assert "vibes" in resp.text
+
+
+def test_code_request_dispatch_runs_the_shared_core(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Standards are injected once, server-side, and the dispatch lands in the Code Requests history (#1501)."""
+    import code_requests.dispatch_service as service
+    import code_requests.profiles as profiles
+
+    monkeypatch.setattr(service, "HISTORY_PATH", tmp_path / "code_requests.json")
+    monkeypatch.setattr(service, "PROMPT_NOTES_PATH", tmp_path / "prompt_notes.json")
+    monkeypatch.setattr(profiles, "_DEFAULT_PROFILES_PATH", tmp_path / "profiles.json")
+    trigger = AsyncMock(return_value=(0, ""))
+    monkeypatch.setattr(service, "trigger_workflow_dispatch", trigger)
+    body = {
+        "kind": "code_request.dispatch",
+        "target": {"repo": "Tools", "ref": "main"},
+        "prompt": "Implement calculator",
+        "standards": ["tdd"],
+    }
+
+    resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 201, resp.text
+    full_prompt = trigger.call_args.args[3]
+    assert full_prompt.count("[TDD]") == 1
+    history = json.loads((tmp_path / "code_requests.json").read_text(encoding="utf-8"))
+    assert [(e["repository"], e["status"], e["standards"]) for e in history] == [("Tools", "dispatched", ["tdd"])]
+
+
 # ─── assessment.run tests ─────────────────────────────────────────────────────
 
 
@@ -334,3 +399,46 @@ def test_unprivileged_requester_triggers_approval_required(client: TestClient) -
     data = resp.json()
     assert data["state"] == "approval_required"
     assert "staff.approve" in data["approval"]
+
+
+# ─── bulk target contract (#1500 follow-up) ────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        {"repo": "Tools", "issues": [0]},
+        {"repo": "Tools", "issues": [-3]},
+        {"repo": "Tools", "issues": [42, 42]},
+        {"repo": "Tools", "issues": list(range(1, 102))},
+        {"repo": "Tools", "prs": [0]},
+        {"repo": "Tools", "prs": [7, 7]},
+        {"repo": "Tools", "prs": list(range(1, 102))},
+    ],
+)
+def test_bulk_act_rejects_invalid_targets(client: TestClient, target: dict[str, Any]) -> None:
+    kind = "issue.act" if "issues" in target else "pr.act"
+    resp = client.post(URL, json={"kind": kind, "target": target, "dry_run": True}, headers=_XHR)
+    assert resp.status_code == 422, resp.text
+
+
+def test_bulk_act_accepts_the_legacy_cap_of_100_targets(client: TestClient) -> None:
+    body = {"kind": "issue.act", "target": {"repo": "Tools", "issues": list(range(1, 101))}, "dry_run": True}
+    resp = client.post(URL, json=body, headers=_XHR)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["plan"]["issues"] == list(range(1, 101))
+
+
+def test_bulk_act_all_failed_names_every_target(client: TestClient) -> None:
+    body = {"kind": "issue.act", "target": {"repo": "Tools", "issues": [42, 43]}, "provider": "claude"}
+
+    async def fail(_repo: str, num: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError(f"no issue {num}")
+
+    with patch("staff.work_request_executors._dispatch_issue_action", side_effect=fail):
+        resp = client.post(URL, json=body, headers=_XHR)
+
+    assert resp.status_code == 502, resp.text
+    message = resp.json()["error"]["message"]
+    assert "#42: no issue 42" in message
+    assert "#43: no issue 43" in message

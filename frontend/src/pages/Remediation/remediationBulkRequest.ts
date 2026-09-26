@@ -7,7 +7,8 @@
  * `force` and `approved_by` semantics.
  */
 
-import type { StaffRequestResponse, WorkRequest } from "../Staff/staffApi";
+import { ApiClientError } from "../../lib/api";
+import { submitStaffRequest, type StaffRequestResponse, type WorkRequest } from "../Staff/staffApi";
 
 export interface BulkTargetItem {
   repo?: string;
@@ -134,4 +135,70 @@ export function formatBulkResponseResult(
     type: "success",
     text: `Dispatched ${totalRequested} ${kindLabel}(s) successfully.`,
   };
+}
+
+/** A dispatch target: one issue or PR in one repository. */
+export interface BulkTarget {
+  repo: string;
+  number: number;
+}
+
+export interface BulkByRepoResult {
+  outcome: BulkDispatchOutcome;
+  /** Targets that were not dispatched, so the caller can keep them selected. */
+  failed: BulkTarget[];
+}
+
+type BuildRequest = (items: readonly BulkTargetItem[], options: BulkRequestOptions) => WorkRequest;
+
+function groupByRepo(targets: readonly BulkTarget[]): Map<string, BulkTarget[]> {
+  const groups = new Map<string, BulkTarget[]>();
+  for (const t of targets) groups.set(t.repo, [...(groups.get(t.repo) ?? []), t]);
+  return groups;
+}
+
+/**
+ * Dispatch a selection that may span repositories: one request per repository, since a
+ * request targets a single repo. Post: every target is dispatched, awaiting approval, or
+ * listed in `failed`; a refused request fails all of its targets with the backend's message.
+ */
+export async function dispatchBulkByRepo(
+  build: BuildRequest,
+  targets: readonly BulkTarget[],
+  options: BulkRequestOptions,
+  kindLabel: string,
+  submit: (req: WorkRequest) => Promise<StaffRequestResponse> = (req) => submitStaffRequest(req),
+): Promise<BulkByRepoResult> {
+  const groups = groupByRepo(targets);
+  const parts: { repo: string; outcome: BulkDispatchOutcome }[] = [];
+  const failed: BulkTarget[] = [];
+  for (const [repo, inRepo] of groups) {
+    try {
+      const resp = await submit(build(inRepo, options));
+      parts.push({ repo, outcome: formatBulkResponseResult(resp, inRepo.length, kindLabel) });
+      const rejected = new Set(((resp.result as BulkResultShape | undefined)?.rejected ?? []).map((r) => r.number));
+      failed.push(...inRepo.filter((t) => rejected.has(t.number)));
+    } catch (err) {
+      const text = err instanceof ApiClientError ? err.detail : err instanceof Error ? err.message : String(err);
+      parts.push({ repo, outcome: { type: "error", text } });
+      failed.push(...inRepo);
+    }
+  }
+  if (parts.length === 1) return { outcome: parts[0].outcome, failed };
+  return {
+    outcome: {
+      type: parts.some((p) => p.outcome.type === "error") ? "error" : "success",
+      text: parts.map((p) => `${p.repo}: ${p.outcome.text}`).join(" "),
+    },
+    failed,
+  };
+}
+
+/** The selection after a dispatch: only the rows whose target failed, so a retry resends just those. */
+export function keepFailedSelected(
+  rows: readonly { key: string; target: BulkTarget }[],
+  failed: readonly BulkTarget[],
+): Record<string, boolean> {
+  const isFailed = (t: BulkTarget) => failed.some((f) => f.repo === t.repo && f.number === t.number);
+  return Object.fromEntries(rows.filter((r) => isFailed(r.target)).map((r) => [r.key, true]));
 }

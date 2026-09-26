@@ -12,7 +12,7 @@
  */
 import React from "react";
 import { apiRequest, ApiClientError } from "../lib/api";
-import { dispatchRun, errorMessage } from "./Staff/staffApi";
+import { errorMessage, submitStaffRequest } from "./Staff/staffApi";
 import {
   FleetSummaryBar,
   ProjectCard,
@@ -49,15 +49,19 @@ export function ProjectsPage(): React.ReactElement {
 
   const runSteward = React.useCallback((repo: string) => {
     setRunning((prev) => ({ ...prev, [repo]: true }));
-    dispatchRun("project-steward", {
-      repo,
+    submitStaffRequest({
+      kind: "staff.dispatch",
+      role: "project-steward",
+      target: { repo, ref: "" },
       prompt: STEWARD_RUN_BODY.prompt,
       machine: STEWARD_RUN_BODY.machine,
       dry_run: false,
     })
       .then((resp) => {
-        const id = resp.run?.id
-          ? ` (run ${resp.run.id.slice(0, 8)}, ${resp.run.status ?? "queued"})`
+        const runId = resp.run_id || resp.result?.run_id;
+        const status = resp.result?.status ?? "queued";
+        const id = runId
+          ? ` (run ${runId.slice(0, 8)}, ${status})`
           : "";
         setNotices((prev) => ({
           ...prev,

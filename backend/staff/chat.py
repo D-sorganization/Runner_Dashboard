@@ -21,7 +21,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from staff.actions import registered_risk
 from staff.adapters import (
     ADAPTERS,
     ChatReadOnlyUnsupportedError,
@@ -37,8 +36,8 @@ from staff.availability import (
 )
 from staff.chat_failures import (
     chat_read_only_tools,
+    choose_preferred_chat_failure,
     record_chat_capacity_failure,
-    record_chat_failure,
     record_chat_failure_if_pending,
 )
 from staff.chat_history import (
@@ -61,6 +60,7 @@ from staff.chat_streaming import (
 )
 from staff.classifier import classify_run_failure
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
 from staff.roles import RoleSpec, load_roles
 from staff.thread_bus import get_thread_bus
@@ -175,7 +175,7 @@ class ChatTurnRunner:
 
         try:
             fallback_steps = 0
-            last_failed: ChatTurnResult | None = None
+            best_failed: tuple[str, ChatTurnResult] | None = None
 
             for candidate in chain:
                 if not is_provider_healthy(candidate):
@@ -229,7 +229,6 @@ class ChatTurnRunner:
                     session_id=None,
                     is_resume=False,
                     replayed_history=was_fallback,
-                    update_on_failure=(candidate == chain[-1]),
                 )
                 if result.ok:
                     record_successful_turn(
@@ -242,7 +241,7 @@ class ChatTurnRunner:
                     )
                     return result
 
-                last_failed = result
+                best_failed = choose_preferred_chat_failure(best_failed, candidate, result)
                 log.warning(
                     "Turn attempt failed on %s: %s; falling back",
                     candidate,
@@ -251,18 +250,19 @@ class ChatTurnRunner:
                 fallback_steps += 1
                 metrics.record_fallback()
 
-            if last_failed is not None:
+            if best_failed is not None:
+                failed_provider, failed_result = best_failed
                 await record_chat_failure_if_pending(
                     self.conv_store,
                     thread_id,
                     placeholder_id,
-                    actor=role_name,
-                    failure_class=last_failed.failure_class,
-                    retryable=last_failed.retryable,
-                    detail=last_failed.remediation,
-                    error=last_failed.error,
+                    actor=role.name if role else failed_provider,
+                    failure_class=failed_result.failure_class,
+                    retryable=failed_result.retryable,
+                    detail=failed_result.remediation,
+                    error=failed_result.error,
                 )
-                return last_failed
+                return failed_result
 
             log.warning(
                 "All providers unavailable for thread %s; triggering degraded mode",
@@ -289,7 +289,6 @@ class ChatTurnRunner:
         session_id: str | None,
         is_resume: bool,
         replayed_history: bool = False,
-        update_on_failure: bool = True,
     ) -> ChatTurnResult:
         scratch_dir = tempfile.mkdtemp(prefix="staff_chat_")
         bus = get_thread_bus()
@@ -316,22 +315,12 @@ class ChatTurnRunner:
                     "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
                 )
                 remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
-                if update_on_failure:
-                    await record_chat_failure(
-                        self.conv_store,
-                        thread_id,
-                        placeholder_id,
-                        actor=role.name if role else adapter.provider_id,
-                        failure_class=failure_class,
-                        retryable=False,
-                        detail=remediation,
-                        error=str(exc),
-                    )
                 return ChatTurnResult(
                     ok=False,
                     failure_class=failure_class,
                     retryable=False,
                     remediation=remediation,
+                    error=str(exc),
                 )
             env = {**os.environ, **adapter.runtime_env()}
 
@@ -365,18 +354,6 @@ class ChatTurnRunner:
                     output_text=raw_combined,
                     error_message="".join(stderr_text),
                 )
-                if not is_resume and update_on_failure:
-                    await record_chat_failure(
-                        self.conv_store,
-                        thread_id,
-                        placeholder_id,
-                        actor=role.name if role else adapter.provider_id,
-                        failure_class=classified.failure_class,
-                        retryable=classified.retryable,
-                        detail=classified.remediation or classified.error or "Failed to complete reply",
-                        error=classified.error,
-                    )
-
                 return ChatTurnResult(
                     ok=False,
                     failure_class=classified.failure_class,
@@ -415,28 +392,20 @@ class ChatTurnRunner:
                 meta=msg_meta,
             )
 
-            # Create any proposed action proposals in store
+            # Each proposed action becomes an ActionCard message after the reply (#1547)
             created_proposals: list[ProposedAction] = []
             for action in parsed.actions:
                 try:
-                    self.conv_store.create_proposal(
-                        message_id=placeholder_id,
+                    await post_proposal(
+                        self.conv_store,
+                        bus,
                         thread_id=thread_id,
+                        author=role.name if role else "assistant",
                         action=action.action,
                         params=action.params,
-                        risk=registered_risk(action.action),
-                        principal=role.name if role else "assistant",
+                        reason=action.reason,
                     )
                     created_proposals.append(action)
-                    await bus.publish_proposal(
-                        thread_id,
-                        {
-                            "action": action.action,
-                            "params": action.params,
-                            "reason": action.reason,
-                            "message_id": placeholder_id,
-                        },
-                    )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Failed to persist action proposal %s: %s", action.action, exc)
 

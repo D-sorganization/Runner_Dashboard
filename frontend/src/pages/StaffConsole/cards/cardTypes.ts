@@ -20,6 +20,16 @@ export type ProposalStatus =
   | "failed"
   | "expired";
 
+/**
+ * Approve or deny a proposal. A handler may resolve `false` when the decision was refused
+ * (a viewer's 403, say) so the card re-enables its buttons (#1547).
+ */
+export type ProposalApproveHandler = (
+  proposalId: string,
+  params?: Record<string, unknown>,
+) => void | Promise<boolean | void>;
+export type ProposalDenyHandler = (proposalId: string) => void | Promise<boolean | void>;
+
 export interface ActionProposalData {
   id: string;
   action_name: string;

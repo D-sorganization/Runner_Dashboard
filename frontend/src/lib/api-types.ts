@@ -8635,11 +8635,17 @@ export interface components {
         WorkRequest: {
             /** Approved By */
             approved_by?: string | null;
+            /** Budget */
+            budget?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Dry Run
              * @default false
              */
             dry_run: boolean;
+            /** Effort */
+            effort?: string | null;
             /** Force */
             force?: boolean | null;
             /**
@@ -8665,6 +8671,8 @@ export interface components {
             provider?: string | null;
             /** Role */
             role?: string | null;
+            /** Standards */
+            standards?: string[] | null;
             target?: components["schemas"]["RequestTarget"];
         };
         /**

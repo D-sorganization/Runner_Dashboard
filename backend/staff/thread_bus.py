@@ -106,14 +106,6 @@ class ThreadEventBus:
             event_id=message_dict.get("seq"),
         )
 
-    async def publish_proposal(self, thread_id: str, proposal_dict: dict[str, Any]) -> int:
-        """Helper to broadcast an action proposal change."""
-        return await self.publish(
-            thread_id,
-            "proposal",
-            {"proposal": proposal_dict},
-        )
-
     async def publish_run_card(self, thread_id: str, message_id: str, run_dict: dict[str, Any]) -> int:
         """Helper to broadcast a run card update."""
         return await self.publish(

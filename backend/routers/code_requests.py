@@ -11,7 +11,13 @@ import time
 from pathlib import Path
 
 import config_schema
-from code_requests.dispatch import build_full_prompt, trigger_workflow_dispatch
+from code_requests.dispatch_service import (
+    HISTORY_LOCK,
+    HISTORY_PATH,
+    PROMPT_NOTES_PATH,
+    CodeDispatch,
+    run_code_dispatch,
+)
 from code_requests.lifecycle import InvalidTransitionError
 from code_requests.model import (
     STANDARDS_INJECTION,
@@ -38,7 +44,7 @@ router = APIRouter(tags=["code_requests"])
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
-_CODE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "code_requests.json"
+_CODE_REQUESTS_PATH = HISTORY_PATH
 _LEGACY_FEATURE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
 _MIGRATED_MARKER_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json.migrated"
 
@@ -46,7 +52,7 @@ _MIGRATED_MARKER_PATH = Path.home() / "actions-runners" / "dashboard" / "feature
 _FEATURE_REQUESTS_PATH: Path | None = None
 
 _PROMPT_TEMPLATES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_templates.json"
-_PROMPT_NOTES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_notes.json"
+_PROMPT_NOTES_PATH = PROMPT_NOTES_PATH
 
 
 def _active_storage_path() -> Path:
@@ -89,7 +95,7 @@ async def _dispatch_target_status() -> dict[str, object]:
 
 # ─── Async locks ──────────────────────────────────────────────────────────────
 
-_code_requests_lock: asyncio.Lock = asyncio.Lock()
+_code_requests_lock: asyncio.Lock = HISTORY_LOCK
 _prompt_templates_lock: asyncio.Lock = asyncio.Lock()
 _prompt_notes_lock: asyncio.Lock = asyncio.Lock()
 
@@ -362,91 +368,48 @@ async def dispatch_code_request(
     if not prompt and not template_id:
         raise HTTPException(status_code=422, detail="prompt or template_id required")
 
-    profile_id = str(body.get("profile_id", "")).strip() or None
-    p_store = _get_profile_store()
-    profile = p_store.get(profile_id) if profile_id else p_store.get_default_or_fallback()
-    profile_snapshot = profile.model_dump(mode="json") if profile else None
-
-    provider = str(body.get("provider", "")).strip() or (profile.provider if profile else "codex_cli")
-    model = str(body.get("model", "")).strip() or (profile.model if profile else "")
-    effort = body.get("effort") or (profile.effort if profile else None)
     raw_st = body.get("standards")
-    standards_list = raw_st if raw_st is not None else (profile.standards if profile else [])
-    budget = body.get("budget") or (profile.budget if profile else {})
-
+    req = CodeDispatch(
+        repo=repo,
+        branch=branch,
+        prompt=prompt,
+        provider=str(body.get("provider", "")).strip() or None,
+        model=str(body.get("model", "")).strip() or None,
+        effort=body.get("effort") or None,
+        standards=list(raw_st) if raw_st is not None else None,
+        budget=body.get("budget") or None,
+        profile_id=str(body.get("profile_id", "")).strip() or None,
+    )
     log.info(
         "audit: code_request_dispatch repo=%s provider=%s branch=%s",
         sanitize_log_value(repo),
-        sanitize_log_value(provider),
+        sanitize_log_value(req.provider or "(profile)"),
         sanitize_log_value(branch),
     )
-
-    # Load and apply prompt notes if enabled
-    prompt_notes_data: dict[str, object] = {"notes": "", "enabled": True}
-    try:
-        if _PROMPT_NOTES_PATH.exists():
-            prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        pass
-
-    full_prompt = build_full_prompt(prompt, list(standards_list), prompt_notes_data)
-    code, stderr = await trigger_workflow_dispatch(
-        repo,
-        branch,
-        provider,
-        full_prompt,
-        model=model,
-        effort=effort,
+    _migrate_storage_if_needed()
+    outcome = await run_code_dispatch(
+        req,
         principal=principal.id,
-        budget=budget,
-        profile_id=profile.id if profile else None,
-        standards=list(standards_list),
+        profile_store=_get_profile_store(),
+        prompt_notes_path=_PROMPT_NOTES_PATH,
+        history_path=_active_storage_path(),
         run_cmd_fn=run_cmd,
     )
+    code, stderr, resolved = outcome.code, outcome.stderr, outcome.resolved
     _record_dispatch_target(code == 0, stderr)
     if code in (422, 429):
         raise HTTPException(status_code=code, detail=stderr)
     if code != 0:
         log.warning("code_request_dispatch failed: %s", sanitize_log_value(stderr.strip()[:200]))
-
-    # Save to history only once the real outcome is known (#1280).
-    entry: dict = {
-        "id": str(int(datetime.now(UTC).timestamp())),
-        "repository": repo,
-        "branch": branch,
-        "provider": provider,
-        "model": model,
-        "profile_id": profile.id if profile else None,
-        "profile_snapshot": profile_snapshot,
-        "prompt": prompt[:500],
-        "standards": list(standards_list),
-        "status": "dispatched" if code == 0 else "failed",
-        "created_at": datetime.now(UTC).isoformat(),
-    }
-    if code != 0:
-        entry["error"] = stderr.strip()[:300]
-    _migrate_storage_if_needed()
-    path = _active_storage_path()
-    async with _code_requests_lock:
-        try:
-            history: list[dict] = []
-            if path.exists():
-                history = json.loads(path.read_text(encoding="utf-8"))
-            history.append(entry)
-            config_schema.atomic_write_json(path, history[-200:])
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            pass
-
-    if code != 0:
         detail_msg = str(_dispatch_target_state["detail"] or stderr)
         raise HTTPException(status_code=502, detail=detail_msg)
     return {
         "status": "dispatched",
         "repository": repo,
-        "provider": provider,
-        "model": model,
-        "profile_id": profile.id if profile else None,
-        "entry_id": entry.get("id", ""),
+        "provider": resolved.provider,
+        "model": resolved.model,
+        "profile_id": resolved.profile_id,
+        "entry_id": (outcome.entry or {}).get("id", ""),
     }
 
 

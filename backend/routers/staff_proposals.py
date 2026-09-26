@@ -22,6 +22,8 @@ from staff.actions import (
 )
 from staff.conversations import ConversationsUnavailableError
 from staff.pagination import paginate_items
+from staff.proposal_cards import refresh_proposal_card
+from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.proposals")
 
@@ -36,6 +38,14 @@ class CreateProposalRequest(BaseModel):
     risk: str | None = Field(
         default=None, description="Ignored: the risk always comes from the action registry (#1485)"
     )
+
+
+async def _refresh_card(store: Any, proposal_id: str) -> None:
+    """Show the proposal's current state on its ActionCard (#1547); never fails the request."""
+    try:
+        await refresh_proposal_card(store, get_thread_bus(), proposal_id)
+    except Exception as exc:  # noqa: BLE001 - the decision already stands
+        log.warning("Could not refresh the card of proposal %s: %s", proposal_id, exc)
 
 
 class DecideProposalRequest(BaseModel):
@@ -236,6 +246,8 @@ async def decide_proposal(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        await _refresh_card(store, proposal_id)
 
 
 @router.post(
@@ -277,6 +289,8 @@ async def execute_approved_proposal(
     except Exception as exc:  # noqa: BLE001
         log.exception("Error executing proposal %s: %s", proposal_id, exc)
         raise HTTPException(status_code=500, detail=f"Execution error: {exc}") from exc
+    finally:
+        await _refresh_card(store, proposal_id)
 
 
 class DetectStalledRequest(BaseModel):

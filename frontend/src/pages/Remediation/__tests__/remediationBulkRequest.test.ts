@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { ApiClientError } from "../../../lib/api";
 import {
   buildBulkIssueRequest,
   buildBulkPRRequest,
+  dispatchBulkByRepo,
   formatBulkResponseResult,
 } from "../remediationBulkRequest";
-import type { StaffRequestResponse } from "../../Staff/staffApi";
+import type { StaffRequestResponse, WorkRequest } from "../../Staff/staffApi";
 
 describe("remediationBulkRequest", () => {
   describe("buildBulkIssueRequest", () => {
@@ -153,6 +155,79 @@ describe("remediationBulkRequest", () => {
       expect(outcome.type).toBe("success");
       expect(outcome.text).toContain("awaiting approval");
       expect(outcome.text).toContain("Risk level medium requires approval");
+    });
+  });
+
+  describe("dispatchBulkByRepo", () => {
+    const executed = (result: unknown): StaffRequestResponse => ({
+      state: "executed",
+      kind: "issue.act",
+      action: "issue.act",
+      result,
+    });
+
+    it("sends one request per repository, each with only that repository's targets", async () => {
+      const submit = vi.fn(async (_req: WorkRequest) => executed({ status: "dispatched", envelope_id: "e" }));
+      await dispatchBulkByRepo(
+        buildBulkIssueRequest,
+        [
+          { repo: "org/alpha", number: 5 },
+          { repo: "org/beta", number: 9 },
+          { repo: "org/alpha", number: 6 },
+        ],
+        { provider: "claude" },
+        "issue",
+        submit,
+      );
+
+      expect(submit.mock.calls.map(([req]) => req.target)).toEqual([
+        { repo: "org/alpha", issues: [5, 6], ref: "" },
+        { repo: "org/beta", issues: [9], ref: "" },
+      ]);
+    });
+
+    it("keeps the single-repository message unchanged", async () => {
+      const submit = vi.fn(async () => executed({ status: "dispatched", envelope_id: "e" }));
+      const { outcome, failed } = await dispatchBulkByRepo(
+        buildBulkIssueRequest,
+        [{ repo: "Tools", number: 1 }],
+        {},
+        "issue",
+        submit,
+      );
+      expect(outcome).toEqual({ type: "success", text: "Dispatched 1 issue(s) successfully." });
+      expect(failed).toEqual([]);
+    });
+
+    it("names each repository and reports rejected and refused targets as failed", async () => {
+      const submit = vi
+        .fn()
+        .mockResolvedValueOnce(
+          executed({ status: "partial", accepted: 1, dispatched: [{}], rejected: [{ number: 6, error: "gone" }] }),
+        )
+        .mockRejectedValueOnce(
+          new ApiClientError(502, "issue.act failed for every target: #9: boom", "/api/v1/staff/requests"),
+        );
+      const { outcome, failed } = await dispatchBulkByRepo(
+        buildBulkIssueRequest,
+        [
+          { repo: "org/alpha", number: 5 },
+          { repo: "org/alpha", number: 6 },
+          { repo: "org/beta", number: 9 },
+        ],
+        {},
+        "issue",
+        submit,
+      );
+
+      expect(outcome.type).toBe("error");
+      expect(outcome.text).toContain("org/alpha: Dispatched 1 of 2 issue(s)");
+      expect(outcome.text).toContain("#6: gone");
+      expect(outcome.text).toContain("org/beta: issue.act failed for every target: #9: boom");
+      expect(failed).toEqual([
+        { repo: "org/alpha", number: 6 },
+        { repo: "org/beta", number: 9 },
+      ]);
     });
   });
 });

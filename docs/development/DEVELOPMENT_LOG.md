@@ -31,30 +31,109 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Dispatch #1516 (WP-1.1, `tier:strong`), the first Phase 1 package; #1517 and #1518 follow it.
 
-### DL-#1562 · Wire the Mad-Scientist Staff Role into Routing and the Roster
+### DL-#1556 · Staff e2e harness is hermetic
 
 - **State:** in_review
 - **Owner:** claude
+- **Issue:** #1556
+- **Branch:** `fix/1556-hermetic-staff-e2e`
+- **PR:** #1570
+- **Paths:** `tests/e2e/fakes/start_staff_backend.py`, `backend/staff/inbox.py`, `tests/unit/test_staff_inbox_proposals.py`, `tests/e2e/staff/playwright.config.ts`, `tests/e2e/staff/globalTeardown.ts`, `.gitignore`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (RED: globalTeardown failed on unfixed `backend_env()`, listing real `api.github.com`/tailnet-peer lines; GREEN: `STAFF_E2E_PYTHON="wsl -e ...python" npx playwright test -c tests/e2e/staff/playwright.config.ts --reporter=line` → 12 passed, guard silent; `tests/unit/test_staff_inbox_proposals.py` + inbox/fleet unit tests: 9 passed; ruff check/format clean)
+- **Summary:** The staff e2e backend (real FastAPI app, fake provider CLIs) leaked outside the harness: it fanned out to real tailnet peers, called `api.github.com` for board proposals, and (traced further) for `/api/health`'s runner probe and the hosted-runner billing audit. Fixed by pinning fleet-peer discovery to this node (`AUTODERIVE_FLEET_NODES=0`/`FLEET_NODES=""`), a new `STAFF_INBOX_GITHUB_SOURCES=0` switch disabling the GitHub-backed inbox sources, and an unset `GH_TOKEN` so `gh_client` fails locally instead of round-tripping. A `--log-file` CLI arg plus `globalTeardown.ts` now assert the backend log never mentions a real peer or GitHub.
+- **Next step:** Watch PR #1570 merge and mark this entry shipped.
+
+### DL-#1542 · WP-1.1 follow-up: non-blocking startup and guarded verification
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1542
+- **Branch:** `agy/issue-1542`
+- **PR:** #1569
+- **Paths:** `backend/staff/reconcile.py`, `backend/staff/runner.py`, `backend/staff/verification.py`, `tests/staff/test_run_verification.py`, `tests/api/test_staff_runner.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (tests/staff/test_run_verification.py and tests/api/test_staff_runner.py 95 passed; broader tests -k "verif or reconcile or runner or scheduler" 618 passed, 3 skipped, 1 xfailed)
+- **Summary:** Removed blocking `recheck_runs` subprocess calls from `reconcile_orphaned_runs` on startup so the event loop is never blocked (the scheduler thread already periodically rechecks unverified runs off the loop). Wrapped `verify_and_record` so it never raises, evaluating `opens_pr` lazily inside the guard so exceptions cannot crash the runner worker thread or bypass `handle_run_status_change`.
+- **Next step:** Merge PR #1569 once CI is green.
+
+### DL-#1501 · SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API
+
+- **State:** in_review
+- **Owner:** claude (first cut antigravity)
+- **Issue:** #1501
+- **Branch:** `agy/issue-1501`
+- **PR:** #1560
+- **Paths:** `backend/code_requests/dispatch_service.py`, `backend/routers/code_requests.py`, `backend/staff/work_requests.py`, `backend/staff/work_request_dispatch.py`, `backend/staff/work_request_executors.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `frontend/src/pages/Assessments.tsx`, `frontend/src/pages/AssessmentsPage.tsx`, `frontend/src/pages/CodeRequests.tsx`, `frontend/src/pages/CodeRequestsPage.tsx`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/codeRequestsTypes.ts`, `frontend/src/pages/__tests__/`, `tests/code_requests/test_dispatch_service.py`, `tests/api/test_staff_requests_kinds.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (backend 258 passed; integrity + code requests 225 passed after rebase; vitest pages 735 passed; tsc, eslint, ruff clean; API client regenerated)
+- **Summary:** Code Requests, Assessments and the Projects steward dispatch through `POST /api/v1/staff/requests`. Code-request dispatch has one server-side core (`code_requests/dispatch_service.py`) shared by the legacy route and the request kind: profile defaults, prompt notes, standards injection and the history entry. The Console sends the typed prompt and `standards[]`.
+- **Next step:** Merge PR #1560.
+
+### DL-#1547 · Chat proposals render as ActionCards with approve, run card, needs-input and cancel
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1547 (epic #1354; closes #1341 with #1546)
+- **Branch:** `feat/1547-proposal-cards`
+- **PR:** not created (opened with this commit)
+- **Paths:** `backend/staff/proposal_cards.py`, `backend/staff/chat.py`, `backend/staff/groups.py`, `backend/staff/thread_bus.py`, `backend/routers/staff_proposals.py`, `frontend/src/pages/StaffConsole/cards/`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/{Desktop,Mobile,MessageItem}.tsx`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `tests/unit/test_staff_proposal_cards.py`, `tests/api/test_staff_proposals_api.py`, `tests/api/test_staff_chat_turns.py`, `tests/e2e/staff/staff-console.spec.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 2e851ac9 plus this branch (backend 23 passed; StaffConsole vitest 141 passed; staff e2e 12 passed; `tsc`, eslint, ruff clean)
+- **Summary:** Slice A: each proposed action is an `action_proposal` message holding the card; the proposal points at it, decisions rewrite it, and a refused decision re-enables the card. Slice B: live run cards, needs-input answer, and cancel from the card.
+- **Next step:** Publish the `action_result` and `run_card` messages `execute_proposal` adds, and render run status updates on the card.
+
+### DL-#1551 · Staff chat failure card remediation context: preserve most specific classified failure
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1551
+- **Branch:** `fix/1551-staff-chat-failure-remediation`
+- **PR:** #1565
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `backend/staff/conversation_models.py`, `tests/e2e/staff/staff-console.spec.ts`, `tests/unit/test_staff_chat_exhausted_chain.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_chat_exhausted_chain.py: 4 passed; full chat suites 22 passed; ruff clean; line count chat.py 472 lines, chat_failures.py 172 lines)
+- **Summary:** Preserved the most specific classified failure and remediation across fallback provider chain turns. Added failure specificity ranking (`FAILURE_SPECIFICITY`) and `choose_preferred_chat_failure` in `chat_failures.py`. When a primary provider fails meaningfully (e.g. `auth_expired` with `claude auth login`, or crash `unknown`), subsequent generic or unavailable fallback errors (e.g. `provider_error` / `cli_missing` from `ollama` or `systemctl --user start ollama`) no longer overwrite the root failure or remediation instructions.
+- **Next step:** None (shipped in PR #1565).
+
+### DL-#1553 · Remediation bulk actions route each repository's targets to that repository
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1553 (follow-up to #1500)
+- **Branch:** `fix/1553-bulk-act-per-repo`
+- **PR:** #1555
+- **Paths:** `backend/staff/work_requests.py`, `backend/staff/work_request_executors.py`, `frontend/src/pages/Remediation/remediationBulkRequest.ts`, `frontend/src/pages/RemediationIssues.tsx`, `frontend/src/pages/RemediationPRs.tsx`, `frontend/src/lib/openapi.json`, their tests
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 2e851ac9 plus this branch (staff request kinds, bulk request and frontend integrity tests 99 passed, 1 xfailed; Remediation vitest 89 passed; `tsc`, eslint and ruff clean)
+- **Summary:** One request per repository instead of every number under the first item's repo; failed rows stay selected; bulk targets are positive, unique and capped at 100; an all-failed request names each target.
+- **Next step:** Shipped.
+
+### DL-#1562 · Wire the Mad-Scientist Staff Role into Routing and the Roster
+
+- **State:** shipped
+- **Owner:** claude
 - **Issue:** #1562
 - **Branch:** `feat/1788-mad-scientist-wiring`
-- **PR:** not created
+- **PR:** #1562
 - **Paths:** `backend/staff/router_models.py`, `tests/staff/routing_eval/dataset.py`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 at `f5f027d2` baseline (staff pytest green; StaffConsole vitest 142 passed)
 - **Summary:** Barb routes mad-scientist requests by distinctive keywords, and the role sits with the Advisors in the Staff Console roster.
-- **Next step:** Merge the PR.
+- **Next step:** Shipped.
 
 ### DL-#1549 · Remove stale tracked vite.config.js shadowing vite.config.ts
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1549
 - **Branch:** `fix/1549-remove-stale-vite-config`
+- **PR:** #1561
 - **Paths:** `vite.config.js`, `vite.config.d.ts`, `.gitignore`, `tests/e2e/staff/playwright.config.ts`, `tests/frontend/test_vite_config.py`, `tests/test_documentation_freshness.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/frontend/test_vite_config.py tests/test_documentation_freshness.py tests/test_frontend_integrity.py: all passed; no tracked vite.config.js or vite.config.d.ts; gitignore updated; playwright config cleaned up)
 - **Summary:** Removed stale compiled artifacts `vite.config.js` and `vite.config.d.ts` from git tracking and ignored them in `.gitignore`. Vite resolves `.js` before `.ts`, causing dev servers and build scripts to silently ignore `vite.config.ts` changes and environment variables like `VITE_BACKEND_URL`. Removed explicit `--config vite.config.ts` flag in Playwright config and added comprehensive regression tests asserting both file absence and backend URL config honoring.
-- **Next step:** Push branch, open PR referencing Fixes #1549 with deletions-acknowledged: yes, arm auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1561).
 
 ### DL-#1550 · Web-vitals POST lacks the CSRF header and gets 403
 

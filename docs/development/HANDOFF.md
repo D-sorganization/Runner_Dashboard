@@ -25,14 +25,196 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — Wire the mad-scientist staff role (#1562)
+# Current handoff — Staff e2e harness is hermetic (#1556)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1556-hermetic-staff-e2e`; PR: #1570 (open, auto-merge armed); Issue #1556; DL-#1556.
+
+## Objective and Status
+
+- `tests/e2e/fakes/start_staff_backend.py` ran the real FastAPI backend against fake provider CLIs, but the backend itself still reached the real network: it fanned out `GET /api/staff/board?local=1` to real tailnet peers (registry auto-derivation), called `api.github.com` for `board:proposal` issues (401 "Bad credentials" with a placeholder token), and — once traced further — also hit `api.github.com` from `/api/health`'s runner-count probe and the hosted-runner billing-audit background loop.
+- Done:
+  1. `tests/e2e/fakes/start_staff_backend.py`'s `backend_env()` now sets `AUTODERIVE_FLEET_NODES=0` / `FLEET_NODES=""` (the same switches `scripts/gen-api-client.sh` uses) so fleet-peer discovery never leaves this node, sets `STAFF_INBOX_GITHUB_SOURCES=0` (new switch) to disable the GitHub-backed staff inbox sources, and leaves `GH_TOKEN` unset (was a fake non-empty token) so `gh_client` fails locally (`GhAuthError`) before any network call instead of round-tripping to `api.github.com` and getting a 401.
+  2. `backend/staff/inbox.py`: new `github_inbox_sources_enabled()` gate (env `STAFF_INBOX_GITHUB_SOURCES`, default on) skips `_collect_board_proposals` and `_collect_project_decisions`, reporting `SourceStatus(status="ok", count=0)` rather than `"unavailable"` (deliberately disabled, not failed). Unit test: `tests/unit/test_staff_inbox_proposals.py::test_github_sources_disabled_never_call_github`.
+  3. Hermeticity guard: `start_staff_backend.py` now accepts `--log-file PATH` (a CLI arg, not an env var, because `STAFF_E2E_PYTHON` may be a `wsl -e` wrapper that does not forward the launching Windows process's environment) and redirects stdout/stderr there before `execve`. `tests/e2e/staff/playwright.config.ts` wires this to `test-results/staff-e2e-backend.log` and adds `globalTeardown: "./globalTeardown.ts"`. The new `tests/e2e/staff/globalTeardown.ts` scans that log for one `FORBIDDEN_PATTERNS` list (`api.github.com`, `board?local=1`) after the whole suite finishes and throws, listing every offending line, if either appears.
+
+## Validation
+
+- RED: with the three `backend_env()` hermeticity keys removed, `STAFF_E2E_PYTHON="wsl -e /home/dieterolson/.cache/rd-test-venv/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts --reporter=line` → 12 passed (the individual specs don't check this), but the new `globalTeardown` failed, listing real `api.github.com` and fleet-peer (`oglaptop`/`controltower` tailnet hosts) lines from the backend log.
+- GREEN (after restoring the fix): same command → 12 passed, globalTeardown passed silently; `grep -n "api.github.com\|board?local=1" test-results/staff-e2e-backend.log` returns nothing.
+- `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1556 && GH_TOKEN=x HOME=/tmp/rdhome-1556 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_inbox_proposals.py tests/unit -k 'inbox or fleet' -q -o addopts='' -p no:cacheprovider -W ignore"` → 9 passed.
+- `py -3.12 -m ruff check` / `ruff format --diff` on all touched Python files: clean.
+
+## Next Steps
+
+1. Watch PR #1570 merge; then mark DL-#1556 shipped.
+
+---
+
+# Past handoff — WP-1.1 follow-up: non-blocking startup and guarded verification (#1542)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1542`; PR #1569; Issue #1542; DL-#1542. Implemented by antigravity.
+
+## Objective and Status
+
+- Startup no longer blocks the event loop:
+  - Removed `verification.recheck_runs` from `reconcile_orphaned_runs` in `backend/staff/reconcile.py` (which previously made up to 20 runs x 2 `gh` subprocess calls with 30s timeouts on the event loop during server startup).
+  - Confirmed the scheduler thread's `recheck_verification` (`backend/staff/scheduler.py`, in `_loop`) already runs rechecks off the event loop every `VERIFY_RECHECK_SECONDS`.
+- Runner finish path is fully guarded:
+  - Wrapped the entire body of `verify_and_record` in `backend/staff/verification.py` in a `try...except Exception:` block so that it strictly adheres to its "never raises" postcondition contract and logs unexpected errors with `log.warning(..., exc_info=True)`.
+  - Updated `verify_and_record` to accept `opens_pr: bool | Callable[[], bool]` and resolve `opens_pr` inside the guard.
+  - Updated `backend/staff/runner.py` line 405 to pass `opens_pr=lambda: self.opens_pr(rec.role)`, ensuring exceptions resolving role permissions cannot crash the worker thread or bypass `handle_run_status_change`.
+  - Updated `recheck_runs` in `backend/staff/verification.py` to pass `opens_pr=_make_opens_pr_checker(opens_pr, rec.role)` for guarded per-run resolution.
+
+## Validation
+
+- pytest (WSL venv):
+  - `tests/staff/test_run_verification.py tests/api/test_staff_runner.py`: 95 passed in 26.18s.
+  - Broader suite `tests -k "verif or reconcile or runner or scheduler"`: 618 passed, 3 skipped, 4075 deselected, 1 xfailed in 251.91s.
+- Ruff lint & format:
+  - `py -3.12 -m ruff check backend/staff/reconcile.py backend/staff/runner.py backend/staff/verification.py tests/staff/test_run_verification.py tests/api/test_staff_runner.py` passed with 0 errors.
+  - `py -3.12 -m ruff format backend/staff/reconcile.py backend/staff/runner.py backend/staff/verification.py tests/staff/test_run_verification.py tests/api/test_staff_runner.py` clean.
+- Mypy type-check:
+  - `py -3.12 -m mypy backend/staff/reconcile.py backend/staff/runner.py backend/staff/verification.py --ignore-missing-imports`: Success (no issues found in 3 source files).
+
+## Next Steps
+
+1. Review and merge PR for issue #1542.
+
+---
+
+# Past handoff — SC-G5-5: Code Requests, Assessments and Projects steward dispatch through the request API (#1501)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1501`; PR #1560; Issue #1501; DL-#1501. First cut by antigravity, backend half by claude.
+
+## Objective and Status
+
+- The three remaining single-purpose dispatch buttons go through `POST /api/v1/staff/requests`:
+  - Assessments: kind `assessment.run`. Projects "Run steward": kind `staff.dispatch`, role `project-steward`.
+  - Code Requests: kind `code_request.dispatch`. The first cut built the standards text client-side (a second copy of `STANDARDS_INJECTION`) and the request kind skipped profile defaults, prompt notes, effort, budget and the history entry. Now:
+    1. `backend/code_requests/dispatch_service.py` is the one dispatch core: `resolve_dispatch` (explicit settings win, else the profile), `load_prompt_notes`, `build_full_prompt`, the workflow trigger, and the history entry (not recorded on 422/429). `HISTORY_LOCK` serialises every writer.
+    2. `POST /api/code-requests/dispatch` and the request kind both call `run_code_dispatch`, so both land in the same Code Requests history.
+    3. `WorkRequest` carries `effort`, `standards` and `budget`. An unknown standard is rejected (422). A dry run returns the resolved settings.
+    4. The Console sends the typed prompt and `standards[]`. It no longer prepends prompt notes (the server already did, so they were sent twice) or builds the standards text.
+- Legacy endpoints stay until SC-G5-6.
+
+## Validation
+
+- pytest (WSL venv): `tests/api tests/code_requests tests/unit -k "code or request or feature or profile or staff_actions or openapi or contract"`: 258 passed, 1 skipped. New: `tests/code_requests/test_dispatch_service.py` and three kind tests in `tests/api/test_staff_requests_kinds.py`.
+- vitest `frontend/src/pages`: 735 passed. `tsc -p tsconfig.app.json` and eslint clean. ruff check and format clean; mypy reports nothing in the touched modules.
+- API client regenerated (`WorkRequest` gains `effort`, `standards`, `budget`).
+- A second agent's CI fixes on this branch (desktop-route integrity assertions for `submitStaffRequest`; e2e loopback auth) were overwritten by a rebase push, then restored by cherry-pick. `tests/test_frontend_integrity.py` passes with the code-request tests (225 passed). The restored commit's `Spec Version` bump is reverted: that field is release-derived.
+
+## Next Steps
+
+1. Mark PR #1560 ready and arm auto-merge; then dispatch #1504.
+
+---
+
+# Past handoff — Chat proposals render as ActionCards (#1547, slice A)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1547-proposal-cards`; PR not created yet (opened with this commit); DL-#1547; Issue #1547 (Part of, not Fixes).
+
+## Objective and Status
+
+- Before: a chat reply's `staff-actions` block created proposals, but no message had kind `action_proposal`, so the Console never rendered an ActionCard and approval was unreachable. The SSE `proposal` event it published had no consumer.
+- Slice A (this branch), each with a failing test first:
+  1. `backend/staff/proposal_cards.py`: `post_proposal` posts each proposed action as its own `action_proposal` message (author = the proposing role) holding `meta.proposal` (the card), and the proposal's `message_id` is that message. `refresh_proposal_card` rewrites the card from the proposal's state. Both publish the message on the thread bus, so live and reload show the same card.
+  2. `chat.py` and `groups.py` use `post_proposal`. The unused `ThreadEventBus.publish_proposal` is removed.
+  3. `POST /proposals/{id}/decide` and `/execute` refresh the card in a `finally`, so denied, executed, failed and refused decisions all show.
+  4. `ActionCard` re-enables its buttons when a decision is refused. `useStaffConsole.approveProposal` / `denyProposal` resolve `false` on failure, and `ProposalApproveHandler` / `ProposalDenyHandler` in `cardTypes.ts` type every hop.
+- Slice B (next): live run cards (the `run_card` SSE event and the `action_result` / `run_card` messages `execute_proposal` adds without publishing), `needs_input` status and answer on the card, cancel from the card, and their e2e specs (`dispatch-ask`).
+
+## Validation
+
+- pytest (WSL venv): `tests/unit/test_staff_proposal_cards.py` (10), `tests/api/test_staff_proposals_api.py` (3 new), `tests/api/test_staff_chat_turns.py` (card assertion): 23 passed. Broader `tests/api tests/unit tests/code_requests tests/clients -k "staff or proposal or group or chat or thread or board"`: 687 passed, 1 skipped.
+- vitest `frontend/src/pages/StaffConsole`: 141 passed. `tsc -p tsconfig.app.json` and eslint clean.
+- Staff e2e (`STAFF_E2E_PYTHON="wsl -e <venv>/bin/python" npx playwright test -c tests/e2e/staff/playwright.config.ts`): 12 passed. New specs: card live and after reload, approve executes, deny, viewer refused with the card still actionable.
+
+## Next Steps
+
+1. Open the PR (Part of #1547), label it and arm auto-merge.
+2. Slice B as above; #1556 (the harness backend calls real fleet peers and GitHub) can land independently.
+
+---
+
+# Past handoff — Staff chat failure card remediation context: preserve most specific classified failure (#1551)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1551`; branch `fix/1551-staff-chat-failure-remediation`; Issue #1551; DL-#1551.
+
+## Objective and Status
+
+- Scope:
+  1. Solved bug where chat turns falling through provider fallback chain had meaningful root failures (e.g. `auth_expired` with `claude auth login`, or provider crash) overwritten by subsequent unavailable/fallback failures (e.g. `ollama` with `systemctl --user start ollama`).
+  2. Added `FAILURE_SPECIFICITY` priority ranking and `choose_preferred_chat_failure` in `backend/staff/chat_failures.py`.
+  3. Refactored `ChatTurnRunner.execute_turn` in `backend/staff/chat.py` to track `best_failed` with `choose_preferred_chat_failure`, and removed premature inline failure recording from `_run_turn_attempt`.
+  4. Added `remediation` to `MessageRecord.to_dict()` and `meta` in `record_chat_failure`.
+  5. Added comprehensive regression tests in `tests/unit/test_staff_chat_exhausted_chain.py` asserting `auth_expired` beats `provider_error`/`unavailable`, crash beats fallback failure, and primary provider is preferred on equal specificity.
+  6. Added e2e assertion in `tests/e2e/staff/staff-console.spec.ts` asserting the error card contains the primary provider's `claude auth login` remediation.
+  7. Bumped `SPEC.md` to 2.5.294.
+- Validation:
+  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py`: 4 passed.
+  - `python -m pytest tests/unit/test_staff_chat_stream_result.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/api/test_staff_chat_turns.py`: 22 passed.
+  - `ruff check`: clean.
+  - `ruff format --check`: clean across all touched files.
+  - Line count audit: `chat.py` (472 lines), `chat_failures.py` (172 lines), `test_staff_chat_exhausted_chain.py` (192 lines) - all strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push rebased branch `fix/1551-staff-chat-failure-remediation` to `origin`.
+2. Verify PR #1565 CI passes, auto-merges, and release lease.
+
+---
+
+# Past handoff — Remediation bulk actions route each repository's targets to that repository (#1553)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1553-bulk-act-per-repo`; PR #1555 (shipped); DL-#1553; Issue #1553 (follow-up to #1500 / #1545).
+
+## Objective and Status
+
+- #1545 built one `issue.act` / `pr.act` request from a whole selection with `repo = items[0].repo`, so a selection spanning repositories dispatched agents to the first repository's issue or PR numbers. `RemediationPRs.test.tsx` pinned it.
+- Fixed here:
+  1. `dispatchBulkByRepo` (`remediationBulkRequest.ts`) sends one request per repository and folds the replies into one message, naming each repository when there are several. A refused request fails all of its targets with the backend's message.
+  2. Both tabs keep only the failed rows selected (`keepFailedSelected`), so a retry resends just those.
+  3. `RequestTarget.issues` / `prs`: each >= 1, unique, at most `MAX_BULK_TARGETS = 100` (the legacy cap), else 422.
+  4. When every target fails, the error names each: `issue.act failed for every target: #42: ...; #43: ...`.
+- Validation:
+  - Backend (WSL venv): `test_staff_requests_kinds.py`, `test_remediation_bulk_requests.py` and `test_frontend_integrity.py`: 99 passed, 1 xfailed. ruff check and format clean.
+  - vitest `pages/__tests__/Remediation*` and `pages/Remediation/`: 89 passed. `tsc -p tsconfig.app.json` clean; eslint clean.
+
+---
+
+# Past handoff — Wire the mad-scientist staff role (#1562)
 
 Last updated: 2026-09-26
 
 ## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1788-mad-scientist-wiring`; Issue #1562 (follow-up to Repository_Management#1788); DL-#1562.
-- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `f5f027d2`; commit `SELF`; PR: opened right after this commit.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `f5f027d2`; commit `SELF`; PR: #1562 (shipped).
 
 ## Objective and Status
 
@@ -46,19 +228,51 @@ Last updated: 2026-09-26
 - RED first: the 4 lab cases failed the deterministic gate (pre-router returned None), and the roster test failed for mad-scientist.
 - `python -m pytest tests/staff -q`: exit 0. `npx vitest run frontend/src/pages/StaffConsole`: 142 passed. tsc, eslint and ruff are clean.
 
-## Next Steps
-
-1. Merge after Repository_Management#1789 (the role file) lands.
-
 ---
 
-# Current handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
+# Past handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1549`; branch `fix/1549-remove-stale-vite-config`; Issue #1549; DL-#1549.
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1551`; branch `fix/1551-staff-chat-failure-remediation`; Issue #1551; DL-#1551.
+
+## Objective and Status
+
+- Scope:
+  1. Solved bug where chat turns falling through provider fallback chain had meaningful root failures (e.g. `auth_expired` with `claude auth login`, or provider crash) overwritten by subsequent unavailable/fallback failures (e.g. `ollama` with `systemctl --user start ollama`).
+  2. Added `FAILURE_SPECIFICITY` priority ranking and `choose_preferred_chat_failure` in `backend/staff/chat_failures.py`.
+  3. Refactored `ChatTurnRunner.execute_turn` in `backend/staff/chat.py` to track `best_failed` with `choose_preferred_chat_failure`, and removed premature inline failure recording from `_run_turn_attempt`.
+  4. Added `remediation` to `MessageRecord.to_dict()` and `meta` in `record_chat_failure`.
+  5. Added comprehensive regression tests in `tests/unit/test_staff_chat_exhausted_chain.py` asserting `auth_expired` beats `provider_error`/`unavailable`, crash beats fallback failure, and primary provider is preferred on equal specificity.
+  6. Added e2e assertion in `tests/e2e/staff/staff-console.spec.ts` asserting the error card contains the primary provider's `claude auth login` remediation.
+  7. Bumped `SPEC.md` to 2.5.292.
+- Validation:
+  - `python -m pytest tests/unit/test_staff_chat_exhausted_chain.py`: 4 passed.
+  - `python -m pytest tests/unit/test_staff_chat_stream_result.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/api/test_staff_chat_turns.py`: 22 passed.
+  - `ruff check`: clean.
+  - `ruff format --check`: clean across all touched files.
+  - Line count audit: `chat.py` (472 lines), `chat_failures.py` (172 lines), `test_staff_chat_exhausted_chain.py` (192 lines) - all strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `fix/1551-staff-chat-failure-remediation` to `origin`.
+2. Open PR referencing `Fixes #1551`.
+3. Arm auto-merge (`gh pr merge --squash --auto`).
+4. Monitor CI until green and merged.
+5. Release lease for #1551 via `scripts.release_agent_lease`.
+6. Clean up worktree `Runner_Dashboard-1551` and delete local branch.
+
+---
+
+# Past handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-1549`; branch `fix/1549-remove-stale-vite-config`; Issue #1549; DL-#1549; PR #1561.
 
 ## Objective and Status
 
@@ -69,20 +283,7 @@ Last updated: 2026-09-25
   4. Updated documentation freshness tests in `tests/test_documentation_freshness.py` to assert `vite.config.ts` and forbid `vite.config.js`.
   5. Added dedicated regression suite `tests/frontend/test_vite_config.py` verifying no tracked/existing stale files, `.gitignore` entries, backend URL environment variable resolution, and standard Playwright web server command.
   6. Bumped `SPEC.md` specification version to 2.5.291.
-- Validation:
-  - `python -m pytest tests/frontend/test_vite_config.py tests/test_documentation_freshness.py tests/test_frontend_integrity.py`: 83 passed, 1 xfailed.
-  - `ruff check .`: clean.
-  - `ruff format --check tests/frontend/test_vite_config.py tests/test_documentation_freshness.py`: clean.
-  - Line count audit: all modified/new files <= 500 lines.
-
-## Next Steps
-
-1. Push branch `fix/1549-remove-stale-vite-config` to `origin`.
-2. Open PR referencing `Fixes #1549` and containing `deletions-acknowledged: yes` in the body.
-3. Arm auto-merge (`gh pr merge --squash --auto`).
-4. Monitor CI until green and merged.
-5. Release lease for #1549 via `scripts.release_agent_lease`.
-6. Clean up worktree `Runner_Dashboard-1549` and delete local branch.
+- Shipped: Merged to `main` via PR #1561.
 
 ---
 

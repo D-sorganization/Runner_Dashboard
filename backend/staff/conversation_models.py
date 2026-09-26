@@ -152,6 +152,8 @@ class MessageRecord:
         }
         if "failure_class" in self.meta:
             d["failure_class"] = self.meta["failure_class"]
+        if "remediation" in self.meta:
+            d["remediation"] = self.meta["remediation"]
         return d
 
     @classmethod

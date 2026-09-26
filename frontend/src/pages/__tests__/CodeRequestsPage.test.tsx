@@ -62,15 +62,19 @@ function mockCodeRequestFetch() {
         }),
       );
     }
-    if (url === "/api/code-requests/dispatch") {
+    if (url === "/api/v1/staff/requests") {
       expect(init?.method).toBe("POST");
       expect(JSON.parse(String(init.body))).toMatchObject({
-        repository: "Runner_Dashboard",
-        branch: "main",
+        kind: "code_request.dispatch",
+        target: {
+          repo: "Runner_Dashboard",
+          ref: "main",
+        },
         provider: "codex",
-        prompt: "Use TDD.\n\nMake it native",
+        // Prompt notes are prepended server-side (build_full_prompt), not here too (#1501).
+        prompt: "Make it native",
       });
-      return Promise.resolve(jsonResponse({ status: "queued" }));
+      return Promise.resolve(jsonResponse({ state: "executed", run_id: "run-cr-01" }));
     }
     if (url === "/api/settings/prompt-notes") {
       expect(init?.method).toBe("PUT");
@@ -116,7 +120,7 @@ describe("CodeRequestsPage", () => {
     );
   });
 
-  it("dispatches code requests through the native page", async () => {
+  it("dispatches code requests through the work-request API", async () => {
     const fetchMock = mockCodeRequestFetch();
 
     render(<CodeRequestsPage />);
@@ -133,10 +137,79 @@ describe("CodeRequestsPage", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/code-requests/dispatch",
+        "/api/v1/staff/requests",
         expect.anything(),
       ),
     );
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === "/api/v1/staff/requests");
+    expect(JSON.parse(String(call?.[1]?.body)).prompt).toBe("Make it native");
+  });
+
+  it("sends the selected standards for the backend to inject", async () => {
+    let capturedBody: { kind?: string; prompt?: string; standards?: string[] } | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/repos") return Promise.resolve(jsonResponse({ repos: ["Runner_Dashboard"] }));
+      if (url === "/api/code-requests") return Promise.resolve(jsonResponse({ requests: [] }));
+      if (url === "/api/code-requests/templates") {
+        return Promise.resolve(jsonResponse({ templates: [], promptNotes: { notes: "", enabled: false } }));
+      }
+      if (url === "/api/v1/staff/requests") {
+        capturedBody = JSON.parse(String(init?.body));
+        return Promise.resolve(jsonResponse({ state: "executed", run_id: "run-cr-std" }));
+      }
+      return Promise.reject(new Error("unexpected fetch " + url));
+    });
+
+    render(<CodeRequestsPage />);
+    await waitFor(() => expect(screen.getAllByText("Runner_Dashboard").length).toBeGreaterThan(0));
+
+    const selects = screen.getAllByRole("combobox");
+    fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "Refactor architecture" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "TDD" }));
+    fireEvent.click(screen.getByRole("button", { name: "DBC" }));
+    fireEvent.click(screen.getByRole("button", { name: /Dispatch/i }));
+
+    await waitFor(() => expect(capturedBody).toBeDefined());
+    expect(capturedBody.kind).toBe("code_request.dispatch");
+    // The backend injects the standards text (one copy, shared with the legacy route); the client only names them.
+    expect(capturedBody.prompt).toBe("Refactor architecture");
+    expect(capturedBody.standards).toEqual(["tdd", "dbc"]);
+  });
+
+  it("surfaces classified error and keeps user input when dispatch fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/repos") return Promise.resolve(jsonResponse({ repos: ["Runner_Dashboard"] }));
+      if (url === "/api/code-requests") return Promise.resolve(jsonResponse({ requests: [] }));
+      if (url === "/api/code-requests/templates") {
+        return Promise.resolve(jsonResponse({ templates: [], promptNotes: { notes: "", enabled: false } }));
+      }
+      if (url === "/api/v1/staff/requests") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ detail: "rate_limited: exceeded hourly allowance" }), { status: 429 }),
+        );
+      }
+      return Promise.reject(new Error("unexpected fetch " + url));
+    });
+
+    render(<CodeRequestsPage />);
+    await waitFor(() => expect(screen.getAllByText("Runner_Dashboard").length).toBeGreaterThan(0));
+
+    const selects = screen.getAllByRole("combobox");
+    fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
+    const promptInput = screen.getByPlaceholderText("Describe the code request to plan and execute…");
+    fireEvent.change(promptInput, { target: { value: "Don't lose this input" } });
+    fireEvent.click(screen.getByRole("button", { name: /Dispatch/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("rate_limited: exceeded hourly allowance"),
+    );
+    expect(promptInput).toHaveValue("Don't lose this input");
   });
 
   it("saves templates and prompt notes through canonical native endpoints", async () => {

@@ -61,7 +61,8 @@ describe("AssessmentsPage", () => {
     );
   });
 
-  it("posts assessment dispatches through the native routed page", async () => {
+  it("posts assessment dispatches through the work-request API", async () => {
+    let requestPayload: unknown;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
       (input, init) => {
         const url = String(input);
@@ -77,14 +78,19 @@ describe("AssessmentsPage", () => {
             new Response(JSON.stringify({ scores: SCORES }), { status: 200 }),
           );
         }
-        if (url === "/api/assessments/dispatch") {
+        if (url === "/api/v1/staff/requests") {
           expect(init?.method).toBe("POST");
-          expect(JSON.parse(String(init?.body))).toMatchObject({
-            repository: "Runner_Dashboard",
-            provider: "jules_api",
-          });
+          requestPayload = JSON.parse(String(init?.body));
           return Promise.resolve(
-            new Response(JSON.stringify({ status: "queued" }), { status: 200 }),
+            new Response(
+              JSON.stringify({
+                state: "executed",
+                kind: "assessment.run",
+                action: "assessment.run",
+                run_id: "run-assess-1",
+              }),
+              { status: 201 },
+            ),
           );
         }
         return Promise.reject(new Error("unexpected fetch " + url));
@@ -103,9 +109,56 @@ describe("AssessmentsPage", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/assessments/dispatch",
+        "/api/v1/staff/requests",
         expect.anything(),
       ),
+    );
+    expect(requestPayload).toMatchObject({
+      kind: "assessment.run",
+      target: { repo: "Runner_Dashboard" },
+      provider: "jules_api",
+    });
+    await waitFor(() =>
+      expect(screen.getByText("Assessment dispatched successfully.")).toBeInTheDocument(),
+    );
+  });
+
+  it("surfaces a dispatch error when the work-request API rejects", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/repos") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ repos: [{ name: "Runner_Dashboard" }] }), { status: 200 }),
+        );
+      }
+      if (url === "/api/assessments/scores") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ scores: SCORES }), { status: 200 }),
+        );
+      }
+      if (url === "/api/v1/staff/requests") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ detail: "assessment runner quota exceeded" }),
+            { status: 422 },
+          ),
+        );
+      }
+      return Promise.reject(new Error("unexpected fetch " + url));
+    });
+
+    render(<AssessmentsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("native tab route").length).toBeGreaterThan(0),
+    );
+
+    const selects = document.querySelectorAll("select");
+    fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
+    fireEvent.click(screen.getByRole("button", { name: /Run Assessment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert", { hidden: true }) || screen.getByText(/Dispatch failed/i)).toBeInTheDocument(),
     );
   });
 

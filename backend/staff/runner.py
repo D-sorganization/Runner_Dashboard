@@ -402,7 +402,7 @@ class StaffRunner:
                 outcome=consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            verification.verify_and_record(store, rec.id, opens_pr=self.opens_pr(rec.role))
+            verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 status = updated_rec.status  # enforce mode may have failed an unverified success (#1516)
