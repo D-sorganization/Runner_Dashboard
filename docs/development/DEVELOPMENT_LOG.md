@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1579
 - **Branch:** `fix/1579-review-runtime`
-- **PR:** pending
+- **PR:** #1581
 - **Paths:** `backend/staff/review.py`, `backend/staff/action_executors.py`, `backend/staff/runner.py`, `tests/unit/test_staff_review_runtime.py`, `tests/api/test_staff_review_runner.py`, `tests/unit/test_staff_review.py`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (review suites 44 passed; staff suites 358 passed; mypy backend clean; ruff clean)
