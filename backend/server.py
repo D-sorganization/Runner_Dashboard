@@ -133,6 +133,7 @@ from routers import (  # noqa: E402
     autoscaler_pools as _autoscaler_pools_router,
 )  # issue #755
 from routers import client_errors as _client_errors_router  # noqa: E402  # issue #1292
+from routers import code_request_plans as _code_request_plans_router  # noqa: E402
 from routers import code_requests as _code_requests_router  # noqa: E402
 from routers import code_requests_board as _code_requests_board_router  # noqa: E402
 from routers import code_requests_executor as _code_requests_executor_router  # noqa: E402
@@ -693,6 +694,7 @@ app.include_router(_assistant_router.router)
 app.include_router(_code_requests_router.router)
 app.include_router(_code_requests_board_router.router)
 app.include_router(_code_requests_executor_router.router)
+app.include_router(_code_request_plans_router.router)
 app.include_router(_agent_profiles_router.router)
 app.include_router(_maxwell_router.router)
 app.include_router(_deployment_router.router)
@@ -711,8 +713,11 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 # Fleet Staff Hub (epic #1192): named AI staff roles run as local CLI subprocesses.
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
+from routers import staff_groups as _staff_groups_router  # noqa: E402
 from routers import staff_inbox as _staff_inbox_router  # noqa: E402
+from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
 from routers import staff_proposals as _staff_proposals_router  # noqa: E402
+from routers import staff_requests as _staff_requests_router  # noqa: E402
 from routers import staff_routing as _staff_routing_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
 from routers import staff_threads as _staff_threads_router  # noqa: E402
@@ -722,16 +727,19 @@ from routers import staff_work_items as _staff_work_items_router  # noqa: E402
 
 app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
+app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
 app.include_router(_staff_routing_router.router, prefix="/api/v1/staff")  # Barb routing (#1315)
 app.include_router(_staff_work_items_router.router, prefix="/api/v1/staff")  # Work-item ledger (issue #1316)
 app.include_router(_staff_followup_router.router, prefix="/api/v1/staff")  # Barb follow-up engine (issue #1327)
 app.include_router(_staff_proposals_router.router, prefix="/api/v1/staff")  # Action proposals API (issue #1323)
+app.include_router(_staff_requests_router.router, prefix="/api/v1/staff")  # Work-request API (issue #1497)
 app.include_router(_staff_inbox_router.router)  # Inbox and briefings (issue #1328)
 app.include_router(_staff_inbox_router.v1_router)
 app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
+app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402

@@ -5,7 +5,7 @@
  *
  * Self-contained tab: owns its own data fetch (`GET /api/prs`), repo/author/
  * draft filtering, column sorting, multi-select, and a bulk-dispatch modal that
- * POSTs to `/api/prs/dispatch`. The legacy version read no props; the only piece
+ * POSTs to `/api/v1/staff/requests` (kind `pr.act`). The legacy version read no props; the only piece
  * of ambient App state it touched was the signed-in `principal` (used as the
  * dispatch `approved_by`), now threaded in as an explicit `principalName` prop
  * defaulting to "anonymous" — preserving the original fallback exactly.
@@ -22,6 +22,7 @@ import {
   prRowId,
   type PullRequest,
 } from "./remediationDispatch";
+import { buildBulkPRRequest, dispatchBulkByRepo, keepFailedSelected } from "./Remediation/remediationBulkRequest";
 
 export type { PullRequest } from "./remediationDispatch";
 
@@ -160,48 +161,22 @@ export function RemediationPRsSubTab({
   function doDispatch(): void {
     if (!dispatchModal || !dispatchModal.items.length) return;
     setDispatching(true);
-    const payload = {
-      selection: {
-        mode: "list",
-        items: dispatchModal.items.map((pr) => ({
-          repo: pr.repo || pr.repository || pr.full_name,
-          number: pr.number || pr.pr_number,
-          title: pr.title,
-        })),
-      },
-      provider: modalProvider,
-      prompt: modalPrompt,
-      confirmation: { approved_by: principalName || "anonymous" },
-    };
-    legacyFetch("/api/prs/dispatch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then((r) => {
-        if (!r.ok)
-          return r.json().then((e: { detail?: string }) => {
-            throw new Error(e.detail || String(r.status));
-          });
-        return r.json();
-      })
-      .then(() => {
-        setDispatchMsg({
-          type: "success",
-          text:
-            "Dispatched " +
-            dispatchModal.items.length +
-            " PR(s) to " +
-            modalProvider,
-        });
+    const rows = dispatchModal.items.map((pr) => ({
+      key: prRowId(pr),
+      target: { repo: pr.repo || pr.repository || pr.full_name || repoFilter || "", number: pr.number || pr.pr_number || 0 },
+    }));
+    const options = { provider: modalProvider, prompt: modalPrompt, approved_by: principalName || "anonymous" };
+    dispatchBulkByRepo(buildBulkPRRequest, rows.map((r) => r.target), options, "PR")
+      .then(({ outcome, failed }) => {
+        setDispatchMsg(outcome);
         setDispatchModal(null);
-        setSelected({});
+        setSelected(keepFailedSelected(rows, failed));
         setTimeout(() => {
           setDispatchMsg(null);
-        }, 6000);
+        }, 8000);
       })
       .catch((err: Error) => {
-        setDispatchMsg({ type: "error", text: "Dispatch failed: " + err.message });
+        setDispatchMsg({ type: "error", text: "Dispatch failed: " + (err.message || String(err)) });
         setTimeout(() => {
           setDispatchMsg(null);
         }, 8000);

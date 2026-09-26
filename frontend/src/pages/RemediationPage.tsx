@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { RemediationTab } from "./RemediationTab";
 import { legacyFetch } from "../lib/api";
+import { buildPrefilledRemediationUrl } from "./Remediation/remediationPrefill";
 
 interface RemediationContext {
   repository: string;
@@ -77,15 +78,6 @@ export function RemediationPage(): React.ReactElement {
   const [plan, setPlan] = useState<any>(null);
   const [dispatchState, setDispatchState] = useState<any>(null);
 
-  const refreshHistory = useCallback((signal?: AbortSignal) => {
-    return getJson("/api/agent-remediation/history", signal)
-      .then((payload) => {
-        setHistory(normalizeArrayPayload(payload, "history"));
-      })
-      .catch(() => {
-        setHistory([]);
-      });
-  }, []);
 
   const refresh = useCallback(
     (signal?: AbortSignal) => {
@@ -197,47 +189,12 @@ export function RemediationPage(): React.ReactElement {
 
   const dispatch = useCallback(
     (run: any) => {
-      const context = buildRemediationContext(run);
-      if (!context) {
-        setError("Select a failed run before dispatching remediation.");
-        return;
+      const url = buildPrefilledRemediationUrl(run, { provider, model });
+      if (typeof window !== "undefined") {
+        window.location.assign(url);
       }
-      setLoading(true);
-      setDispatchState({
-        note:
-          "Dispatch submitted for " +
-          context.repository +
-          " #" +
-          context.run_id +
-          ". Waiting for agent heartbeat.",
-      });
-      legacyFetch("/api/agent-remediation/dispatch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...context, provider }),
-      })
-        .then((response) => parseJsonOrThrow(response, "Dispatch failed"))
-        .then((payload) => {
-          const result = normalizeObject(payload);
-          setDispatchState({
-            note:
-              "Dispatched " +
-              (result.provider || provider) +
-              " through " +
-              (result.workflow || "remediation workflow") +
-              ".",
-          });
-          setError(null);
-          void refreshHistory();
-        })
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : "Dispatch failed";
-          setDispatchState({ error: message });
-          setError(message);
-        })
-        .finally(() => setLoading(false));
     },
-    [provider, refreshHistory],
+    [model, provider],
   );
 
   return (

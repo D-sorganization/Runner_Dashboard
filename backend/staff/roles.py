@@ -70,6 +70,11 @@ class RoleSpec:
     source_path: str = ""
 
     @property
+    def opens_pr(self) -> bool:
+        """Runs of this role promise a pull request (``permissions.open_pr``; #1516)."""
+        return bool(self.permissions.get("open_pr"))
+
+    @property
     def fleet_actions(self) -> tuple[str, ...]:
         """Allowed fleet maintenance actions (RM#1734, RD#1310)."""
         actions = self.permissions.get("fleet_actions")
@@ -156,6 +161,7 @@ def roles_dir() -> Path | None:
         candidates.append(parent.joinpath(*_SIBLING_RELATIVE))
     home = Path.home()
     candidates.append(home / "Repositories" / "Repository_Management" / "staff" / "roles")
+    candidates.append(home / "Repositories" / "Repository_Management-worktrees" / "main" / "staff" / "roles")
     candidates.append(home / "actions-runners" / "Repository_Management" / "staff" / "roles")
     candidates.append(home / ".config" / "runner-dashboard" / "staff" / "roles")
     for c in candidates:

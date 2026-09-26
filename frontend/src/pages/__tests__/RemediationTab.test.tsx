@@ -13,7 +13,7 @@
  * 6. Workflow-type routing rules render and edit through onSaveConfig.
  * 7. Remediation history, plan preview (blocked + allowed), and provider
  *    availability panels render their data.
- * 8. The Jules workflow-health "Run" button POSTs and flashes a success banner.
+ * 8. The retired Jules workflow-health "Run" button is not rendered (#1503, RM#1483).
  * 9. Tapping a run opens the mobile action sheet; its dispatch path fires onDispatch.
  * 10. Switching to the PRs / Issues sub-tabs mounts the self-contained sub-views.
  */
@@ -24,7 +24,6 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -147,12 +146,12 @@ describe("RemediationTab — automations view", () => {
     // Selected run with no accepting plan -> disabled.
     const blocked = baseProps({ selectedRunId: "4242", plan: { decision: { accepted: false } } });
     const { unmount } = render(<RemediationTab {...blocked} />);
-    expect(screen.getByText("Dispatch").closest("button")).toBeDisabled();
+    expect(screen.getByText("Fix this failed run").closest("button")).toBeDisabled();
     unmount();
 
     const allowed = baseProps({ selectedRunId: "4242", plan: { decision: { accepted: true } } });
     render(<RemediationTab {...allowed} />);
-    const dispatchBtn = screen.getByText("Dispatch").closest("button")!;
+    const dispatchBtn = screen.getByText("Fix this failed run").closest("button")!;
     expect(dispatchBtn).not.toBeDisabled();
     fireEvent.click(dispatchBtn);
     expect(allowed.onDispatch).toHaveBeenCalledWith(
@@ -296,14 +295,8 @@ describe("RemediationTab — agent workflow health", () => {
     render(<RemediationTab {...baseProps({ workflows })} />);
     expect(screen.getByText("all good")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Run"));
-    await waitFor(() => {
-      expect(fetchFn).toHaveBeenCalledWith(
-        "/api/agent-remediation/dispatch-jules",
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
-    expect(await screen.findByText("Dispatched Agent-Lease-Reaper.yml")).toBeInTheDocument();
+    // Retired Jules "Run" button is no longer rendered (#1503, RM#1483)
+    expect(screen.queryByText("Run")).toBeNull();
   });
 });
 
@@ -317,7 +310,7 @@ describe("RemediationTab — mobile action sheet", () => {
     expect(sheet).toBeInTheDocument();
     expect(props.setSelectedRunId).toHaveBeenCalledWith("4242");
     // Dispatch button label includes the recommended provider.
-    fireEvent.click(within(sheet).getByText(/^Dispatch /));
+    fireEvent.click(within(sheet).getByText(/^Fix this failed run/));
     expect(props.onDispatch).toHaveBeenCalledWith(
       expect.objectContaining({ id: 4242 }),
     );

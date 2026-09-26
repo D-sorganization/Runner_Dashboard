@@ -12,18 +12,13 @@
  */
 import React from "react";
 import { apiRequest, ApiClientError } from "../lib/api";
+import { errorMessage, submitStaffRequest } from "./Staff/staffApi";
 import {
   FleetSummaryBar,
   ProjectCard,
   STEWARD_RUN_BODY,
-  STEWARD_RUN_URL,
 } from "./Projects";
 import type { ProjectsResponse } from "./Projects";
-
-interface DispatchResponse {
-  run?: { id?: string; status?: string };
-  dry_run?: boolean;
-}
 
 function describeError(err: unknown): string {
   if (err instanceof ApiClientError) return `${err.status}: ${err.message}`;
@@ -54,12 +49,19 @@ export function ProjectsPage(): React.ReactElement {
 
   const runSteward = React.useCallback((repo: string) => {
     setRunning((prev) => ({ ...prev, [repo]: true }));
-    apiRequest<DispatchResponse>(STEWARD_RUN_URL, {
-      body: { repo, ...STEWARD_RUN_BODY },
+    submitStaffRequest({
+      kind: "staff.dispatch",
+      role: "project-steward",
+      target: { repo, ref: "" },
+      prompt: STEWARD_RUN_BODY.prompt,
+      machine: STEWARD_RUN_BODY.machine,
+      dry_run: false,
     })
       .then((resp) => {
-        const id = resp.run?.id
-          ? ` (run ${resp.run.id.slice(0, 8)}, ${resp.run.status ?? "queued"})`
+        const runId = resp.run_id || resp.result?.run_id;
+        const status = resp.result?.status ?? "queued";
+        const id = runId
+          ? ` (run ${runId.slice(0, 8)}, ${status})`
           : "";
         setNotices((prev) => ({
           ...prev,
@@ -69,7 +71,7 @@ export function ProjectsPage(): React.ReactElement {
       .catch((err: unknown) => {
         setNotices((prev) => ({
           ...prev,
-          [repo]: `Steward run failed — ${describeError(err)}`,
+          [repo]: `Steward run failed — ${errorMessage(err)}`,
         }));
       })
       .finally(() => setRunning((prev) => ({ ...prev, [repo]: false })));

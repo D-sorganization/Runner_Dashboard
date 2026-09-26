@@ -99,6 +99,7 @@ export function categorizeRole(role: StaffRoleItem): RosterGroupKey {
   if (role.group) {
     const norm = role.group.trim().toLowerCase().replace(/[-_]/g, " ");
     if (norm.includes("lead")) return "leadership";
+    if (norm.includes("advisor")) return "advisors";
     if (norm.includes("project") || norm.includes("steward") || norm.includes("manager")) {
       return "project_managers";
     }
@@ -109,6 +110,14 @@ export function categorizeRole(role: StaffRoleItem): RosterGroupKey {
   const name = role.name.toLowerCase();
   if (name === "barb" || name === "board" || name === "orchestrator") {
     return "leadership";
+  }
+  if (
+    name === "disciple" ||
+    name === "vision-quest" ||
+    name === "vision_quest" ||
+    name === "mad-scientist"
+  ) {
+    return "advisors";
   }
   if (name.includes("steward") || name.includes("project")) {
     return "project_managers";

@@ -61,6 +61,7 @@ function mockFetch(opts: {
   issues?: unknown;
   issuesOk?: boolean;
   dispatchOk?: boolean;
+  staffRequestResult?: unknown;
 }) {
   const fn = vi.fn((url: string) => {
     if (url.includes("/api/linear/workspaces")) {
@@ -75,13 +76,30 @@ function mockFetch(opts: {
           }),
       } as Response);
     }
-    if (url.includes("/api/issues/dispatch")) {
+    if (url.includes("/api/v1/staff/requests")) {
+      if (opts.dispatchOk === false) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: "nope" }),
+        } as Response);
+      }
       return Promise.resolve({
-        ok: opts.dispatchOk !== false,
-        status: opts.dispatchOk === false ? 500 : 200,
+        ok: true,
+        status: 200,
         json: () =>
           Promise.resolve(
-            opts.dispatchOk === false ? { detail: "nope" } : { ok: true },
+            opts.staffRequestResult ?? {
+              state: "executed",
+              kind: "issue.act",
+              action: "issue.act",
+              result: {
+                status: "dispatched",
+                accepted: 1,
+                dispatched: [{ number: 5 }],
+                rejected: [],
+              },
+            },
           ),
       } as Response);
     }
@@ -170,11 +188,68 @@ describe("RemediationIssuesSubTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
     await waitFor(() => {
       const call = fetchFn.mock.calls.find((c) =>
-        String(c[0]).includes("/api/issues/dispatch"),
+        String(c[0]).includes("/api/v1/staff/requests"),
       );
       expect(call).toBeTruthy();
       const body = JSON.parse((call![1] as RequestInit).body as string);
-      expect(body.confirmation.approved_by).toBe("dieter");
+      expect(body.kind).toBe("issue.act");
+      expect(body.target.repo).toBe("org/alpha");
+      expect(body.target.issues).toEqual([5]);
+      expect(body.approved_by).toBe("dieter");
+    });
+  });
+
+  it("dispatches each repository's issues to that repository", async () => {
+    const fetchFn = mockFetch({
+      linearReady: false,
+      issues: [ISSUES[0], { ...ISSUES[0], repo: "org/beta", number: 7, title: "Other task" }],
+    });
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() => expect(screen.getByText("Other task")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+    await waitFor(() => {
+      const targets = fetchFn.mock.calls
+        .filter((c) => String(c[0]).includes("/api/v1/staff/requests"))
+        .map((c) => JSON.parse((c[1] as RequestInit).body as string).target);
+      expect(targets.map((t) => [t.repo, t.issues])).toEqual([
+        ["org/alpha", [5]],
+        ["org/beta", [7]],
+      ]);
+    });
+  });
+
+  it("shows partial backend failure per target", async () => {
+    mockFetch({
+      linearReady: false,
+      staffRequestResult: {
+        state: "executed",
+        kind: "issue.act",
+        result: {
+          status: "partial",
+          accepted: 1,
+          dispatched: [{ number: 5 }],
+          rejected: [{ number: 99, error: "Issue closed or locked" }],
+        },
+      },
+    });
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Pickable task")).toBeInTheDocument(),
+    );
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+    await waitFor(() =>
+      expect(screen.getByText(/issue.*selected/)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Dispatched 1 of 1 issue\(s\)\. Failed \(1\): #99: Issue closed or locked/),
+      ).toBeInTheDocument();
     });
   });
 

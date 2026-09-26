@@ -15,7 +15,9 @@ import json
 import logging
 import secrets
 import time
+from functools import partial
 
+import anyio.to_thread
 import assistant_contract
 import assistant_tools
 from dashboard_config import ORG, REPO_ROOT
@@ -251,6 +253,7 @@ async def propose_action(
             "approved": False,
         }
         try:
+            from staff.actions import registered_risk
             from staff.conversations import get_conversation_store
 
             c_store = get_conversation_store()
@@ -259,10 +262,12 @@ async def propose_action(
                 act_name = "maintenance.runner_restart"
             c_prop = c_store.create_proposal(
                 message_id=f"msg_{action_id}",
-                thread_id="assistant",
+                # The assistant has no conversation thread: results are not posted anywhere, and
+                # the risk comes from the registry, never from the model's own label (#1485).
+                thread_id="",
                 action=act_name,
                 params=proposal_dict.get("parameters", {}),
-                risk=proposal_dict.get("risk_level", "medium"),
+                risk=registered_risk(act_name),
                 proposal_id=f"prop_{action_id}",
                 principal=principal.id,
             )
@@ -344,7 +349,10 @@ async def execute_action(
             from staff.conversations import get_conversation_store
 
             c_store = get_conversation_store()
-            execute_proposal(prop_rec_id, approver=principal, store=c_store)
+            # Worker thread: never block the loop; lets GitHub-backed actions bridge back (#1448).
+            await anyio.to_thread.run_sync(
+                partial(execute_proposal, prop_rec_id, approver=principal, store=c_store, approve=True)
+            )
         except Exception as _sync_err:  # noqa: BLE001
             log.warning("Assistant action execute could not sync to conversation store: %s", _sync_err)
 

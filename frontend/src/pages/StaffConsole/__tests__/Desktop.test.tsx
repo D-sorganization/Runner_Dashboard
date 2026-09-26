@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   fetchThreadMessages: vi.fn(),
   postThreadMessage: vi.fn(),
   fetchRoster: vi.fn(),
+  fetchGroupCostEstimate: vi.fn(),
 }));
 
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
@@ -98,7 +99,7 @@ describe("StaffConsoleDesktop", () => {
     await waitFor(() =>
       expect(api.postThreadMessage).toHaveBeenCalledWith(
         "thr_maint_1",
-        expect.objectContaining({ body_md: "compact CT disk" }),
+        expect.objectContaining({ body: "compact CT disk" }),
         expect.any(String),
       ),
     );
@@ -116,6 +117,39 @@ describe("StaffConsoleDesktop", () => {
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
     expect(await screen.findByTestId("staff-console-error-send")).toHaveTextContent("500 Internal Server Error");
+  });
+
+  it("holds a Board message over the cost threshold until the user confirms (SC-D7, #1342)", async () => {
+    api.fetchThreads.mockResolvedValue({ threads: [{ ...MAINT_THREAD, meta: { group: "board" } }] });
+    api.fetchGroupCostEstimate.mockResolvedValue({
+      group_id: "board",
+      total_cost_usd: 0.84,
+      cost_per_seat: { alpha: 0.5, bravo: 0.34 },
+      exceeds_threshold: true,
+      threshold_usd: 0.5,
+    });
+    render(<StaffConsoleDesktop roles={ROLES} />);
+    openMaintenance();
+    await screen.findByText("All hosts healthy.");
+
+    fireEvent.change(screen.getByPlaceholderText(/message fleet maintenance/i), { target: { value: "adopt X?" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    const confirm = await screen.findByRole("alert", { name: /board cost/i });
+    expect(confirm).toHaveTextContent("$0.84");
+    expect(confirm).toHaveTextContent("$0.50");
+    expect(confirm).toHaveTextContent("alpha: $0.50");
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /send anyway/i }));
+    await waitFor(() =>
+      expect(api.postThreadMessage).toHaveBeenCalledWith(
+        "thr_maint_1",
+        expect.objectContaining({ body: "adopt X?", meta: { confirm_cost: true } }),
+        expect.any(String),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("alert", { name: /board cost/i })).not.toBeInTheDocument());
   });
 
   it("loads its own roster and shows a roster failure", async () => {

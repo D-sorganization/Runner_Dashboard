@@ -7,6 +7,8 @@ import React from "react";
 import type { ThreadMessage } from "./threadTypes";
 import { ThreadMarkdown } from "./threadMarkdown";
 import { formatMessageTime } from "./threadUtils";
+import { GroupDeliberationCard } from "./GroupDeliberationCard";
+import { parseGroupTurn } from "./groupTurn";
 import {
   ActionCard,
   type ActionProposalData,
@@ -14,11 +16,14 @@ import {
   ErrorCard,
   HandoffCard,
   type HandoffCardData,
+  type ProposalApproveHandler,
+  type ProposalDenyHandler,
   type ProposalStatus,
   ReviewCard,
   type ReviewCardData,
   type ReviewVerdict,
   RunCard,
+  type RunCancelHandler,
   type RunCardData,
   type RunStatus,
 } from "./cards";
@@ -28,10 +33,13 @@ export interface MessageItemProps {
   isStreaming?: boolean;
   onStopStreaming?: (messageId: string) => void;
   onRetry?: (message: ThreadMessage) => void;
-  onApproveProposal?: (proposalId: string, params?: Record<string, unknown>) => void;
-  onDenyProposal?: (proposalId: string) => void;
-  onCancelRun?: (runId: string) => void;
+  onApproveProposal?: ProposalApproveHandler;
+  onDenyProposal?: ProposalDenyHandler;
+  onCancelRun?: RunCancelHandler;
+  /** Answer a needs-input run in this message's thread (#1547). */
+  onAnswerRun?: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   onRerouteHandoff?: (targetRole: string) => void;
+  onFollowHandoff?: (targetRole: string) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -42,7 +50,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onApproveProposal,
   onDenyProposal,
   onCancelRun,
+  onAnswerRun,
   onRerouteHandoff,
+  onFollowHandoff,
 }) => {
   const isUser = message.author_kind === "user" || message.author === "user";
   const isFailed = message.delivery === "failed" || message.kind === "error";
@@ -112,6 +122,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <RunCard
           run={run}
           onCancel={onCancelRun}
+          onAnswer={onAnswerRun && ((runId, answer) => onAnswerRun(message.thread_id, runId, answer))}
         />
       );
     }
@@ -130,6 +141,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <HandoffCard
           handoff={handoff}
           onReroute={onRerouteHandoff}
+          onFollow={onFollowHandoff}
         />
       );
     }
@@ -151,6 +163,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           review={review}
         />
       );
+    }
+
+    // 6. Board group turn (SC-D7, #1342); the pending placeholder falls through to the bubble.
+    const groupTurn = parseGroupTurn(message);
+    if (groupTurn) {
+      return <GroupDeliberationCard message={message} turn={groupTurn} />;
     }
 
     // Default: Chat Bubble with Markdown or Plain Text

@@ -20,7 +20,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- 1:1 port of dynamically-typed legacy remediation payloads; the backend response shapes lack complete TypeScript definitions. */
 import React from "react";
 import { PROVIDER_MODELS } from "../lib/providerModels";
-import { dispatchJulesWorkflow, type JulesDispatchMsg } from "../lib/remediationJules";
 import { SubTabs } from "../components/SubTabs";
 import { Stat } from "../components/Stat";
 import {
@@ -123,10 +122,6 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
   const dpe = React.useState(false);
   const editingDefaultProvider = dpe[0],
     setEditingDefaultProvider = dpe[1];
-  // Inline status for Jules dispatch – replaces alert() (issue #51)
-  const jdm = React.useState<JulesDispatchMsg | null>(null);
-  const julesDispatchMsg = jdm[0],
-    setJulesDispatchMsg = jdm[1];
   const mrs = React.useState<any>(null);
   const mobileRemediationSheetRun = mrs[0],
     setMobileRemediationSheetRun = mrs[1];
@@ -393,7 +388,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                       fontSize: 13,
                     },
                   },
-                  "Dispatch " + providerLabel(recommendedId),
+                  "Fix this failed run (" + providerLabel(recommendedId) + ")",
                 ),
                 h(
                   "button",
@@ -743,6 +738,8 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                       "button",
                       {
                         className: "btn",
+                        "aria-label": "Fix this failed run",
+                        "data-testid": "fix-failed-run",
                         onClick: function (e: any) {
                           e.stopPropagation();
                           setSelectedRunId(String(run.id));
@@ -757,7 +754,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                               : undefined,
                         },
                       },
-                      "Dispatch",
+                      "Fix this failed run",
                     ),
                   );
                 }),
@@ -1458,34 +1455,6 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                     ],
               ),
             ),
-            julesDispatchMsg
-              ? h(
-                  "div",
-                  {
-                    role: "alert",
-                    style: {
-                      margin: "12px 0 0",
-                      padding: "10px 16px",
-                      borderRadius: 6,
-                      background:
-                        julesDispatchMsg.type === "error"
-                          ? "rgba(248,81,73,0.15)"
-                          : "rgba(63,185,80,0.15)",
-                      color:
-                        julesDispatchMsg.type === "error"
-                          ? "var(--accent-red)"
-                          : "var(--accent-green)",
-                      border:
-                        "1px solid " +
-                        (julesDispatchMsg.type === "error"
-                          ? "var(--accent-red)"
-                          : "var(--accent-green)"),
-                      fontSize: 13,
-                    },
-                  },
-                  julesDispatchMsg.text,
-                )
-              : null,
             h(
               "div",
               { className: "section", style: { marginTop: 16 } },
@@ -1662,29 +1631,6 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                               ? (entry.issues || []).length + " issue(s)"
                               : "healthy",
                           ),
-                          triggerType === "manual"
-                            ? h(
-                                "button",
-                                {
-                                  style: {
-                                    fontSize: 11,
-                                    padding: "2px 8px",
-                                    borderRadius: 4,
-                                    border: "1px solid #58a6ff",
-                                    background: "rgba(88,166,255,0.1)",
-                                    color: "var(--accent-blue)",
-                                    cursor: "pointer",
-                                  },
-                                  onClick: function () {
-                                    dispatchJulesWorkflow(
-                                      entry.workflow_file,
-                                      setJulesDispatchMsg,
-                                    );
-                                  },
-                                },
-                                "Run",
-                              )
-                            : null,
                         ),
                       ),
                       (entry.issues || []).map(function (

@@ -303,3 +303,129 @@ async def test_summary_attention_includes_orphaned_runs(
     broken_item = next(a for a in result["attention"] if a["id"] == "run-broken")
     assert broken_item["status"] == "failed"
     assert broken_item["failure_class"] == "orphaned"
+
+
+def test_interrupted_chat_messages_reconciled_to_failed_with_retry(
+    temp_store: RunStore,
+    staff_runner: runner_mod.StaffRunner,
+) -> None:
+    """Interrupted pending and streaming reply messages are marked failed with failure_class='interrupted_by_restart',
+
+    complete messages and user messages remain untouched, and a system retry message is posted.
+    """
+    from staff.conversations import ConversationStore
+    from staff.reconcile import reconcile_interrupted_chat_messages
+
+    conv_store = ConversationStore(temp_store.path)
+
+    # Thread 1: Has user message, pending reply message, and an earlier complete message
+    th1 = conv_store.create_thread(title="Chat 1", role="barb")
+    user_msg1 = conv_store.add_message(
+        th1.id,
+        author_kind="user",
+        author="user",
+        kind="text",
+        body_md="Please review this PR",
+        delivery="complete",
+    )
+    complete_msg1 = conv_store.add_message(
+        th1.id,
+        author_kind="role",
+        author="barb",
+        kind="text",
+        body_md="Earlier completed reply",
+        delivery="complete",
+    )
+    pending_msg = conv_store.add_message(
+        th1.id,
+        author_kind="role",
+        author="barb",
+        kind="text",
+        body_md="",
+        delivery="pending",
+        meta={"in_reply_to": user_msg1.id},
+    )
+
+    # Thread 2: Has a streaming reply message
+    th2 = conv_store.create_thread(title="Chat 2", role="night-watch")
+    user_msg2 = conv_store.add_message(
+        th2.id,
+        author_kind="user",
+        author="user",
+        kind="text",
+        body_md="Status update?",
+        delivery="complete",
+    )
+    streaming_msg = conv_store.add_message(
+        th2.id,
+        author_kind="role",
+        author="night-watch",
+        kind="text",
+        body_md="Here is some partial output...",
+        delivery="streaming",
+        meta={"in_reply_to": user_msg2.id},
+    )
+
+    # Thread 3: User message that was marked pending (should remain untouched)
+    th3 = conv_store.create_thread(title="Chat 3", role="barb")
+    user_pending = conv_store.add_message(
+        th3.id,
+        author_kind="user",
+        author="user",
+        kind="text",
+        body_md="Unsent user note",
+        delivery="pending",
+    )
+
+    # Run reconcile entry point
+    reconciled_runs = reconcile_orphaned_runs(staff_runner, conv_store=conv_store)
+    assert isinstance(reconciled_runs, list)
+
+    # Verify pending and streaming messages both became failed with failure_class='interrupted_by_restart'
+    p_after = conv_store.get_message(pending_msg.id)
+    assert p_after is not None
+    assert p_after.delivery == "failed"
+    assert p_after.meta.get("failure_class") == "interrupted_by_restart"
+
+    s_after = conv_store.get_message(streaming_msg.id)
+    assert s_after is not None
+    assert s_after.delivery == "failed"
+    assert s_after.meta.get("failure_class") == "interrupted_by_restart"
+
+    # Complete messages are unchanged
+    c_after = conv_store.get_message(complete_msg1.id)
+    assert c_after is not None
+    assert c_after.delivery == "complete"
+    assert "failure_class" not in c_after.meta
+
+    # User messages are untouched
+    u1_after = conv_store.get_message(user_msg1.id)
+    assert u1_after is not None
+    assert u1_after.delivery == "complete"
+
+    u_pending_after = conv_store.get_message(user_pending.id)
+    assert u_pending_after is not None
+    assert u_pending_after.delivery == "pending"
+    assert "failure_class" not in u_pending_after.meta
+
+    # Verify system retry message is posted in thread 1 and thread 2
+    th1_msgs = conv_store.list_messages(th1.id)
+    sys_msgs_th1 = [m for m in th1_msgs if m.author_kind == "system"]
+    assert len(sys_msgs_th1) >= 1
+    retry_msg1 = sys_msgs_th1[-1]
+    assert retry_msg1.delivery == "complete"
+    assert retry_msg1.meta.get("retryable") is True or "retry" in retry_msg1.body_md.lower()
+    assert retry_msg1.meta.get("in_reply_to") == pending_msg.id
+
+    th2_msgs = conv_store.list_messages(th2.id)
+    sys_msgs_th2 = [m for m in th2_msgs if m.author_kind == "system"]
+    assert len(sys_msgs_th2) >= 1
+    retry_msg2 = sys_msgs_th2[-1]
+    assert retry_msg2.delivery == "complete"
+    assert retry_msg2.meta.get("in_reply_to") == streaming_msg.id
+
+    # Second reconcile run is idempotent (no duplicate system messages)
+    reconcile_interrupted_chat_messages(conv_store)
+    th1_msgs_after = conv_store.list_messages(th1.id)
+    sys_msgs_th1_after = [m for m in th1_msgs_after if m.author_kind == "system"]
+    assert len(sys_msgs_th1_after) == len(sys_msgs_th1)

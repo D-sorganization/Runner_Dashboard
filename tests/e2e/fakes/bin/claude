@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Deterministic stand-in for the ``claude`` CLI used by the Staff Console e2e suite (#1341).
+
+It emits the same stream-json shapes the real CLI does (``system``/``init``,
+``assistant``, ``result``), so the backend's parser, session capture and SSE
+path run unmodified. Behaviour is chosen by the last ``[[e2e:<scenario>]]``
+directive in the prompt; with none, it echoes the prompt's last line.
+
+Chat scenarios:
+  reply         default; echo the last prompt line
+  slow          stream ten deltas 0.4 s apart (cancel and SSE-drop tests)
+  dispatch      propose a ``staff.dispatch`` of ``e2e-analyst`` (needs approval)
+  dispatch-ask  the same, but the dispatched run asks a question first
+  dispatch-hang the same, but the dispatched run hangs until it is cancelled
+  handoff       hand the thread to ``e2e-analyst``
+  crash         exit 1 with a stack-trace style error on stderr
+  auth          exit 1 with the CLI's expired-login message
+
+Work runs (argv carries ``bypassPermissions``) finish with a ``STAFF_RESULT:``
+line. Under ``ask`` they end on a question instead, which the backend reads as
+needs-input, until the continuation prompt carries the user's answer. Under
+``hang`` they sleep for a minute first, so a test can cancel them.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+import time
+import uuid
+
+DIRECTIVE = re.compile(r"\[\[e2e:([a-z-]+)\]\]")
+ANSWER_MARKER = "User answer to question:"
+
+
+def emit(event: dict) -> None:
+    sys.stdout.write(json.dumps(event) + "\n")
+    sys.stdout.flush()
+
+
+def prompt_from(argv: list[str]) -> str:
+    """Pre: argv carries ``-p <prompt>``. Post: returns that prompt."""
+    if "-p" not in argv or argv.index("-p") + 1 >= len(argv):
+        sys.stderr.write("fake claude: -p <prompt> is required\n")
+        sys.exit(2)
+    return argv[argv.index("-p") + 1]
+
+
+def session_from(argv: list[str]) -> str:
+    return argv[argv.index("--resume") + 1] if "--resume" in argv else f"e2e-{uuid.uuid4().hex[:12]}"
+
+
+def last_line(prompt: str) -> str:
+    """The user's last line; history replay prefixes turns ``User:`` and ends on an ``Assistant:`` cue."""
+    lines = [DIRECTIVE.sub("", ln).strip() for ln in prompt.splitlines()]
+    line = next((ln for ln in reversed(lines) if ln and ln != "Assistant:"), "")
+    return line.removeprefix("User:").strip()
+
+
+def actions_block(actions: list[dict]) -> str:
+    return "```staff-actions\n" + json.dumps(actions) + "\n```\n"
+
+
+# Chat scenario that proposes a dispatch -> the directive its dispatched run carries.
+RUN_DIRECTIVE = {"dispatch": "", "dispatch-ask": " [[e2e:ask]]", "dispatch-hang": " [[e2e:hang]]"}
+HANG_SECONDS = 60
+
+
+def chat_body(scenario: str, prompt: str) -> list[str]:
+    """A chat reply as the chunks the fake streams, one ``assistant`` event each."""
+    if scenario == "slow":
+        return [f"Chunk {n}. " for n in range(1, 11)]
+    if scenario in RUN_DIRECTIVE:
+        run_prompt = "Summarise the queue" + RUN_DIRECTIVE[scenario]
+        action = {
+            "action": "staff.dispatch",
+            "params": {"role": "e2e-analyst", "prompt": run_prompt},
+            "reason": "The analyst can look at the queue.",
+        }
+        return ["I can ask the analyst to look.\n\n", actions_block([action])]
+    if scenario == "handoff":
+        return ["That is an analysis question, so I am handing it over.\n\n", "handoff: e2e-analyst\n"]
+    return [f"Fake reply: {last_line(prompt)}"]
+
+
+def run_body(scenario: str, prompt: str) -> list[str]:
+    """A work run's transcript: a ``STAFF_RESULT`` line, or a bare question under ``ask``."""
+    if scenario == "ask" and ANSWER_MARKER not in prompt:
+        return ["Looking at the queue.\n", "Which repository should I look at?\n"]
+    answer = prompt.split(ANSWER_MARKER, 1)[1].strip() if ANSWER_MARKER in prompt else ""
+    suffix = f" for {answer}" if answer else ""
+    return ["Queue checked.\n", f"STAFF_RESULT: fake run finished{suffix}\n"]
+
+
+def main(argv: list[str]) -> int:
+    prompt = prompt_from(argv)
+    found = DIRECTIVE.findall(prompt)
+    scenario = found[-1] if found else "reply"
+
+    if scenario == "crash":
+        sys.stderr.write("Traceback (most recent call last):\nRuntimeError: fake provider crashed\n")
+        return 1
+    if scenario == "auth":
+        sys.stderr.write("Invalid API key · Please run /login\n")
+        return 1
+
+    if scenario == "hang" and "bypassPermissions" in argv:
+        time.sleep(HANG_SECONDS)
+
+    session = session_from(argv)
+    emit({"type": "system", "subtype": "init", "session_id": session})
+    chunks = run_body(scenario, prompt) if "bypassPermissions" in argv else chat_body(scenario, prompt)
+    for chunk in chunks:
+        emit({"type": "assistant", "message": {"content": [{"type": "text", "text": chunk}]}, "session_id": session})
+        if scenario == "slow":
+            time.sleep(0.4)
+    emit(
+        {
+            "type": "result",
+            "subtype": "success",
+            "result": "".join(chunks),
+            "session_id": session,
+            "total_cost_usd": 0.0012,
+            "usage": {"input_tokens": 120, "output_tokens": 40},
+        }
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

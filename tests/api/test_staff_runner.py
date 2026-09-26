@@ -13,6 +13,7 @@ import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -355,6 +356,40 @@ def test_cancel_terminates_running_process(staff: runner_mod.StaffRunner) -> Non
     assert staff.cancel(rec.id) is False  # nothing left to cancel
 
 
+@pytest.mark.integration
+def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises(
+    staff: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    handled: list[tuple[str, str]] = []
+    orig_handle = runner_mod.handle_run_status_change
+
+    def fake_handle(*args: Any, **kwargs: Any) -> None:
+        rec = args[0] if args else kwargs.get("run")
+        st = args[1] if len(args) > 1 else kwargs.get("status", "")
+        if rec is not None:
+            handled.append((rec.id, st))
+        orig_handle(*args, **kwargs)
+
+    monkeypatch.setattr(runner_mod, "handle_run_status_change", fake_handle)
+
+    def exploding_opens_pr(role: str) -> bool:
+        raise RuntimeError("broken opens_pr resolver")
+
+    monkeypatch.setattr(staff, "opens_pr", exploding_opens_pr)
+
+    rec = staff.submit(
+        runner_mod.RunRequest(
+            role="night-watch",
+            provider="fake",
+            prompt="sweep the backlog",
+            requested_by="tester",
+        )
+    )
+    done = _wait(staff.store, rec.id, ("succeeded", "failed"))
+    assert done.status == "succeeded"
+    assert any(h[0] == rec.id and h[1] == "succeeded" for h in handled)
+
+
 # ── routes ───────────────────────────────────────────────────────────────
 @pytest.fixture
 def client(staff: runner_mod.StaffRunner) -> Iterator[TestClient]:
@@ -474,3 +509,43 @@ def test_exit_zero_without_staff_result_is_failed(
     done = _wait(staff.store, rec.id, ("succeeded", "failed"))
     assert done.status == "failed" and done.exit_code == 0
     assert done.error == runner_mod.NO_RESULT_ERROR
+
+
+# ── post-run verification (#1516) ────────────────────────────────────────
+def _wait_verified(store: store_mod.RunStore, run_id: str, timeout: float = 20.0) -> store_mod.RunRecord:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        rec = store.get_run(run_id)
+        assert rec is not None
+        if rec.verification:
+            return rec
+        time.sleep(0.05)
+    raise AssertionError(f"run {run_id} was never verified")
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("mode", "status", "failure_class"), [("report", "succeeded", ""), ("enforce", "failed", "unverified_output")]
+)
+def test_finished_run_is_verified_and_only_enforce_changes_its_status(
+    staff: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch, mode: str, status: str, failure_class: str
+) -> None:
+    from staff import verification  # noqa: PLC0415
+
+    lookups: list[tuple[str, str]] = []
+
+    class NoPr:
+        def find(self, repo: str, branch: str) -> None:
+            lookups.append((repo, branch))
+
+    monkeypatch.setenv(verification.MODE_ENV, mode)
+    monkeypatch.setattr(verification, "GhCliPrProbe", NoPr)
+    # night-watch opens PRs, but no PR exists for this run's branch.
+    rec = staff.submit(runner_mod.RunRequest(role="night-watch", provider="fake", prompt="sweep"))
+
+    done = _wait_verified(staff.store, rec.id)
+
+    assert (done.verification, done.status, done.failure_class) == ("failed", status, failure_class)
+    assert lookups == [(done.repo, done.branch)]
+    assert "no pull request" in done.verification_detail
+    assert [e["kind"] for e in staff.store.events_after(rec.id)][-1] == "verify"

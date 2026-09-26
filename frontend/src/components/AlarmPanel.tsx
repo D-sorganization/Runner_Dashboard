@@ -5,8 +5,8 @@
  * status header plus the list of *active* alarms: disk pressure, runners
  * offline, saturation, watchdog. It consumes the unified alert model — the
  * pure `computeFleetAlerts` rollup (issue #819) merged with the event-derived
- * alerts (`eventsToAlerts`, issue #863) — so the panel and the AlertsCenter
- * header pill always agree (DRY, single source of severity).
+ * alerts (`eventsToAlerts`, issue #863) — so every alarm surface agrees
+ * (DRY, single source of severity).
  *
  * Presentation only: alerts are supplied by the host. No fetch, no polling.
  */

@@ -575,3 +575,14 @@ async def rerun_failed(repo_full: str, run_id: int) -> None:
     """
     await post(f"/repos/{repo_full}/actions/runs/{run_id}/rerun-failed-jobs")
     log.info("gh_client: rerun-failed-jobs %d in %s", run_id, repo_full)
+
+
+async def rerun(repo_full: str, run_id: int) -> None:
+    """Rerun every job in a workflow run.
+
+    Args:
+        repo_full: Full repo slug.
+        run_id: GitHub Actions run ID.
+    """
+    await post(f"/repos/{repo_full}/actions/runs/{run_id}/rerun")
+    log.info("gh_client: rerun %d in %s", run_id, repo_full)

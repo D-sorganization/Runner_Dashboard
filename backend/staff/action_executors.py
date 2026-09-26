@@ -10,7 +10,8 @@ from staff.audit import record_audit
 
 log = logging.getLogger("dashboard.staff.action_executors")
 
-DEFAULT_REVIEWER_ROLE = "fleet-critic"
+DEFAULT_REVIEWER_ROLE = "code-reviewer"
+FALLBACK_REVIEWER_ROLE = "fleet-critic"
 CODE_REQUEST_OWNER_ROLE = "barb"
 BOARD_PROPOSAL_ROLE = "board-secretary"
 
@@ -47,6 +48,13 @@ def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
     for role_name in ACTION_DEFAULT_ROLES:
         spec = roster.get(role_name)
         if not spec:
+            if role_name == DEFAULT_REVIEWER_ROLE and FALLBACK_REVIEWER_ROLE in roster:
+                log.warning(
+                    "Default reviewer '%s' not loaded; falling back to %s",
+                    role_name,
+                    FALLBACK_REVIEWER_ROLE,
+                )
+                continue
             errors.append(f"Role '{role_name}' does not exist in loaded roster")
         elif not spec.dispatchable:
             errors.append(f"Role '{role_name}' is not dispatchable (retired={spec.retired}, surface={spec.surface})")
@@ -66,67 +74,107 @@ except Exception:  # noqa: BLE001
     log.exception("Unexpected error during action default roles initial validation")
 
 if TYPE_CHECKING:
-    from staff.actions import ActionContext, ActionResult
+    from staff.actions import ActionContext, ActionRegistry, ActionResult
+
+
+def _optional_int(value: Any) -> int | None:
+    raw = str(value or "")
+    return int(raw) if raw.isdigit() else None
 
 
 def execute_staff_dispatch(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    """Dispatch through the same policy as ``POST /api/staff/{role}/run`` (#1487).
+
+    Pre: runs in an anyio worker thread (the proposal routes use ``to_thread``).
+    Post: forwarding, rate limit, dry-run and the dispatch audit all apply; every
+    refusal is a failed ``ActionResult`` with a classified ``failure_class``.
+    """
+    from fastapi import HTTPException
+    from identity import Principal
     from staff.actions import ActionResult
-
-    role = str(params.get("role") or "").strip()
-    if not role:
-        return ActionResult(success=False, error="Missing required parameter 'role'", failure_class="invalid_params")
-    from staff.runner import RunRequest, get_runner
-
-    runner = get_runner()
-    raw_issue = str(params.get("issue") or "")
-    issue_num = int(raw_issue) if raw_issue.isdigit() else None
-    raw_pr = str(params.get("pr") or "")
-    pr_num = int(raw_pr) if raw_pr.isdigit() else None
-
-    req = RunRequest(
-        role=role,
-        repo=str(params.get("repo") or ""),
-        prompt=str(params.get("prompt") or ""),
-        issue=issue_num,
-        pr=pr_num,
-        provider=params.get("provider"),
-        model=params.get("model"),
-        machine=params.get("machine"),
-        requested_by=format_caller(ctx.caller) if ctx.caller else "staff_action",
-        thread_id=ctx.thread_id,
+    from staff.dispatch_service import (
+        DispatchCommand,
+        dispatch_staff_run,
+        failure_class_for,
+        refusal_message,
     )
-    rec = runner.submit(req)
+    from staff.fleet import caller_identity
+    from staff.loop_bridge import BridgeUnavailableError, run_on_loop
+
+    caller = ctx.caller or Principal(id="staff_action", type="bot", name="staff_action")
+    try:
+        cmd = DispatchCommand(
+            role=str(params.get("role") or ""),
+            requested_by=caller_identity(caller),
+            provider=params.get("provider"),
+            model=params.get("model"),
+            repo=str(params.get("repo") or ""),
+            issue=_optional_int(params.get("issue")),
+            pr=_optional_int(params.get("pr")),
+            prompt=str(params.get("prompt") or ""),
+            machine=str(params.get("machine") or "local"),
+            dry_run=ctx.dry_run,
+            work_item_id=str(params.get("work_item_id") or ""),
+            surface="thread",
+            thread_id=ctx.thread_id,
+        )
+    except ValueError as exc:
+        return ActionResult(success=False, error=str(exc), failure_class="invalid_params")
+    try:
+        out = run_on_loop(dispatch_staff_run, cmd, caller)
+    except BridgeUnavailableError as exc:
+        return ActionResult(success=False, error=f"staff.dispatch {exc}", failure_class="bridge_unavailable")
+    except HTTPException as exc:
+        return ActionResult(success=False, error=refusal_message(exc), failure_class=failure_class_for(exc))
+    run = out.get("run") or {}
     return ActionResult(
         success=True,
-        result={"run_id": rec.id, "role": rec.role, "repo": rec.repo, "status": rec.status},
-        run_id=rec.id,
+        result={
+            "run_id": run.get("id"),
+            "role": run.get("role", cmd.role),
+            "repo": run.get("repo", cmd.repo),
+            "status": run.get("status"),
+            "machine": out.get("machine"),
+            "forwarded_to": out.get("forwarded_to"),
+            "dry_run": bool(out.get("dry_run")),
+            "plan": out.get("plan"),
+        },
+        run_id=run.get("id"),
     )
 
 
 def verify_staff_dispatch(res: ActionResult, params: dict[str, Any], ctx: ActionContext) -> tuple[bool, str]:
+    result = res.result if isinstance(res.result, dict) else {}
+    if result.get("dry_run") and not res.run_id:
+        return True, "Dry run: plan validated, nothing dispatched"
     if not res.run_id:
         return False, "No run_id produced"
+    if result.get("forwarded_to"):
+        return True, f"Run {res.run_id} accepted by {result['forwarded_to']}"
     from staff.runner import get_runner
 
     run = get_runner().store.get_run(res.run_id)
     if not run:
         return False, f"Run {res.run_id} not found in store"
-    return True, f"Run {res.run_id} verified in state {run.status}"
+    # Report the post-run verification of its output (#1516); a failed verdict fails the check.
+    if run.verification == "failed":
+        return False, f"Run {res.run_id} ({run.status}) failed output verification: {run.verification_detail}"
+    output = f"{run.verification}: {run.verification_detail}" if run.verification else "output not yet verified"
+    return True, f"Run {res.run_id} verified in state {run.status}; {output}"
 
 
 def execute_review_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     from staff.actions import ActionResult
+    from staff.review import prepare_review_params
+    from staff.roles import load_roles, roles_dir
 
     repo = str(params.get("repo") or "").strip()
     pr = params.get("pr")
     if not repo or not pr:
         return ActionResult(success=False, error="Missing 'repo' or 'pr'", failure_class="invalid_params")
-    reviewer = str(params.get("reviewer") or DEFAULT_REVIEWER_ROLE)
-    focus = str(params.get("focus") or "code review")
-    prompt = f"Review PR #{pr} in {repo}. Focus: {focus}"
-    params_copy = dict(params)
-    params_copy["role"] = reviewer
-    params_copy["prompt"] = prompt
+    r_dir = roles_dir()
+    roster = load_roles(r_dir) if r_dir else None
+    params_copy = prepare_review_params(params, default_role=DEFAULT_REVIEWER_ROLE, roster=roster)
     return execute_staff_dispatch(params_copy, ctx)
 
 
@@ -232,7 +280,6 @@ def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> A
 
     title = str(params.get("title") or "").strip()
     repo = str(params.get("repo") or "").strip()
-    desc = str(params.get("description") or "").strip()
     if not title or not repo:
         return ActionResult(success=False, error="Missing 'title' or 'repo'", failure_class="invalid_params")
     from staff.work_items import get_work_item_store
@@ -241,12 +288,9 @@ def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> A
     role = str(params.get("role") or CODE_REQUEST_OWNER_ROLE)
     wi = wi_store.create_work_item(
         title=f"[Code Request] {title}",
-        role=role,
-        repo=repo,
+        owner_role=role,
         thread_id=ctx.thread_id,
-        summary=desc,
-        links={"code_requests": [{"title": title, "repo": repo, "priority": str(params.get("priority") or "P2")}]},
-        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        requested_by=format_caller(ctx.caller) if ctx.caller else "staff_action",
     )
     return ActionResult(success=True, result={"work_item_id": wi.id, "title": title, "repo": repo})
 
@@ -264,16 +308,182 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
     role = str(params.get("role") or BOARD_PROPOSAL_ROLE)
     wi = wi_store.create_work_item(
         title=f"[Board Proposal] {title}",
-        role=role,
+        owner_role=role,
         thread_id=ctx.thread_id,
-        summary=prop_body,
-        links={"proposals": [{"title": title, "proposal": prop_body, "target": str(params.get("target") or "")}]},
-        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        requested_by=format_caller(ctx.caller) if ctx.caller else "staff_action",
     )
     return ActionResult(success=True, result={"proposal_id": wi.id, "title": title})
 
 
-def execute_maintenance_action(params: dict[str, Any], ctx: ActionContext, action_name: str) -> ActionResult:
-    from staff.maintenance import execute_maintenance
+def execute_notify_user(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    from staff.actions import ActionResult
 
-    return execute_maintenance(action_name, params, ctx)
+    text = str(params.get("text") or params.get("message") or "").strip()
+    if not text:
+        return ActionResult(success=False, error="Missing 'text' or 'message'", failure_class="invalid_params")
+    record_audit(
+        action="notify_user",
+        target="user",
+        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        surface="thread",
+        thread_id=ctx.thread_id,
+        outcome="success",
+        detail={"text": text},
+        store=ctx.audit_store,
+    )
+    return ActionResult(success=True, result={"notified": True, "text": text})
+
+
+def execute_claim_issue(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    from staff.actions import ActionResult
+
+    repo = str(params.get("repo") or "").strip()
+    issue = int(params.get("issue") or 0)
+    if not repo or not issue:
+        return ActionResult(success=False, error="Missing 'repo' or 'issue'", failure_class="invalid_params")
+    record_audit(
+        action="claim_issue",
+        target=f"{repo}#{issue}",
+        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        surface="thread",
+        thread_id=ctx.thread_id,
+        outcome="success",
+        detail={"repo": repo, "issue": issue},
+        store=ctx.audit_store,
+    )
+    return ActionResult(success=True, result={"claimed": True, "repo": repo, "issue": issue})
+
+
+def execute_open_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    from staff.actions import ActionResult
+
+    repo = str(params.get("repo") or "").strip()
+    branch = str(params.get("branch") or "").strip()
+    title = str(params.get("title") or f"PR from {branch}").strip()
+    if not repo or not branch:
+        return ActionResult(success=False, error="Missing 'repo' or 'branch'", failure_class="invalid_params")
+    record_audit(
+        action="open_pr",
+        target=f"{repo}:{branch}",
+        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        surface="thread",
+        thread_id=ctx.thread_id,
+        outcome="success",
+        detail={"repo": repo, "branch": branch, "title": title},
+        store=ctx.audit_store,
+    )
+    return ActionResult(success=True, result={"opened": True, "repo": repo, "branch": branch, "title": title})
+
+
+def register_standard_actions(registry: ActionRegistry) -> None:
+    """Register the standard staff actions (the non-maintenance catalogue) into ``registry``."""
+    from staff.actions import ActionDefinition, ActionRiskClass
+
+    standard_defs = (
+        ActionDefinition(
+            name="staff.dispatch",
+            description="Dispatch an AI staff role to work on an issue, PR, or prompt.",
+            params_schema={
+                "role": "string",
+                "repo": "string?",
+                "prompt": "string?",
+                "issue": "int?",
+                "pr": "int?",
+            },
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_staff_dispatch,
+            verifier=verify_staff_dispatch,
+        ),
+        ActionDefinition(
+            name="staff.review_pr",
+            description="Request a PR review from a specialist staff role.",
+            params_schema={
+                "repo": "string",
+                "pr": "int",
+                "reviewer": "string?",
+                "focus": "string?",
+            },
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.LOW,
+            executor=execute_review_pr,
+            verifier=verify_staff_dispatch,
+        ),
+        ActionDefinition(
+            name="staff.hold",
+            description="Set an operational hold locking a role or policy.",
+            params_schema={
+                "text": "string",
+                "applies_to": "list[string]?",
+                "lifted_when": "string?",
+            },
+            required_scope="staff.holds.write",
+            risk_class=ActionRiskClass.HIGH,
+            executor=execute_staff_hold,
+            verifier=verify_staff_hold,
+        ),
+        ActionDefinition(
+            name="staff.unhold",
+            description="Lift an operational hold.",
+            params_schema={"hold_id": "string?", "text": "string?"},
+            required_scope="staff.holds.write",
+            risk_class=ActionRiskClass.HIGH,
+            executor=execute_staff_unhold,
+            verifier=verify_staff_unhold,
+        ),
+        ActionDefinition(
+            name="code_request.create",
+            description="Create a tracked Code Request work item.",
+            params_schema={
+                "title": "string",
+                "repo": "string",
+                "description": "string?",
+                "priority": "string?",
+            },
+            required_scope="code_requests.write",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_code_request_create,
+        ),
+        ActionDefinition(
+            name="board.propose",
+            description="Submit a proposal to the Board of Directors.",
+            params_schema={"title": "string", "proposal": "string", "target": "string?"},
+            required_scope="board.proposals.write",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_board_propose,
+        ),
+        ActionDefinition(
+            name="submit_proposal",
+            description="Submit a proposal to the Board of Directors.",
+            params_schema={"title": "string", "proposal": "string", "target": "string?"},
+            required_scope="board.proposals.write",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_board_propose,
+        ),
+        ActionDefinition(
+            name="notify_user",
+            description="Send an unsolicited notification or ping to the owner.",
+            params_schema={"text": "string"},
+            required_scope="staff.chat",
+            risk_class=ActionRiskClass.LOW,
+            executor=execute_notify_user,
+        ),
+        ActionDefinition(
+            name="claim_issue",
+            description="Claim an issue with an agent coordination lease.",
+            params_schema={"repo": "string", "issue": "int"},
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.LOW,
+            executor=execute_claim_issue,
+        ),
+        ActionDefinition(
+            name="open_pr",
+            description="Open a pull request from a branch.",
+            params_schema={"repo": "string", "branch": "string", "title": "string?"},
+            required_scope="staff.dispatch",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_open_pr,
+        ),
+    )
+    for ad in standard_defs:
+        registry.register(ad)

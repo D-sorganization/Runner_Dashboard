@@ -358,8 +358,8 @@ describe("StaffPage", () => {
 
   it("assign preview posts dry_run with CSRF header and shows the plan", async () => {
     const fetchMock = stubFetch((url, opts) => {
-      if ((url === "/api/staff/night-watch/run" || url === "/api/v1/staff/night-watch/run") && opts?.method === "POST") {
-        return { status: 200, body: { dry_run: true, plan: PLAN, machine: "DeskComputer" } };
+      if (url === "/api/v1/staff/requests" && opts?.method === "POST") {
+        return { status: 200, body: { state: "planned", plan: { plan: PLAN, machine: "DeskComputer" } } };
       }
       return undefined;
     });
@@ -382,22 +382,21 @@ describe("StaffPage", () => {
     expect(screen.getByTestId("plan-branch")).toHaveTextContent("staff/night-watch-10622-preview");
 
     const [url, opts] = postCalls(fetchMock)[0];
-    expect(url).toBe("/api/v1/staff/night-watch/run");
+    expect(url).toBe("/api/v1/staff/requests");
     expect((opts.headers as Record<string, string>)["X-Requested-With"]).toBe("XMLHttpRequest");
     expect(JSON.parse(opts.body as string)).toMatchObject({
+      kind: "staff.dispatch",
       dry_run: true,
       provider: "claude",
-      repo: "UpstreamDrift",
-      issue: 10622,
-      pr: null,
+      target: { repo: "UpstreamDrift", issue: 10622, pr: null },
       machine: "local",
     });
   });
 
   it("dispatch posts for real and navigates to the new run", async () => {
     stubFetch((url, opts) => {
-      if ((url === "/api/staff/night-watch/run" || url === "/api/v1/staff/night-watch/run") && opts?.method === "POST") {
-        return { status: 200, body: { dry_run: false, run: RUN, machine: "DeskComputer" } };
+      if (url === "/api/v1/staff/requests" && opts?.method === "POST") {
+        return { status: 201, body: { state: "executed", run_id: RUN.id } };
       }
       return undefined;
     });

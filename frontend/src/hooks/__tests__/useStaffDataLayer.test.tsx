@@ -28,7 +28,7 @@ import {
   useStaffBoard,
   updateStaffRunFromEvent,
 } from "../useStaffQueries";
-import { SESSION_EXPIRED_EVENT } from "../../legacy/sessionExpired";
+import { SESSION_EXPIRED_EVENT } from "../../lib/sessionExpired";
 import { ConnectionIndicator } from "../../primitives/ConnectionIndicator";
 import type { RunEvent, RunRecord } from "../../pages/Staff/staffApi";
 

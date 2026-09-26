@@ -20,6 +20,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from identity import format_caller
+from staff import maintenance_github
 from staff.audit import record_audit
 from staff.maintenance_policy import (
     MAINTENANCE_POLICY,
@@ -118,7 +119,8 @@ def _vacuum_db(db_name: str) -> dict[str, Any]:
     if os.path.exists(path):
         try:
             initial = os.path.getsize(path)
-            conn = sqlite3.connect(path)
+            conn = sqlite3.connect(path, timeout=30.0)
+            conn.execute("PRAGMA busy_timeout = 30000")
             conn.execute("VACUUM")
             conn.close()
             freed = max(0, initial - os.path.getsize(path))
@@ -138,13 +140,13 @@ def _purge_stale_queue(repo: str | None, min_age_minutes: int, max_count: int) -
 
 
 def _cancel_run(repo: str, run_id: int) -> dict[str, Any]:
-    """Cancel a specific workflow run."""
-    raise _not_wired("Workflow run cancel")
+    """Cancel a specific workflow run on GitHub (#1448)."""
+    return maintenance_github.cancel_run(repo, run_id)
 
 
 def _rerun_run(repo: str, run_id: int, failed_only: bool) -> dict[str, Any]:
-    """Re-run failed jobs in a workflow run."""
-    raise _not_wired("Workflow run rerun")
+    """Rerun a workflow run (or only its failed jobs) on GitHub (#1448)."""
+    return maintenance_github.rerun_run(repo, run_id, failed_only)
 
 
 def _require_idle_or_drain(target: str, host: str, params: dict[str, Any], *, dry_run: bool) -> None:
@@ -166,11 +168,21 @@ def _failure_class(exc: BaseException) -> str:
         return "peer_timeout"
     if isinstance(exc, PermissionError):
         return "auth_expired"
+    if isinstance(exc, maintenance_github.MaintenanceUpstreamError):
+        return "upstream_error"
+    if isinstance(exc, maintenance_github.MaintenanceBridgeError):
+        return "bridge_unavailable"
     return "execution_exception"
 
 
 # Faults an operation may raise; each is classified, audited and reported, never swallowed.
-_CLASSIFIED_FAULTS = (MaintenanceNotWiredError, TimeoutError, PermissionError)
+_CLASSIFIED_FAULTS = (
+    MaintenanceNotWiredError,
+    TimeoutError,
+    PermissionError,
+    maintenance_github.MaintenanceUpstreamError,
+    maintenance_github.MaintenanceBridgeError,
+)
 
 
 def _run_group(group_cmd: str, target: str, host: str, limit: int) -> tuple[dict[str, Any], str | None]:
@@ -242,9 +254,8 @@ def _run_action(
         res.update(_rerun_run(repo_arg, run_arg, bool(params.get("failed_only", True))))
         return res, None
     if action_name == "maintenance.cancel_and_rerun":
-        c_res = _cancel_run(repo_arg, run_arg)
-        r_res = _rerun_run(repo_arg, run_arg, bool(params.get("failed_only", False)))
-        res.update({"cancel": c_res, "rerun": r_res, "status": "cancel_and_rerun_requested"})
+        res.update(maintenance_github.cancel_and_rerun(repo_arg, run_arg, bool(params.get("failed_only", False))))
+        res["status"] = "cancel_and_rerun_requested"
         return res, None
     if action_name == "maintenance.vacuum_sqlite":
         res.update(_vacuum_db(str(params.get("database") or "staff_runs.sqlite3")))
@@ -360,16 +371,37 @@ def verify_maintenance(
         if state.get("status") not in ("online", "active"):
             return False, f"Expected online/active state for runner '{target}', got {state.get('status')}"
         return True, f"Runner '{target}' verified restarted and online"
-    if act == "maintenance.cancel_and_rerun":
-        return True, f"Run '{target}' cancel and rerun verified"
+    run_id = int(params.get("run_id") or 0)
+    if act == "maintenance.run_cancel":
+        return maintenance_github.verify_cancelled(str(params.get("repo") or ""), run_id)
+    if act in ("maintenance.run_rerun", "maintenance.cancel_and_rerun"):
+        detail = res.result or {}
+        previous = int((detail.get("rerun") or detail).get("previous_attempt") or 0)
+        return maintenance_github.verify_rerun(str(params.get("repo") or ""), run_id, previous)
     if act == "maintenance.runner_remove":
         return True, f"Runner '{target}' verified removed"
 
     return True, f"Action '{act}' verified"
 
 
+_FLEET_ALIAS_MAP: dict[str, str] = {
+    "runner.start": "maintenance.runner_start",
+    "runner.stop": "maintenance.runner_stop",
+    "runner.restart": "maintenance.runner_restart",
+    "runner.scale": "maintenance.fleet_control",
+    "fleet.node_up": "maintenance.fleet_control",
+    "fleet.node_down": "maintenance.fleet_control",
+    "queue.purge_stale": "maintenance.queue_purge_stale",
+    "run.cancel": "maintenance.run_cancel",
+    "run.rerun": "maintenance.run_rerun",
+    "queue.diagnose": "maintenance.diagnose",
+    "host.vhdx_compact": "maintenance.vacuum_sqlite",
+    "dashboard.restart": "maintenance.runner_restart",
+}
+
+
 def register_maintenance_actions(registry: ActionRegistry | None = None) -> None:
-    """Register every MAINTENANCE_POLICY row into the ActionRegistry."""
+    """Register every MAINTENANCE_POLICY row and fleet action alias into the ActionRegistry."""
     from staff.actions import ACTION_REGISTRY, ActionDefinition
 
     reg = registry or ACTION_REGISTRY
@@ -385,3 +417,17 @@ def register_maintenance_actions(registry: ActionRegistry | None = None) -> None
                 verifier=lambda r, p, c, _name=name: verify_maintenance(r, p, c, _name),
             )
         )
+    for alias, target_name in _FLEET_ALIAS_MAP.items():
+        policy = MAINTENANCE_POLICY.get(target_name)
+        if policy:
+            reg.register(
+                ActionDefinition(
+                    name=alias,
+                    description=policy.description,
+                    params_schema=dict(policy.params_schema),
+                    required_scope=policy.required_scope,
+                    risk_class=policy.risk_class,
+                    executor=lambda p, c, _t=target_name: execute_maintenance(_t, p, c),
+                    verifier=lambda r, p, c, _t=target_name: verify_maintenance(r, p, c, _t),
+                )
+            )

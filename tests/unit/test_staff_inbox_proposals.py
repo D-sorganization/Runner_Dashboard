@@ -16,7 +16,7 @@ import pytest
 from cache_utils import cache_clear
 from proposals.store import ProposalStoreError
 from staff.conversations import reset_conversation_store
-from staff.inbox import collect_inbox
+from staff.inbox import SourceStatus, collect_inbox
 from staff.store import reset_store as reset_run_store
 from staff.work_items import reset_work_item_store
 
@@ -188,3 +188,24 @@ async def test_inbox_caches_proposals_within_ttl() -> None:
     assert mock_list.call_count == 1
     assert inbox_1.counts["board_proposals"] == 1
     assert inbox_2.counts["board_proposals"] == 1
+
+
+@pytest.mark.asyncio
+async def test_github_sources_disabled_never_call_github(monkeypatch: pytest.MonkeyPatch) -> None:
+    """STAFF_INBOX_GITHUB_SOURCES=0 (hermetic staff e2e harness, #1556) skips both
+    GitHub-backed sources entirely, without treating them as failed."""
+    monkeypatch.setenv("STAFF_INBOX_GITHUB_SOURCES", "0")
+    monkeypatch.setattr("projects.service.configured_repos", lambda: ["SomeRepo"])
+
+    with (
+        patch("proposals.store.list_github_proposals", new_callable=AsyncMock) as mock_list,
+        patch("projects.service.project_overview", new_callable=AsyncMock) as mock_overview,
+    ):
+        inbox = await collect_inbox()
+
+    mock_list.assert_not_called()
+    mock_overview.assert_not_called()
+    assert inbox.sources["board_proposals"] == SourceStatus(status="ok", count=0)
+    assert inbox.sources["project_decisions"] == SourceStatus(status="ok", count=0)
+    assert inbox.counts["board_proposals"] == 0
+    assert inbox.counts["project_decisions"] == 0

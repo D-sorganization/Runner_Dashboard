@@ -250,3 +250,74 @@ def test_execute_proposal_expiry_and_replay_protection(client: TestClient) -> No
     )
     assert res_exp.status_code == 400
     assert "expired" in res_exp.text.lower()
+
+
+# ─── ActionCard messages follow the decision (#1547) ───────────────────────────
+
+
+class _NoBus:
+    async def publish_message(self, thread_id: str, message_dict: dict) -> int:
+        return 0
+
+
+def _card_proposal(action: str, params: dict) -> tuple[str, str]:
+    import asyncio
+
+    from staff.proposal_cards import post_proposal
+
+    store = get_conversation_store()
+    th = store.create_thread(title="Cards", kind="direct", participants=["barb", "user"])
+    prop = asyncio.run(
+        post_proposal(store, _NoBus(), thread_id=th.id, author="barb", action=action, params=params, reason="why")
+    )
+    return prop.id, prop.message_id
+
+
+def _card(message_id: str) -> dict:
+    msg = get_conversation_store().get_message(message_id)
+    assert msg is not None
+    return msg.meta["proposal"]
+
+
+def test_deny_rewrites_the_proposal_card(client: TestClient) -> None:
+    prop_id, message_id = _card_proposal("runner.restart", {"runner_name": "r1"})
+
+    res = client.post(
+        f"/api/v1/staff/proposals/{prop_id}/decide",
+        json={"decision": "denied", "reason": "not now"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert res.status_code == 200, res.text
+    assert _card(message_id)["status"] == "denied"
+    assert _card(message_id)["decided_by"]
+
+
+def test_approve_and_execute_marks_the_card_executed(client: TestClient) -> None:
+    prop_id, message_id = _card_proposal(
+        "staff.dispatch", {"role": "ad-hoc", "repo": "Repository_Management", "prompt": "verify issues"}
+    )
+
+    res = client.post(
+        f"/api/v1/staff/proposals/{prop_id}/decide",
+        json={"decision": "approved", "execute": True},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["state"] == "done"
+    assert _card(message_id)["status"] == "executed"
+
+
+def test_execute_route_rewrites_the_card(client: TestClient) -> None:
+    prop_id, message_id = _card_proposal(
+        "staff.dispatch", {"role": "ad-hoc", "repo": "Repository_Management", "prompt": "verify issues"}
+    )
+    headers = {"X-Requested-With": "XMLHttpRequest"}
+    client.post(f"/api/v1/staff/proposals/{prop_id}/decide", json={"decision": "approved"}, headers=headers)
+    assert _card(message_id)["status"] == "approved"
+
+    res = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", headers=headers)
+
+    assert res.status_code == 200, res.text
+    assert _card(message_id)["status"] == "executed"

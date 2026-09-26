@@ -50,6 +50,8 @@ const mobileProjects = viewportProfilesRaw.profiles.map((p) => ({
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // The Staff Console suite runs its own fake backend: tests/e2e/staff/playwright.config.ts.
+  testIgnore: ["staff/**"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

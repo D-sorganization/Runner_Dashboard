@@ -3,40 +3,22 @@
  * Integration tests for RoutedShell — the single navigation source of truth
  * (issues #835, #831).
  *
- * These assert the routing contract without dragging in the 17k-line legacy
- * App or live data hooks (both mocked): the active tab is derived from the URL
- * param, selecting a tab navigates the URL (deep-linkable + back/forward), and
- * the legacy App is loaded lazily (its module is only imported on demand).
+ * These assert the routing contract without live data hooks (pages are mocked):
+ * the active tab is derived from the URL param, selecting a tab navigates the
+ * URL (deep-linkable + back/forward), and every desktop and mobile nav entry
+ * renders a native page — the legacy App is gone (#1345).
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 // --- Mocks: keep the test light and focused on routing -------------------
 
-const legacyAppImport = vi.fn();
 const breakpointMock = vi.fn(() => "lg");
 
-vi.mock("../../legacy/App", () => {
-  legacyAppImport();
-  return {
-    default: (props: { activeTab?: string; initialTab?: string }) => (
-      <div
-        data-testid="legacy-app"
-        data-active-tab={props.activeTab ?? props.initialTab}
-      />
-    ),
-  };
-});
-
-vi.mock("../../pages/AgentDispatch", () => ({
-  AgentDispatchPage: () => (
-    <div data-testid="native-agent-dispatch">Agent Dispatch</div>
-  ),
-}));
 
 vi.mock("../../pages/Analysis", () => ({
   AnalysisTab: (props: { activeTab?: string }) => (
@@ -234,31 +216,37 @@ vi.mock("../DesktopShell", () => ({
 }));
 
 import { RoutedShell } from "../RoutedShell";
+import { mobileDrawerItems, mobilePrimaryItems } from "../navRegistry";
+import { tabIdToPath } from "../routing";
+import { Toaster } from "../../primitives/Toaster";
 
 function LocationProbe() {
   const loc = useLocation();
   return <span data-testid="pathname">{loc.pathname}</span>;
 }
 
-function renderAt(path: string) {
+function renderAt(path: string, { withToaster = false } = {}) {
+  const Wrapper = withToaster ? Toaster : React.Fragment;
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <LocationProbe />
-      <Routes>
-        <Route path="/settings/push" element={<RoutedShell />} />
-        <Route path="/t/:tabId" element={<RoutedShell />} />
-        <Route path="/staff/:tabId" element={<RoutedShell />} />
-        <Route path="/staff" element={<RoutedShell />} />
-        <Route path="/work/:tabId" element={<RoutedShell />} />
-        <Route path="/work" element={<RoutedShell />} />
-        <Route path="/fleet/:tabId" element={<RoutedShell />} />
-        <Route path="/fleet" element={<RoutedShell />} />
-        <Route path="/settings/:tabId" element={<RoutedShell />} />
-        <Route path="/settings" element={<RoutedShell />} />
-        <Route path="/" element={<RoutedShell />} />
-        <Route path="*" element={<RoutedShell isNotFoundRoute />} />
-      </Routes>
-    </MemoryRouter>,
+    <Wrapper>
+      <MemoryRouter initialEntries={[path]}>
+        <LocationProbe />
+        <Routes>
+          <Route path="/settings/push" element={<RoutedShell />} />
+          <Route path="/t/:tabId" element={<RoutedShell />} />
+          <Route path="/staff/:tabId" element={<RoutedShell />} />
+          <Route path="/staff" element={<RoutedShell />} />
+          <Route path="/work/:tabId" element={<RoutedShell />} />
+          <Route path="/work" element={<RoutedShell />} />
+          <Route path="/fleet/:tabId" element={<RoutedShell />} />
+          <Route path="/fleet" element={<RoutedShell />} />
+          <Route path="/settings/:tabId" element={<RoutedShell />} />
+          <Route path="/settings" element={<RoutedShell />} />
+          <Route path="/" element={<RoutedShell />} />
+          <Route path="*" element={<RoutedShell isNotFoundRoute />} />
+        </Routes>
+      </MemoryRouter>
+    </Wrapper>,
   );
 }
 
@@ -266,15 +254,12 @@ describe("RoutedShell — URL is the source of truth", () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
-    legacyAppImport.mockClear();
     breakpointMock.mockReturnValue("lg");
   });
 
   it("derives the default tab from the root path", async () => {
     renderAt("/");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "staff",
-    );
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("staff");
     expect(await screen.findByTestId("native-staff")).toBeInTheDocument();
   });
 
@@ -285,7 +270,9 @@ describe("RoutedShell — URL is the source of truth", () => {
 
   it("renders not-found panel for an unknown tab id (SC-D2)", async () => {
     renderAt("/t/not-a-real-tab");
-    expect(await screen.findByRole("region", { name: /route not found/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("region", { name: /route not found/i }),
+    ).toBeInTheDocument();
   });
 
   it("selecting a tab navigates the URL (deep-linkable + back/forward)", async () => {
@@ -305,7 +292,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["staff", "native-staff"],
     ["overview", "native-overview"],
     ["operations", "native-operations"],
-    ["agent-dispatch", "native-agent-dispatch"],
     ["insights", "native-analysis"],
     ["assessments", "native-assessments"],
     ["credentials", "native-credentials"],
@@ -321,32 +307,33 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["settings", "native-settings"],
     ["tests", "native-tests"],
     ["workflows", "native-workflows"],
-  ])(
-    "routes self-contained desktop tab %s without mounting the legacy App",
-    async (tabId, testId) => {
-      renderAt(`/t/${tabId}`);
-      expect(await screen.findByTestId("active-tab")).toHaveTextContent(tabId);
-      expect(await screen.findByTestId(testId)).toBeInTheDocument();
-      expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
-      expect(legacyAppImport).not.toHaveBeenCalled();
-    },
-  );
+  ])("routes desktop tab %s to its native page", async (tabId, testId) => {
+    renderAt(`/t/${tabId}`);
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(tabId);
+    expect(await screen.findByTestId(testId)).toBeInTheDocument();
+  });
 
   it("redirects legacy /t/reports and /t/analysis to /fleet/insights (SC-G4)", async () => {
     renderAt("/t/reports");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("insights");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+      "insights",
+    );
     expect(await screen.findByTestId("native-analysis")).toBeInTheDocument();
   });
 
   it("redirects legacy /t/machines, /t/runner-audit and /t/events to /fleet sections (SC-G2)", async () => {
     renderAt("/t/machines");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("overview");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+      "overview",
+    );
     expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
   });
 
   it("redirects legacy operational tabs to /fleet/operations (SC-G3)", async () => {
     renderAt("/t/deployment");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("operations");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+      "operations",
+    );
     expect(await screen.findByTestId("native-operations")).toBeInTheDocument();
   });
 
@@ -358,47 +345,36 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["/t/reports", "mobile-reports"],
     ["/fleet/insights", "mobile-reports"],
     ["/t/credentials", "mobile-credentials"],
-    // #1345: the legacy App has no projects case, so the fallback was blank.
+    // #1345: the legacy fallback had no projects case, so Projects was blank.
     ["/t/projects", "native-projects"],
-  ])(
-    "routes native mobile tab %s without importing the legacy App",
-    async (path, testId) => {
-      breakpointMock.mockReturnValue("md");
-      renderAt(path);
-
-      expect(await screen.findByTestId(testId)).toBeInTheDocument();
-      expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
-      expect(legacyAppImport).not.toHaveBeenCalled();
-    },
-  );
-
-  it("keeps the mobile legacy fallback for drawer tabs without native content", async () => {
+  ])("routes mobile tab %s to its mobile page", async (path, testId) => {
     breakpointMock.mockReturnValue("md");
-    renderAt("/t/assessments");
+    renderAt(path);
 
-    expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
-      "data-active-tab",
-      "assessments",
-    );
-    expect(legacyAppImport).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId(testId)).toBeInTheDocument();
   });
 
-  it("lazy-loads the legacy App (code-split, not eager)", async () => {
-    localStorage.setItem("dashboard.layout", "legacy");
-    renderAt("/");
-    // The legacy App renders only after its lazy chunk resolves.
-    expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
-    localStorage.removeItem("dashboard.layout");
+  it.each(
+    [...mobilePrimaryItems(), ...mobileDrawerItems()].map((item) => [
+      item.tabId,
+    ]),
+  )("mobile nav entry %s renders non-empty content (#1345)", async (tabId) => {
+    breakpointMock.mockReturnValue("md");
+    renderAt(tabIdToPath(tabId));
+
+    const main = await screen.findByRole("main");
+    await waitFor(() => expect(main.textContent?.trim()).not.toBe(""));
   });
 
-  it("keeps the explicit legacy desktop-shell escape hatch", async () => {
+  it("drops a stored Classic layout preference with a one-time notice (#1345)", async () => {
     localStorage.setItem("dashboard.layout", "legacy");
-    renderAt("/t/overview");
-    expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
-      "data-active-tab",
-      "overview",
-    );
-    localStorage.removeItem("dashboard.layout");
+    renderAt("/t/queue", { withToaster: true });
+
+    expect(await screen.findByTestId("native-queue")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Classic layout was retired/),
+    ).toBeInTheDocument();
+    expect(localStorage.getItem("dashboard.layout")).toBeNull();
   });
 
   it("catches tab errors in TabErrorBoundary without crashing the shell, and navigates away cleanly", async () => {

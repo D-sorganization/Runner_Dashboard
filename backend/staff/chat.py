@@ -12,16 +12,21 @@ Provides fast, read-only conversational replies with:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from staff.adapters import ADAPTERS, ProviderAdapter, get_adapter
+from staff.adapters import (
+    ADAPTERS,
+    ChatReadOnlyUnsupportedError,
+    ProviderAdapter,
+    get_adapter,
+)
 from staff.availability import (
     execute_degraded_turn,
     get_availability_metrics,
@@ -29,26 +34,35 @@ from staff.availability import (
     record_successful_turn,
     resolve_provider_chain,
 )
+from staff.chat_failures import (
+    chat_read_only_tools,
+    choose_preferred_chat_failure,
+    record_chat_capacity_failure,
+    record_chat_failure_if_pending,
+)
+from staff.chat_handoff import post_reply_handoff
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
     extract_session_id,
     format_history_replay,
 )
+from staff.chat_knowledge import build_knowledge_turn_block
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
+    DEFAULT_CHAT_ACQUIRE_TIMEOUT,
     DEFAULT_MAX_CHAT_TURNS,
     ChatConcurrencyPool,
     get_chat_pool,
 )
+from staff.chat_streaming import (
+    LiveProcessReader,
+    spawn_cli_process,
+    stream_turn_output,
+)
 from staff.classifier import classify_run_failure
-from staff.conversations import (
-    ConversationStore,
-    get_conversation_store,
-)
-from staff.reply_contract import (
-    ProposedAction,
-    parse_reply,
-)
+from staff.conversations import ConversationStore, get_conversation_store
+from staff.proposal_cards import post_proposal
+from staff.reply_contract import ProposedAction, parse_reply
 from staff.roles import RoleSpec, load_roles
 from staff.thread_bus import get_thread_bus
 
@@ -61,6 +75,7 @@ __all__ = [
     "ChatConcurrencyPool",
     "ChatTurnResult",
     "ChatTurnRunner",
+    "build_knowledge_turn_block",
     "extract_session_id",
     "format_history_replay",
     "get_chat_pool",
@@ -81,6 +96,7 @@ class ChatTurnResult:
     failure_class: str | None = None
     retryable: bool = False
     remediation: str = ""
+    error: str | None = None
     metrics: dict[str, Any] = field(default_factory=dict)
     replayed_history: bool = False
 
@@ -93,10 +109,12 @@ class ChatTurnRunner:
         conv_store: ConversationStore | None = None,
         adapters: dict[str, ProviderAdapter] | None = None,
         pool: ChatConcurrencyPool | None = None,
+        acquire_timeout: float | None = None,
     ) -> None:
         self.conv_store = conv_store or get_conversation_store()
         self.adapters = adapters if adapters is not None else ADAPTERS
         self.pool = pool or get_chat_pool()
+        self.acquire_timeout = acquire_timeout if acquire_timeout is not None else DEFAULT_CHAT_ACQUIRE_TIMEOUT
 
     def _spawn_cli_process(
         self,
@@ -105,17 +123,7 @@ class ChatTurnRunner:
         env: dict[str, str],
     ) -> subprocess.Popen[str]:
         """Spawn the provider CLI subprocess in read-only scratch mode."""
-        return subprocess.Popen(
-            cmd,
-            cwd=cwd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-        )
+        return spawn_cli_process(cmd=cmd, cwd=cwd, env=env)
 
     async def execute_turn(
         self,
@@ -138,13 +146,28 @@ class ChatTurnRunner:
             )
 
         user_msg = self.conv_store.get_message(user_message_id)
-        prompt_text = user_msg.body_md if user_msg else ""
+        raw_prompt = user_msg.body_md if user_msg else ""
+        knowledge_block = build_knowledge_turn_block(role, raw_prompt)
+        prompt_text = f"{knowledge_block}\n\n{raw_prompt}" if knowledge_block else raw_prompt
 
-        acquired = self.pool.try_acquire(role_name)
+        acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:
             log.warning(
-                "Chat concurrency limit reached for role %s; executing in fallback queue",
+                "Chat concurrency limit reached for role %s; rejecting turn with chat_capacity",
                 role_name,
+            )
+            await record_chat_capacity_failure(
+                self.conv_store,
+                thread_id,
+                placeholder_id,
+                user_message_id=user_message_id,
+                role_name=role_name,
+            )
+            return ChatTurnResult(
+                ok=False,
+                failure_class="chat_capacity",
+                retryable=True,
+                remediation="All chat slots are busy; please retry shortly.",
             )
 
         metrics = get_availability_metrics()
@@ -153,7 +176,7 @@ class ChatTurnRunner:
 
         try:
             fallback_steps = 0
-            last_failed: ChatTurnResult | None = None
+            best_failed: tuple[str, ChatTurnResult] | None = None
 
             for candidate in chain:
                 if not is_provider_healthy(candidate):
@@ -207,7 +230,6 @@ class ChatTurnRunner:
                     session_id=None,
                     is_resume=False,
                     replayed_history=was_fallback,
-                    update_on_failure=(candidate == chain[-1]),
                 )
                 if result.ok:
                     record_successful_turn(
@@ -220,7 +242,7 @@ class ChatTurnRunner:
                     )
                     return result
 
-                last_failed = result
+                best_failed = choose_preferred_chat_failure(best_failed, candidate, result)
                 log.warning(
                     "Turn attempt failed on %s: %s; falling back",
                     candidate,
@@ -229,8 +251,19 @@ class ChatTurnRunner:
                 fallback_steps += 1
                 metrics.record_fallback()
 
-            if last_failed is not None:
-                return last_failed
+            if best_failed is not None:
+                failed_provider, failed_result = best_failed
+                await record_chat_failure_if_pending(
+                    self.conv_store,
+                    thread_id,
+                    placeholder_id,
+                    actor=role.name if role else failed_provider,
+                    failure_class=failed_result.failure_class,
+                    retryable=failed_result.retryable,
+                    detail=failed_result.remediation,
+                    error=failed_result.error,
+                )
+                return failed_result
 
             log.warning(
                 "All providers unavailable for thread %s; triggering degraded mode",
@@ -257,7 +290,6 @@ class ChatTurnRunner:
         session_id: str | None,
         is_resume: bool,
         replayed_history: bool = False,
-        update_on_failure: bool = True,
     ) -> ChatTurnResult:
         scratch_dir = tempfile.mkdtemp(prefix="staff_chat_")
         bus = get_thread_bus()
@@ -270,60 +302,45 @@ class ChatTurnRunner:
         stderr_text: list[str] = []
 
         try:
-            cmd = adapter.chat_argv(
-                prompt=prompt,
-                workdir=scratch_dir,
-                model=role.model if role else None,
-                session_id=session_id,
-            )
+            try:
+                cmd = adapter.chat_argv(
+                    prompt=prompt,
+                    workdir=scratch_dir,
+                    model=role.model if role else None,
+                    session_id=session_id,
+                    read_only_tools=chat_read_only_tools(role),
+                )
+            except (ChatReadOnlyUnsupportedError, ValueError) as exc:
+                # Fail closed and visibly: never fall back to a writable argv (#1484).
+                failure_class = (
+                    "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
+                )
+                remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
+                return ChatTurnResult(
+                    ok=False,
+                    failure_class=failure_class,
+                    retryable=False,
+                    remediation=remediation,
+                    error=str(exc),
+                )
             env = {**os.environ, **adapter.runtime_env()}
 
             proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
 
-            # Stream stdout lines
-            loop = asyncio.get_running_loop()
-
-            def _read_output() -> tuple[list[str], list[str], int]:
-                out_lines: list[str] = []
-                if proc.stdout:
-                    for line in proc.stdout:
-                        out_lines.append(line)
-                err_lines: list[str] = []
-                if proc.stderr:
-                    for eline in proc.stderr:
-                        err_lines.append(eline)
-                rc: Any = None
-                if callable(getattr(proc, "wait", None)):
-                    try:
-                        rc = proc.wait()
-                    except Exception:  # noqa: BLE001
-                        rc = None
-                if not isinstance(rc, int):
-                    rc = getattr(proc, "returncode", None)
-                if not isinstance(rc, int):
-                    rc = 0
-                return out_lines, err_lines, rc
-
-            lines, err_lines, returncode = await loop.run_in_executor(None, _read_output)
-            stderr_text = err_lines
-
-            deltas: list[str] = []
-            for line in lines:
-                stdout_text.append(line)
-                event = adapter.parse_line(line)
-
-                # Check session id extraction
-                detected_sid = extract_session_id(adapter.provider_id, event, raw_line=line)
-                if detected_sid:
-                    captured_session_id = detected_sid
-
-                delta = event.get("text", "")
-                if delta:
-                    deltas.append(delta)
-                    if t_first_token is None:
-                        t_first_token = time.monotonic()
-                    # Stream token delta immediately over SSE bus
-                    await bus.publish_token(thread_id, placeholder_id, delta)
+            # Stream stdout lines incrementally and publish tokens live (SC-B1-G10)
+            stream_out = await stream_turn_output(
+                reader=LiveProcessReader(proc),
+                adapter=adapter,
+                bus=bus,
+                thread_id=thread_id,
+                placeholder_id=placeholder_id,
+            )
+            stdout_text = stream_out.stdout_lines
+            stderr_text = stream_out.stderr_lines
+            returncode = stream_out.returncode
+            if stream_out.session_id:
+                captured_session_id = stream_out.session_id
+            t_first_token = stream_out.t_first_token
 
             t_end = time.monotonic()
             ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
@@ -338,35 +355,16 @@ class ChatTurnRunner:
                     output_text=raw_combined,
                     error_message="".join(stderr_text),
                 )
-                if not is_resume and update_on_failure:
-                    err_detail = classified.remediation or classified.error or "Failed to complete reply"
-                    actor = role.name if role else adapter.provider_id
-                    self.conv_store.update_message(
-                        placeholder_id,
-                        kind="error",
-                        delivery="failed",
-                        body_md=f"Error from {actor}: {err_detail}",
-                        meta={
-                            "failure_class": classified.failure_class,
-                            "retryable": classified.retryable,
-                            "actions": [{"name": "retry", "label": "Retry"}],
-                            "error": classified.error,
-                        },
-                    )
-                    err_msg = self.conv_store.get_message(placeholder_id)
-                    if err_msg:
-                        await bus.publish_message(thread_id, err_msg.to_dict())
-
                 return ChatTurnResult(
                     ok=False,
                     failure_class=classified.failure_class,
                     retryable=classified.retryable,
                     remediation=classified.remediation,
+                    error=classified.error,
                 )
 
             # Parse structured reply contract
-            full_reply_text = "".join(deltas) if deltas else raw_combined
-            parsed = parse_reply(full_reply_text, role=role)
+            parsed = parse_reply(stream_out.reply_text or raw_combined, role=role)
 
             metrics = {
                 "time_to_first_token_seconds": round(ttft, 3),
@@ -395,27 +393,20 @@ class ChatTurnRunner:
                 meta=msg_meta,
             )
 
-            # Create any proposed action proposals in store
+            # Each proposed action becomes an ActionCard message after the reply (#1547)
             created_proposals: list[ProposedAction] = []
             for action in parsed.actions:
                 try:
-                    self.conv_store.create_proposal(
-                        message_id=placeholder_id,
+                    await post_proposal(
+                        self.conv_store,
+                        bus,
                         thread_id=thread_id,
+                        author=role.name if role else "assistant",
                         action=action.action,
                         params=action.params,
-                        principal=role.name if role else "assistant",
+                        reason=action.reason,
                     )
                     created_proposals.append(action)
-                    await bus.publish_proposal(
-                        thread_id,
-                        {
-                            "action": action.action,
-                            "params": action.params,
-                            "reason": action.reason,
-                            "message_id": placeholder_id,
-                        },
-                    )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Failed to persist action proposal %s: %s", action.action, exc)
 
@@ -444,13 +435,7 @@ class ChatTurnRunner:
                 metrics=metrics,
             )
         finally:
-            # Clean up scratch directory
-            try:
-                import shutil
-
-                shutil.rmtree(scratch_dir, ignore_errors=True)
-            except Exception:  # noqa: BLE001
-                pass
+            shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 async def run_chat_turn_in_background(
@@ -463,12 +448,21 @@ async def run_chat_turn_in_background(
     """Async background task invoked by POST /threads/{id}/messages to execute reply."""
     try:
         runner = ChatTurnRunner()
-        await runner.execute_turn(
+        result = await runner.execute_turn(
             thread_id=thread_id,
             user_message_id=user_message_id,
             placeholder_id=placeholder_id,
             role_name=role_name,
         )
+        if result.ok and result.handoff:
+            await post_reply_handoff(
+                thread_id=thread_id,
+                user_message_id=user_message_id,
+                from_role=role_name,
+                to_role=result.handoff,
+                reply=result.reply,
+                caller_id=caller_id,
+            )
     except Exception as exc:  # noqa: BLE001
         log.error(
             "Unhandled error during chat turn for thread %s: %s",

@@ -293,7 +293,7 @@ def test_simulated_wedged_listener_restarted_and_verified() -> None:
         patch("staff.maintenance._get_runner_state", return_value={"busy": False, "status": "online"}),
         patch("staff.maintenance._run_service_command", return_value=(0, "restarted", "")),
     ):
-        res = execute_proposal(proposal["id"], approver=TEST_OPERATOR)
+        res = execute_proposal(proposal["id"], approver=TEST_OPERATOR, approve=True)
 
     assert res.success is True
     assert res.verification_ok is True

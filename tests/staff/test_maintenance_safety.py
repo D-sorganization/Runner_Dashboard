@@ -84,7 +84,12 @@ PINNED_POLICY: dict[str, tuple[str, str, bool, str | None, int | None]] = {
 }
 
 # Operations with no real backend yet. They must fail as `not_wired`, never report success.
-UNWIRED_ACTIONS = frozenset(PINNED_POLICY) - {"maintenance.vacuum_sqlite"}
+# Wired to a real backend: vacuum (#1344) and the GitHub run operations (#1448,
+# covered in tests/staff/test_maintenance_github.py).
+WIRED_ACTIONS = frozenset(
+    {"maintenance.vacuum_sqlite", "maintenance.run_cancel", "maintenance.run_rerun", "maintenance.cancel_and_rerun"}
+)
+UNWIRED_ACTIONS = frozenset(PINNED_POLICY) - WIRED_ACTIONS
 
 # One safe, fully targeted parameter set per action.
 VALID_PARAMS: dict[str, dict[str, Any]] = {
@@ -262,7 +267,7 @@ def test_high_risk_actions_are_blocked_without_the_owner(name: str) -> None:
     prop_id = _propose(name, VALID_PARAMS[name])
     with patch.object(maintenance, "execute_maintenance") as executor:
         with pytest.raises(PermissionError, match="requires owner approval"):
-            execute_proposal(prop_id, approver=APPROVER)
+            execute_proposal(prop_id, approver=APPROVER, approve=True)
     executor.assert_not_called()
     prop = get_conversation_store().get_proposal(prop_id)
     assert prop is not None and prop.state == "proposed"
@@ -272,7 +277,7 @@ def test_an_in_flight_proposal_cannot_be_executed_twice() -> None:
     prop_id = _propose("maintenance.vacuum_sqlite", VALID_PARAMS["maintenance.vacuum_sqlite"])
     get_conversation_store().transition_proposal_state(prop_id, "executing")
     with pytest.raises((ProposalReplayError, ValueError)):
-        execute_proposal(prop_id, approver=OWNER)
+        execute_proposal(prop_id, approver=OWNER, approve=True)
 
 
 # ─── 3. Prompt injection ─────────────────────────────────────────────────────
@@ -286,7 +291,7 @@ INJECTED_LOG_LINE = (
 def test_injected_fleet_wide_shutdown_is_refused_even_when_the_owner_approves() -> None:
     prop_id = _propose("maintenance.fleet_control", {"action": "down", "host": "all", "note": INJECTED_LOG_LINE})
     with patch("staff.maintenance._run_service_command") as svc:
-        res = execute_proposal(prop_id, approver=OWNER)
+        res = execute_proposal(prop_id, approver=OWNER, approve=True)
     svc.assert_not_called()
     assert res.success is False
     assert "One host at a time" in (res.error or "")
@@ -298,13 +303,13 @@ def test_injected_action_from_a_role_without_maintenance_rights_is_denied() -> N
     prop_id = _propose("maintenance.runner_stop", VALID_PARAMS["maintenance.runner_stop"], role="night-watch")
     with patch.object(maintenance, "execute_maintenance") as executor:
         with pytest.raises(RolePermissionDeniedError):
-            execute_proposal(prop_id, approver=OWNER)
+            execute_proposal(prop_id, approver=OWNER, approve=True)
     executor.assert_not_called()
 
 
 def test_injected_unknown_action_is_not_executed() -> None:
     prop_id = _propose("shell.exec", {"cmd": "shutdown -h now"})
-    res = execute_proposal(prop_id, approver=OWNER)
+    res = execute_proposal(prop_id, approver=OWNER, approve=True)
     assert res.success is False
     assert res.failure_class == "unknown_action"
 
@@ -414,7 +419,7 @@ def test_verification_mismatch_fails_the_proposal_and_tells_the_thread() -> None
         patch("staff.maintenance._get_runner_state", return_value={"busy": False, "status": "online"}),
         patch("staff.maintenance._run_service_command", return_value=(0, "stopped", "")),
     ):
-        res = execute_proposal(prop_id, approver=OWNER)
+        res = execute_proposal(prop_id, approver=OWNER, approve=True)
     assert res.success is False
     assert res.failure_class == "verification_mismatch"
     store = get_conversation_store()

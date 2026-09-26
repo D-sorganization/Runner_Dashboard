@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Any
 
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
@@ -12,12 +14,16 @@ from routers.staff_threads import _get_store_or_503
 from staff.actions import (
     ACTION_REGISTRY,
     ProposalExpiredError,
+    ProposalNotApprovedError,
     ProposalReplayError,
     RolePermissionDeniedError,
     execute_proposal,
+    registered_risk,
 )
 from staff.conversations import ConversationsUnavailableError
 from staff.pagination import paginate_items
+from staff.proposal_cards import refresh_proposal_card
+from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.proposals")
 
@@ -29,7 +35,17 @@ class CreateProposalRequest(BaseModel):
     thread_id: str = Field(description="Parent thread ID")
     action: str = Field(description="Name of allowlisted action")
     params: dict[str, Any] = Field(default_factory=dict, description="Action parameters")
-    risk: str = Field(default="low", description="Risk class (read, low, medium, high, owner-only)")
+    risk: str | None = Field(
+        default=None, description="Ignored: the risk always comes from the action registry (#1485)"
+    )
+
+
+async def _refresh_card(store: Any, proposal_id: str) -> None:
+    """Show the proposal's current state on its ActionCard (#1547); never fails the request."""
+    try:
+        await refresh_proposal_card(store, get_thread_bus(), proposal_id)
+    except Exception as exc:  # noqa: BLE001 - the decision already stands
+        log.warning("Could not refresh the card of proposal %s: %s", proposal_id, exc)
 
 
 class DecideProposalRequest(BaseModel):
@@ -38,6 +54,14 @@ class DecideProposalRequest(BaseModel):
     execute: bool = Field(
         default=False,
         description="Whether to execute the action immediately upon approval",
+    )
+
+
+async def _execute_off_loop(proposal_id: str, caller: Principal, store: Any) -> Any:
+    """Run the synchronous executor in a worker thread so it never blocks the event loop
+    and can reach loop-bound clients through anyio.from_thread (#1448)."""
+    return await anyio.to_thread.run_sync(
+        partial(execute_proposal, proposal_id=proposal_id, approver=caller, store=store)
     )
 
 
@@ -115,17 +139,30 @@ async def list_proposals(
 )
 async def create_proposal(
     body: CreateProposalRequest,
-    caller: Principal = Depends(require_scope("staff.read")),  # noqa: B008
+    caller: Principal = Depends(require_scope("staff.chat")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Create a new action proposal within a conversation thread."""
+    """Create a new action proposal within a conversation thread.
+
+    Pre: ``action`` is registered; ``thread_id`` exists and ``message_id`` is a message in it.
+    Post: the proposal is ``proposed`` with the registry's risk class (any caller risk is ignored).
+    """
+    if ACTION_REGISTRY.get(body.action) is None:
+        raise HTTPException(status_code=422, detail=f"Action '{body.action}' is not registered")
     store = _get_store_or_503()
     try:
+        if store.get_thread(body.thread_id) is None:
+            raise HTTPException(status_code=422, detail=f"Thread '{body.thread_id}' does not exist")
+        msg = store.get_message(body.message_id)
+        if msg is None or msg.thread_id != body.thread_id:
+            raise HTTPException(
+                status_code=422, detail=f"Message '{body.message_id}' is not in thread '{body.thread_id}'"
+            )
         prop = store.create_proposal(
             message_id=body.message_id,
             thread_id=body.thread_id,
             action=body.action,
             params=body.params,
-            risk=body.risk,
+            risk=registered_risk(body.action),
             principal=format_caller(caller),
         )
         return prop.to_dict()
@@ -163,7 +200,10 @@ async def decide_proposal(
     body: DecideProposalRequest,
     caller: Principal = Depends(require_scope("staff.approve")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Decide (approve or deny) an action proposal, optionally executing immediately."""
+    """Decide (approve or deny) an action proposal, optionally executing immediately.
+
+    A ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).
+    """
     if body.decision not in ("approved", "denied"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -176,10 +216,10 @@ async def decide_proposal(
         prop = store.get_proposal(proposal_id)
         if not prop:
             raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
-        if prop.state != "proposed":
+        if prop.state not in ("proposed", "failed"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot decide proposal in state '{prop.state}' (must be 'proposed')",
+                detail=f"Cannot decide proposal in state '{prop.state}' (must be 'proposed' or 'failed')",
             )
         updated = store.decide_proposal(
             proposal_id=proposal_id,
@@ -189,7 +229,7 @@ async def decide_proposal(
         )
 
         if body.decision == "approved" and body.execute:
-            res = execute_proposal(proposal_id=proposal_id, approver=caller, store=store)
+            res = await _execute_off_loop(proposal_id, caller, store)
             refreshed = store.get_proposal(proposal_id)
             d = refreshed.to_dict() if refreshed else updated.to_dict()
             d["execution_result"] = res.to_dict()
@@ -206,6 +246,8 @@ async def decide_proposal(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        await _refresh_card(store, proposal_id)
 
 
 @router.post(
@@ -216,7 +258,7 @@ async def execute_approved_proposal(
     proposal_id: str,
     caller: Principal = Depends(require_scope("staff.approve")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Execute an approved proposal through the action registry."""
+    """Execute an ``approved`` proposal through the action registry (409 for any other live state)."""
     store = _get_store_or_503()
     prop = store.get_proposal(proposal_id)
     if not prop:
@@ -229,7 +271,7 @@ async def execute_approved_proposal(
         )
 
     try:
-        res = execute_proposal(proposal_id=proposal_id, approver=caller, store=store)
+        res = await _execute_off_loop(proposal_id, caller, store)
         refreshed = store.get_proposal(proposal_id)
         d = refreshed.to_dict() if refreshed else prop.to_dict()
         d["execution_result"] = res.to_dict()
@@ -240,11 +282,15 @@ async def execute_approved_proposal(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ProposalNotApprovedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ProposalReplayError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         log.exception("Error executing proposal %s: %s", proposal_id, exc)
         raise HTTPException(status_code=500, detail=f"Execution error: {exc}") from exc
+    finally:
+        await _refresh_card(store, proposal_id)
 
 
 class DetectStalledRequest(BaseModel):
@@ -265,12 +311,15 @@ async def detect_stalled_jobs(
 
     req = body or DetectStalledRequest()
     detector = StalledJobDetector()
-    report = detector.run_scan(
-        queued_runs=req.queued_runs,
-        in_progress_runs=req.in_progress_runs,
-        runners=req.runners,
-        known_hosts=set(req.known_hosts) if req.known_hosts else None,
-        auto_remediate=req.auto_remediate,
-        caller=caller,
+    report = await anyio.to_thread.run_sync(
+        partial(
+            detector.run_scan,
+            queued_runs=req.queued_runs,
+            in_progress_runs=req.in_progress_runs,
+            runners=req.runners,
+            known_hosts=set(req.known_hosts) if req.known_hosts else None,
+            auto_remediate=req.auto_remediate,
+            caller=caller,
+        )
     )
     return report.to_dict()

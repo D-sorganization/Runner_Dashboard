@@ -27,7 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, workspace
+from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
@@ -35,8 +35,9 @@ from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
+from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec, load_roles
-from staff.run_link import handle_run_status_change
+from staff.run_link import handle_run_status_change, result_summary
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import mint_run_token, revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -82,6 +83,11 @@ class StaffRunner:
     @property
     def store(self) -> RunStore:
         return self._store or get_store()
+
+    def opens_pr(self, role: str) -> bool:
+        """Whether ``role`` is expected to open a PR (its ``permissions.open_pr``; #1516)."""
+        spec = self.roles().get(role)
+        return spec is not None and spec.opens_pr
 
     def roles(self) -> dict[str, RoleSpec]:
         return self._roles_loader()
@@ -379,6 +385,20 @@ class StaffRunner:
                 has_thread=bool(rec.thread_id),
             )
 
+            if rec.role == "code-reviewer" and rc == 0:
+                review_verdict = review.parse_review_verdict(result_line)
+                if review_verdict.status == "needs_input":
+                    status = "needs_input"
+                    failure_class = "needs_input"
+                    remediation = "Review completed without emitting a STAFF_RESULT verdict line."
+                elif review_verdict.status == "failed":
+                    status = "failed"
+                    failure_class = "invalid_output"
+                    error = review_verdict.error or "Malformed review verdict line"
+                    remediation = "Review completed with a malformed STAFF_RESULT line."
+
+            # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
+            store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
             store.update_run(
                 rec.id,
                 status=status,
@@ -391,12 +411,13 @@ class StaffRunner:
                 cost_usd=float(usage.get("cost_usd", 0.0)),
                 input_tokens=int(usage.get("input_tokens", 0)),
                 output_tokens=int(usage.get("output_tokens", 0)),
-                outcome=consolidation.parse_outcome(result_line),
+                outcome=review.parse_outcome(result_line) or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
+            verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
+                status = updated_rec.status  # enforce mode may have failed an unverified success (#1516)
                 question = None
                 if status == "needs_input":
                     from staff.classifier import _extract_last_line_text  # noqa: PLC0415
@@ -410,7 +431,7 @@ class StaffRunner:
                     updated_rec,
                     status=status,
                     question=question,
-                    summary=updated_rec.outcome,
+                    summary=updated_rec.outcome or result_summary(result_line),
                 )
         finally:
             revoke_run_token(rec.id)
@@ -434,7 +455,7 @@ class StaffRunner:
             for line in proc.stdout:
                 if watchdog is not None:
                     watchdog.record_output()
-                tf.write(line)
+                tf.write(redact_sensitive_content(line))
                 event = adapter.parse_line(line)
                 if event.get("usage"):
                     usage.update(event["usage"])

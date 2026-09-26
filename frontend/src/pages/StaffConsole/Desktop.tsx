@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Composer } from "./Composer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { ContextPane } from "./ContextPane";
+import { GroupCostConfirm } from "./GroupCostConfirm";
 import type { ThreadApi } from "./consoleThreads";
 import { Roster } from "./Roster";
 import { Thread } from "./Thread";
@@ -20,10 +21,12 @@ export interface StaffConsoleDesktopProps {
   /** Seed roster (tests); the console loads `/api/v1/staff/roster` when absent. */
   roles?: StaffRoleItem[];
   threadApi?: ThreadApi;
+  /** Backend thread to open on mount (the thread a dispatched request names, #1504). */
+  initialThreadId?: string | null;
 }
 
-export function StaffConsoleDesktop({ roles: seedRoles, threadApi }: StaffConsoleDesktopProps) {
-  const sc = useStaffConsole({ roles: seedRoles, threadApi });
+export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThreadId }: StaffConsoleDesktopProps) {
+  const sc = useStaffConsole({ roles: seedRoles, threadApi, initialThreadId });
   const [showContext, setShowContext] = useState(true);
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
@@ -63,10 +66,14 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi }: StaffConsol
                 messages={sc.messages}
                 roles={roles}
                 isReconnecting={sc.isReconnecting}
-                onApproveProposal={(id, params) => void sc.approveProposal(id, params)}
-                onDenyProposal={(id) => void sc.denyProposal(id)}
+                onApproveProposal={sc.approveProposal}
+                onDenyProposal={sc.denyProposal}
+                onCancelRun={sc.cancelRun}
+                onAnswerRun={sc.answerRun}
+                onFollowHandoff={(role) => void sc.openRole(role)}
               />
             </div>
+            <GroupCostConfirm guard={sc.costGuard} />
             <Composer
               threadId={activeThread.id}
               roles={roles}

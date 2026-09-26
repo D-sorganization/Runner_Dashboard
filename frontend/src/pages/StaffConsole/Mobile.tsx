@@ -9,9 +9,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { ROSTER_GROUPS } from "./types";
+import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import { Thread } from "./Thread";
 import { Composer } from "./Composer";
+import { GroupCostConfirm } from "./GroupCostConfirm";
 import { ContextPane } from "./ContextPane";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { InboxPanel } from "../Staff/InboxPanel";
@@ -29,8 +31,8 @@ export interface StaffConsoleMobileProps {
   initialMessages?: ThreadMessage[];
   onOpenThread?: (threadId: string) => void;
   onSendMessage?: (payload: SendMessagePayload) => Promise<{ ok: boolean; [key: string]: unknown }>;
-  onApproveProposal?: (proposalId: string, params?: Record<string, unknown>) => void;
-  onDenyProposal?: (proposalId: string) => void;
+  onApproveProposal?: ProposalApproveHandler;
+  onDenyProposal?: ProposalDenyHandler;
   className?: string;
 }
 
@@ -213,6 +215,9 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               roles={roles}
               onApproveProposal={handleApproveProposal}
               onDenyProposal={handleDenyProposal}
+              onCancelRun={sc.cancelRun}
+              onAnswerRun={sc.answerRun}
+              onFollowHandoff={(role) => void sc.openRole(role)}
             />
           </div>
 
@@ -220,6 +225,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             className="staff-mobile__composer-container"
             data-testid="staff-mobile-composer-container"
           >
+            <GroupCostConfirm guard={sc.costGuard} />
             <Composer
               threadId={activeThread.id}
               roles={roles}

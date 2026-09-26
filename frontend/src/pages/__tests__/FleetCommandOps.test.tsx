@@ -150,29 +150,32 @@ describe("FleetCommandPage — claims", () => {
 describe("FleetCommandPage — dispatch", () => {
   it("previews with dry_run then dispatches and links to the Staff tab run", async () => {
     const fetchMock = stubFetch((url, opts) => {
-      if (url !== "/api/staff/night-watch/run" && url !== "/api/v1/staff/night-watch/run") return undefined;
+      if (url !== "/api/v1/staff/requests") return undefined;
       const body = JSON.parse(String(opts?.body));
       return body.dry_run
         ? {
             status: 200,
             body: {
-              dry_run: true,
-              machine: "local",
+              state: "planned",
               plan: {
-                role: "night-watch",
-                provider: "claude",
-                model: null,
-                repo: "Tools",
-                target_kind: "issue",
-                target_ref: "42",
-                prompt: "p",
-                argv: ["claude"],
-                branch: "staff/nw-42",
-                lease_ritual: true,
+                dry_run: true,
+                machine: "local",
+                plan: {
+                  role: "night-watch",
+                  provider: "claude",
+                  model: null,
+                  repo: "Tools",
+                  target_kind: "issue",
+                  target_ref: "42",
+                  prompt: "p",
+                  argv: ["claude"],
+                  branch: "staff/nw-42",
+                  lease_ritual: true,
+                },
               },
             },
           }
-        : { status: 200, body: { dry_run: false, machine: "local", run: { id: "run-77" } } };
+        : { status: 201, body: { state: "executed", run_id: "run-77" } };
     });
     render(<FleetCommandPage />);
     openSection("Dispatch");

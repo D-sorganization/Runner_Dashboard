@@ -7,7 +7,7 @@
  * 2. Repo <select> is populated from string + object repo entries.
  * 3. Dispatch button is gated on repo + prompt, and the dispatch payload
  *    carries the selected repo/branch/provider/standards.
- * 4. Prompt-notes preamble is prepended when enabled and non-empty.
+ * 4. The typed prompt is sent as is; the server prepends prompt notes (#1501).
  * 5. Toggling a standard chip adds it to the dispatch payload.
  * 6. Save-template is gated and invokes onSaveTemplate with name + prompt.
  * 7. Clicking a saved template loads its prompt into the editor.
@@ -93,20 +93,8 @@ describe("CodeRequestsTab", () => {
     expect(screen.getByText("Code request dispatched.")).toBeInTheDocument();
   });
 
-  it("prepends enabled prompt notes to the dispatched prompt", () => {
+  it("sends the typed prompt; the server prepends prompt notes (#1501)", () => {
     const { onDispatch } = setup({ promptNotes: { notes: "Be terse.", enabled: true } });
-    const selects = screen.getAllByRole("combobox");
-    fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
-    fireEvent.change(
-      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
-      { target: { value: "Add a widget" } },
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
-    expect(onDispatch.mock.calls[0][0].prompt).toBe("Be terse.\n\nAdd a widget");
-  });
-
-  it("does not prepend prompt notes when disabled", () => {
-    const { onDispatch } = setup({ promptNotes: { notes: "Be terse.", enabled: false } });
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
     fireEvent.change(

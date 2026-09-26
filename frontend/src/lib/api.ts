@@ -51,7 +51,7 @@ import {
   emitSessionExpired,
   shouldIgnoreUnauthorizedResponse,
   tryRefreshSession,
-} from "../legacy/sessionExpired";
+} from "./sessionExpired";
 
 // Re-export the events feed type so consumers import from a single location.
 export type { EventsResponse, FleetEvent } from "./fleetEvents";

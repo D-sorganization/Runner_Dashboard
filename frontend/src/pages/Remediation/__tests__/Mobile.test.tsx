@@ -142,14 +142,23 @@ function setupFetch({
         json: () => Promise.resolve(MOCK_ISSUES),
       } as Response);
     }
-    if (url.includes("/api/agent-remediation/dispatch") && options?.method === "POST") {
+    if (
+      (url.includes("/api/agent-remediation/dispatch") ||
+        url.includes("/api/v1/staff/requests")) &&
+      options?.method === "POST"
+    ) {
       return Promise.resolve({
         ok: dispatchOk,
         status: dispatchOk ? 200 : 409,
         json: () =>
           Promise.resolve(
             dispatchOk
-              ? MOCK_DISPATCH_RESPONSE
+              ? {
+                  ...MOCK_DISPATCH_RESPONSE,
+                  state: "executed",
+                  run_id: "1001",
+                  work_item_id: "wi-1001",
+                }
               : { detail: "Dispatch rejected" },
           ),
       } as Response);
@@ -266,12 +275,12 @@ describe("RemediationMobile", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /Dispatch Claude Code CLI/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Fix this failed run/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Pick a different agent/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open on desktop/i })).toBeInTheDocument();
   });
 
-  it("confirming dispatch calls POST /api/agent-remediation/dispatch", async () => {
+  it("confirming dispatch calls POST /api/v1/staff/requests (#1499)", async () => {
     const fetchMock = setupFetch();
     render(<Wrapper />);
 
@@ -285,7 +294,7 @@ describe("RemediationMobile", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    const dispatchBtn = screen.getByRole("button", { name: /Dispatch Claude Code CLI/i });
+    const dispatchBtn = screen.getByRole("button", { name: /Fix this failed run/i });
 
     await act(async () => {
       fireEvent.click(dispatchBtn);
@@ -294,7 +303,8 @@ describe("RemediationMobile", () => {
     await waitFor(() => {
       const dispatchCalls = (fetchMock.mock.calls as [string, RequestInit?][]).filter(
         ([url, opts]) =>
-          url.includes("/api/agent-remediation/dispatch") &&
+          (url.includes("/api/v1/staff/requests") ||
+            url.includes("/api/agent-remediation/dispatch")) &&
           opts?.method === "POST",
       );
       expect(dispatchCalls).toHaveLength(1);
@@ -302,12 +312,18 @@ describe("RemediationMobile", () => {
 
     const dispatchCall = (fetchMock.mock.calls as [string, RequestInit?][]).find(
       ([url, opts]) =>
-        url.includes("/api/agent-remediation/dispatch") && opts?.method === "POST",
+        (url.includes("/api/v1/staff/requests") ||
+          url.includes("/api/agent-remediation/dispatch")) &&
+        opts?.method === "POST",
     );
     expect(dispatchCall).toBeDefined();
     const body = JSON.parse(dispatchCall![1]!.body as string);
     expect(body.provider).toBe("claude_code_cli");
-    expect(body.repository).toBe("runner-dashboard");
+    if (body.target) {
+      expect(body.target.repo).toBe("runner-dashboard");
+    } else {
+      expect(body.repository).toBe("runner-dashboard");
+    }
   });
 
   it("in-flight tile appears after dispatch", async () => {
@@ -325,7 +341,7 @@ describe("RemediationMobile", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Dispatch Claude Code CLI/i }));
+      fireEvent.click(screen.getByRole("button", { name: /Fix this failed run/i }));
     });
 
     await waitFor(() => {

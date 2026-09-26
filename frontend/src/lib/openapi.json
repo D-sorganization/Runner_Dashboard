@@ -1144,6 +1144,19 @@
         "title": "DispatchChildrenPayload",
         "type": "object"
       },
+      "DraftEdit": {
+        "properties": {
+          "plan": {
+            "additionalProperties": true,
+            "description": "The complete edited plan (same shape as the planner output)",
+            "title": "Plan",
+            "type": "object"
+          }
+        },
+        "required": ["plan"],
+        "title": "DraftEdit",
+        "type": "object"
+      },
       "EvaluateBoardPayload": {
         "properties": {
           "board_route": {
@@ -1697,6 +1710,20 @@
           }
         },
         "title": "PatchWorkItemRequest",
+        "type": "object"
+      },
+      "PlanSubmission": {
+        "properties": {
+          "output": {
+            "description": "Planner output containing the JSON plan",
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "required": ["output"],
+        "title": "PlanSubmission",
         "type": "object"
       },
       "PoolConfigPatch": {
@@ -2560,6 +2587,78 @@
         "title": "ReportChildPayload",
         "type": "object"
       },
+      "RequestTarget": {
+        "additionalProperties": false,
+        "description": "What the work is about. Each kind accepts only the fields it can act on.",
+        "properties": {
+          "issue": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "issues": {
+            "items": {
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "maxItems": 100,
+            "title": "Issues",
+            "type": "array"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "prs": {
+            "items": {
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "maxItems": 100,
+            "title": "Prs",
+            "type": "array"
+          },
+          "ref": {
+            "default": "",
+            "title": "Ref",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "title": "Repo",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "title": "RequestTarget",
+        "type": "object"
+      },
       "RoleScheduleOverrideBody": {
         "properties": {
           "enabled": {
@@ -3307,6 +3406,320 @@
         "title": "StaffHoldsResponse",
         "type": "object"
       },
+      "StaffKnowledgeInfoResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/v1/staff/knowledge/{pack_id} (Issue #1479).",
+        "properties": {
+          "built_at": {
+            "title": "Built At",
+            "type": "string"
+          },
+          "commits": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Commits",
+            "type": "object"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "pack_id": {
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "passage_count": {
+            "title": "Passage Count",
+            "type": "integer"
+          },
+          "passages": {
+            "title": "Passages",
+            "type": "integer"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack_id",
+          "title",
+          "built_at",
+          "stale",
+          "files",
+          "passages",
+          "passage_count"
+        ],
+        "title": "StaffKnowledgeInfoResponse",
+        "type": "object"
+      },
+      "StaffKnowledgePassage": {
+        "additionalProperties": true,
+        "description": "One retrieved knowledge chunk with citation (Issue #1479).",
+        "properties": {
+          "anchor": {
+            "title": "Anchor",
+            "type": "string"
+          },
+          "authority": {
+            "title": "Authority",
+            "type": "string"
+          },
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "source",
+          "anchor",
+          "title",
+          "text",
+          "commit",
+          "content_hash",
+          "status",
+          "authority",
+          "score",
+          "citation"
+        ],
+        "title": "StaffKnowledgePassage",
+        "type": "object"
+      },
+      "StaffKnowledgeSearchResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/v1/staff/knowledge/{pack_id}/search (Issue #1479).",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "pack_id": {
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/components/schemas/StaffKnowledgePassage"
+            },
+            "title": "Passages",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": ["pack_id", "query", "count"],
+        "title": "StaffKnowledgeSearchResponse",
+        "type": "object"
+      },
+      "StaffOutcomeRow": {
+        "description": "One scorecard row per role, provider or repo (#1517). A ``None`` rate means no data.",
+        "properties": {
+          "ci_first_pass": {
+            "title": "Ci First Pass",
+            "type": "integer"
+          },
+          "ci_first_pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci First Pass Rate"
+          },
+          "closed_unmerged": {
+            "title": "Closed Unmerged",
+            "type": "integer"
+          },
+          "cost_per_merged_pr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Per Merged Pr"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "failed_verification": {
+            "title": "Failed Verification",
+            "type": "integer"
+          },
+          "fix_within_48h": {
+            "title": "Fix Within 48H",
+            "type": "integer"
+          },
+          "fix_within_48h_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix Within 48H Rate"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "merge_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Rate"
+          },
+          "merged": {
+            "title": "Merged",
+            "type": "integer"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "prs": {
+            "title": "Prs",
+            "type": "integer"
+          },
+          "prs_unknown": {
+            "title": "Prs Unknown",
+            "type": "integer"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "integer"
+          },
+          "verified_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Rate"
+          }
+        },
+        "required": [
+          "key",
+          "runs",
+          "succeeded",
+          "verified",
+          "failed_verification",
+          "cost_usd",
+          "prs",
+          "prs_unknown",
+          "merged",
+          "closed_unmerged",
+          "open",
+          "ci_first_pass",
+          "fix_within_48h",
+          "merge_rate",
+          "verified_rate",
+          "ci_first_pass_rate",
+          "fix_within_48h_rate",
+          "cost_per_merged_pr"
+        ],
+        "title": "StaffOutcomeRow",
+        "type": "object"
+      },
+      "StaffOutcomesResponse": {
+        "description": "``GET /api/v1/staff/outcomes`` (#1517).",
+        "properties": {
+          "group_by": {
+            "title": "Group By",
+            "type": "string"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "prs_truncated": {
+            "default": false,
+            "title": "Prs Truncated",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StaffOutcomeRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/StaffOutcomeRow"
+          }
+        },
+        "required": ["machine", "group_by", "since", "rows", "totals"],
+        "title": "StaffOutcomesResponse",
+        "type": "object"
+      },
       "StaffPricingResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/usage/pricing.",
@@ -4002,6 +4415,17 @@
             ],
             "title": "Pid"
           },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Number"
+          },
           "prompt": {
             "default": "",
             "title": "Prompt",
@@ -4076,6 +4500,16 @@
           "transcript_path": {
             "default": "",
             "title": "Transcript Path",
+            "type": "string"
+          },
+          "verification": {
+            "default": "",
+            "title": "Verification",
+            "type": "string"
+          },
+          "verification_detail": {
+            "default": "",
+            "title": "Verification Detail",
             "type": "string"
           },
           "workdir": {
@@ -4633,6 +5067,142 @@
         "title": "WebVitalsPayload",
         "type": "object"
       },
+      "WorkRequest": {
+        "additionalProperties": false,
+        "description": "The body of ``POST /api/v1/staff/requests``.",
+        "properties": {
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "force": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force"
+          },
+          "kind": {
+            "description": "A request kind; see REQUEST_KINDS",
+            "title": "Kind",
+            "type": "string"
+          },
+          "machine": {
+            "default": "local",
+            "title": "Machine",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "standards": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standards"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RequestTarget"
+          }
+        },
+        "required": ["kind"],
+        "title": "WorkRequest",
+        "type": "object"
+      },
       "WorkSummary": {
         "description": "Orchestrator-tracked work classification surfaced on the Conductor tab.",
         "properties": {
@@ -4769,10 +5339,16 @@
             "type": "object"
           },
           "risk": {
-            "default": "low",
-            "description": "Risk class (read, low, medium, high, owner-only)",
-            "title": "Risk",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ignored: the risk always comes from the action registry (#1485)",
+            "title": "Risk"
           },
           "thread_id": {
             "description": "Parent thread ID",
@@ -5335,17 +5911,13 @@
     },
     "/api/agent-remediation/dispatch-jules": {
       "post": {
-        "description": "Dispatch one of this repo's agent workflows via workflow_dispatch.",
+        "description": "Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
         "operationId": "dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post",
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Dispatch Jules Workflow Api Agent Remediation Dispatch Jules Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -5360,7 +5932,7 @@
           }
         ],
         "summary": "Dispatch Jules Workflow",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/agent-remediation/history": {
@@ -5461,10 +6033,10 @@
     },
     "/api/agents/quick-dispatch": {
       "post": {
-        "description": "Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.",
+        "description": "Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
         "operationId": "api_quick_dispatch_api_agents_quick_dispatch_post",
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
                 "schema": {}
@@ -5482,7 +6054,7 @@
           }
         ],
         "summary": "Api Quick Dispatch",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/analysis/workflow-machines": {
@@ -7143,6 +7715,330 @@
         "tags": ["code-requests-executor"]
       }
     },
+    "/api/code-requests/{id}/plan": {
+      "get": {
+        "description": "The planning session: status, attempts, validator errors and the draft plan.",
+        "operationId": "get_plan_api_code_requests__id__plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Plan Api Code Requests  Id  Plan Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Plan",
+        "tags": ["code_requests"]
+      },
+      "post": {
+        "description": "Submit planner output; it is validated, then drafted, filed, re-prompted or failed.",
+        "operationId": "post_plan_api_code_requests__id__plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Plan Api Code Requests  Id  Plan Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Plan",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/approve": {
+      "post": {
+        "description": "Approve the draft: file the epic and children on GitHub and mark the request ``planned``.",
+        "operationId": "approve_api_code_requests__id__plan_approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Approve Api Code Requests  Id  Plan Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Approve",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/draft": {
+      "put": {
+        "description": "Replace the draft with an operator's edits; the edited plan is re-validated.",
+        "operationId": "put_draft_api_code_requests__id__plan_draft_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Draft Api Code Requests  Id  Plan Draft Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Draft",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/ingest": {
+      "post": {
+        "description": "Submit the newest ``<!-- plan:v1 -->`` comment on the Code Request issue.",
+        "operationId": "ingest_plan_api_code_requests__id__plan_ingest_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ingest Plan Api Code Requests  Id  Plan Ingest Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Plan",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/plan/start": {
+      "post": {
+        "description": "Dispatch the planner agent for a Code Request in the ``planning`` state.",
+        "operationId": "start_plan_api_code_requests__id__plan_start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Start Plan Api Code Requests  Id  Plan Start Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Start Plan",
+        "tags": ["code_requests"]
+      }
+    },
     "/api/code-requests/{id}/route-to-board": {
       "post": {
         "description": "Execute the Board routing gate for a Code Request at triage.",
@@ -8781,11 +9677,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Fleet Orchestration Deploy Api Fleet Orchestration Deploy Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -8811,11 +9703,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Fleet Orchestration Dispatch Api Fleet Orchestration Dispatch Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -9221,7 +10109,7 @@
           }
         ],
         "summary": "Api Dispatch To Issues",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/launchers/generate": {
@@ -10862,7 +11750,7 @@
           }
         ],
         "summary": "Api Dispatch To Prs",
-        "tags": ["remediation", "agents"]
+        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/prs/{owner}/{repo_name}/{number}": {
@@ -14299,6 +15187,217 @@
         "tags": ["staff-followup"]
       }
     },
+    "/api/v1/staff/groups": {
+      "get": {
+        "description": "List all registered multi-seat staff groups (e.g. Board of Directors).",
+        "operationId": "get_groups_api_v1_staff_groups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Groups Api V1 Staff Groups Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List available staff groups",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}": {
+      "get": {
+        "description": "Get group specification, coordinator role, and seat definitions.",
+        "operationId": "get_group_detail_api_v1_staff_groups__group_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Group Detail Api V1 Staff Groups  Group Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get group details",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}/cost-estimate": {
+      "get": {
+        "description": "Estimate token spend and USD cost across all seats for a prompt.",
+        "operationId": "get_group_cost_estimate_api_v1_staff_groups__group_id__cost_estimate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Proposed question or prompt for the group",
+            "in": "query",
+            "name": "prompt",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Proposed question or prompt for the group",
+              "title": "Prompt",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Group Cost Estimate Api V1 Staff Groups  Group Id  Cost Estimate Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Estimate group turn cost",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}/threads": {
+      "post": {
+        "description": "Convenience helper to create a group thread populated with coordinator and seats.",
+        "operationId": "create_group_thread_endpoint_api_v1_staff_groups__group_id__threads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Group Thread Endpoint Api V1 Staff Groups  Group Id  Threads Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create a new group conversation thread",
+        "tags": ["staff-groups"]
+      }
+    },
     "/api/v1/staff/holds": {
       "get": {
         "operationId": "get_holds_v1_api_v1_staff_holds_get",
@@ -14419,6 +15518,142 @@
         "tags": ["staff-inbox-v1"]
       }
     },
+    "/api/v1/staff/knowledge/{pack_id}": {
+      "get": {
+        "description": "Retrieve metadata and freshness status of a knowledge pack (Issue #1479).",
+        "operationId": "get_knowledge_info_v1_api_v1_staff_knowledge__pack_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffKnowledgeInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Knowledge Info V1",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/knowledge/{pack_id}/search": {
+      "get": {
+        "description": "Search knowledge pack by BM25 query (Issue #1479).",
+        "operationId": "search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search query string",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Search query string",
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max passages to return",
+            "in": "query",
+            "name": "k",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "Max passages to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "K",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Include superseded passages",
+            "in": "query",
+            "name": "include_superseded",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include superseded passages",
+              "title": "Include Superseded",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffKnowledgeSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Search Knowledge V1",
+        "tags": ["staff-v1"]
+      }
+    },
     "/api/v1/staff/maintenance/detect-stalled": {
       "post": {
         "description": "Execute stalled-job detection scan with optional auto-remediation (SC-E5).",
@@ -14474,6 +15709,74 @@
         ],
         "summary": "Detect Stalled Jobs",
         "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/outcomes": {
+      "get": {
+        "description": "Scorecard per ``group_by`` for runs created since ``since`` (default: 14 days).",
+        "operationId": "get_outcomes_api_v1_staff_outcomes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "role",
+              "maxLength": 10,
+              "title": "Group By",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffOutcomesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Outcomes",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/proposals": {
@@ -14594,7 +15897,7 @@
         "tags": ["staff-proposals"]
       },
       "post": {
-        "description": "Create a new action proposal within a conversation thread.",
+        "description": "Create a new action proposal within a conversation thread.\n\nPre: ``action`` is registered; ``thread_id`` exists and ``message_id`` is a message in it.\nPost: the proposal is ``proposed`` with the registry's risk class (any caller risk is ignored).",
         "operationId": "create_proposal_api_v1_staff_proposals_post",
         "requestBody": {
           "content": {
@@ -14695,7 +15998,7 @@
     },
     "/api/v1/staff/proposals/{proposal_id}/decide": {
       "post": {
-        "description": "Decide (approve or deny) an action proposal, optionally executing immediately.",
+        "description": "Decide (approve or deny) an action proposal, optionally executing immediately.\n\nA ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).",
         "operationId": "decide_proposal_api_v1_staff_proposals__proposal_id__decide_post",
         "parameters": [
           {
@@ -14756,7 +16059,7 @@
     },
     "/api/v1/staff/proposals/{proposal_id}/execute": {
       "post": {
-        "description": "Execute an approved proposal through the action registry.",
+        "description": "Execute an ``approved`` proposal through the action registry (409 for any other live state).",
         "operationId": "execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post",
         "parameters": [
           {
@@ -14803,6 +16106,52 @@
         ],
         "summary": "Execute Approved Proposal",
         "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/requests": {
+      "post": {
+        "description": "Request work of any registered kind; see ``staff.work_requests``.",
+        "operationId": "create_request_api_v1_staff_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Request",
+        "tags": ["staff-requests"]
       }
     },
     "/api/v1/staff/roles": {

@@ -69,8 +69,41 @@ export type ScheduleResponse = components["schemas"]["StaffScheduleResponse"];
 export type UsageResponse = components["schemas"]["StaffUsageResponse"];
 export type PricingResponse = components["schemas"]["StaffPricingResponse"];
 export type UsageExportResponse = components["schemas"]["StaffUsageExportResponse"];
+export type OutcomeRow = components["schemas"]["StaffOutcomeRow"];
+export type OutcomesResponse = components["schemas"]["StaffOutcomesResponse"];
 
 export type DispatchBody = components["schemas"]["RunBody"];
+export type WorkRequest = components["schemas"]["WorkRequest"];
+export type RequestTarget = components["schemas"]["RequestTarget"];
+
+/** The `staff.dispatch` action result: `plan` on a dry run, `run_id` on a real dispatch. */
+export interface StaffDispatchResult {
+  run_id?: string | null;
+  role?: string;
+  repo?: string;
+  status?: string | null;
+  machine?: string | null;
+  forwarded_to?: string | null;
+  dry_run?: boolean;
+  plan?: RunPlan | null;
+}
+
+/** `POST /api/v1/staff/requests` success body (`staff.work_requests.submit_request`). */
+export interface StaffRequestResponse {
+  state: "planned" | "executed" | "approval_required";
+  kind: string;
+  action: string;
+  risk?: string;
+  params?: Record<string, unknown>;
+  thread_id?: string;
+  message_id?: string;
+  work_item_id?: string;
+  proposal_id?: string;
+  run_id?: string | null;
+  approval?: string;
+  plan?: StaffDispatchResult;
+  result?: StaffDispatchResult;
+}
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
@@ -110,6 +143,12 @@ export function fetchRun(id: string, signal?: AbortSignal): Promise<RunDetailRes
   return apiRequest<RunDetailResponse>(`${STAFF_BASE}/runs/${encodeURIComponent(id)}`, { signal });
 }
 
+export type OutcomesGroupBy = "role" | "provider" | "repo";
+
+export function fetchOutcomes(groupBy: OutcomesGroupBy, signal?: AbortSignal): Promise<OutcomesResponse> {
+  return apiRequest<OutcomesResponse>(`${STAFF_BASE}/outcomes?group_by=${groupBy}`, { signal });
+}
+
 export function runStreamUrl(id: string, after = 0): string {
   return `${STAFF_BASE}/runs/${encodeURIComponent(id)}/stream?after=${after}`;
 }
@@ -129,6 +168,19 @@ export function dispatchRun(role: string, body: DispatchBody, idempotencyKey?: s
   });
 }
 
+export function submitStaffRequest(
+  body: WorkRequest,
+  idempotencyKey?: string,
+  signal?: AbortSignal,
+): Promise<StaffRequestResponse> {
+  return apiRequest<StaffRequestResponse>(`${STAFF_BASE}/requests`, {
+    method: "POST",
+    body,
+    headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
+    signal,
+  });
+}
+
 export function fetchHolds(signal?: AbortSignal): Promise<HoldsResponse> {
   return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, { signal });
 }
@@ -138,6 +190,23 @@ export function putHolds(body: { holds: Hold[] } | HoldsResponse, idempotencyKey
     method: "PUT",
     headers: { "Idempotency-Key": idempotencyKey || generateIdempotencyKey() },
     body,
+  });
+}
+
+/** `GET /groups/{id}/cost-estimate` (SC-B9): the backend's own per-seat spend estimate. */
+export interface GroupCostEstimate {
+  group_id: string;
+  total_cost_usd: number;
+  cost_per_seat: Record<string, number>;
+  exceeds_threshold: boolean;
+  threshold_usd: number;
+  warning?: string | null;
+}
+
+export function fetchGroupCostEstimate(groupId: string, prompt: string, signal?: AbortSignal): Promise<GroupCostEstimate> {
+  const qs = new URLSearchParams({ prompt }).toString();
+  return apiRequest<GroupCostEstimate>(`${STAFF_BASE}/groups/${encodeURIComponent(groupId)}/cost-estimate?${qs}`, {
+    signal,
   });
 }
 
@@ -162,7 +231,13 @@ export function isNotFound(err: unknown): boolean {
 }
 
 export function errorMessage(err: unknown): string {
-  if (err instanceof ApiClientError) return err.detail;
+  if (err instanceof ApiClientError) {
+    // FastAPI sends `detail` as an object for structured refusals ({ code, message, ... }).
+    const detail: unknown = err.detail;
+    if (typeof detail === "string") return detail;
+    const message = (detail as { message?: unknown } | null)?.message;
+    return typeof message === "string" ? message : `HTTP ${err.status}`;
+  }
   return err instanceof Error ? err.message : String(err);
 }
 
@@ -183,6 +258,11 @@ export function statusTone(status: string): "success" | "warning" | "danger" | "
     default:
       return "neutral";
   }
+}
+
+/** A 0..1 rate as a percentage; "—" when there was no data to rate (#1517). */
+export function formatRate(rate: number | null | undefined): string {
+  return typeof rate === "number" && Number.isFinite(rate) ? `${(rate * 100).toFixed(1)}%` : "—";
 }
 
 const warnedFormatUsdInputs = new Set<string>();
@@ -347,34 +427,40 @@ export function fetchThreadMessages(
   return fetchThread(threadId, signal).then(({ messages }) => ({ messages }));
 }
 
+/** The backend's `PostMessageRequest`; the author is the caller, never the client. */
+export type PostThreadMessageBody = Pick<components["schemas"]["PostMessageRequest"], "body" | "meta"> &
+  Partial<Pick<components["schemas"]["PostMessageRequest"], "kind">>;
+
+// `apiRequest` serialises `body`; passing a string here would double-encode it (#1341).
 export function postThreadMessage(
   threadId: string,
-  body: { body_md: string; author?: string; author_kind?: string; meta?: Record<string, unknown> },
+  body: PostThreadMessageBody,
   idempotencyKey?: string,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {};
   if (idempotencyKey) {
     headers["Idempotency-Key"] = idempotencyKey;
   }
   return apiRequest<unknown>(`${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/messages`, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body,
     signal,
   });
+}
+
+/** Answer a needs-input run; the backend starts its continuation run (#1547). */
+export function answerThreadRun(threadId: string, runId: string, answer: string): Promise<unknown> {
+  const path = `${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/answer`;
+  return apiRequest<unknown>(path, { method: "POST", body: { answer } });
 }
 
 export function createThread(
   body: { title?: string; kind?: string; participants?: string[]; role?: string },
   signal?: AbortSignal,
 ): Promise<ThreadInfo> {
-  return apiRequest<ThreadInfo>(`${STAFF_BASE}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
+  return apiRequest<ThreadInfo>(`${STAFF_BASE}/threads`, { method: "POST", body, signal });
 }
 
 export function decideActionProposal(
@@ -386,8 +472,7 @@ export function decideActionProposal(
 ): Promise<unknown> {
   return apiRequest<unknown>(`${STAFF_BASE}/proposals/${encodeURIComponent(proposalId)}/decide`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision, reason, execute }),
+    body: { decision, reason, execute },
     signal,
   });
 }

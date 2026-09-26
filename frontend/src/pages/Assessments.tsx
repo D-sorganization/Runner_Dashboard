@@ -16,6 +16,7 @@
  */
 import React, { useState } from "react";
 import { ActivityGlyph, RefreshGlyph } from "./decompIcons";
+import { errorMessage } from "./Staff/staffApi";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ export function AssessmentsTab({
   const [selProvider, setSelProvider] = useState("jules_api");
   const [showConfirm, setShowConfirm] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
 
   const grouped: Record<string, AssessmentScore[]> = {};
   scores.forEach((s) => {
@@ -113,11 +115,13 @@ export function AssessmentsTab({
   function doDispatch(): void {
     setShowConfirm(false);
     setDispatchStatus("dispatching");
+    setDispatchError(null);
     onDispatch({ repository: selRepo, provider: selProvider })
       .then(() => {
         setDispatchStatus("ok");
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        setDispatchError(errorMessage(err));
         setDispatchStatus("error");
       });
   }
@@ -227,13 +231,10 @@ export function AssessmentsTab({
       ) : null}
       {dispatchStatus === "error" ? (
         <div
-          style={{
-            color: "var(--accent-red)",
-            marginBottom: 12,
-            fontSize: 13,
-          }}
+          role="alert"
+          style={{ color: "var(--accent-red)", marginBottom: 12, fontSize: 13 }}
         >
-          Dispatch failed — check GitHub Actions.
+          {dispatchError ? `Dispatch failed — ${dispatchError}` : "Dispatch failed — check GitHub Actions."}
         </div>
       ) : null}
       {showConfirm ? (

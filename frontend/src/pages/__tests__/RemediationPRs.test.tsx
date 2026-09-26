@@ -53,15 +53,37 @@ const PRS = [
   },
 ];
 
-function mockFetch(opts: { prs?: unknown; prsOk?: boolean; dispatchOk?: boolean }) {
+function mockFetch(opts: {
+  prs?: unknown;
+  prsOk?: boolean;
+  dispatchOk?: boolean;
+  staffRequestResult?: unknown;
+}) {
   const fn = vi.fn((url: string) => {
-    if (url.includes("/api/prs/dispatch")) {
+    if (url.includes("/api/v1/staff/requests")) {
+      if (opts.dispatchOk === false) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: "boom" }),
+        } as Response);
+      }
       return Promise.resolve({
-        ok: opts.dispatchOk !== false,
-        status: opts.dispatchOk === false ? 500 : 200,
+        ok: true,
+        status: 200,
         json: () =>
           Promise.resolve(
-            opts.dispatchOk === false ? { detail: "boom" } : { dispatched: 1 },
+            opts.staffRequestResult ?? {
+              state: "executed",
+              kind: "pr.act",
+              action: "pr.act",
+              result: {
+                status: "dispatched",
+                accepted: 1,
+                dispatched: [{ number: 11 }],
+                rejected: [],
+              },
+            },
           ),
       } as Response);
     }
@@ -137,7 +159,7 @@ describe("RemediationPRsSubTab", () => {
     expect(screen.getByText("Fix flaky test")).toBeInTheDocument();
   });
 
-  it("selects a row and dispatches with the principal as approved_by", async () => {
+  it("dispatches each repository's PRs to that repository", async () => {
     const fetchFn = mockFetch({});
     render(<RemediationPRsSubTab principalName="dieter" />);
     await waitFor(() =>
@@ -152,14 +174,50 @@ describe("RemediationPRsSubTab", () => {
     fireEvent.click(screen.getByText("Confirm dispatch"));
 
     await waitFor(() => {
-      const call = fetchFn.mock.calls.find((c) =>
-        String(c[0]).includes("/api/prs/dispatch"),
-      );
-      expect(call).toBeTruthy();
-      const body = JSON.parse((call![1] as RequestInit).body as string);
-      expect(body.confirmation.approved_by).toBe("dieter");
-      expect(body.provider).toBe("jules_api");
+      const bodies = fetchFn.mock.calls
+        .filter((c) => String(c[0]).includes("/api/v1/staff/requests"))
+        .map((c) => JSON.parse((c[1] as RequestInit).body as string));
+      expect(bodies.map((b) => [b.target.repo, b.target.prs])).toEqual([
+        ["org/alpha", [11]],
+        ["org/beta", [22]],
+      ]);
+      expect(bodies.every((b) => b.kind === "pr.act")).toBe(true);
+      expect(bodies.every((b) => b.approved_by === "dieter")).toBe(true);
+      expect(bodies.every((b) => b.provider === "jules_api")).toBe(true);
     });
+  });
+
+  it("shows partial backend failure per target and keeps the failed PR selected", async () => {
+    mockFetch({
+      prs: PRS.map((pr) => ({ ...pr, repository: "org/alpha" })),
+      staffRequestResult: {
+        state: "executed",
+        kind: "pr.act",
+        result: {
+          status: "partial",
+          accepted: 1,
+          dispatched: [{ number: 11 }],
+          rejected: [{ number: 22, error: "Merge conflict" }],
+        },
+      },
+    });
+    render(<RemediationPRsSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Fix flaky test")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTitle("Select all"));
+    expect(screen.getByText(/PR\(s\) selected/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/Dispatch to selected/));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Confirm dispatch"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Dispatched 1 of 2 PR\(s\)\. Failed \(1\): #22: Merge conflict/),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText(/1 PR\(s\) selected/)).toBeInTheDocument();
   });
 
   it("renders the inline error banner when the fetch fails", async () => {

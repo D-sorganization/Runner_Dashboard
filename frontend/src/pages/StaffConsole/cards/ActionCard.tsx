@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import type { ActionProposalData, ActionRiskLevel } from "./cardTypes";
+import type { ActionProposalData, ActionRiskLevel, ProposalApproveHandler, ProposalDenyHandler } from "./cardTypes";
 
 export interface ActionCardProps {
   proposal: ActionProposalData;
-  onApprove?: (proposalId: string, params?: Record<string, unknown>) => void;
-  onDeny?: (proposalId: string) => void;
+  onApprove?: ProposalApproveHandler;
+  onDeny?: ProposalDenyHandler;
   className?: string;
 }
 
@@ -44,16 +44,22 @@ export const ActionCard: React.FC<ActionCardProps> = ({
 
   const riskColors = getRiskBadgeColor(proposal.risk_level);
 
+  const reenableIfRefused = (outcome: void | Promise<boolean | void>) => {
+    void Promise.resolve(outcome).then((ok) => {
+      if (ok === false) setHasSubmitted(false);
+    });
+  };
+
   const handleApproveClick = () => {
     if (hasSubmitted || isExpired || isDecided) return;
     setHasSubmitted(true);
-    onApprove?.(proposal.id, proposal.params);
+    reenableIfRefused(onApprove?.(proposal.id, proposal.params));
   };
 
   const handleDenyClick = () => {
     if (hasSubmitted || isExpired || isDecided) return;
     setHasSubmitted(true);
-    onDeny?.(proposal.id);
+    reenableIfRefused(onDeny?.(proposal.id));
   };
 
   return (

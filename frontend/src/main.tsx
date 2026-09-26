@@ -9,33 +9,24 @@ import { ThemeProvider } from './design/ThemeProvider'
 import { SkeletonCard } from './primitives/Skeleton'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './hooks/usePollingQueries'
+import { installFetchGuards } from './lib/fetchGuards'
+import {
+  emitSessionExpired,
+  shouldIgnoreUnauthorizedResponse,
+  tryRefreshSession,
+} from './lib/sessionExpired'
+import { installWheelValueGuard } from './lib/wheelValueGuard'
+import { initWebVitals } from './lib/webVitals'
 import './index.css'
-// Web Vitals — send metrics to backend (issue #385)
-import { onCLS, onINP, onFCP, onLCP } from 'web-vitals'
 
-function sendWebVitals(metric: { name: string; value: number; rating?: string; delta?: number; id?: string; navigationType?: string }) {
-  const payload = {
-    route: window.location.pathname,
-    metrics: [{
-      name: metric.name,
-      value: metric.value,
-      rating: metric.rating || '',
-      delta: metric.delta || null,
-      id: metric.id || '',
-      navigation_type: metric.navigationType || '',
-    }],
-  }
-  fetch('/api/metrics/web-vitals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }).catch(() => {})
-}
-
-onCLS(sendWebVitals)
-onINP(sendWebVitals)
-onFCP(sendWebVitals)
-onLCP(sendWebVitals)
+// Global guards the Classic layout used to install (#1345): credential API
+// responses bypass the service-worker cache, a 401 tries a silent refresh and
+// then opens the Session Expired dialog, and the mouse wheel never changes a
+// focused number input.
+installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
+installWheelValueGuard(document)
+// Web Vitals — send metrics to backend (issues #385, #1550)
+initWebVitals()
 
 // Service Worker Registration
 // Provides offline support, caching, and PWA installability.
@@ -122,8 +113,8 @@ _win.triggerInstallPrompt = triggerInstallPrompt
  * replaces the previous hand-rolled `window.location.pathname` navigation; the
  * old unmounted `router.tsx` has been retired in favour of this single source.
  *
- * The legacy App is loaded lazily inside RoutedShell, so the ~485KB monolith
- * code-splits into its own chunk (issue #831).
+ * Pages are loaded lazily inside RoutedShell so the entry chunk stays small
+ * (issue #831).
  */
 export function AppRoutes() {
   return (

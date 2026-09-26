@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
+      run_staff_e2e: ${{ steps.scope.outputs.run_staff_e2e }}
     steps:
       - name: Detect changed frontend surface
         id: scope
@@ -32,6 +33,7 @@ jobs:
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "run_frontend_tests=true" >> "$GITHUB_OUTPUT"
+            echo "run_staff_e2e=true" >> "$GITHUB_OUTPUT"
             echo "Non-PR event: full frontend validation required."
             exit 0
           fi
@@ -79,6 +81,9 @@ jobs:
           }
           run_frontend = any(path.startswith(("frontend/", "scripts/")) or path in exact for path in files)
           print(f"run_frontend_tests={'true' if run_frontend else 'false'}")
+          staff_prefixes = ("frontend/src/pages/Staff", "backend/staff/", "backend/routers/staff", "tests/e2e/")
+          run_staff = run_frontend or any(path.startswith(staff_prefixes) for path in files)
+          print(f"run_staff_e2e={'true' if run_staff else 'false'}")
           print(f"changed_file_count={len(files)}", file=sys.stderr)
           EOF
 
@@ -241,7 +246,7 @@ jobs:
       - name: Start dashboard backend
         run: |
           cd backend
-          GH_TOKEN=dummy DASHBOARD_PORT="$DASHBOARD_PORT" python server.py &
+          GH_TOKEN=dummy DASHBOARD_PORT="$DASHBOARD_PORT" DASHBOARD_LOOPBACK_AUTH=1 python server.py &
           echo "$!" > "$RUNNER_TEMP/dashboard-backend.pid"
           # Wait for backend to be ready
           for i in $(seq 1 30); do
@@ -275,4 +280,46 @@ jobs:
           path: |
             playwright-report/
             test-results/
+          retention-days: 7
+
+  staff-console-e2e:
+    # Staff Console flows against the real backend with fake provider CLIs (#1341).
+    name: Staff Console e2e (fake providers)
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 20
+    needs: frontend-scope
+    if: needs.frontend-scope.outputs.run_staff_e2e == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install chromium --with-deps
+
+      - name: Install backend dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/staff-e2e-venv"
+          "$RUNNER_TEMP/staff-e2e-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/staff-e2e-venv/bin/python" -m pip install -r requirements.txt
+          echo "STAFF_E2E_PYTHON=$RUNNER_TEMP/staff-e2e-venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Run Staff Console e2e suite
+        run: npx playwright test -c tests/e2e/staff/playwright.config.ts
+
+      - name: Upload Staff Console e2e results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.3.0
+        with:
+          name: staff-console-e2e-results
+          path: test-results/
           retention-days: 7

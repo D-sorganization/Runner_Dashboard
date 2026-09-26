@@ -14,9 +14,8 @@ import pytest  # noqa: E402
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
 _SRC_DIR = _FRONTEND_DIR / "src"
-_INDEX_HTML = _SRC_DIR / "legacy" / "App.tsx"
-_FETCH_GUARDS = _SRC_DIR / "legacy" / "fetchGuards.ts"
-_VISIBLE_INTERVAL = _SRC_DIR / "legacy" / "visibleInterval.ts"
+_FETCH_GUARDS = _SRC_DIR / "lib" / "fetchGuards.ts"
+_MAIN_TSX = _SRC_DIR / "main.tsx"
 _QUEUE_INDEX = _SRC_DIR / "pages" / "Queue" / "index.tsx"
 _FLEET_TAB = _SRC_DIR / "pages" / "FleetTab.tsx"
 _REMEDIATION_TAB = _SRC_DIR / "pages" / "RemediationTab.tsx"
@@ -26,7 +25,6 @@ _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
 _AUDIT_CLOSEOUT = Path(__file__).parent.parent / "docs" / "operations" / "2026-06-15-audit-closeout.md"
-_LEGACY_APP_LINE_RATCHET = 2886
 
 
 def _read_index() -> str:
@@ -49,10 +47,6 @@ def _read_index() -> str:
 
 def _read_html_shell() -> str:
     return _HTML_SHELL.read_text(encoding="utf-8")
-
-
-def _read_legacy_app() -> str:
-    return _INDEX_HTML.read_text(encoding="utf-8")
 
 
 def _index_lines() -> list[str]:
@@ -137,42 +131,55 @@ def test_tests_tab_rerun_checks_response_ok_before_triggered_state() -> None:
     assert 'throw new Error("rerun failed")' in rerun_block
 
 
-def test_legacy_polling_pauses_while_tab_is_hidden() -> None:
-    content = _read_legacy_app()
-    helper = _VISIBLE_INTERVAL.read_text(encoding="utf-8")
-
-    assert 'import { createVisibleInterval } from "./visibleInterval"' in content
-    assert "document.hidden" in helper
-    assert 'document.addEventListener("visibilitychange", onVisibilityChange)' in helper
-    assert 'document.removeEventListener("visibilitychange", onVisibilityChange)' in helper
-    assert "var t1 = setInterval" not in content
-    assert "var healthInterval = setInterval" not in content
-
-    poller_start = content.index("var cleanupIntervals = [")
-    poller_block = content[poller_start : content.index("];", poller_start)]
-    assert poller_block.count("createVisibleInterval(") == 15
-    assert "createVisibleInterval(checkHealth, 2000)" in content
+def test_legacy_app_is_retired() -> None:
+    """The legacy App and its Classic layout are gone; nothing imports ``legacy/`` (#1345)."""
+    assert not (_SRC_DIR / "legacy").exists()
+    for path in _SRC_DIR.rglob("*.ts*"):
+        text = path.read_text(encoding="utf-8")
+        assert not re.search(r"""from ["'][./]*legacy/""", text), f"{path} imports from legacy/"
 
 
-def test_legacy_app_line_count_ratchet_shrinks_for_issue_949() -> None:
-    """The legacy monolith must only shrink while tabs are retired (#949)."""
-    line_count = len(_INDEX_HTML.read_text(encoding="utf-8").splitlines())
+def test_dead_frontend_code_retired_issue_1346() -> None:
+    """Never-mounted primitives, dead schemas, and legacy-only pages are retired (#1346)."""
+    dead_files = [
+        _SRC_DIR / "pages" / "QuickDispatch.tsx",
+        _SRC_DIR / "primitives" / "AlertsCenter.tsx",
+        _SRC_DIR / "lib" / "alertAck.ts",
+        _SRC_DIR / "lib" / "schemas" / "dispatch.ts",
+        _SRC_DIR / "primitives" / "DataTable.tsx",
+        _SRC_DIR / "primitives" / "OfflineQueueIndicator.tsx",
+        _SRC_DIR / "primitives" / "CredentialKeyModal.tsx",
+        _SRC_DIR / "primitives" / "SaveIndicator.tsx",
+    ]
+    for path in dead_files:
+        assert not path.exists(), f"Expected dead file {path.name} to be removed"
 
-    assert line_count <= _LEGACY_APP_LINE_RATCHET
+    # Primitives barrel does not re-export dead components
+    primitives_index = (_PRIMITIVES_DIR / "index.ts").read_text(encoding="utf-8")
+    assert "AlertsCenter" not in primitives_index
+    assert "DataTable" not in primitives_index
+    assert "OfflineQueueIndicator" not in primitives_index
+    assert "CredentialKeyModal" not in primitives_index
+    assert "SaveIndicator" not in primitives_index
+
+    # Nothing in frontend/src imports dead components or modules
+    dead_import_patterns = [
+        re.compile(r"""from ["'][./]*primitives/AlertsCenter["']"""),
+        re.compile(r"""from ["'][./]*pages/QuickDispatch["']"""),
+        re.compile(r"""from ["'][./]*lib/alertAck["']"""),
+        re.compile(r"""from ["'][./]*lib/schemas/dispatch["']"""),
+    ]
+    for path in _SRC_DIR.rglob("*.ts*"):
+        text = path.read_text(encoding="utf-8")
+        for pattern in dead_import_patterns:
+            assert not pattern.search(text), f"{path} imports dead module matching {pattern.pattern}"
 
 
-def test_fleet_and_remediation_tabs_are_extracted_from_legacy_monolith() -> None:
-    """Fleet and Remediation route through page modules, not inline twins (#949)."""
-    content = _read_legacy_app()
+def test_fleet_and_remediation_tabs_are_page_modules() -> None:
+    """Fleet and Remediation are page modules (#949)."""
     fleet_page = _FLEET_TAB.read_text(encoding="utf-8")
     remediation_page = _REMEDIATION_TAB.read_text(encoding="utf-8")
 
-    assert 'import { FleetTab } from "../pages/FleetTab"' in content
-    assert 'import { RemediationTab } from "../pages/RemediationTab"' in content
-    assert "function FleetTab" not in content
-    assert "function RemediationTab" not in content
-    assert "h(FleetTab, {" in content
-    assert "h(RemediationTab, {" in content
     assert "export function FleetTab" in fleet_page
     assert "export function RemediationTab" in remediation_page
 
@@ -294,8 +301,6 @@ def test_mobile_credentials_tab_is_locked_and_webauthn_gated() -> None:
     assert 'userVerification: "required"' in content
     assert "Credentials re-locked after 60 seconds." in content
     assert "Credentials re-locked when the tab lost focus." in content
-    assert "mobileCredentialsViewport" in content
-    assert "if (!mobileCredentialsViewport) fetchCredentials();" in content
 
 
 def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> None:
@@ -309,12 +314,12 @@ def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> Non
 
 def test_credentials_api_is_excluded_from_frontend_cache_contract() -> None:
     content = _FETCH_GUARDS.read_text(encoding="utf-8")
-    legacy_app = _read_legacy_app()
+    main_tsx = _MAIN_TSX.read_text(encoding="utf-8")
     assert "SERVICE_WORKER_CACHE_DENYLIST" in content
     assert "/^\\/api\\/credentials(?:\\/|$)/" in content
     assert "shouldBypassServiceWorkerCache(url)" in content
     assert 'cache: "no-store"' in content
-    assert "installLegacyFetchGuards" in legacy_app
+    assert "installFetchGuards({" in main_tsx  # installed for every layout (#1345)
     assert "navigator.serviceWorker" not in content
 
 
@@ -408,7 +413,7 @@ def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
         "Feature request history",
     ]:
         assert f'"aria-label": "{label}"' in content or f'aria-label="{label}"' in content
-    assert content.count('"aria-modal": "true"') >= 2
+    assert (content.count('"aria-modal": "true"') + content.count('aria-modal="true"')) >= 2
 
 
 def test_mobile_design_token_modules_exist() -> None:
@@ -670,7 +675,7 @@ def test_assessments_desktop_route_bypasses_legacy_app() -> None:
     assert "return <AssessmentsPage />;" in routed_shell
     assert 'legacyFetch("/api/repos"' in assessments_page
     assert 'legacyFetch("/api/assessments/scores"' in assessments_page
-    assert 'legacyFetch("/api/assessments/dispatch"' in assessments_page
+    assert "submitStaffRequest" in assessments_page
     assert "export function AssessmentsPage" in assessments_page
 
 
@@ -701,7 +706,7 @@ def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
     assert 'legacyFetch("/api/repos"' in code_requests_page
     assert 'legacyFetch("/api/code-requests"' in code_requests_page
     assert 'legacyFetch("/api/code-requests/templates"' in code_requests_page
-    assert 'legacyFetch("/api/code-requests/dispatch"' in code_requests_page
+    assert "submitStaffRequest" in code_requests_page
     assert 'legacyFetch("/api/settings/prompt-notes"' in code_requests_page
     assert 'legacyFetch("/api/prompt-templates"' not in code_requests_page
     assert "export function CodeRequestsPage" in code_requests_page
@@ -763,13 +768,13 @@ def test_remediation_desktop_route_bypasses_legacy_app() -> None:
     assert 'getJson("/api/agent-remediation/history"' in remediation_page
     assert 'legacyFetch("/api/agent-remediation/config"' in remediation_page
     assert 'legacyFetch("/api/agent-remediation/plan"' in remediation_page
-    assert 'legacyFetch("/api/agent-remediation/dispatch"' in remediation_page
+    assert "buildPrefilledRemediationUrl" in remediation_page
     assert "export function RemediationPage" in remediation_page
     assert "return 'remediation'" in vite_config
 
 
 def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
-    """Native mobile tabs must not construct the legacy fallback app (#949)."""
+    """Mobile tabs render native pages; the fallback is the desktop page (#949, #1345)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
         encoding="utf-8",
     )
@@ -785,12 +790,13 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
         "<RemediationMobile",
         "reports: <ReportsMobile />",
         "credentials: <CredentialsMobile />",
-        "const nativeMobileContent = mobileTabContent[mobileTab];",
-        "const legacyMobileFallback = nativeMobileContent ? null :",
+        "const mobileFallback = mobileTabContent[mobileTab] ? null :",
+        "nativeDesktopTabContent(mobileTab)",
     ]:
         assert marker in routed_shell
 
-    assert "{legacyMobileFallback}" in routed_shell
+    assert "{mobileFallback}" in routed_shell
+    assert "LegacyApp" not in routed_shell
     assert "children?: ReactNode" in mobile_shell
     assert "{nativeContent ?? children}" in mobile_shell
     assert "children: ReactNode" not in mobile_shell

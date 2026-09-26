@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from staff.redaction import redact_sensitive_content, redact_value
+
 RUN_STATUSES = (
     "queued",
     "preparing",
@@ -91,6 +93,10 @@ class RunRecord:
     fallback_provider: str = ""
     thread_id: str = ""
     work_item_id: str = ""
+    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | not_applicable.
+    verification: str = ""
+    verification_detail: str = ""
+    pr_number: int | None = None
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
@@ -147,6 +153,14 @@ CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id, seq);
 
 _COLUMNS = tuple(RunRecord.__dataclass_fields__.keys())
 
+# Free-text run columns that can carry a pasted secret; redacted on every write (#1489).
+_REDACTED_COLUMNS = frozenset({"prompt", "target_ref", "error", "last_line", "remediation", "verification_detail"})
+
+
+def _redacted(column: str, value: Any) -> Any:
+    return redact_value(value) if column in _REDACTED_COLUMNS else value
+
+
 # Columns added after the first schema shipped. Applied with a guarded
 # ``ALTER TABLE ... ADD COLUMN`` so an existing store upgrades in place and a
 # rollback to the previous code keeps working (extra columns are ignored).
@@ -166,6 +180,9 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("fallback_provider", "TEXT NOT NULL DEFAULT ''"),
     ("thread_id", "TEXT NOT NULL DEFAULT ''"),
     ("work_item_id", "TEXT NOT NULL DEFAULT ''"),
+    ("verification", "TEXT NOT NULL DEFAULT ''"),
+    ("verification_detail", "TEXT NOT NULL DEFAULT ''"),
+    ("pr_number", "INTEGER"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")
@@ -183,9 +200,10 @@ class RunStore:
         self.path = path or default_db_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
+        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
         self._conn.row_factory = sqlite3.Row
         with self._lock:
+            self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA)
             self._migrate()
@@ -212,7 +230,7 @@ class RunStore:
         with self._lock:
             self._conn.execute(
                 f"INSERT INTO runs ({cols}) VALUES ({marks})",
-                tuple(getattr(rec, c) for c in _COLUMNS),
+                tuple(_redacted(c, getattr(rec, c)) for c in _COLUMNS),
             )  # noqa: S608
         return rec
 
@@ -225,7 +243,8 @@ class RunStore:
             assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self._lock:
-            self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*fields.values(), run_id))  # noqa: S608
+            values = tuple(_redacted(k, v) for k, v in fields.items())
+            self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*values, run_id))  # noqa: S608
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
@@ -303,6 +322,17 @@ class RunStore:
             ).fetchall()
         return [RunRecord(**dict(r)) for r in rows]
 
+    def runs_awaiting_verification(self, *, machine: str, since: str, limit: int) -> list[RunRecord]:
+        """Finished runs of ``machine`` that ended at/after ``since`` and are unchecked or unverified (#1516)."""
+        marks = ", ".join("?" for _ in ACTIVE_STATUSES)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM runs WHERE machine = ? AND ended_at >= ? AND status NOT IN ({marks}) "  # noqa: S608
+                "AND verification IN ('', 'unverified') ORDER BY ended_at LIMIT ?",
+                (machine, since, *ACTIVE_STATUSES, int(limit)),
+            ).fetchall()
+        return [RunRecord(**dict(r)) for r in rows]
+
     def active_runs(self) -> list[RunRecord]:
         marks = ", ".join("?" for _ in ACTIVE_STATUSES)
         with self._lock:
@@ -366,6 +396,7 @@ class RunStore:
 
     # ── events ───────────────────────────────────────────────────────────
     def append_event(self, run_id: str, kind: str, text: str) -> int:
+        text = redact_sensitive_content(text)
         with self._lock:
             seq = self._seq.get(run_id)
             if seq is None:

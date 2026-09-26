@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,6 +31,61 @@ from staff import ollama_env
 # ``dashboard_id`` values in agent_remediation/provider_registry.py where an
 # entry exists there (claude_code_cli → "claude", codex_cli → "codex").
 ProviderId = str
+
+
+# ── Read-only chat turns (#1484) ────────────────────────────────────────────
+# Provider-neutral read-only tool vocabulary for ``chat.read_only_tools`` in role
+# files, mapped to Claude Code tool names. One table serves the adapter and the
+# role validator (DRY). Anything not listed here is not read-only by definition.
+CHAT_READ_ONLY_TOOLS: dict[str, tuple[str, ...]] = {
+    "view_file": ("Read",),
+    "search_code": ("Grep", "Glob"),
+    "list_files": ("Glob",),
+    "web_fetch": ("WebFetch",),
+    "web_search": ("WebSearch",),
+}
+# Always denied on Claude chat turns, whatever the host's settings allow.
+CLAUDE_WRITE_TOOLS: tuple[str, ...] = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+# The explicit read-only flag each chat-capable provider gets on every turn.
+_CHAT_READ_ONLY_FLAGS: dict[str, tuple[str, ...]] = {
+    "claude": ("--permission-mode", "default"),
+    "claude-ollama": ("--permission-mode", "default"),
+    "codex": ("--sandbox", "read-only"),
+    "ollama": ("--sandbox", "read-only"),
+    "antigravity": ("--mode", "plan"),
+    "gemini": ("--approval-mode", "plan"),
+    "cursor-agent": ("--mode", "ask"),
+}
+_CHAT_BYPASS_FLAGS = frozenset(
+    {
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--dangerously-skip-permissions",
+        "bypassPermissions",
+        "--force",
+        "--trust",
+        "--yolo",
+        "-y",
+    }
+)
+
+
+class ChatReadOnlyUnsupportedError(RuntimeError):
+    """The provider has no known read-only mode, so a chat turn must not run on it."""
+
+
+def claude_allowed_tools(read_only_tools: Sequence[str]) -> list[str]:
+    """Map provider-neutral read-only tool names to Claude tool names, in order.
+
+    Pre: every name is a key of :data:`CHAT_READ_ONLY_TOOLS` (``ValueError`` otherwise).
+    Post: no duplicates; never contains a :data:`CLAUDE_WRITE_TOOLS` entry.
+    """
+    unknown = [name for name in read_only_tools if name not in CHAT_READ_ONLY_TOOLS]
+    if unknown:
+        raise ValueError(f"not read-only chat tools: {unknown}; known: {sorted(CHAT_READ_ONLY_TOOLS)}")
+    out: list[str] = []
+    for name in read_only_tools:
+        out.extend(tool for tool in CHAT_READ_ONLY_TOOLS[name] if tool not in out)
+    return out
 
 
 @dataclass(frozen=True)
@@ -89,84 +144,61 @@ class ProviderAdapter:
         workdir: str,
         model: str | None = None,
         session_id: str | None = None,
+        read_only_tools: Sequence[str] = (),
     ) -> list[str]:
-        """Return argv for a read-only chat turn (SC-B4, Issue #1307).
+        """Return argv for a read-only chat turn (SC-B4 #1307, hardened by #1484).
 
-        Pre: ``prompt`` is non-empty.
-        Post: runs in read-only / plan mode, without bypass-permissions or write tools,
-        resuming session_id if provided.
+        Pre: ``prompt`` is non-empty; every ``read_only_tools`` name is in
+        :data:`CHAT_READ_ONLY_TOOLS`.
+        Post: the argv carries this provider's explicit read-only flag on fresh
+        *and* resumed turns, never a bypass flag, and resumes ``session_id`` when
+        given. A provider with no known read-only mode raises
+        :class:`ChatReadOnlyUnsupportedError` instead of running writable.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
+        if self.provider_id not in _CHAT_READ_ONLY_FLAGS:
+            raise ChatReadOnlyUnsupportedError(
+                f"provider {self.provider_id!r} has no read-only chat mode; refusing the turn"
+            )
+        allowed = claude_allowed_tools(read_only_tools)
         chosen_model = model or self.default_model or ""
+        read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
 
         if self.provider_id in ("claude", "claude-ollama"):
             cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+            cmd += read_only + ["--disallowedTools", ",".join(CLAUDE_WRITE_TOOLS)]
+            if allowed:
+                cmd += ["--allowedTools", ",".join(allowed)]
             if session_id:
-                cmd.extend(["--resume", session_id])
-            else:
-                cmd.extend(["--permission-mode", "default"])
-            if chosen_model:
-                cmd.extend(["--model", chosen_model])
-            return cmd
-
-        if self.provider_id in ("codex", "ollama"):
+                cmd += ["--resume", session_id]
+        elif self.provider_id in ("codex", "ollama"):
             cmd = [self.executable, "exec"]
             if self.provider_id == "ollama":
-                cmd.extend(["--oss", "--local-provider", "ollama"])
-            cmd.extend(["--sandbox", "read-only", "--skip-git-repo-check"])
+                cmd += ["--oss", "--local-provider", "ollama"]
+            cmd += read_only + ["--skip-git-repo-check"]
             if session_id:
-                cmd.extend(["--session", session_id])
-            if chosen_model:
-                cmd.extend(["--model", chosen_model])
-            cmd.append(prompt)
-            return cmd
-
-        if self.provider_id == "antigravity":
+                cmd += ["--session", session_id]
+        elif self.provider_id == "antigravity":
             cmd = [self.executable, "--print", prompt, "--output-format", "stream-json", "--add-dir", workdir]
+            cmd += read_only
             if session_id:
-                cmd.extend(["--resume", session_id])
-            if chosen_model:
-                cmd.extend(["--model", chosen_model])
-            return cmd
-
-        if self.provider_id == "cursor-agent":
+                cmd += ["--resume", session_id]
+        elif self.provider_id == "cursor-agent":
             cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--workspace", workdir]
+            cmd += read_only
             if session_id:
-                cmd.extend(["--resume", session_id])
-            if chosen_model:
-                cmd.extend(["--model", chosen_model])
-            return cmd
-
-        if self.provider_id == "gemini":
-            cmd = [self.executable, "-p", prompt]
+                cmd += ["--resume", session_id]
+        else:  # gemini
+            cmd = [self.executable, "-p", prompt, *read_only]
             if session_id:
-                cmd.extend(["--resume", session_id])
-            if chosen_model:
-                cmd.extend(["--model", chosen_model])
-            return cmd
+                cmd += ["--resume", session_id]
 
-        raw = self.build_command(prompt, workdir, model=chosen_model)
-        banned = {
-            "--dangerously-bypass-approvals-and-sandbox",
-            "--dangerously-skip-permissions",
-            "bypassPermissions",
-            "--force",
-            "--trust",
-        }
-        filtered: list[str] = []
-        skip_next = False
-        for i, token in enumerate(raw):
-            if skip_next:
-                skip_next = False
-                continue
-            if token == "--permission-mode" and i + 1 < len(raw) and raw[i + 1] == "bypassPermissions":
-                skip_next = True
-                continue
-            if token not in banned:
-                filtered.append(token)
-        if session_id and "--resume" not in filtered:
-            filtered.extend(["--resume", session_id])
-        return filtered
+        if chosen_model:
+            cmd += ["--model", chosen_model]
+        if self.provider_id in ("codex", "ollama"):
+            cmd.append(prompt)
+        assert not _CHAT_BYPASS_FLAGS & set(cmd), "chat argv must never bypass permissions"  # noqa: S101
+        return cmd
 
     def parse_line(self, line: str) -> dict[str, Any]:
         """Turn one stdout line into a flat event.

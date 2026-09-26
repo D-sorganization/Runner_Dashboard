@@ -34,6 +34,7 @@ import orchestration_audit as _audit
 import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE, ORG, PORT, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 from machine_registry import load_machine_registry
 from routers import orchestration_audit_routes as _audit_routes
@@ -173,13 +174,13 @@ async def get_fleet_orchestration(
     }
 
 
-@router.post("/api/fleet/orchestration/dispatch")
+@router.post("/api/fleet/orchestration/dispatch", response_model=None)
 async def fleet_orchestration_dispatch(
     request: Request,
     *,
     deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
     principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-) -> dict:
+) -> JSONResponse | dict[str, Any]:
     """Dispatch a workflow to a specific machine target."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -260,9 +261,12 @@ async def fleet_orchestration_dispatch(
     run_url = None
     try:
         endpoint = f"/repos/{ORG}/{repo}/actions/workflows/{workflow}/dispatches"
-        dispatch_payload: dict = {"ref": ref}
-        if inputs:
-            dispatch_payload["inputs"] = inputs
+        dispatch_payload: dict[str, Any] = {"ref": ref}
+        dispatch_inputs = dict(inputs or {})
+        if machine_target and "machine_target" not in dispatch_inputs:
+            dispatch_inputs["machine_target"] = machine_target
+        if dispatch_inputs:
+            dispatch_payload["inputs"] = dispatch_inputs
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as pf_obj:
             json.dump(dispatch_payload, pf_obj)
             pf = pf_obj.name
@@ -276,9 +280,38 @@ async def fleet_orchestration_dispatch(
             with contextlib.suppress(OSError):
                 Path(pf).unlink()
         if code != 0:
-            log.warning("orchestration workflow dispatch gh failed: %s", stderr[:200])
+            err_summary = stderr.strip()[:200] or "gh workflow dispatch failed"
+            log.warning("orchestration workflow dispatch gh failed: %s", err_summary)
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "dispatched": False,
+                    "error": "upstream_error",
+                    "detail": f"gh workflow dispatch failed: {err_summary}",
+                    "run_url": None,
+                    "audit_id": audit_id,
+                    "machine_target": machine_target,
+                    "repo": repo,
+                    "workflow": workflow,
+                    "ref": ref,
+                },
+            )
     except Exception as exc:  # noqa: BLE001
         log.warning("orchestration dispatch gh call failed: %s", exc)
+        return JSONResponse(
+            status_code=502,
+            content={
+                "dispatched": False,
+                "error": "upstream_error",
+                "detail": f"orchestration dispatch gh call failed: {exc}",
+                "run_url": None,
+                "audit_id": audit_id,
+                "machine_target": machine_target,
+                "repo": repo,
+                "workflow": workflow,
+                "ref": ref,
+            },
+        )
 
     return {
         "dispatched": True,
@@ -291,13 +324,13 @@ async def fleet_orchestration_dispatch(
     }
 
 
-@router.post("/api/fleet/orchestration/deploy")
+@router.post("/api/fleet/orchestration/deploy", response_model=None)
 async def fleet_orchestration_deploy(
     request: Request,
     *,
     deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
     principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-) -> dict:
+) -> JSONResponse | dict[str, Any]:
     """Deploy a workflow or config change to a fleet machine."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -389,13 +422,17 @@ async def fleet_orchestration_deploy(
         "restart_runner": "Restart runner",
         "update_config": "Update config",
     }
-    return {
-        "deployed": True,
-        "machine": machine,
-        "action": action,
-        "message": f"{action_labels.get(action, action)} dispatched to {machine}",
-        "audit_id": audit_id,
-    }
+    label = action_labels.get(action, action)
+    return JSONResponse(
+        status_code=501,
+        content={
+            "error": "not_wired",
+            "detail": f"Fleet deploy action '{label}' ({action}) is not yet wired to a backend runner (pending SC-E)",
+            "audit_id": audit_id,
+            "machine": machine,
+            "action": action,
+        },
+    )
 
 
 @router.post("/api/fleet/control/{action}", dependencies=[Depends(require_fleet_peer)])

@@ -124,6 +124,7 @@ export const Roster: React.FC<RosterProps> = ({
     const groups: Record<RosterGroupKey, StaffRoleItem[]> = {
       pinned: [],
       leadership: [],
+      advisors: [],
       project_managers: [],
       specialists: [],
       operations: [],
