@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1550 · Web-vitals POST lacks the CSRF header and gets 403
+### DL-#1549 · Remove stale tracked vite.config.js shadowing vite.config.ts
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1549
+- **Branch:** `fix/1549-remove-stale-vite-config`
+- **Paths:** `vite.config.js`, `vite.config.d.ts`, `.gitignore`, `tests/e2e/staff/playwright.config.ts`, `tests/frontend/test_vite_config.py`, `tests/test_documentation_freshness.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/frontend/test_vite_config.py tests/test_documentation_freshness.py tests/test_frontend_integrity.py: all passed; no tracked vite.config.js or vite.config.d.ts; gitignore updated; playwright config cleaned up)
+- **Summary:** Removed stale compiled artifacts `vite.config.js` and `vite.config.d.ts` from git tracking and ignored them in `.gitignore`. Vite resolves `.js` before `.ts`, causing dev servers and build scripts to silently ignore `vite.config.ts` changes and environment variables like `VITE_BACKEND_URL`. Removed explicit `--config vite.config.ts` flag in Playwright config and added comprehensive regression tests asserting both file absence and backend URL config honoring.
+- **Next step:** Push branch, open PR referencing Fixes #1549 with deletions-acknowledged: yes, arm auto-merge, verify CI passes.
+
+### DL-#1550 · Web-vitals POST lacks the CSRF header and gets 403
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1550
 - **Branch:** `agy/issue-1550`
@@ -29,19 +41,20 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (Vitest webVitals 6 passed, related lib/pages suites 37 passed; npm run lint clean; npx tsc clean; backend auth perimeter 13 passed)
 - **Summary:** Extracted web-vitals reporting into `frontend/src/lib/webVitals.ts` using `apiRequest` to include the mandatory `X-Requested-With: XMLHttpRequest` CSRF sentinel header on `POST /api/metrics/web-vitals`. Added unit tests in `webVitals.test.ts` asserting CSRF header presence, body payload structure, and failure resilience.
-- **Next step:** Wait for CI to pass on PR #1558, frontier review and undraft.
+- **Next step:** None (shipped in PR #1558).
 
 ### DL-#1552 · Restore green main: trim backend/staff/chat.py under 500 lines
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1552
 - **Branch:** `fix/1552-trim-chat-py`
+- **PR:** #1554
 - **Paths:** `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (chat unit tests 19 passed; line count chat.py 493 lines, chat_failures.py 122 lines; ruff clean; full codebase line-cap check clean)
 - **Summary:** Extracted `record_chat_failure_if_pending` helper logic from `backend/staff/chat.py` into `backend/staff/chat_failures.py`, reducing `chat.py` from 505 to 493 lines to satisfy the 500-line soft cap enforced by `ci-health-check`.
-- **Next step:** Push branch, open PR referencing Fixes #1552, arm auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1554).
 
 ### DL-#1500 · SC-G5-4: Remediation Issues and PRs bulk actions go through the request API
 
