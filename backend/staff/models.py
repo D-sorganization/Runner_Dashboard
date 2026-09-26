@@ -423,3 +423,37 @@ class StaffKnowledgeSearchResponse(BaseModel):
     passages: list[StaffKnowledgePassage] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="allow")
+
+
+class StaffOutcomeRow(BaseModel):
+    """One scorecard row per role, provider or repo (#1517). A ``None`` rate means no data."""
+
+    key: str
+    runs: int
+    succeeded: int
+    verified: int
+    failed_verification: int
+    cost_usd: float
+    prs: int
+    prs_unknown: int
+    merged: int
+    closed_unmerged: int
+    open: int
+    ci_first_pass: int
+    fix_within_48h: int
+    merge_rate: float | None
+    verified_rate: float | None
+    ci_first_pass_rate: float | None
+    fix_within_48h_rate: float | None
+    cost_per_merged_pr: float | None
+
+
+class StaffOutcomesResponse(BaseModel):
+    """``GET /api/v1/staff/outcomes`` (#1517)."""
+
+    machine: str
+    group_by: str
+    since: str
+    rows: list[StaffOutcomeRow]
+    totals: StaffOutcomeRow
+    prs_truncated: bool = False

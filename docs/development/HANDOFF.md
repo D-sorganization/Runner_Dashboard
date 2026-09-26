@@ -1,4 +1,27 @@
-# Current handoff — SC-G5-6 Retire legacy dispatch forms and endpoints (#1503)
+# Current handoff — WP-1.2: agent outcome scorecard (#1517)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1517`; PR #1533; DL-#1517; Issue #1517 (Phase 1 of #1463). Built on the #1516 verification fields.
+
+## Objective and Status
+
+- `backend/staff/outcomes.py`: `GROUP_BY` table, `rate` (`None` without a denominator), `aggregate(runs, facts, group_by=)` (a PR shared by retries counts once; unreadable PRs are `prs_unknown`), `prs_to_read` (newest 50, linked issue from the target), `read_pr_fact` (PR state, first commit's check runs, follow-up search within 48 h of the merge; a lookup error leaves that flag unknown) and `read_pr_facts` (4 at a time, cached).
+- `GET /api/v1/staff/outcomes` (`routers/staff_outcomes.py`): 422 on an unknown `group_by` or a non-ISO `since`.
+- Staff **Outcomes** tab: `OutcomesTable` via `useStaffOutcomes(groupBy)`; rows and totals share one renderer; `formatRate` shows "—" for `null`.
+- Replaced the antigravity draft's duplicate verification columns, 0%-for-no-data display, inline styles and manual fetch effect.
+
+## Next Steps
+
+1. Verify local tests and types.
+2. Push rebased branch to `origin agy/issue-1517`.
+3. Check PR #1533 auto-merge.
+
+---
+
+# Past handoff — SC-G5-6 Retire legacy dispatch forms and endpoints (#1503)
 
 Last updated: 2026-09-26
 

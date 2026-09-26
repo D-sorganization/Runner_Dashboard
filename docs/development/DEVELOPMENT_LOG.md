@@ -18,9 +18,22 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1503 · SC-G5-6 Retire legacy dispatch forms and endpoints
+### DL-#1517 · WP-1.2: agent outcome scorecard
 
 - **State:** in_review
+- **Owner:** claude (reworked from an antigravity draft)
+- **Issue:** #1517
+- **Branch:** `agy/issue-1517`
+- **PR:** #1533
+- **Paths:** `backend/staff/outcomes.py`, `backend/routers/staff_outcomes.py`, `backend/staff/models.py`, `backend/server.py`, `frontend/src/pages/Staff/OutcomesTable.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/unit/test_staff_outcomes_aggregation.py`, `tests/api/test_staff_outcomes.py`, `frontend/src/pages/__tests__/OutcomesTable.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-26 rebased onto main
+- **Summary:** Per role, provider or repo: runs, verified rate (from #1516's verdicts), PRs, merge rate, CI first-pass rate, fix-within-48h rate and cost per merged PR over a 14-day default window. Pure `aggregate` over runs and `PrFact`s; GitHub is read only for PRs the runs recorded, capped at 50 per request with a per-PR cache. No data means `null`/"—", never 0%; unreadable PRs count as unknown, never as failures.
+- **Next step:** Merge PR #1533.
+
+### DL-#1503 · SC-G5-6 Retire legacy dispatch forms and endpoints
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1503
 - **Branch:** `chore/1503-retire-legacy-dispatch`
@@ -29,7 +42,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (pytest 45/45 passed; npm run typecheck clean; npm run lint clean; vitest 1410 passed; ruff check & format clean; mypy clean)
 - **Summary:** Retired QuickDispatch (popover, schemas, CSS, route) and Jules remediation dispatch (helper, Run button, route). `POST /api/agents/quick-dispatch` and `POST /api/agent-remediation/dispatch-jules` return HTTP 410 Gone with Link (`/api/v1/staff/requests`) and Sunset headers. Legacy frontend dispatch routes redirect to `/`. Decomposed `remediation.py` into `remediation_bulk.py` and `remediation_retired.py` keeping all modules strictly <= 500 LOC.
-- **Next step:** Watch PR #1574 merge and mark this entry shipped.
+- **Next step:** Shipped to `main` (commit 9d54372cfe6105d8e78869df7b7dcc48f5fc3504).
 
 ### DL-#1548 · Handoff replies post a HandoffCard and move the work to the target role
 
