@@ -1,3 +1,30 @@
+# Current handoff — Wire the mad-scientist staff role (#1562)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1788-mad-scientist-wiring`; Issue #1562 (follow-up to Repository_Management#1788); DL-#1562.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `f5f027d2`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- The owner added a Dr. Frankenstein role (`mad-scientist`, Repository_Management#1788). This PR makes Barb route to it and groups it with the Advisors.
+- `backend/staff/router_models.py` gains distinctive keywords only. Broad words like "experiment" or "can we" would steal routes from other roles.
+- `tests/staff/routing_eval/dataset.py` gains cases lab-01..04; `rosterUtils.ts` adds the role to the Advisors group, with a new `rosterUtils.test.ts`.
+- Labels `lab-experiment`, `lab:promote` and `do-not-merge` now exist in this repository.
+
+## Validation
+
+- RED first: the 4 lab cases failed the deterministic gate (pre-router returned None), and the roster test failed for mad-scientist.
+- `python -m pytest tests/staff -q`: exit 0. `npx vitest run frontend/src/pages/StaffConsole`: 142 passed. tsc, eslint and ruff are clean.
+
+## Next Steps
+
+1. Merge after Repository_Management#1789 (the role file) lands.
+
+---
+
 # Current handoff — Remove stale tracked vite.config.js shadowing vite.config.ts (#1549)
 
 Last updated: 2026-09-25
