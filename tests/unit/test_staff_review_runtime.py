@@ -255,3 +255,83 @@ def test_execute_review_pr_passes_the_roster_store_and_trailer_probe(
     assert res.success
     (params,) = sent
     assert params["pr"] == 11 and params["provider"] == "codex"
+
+
+# ── #1580 review follow-up: dedupe covers the fallback role and is atomic ─────
+@pytest.mark.unit
+def test_auto_review_dedupe_counts_the_fleet_critic_fallback_reviewer(store: RunStore, auto_on: None) -> None:
+    author = _add(store, _run("run-author"), pr_number=42)
+    _add(store, _run("run-old-review", role="fleet-critic", target_kind="pr", target_ref="PR #42"))
+    runner = _Runner(store, {"fleet-critic": SimpleNamespace(providers=("gemini",))})
+
+    assert auto_review_if_eligible(author, _verified(42), store=store, runner=runner, gh_probe=_Trailers([])) is False
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_concurrent_auto_reviews_of_one_pr_queue_a_single_review(store: RunStore, auto_on: None) -> None:
+    import threading
+    import time
+
+    author = _add(store, _run("run-author"), pr_number=42)
+
+    class _SlowRunner(_Runner):
+        def submit(self, req: RunRequest) -> RunRecord:
+            time.sleep(0.05)  # widen the check-then-submit window
+            self.submitted.append(req)
+            return _add(
+                store,
+                _run(f"run-review-{len(self.submitted)}", role=req.role, target_kind="pr", target_ref=f"PR #{req.pr}"),
+            )
+
+    runner = _SlowRunner(store, _roster("gemini"))
+    threads = [
+        threading.Thread(
+            target=auto_review_if_eligible,
+            args=(author, _verified(42)),
+            kwargs={"store": store, "runner": runner, "gh_probe": _Trailers([])},
+        )
+        for _ in range(4)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(runner.submitted) == 1
+
+
+def _review_in_subprocess(db_path: str, start_at: float) -> int:
+    """Child process: one auto-review attempt against the shared runs DB; returns submits."""
+    import os
+    import time
+
+    os.environ["STAFF_AUTO_REVIEW"] = "1"
+    child_store = RunStore(Path(db_path))
+    author = child_store.get_run("run-author")
+
+    class _SlowChildRunner(_Runner):
+        def submit(self, req: RunRequest) -> RunRecord:
+            time.sleep(0.2)  # hold the check-then-submit window open across processes
+            self.submitted.append(req)
+            return _add(
+                child_store,
+                _run(f"run-review-{os.getpid()}", role=req.role, target_kind="pr", target_ref=f"PR #{req.pr}"),
+            )
+
+    runner = _SlowChildRunner(child_store, _roster("gemini"))
+    time.sleep(max(0.0, start_at - time.time()))
+    auto_review_if_eligible(author, _verified(42), store=child_store, runner=runner, gh_probe=_Trailers([]))
+    return len(runner.submitted)
+
+
+@pytest.mark.unit
+def test_auto_review_dedupe_holds_across_worker_processes(tmp_path: Path) -> None:
+    import multiprocessing
+    import time
+
+    db = tmp_path / "runs.sqlite3"
+    _add(RunStore(db), _run("run-author"), pr_number=42)
+    start_at = time.time() + 1.0
+    with multiprocessing.get_context("fork").Pool(2) as pool:
+        submits = pool.starmap(_review_in_subprocess, [(str(db), start_at), (str(db), start_at)])
+    assert sum(submits) == 1

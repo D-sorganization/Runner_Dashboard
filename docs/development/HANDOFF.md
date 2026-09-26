@@ -1,3 +1,32 @@
+# Current handoff — WP-1.3 follow-up: atomic auto-review dedupe (#1579)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `claude/runner-dashboard-roles-gaps-k9i38r`; Issue #1579 (parent #1463); DL-#1579.
+- Cloud session; baseline `bb2b6006` (#1581 merged); commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- #1581 and this session's #1580 fixed #1579 in parallel. #1581 merged first, so #1580 was closed as superseded.
+- This PR moves the two Codex review fixes from #1580 that #1581 lacks onto `main`:
+  - `_AUTO_REVIEW_LOCK` serialises the dedupe check with `runner.submit`, so concurrent verifications of one PR queue a single review.
+  - `_already_reviewed` takes the resolved reviewer role, so a `fleet-critic` fallback run counts.
+  - Codex review on #1582: `_review_claim` adds an `fcntl.flock` on `<runs db>.auto-review.lock`, so uvicorn workers (`WORKERS > 1`) sharing the SQLite runs DB are serialised too. There is a two-process test.
+- Open question, not changed here: `_already_reviewed` also counts failed or cancelled review runs, so a failed review is never retried automatically.
+
+## Validation
+
+- `pytest tests/unit/test_staff_review_runtime.py tests/unit/test_staff_review.py tests/api/test_staff_review_runner.py -q -o addopts=""`: 38 passed. The 3 new tests fail on `main`. The concurrency test passed on three repeated runs.
+- The staff, API and unit subset: 946 passed. `ruff check`, `ruff format --check` and `mypy backend/staff/review.py`: clean.
+
+## Next Steps
+
+1. Merge once CI is green, then close parent #1463.
+
+---
+
 # Current handoff — Code-reviewer runtime: selection inputs, same-provider mark and auto-review (#1579)
 
 Last updated: 2026-09-26
