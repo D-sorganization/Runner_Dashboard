@@ -74,11 +74,11 @@ def test_script_declares_contract_parameters() -> None:
         assert f"${param}" in text, f"parameter ${param} not declared"
 
 
+@PWSH_REQUIRED
 def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Path) -> None:
     """An operator drain must win over every keepalive and recovery action."""
     marker = tmp_path / "deskcomputer-runner-drained.flag"
     marker.write_text("drained\n", encoding="utf-8")
-    assert PWSH is not None
     result = subprocess.run(
         [
             PWSH,
@@ -100,9 +100,9 @@ def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Pat
     assert result.stdout == ""
 
 
+@PWSH_REQUIRED
 def test_script_exits_before_side_effects_when_enable_marker_is_absent(tmp_path: Path) -> None:
     """Marker cleanup alone must not re-enable automatic fleet recovery."""
-    assert PWSH is not None
     result = subprocess.run(
         [
             PWSH,
@@ -126,6 +126,7 @@ def test_script_exits_before_side_effects_when_enable_marker_is_absent(tmp_path:
     assert result.stdout == ""
 
 
+@PWSH_REQUIRED
 def test_functions_only_remains_available_while_drained(tmp_path: Path) -> None:
     marker = tmp_path / "deskcomputer-runner-drained.flag"
     marker.write_text("drained\n", encoding="utf-8")

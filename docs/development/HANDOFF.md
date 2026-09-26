@@ -1,4 +1,33 @@
-# Current handoff — WP-1.3 follow-up: atomic auto-review dedupe (#1579)
+# Current handoff — Test isolation on fleet nodes (supersedes staff draft #1577)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1577`; branch `fix/test-isolation-node-env`; PR: see DL-#1577; governing item: Staff Hub draft PR #1577 (branch `staff/maintenance-task-92e980`, not pushed to); DL-#1577.
+
+## Objective and Status
+
+- On a fleet node (`MACHINE_ROLE=node`, `HUB_URL` set, operator `STAFF_REPOS_ROOT`) the suite forwarded fleet requests to the live hub and read real checkouts. This PR carries #1577's fixes with a regression test:
+  1. Autouse `_no_hub_proxy` clears `proxy_utils.HUB_URL` (and `server.HUB_URL` when loaded). Every proxy path requires `HUB_URL`, so the staff PR's extra `MACHINE_ROLE="hub"` patch is not needed. Proxy tests that patch `HUB_URL` themselves still override it.
+  2. `_hermetic_staff_workspace` deletes `STAFF_REPOS_ROOT`; corpus tests set their own.
+  3. `@PWSH_REQUIRED` on the three fleet-health-monitor behaviour tests (skip, not fail, without PowerShell).
+  4. A 5 s spin-wait on `handled` in the runner's opens-PR test (the worker calls the hook after the store update).
+- New `tests/unit/test_hub_proxy_isolation.py` fails without the fixture under `MACHINE_ROLE=node HUB_URL=http://127.0.0.1:9`.
+
+## Validation
+
+- RED on `main` with `MACHINE_ROLE=node HUB_URL=http://127.0.0.1:9 STAFF_REPOS_ROOT=/tmp`: 6 failed (runners router, 2 staff isolation, 3 fleet-health-monitor); the new test file: 2 failed.
+- GREEN, same env, same files plus queue router, hub aggregation, host volume and staff runner: 102 passed, 10 skipped.
+- `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Merge once CI is green; the owner decides whether to close staff draft #1577.
+
+---
+
+# Past handoff — WP-1.3 follow-up: atomic auto-review dedupe (#1579)
 
 Last updated: 2026-09-26
 

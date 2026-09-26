@@ -387,6 +387,13 @@ def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises
     )
     done = _wait(staff.store, rec.id, ("succeeded", "failed"))
     assert done.status == "succeeded"
+    # handle_run_status_change is called after store.update_run; give the
+    # worker thread a moment to reach that line before asserting.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if any(h[0] == rec.id and h[1] == "succeeded" for h in handled):
+            break
+        time.sleep(0.02)
     assert any(h[0] == rec.id and h[1] == "succeeded" for h in handled)
 
 

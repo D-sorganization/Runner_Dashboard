@@ -136,6 +136,24 @@ def _reset_main_cache_between_tests():
     cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_hub_proxy(monkeypatch):
+    """Never forward a test's request to a live hub.
+
+    On a fleet node the developer environment has ``MACHINE_ROLE=node`` and
+    ``HUB_URL``; ``proxy_utils`` and ``server`` bind them at import, so fleet
+    endpoints proxied to the real hub and returned live data. Every proxy path
+    requires ``HUB_URL``, so clearing it is enough. Tests of the proxy itself
+    set ``HUB_URL`` with ``patch.object``, which overrides this default.
+    """
+    import proxy_utils  # noqa: PLC0415
+
+    monkeypatch.setattr(proxy_utils, "HUB_URL", None)
+    server = sys.modules.get("server")  # heavy: patch only when a test loaded it
+    if server is not None and hasattr(server, "HUB_URL"):
+        monkeypatch.setattr(server, "HUB_URL", None)
+
+
 def _make_principal(principal_id: str, role: str):
     """Factory: build a Principal with a single role for use in tests."""
     from identity import Principal  # noqa: PLC0415
@@ -234,6 +252,10 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
     ``add_worktree`` in ``tests/api/test_staff_consolidation.py``) — that
     per-test monkeypatch simply overrides the default set up here.
     """
+    # An operator STAFF_REPOS_ROOT would make repos_roots() return real checkouts;
+    # a test that needs a corpus sets its own with monkeypatch.setenv.
+    monkeypatch.delenv("STAFF_REPOS_ROOT", raising=False)
+
     try:
         from staff import knowledge_refresh as knowledge_refresh_mod  # noqa: PLC0415
     except ImportError:

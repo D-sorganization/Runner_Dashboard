@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1577 · Test isolation on fleet nodes (hub proxy, STAFF_REPOS_ROOT, pwsh skip)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1577 (Staff Hub maintenance draft PR; this entry tracks the superseding PR)
+- **Branch:** `fix/test-isolation-node-env`
+- **PR:** pending
+- **Paths:** `tests/conftest.py`, `tests/unit/test_hub_proxy_isolation.py`, `tests/api/test_staff_runner.py`, `tests/deploy/test_fleet_health_monitor.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (node-env RED 6 failed on main; GREEN 102 passed, 10 skipped; ruff clean)
+- **Summary:** Tests no longer proxy to a live hub or read an operator's `STAFF_REPOS_ROOT` on a fleet node; PowerShell-only tests skip without `pwsh`; the runner opens-PR test waits for its hook.
+- **Next step:** Merge the superseding PR once CI is green.
+
 ### DL-#1579 · Code-reviewer runtime: selection inputs, same-provider mark and auto-review
 
 - **State:** in_review
