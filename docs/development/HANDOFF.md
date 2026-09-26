@@ -1,4 +1,39 @@
-# Current handoff — Handoff replies post a HandoffCard and move the work to the target role (#1548)
+# Current handoff — Staff Console development-log reconciliation after the 2026-09-26 merges
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-docsync`; branch `docs/staff-dl-reconcile-2026-09-26`; PR: opened with this commit; governing epic #1354 (Staff Console umbrella). Docs only.
+
+## Objective and Status
+
+- Six Staff Console entries were still `in_review` after their PRs merged. They are now `shipped`, each with its merge commit:
+  - DL-#1504: PR #1571 (374ea4f4). Request journey e2e, and a dispatch's `thread_id` opens that thread.
+  - DL-#1556: PR #1570 (5cf60512). Hermetic staff e2e harness.
+  - DL-#1542: PR #1569 (62ce4d70). Non-blocking startup and guarded verification.
+  - DL-#1501: PR #1560 (b182f790). Steward dispatch through the request API.
+  - DL-#1547: PRs #1557 and #1566 (aab8887a). Run cards with needs-input answer and cancel.
+  - DL-#1548: PR #1568 (4f858a3d). Handoff replies post a HandoffCard.
+- No code, SPEC row or version change.
+
+## Open Items Outside This PR
+
+- Remediation "Fix this failed run": the implicitly selected first run needs an accepted preview while other runs do not. This is a product decision for the owner (noted in PR #1571).
+- The Staff tab crashes on a malformed board response (`board.running is not iterable`). This was seen with a test stub; the real API returns a valid board.
+- `DEVELOPMENT_LOG.md` is over the validator's size ceiling, and DL-#1513 appears twice. Both predate this PR.
+
+## Validation
+
+- `grep -c '^# Current handoff' docs/development/HANDOFF.md` is unchanged from main; each touched DL entry still appears exactly once.
+
+## Next Steps
+
+1. Merge this PR once CI is green.
+
+---
+
+# Past handoff — Handoff replies post a HandoffCard and move the work to the target role (#1548)
 
 Last updated: 2026-09-25
 
