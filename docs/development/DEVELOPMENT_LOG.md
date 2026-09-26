@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1516 · WP-1.1: post-run verification of staff runs (report mode)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1516
+- **Branch:** `feat/1516-run-verification`
+- **Paths:** `backend/staff/verification.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/roles.py`, `backend/staff/scheduler.py`, `backend/staff/reconcile.py`, `backend/staff/action_executors.py`, `backend/staff/models.py`, `frontend/src/pages/Staff/RunDetail.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/staff/test_run_verification.py`, `tests/api/test_staff_runner.py`, `tests/api/test_staff_dispatch_service.py`, `tests/conftest.py`, `frontend/src/pages/__tests__/StaffRunVerification.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`tests/staff/test_run_verification.py` 74 passed, RED first; runner report/enforce end-to-end and dispatch-verifier tests pass; vitest RunDetail + Staff 18 passed; `tsc`, ruff and mypy clean)
+- **Summary:** A run that exits 0 with `STAFF_RESULT:` is no longer taken at its word: `verification.verify_and_record` checks the PR for its branch and head CI after the runner classifies the run, and records `verification`/`verification_detail`/`pr_number` beside the status. Kept out of the classifier so a GitHub outage can only leave a run `unverified`. Re-checks run from the scheduler loop and startup reconcile, bounded by a 24 h window and 20 runs per pass. `STAFF_VERIFY_MODE=report` is the default; `enforce` exists but stays off until the owner turns it on.
+- **Next step:** After merge, deploy to one node in report mode and let the owner review verdicts on real runs before enabling `enforce`.
+
 ### DL-#1528 · Tests never hold a real GitHub credential
 
 - **State:** in_review

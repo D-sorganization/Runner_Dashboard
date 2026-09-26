@@ -1,4 +1,26 @@
-# Current handoff — Tests never hold a real GitHub credential (#1528)
+# Current handoff — WP-1.1: post-run verification of staff runs (#1516)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1516-run-verification`; DL-#1516; Issue #1516 (Phase 1 of #1463).
+
+## Objective and Status
+
+- New `backend/staff/verification.py`: pure `decide` (claimed status × `open_pr` × PR × head CI), `ci_state` over check runs (`cancelled`/`stale` ignored as superseded), `evaluate` (GitHub error → `unverified`; CI pending past 6 h → `failed`), `updates_for` (only `enforce` changes a succeeded run to `failed`/`unverified_output`), `verify_and_record` (never raises; writes the fields and a `verify` event), `recheck_runs` (this node, last 24 h, 20 per pass) and `GhCliPrProbe` (sync `gh api`, because the runner's plain worker threads cannot reach the loop-bound `gh_client`).
+- Wired into `StaffRunner` after `classify_execution_result`/`finalize_cost`; the status passed to `handle_run_status_change` is re-read so enforce mode is reflected. `StaffScheduler._loop` calls `recheck_verification()` at most every 5 min; `reconcile_orphaned_runs` rechecks at startup. `RoleSpec.opens_pr` reads `permissions.open_pr`.
+- `verify_staff_dispatch` now reports the run's verification and fails on a `failed` verdict.
+- Run detail shows the verdict, reason and PR link. `tests/conftest.py` defaults `STAFF_VERIFY_MODE=off` so ordinary runner tests never shell out to `gh`.
+
+## Next Steps
+
+1. Merge, then run report mode on one node and show the owner verdicts on real runs (the issue's last acceptance item).
+2. The owner decides when to set `STAFF_VERIFY_MODE=enforce`.
+
+---
+
+# Past handoff — Tests never hold a real GitHub credential (#1528)
 
 Last updated: 2026-09-25
 
