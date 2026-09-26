@@ -86,3 +86,25 @@
   color: inherit;
   cursor: pointer;
 }
+
+.staff-console__export-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.staff-console__export-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 2px 8px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.staff-console__export-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}

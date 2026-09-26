@@ -46,14 +46,36 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
       <section className="staff-console__main" role="region" aria-label="Staff conversation">
         <header className="staff-console__header">
           <h2 className="staff-console__title">{activeThread ? activeThread.title : "Staff Console"}</h2>
-          <button
-            type="button"
-            className="staff-console__context-toggle"
-            aria-expanded={showContext}
-            onClick={() => setShowContext((shown) => !shown)}
-          >
-            {showContext ? "Hide role context" : "Show role context"}
-          </button>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {activeThread && (
+              <div className="staff-console__export-actions">
+                <a
+                  href={`/api/v1/staff/threads/${activeThread.id}/export?format=markdown`}
+                  download={`thread-${activeThread.id}.md`}
+                  className="staff-console__export-btn"
+                  title="Export thread as Markdown"
+                >
+                  Export MD
+                </a>
+                <a
+                  href={`/api/v1/staff/threads/${activeThread.id}/export?format=json`}
+                  download={`thread-${activeThread.id}.json`}
+                  className="staff-console__export-btn"
+                  title="Export thread as JSON"
+                >
+                  Export JSON
+                </a>
+              </div>
+            )}
+            <button
+              type="button"
+              className="staff-console__context-toggle"
+              aria-expanded={showContext}
+              onClick={() => setShowContext((shown) => !shown)}
+            >
+              {showContext ? "Hide role context" : "Show role context"}
+            </button>
+          </div>
         </header>
 
         <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
@@ -92,7 +114,10 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
 
       {showContext && (
         <aside className="staff-console__context" aria-label="Role context">
-          <ContextPane role={sc.roleDetail} />
+          <ContextPane
+            role={sc.roleDetail}
+            threadContext={activeThread ? { thread_id: activeThread.id } : null}
+          />
         </aside>
       )}
     </div>

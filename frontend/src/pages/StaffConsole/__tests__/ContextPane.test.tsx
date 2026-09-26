@@ -116,5 +116,11 @@ describe("ContextPane (SC-D6, Issue #1320)", () => {
     expect(screen.getByText("#1322")).not.toBeNull();
     expect(screen.getByText("PR #1410")).not.toBeNull();
     expect(screen.getByText("CR-98")).not.toBeNull();
+    expect(screen.getByRole("link", { name: /export markdown/i }).getAttribute("href")).toBe(
+      "/api/v1/staff/threads/th_nw_123/export?format=markdown",
+    );
+    expect(screen.getByRole("link", { name: /export json/i }).getAttribute("href")).toBe(
+      "/api/v1/staff/threads/th_nw_123/export?format=json",
+    );
   });
 });

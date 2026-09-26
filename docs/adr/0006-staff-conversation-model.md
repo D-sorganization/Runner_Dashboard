@@ -129,10 +129,18 @@ Failure mode handling:
 - `redaction.py` removes GitHub, AWS and `sk-` keys, PEM keys, Bearer tokens
   and private IPv4 ranges from `messages.body_md` on write. Every other stored
   field is unredacted (#1489).
-- Retention exists only for the audit log (180 days, gzip archive) and for
-  expired idempotency keys. Conversations, proposals, runs and work items have
-  no retention and no export. **Open:** the owner decides retention windows
-  (#1490). Nothing is ever hard-deleted without owner sign-off.
+- **Retention & Archival (#1490):** Standard 180-day retention window matching the audit log.
+  - Closed/inactive threads, terminal action proposals, completed/failed/cancelled runs,
+    and closed/terminal work items older than 180 days are archived into monthly gzip files
+    (`*.jsonl.gz`) under the retention archive directory before deletion from active SQLite tables.
+  - Deletion occurs strictly after successful gzip write; any archival write failure aborts deletion.
+  - Archival sweeps can be scheduled or triggered manually via `POST /api/v1/staff/retention/sweep`.
+  - Retention policy inspection is available via `GET /api/v1/staff/retention/status`.
+- **Thread Export (#1490):** Full conversation threads can be exported as structured Markdown
+  (`text/markdown`) or JSON (`application/json`) via `GET /api/v1/staff/threads/{id}/export?format=markdown|json`
+  (with convenience alias routes `/threads/{id}/export.md` and `/threads/{id}/export.json`).
+  The Staff Console desktop interface provides one-click export actions in the conversation header
+  and Context Pane thread tab.
 
 ### 6. Chat turns are read-only (enforcement is partial)
 
@@ -200,7 +208,8 @@ All routes are under `/api/v1/staff` (`server.py`):
 
 - **threads:** `POST/GET /threads`, `GET/PATCH /threads/{id}`,
   `POST /threads/{id}/messages` (202), `GET /threads/{id}/stream` (SSE),
-  `POST /threads/{id}/read`, `POST /threads/{id}/runs/{run_id}/answer`
+  `POST /threads/{id}/read`, `POST /threads/{id}/runs/{run_id}/answer`,
+  `GET /threads/{id}/export` (`.md`/`.json`), `POST /retention/sweep`, `GET /retention/status`
 - **actions:** `GET /actions[/{name}]`, `GET/POST /proposals`,
   `GET /proposals/{id}`, `POST /proposals/{id}/decide|execute`
 - **work items:** `POST/GET /work-items`, `GET/PATCH /work-items/{id}`

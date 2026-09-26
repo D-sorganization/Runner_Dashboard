@@ -301,6 +301,48 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
         {/* THREAD TAB */}
         {activeTab === "thread" && (
           <div role="tabpanel" aria-label="Thread linked items" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {threadContext?.thread_id && (
+              <div>
+                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
+                  Export Thread
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <a
+                    href={`/api/v1/staff/threads/${threadContext.thread_id}/export?format=markdown`}
+                    download={`thread-${threadContext.thread_id}.md`}
+                    style={{
+                      padding: "4px 8px",
+                      background: "var(--bg-card, #1c2128)",
+                      border: "1px solid var(--border, #30363d)",
+                      borderRadius: "4px",
+                      color: "var(--accent-blue, #58a6ff)",
+                      fontSize: "0.75rem",
+                      textDecoration: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Export Markdown
+                  </a>
+                  <a
+                    href={`/api/v1/staff/threads/${threadContext.thread_id}/export?format=json`}
+                    download={`thread-${threadContext.thread_id}.json`}
+                    style={{
+                      padding: "4px 8px",
+                      background: "var(--bg-card, #1c2128)",
+                      border: "1px solid var(--border, #30363d)",
+                      borderRadius: "4px",
+                      color: "var(--accent-blue, #58a6ff)",
+                      fontSize: "0.75rem",
+                      textDecoration: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Export JSON
+                  </a>
+                </div>
+              </div>
+            )}
+
             <div>
               <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
                 Linked Work Items

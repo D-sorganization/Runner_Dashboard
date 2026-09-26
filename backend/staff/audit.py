@@ -373,6 +373,8 @@ def archive_old_audit_entries(
 ) -> tuple[int, list[Path]]:
     """Archive audit rows older than retention_days to gzip and delete them from DB.
 
+    Standard retention window is 180 days, matching the unified staff retention
+    policy across conversations, proposals, runs, and work items (Issue #1490, ADR 0006 §5).
     Never deletes rows without first writing them to a verified gzip archive.
     """
     target_store = store or get_audit_store()

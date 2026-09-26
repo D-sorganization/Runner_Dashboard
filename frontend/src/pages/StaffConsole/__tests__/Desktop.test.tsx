@@ -84,6 +84,14 @@ describe("StaffConsoleDesktop", () => {
     expect(await screen.findByText("All hosts healthy.")).toBeInTheDocument();
     expect(api.fetchThreads).toHaveBeenCalledWith({ role: "maintenance" });
     expect(screen.getByRole("heading", { name: "Conversation with Fleet Maintenance" })).toBeInTheDocument();
+    expect(screen.getByTitle("Export thread as Markdown")).toHaveAttribute(
+      "href",
+      "/api/v1/staff/threads/thr_maint_1/export?format=markdown",
+    );
+    expect(screen.getByTitle("Export thread as JSON")).toHaveAttribute(
+      "href",
+      "/api/v1/staff/threads/thr_maint_1/export?format=json",
+    );
   });
 
   it("posts a composed message to the resolved thread", async () => {
