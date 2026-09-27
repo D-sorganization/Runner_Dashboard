@@ -1,4 +1,29 @@
-# Current handoff — Executor keeps acceptance criteria (#1602)
+# Current handoff — Grok connection guide on the v1 contract (#1352)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-grokdoc`; branch `docs/grok-guide-v1-live`; PR: see DL-#1352; Issue #1352; DL-#1352.
+
+## Objective and Status
+
+- `docs/agents/grok.md` was stale. It now names Barb as the single front door (Orchestrator retired into Barb, Repository_Management#1733), reads `FLEET_API_TOKEN` from the `agent-grok` token file, and uses the real `fleetctl` verbs (`thread-open --initial-message`, positional `thread-read`, positional `cancel`).
+- Added the owner's go-live scope (2026-09-26): v1 threads with the bearer token; reads plus dispatch only after one supervised dry run; no directive or hold writes.
+- Drafted by agy (Gemini 3.8 Flash) and reviewed by Claude before commit.
+
+## Validation
+
+- `fleetctl.py thread-open --help`, `thread-read --help` and `cancel --help` match the documented flags.
+- Deployed DeskComputer (`80acce6`): `/api/v1/staff/threads` and `whoami` return 200 with the `agent-grok` bearer token.
+
+## Next Steps
+
+1. Merge; then update Repository_Management `docs/grok-bridge.md` to the same contract.
+
+---
+
+# Past handoff — Executor keeps acceptance criteria (#1602)
 
 Last updated: 2026-09-27
 
