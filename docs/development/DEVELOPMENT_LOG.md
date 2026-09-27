@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** claude CLI floor 2.1.259 (bisected: 2.1.258 rejects `--permission-prompts`). The installed version is probed once per binary; a run or chat turn below the floor fails up front as `cli_outdated` (not retryable) with upgrade remediation, provider selection skips it, and the roster reports `provider_versions` so the Roster card shows "outdated". No permission-bypass flag.
 - **Next step:** Open the PR for `fix/claude-cli-version-floor` and record its number.
 
+### DL-#1335 — ADR: agent-client ingress stays local-only
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1335 (SC-F6, part of SC-F #1352 under the Staff Console epic #1354)
+- **Branch:** `docs/1335-adr-local-only`
+- **PR:** not created
+- **Paths:** `docs/adr/0007-agent-client-ingress-local-only.md`, `docs/adr/README.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (ADR written and cross-linked from the index; no code changed)
+- **Summary:** Owner decided option (c): agent clients (Grok's servers, claude.ai connectors) reach the dashboard only from fleet machines already on the tailnet. No Tailscale Funnel and no outbound relay. Any future exposed option needs per-agent minimal-scope tokens, rate limits (SC-F7), audit (SC-A8), an identity allowlist and a kill switch first.
+- **Next step:** Open the PR and close #1335 once merged.
+
 ### DL-#1338-localtools — SC-G6: Local Tools becomes a Settings section
 
 - **State:** in_review

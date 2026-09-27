@@ -12,6 +12,7 @@
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
 | 2026-09-27 | #1680 | Staff runs and chat turns refuse a `claude` CLI older than 2.1.259 (first release accepting `--permission-prompts`) with non-retryable `cli_outdated` and upgrade remediation; the version is probed once per binary, provider selection skips an outdated CLI, and the roster adds `provider_versions` so the Roster card shows it as outdated. |
+| 2026-09-27 | #1335 | ADR 0007: agent-client ingress stays local-only (owner decision); no Funnel or relay. |
 | 2026-09-27 | #1679 | SC-G6 (#1338): Local Tools is no longer a nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. |
 | 2026-09-27 | #1674 | SC-G6 (#1338): Tests is no longer a Settings nav tab. It is a collapsed `#tests` subsection of the Diagnostics section on Operations; `/t/tests`, `/settings/tests` and `/tests` redirect to `/fleet/operations#tests`. |
 | 2026-09-27 | #1671 | `docs/agents/grok.md` records the Grok dispatch gate as open with owner confirmation: Barb proposes each run in chat and dispatches only after Dieter says yes; cost guard applies; directive and hold writes stay out of scope. |

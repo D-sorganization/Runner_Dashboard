@@ -53,6 +53,36 @@ Last updated: 2026-09-27
 
 ---
 
+# Current handoff — ADR: agent-client ingress stays local-only (#1335)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-1335`
+- Branch: `docs/1335-adr-local-only`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1335 (SC-F6, part of SC-F #1352 under the Staff Console epic #1354); DL-#1335.
+
+## Objective and Status
+
+- `docs/adr/0007-agent-client-ingress-local-only.md`: new ADR recording the owner's decision (Dieter Olson, 2026-09-27) to stay local-only for agent-client ingress — no Tailscale Funnel, no outbound relay. Covers the three compared options, a threat model (token theft, prompt injection via messages, replay, DoS, cost exhaustion), the decision, consequences (Grok Bot keeps using its local tool), the controls any future exposed option would need, and the revisit trigger.
+- `docs/adr/README.md`: index updated with the 0007 entry.
+- No code changed; this issue only produces the design record.
+
+## Validation
+
+- Read against `docs/adr/README.md`'s template and `docs/adr/0006-staff-conversation-model.md` for section format and numbering.
+- Cross-checked against RM#1676 and `docs/tailscale-funnel.md` for context accuracy.
+
+## Next Steps
+
+1. Open the PR (`Fixes #1335`), get it green, and merge.
+
+---
+
 # Current handoff — SC-G6: Local Tools becomes a Settings section (DL-#1338-localtools)
 
 Last updated: 2026-09-27
