@@ -18,6 +18,45 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1689 — Main red: chat.py line cap and stale Tests-route test
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1689
+- **Branch:** `fix/main-red-1338-followups`
+- **PR:** not created
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_scratch.py`, `tests/test_frontend_integrity.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (test_frontend_integrity + test_staff_chat_memory pass in WSL; ruff clean)
+- **Summary:** `thread_scratch_dir` moved to `staff/chat_scratch.py` and re-exported from `staff.chat` (no behaviour change), bringing chat.py from 504 to 473 lines. The Tests-route integrity test now asserts the #1338 redirect and the OperationsTestsSubsection render. The SettingsPage lint half is #1686/#1687.
+- **Next step:** Merge the PR once CI is green.
+
+### DL-#1686 — Restore green frontend lint on main
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1686
+- **Branch:** `fix/1686-settings-lint`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (CI)
+- **Summary:** main-is-red fix: one-word change, the constant is only used inside the file.
+- **Next step:** None.
+
+### DL-#1335 — ADR: agent-client ingress stays local-only
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1335 (SC-F6, part of SC-F #1352 under the Staff Console epic #1354)
+- **Branch:** `docs/1335-adr-local-only`
+- **PR:** not created
+- **Paths:** `docs/adr/0007-agent-client-ingress-local-only.md`, `docs/adr/README.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (ADR written and cross-linked from the index; no code changed)
+- **Summary:** Owner decided option (c): agent clients (Grok's servers, claude.ai connectors) reach the dashboard only from fleet machines already on the tailnet. No Tailscale Funnel and no outbound relay. Any future exposed option needs per-agent minimal-scope tokens, rate limits (SC-F7), audit (SC-A8), an identity allowlist and a kill switch first.
+- **Next step:** Open the PR and close #1335 once merged.
+
 ### DL-#1338-localtools — SC-G6: Local Tools becomes a Settings section
 
 - **State:** in_review

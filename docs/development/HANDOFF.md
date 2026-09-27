@@ -85,7 +85,89 @@ tests/test_reap_wsl_leaked_chrome.py tests/test_maintenance_smoke.py -q`:
 
 ---
 
-# Previous handoff — SC-G6: Local Tools becomes a Settings section (DL-#1338-localtools)
+# Current handoff — Main red: chat.py line cap and stale Tests-route test (#1689)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-main-red`
+- Branch: `fix/main-red-1338-followups`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1689; DL-#1689.
+
+## Objective and Status
+
+- `backend/staff/chat_scratch.py`: new home of `thread_scratch_dir` (#1655), unchanged. `staff.chat` imports it, so `from staff.chat import thread_scratch_dir` still works. chat.py is now 473 lines (cap 500).
+- `tests/test_frontend_integrity.py`: `test_tests_desktop_route_bypasses_legacy_app` asserts `table["tests"] = TESTS_REDIRECT` in routing.ts and `<TestsPage />` in OperationsTestsSubsection, matching #1674.
+- Not in scope: the SettingsPage `react-refresh/only-export-components` warning (fixed by #1687 from another session).
+
+## Validation
+
+- `rdtest.sh claude-main-red tests/test_frontend_integrity.py tests/unit/test_staff_chat_memory.py -q`: all passed (1 xfail pre-existing).
+- `py -3.12 -m ruff check backend/staff/ tests/test_frontend_integrity.py`: clean.
+
+## Next Steps
+
+1. Push, open the PR (`Fixes #1689`), arm auto-merge via `automerge_guard`.
+
+---
+
+# Current handoff — Restore green frontend lint on main (#1686)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1686`; branch `fix/1686-settings-lint`; PR: see DL-#1686; Issue #1686; DL-#1686.
+
+## Objective and Status
+
+- #1679 exported a constant from a component file; ESLint (max-warnings 0) then failed `Vitest + Coverage` on main and on every PR running the frontend lane.
+
+## Validation
+
+- CI `Vitest + Coverage` lint step on this PR.
+
+## Next Steps
+
+1. None.
+
+---
+
+# Past handoff — ADR: agent-client ingress stays local-only (#1335)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-1335`
+- Branch: `docs/1335-adr-local-only`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1335 (SC-F6, part of SC-F #1352 under the Staff Console epic #1354); DL-#1335.
+
+## Objective and Status
+
+- `docs/adr/0007-agent-client-ingress-local-only.md`: new ADR recording the owner's decision (Dieter Olson, 2026-09-27) to stay local-only for agent-client ingress — no Tailscale Funnel, no outbound relay. Covers the three compared options, a threat model (token theft, prompt injection via messages, replay, DoS, cost exhaustion), the decision, consequences (Grok Bot keeps using its local tool), the controls any future exposed option would need, and the revisit trigger.
+- `docs/adr/README.md`: index updated with the 0007 entry.
+- No code changed; this issue only produces the design record.
+
+## Validation
+
+- Read against `docs/adr/README.md`'s template and `docs/adr/0006-staff-conversation-model.md` for section format and numbering.
+- Cross-checked against RM#1676 and `docs/tailscale-funnel.md` for context accuracy.
+
+## Next Steps
+
+1. Open the PR (`Fixes #1335`), get it green, and merge.
+
+---
+
+# Current handoff — SC-G6: Local Tools becomes a Settings section (DL-#1338-localtools)
 
 Last updated: 2026-09-27
 
@@ -134,7 +216,7 @@ Last updated: 2026-09-27
 
 ---
 
-# Previous handoff — SC-G6: Tests under Operations → Diagnostics (DL-#1338-tests)
+# Current handoff — SC-G6: Tests under Operations → Diagnostics (DL-#1338-tests)
 
 Last updated: 2026-09-27
 

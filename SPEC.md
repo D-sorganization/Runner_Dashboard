@@ -11,6 +11,9 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1689 | Split `thread_scratch_dir` into `staff/chat_scratch.py` (500-line cap) and point the Tests-route integrity test at Operations → Diagnostics. |
+| 2026-09-27 | #1686 | Frontend lint green again (#1686): `SETTINGS_SECTIONS` is no longer exported from `SettingsPage.tsx`, which satisfies `react-refresh/only-export-components` under `--max-warnings 0`. |
+| 2026-09-27 | #1335 | ADR 0007: agent-client ingress stays local-only (owner decision); no Funnel or relay. |
 | 2026-09-27 | #1679 | SC-G6 (#1338): Local Tools is no longer a nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. |
 | 2026-09-27 | #1678 | `deploy/reap-wsl-leaked-chrome.sh` reaps Windows `chrome.exe` processes leaked into WSL runner hosts via `/mnt/c` interop (lhci/chrome-launcher). It stops only processes whose `CommandLine` matches a `\AppData\Local\lighthouse.` temp profile and whose `CreationDate` is older than `LEAKED_CHROME_MAX_AGE_HOURS` (default 2h); it honours `DRY_RUN` and exits 0 with a warning if `powershell.exe`/interop is unavailable. Wired into `deploy/scheduled-dashboard-maintenance.sh`, gated to WSL hosts only. |
 | 2026-09-27 | #1674 | SC-G6 (#1338): Tests is no longer a Settings nav tab. It is a collapsed `#tests` subsection of the Diagnostics section on Operations; `/t/tests`, `/settings/tests` and `/tests` redirect to `/fleet/operations#tests`. |
