@@ -189,3 +189,17 @@ def test_read_only_allowlist_never_grants_a_write_path(write_rule: str) -> None:
     allowed, _ = claude_read_only_run_tools()
     assert write_rule not in allowed.split(",")
     assert not any(entry.startswith("Bash(gh api") for entry in allowed.split(","))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("value", "ok"), [(True, True), (False, True), ("yes", False)])
+def test_validator_accepts_boolean_code_read_only(value: object, ok: bool) -> None:
+    """The flag must validate before Repository_Management sets it on Barb, or she turns invalid."""
+    from staff.validator import validate_role_data
+
+    from tests.unit.test_staff_roles import _VALID_ROLE_DICT
+
+    role_dict = dict(_VALID_ROLE_DICT)
+    role_dict["permissions"] = {**_VALID_ROLE_DICT["permissions"], "code_read_only": value}
+    problems = validate_role_data(role_dict)
+    assert (problems == []) is ok, problems
