@@ -96,6 +96,8 @@ export interface ComposerProps {
   className?: string;
   /** Focus the textarea when the user switches to another thread (SC-D9). */
   focusOnThreadChange?: boolean;
+  /** True when thread is an expert panel (read-only, SC-D/Issue #1635). */
+  isPanel?: boolean;
 }
 
 export interface ThreadProps {

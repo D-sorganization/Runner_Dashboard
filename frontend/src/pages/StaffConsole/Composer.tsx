@@ -29,6 +29,7 @@ export const Composer: React.FC<ComposerProps> = ({
   placeholder,
   className = "",
   focusOnThreadChange = false,
+  isPanel = false,
 }) => {
   const [text, setText] = useState<string>(() => getDraft(threadId));
   const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
@@ -161,7 +162,7 @@ export const Composer: React.FC<ComposerProps> = ({
 
   const executeSend = async (retryKey?: string) => {
     const trimmed = text.trim();
-    if (!trimmed || sendState === "sending" || disabled) return;
+    if (!trimmed || sendState === "sending" || disabled || isPanel) return;
 
     const key = retryKey || idempotencyKey || generateIdempotencyKey(threadId);
     setIdempotencyKey(key);
@@ -249,8 +250,10 @@ export const Composer: React.FC<ComposerProps> = ({
     }
   };
 
-  const defaultPlaceholder =
-    placeholder || (selectedRole ? `Message ${selectedRole}…` : "Message Barb or type /dispatch…");
+  const panelDisabledMessage = "Panels run on their own; start a new panel to ask again.";
+  const defaultPlaceholder = isPanel
+    ? panelDisabledMessage
+    : placeholder || (selectedRole ? `Message ${selectedRole}…` : "Message Barb or type /dispatch…");
 
   return (
     <div
@@ -327,12 +330,31 @@ export const Composer: React.FC<ComposerProps> = ({
         </div>
       )}
 
+      {/* Panel Read-Only Notice */}
+      {isPanel && (
+        <div
+          role="status"
+          className="composer-panel-notice"
+          style={{
+            background: "rgba(56, 139, 253, 0.1)",
+            border: "1px solid rgba(56, 139, 253, 0.3)",
+            borderRadius: 6,
+            padding: "6px 12px",
+            marginBottom: 8,
+            fontSize: 12,
+            color: "var(--text-secondary, #8b949e)",
+          }}
+        >
+          {panelDisabledMessage}
+        </div>
+      )}
+
       {/* Input Row */}
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
         <textarea
           ref={textareaRef}
           value={text}
-          disabled={disabled || sendState === "sending"}
+          disabled={disabled || isPanel || sendState === "sending"}
           onChange={(e) => {
             setText(e.target.value);
             saveDraft(threadId, e.target.value);
@@ -370,7 +392,7 @@ export const Composer: React.FC<ComposerProps> = ({
           }
           aria-pressed={voice.recording}
           onClick={voice.available ? voice.toggle : undefined}
-          disabled={disabled || sendState === "sending" || !voice.available}
+          disabled={disabled || isPanel || sendState === "sending" || !voice.available}
           title={!voice.available ? "Voice input is not supported in this browser" : undefined}
           style={{
             height: 40,
@@ -381,8 +403,8 @@ export const Composer: React.FC<ComposerProps> = ({
               ? "var(--accent-red, #f85149)"
               : "var(--bg-tertiary, #161b22)",
             color: voice.recording ? "#fff" : "var(--text-secondary, #c9d1d9)",
-            cursor: voice.available ? "pointer" : "not-allowed",
-            opacity: voice.available ? 1 : 0.5,
+            cursor: voice.available && !isPanel ? "pointer" : "not-allowed",
+            opacity: voice.available && !isPanel ? 1 : 0.5,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -398,7 +420,7 @@ export const Composer: React.FC<ComposerProps> = ({
           type="button"
           aria-label="Send message"
           onClick={() => executeSend()}
-          disabled={disabled || sendState === "sending" || !text.trim()}
+          disabled={disabled || isPanel || sendState === "sending" || !text.trim()}
           style={{
             height: 40,
             padding: "0 16px",
@@ -408,8 +430,8 @@ export const Composer: React.FC<ComposerProps> = ({
             color: "#fff",
             fontWeight: 600,
             fontSize: 13,
-            cursor: !text.trim() || sendState === "sending" ? "not-allowed" : "pointer",
-            opacity: !text.trim() || sendState === "sending" ? 0.6 : 1,
+            cursor: !text.trim() || sendState === "sending" || isPanel ? "not-allowed" : "pointer",
+            opacity: !text.trim() || sendState === "sending" || isPanel ? 0.6 : 1,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

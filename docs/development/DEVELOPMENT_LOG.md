@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** The \_default_seat_runner stub is gone; seats get a pure seat_prompt (title, mandate, question, position-first), run silently (null bus) because seats run concurrently into one summary, and report cost via lookup_seat_price.
 - **Next step:** Merge; ask the Board a question in a group thread on a deployed node and confirm real seat text and cost.
 
+### DL-#1635 — Expert panels UI
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1635
+- **Branch:** `feat/staff-panel-ui`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/StaffConsole/panelApi.ts`, `frontend/src/pages/StaffConsole/panelTurn.ts`, `frontend/src/pages/StaffConsole/NewPanelForm.tsx`, `frontend/src/pages/StaffConsole/PanelTurnCard.tsx`, `frontend/src/pages/StaffConsole/PanelConsensusCard.tsx`, `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/Thread.tsx`, `frontend/src/pages/StaffConsole/Composer.tsx`, `frontend/src/pages/StaffConsole/Roster.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (180 StaffConsole tests; tsc and eslint clean)
+- **Summary:** Pure panelTurn helpers (validation mirrors the API, groupByRound, panelMeta), typed panelApi (cost guard read from `error` or legacy `detail`, estimate optional), panel cards hooked into MessageItem before the generic error card.
+- **Next step:** Merge; open a 3-expert panel from the Staff Console on a deployed node.
+
 ### DL-#1634 — Expert Panels: Backend Engine and API
 
 - **State:** shipped
