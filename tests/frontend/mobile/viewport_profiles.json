@@ -93,7 +93,7 @@
     {
       "name": "Maxwell",
       "tabLabel": "Maxwell",
-      "requiredMarkers": ["maxwellMobileChatHistory", "maxwell-composer"],
+      "requiredMarkers": ["maxwellMobileChatHistory", "maxwell-chat-messages"],
       "goldenInteraction": "tap-quick-action"
     }
   ],
