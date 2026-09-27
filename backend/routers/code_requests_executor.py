@@ -5,6 +5,7 @@ Endpoints:
 - POST /api/code-requests/{id}/executor/dispatch: Dispatch ready children in the current wave
 - POST /api/code-requests/{id}/executor/report-child: Report child progress, PR, CI or failure
 - GET /api/code-requests/{id}/executor/rollup: Get status rollup and per-child states and costs
+- POST /api/code-requests/{id}/executor/complete: Enter ``done`` once the acceptance check passes (#1605)
 
 Pipelines persist in ``code_request_pipelines.json`` next to the Code Request store, so a
 restart resumes where execution stopped.
@@ -13,12 +14,14 @@ restart resumes where execution stopped.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
-from code_requests.executor_models import ExecutionConfig, ExecutorRollup
+from code_requests.acceptance import PrNumberProbe, record_check, unmet_conditions
+from code_requests.executor_models import AcceptanceCheck, ExecutionConfig, ExecutorRollup
 from code_requests.executor_plan import PlanNotFiledError, children_from_plan
 from code_requests.executor_stage import ExecutorPipeline
 from code_requests.executor_store import PipelineStore
+from code_requests.lifecycle import TransitionGate
 from code_requests.model import CodeRequest, CodeRequestState
 from code_requests.plan_store import PlanSessionStore
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,6 +29,7 @@ from identity import Principal, require_scope
 from pydantic import BaseModel, ConfigDict, Field
 from routers import code_request_plans
 from routers.code_requests import _active_storage_path, _get_store
+from staff.verification import GhCliPrProbe
 
 log = logging.getLogger("dashboard.code_requests.executor_router")
 
@@ -58,6 +62,10 @@ def _save_pipeline(pipeline: ExecutorPipeline) -> None:
     _pipeline_store().save(pipeline.snapshot())
 
 
+def _pr_probe() -> PrNumberProbe:
+    return GhCliPrProbe()
+
+
 class InitializeExecutorPayload(BaseModel):
     """Children always come from the filed plan; the caller may only tune execution."""
 
@@ -72,7 +80,7 @@ class DispatchChildrenPayload(BaseModel):
 
 class ReportChildPayload(BaseModel):
     key: str
-    event: str  # "pr_opened", "ci_status", "merged", "failed"
+    event: str  # "pr_opened", "ci_status", "merged", "failed", "acceptance_checked"
     pr_number: int | None = None
     pr_body: str = ""
     pr_labels: list[str] = Field(default_factory=list)
@@ -80,6 +88,11 @@ class ReportChildPayload(BaseModel):
     reason: str = ""
     cost: float = 0.0
     updated_handoff: str = ""
+    # acceptance_checked (#1605): one criterion's result and where it came from.
+    criterion: str = ""
+    passed: bool | None = None
+    evidence: str = ""
+    source: Literal["script", "qa-verifier"] | None = None
 
 
 @router.post("/api/code-requests/{id}/executor/initialize")
@@ -149,6 +162,22 @@ async def dispatch_executor(
     }
 
 
+def _record_acceptance(pipeline: ExecutorPipeline, payload: ReportChildPayload, *, recorded_by: str) -> None:
+    if payload.passed is None or payload.source is None:
+        raise HTTPException(status_code=422, detail="acceptance_checked needs passed and source")
+    try:
+        check = AcceptanceCheck(
+            criterion=payload.criterion,
+            passed=payload.passed,
+            evidence=payload.evidence,
+            source=payload.source,
+            recorded_by=recorded_by,
+        )
+        record_check(pipeline.children[payload.key], check)
+    except ValueError as exc:  # pydantic ValidationError is a ValueError
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/api/code-requests/{id}/executor/report-child")
 async def report_child_status(
     id: str,
@@ -178,6 +207,8 @@ async def report_child_status(
             cost=payload.cost,
             updated_handoff=payload.updated_handoff,
         )
+    elif ev == "acceptance_checked":
+        _record_acceptance(pipeline, payload, recorded_by=principal.id)
     else:
         raise HTTPException(status_code=422, detail=f"Unknown event type: {payload.event!r}")
 
@@ -196,3 +227,27 @@ async def get_executor_rollup(
     await _get_request(id)
     pipeline = _load_pipeline(id)
     return pipeline.get_rollup()
+
+
+@router.post("/api/code-requests/{id}/executor/complete")
+async def complete_code_request(
+    id: str,
+    *,
+    principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
+) -> dict[str, Any]:
+    """Enter ``done`` through the acceptance gate, or list every unmet condition (409)."""
+    request = await _get_request(id)
+    if request.state != CodeRequestState.EXECUTING:
+        raise HTTPException(status_code=409, detail=f"Code Request is {request.state.value}; it must be executing")
+    pipeline = _load_pipeline(id)
+    unmet = unmet_conditions(pipeline.children, _pr_probe())
+    if unmet:
+        raise HTTPException(status_code=409, detail={"message": "acceptance check not met", "unmet": unmet})
+    done = await _get_store().transition(
+        id,
+        CodeRequestState.DONE,
+        actor=principal.id,
+        reason=f"acceptance check passed for {len(pipeline.children)} children",
+        gate=TransitionGate.ACCEPTANCE,
+    )
+    return {"status": "done", "code_request": done.model_dump(mode="json")}
