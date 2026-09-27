@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1688 — Chat and run-worktree CLI project folder cleanup
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1688
+- **Branch:** `fix/1688-run-worktree-cli-projects`
+- **PR:** pending
+- **Paths:** `backend/staff/cli_projects.py`, `backend/staff/chat_scratch.py`, `backend/staff/workspace.py`, `backend/staff/reconcile.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites pass)
+- **Summary:** Follow-up to #1683: the same Claude CLI project-folder leak for run worktrees and chat threads.
+- **Next step:** None.
+
 ### DL-#1683 — Expert-panel CLI project folder cleanup
 
 - **State:** in_review

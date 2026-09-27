@@ -7,14 +7,18 @@ from pathlib import Path
 
 import pytest
 from staff.cli_projects import (
+    CHAT_SCRATCH_PREFIX,
+    DEFAULT_CHAT_IDLE_SECONDS,
     PANEL_SCRATCH_PREFIX,
     _is_panel_project,
+    chat_project_prefix,
     encode_project_name,
     panel_project_prefix,
     projects_root,
     remove_turn_project,
     remove_worktree_project,
     run_project_prefix,
+    sweep_idle_chat_scratch,
     sweep_orphan_run_projects,
     sweep_stale_panel_projects,
 )
@@ -391,3 +395,180 @@ def test_sweep_orphan_run_projects_requires_positive_min_age(tmp_path: Path) -> 
         sweep_orphan_run_projects({}, wt_root, min_age_seconds=0)
     with pytest.raises(AssertionError):
         sweep_orphan_run_projects({}, wt_root, min_age_seconds=-10)
+
+
+@pytest.mark.unit
+def test_chat_project_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """chat_project_prefix encodes os.path.join(tmpdir, CHAT_SCRATCH_PREFIX)."""
+    assert CHAT_SCRATCH_PREFIX == "staff_chat_"
+    assert DEFAULT_CHAT_IDLE_SECONDS == 14 * 24 * 3600
+    assert chat_project_prefix("/tmp") == "-tmp-staff-chat-"
+
+    monkeypatch.setattr("tempfile.gettempdir", lambda: "/tmp")
+    assert chat_project_prefix() == "-tmp-staff-chat-"
+
+
+@pytest.mark.unit
+def test_sweep_idle_chat_scratch(tmp_path: Path) -> None:
+    """sweep_idle_chat_scratch sweeps old scratch dirs, old orphan projects, and keeps fresh / non-chat."""
+    tmpdir = tmp_path / "tmp"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    cfg_dir = tmp_path / "cfg"
+    projects_dir = cfg_dir / "projects"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    env = {"CLAUDE_CONFIG_DIR": str(cfg_dir)}
+
+    now = 2_000_000.0
+    idle = 14 * 24 * 3600.0
+    old_time = now - idle - 3600.0
+    fresh_time = now - 600.0
+
+    # 1. staff_chat_old: scratch + project folder both older than idle
+    d_old = tmpdir / "staff_chat_old"
+    d_old.mkdir()
+    p_old = projects_dir / encode_project_name(str(d_old))
+    p_old.mkdir()
+    (p_old / "session.json").write_text("{}")
+    os.utime(d_old, (old_time, old_time))
+    os.utime(p_old, (old_time, old_time))
+    os.utime(p_old / "session.json", (old_time, old_time))
+
+    # 2. staff_chat_fresh: project folder has a fresh file even though scratch dir mtime is old — must be KEPT
+    d_fresh = tmpdir / "staff_chat_fresh"
+    d_fresh.mkdir()
+    p_fresh = projects_dir / encode_project_name(str(d_fresh))
+    p_fresh.mkdir()
+    (p_fresh / "session.json").write_text("{}")
+    os.utime(d_fresh, (old_time, old_time))
+    os.utime(p_fresh, (old_time, old_time))
+    os.utime(p_fresh / "session.json", (fresh_time, fresh_time))
+
+    # 3. staff_chat_noproj_old: no project folder, old dir -> removed
+    d_noproj_old = tmpdir / "staff_chat_noproj_old"
+    d_noproj_old.mkdir()
+    os.utime(d_noproj_old, (old_time, old_time))
+
+    # 4. staff_panel_x dir (kept)
+    d_panel_x = tmpdir / "staff_panel_x"
+    d_panel_x.mkdir()
+    os.utime(d_panel_x, (old_time, old_time))
+
+    # 5. orphan project folder for <tmpdir>/staff_chat_gone that is old (removed)
+    gone_scratch = tmpdir / "staff_chat_gone"
+    p_orphan_old = projects_dir / encode_project_name(str(gone_scratch))
+    p_orphan_old.mkdir()
+    (p_orphan_old / "session.json").write_text("{}")
+    os.utime(p_orphan_old, (old_time, old_time))
+    os.utime(p_orphan_old / "session.json", (old_time, old_time))
+
+    # 6. orphan project folder for <tmpdir>/staff_chat_gone_fresh that is fresh (kept)
+    gone_fresh_scratch = tmpdir / "staff_chat_gone_fresh"
+    p_orphan_fresh = projects_dir / encode_project_name(str(gone_fresh_scratch))
+    p_orphan_fresh.mkdir()
+    (p_orphan_fresh / "session.json").write_text("{}")
+    os.utime(p_orphan_fresh, (fresh_time, fresh_time))
+    os.utime(p_orphan_fresh / "session.json", (fresh_time, fresh_time))
+
+    # 7. non-chat project folder (kept)
+    p_nonchat = projects_dir / "-tmp-other-project"
+    p_nonchat.mkdir()
+    (p_nonchat / "session.json").write_text("{}")
+    os.utime(p_nonchat, (old_time, old_time))
+
+    removed = sweep_idle_chat_scratch(env, idle_seconds=idle, now=now, tmpdir=str(tmpdir))
+
+    expected_removed = sorted(["staff_chat_noproj_old", "staff_chat_old", p_orphan_old.name])
+    assert removed == expected_removed
+
+    # Assert exact filesystem state
+    assert not d_old.exists()
+    assert not p_old.exists()
+    assert d_fresh.exists()
+    assert p_fresh.exists()
+    assert not d_noproj_old.exists()
+    assert d_panel_x.exists()
+    assert not p_orphan_old.exists()
+    assert p_orphan_fresh.exists()
+    assert p_nonchat.exists()
+
+
+@pytest.mark.unit
+def test_sweep_idle_chat_scratch_symlink_not_followed(tmp_path: Path) -> None:
+    """A symlink named staff_chat_link pointing outside tmpdir is not followed and target survives."""
+    tmpdir = tmp_path / "tmp"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    outside_dir = tmp_path / "outside_directory"
+    outside_dir.mkdir(parents=True, exist_ok=True)
+    canary = outside_dir / "target_file.txt"
+    canary.write_text("keep me safe")
+
+    symlink_path = tmpdir / "staff_chat_link"
+    try:
+        symlink_path.symlink_to(outside_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlinks not supported in this environment")
+
+    now = 1_000_000.0
+    idle = 3600.0
+    old_time = now - 7200.0
+    os.utime(outside_dir, (old_time, old_time))
+    os.utime(canary, (old_time, old_time))
+
+    cfg_dir = tmp_path / "cfg"
+    (cfg_dir / "projects").mkdir(parents=True, exist_ok=True)
+    env = {"CLAUDE_CONFIG_DIR": str(cfg_dir)}
+
+    removed = sweep_idle_chat_scratch(env, idle_seconds=idle, now=now, tmpdir=str(tmpdir))
+    assert symlink_path.name not in removed
+    assert outside_dir.exists()
+    assert canary.exists()
+
+
+@pytest.mark.unit
+def test_sweep_idle_chat_scratch_requires_positive_idle_seconds() -> None:
+    """sweep_idle_chat_scratch raises AssertionError when idle_seconds <= 0."""
+    with pytest.raises(AssertionError):
+        sweep_idle_chat_scratch({}, idle_seconds=0)
+    with pytest.raises(AssertionError):
+        sweep_idle_chat_scratch({}, idle_seconds=-100)
+
+
+@pytest.mark.unit
+def test_sweep_idle_chat_scratch_missing_projects_root(tmp_path: Path) -> None:
+    """A missing projects root still sweeps scratch dirs."""
+    tmpdir = tmp_path / "tmp"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    d_old = tmpdir / "staff_chat_old"
+    d_old.mkdir()
+    now = 1_000_000.0
+    idle = 3600.0
+    old_time = now - 7200.0
+    os.utime(d_old, (old_time, old_time))
+
+    env = {"CLAUDE_CONFIG_DIR": str(tmp_path / "nonexistent")}
+    removed = sweep_idle_chat_scratch(env, idle_seconds=idle, now=now, tmpdir=str(tmpdir))
+    assert removed == ["staff_chat_old"]
+    assert not d_old.exists()
+
+
+@pytest.mark.unit
+def test_sweep_keeps_a_just_touched_chat_dir_whose_project_folder_is_old(tmp_path: Path) -> None:
+    """#1688: a resumed idle thread is not swept before its CLI writes a new session."""
+    tmpdir = tmp_path / "tmp"
+    tmpdir.mkdir()
+    env = {"CLAUDE_CONFIG_DIR": str(tmp_path / "cfg")}
+    scratch = tmpdir / "staff_chat_resumed"
+    scratch.mkdir()
+    project = tmp_path / "cfg" / "projects" / encode_project_name(str(scratch))
+    project.mkdir(parents=True)
+    (project / "session.jsonl").write_text("{}")
+    now = 10_000_000.0
+    old = now - 30 * 24 * 3600
+    os.utime(project / "session.jsonl", (old, old))
+    os.utime(project, (old, old))
+    os.utime(scratch, (now, now))
+
+    removed = sweep_idle_chat_scratch(env, idle_seconds=14 * 24 * 3600, now=now, tmpdir=str(tmpdir))
+
+    assert removed == []
+    assert scratch.exists() and project.exists()

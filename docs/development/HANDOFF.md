@@ -1,4 +1,30 @@
-# Current handoff — Expert-panel CLI project folder cleanup (#1683)
+# Current handoff — Chat and run-worktree CLI project folder cleanup (#1688)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1688`; branch `fix/1688-run-worktree-cli-projects`; PR: see DL-#1688; Issue #1688; DL-#1688.
+
+## Objective and Status
+
+- Run worktrees: `remove_worktree` removes the worktree's project folder; reconcile sweeps orphans whose worktree no longer exists. Folders of live worktrees are kept.
+- Chat threads: stable `staff_chat_<thread>` dirs are kept for `--resume` (#1655) and only swept after 14 days without activity (newest mtime of the project folder, its session files or the scratch dir itself). One-turn fallback dirs are swept the same way.
+- Every removal is limited to direct, non-symlink children with the matching prefix; nothing raises. Tests never sweep the node's real temp dir (autouse conftest fixture).
+- Drafted by agy (Gemini 3.8 Flash) in two runs from written specs; Claude reviewed, closed a sweep-vs-resume race and kept tests off real node state.
+
+## Validation
+
+- pytest tests/unit/test_staff_cli_projects.py tests/unit/test_chat_scratch.py tests/unit/test_staff_reconcile.py tests/staff/test_workspace.py tests/staff/test_panel.py and all staff chat suites: pass.
+- ruff check/format and mypy on the touched modules: clean.
+
+## Next Steps
+
+1. None.
+
+---
+
+# Past handoff — Expert-panel CLI project folder cleanup (#1683)
 
 Last updated: 2026-09-27
 
