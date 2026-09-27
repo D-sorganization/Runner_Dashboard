@@ -54,7 +54,6 @@ const DEFAULT_QUICK_LINKS = [
   "overview",
   "queue",
   "remediation",
-  "credentials",
   "settings",
   "operations",
 ];

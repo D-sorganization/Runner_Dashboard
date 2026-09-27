@@ -1,12 +1,39 @@
 // @vitest-environment jsdom
 /**
  * The consolidated Settings area (#1338, SC-G6 owner decisions): one page with
- * anchored sections. Local Tools is one of those sections, not its own tab.
+ * anchored sections. Credentials, Notifications, Linear Setup, Principals,
+ * Theme and Local Tools are sections, not tabs of their own.
  */
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
+
+const breakpointMock = vi.fn(() => "lg");
+vi.mock("../../../hooks/useBreakpoint", async (orig) => {
+  const actual = await orig<typeof import("../../../hooks/useBreakpoint")>();
+  return { ...actual, useBreakpoint: () => breakpointMock() };
+});
+
+vi.mock("../../CredentialsPage", () => ({
+  CredentialsPage: () => <div data-testid="credentials-page">Credentials</div>,
+}));
+
+vi.mock("../../Credentials", () => ({
+  CredentialsMobile: () => <div data-testid="credentials-mobile">Mobile credentials</div>,
+}));
+
+vi.mock("../../PushSettings", () => ({
+  default: () => <div data-testid="push-settings">Push</div>,
+}));
+
+vi.mock("../../LinearSetup", () => ({
+  LinearSetup: () => <div data-testid="linear-setup">Linear</div>,
+}));
+
+vi.mock("../../Principals", () => ({
+  PrincipalsTab: () => <div data-testid="principals">Principals</div>,
+}));
 
 vi.mock("../../../components/ThemeSettings", () => ({
   ThemeSettings: () => <div data-testid="theme-settings">Theme</div>,
@@ -21,6 +48,7 @@ import { SettingsPage } from "../SettingsPage";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  breakpointMock.mockReturnValue("lg");
   window.location.hash = "";
 });
 
@@ -38,11 +66,47 @@ describe("SettingsPage (#1338)", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders every consolidated section in the owner's order", () => {
+    const { container } = render(<SettingsPage />);
+
+    const ids = Array.from(container.querySelectorAll("section")).map((s) => s.id);
+    expect(ids).toEqual([
+      "credentials",
+      "linear-setup",
+      "notifications",
+      "principals",
+      "theme",
+      "local-tools",
+    ]);
+    const content: Record<string, string> = {
+      credentials: "credentials-page",
+      "linear-setup": "linear-setup",
+      notifications: "push-settings",
+      principals: "principals",
+    };
+    for (const [id, testId] of Object.entries(content)) {
+      const section = container.querySelector(`section#${id}`) as HTMLElement;
+      expect(within(section).getByTestId(testId)).toBeInTheDocument();
+    }
+  });
+
+  it("uses the mobile credentials view on small screens", () => {
+    breakpointMock.mockReturnValue("md");
+    const { container } = render(<SettingsPage />);
+
+    const section = container.querySelector("section#credentials") as HTMLElement;
+    expect(within(section).getByTestId("credentials-mobile")).toBeInTheDocument();
+    expect(within(section).queryByTestId("credentials-page")).not.toBeInTheDocument();
+  });
+
   it("names every section for assistive tech", () => {
     render(<SettingsPage />);
 
     expect(screen.getByRole("region", { name: "Theme" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Local Tools" })).toBeInTheDocument();
+    for (const name of ["Credentials", "Linear Setup", "Notifications", "Principals"]) {
+      expect(screen.getByRole("region", { name })).toBeInTheDocument();
+    }
   });
 
   it("offers a jump link per section", () => {

@@ -1,3 +1,52 @@
+# Current handoff — SC-G6: one Settings area with sections (DL-#1338-settings)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1338-settings`
+- Branch: `feat/1338-settings-consolidation`
+- Baseline commit: `6720ce3d`
+- Implementation commit: `SELF`
+- Pull request: #1700 (draft → ready once PR CI is green)
+- Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Settings consolidation"); DL-#1338-settings.
+
+## Objective and status
+
+- Owner decision: Credentials, Linear Setup, Notifications, Principals, theme and Local Tools become one Settings area with sections.
+- `pages/Settings/SettingsPage.tsx`: sections are now Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools. Small screens keep the mobile credentials view (lock screen, confirmation sheet) inside the Credentials section.
+- `navRegistryData.ts`: the Credentials, Linear Setup, Notifications and Principals entries are removed; the Settings group has one item (label stays "Preferences", because a "Settings" item would share its accessible name with the "Settings" group toggle).
+- `routing.ts`: `/settings/<id>`, `/t/<id>`, `/<id>` for those four tabs and the old `/settings/push` deep link redirect to `/settings#credentials|linear-setup|notifications|principals`; `tabIdToPath` sends those ids straight to the section, so the provider "Fix login" link and Help still work. `PUSH_SETTINGS_PATH`, `PUSH_SETTINGS_TAB_ID` and `isPushSettingsRoute` are removed.
+- `RoutedShell.tsx`: the four tab cases and the mobile credentials entry are removed. `main.tsx`: the explicit `/settings/push` route is removed (`/settings/:tabId` still catches it and redirects).
+- Copy: the principals intro override, the Help "credentials" quick link and the "Credentials tab" wording in API error guidance are updated.
+
+## Files and decisions
+
+- `SETTINGS_SECTIONS` stays unexported (#1687, react-refresh lint).
+- Backend endpoints are unchanged: every section still calls its own API.
+
+## Validation
+
+- New and changed tests failed first (44 failing before implementation).
+- WSL `npx vitest run --maxWorkers=4` on shell, Settings, Credentials, Principals, PushSettings, lib and components tests: all pass except the 2 pre-existing `mobile nav entry staff|fleet-command renders non-empty content` WSL timeouts.
+- `npx tsc --noEmit -p tsconfig.app.json` clean; `npm run lint` clean.
+- WSL pytest `tests/test_frontend_integrity.py`: all pass except `test_tests_desktop_route_bypasses_legacy_app`, red on main and fixed by #1690.
+
+## Blockers and risks
+
+- Held until #1690 merges and #1681 (Organization row) lands; then rebase.
+
+## Next steps
+
+1. Confirm #1700's CI is green (quality-gate, tests, Vitest, ci-health-check), mark it ready and arm auto-merge via automerge_guard.
+
+## Change log
+
+- 2026-09-27: Settings consolidated into one page with six sections; old routes redirect.
+
+---
+
 # Current handoff — Dashboard unit allows cursor-agent's command sandbox (DL-#1698)
 
 Last updated: 2026-09-27

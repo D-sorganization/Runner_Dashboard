@@ -5,10 +5,11 @@
  *   - Staff (Staff Console, Fleet Command, Maxwell)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
  *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Assessments)
- *   - Settings (Settings, Credentials, Notifications, Linear Setup, Principals)
+ *   - Settings (one Settings page: Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools)
  *
  * Tests lives under Operations → Diagnostics (#1338), not in the nav.
  * Local Tools is a section of the Settings page (#1338), not a nav entry.
+ * So are Credentials, Linear Setup, Notifications and Principals (#1338).
  * Organization is retired into Projects (per-repo CI badge, #1338).
  */
 import type { NavIcon } from "./navIcons";
@@ -17,16 +18,12 @@ import {
   QueueIcon,
   WrenchIcon,
   ActivityIcon,
-  KeyIcon,
   BotIcon,
   ChartIcon,
   InboxIcon,
   SettingsIcon,
-  UsersIcon,
   NetworkIcon,
   FlagIcon,
-  LinearIcon,
-  BellIcon,
   ClipboardCheckIcon,
   BriefcaseIcon,
   CompassIcon,
@@ -208,54 +205,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Preferences",
     group: "settings",
     Icon: SettingsIcon,
-    tooltip: "Dashboard settings: theme and Local Tools.",
+    tooltip:
+      "Dashboard settings: credentials, Linear setup, notifications, principals, theme and Local Tools.",
     tabId: "settings",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,
-  },
-  {
-    id: "credentials",
-    label: "Credentials",
-    group: "settings",
-    Icon: KeyIcon,
-    tooltip: "Stored credentials and their readiness state.",
-    tabId: "credentials",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: true,
-  },
-  {
-    id: "linear-setup",
-    label: "Linear Setup",
-    group: "settings",
-    Icon: LinearIcon,
-    tooltip: "Connect Linear workspaces and configure issue-sync webhooks.",
-    tabId: "linear-setup",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: false,
-  },
-  {
-    id: "push-settings",
-    label: "Notifications",
-    group: "settings",
-    Icon: BellIcon,
-    tooltip: "Web-push notification settings: subscribe and choose alert topics.",
-    tabId: "push-settings",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: true,
-  },
-  {
-    id: "principals",
-    label: "Principals",
-    group: "settings",
-    Icon: UsersIcon,
-    tooltip: "Authenticated principals and acting-as identities.",
-    tabId: "principals",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: false,
   },
 ] as const;

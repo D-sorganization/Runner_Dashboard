@@ -36,18 +36,6 @@ vi.mock("../../pages/Conductor", () => ({
   Conductor: () => <div data-testid="native-conductor">Conductor</div>,
 }));
 
-vi.mock("../../pages/CredentialsPage", () => ({
-  CredentialsPage: () => (
-    <div data-testid="native-credentials">Credentials</div>
-  ),
-}));
-
-vi.mock("../../pages/Credentials", () => ({
-  CredentialsMobile: () => (
-    <div data-testid="mobile-credentials">Mobile Credentials</div>
-  ),
-}));
-
 vi.mock("../../pages/Deployment", () => ({
   DeploymentTab: () => <div data-testid="native-deployment">Deployment</div>,
 }));
@@ -73,10 +61,6 @@ vi.mock("../../pages/FleetOrchestrationPage", () => ({
   default: () => (
     <div data-testid="native-fleet-orchestration">Fleet Orchestration</div>
   ),
-}));
-
-vi.mock("../../pages/LinearSetup", () => ({
-  LinearSetup: () => <div data-testid="native-linear-setup">Linear Setup</div>,
 }));
 
 vi.mock("../../pages/Machines", () => ({
@@ -111,10 +95,6 @@ vi.mock("../../pages/Fleet", () => ({
   FleetMobile: () => <div data-testid="mobile-overview">Mobile Overview</div>,
 }));
 
-vi.mock("../../pages/Principals", () => ({
-  PrincipalsTab: () => <div data-testid="native-principals">Principals</div>,
-}));
-
 vi.mock("../../pages/Queue", () => ({
   QueueTab: () => <div data-testid="native-queue">Queue</div>,
   QueueMobile: () => <div data-testid="mobile-queue">Mobile Queue</div>,
@@ -144,10 +124,6 @@ vi.mock("../../pages/RunnerSchedule", () => ({
   RunnerSchedulePage: () => (
     <div data-testid="native-runner-schedule">Runner Schedule</div>
   ),
-}));
-
-vi.mock("../../pages/PushSettings", () => ({
-  default: () => <div data-testid="native-push-settings">Push Settings</div>,
 }));
 
 vi.mock("../../pages/ScheduledJobs", () => ({
@@ -211,7 +187,12 @@ import { Toaster } from "../../primitives/Toaster";
 
 function LocationProbe() {
   const loc = useLocation();
-  return <span data-testid="pathname">{loc.pathname}</span>;
+  return (
+    <>
+      <span data-testid="pathname">{loc.pathname}</span>
+      <span data-testid="hash">{loc.hash}</span>
+    </>
+  );
 }
 
 function renderAt(path: string, { withToaster = false } = {}) {
@@ -221,7 +202,6 @@ function renderAt(path: string, { withToaster = false } = {}) {
       <MemoryRouter initialEntries={[path]}>
         <LocationProbe />
         <Routes>
-          <Route path="/settings/push" element={<RoutedShell />} />
           <Route path="/t/:tabId" element={<RoutedShell />} />
           <Route path="/staff/:tabId" element={<RoutedShell />} />
           <Route path="/staff" element={<RoutedShell />} />
@@ -283,12 +263,8 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["operations", "native-operations"],
     ["insights", "native-analysis"],
     ["assessments", "native-assessments"],
-    ["credentials", "native-credentials"],
     ["code-requests", "native-code-requests"],
-    ["linear-setup", "native-linear-setup"],
     ["maxwell", "native-maxwell"],
-    ["principals", "native-principals"],
-    ["push-settings", "native-push-settings"],
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
     ["settings", "native-settings"],
@@ -324,6 +300,26 @@ describe("RoutedShell — URL is the source of truth", () => {
       );
       expect(await screen.findByTestId("native-settings")).toBeInTheDocument();
       expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/settings$/);
+    },
+  );
+
+  it.each([
+    ["/settings/credentials", "#credentials"],
+    ["/t/credentials", "#credentials"],
+    ["/settings/linear-setup", "#linear-setup"],
+    ["/settings/push", "#notifications"],
+    ["/t/push-settings", "#notifications"],
+    ["/settings/principals", "#principals"],
+  ])(
+    "redirects retired %s to the %s section of Settings (#1338)",
+    async (path, hash) => {
+      renderAt(path);
+      expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+        "settings",
+      );
+      expect(await screen.findByTestId("native-settings")).toBeInTheDocument();
+      expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/settings$/);
+      expect(screen.getByTestId("hash")).toHaveTextContent(hash);
     },
   );
 
@@ -370,7 +366,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["/t/remediation", "mobile-remediation"],
     ["/t/reports", "mobile-reports"],
     ["/fleet/insights", "mobile-reports"],
-    ["/t/credentials", "mobile-credentials"],
     // #1345: the legacy fallback had no projects case, so Projects was blank.
     ["/t/projects", "native-projects"],
   ])("routes mobile tab %s to its mobile page", async (path, testId) => {

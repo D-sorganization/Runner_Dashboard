@@ -79,8 +79,8 @@ describe("DesktopShell — navigation", () => {
   it("selecting a sidebar item calls onSelect(tabId)", () => {
     const { onSelect } = renderShell();
     const nav = screen.getByRole("navigation", { name: /dashboard sections/i });
-    fireEvent.click(within(nav).getByRole("button", { name: /^Credentials$/i }));
-    expect(onSelect).toHaveBeenCalledWith("credentials");
+    fireEvent.click(within(nav).getByRole("button", { name: /^Preferences$/i }));
+    expect(onSelect).toHaveBeenCalledWith("settings");
   });
 
   it("reflects the active category in the sidebar", () => {

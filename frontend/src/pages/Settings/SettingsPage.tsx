@@ -8,16 +8,31 @@
  */
 import React, { useEffect } from "react";
 import { ThemeSettings } from "../../components/ThemeSettings";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
+import { CredentialsMobile } from "../Credentials";
+import { CredentialsPage } from "../CredentialsPage";
+import { LinearSetup } from "../LinearSetup";
 import { LocalAppsPage } from "../LocalApps";
+import { PrincipalsTab } from "../Principals";
+import PushSettings from "../PushSettings";
 
 export interface SettingsSection {
   id: string;
   title: string;
-  render: () => React.ReactNode;
+  render: (isMobile: boolean) => React.ReactNode;
 }
 
 /** Sections in display order. Ids are the URL anchors. */
 const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+  {
+    id: "credentials",
+    title: "Credentials",
+    // Small screens keep the dedicated mobile credentials view.
+    render: (isMobile) => (isMobile ? <CredentialsMobile /> : <CredentialsPage />),
+  },
+  { id: "linear-setup", title: "Linear Setup", render: () => <LinearSetup /> },
+  { id: "notifications", title: "Notifications", render: () => <PushSettings /> },
+  { id: "principals", title: "Principals", render: () => <PrincipalsTab /> },
   { id: "theme", title: "Theme", render: () => <ThemeSettings /> },
   { id: "local-tools", title: "Local Tools", render: () => <LocalAppsPage /> },
 ];
@@ -30,6 +45,9 @@ function scrollToHash(): void {
 }
 
 export function SettingsPage(): React.ReactElement {
+  const breakpoint = useBreakpoint();
+  const isMobile = breakpoint !== "lg" && breakpoint !== "xl";
+
   useEffect(() => {
     scrollToHash();
     window.addEventListener("hashchange", scrollToHash);
@@ -59,7 +77,7 @@ export function SettingsPage(): React.ReactElement {
           aria-label={section.title}
           style={{ marginBottom: "1.5rem" }}
         >
-          {section.render()}
+          {section.render(isMobile)}
         </section>
       ))}
     </div>
