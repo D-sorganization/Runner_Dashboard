@@ -1,4 +1,28 @@
-# Current handoff — WSL disk status and owner-only compaction request (#1332)
+# Current handoff — WSL disk card in Operations Diagnostics (#1332-card)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332card`; branch `feat/1332-wsl-disk-card`; PR: see DL-#1332-card; Issue #1332-card; DL-#1332-card.
+
+## Objective and Status
+
+- New `OperationsWslDiskCard` with its own fetch, loading/error(Retry)/empty/data states; rendered before the Tests subsection.
+- Read-only by design: findings (`not_sparse`, `fstrim_timer_inactive`) are stated as facts; the only button is Retry in the error state.
+- Drafted by agy (Gemini 3.8 Flash) from a written spec; reviewed and tidied by Claude.
+
+## Validation
+
+- vitest frontend/src/pages/Operations: 35 passed; eslint (max-warnings 0) and tsc -p tsconfig.app.json clean.
+
+## Next Steps
+
+1. Raise RD DEFAULT_ACTION_APPROVALS[host.vhdx_compact] to owner once Repository_Management#1829 is live on both nodes, then close #1332 and epic #1351.
+
+---
+
+# Past handoff — WSL disk status and owner-only compaction request (#1332)
 
 Last updated: 2026-09-27
 
