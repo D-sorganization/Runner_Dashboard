@@ -32,7 +32,7 @@ from dashboard_config import FLEET_NODES, HOSTNAME, RUNNER_ALIASES
 from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
 from staff import liveness as staff_liveness
-from staff.adapters import available_providers
+from staff.adapters import available_providers, chat_only_providers
 from staff.rm_sync import source_status
 from staff.store import ACTIVE_STATUSES
 from staff.usage import today_iso
@@ -326,6 +326,7 @@ def local_board(runner: Any) -> dict[str, Any]:
         "recent": [r.to_dict() for r in recent if r.status not in ACTIVE_STATUSES],
         "spend_today_usd": store.spend_since(today_iso()),
         "providers": available_providers(),
+        "chat_only_providers": chat_only_providers(),
         "availability": avail_stats,
         "liveness": liveness,
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),

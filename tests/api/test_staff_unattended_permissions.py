@@ -222,3 +222,18 @@ def test_codex_chat_stays_plain_text_while_runs_are_json() -> None:
         assert ADAPTERS[pid].json_lines is True and ADAPTERS[pid].chat_json is False
         assert "--json" not in ADAPTERS[pid].chat_argv("hi", "/w")
     assert ADAPTERS["claude"].chat_json is True
+
+
+@pytest.mark.unit
+def test_chat_only_and_unattended_provider_helpers() -> None:
+    from staff.adapters import chat_only_providers, unattended_providers
+
+    chat_only = chat_only_providers()
+    assert "antigravity" in chat_only
+    assert "claude" not in chat_only
+    assert "codex" not in chat_only
+
+    unattended = unattended_providers()
+    assert unattended["antigravity"] is False
+    assert unattended["claude"] is True
+    assert unattended["codex"] is True

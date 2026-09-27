@@ -30,7 +30,7 @@ from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
 from staff import fleet as staff_fleet
-from staff.adapters import ADAPTERS, available_providers
+from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
     export_audit_csv,
     export_audit_ndjson,
@@ -44,6 +44,7 @@ from staff.models import (
     StaffBoardResponse,
     StaffCancelResponse,
     StaffDispatchResponse,
+    StaffProvidersResponse,
     StaffRosterResponse,
     StaffRunDetailResponse,
     StaffRunsResponse,
@@ -106,7 +107,21 @@ async def roster(
         "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
+        "chat_only_providers": chat_only_providers(),
         "active_runs": len(active),
+    }
+
+
+@router.get("/providers", response_model=StaffProvidersResponse, response_model_exclude_none=True)
+async def providers(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Provider availability, chat-only/unattended capabilities, and CLI versions (#1697)."""
+    return {
+        "providers": available_providers(),
+        "chat_only_providers": chat_only_providers(),
+        "unattended_providers": unattended_providers(),
+        "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
     }
 
 

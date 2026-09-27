@@ -1,3 +1,65 @@
+# Current handoff — Skip chat-only providers in staff-node-acceptance ad-hoc loop (DL-#1697)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard`
+- Branch: `fix/1697-acceptance-skip-chat-only-antigravity`
+- Baseline commit: `350f4ea3`
+- Implementation commit: `SELF`
+- Pull request: #1702 (open)
+- Governing issue/epic: #1697; DL-#1697. Related: #1586.
+
+## Objective and status
+
+- Problem: `deploy/staff-node-acceptance.sh --run-ad-hoc` previously failed on `antigravity` because the backend rejects unattended runs for chat-only providers (`antigravity` auto-denies shell commands in headless mode). Acceptance testing on every node with antigravity installed failed during Section 9 ad-hoc dispatch loop.
+- Solution:
+  - Sourced chat-only providers dynamically from provider adapter capability (`not getattr(adapter, "unattended", True)`), rather than hardcoding provider names.
+  - Added `chat_only_providers() -> list[str]` and `unattended_providers() -> dict[str, bool]` to `backend/staff/adapters.py`.
+  - Added `StaffProvidersResponse` model and exposed `chat_only_providers: list[str]` on `StaffRosterResponse` and `StaffBoardResponse`.
+  - Added endpoints `/api/staff/providers` and `/api/v1/staff/providers` and exposed `chat_only_providers` on `/api/staff/roster`, `/api/v1/staff/roster` and `/api/staff/board`.
+  - Updated `deploy/staff-node-acceptance.sh` to query `chat_only_providers` and skip dispatch for chat-only providers (`[SKIP] Ad-hoc run skipped: <provider> (chat-only provider)`), while retaining board availability check (`[PASS] Provider available on board: antigravity`). Also added fallback skip handling if dispatch returns a chat-only error.
+  - Regenerated OpenAPI specs and client types (`openapi.json`, `api-types.ts`).
+
+## Files and decisions
+
+- All modified files kept strictly <= 500 LOC:
+  - `backend/staff/adapters.py` (496 lines)
+  - `backend/staff/models.py` (494 lines)
+  - `backend/routers/staff.py` (389 lines)
+  - `backend/routers/staff_v1.py` (460 lines)
+  - `backend/staff/fleet.py` (349 lines)
+  - `deploy/staff-node-acceptance.sh` (486 lines)
+  - `tests/api/test_staff_unattended_permissions.py` (239 lines)
+  - `tests/deploy/test_staff_node_acceptance.py` (201 lines)
+  - `tests/api/test_staff_chat_only.py` (95 lines)
+- Created dedicated test module `tests/api/test_staff_chat_only.py` to avoid expanding legacy test files beyond 500 lines.
+
+## Validation
+
+- `pytest tests/deploy/test_staff_node_acceptance.py`: 8 passed in 19.98s (including new test verifying antigravity skip).
+- `pytest tests/api/test_staff_chat_only.py`: 5 passed.
+- `pytest tests/api/test_staff_unattended_permissions.py`: passed.
+- `pytest tests/api/test_staff_contracts.py`: 6 passed.
+- `pytest tests/frontend/test_api_generation_contract.py`: 4 passed.
+- `mypy backend/`: clean across 313 source files.
+- `ruff check`: clean across backend, deploy, tests.
+- `ruff format --check`: clean across all modified files.
+
+## Blockers and risks
+
+- None. Fully backward-compatible; additive API fields only.
+
+## Next steps
+
+1. Create pull request with `agent:local` label.
+2. Enable auto-merge (`--auto --squash`).
+3. Release coordination lease upon merge.
+
+---
+
 # Current handoff — Minimum claude CLI version enforced before runs and chat (DL-#1680)
 
 Last updated: 2026-09-27
