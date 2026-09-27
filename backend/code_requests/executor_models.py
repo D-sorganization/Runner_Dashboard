@@ -49,7 +49,7 @@ class ChildIssuePayload(_Strict):
     complexity: str = "routine"
     turnover_doc: str = ""
     file_scope: list[str] = Field(default_factory=list)
-    acceptance_criteria: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(min_length=1)
 
 
 class ChildExecutionRecord(BaseModel):
@@ -75,6 +75,7 @@ class ChildExecutionRecord(BaseModel):
     wave: int = 0
     escalation_history: list[str] = Field(default_factory=list)
     lease_receipt: str | None = None
+    acceptance_criteria: list[str] = Field(default_factory=list)
 
 
 class ExecutionConfig(_Strict):

@@ -1,4 +1,45 @@
-# Current handoff — Code_request.update staff action (#1604)
+# Current handoff — Executor keeps acceptance criteria (#1602)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1602-executor-acceptance-criteria`; worktree `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-1602` (implemented by agy in `agy-1602`); Issue #1602; DL-#1602.
+- Base: `origin/main`; commit: `uncommitted`; PR: pending.
+
+## Objective and Status
+
+- Implement WP-2.2 (Issue #1602): retain each child's acceptance criteria in the executor and reject children without them.
+- Completed:
+  1. `backend/code_requests/executor_models.py`:
+     - Added `acceptance_criteria: list[str] = Field(default_factory=list)` to `ChildExecutionRecord`.
+     - Required at least one criterion on `ChildIssuePayload` via `acceptance_criteria: list[str] = Field(min_length=1)`.
+  2. `backend/code_requests/executor_stage.py`:
+     - Updated `initialize` to carry `acceptance_criteria` into `ChildExecutionRecord` instances and validate that each child provides criteria (DbC with preconditions and postconditions).
+  3. `tests/code_requests/test_executor_stage.py` & `tests/code_requests/test_executor_routes.py`:
+     - Added TDD unit test `test_initialize_carries_acceptance_criteria` verifying that initialized child records carry their criteria.
+     - Added TDD route test `test_initialize_empty_acceptance_criteria_returns_422` verifying that an empty criteria list answers 422.
+     - Updated existing test fixtures that previously relied on the empty default to supply acceptance criteria.
+     - Verified criteria exposure in both child and rollup responses.
+
+## Validation
+
+- Tested with pytest in WSL:
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1602 && GH_TOKEN=x HOME=/tmp/rdhome-1602 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_executor_stage.py tests/code_requests/test_executor_routes.py -q -o addopts='' -p no:cacheprovider -W ignore"` -> 24 passed in 15.36s.
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1602 && GH_TOKEN=x HOME=/tmp/rdhome-1602 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k \"executor\" -q -o addopts='' -p no:cacheprovider -W ignore"` -> 4 passed, 507 deselected in 25.79s.
+- Linting and type checking in PowerShell:
+  - `py -3.12 -m ruff check backend/code_requests/executor_models.py backend/code_requests/executor_stage.py tests/code_requests/test_executor_stage.py tests/code_requests/test_executor_routes.py` -> All checks passed!
+  - `py -3.12 -m ruff format backend/code_requests/executor_models.py backend/code_requests/executor_stage.py tests/code_requests/test_executor_stage.py tests/code_requests/test_executor_routes.py` -> 4 files left unchanged (formatted).
+  - `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` -> Success: no issues found in 294 source files.
+
+## Next Steps
+
+1. Review diff and commit changes.
+2. Open PR for issue #1602.
+
+---
+
+# Past handoff — Code_request.update staff action (#1604)
 
 Last updated: 2026-09-27
 

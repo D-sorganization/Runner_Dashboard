@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1602 | WP-2.2: Executor keeps each child's acceptance criteria and rejects children without them. Added `acceptance_criteria: list[str]` to `ChildExecutionRecord` (default empty list); updated `ChildIssuePayload.acceptance_criteria` to validate with `min_length=1` returning 422 on empty or missing criteria; carried criteria through `pipeline.initialize`; and exposed criteria in child and rollup responses. |
 | 2026-09-27 | #1604 | Staff action `code_request.update` (product-owner PRD): params exactly `{id, description}` (`extra="forbid"`), allowed only in `draft`/`triage`, scope `code_requests.write`; runs on the loop bridge and saves through the same `CodeRequestStore` the API uses (`get_code_request_store`). |
 | 2026-09-27 | #1603 | WP-2.1: Record plan approval audit (approved_by, approved_at) in PlanningSession and transition reason ("plan approved by <principal>"), while auto-filed plans leave fields unset and preserve "plan filed". Bind AgentProfile to staff_role="chief-architect", validate against roles.load_roles() without crashing startup, and surface staff_role in PlanningSession. |
 | 2026-09-27 | #1601 | WP-2.3: Fix Board gate secretary-note filter to query logins from _secretary_logins(), build Code Request URL from ORG and request.repository, establish BOARD_PROPOSAL_ROLE in staff/action_executors.py as single source for board secretary role dropping underscore alias board_secretary, and validate Board group coordinator in validate_action_default_roles. |

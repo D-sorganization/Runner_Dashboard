@@ -92,7 +92,16 @@ class ExecutorPipeline:
         payloads: list[ChildIssuePayload | ChildExecutionRecord],
         request: CodeRequest | None = None,
     ) -> None:
-        """Initialize pipeline with planned child issues and compute waves."""
+        """Initialize pipeline with planned child issues and compute waves.
+
+        Preconditions:
+            - payloads must not be empty.
+            - dependencies between payloads must form a directed acyclic graph.
+            - each child issue must have at least one acceptance criterion.
+        Postconditions:
+            - self.children populated with ChildExecutionRecord instances retaining acceptance_criteria.
+            - self.waves partitioned into acyclic execution waves.
+        """
         self.waves = compute_waves(payloads)
         self.children.clear()
         self.paused_branches.clear()
@@ -104,6 +113,9 @@ class ExecutorPipeline:
                 wave_map[k] = w_idx
 
         for p in payloads:
+            criteria = p.acceptance_criteria
+            if not criteria:
+                raise ValueError(f"Child issue {p.key!r} must have at least one acceptance criterion")
             rec = ChildExecutionRecord(
                 key=p.key,
                 repository=p.repository,
@@ -116,6 +128,7 @@ class ExecutorPipeline:
                 turnover_doc=p.turnover_doc,
                 handoff=getattr(p, "handoff", "") or p.turnover_doc,
                 wave=wave_map.get(p.key, 0),
+                acceptance_criteria=list(criteria),
             )
             self.children[p.key] = rec
 
