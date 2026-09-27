@@ -135,6 +135,19 @@ def _no_real_plan_quota(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_chat_scratch_sweep(monkeypatch):
+    """Chat turns never sweep the node's real temp dir or Claude projects root (#1688).
+
+    Tests of the sweep itself reset ``_last_sweep`` explicitly.
+    """
+    import math  # noqa: PLC0415
+
+    from staff import chat_scratch  # noqa: PLC0415
+
+    monkeypatch.setattr(chat_scratch, "_last_sweep", math.inf)
+
+
+@pytest.fixture(autouse=True)
 def _reset_main_cache_between_tests():
     """Clear the shared backend cache before and after every test."""
     from cache_utils import cache_clear  # noqa: PLC0415

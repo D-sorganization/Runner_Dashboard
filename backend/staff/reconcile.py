@@ -16,6 +16,7 @@ This module reconciles those orphaned runs at startup:
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -26,8 +27,8 @@ except ImportError:  # pragma: no cover
     psutil = None  # type: ignore[assignment]
 
 from fleet_events import EventStore, FleetEvent, get_event_store
+from staff import cli_projects, workspace
 from staff import lease as lease_mod
-from staff import workspace
 from staff.audit import record_audit
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.runner import StaffRunner
@@ -197,6 +198,11 @@ def reconcile_orphaned_runs(
         reconcile_interrupted_chat_messages(conv_store=conv_store)
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to reconcile interrupted chat messages: %s", exc, exc_info=True)
+
+    try:
+        cli_projects.sweep_orphan_run_projects(dict(os.environ), workspace.staff_worktrees_root())
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to sweep orphan run projects: %s", exc, exc_info=True)
 
     store = runner.store
     active = store.active_runs()
