@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import stat
 import subprocess
 import tempfile
 import time
@@ -113,12 +114,22 @@ def thread_scratch_dir(thread_id: str) -> str:
     between turns (turns of one thread may overlap, so no turn may remove it).
 
     Pre: ``thread_id`` is non-empty.
-    Post: the returned directory exists.
+    Post: the returned directory exists, is not a symlink and (on POSIX) is owned by
+    this process's user. If the predictable path was planted by someone else, the turn
+    runs in a private ``mkdtemp`` directory instead and only loses session resume.
     """
     assert thread_id.strip(), "thread_id must be non-empty"  # noqa: S101
     safe = re.sub(r"[^A-Za-z0-9_-]", "_", thread_id)
     path = Path(tempfile.gettempdir()) / f"staff_chat_{safe}"
-    path.mkdir(mode=0o700, exist_ok=True)
+    try:
+        path.mkdir(mode=0o700, exist_ok=True)
+        info = path.lstat()
+    except OSError:
+        info = None
+    owner_ok = info is not None and (not hasattr(os, "getuid") or info.st_uid == os.getuid())
+    if info is None or stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or not owner_ok:
+        log.warning("Chat scratch path %s is not a private directory; using a one-turn directory", path)
+        return tempfile.mkdtemp(prefix="staff_chat_")
     return str(path)
 
 

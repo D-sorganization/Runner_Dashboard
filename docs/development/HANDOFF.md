@@ -10,9 +10,9 @@ Last updated: 2026-09-27
 ## Objective and Status
 
 - Symptom: on DeskComputer at afd7a4c7, `scripts/staff_chat_smoke.py --memory` sent as `agent-grok` failed for Barb. On turn 2 she said no codeword had been given. The journal logged `Session resume failed for claude … falling back to replay`.
-- Cause 1: every chat turn ran in a fresh `mkdtemp` directory. The claude CLI files sessions under `$CLAUDE_CONFIG_DIR/projects/<cwd-slug>/` (on DeskComputer, turn 1 was under `-tmp-staff-chat-v68qcbv2`), so `--resume` from a new directory never found them. Fix: `staff.chat.thread_scratch_dir(thread_id)` is a stable per-thread directory under the temp dir, kept between turns because turns of one thread can overlap.
+- Cause 1: every chat turn ran in a fresh `mkdtemp` directory. The claude CLI files sessions under `$CLAUDE_CONFIG_DIR/projects/<cwd-slug>/` (on DeskComputer, turn 1 was under `-tmp-staff-chat-v68qcbv2`), so `--resume` from a new directory never found them. Fix: `staff.chat.thread_scratch_dir(thread_id)` is a stable per-thread directory under the temp dir, kept between turns because turns of one thread can overlap. A symlinked or foreign-owned directory at that predictable path is refused, and the turn falls back to a private `mkdtemp` (review on #1658).
 - Cause 2: `format_history_replay` charged the persona, contract and context against its 16k-char budget before any history, so a long persona plus a full fleet block (up to 8k) left no room for prior turns. Fix: the budget now covers only the prior turns plus the current turn. The persona and context keep their own caps.
-- Files: `backend/staff/chat.py`, `backend/staff/chat_history.py`, `tests/unit/test_staff_chat_memory.py` (new, 2 tests).
+- Files: `backend/staff/chat.py`, `backend/staff/chat_history.py`, `tests/unit/test_staff_chat_memory.py` (new, 3 tests).
 
 ## Validation
 

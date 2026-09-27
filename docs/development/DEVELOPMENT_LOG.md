@@ -27,7 +27,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** pending
 - **Paths:** `backend/staff/chat.py`, `backend/staff/chat_history.py`, `tests/unit/test_staff_chat_memory.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (memory tests red then green; chat/staff suites pass; mypy backend clean)
+- **Last verified:** 2026-09-27 (memory and planted-symlink tests red then green; chat/staff suites pass; mypy backend clean)
 - **Summary:** Chat turns of a thread run in one stable directory, so the claude CLI can resume the thread's session. History replay budgets only the prior turns, so a long persona and a full fleet block no longer squeeze them out.
 - **Next step:** Merge, redeploy DeskComputer and run `staff_chat_smoke.py --memory` against Barb.
 

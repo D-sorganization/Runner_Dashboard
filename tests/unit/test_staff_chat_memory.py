@@ -13,11 +13,13 @@ Two separate failures made Barb forget turn 1 on DeskComputer:
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from staff.chat import ChatTurnRunner
+from staff.chat import ChatTurnRunner, thread_scratch_dir
 from staff.chat_history import format_history_replay
 from staff.conversations import ConversationStore, get_conversation_store, reset_conversation_store
 from staff.roles import RoleSpec
@@ -123,3 +125,18 @@ async def test_turns_on_one_thread_run_in_the_same_directory_so_resume_finds_the
     assert cwds[0] == cwds[1], "a thread's turns must share one working directory"
     assert cwds[2] != cwds[0], "threads must not share a working directory"
     assert "--resume" in argvs[1] and argvs[1][argvs[1].index("--resume") + 1] == "sess-1"
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="POSIX ownership check")
+def test_a_planted_symlink_at_the_thread_path_is_not_used(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (tmp_path / "staff_chat_th_planted").symlink_to(target)
+
+    chosen = Path(thread_scratch_dir("th_planted"))
+
+    assert chosen.is_dir() and not chosen.is_symlink()
+    assert chosen.resolve() != target.resolve()
+    assert thread_scratch_dir("th_fresh") == thread_scratch_dir("th_fresh")
