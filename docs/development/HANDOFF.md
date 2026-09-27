@@ -1,4 +1,27 @@
-# Current handoff — Chat prompt boundary between fleet context and the owner's message (#1649)
+# Current handoff — Chat smoke --memory two-turn check (#1651)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1651`; branch `feat/smoke-memory-check`; PR: see DL-#1651; Issue #1651; DL-#1651.
+
+## Objective and Status
+
+- The one-turn smoke passed for Barb while she was refusing owner messages (#1649); a hand-run two-turn codeword probe caught it.
+- Drafted by agy from a TDD spec; reviewed and tidied (per-turn timeout, one seq-sort helper, single-line failure detail).
+
+## Validation
+
+- 5 new tests fail without the script change and pass with it; `tests/test_staff_chat_smoke.py` 15 passed; ruff clean.
+
+## Next Steps
+
+1. Merge; run `staff_chat_smoke.py --memory` against OGLaptop for barb and librarian after the #1649 deploy.
+
+---
+
+# Past handoff — Chat prompt boundary between fleet context and the owner's message (#1649)
 
 Last updated: 2026-09-27
 

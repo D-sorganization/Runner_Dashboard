@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1651 — Chat smoke --memory two-turn check
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1651
+- **Branch:** `feat/smoke-memory-check`
+- **PR:** pending
+- **Paths:** `scripts/staff_chat_smoke.py`, `tests/test_staff_chat_smoke.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (smoke tests 15 passed; new memory tests red then green)
+- **Summary:** Shared `_post_and_wait` for both turns (each with its own timeout), pure `check_memory`, `--memory` flag; default one-turn behaviour unchanged.
+- **Next step:** Merge; run `staff_chat_smoke.py --memory` against OGLaptop for barb and librarian after the #1649 deploy.
+
 ### DL-#1649 — Chat prompt boundary between fleet context and the owner's message
 
 - **State:** in_review
