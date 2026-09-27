@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `fix/claude-cli-version-floor`
 - Baseline commit: `a24fa3b2`
 - Implementation commit: `SELF`
-- Pull request: not created
+- Pull request: #1684 (open)
 - Governing issue/epic: #1680; DL-#1680. Related: #1669 / PR #1676 (reactive `cli_outdated` classification), #1586.
 
 ## Objective and status
@@ -45,11 +45,12 @@ Last updated: 2026-09-27
 
 ## Next steps
 
-1. Open the PR for `fix/claude-cli-version-floor` (Fixes #1680) and record its number here, in SPEC.md and in DL-#1680.
+1. Merge PR #1684 once CI is green; then mark DL-#1680 shipped.
 
 ## Change log
 
 - 2026-09-27: Floor bisected (2.1.259); version gate for runs and chat; roster `provider_versions` and Roster badge.
+- 2026-09-27: PR #1684 opened; merged origin/main (#1673 docs rows kept).
 
 ---
 
