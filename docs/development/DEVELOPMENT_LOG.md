@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1608 — Ship the Claude Status-Line Quota Script in the Artifact
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1608
+- **Branch:** `chore/overnight-polish`
+- **PR:** pending
+- **Paths:** `deploy/package-dashboard-artifact.sh`, `tests/deploy/test_artifact_deployment.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (artifact deployment tests 13 passed)
+- **Summary:** The status-line quota script is part of every artifact instead of a hand copy that the next install deletes.
+- **Next step:** Merge; redeploy OGLaptop and confirm `scripts/claude_statusline_quota.py` is in the artifact's `FILES.txt`.
+
 ### DL-#1606 — WP-2.2: Executor Built From the Filed Plan, Persisted Pipelines
 
 - **State:** in_review
@@ -43,6 +56,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (staff/action suites 1495 passed; full-tree line cap clean; mypy clean)
 - **Summary:** Hold and Code Request executors move to their own modules so `action_executors.py` is back under the 500-line cap that turned `main` red; the `conversations.py` docstring is reflowed one line shorter after #1617 took it to 501.
 - **Next step:** Merge the #1618 PR once CI is green.
+
 ### DL-#1607 · Decision SLA on owner inbox items
 
 - **State:** in_review
@@ -158,16 +172,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1597 · Turn Providers Off on Every Dispatch Path
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1597
 - **Branch:** `feat/1597-disabled-providers`
-- **PR:** not created
+- **PR:** #1598 (merged)
 - **Paths:** `backend/provider_switch.py`, `backend/staff/runner_ops.py`, `backend/staff/runner.py`, `backend/staff/retry.py`, `backend/staff/budget.py`, `backend/staff/availability.py`, `backend/agent_remediation/provider_probe.py`, `backend/agent_remediation/providers.py`, `tests/api/test_provider_switch.py`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 at `790d199a` (switch, staff runner and budget suites green)
 - **Summary:** One node switch, `STAFF_DISABLED_PROVIDERS`, keeps a provider out of staff runs, retries, the budget gate and every registry-backed dispatcher.
-- **Next step:** Merge the PR and set `STAFF_DISABLED_PROVIDERS=gemini` on OGLaptop.
+- **Next step:** none; shipped and deployed.
 
 ### DL-#1595 · Restore Green Main: Split adapters.py Under 500 Lines
 

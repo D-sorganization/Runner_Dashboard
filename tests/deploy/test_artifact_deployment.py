@@ -178,3 +178,20 @@ def test_package_script_content_deterministic_sorting():
     assert "sort >" in content, "FILES.txt must be sorted deterministically"
     assert "deployment.json" in content
     assert "sha256sum" in content
+
+
+def test_package_script_ships_statusline_quota_script():
+    content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
+    assert 'mkdir -p "${STAGE_DIR}/scripts"' in content
+    assert (
+        'cp "${SCRIPT_DIR}/scripts/claude_statusline_quota.py" "${STAGE_DIR}/scripts/claude_statusline_quota.py"'
+        in content
+    )
+
+
+def test_statusline_quota_script_exists_and_resolves_backend():
+    quota_script = REPO_ROOT / "scripts" / "claude_statusline_quota.py"
+    assert quota_script.exists(), "scripts/claude_statusline_quota.py must exist in repo"
+    content = quota_script.read_text(encoding="utf-8")
+    assert "parent.parent" in content
+    assert '"backend"' in content

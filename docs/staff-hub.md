@@ -500,6 +500,10 @@ files and never runs a CLI, so asking costs no quota.
 To keep Claude current between staff runs, set the status line of the account the node uses
 (`$CLAUDE_CONFIG_DIR/settings.json`) to
 `{"statusLine": {"type": "command", "command": "python3 <Runner_Dashboard>/scripts/claude_statusline_quota.py"}}`.
+The artifact ships the script (#1608), so a node's deployed copy is
+`~/actions-runners/dashboard/scripts/claude_statusline_quota.py`, replaced on every install. From a
+Windows Claude Code account, run it through WSL with the deployed venv:
+`wsl.exe -d Ubuntu -- /home/<user>/actions-runners/dashboard/.venv/bin/python /home/<user>/actions-runners/dashboard/scripts/claude_statusline_quota.py`.
 Include the Windows interactive Codex log directory (`/mnt/c/Users/<user>/.codex/sessions`)
 in `STAFF_CODEX_SESSION_DIRS` when Codex is also used from Windows. Windows past their reset
 are dropped. `quota: null` means no source has been seen yet, not zero usage.
