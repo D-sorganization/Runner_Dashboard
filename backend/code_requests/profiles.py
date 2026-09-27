@@ -11,6 +11,7 @@ import datetime as _dt_mod
 import json
 import logging
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -41,6 +42,7 @@ class AgentProfile(BaseModel):
     model: str = ""
     effort: str | None = None
     role: Literal["planner", "executor", "both"] = "both"
+    staff_role: str = "chief-architect"
     standards: list[str] = Field(default_factory=list)
     prompt_template: str = ""
     prompt_notes: str = ""
@@ -67,6 +69,7 @@ def get_default_profiles() -> list[AgentProfile]:
             model="claude-opus-4",
             effort="high",
             role="planner",
+            staff_role="chief-architect",
             standards=["tdd", "dbc", "dry", "lod", "security", "docs"],
             prompt_template="",
             prompt_notes="",
@@ -86,6 +89,7 @@ def get_default_profiles() -> list[AgentProfile]:
             model="gpt-5-codex",
             effort="medium",
             role="executor",
+            staff_role="chief-architect",
             standards=["tdd", "dbc"],
             prompt_template="",
             prompt_notes="",
@@ -210,3 +214,69 @@ class AgentProfileStore:
     def _save_raw(self, items: builtins.list[dict[str, Any]]) -> None:
         self._ensure_dir()
         config_schema.atomic_write_json(self.path, items)
+
+
+def validate_profile_staff_roles(
+    profiles: Sequence[AgentProfile] | AgentProfile | None = None,
+    raise_on_error: bool = False,
+) -> list[str]:
+    """Validate agent profile staff roles against the loaded staff roster.
+
+    Pre: Optional ``profiles`` (single profile, sequence of profiles, or None
+         to check all profiles from ``AgentProfileStore``).
+    Post: Returns a list of error strings; logs a warning for each error.
+          If ``raise_on_error`` is True, raises ValueError when any error is detected.
+          Returns empty list when no staff roles directory is located (never crashes startup).
+    """
+    from staff.roles import load_roles, roles_dir
+
+    r_dir = roles_dir()
+    if r_dir is None:
+        log.debug("No staff roles directory located; skipping agent profile staff roles validation")
+        return []
+
+    try:
+        roster = load_roles(r_dir)
+    except Exception as exc:
+        msg = f"Failed to load staff roles for validation: {exc}"
+        log.warning(msg)
+        if raise_on_error:
+            raise ValueError(msg) from exc
+        return [msg]
+
+    if profiles is None:
+        try:
+            profiles_to_check = AgentProfileStore().list()
+        except Exception as exc:
+            log.warning("Failed to list agent profiles for staff role validation: %s", exc)
+            return []
+    elif isinstance(profiles, AgentProfile):
+        profiles_to_check = [profiles]
+    else:
+        profiles_to_check = list(profiles)
+
+    errors: list[str] = []
+    for profile in profiles_to_check:
+        role_name = profile.staff_role
+        spec = roster.get(role_name)
+        if not spec:
+            errors.append(f"Profile '{profile.id}' has staff_role '{role_name}' which does not exist in loaded roster")
+        elif not spec.dispatchable:
+            errors.append(
+                f"Profile '{profile.id}' has staff_role '{role_name}' which is not dispatchable "
+                f"(retired={spec.retired}, surface={spec.surface})"
+            )
+
+    if errors:
+        for err in errors:
+            log.warning("Agent profile staff role validation warning: %s", err)
+        if raise_on_error:
+            raise ValueError("; ".join(errors))
+    return errors
+
+
+# Validate at import time without crashing the server
+try:
+    validate_profile_staff_roles(raise_on_error=False)
+except Exception:  # noqa: BLE001
+    log.exception("Unexpected error during agent profile staff roles initial validation")

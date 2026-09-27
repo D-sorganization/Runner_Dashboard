@@ -51,7 +51,11 @@ class FilingProgress(BaseModel):
 
 
 class PlanningSession(BaseModel):
-    """Durable planning state for one Code Request."""
+    """Durable planning state for one Code Request.
+
+    Pre: ``request_id`` identifies a valid Code Request.
+    Post: Tracks planning progress, operator approval audit, and attributed staff role.
+    """
 
     request_id: str
     status: PlanningStatus = PlanningStatus.AWAITING_PLAN
@@ -61,6 +65,9 @@ class PlanningSession(BaseModel):
     last_comment_id: int | None = None
     filing: FilingProgress = Field(default_factory=FilingProgress)
     updated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    staff_role: str | None = None
 
 
 def _output_contract() -> str:

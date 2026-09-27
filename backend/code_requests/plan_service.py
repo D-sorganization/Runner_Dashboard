@@ -12,6 +12,7 @@ import base64
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from code_requests.model import CodeRequest, CodeRequestState
@@ -107,7 +108,13 @@ async def _dispatch(deps: PlanDeps, request: CodeRequest, session: PlanningSessi
     )
     if code != 0:
         raise PlanningError(502, f"planner dispatch failed: {stderr.strip()[:300]}")
-    updated = session.model_copy(update={"attempts": session.attempts + 1, "status": PlanningStatus.AWAITING_PLAN})
+    updated = session.model_copy(
+        update={
+            "attempts": session.attempts + 1,
+            "status": PlanningStatus.AWAITING_PLAN,
+            "staff_role": profile.staff_role,
+        }
+    )
     return deps.sessions.save(updated)
 
 
@@ -121,10 +128,25 @@ async def start_planning(deps: PlanDeps, request_id: str, *, principal: str) -> 
     existing = deps.sessions.get(request.id)
     if existing is not None and existing.status is not PlanningStatus.FAILED:
         raise PlanningError(409, f"planning already {existing.status.value} for {request.id}")
-    return await _dispatch(deps, request, PlanningSession(request_id=request.id), principal)
+    profile = _planner_profile(deps, request)
+    return await _dispatch(
+        deps, request, PlanningSession(request_id=request.id, staff_role=profile.staff_role), principal
+    )
 
 
-async def _file(deps: PlanDeps, request: CodeRequest, session: PlanningSession, actor: str) -> PlanningSession:
+async def _file(
+    deps: PlanDeps,
+    request: CodeRequest,
+    session: PlanningSession,
+    actor: str,
+    *,
+    reason: str | None = None,
+) -> PlanningSession:
+    """File the plan on GitHub and transition the Code Request to ``planned``.
+
+    Pre: ``session.draft`` is not None.
+    Post: Epic and child issues filed, turnover comments posted, request moved to ``planned``.
+    """
     assert session.draft is not None, "only a validated draft is filed"
     try:
         await file_plan(request, session.draft, session.filing, org=deps.org, fetch=deps.fetch, write=deps.write)
@@ -133,8 +155,9 @@ async def _file(deps: PlanDeps, request: CodeRequest, session: PlanningSession, 
     session.status = PlanningStatus.FILED
     deps.sessions.save(session)
     epic = session.filing.epic_url or f"{deps.org}/{request.repository}#{session.filing.epic_number}"
+    transition_reason = reason or f"plan filed as {epic}"
     planned = await deps.requests.transition(
-        request.id, CodeRequestState.PLANNED, actor=actor, reason=f"plan filed as {epic}"
+        request.id, CodeRequestState.PLANNED, actor=actor, reason=transition_reason
     )
     await deps.requests.save(planned.model_copy(update={"plan_epic": epic}))
     return session
@@ -144,7 +167,11 @@ async def submit_plan(deps: PlanDeps, request_id: str, output: str, *, actor: st
     """Validate planner output and act on it: draft, file, re-prompt or fail."""
     request = await _load(deps, request_id)
     session = _session(deps, request.id)
-    requires_approval = _planner_profile(deps, request).approval_gates.get("plan_requires_approval", True)
+    profile = _planner_profile(deps, request)
+    requires_approval = profile.approval_gates.get("plan_requires_approval", True)
+    if not session.staff_role:
+        session = session.model_copy(update={"staff_role": profile.staff_role})
+        deps.sessions.save(session)
     try:
         session, action = receive_plan(
             session, output, repository=request.repository, requires_approval=requires_approval
@@ -202,9 +229,21 @@ async def edit_draft(deps: PlanDeps, request_id: str, plan: dict[str, Any]) -> P
 
 
 async def approve_plan(deps: PlanDeps, request_id: str, *, actor: str) -> PlanningSession:
-    """Operator approval: file the draft on GitHub and move the request to ``planned``."""
+    """Operator approval: file the draft on GitHub and move the request to ``planned``.
+
+    Pre: An existing draft session exists for ``request_id``.
+    Post: Approval principal and timestamp are recorded on the session,
+          transition reason names the approving principal, and the request is ``planned``.
+    """
     request = await _load(deps, request_id)
     session = _session(deps, request.id)
     if session.status is not PlanningStatus.DRAFT:
         raise PlanningError(409, f"only a draft can be approved (status {session.status.value})")
-    return await _file(deps, request, session, actor)
+    session = session.model_copy(
+        update={
+            "approved_by": actor,
+            "approved_at": datetime.now(UTC),
+        }
+    )
+    deps.sessions.save(session)
+    return await _file(deps, request, session, actor, reason=f"plan approved by {actor}")

@@ -11,6 +11,7 @@ import asyncio
 import base64
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -239,3 +240,51 @@ def test_planning_starts_only_from_the_planning_state(env: Any, state: CodeReque
         run(start_planning(deps, "cr-plan-1", principal="owner"))
     assert exc.value.status == 409
     assert planner.prompts == []
+
+
+def test_approve_plan_records_principal_and_time_and_transition_reason(env: Any) -> None:
+    deps, gh, planner = env
+    session = run(start_planning(deps, "cr-plan-1", principal="owner"))
+    assert session.staff_role == "chief-architect"
+    session = run(submit_plan(deps, "cr-plan-1", "```json\n" + json.dumps(good_plan()) + "\n```", actor="planner-bot"))
+    assert session.status is PlanningStatus.DRAFT
+    assert session.approved_by is None
+    assert session.approved_at is None
+
+    session = run(approve_plan(deps, "cr-plan-1", actor="operator-alice"))
+    assert session.status is PlanningStatus.FILED
+    assert session.approved_by == "operator-alice"
+    assert session.approved_at is not None
+    assert (datetime.now(UTC) - session.approved_at).total_seconds() < 10
+
+    # Ensure persisted session in store also has them
+    persisted = deps.sessions.get("cr-plan-1")
+    assert persisted is not None
+    assert persisted.approved_by == "operator-alice"
+    assert persisted.approved_at is not None
+
+    # Check request state and transition reason names the principal
+    request = run(deps.requests.get("cr-plan-1"))
+    assert request.state is CodeRequestState.PLANNED
+    assert request.audit_trail[-1].reason == "plan approved by operator-alice"
+
+
+def test_auto_file_leaves_approval_fields_unset_and_keeps_reason(env: Any) -> None:
+    deps, gh, _ = env
+    deps.profiles.update("planner-strong", {"approval_gates": {"plan_requires_approval": False}})
+    session = run(start_planning(deps, "cr-plan-1", principal="owner"))
+    assert session.staff_role == "chief-architect"
+    session = run(submit_plan(deps, "cr-plan-1", json.dumps(good_plan()), actor="planner-bot"))
+    assert session.status is PlanningStatus.FILED
+    assert session.approved_by is None
+    assert session.approved_at is None
+
+    persisted = deps.sessions.get("cr-plan-1")
+    assert persisted is not None
+    assert persisted.approved_by is None
+    assert persisted.approved_at is None
+
+    request = run(deps.requests.get("cr-plan-1"))
+    assert request.state is CodeRequestState.PLANNED
+    assert request.audit_trail[-1].reason.startswith("plan filed")
+    assert "operator" not in request.audit_trail[-1].reason

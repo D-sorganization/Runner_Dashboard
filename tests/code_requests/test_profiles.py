@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from code_requests.profiles import AgentProfile, AgentProfileStore
+from code_requests.profiles import AgentProfile, AgentProfileStore, validate_profile_staff_roles
 from pydantic import ValidationError
 
 
@@ -115,3 +117,49 @@ def test_store_handles_corrupt_file(tmp_path: Path) -> None:
     store = AgentProfileStore(store_path)
     profiles = store.list()
     assert len(profiles) >= 2
+
+
+def test_agent_profile_staff_role_default() -> None:
+    """AgentProfile defaults staff_role to 'chief-architect'."""
+    profile = AgentProfile(
+        id="test-planner",
+        name="Test Planner",
+        provider="claude_code_cli",
+        role="planner",
+    )
+    assert profile.staff_role == "chief-architect"
+
+
+def test_validate_profile_staff_roles_reports_unknown_role(caplog: pytest.LogCaptureFixture) -> None:
+    """When a profile has an unknown staff_role, the validator reports it."""
+    profile = AgentProfile(
+        id="custom-planner",
+        name="Custom Planner",
+        provider="claude_code_cli",
+        staff_role="unknown-role-xyz",
+    )
+    with (
+        patch("staff.roles.roles_dir", return_value=Path("/mock/roles")),
+        patch("staff.roles.load_roles", return_value={}),
+    ):
+        with caplog.at_level(logging.WARNING):
+            errors = validate_profile_staff_roles([profile], raise_on_error=False)
+            assert len(errors) == 1
+            assert "unknown-role-xyz" in errors[0]
+            assert "custom-planner" in errors[0]
+            assert any("unknown-role-xyz" in r.message for r in caplog.records)
+
+        with pytest.raises(ValueError, match="unknown-role-xyz"):
+            validate_profile_staff_roles([profile], raise_on_error=True)
+
+
+def test_validate_profile_staff_roles_skips_when_no_roles_dir() -> None:
+    """When roles_dir is None, validation gracefully returns empty."""
+    profile = AgentProfile(
+        id="custom-planner",
+        name="Custom Planner",
+        provider="claude_code_cli",
+        staff_role="chief-architect",
+    )
+    with patch("staff.roles.roles_dir", return_value=None):
+        assert validate_profile_staff_roles([profile], raise_on_error=True) == []

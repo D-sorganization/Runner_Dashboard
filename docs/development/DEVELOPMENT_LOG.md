@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1603 · Record Plan Approval and Bind Planner to Roster Role
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1603
+- **Branch:** `fix/1603-plan-approval-audit`
+- **PR:** pending
+- **Paths:** `backend/code_requests/planner.py`, `backend/code_requests/profiles.py`, `backend/code_requests/plan_service.py`, `tests/code_requests/test_planner_stage.py`, `tests/code_requests/test_profiles.py`, `tests/api/test_code_request_plans_api.py`, `SPEC.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 at `ed1e9824` (27 passed in test_profiles.py, test_code_request_plans_api.py, test_planner_stage.py; 65 passed in broader test set; ruff and mypy clean)
+- **Summary:** Added `approved_by` and `approved_at` to `PlanningSession`, set in `approve_plan` from the acting principal with transition reason `plan approved by <principal>` (auto-filed plans leave unset and keep reason "plan filed"). Bound planner profiles to roster role `staff_role="chief-architect"` on `AgentProfile`, added non-crashing `validate_profile_staff_roles` against `roles.load_roles()`, and surfaced `staff_role` in `PlanningSession`.
+- **Next step:** Merge the #1603 PR once CI is green.
+
 ### DL-#1597 · Turn Providers Off on Every Dispatch Path
 
 - **State:** in_review

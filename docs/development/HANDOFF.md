@@ -1,4 +1,34 @@
-# Current handoff — Turn providers off on every dispatch path (#1597)
+# Current handoff — Plan approval audit and planner staff role (#1603)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-1603`; branch `fix/1603-plan-approval-audit`; commit `SELF` (HEAD `ed1e9824510500858f25d98dea57cfba584cb09d`); PR: pending; Issue #1603; DL-#1603.
+
+## Objective and Status
+
+- Add approval audit (`approved_by`, `approved_at`) to `PlanningSession` (`backend/code_requests/planner.py`), set upon operator approval in `approve_plan` (`backend/code_requests/plan_service.py`), with state transition reason `plan approved by <principal>`.
+- Auto-filed plans (`plan_requires_approval` false) leave `approved_by` and `approved_at` unset (`None`) and keep transition reason starting with "plan filed".
+- Bind `AgentProfile` to roster role `staff_role: str = "chief-architect"` (`backend/code_requests/profiles.py`), validated against `roles.load_roles()` with warning on unknown names without crashing server startup.
+- Surface `staff_role` in `PlanningSession` for attribution.
+
+## Validation
+
+- Exact test commands and results:
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1603 && GH_TOKEN=x HOME=/tmp/rdhome-1603 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py tests/code_requests/test_planner_stage.py -q -o addopts='' -p no:cacheprovider -W ignore"`: 27 passed in 18.48s.
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1603 && GH_TOKEN=x HOME=/tmp/rdhome-1603 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k 'plan or profile' -q -o addopts='' -p no:cacheprovider -W ignore"`: 65 passed, 449 deselected in 25.73s.
+  - `py -3.12 -m ruff check backend/code_requests/planner.py backend/code_requests/profiles.py backend/code_requests/plan_service.py tests/code_requests/test_planner_stage.py tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py`: All checks passed!
+  - `py -3.12 -m ruff format backend/code_requests/planner.py backend/code_requests/profiles.py backend/code_requests/plan_service.py tests/code_requests/test_planner_stage.py tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py`: 5 files reformatted, 1 file left unchanged.
+  - `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: Success: no issues found in 294 source files.
+
+## Next Steps
+
+1. Review uncommitted changes and create PR for issue #1603.
+
+---
+
+# Past handoff — Turn providers off on every dispatch path (#1597)
 
 Last updated: 2026-09-26
 
