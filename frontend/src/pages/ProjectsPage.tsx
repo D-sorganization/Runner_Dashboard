@@ -11,8 +11,12 @@
  * the reason on its card; the page itself never fails on one bad repo.
  *
  * Each card also shows the repo's latest CI result from `GET /api/repos`
- * (#1338, folded in from the retired Organization tab). That fetch is
- * independent: if it fails the cards stay and a note names the failure.
+ * (#1338, folded in from the retired Organization tab), and its assessment
+ * score history from `GET /api/assessments/scores` with a "Request assessment"
+ * action (#1338, from the retired Assessments tab). The request is the existing
+ * `assessment.run` Staff request, which dispatches Jules-Assess-Repo.yml; it
+ * takes no staff role. Both fetches are independent: if one fails the cards
+ * stay and a note names the failure.
  */
 import React from "react";
 import { apiRequest, ApiClientError, legacyFetch } from "../lib/api";
@@ -22,7 +26,7 @@ import {
   ProjectCard,
   STEWARD_RUN_BODY,
 } from "./Projects";
-import type { ProjectsResponse, RepoCiStatus } from "./Projects";
+import type { AssessmentScore, ProjectsResponse, RepoCiStatus } from "./Projects";
 
 interface RepoCiRow {
   name?: string;
@@ -48,6 +52,19 @@ function ciByRepo(payload: unknown): Record<string, RepoCiStatus> {
   return out;
 }
 
+function scoresByRepo(payload: unknown): Record<string, AssessmentScore[]> {
+  const rows: unknown = Array.isArray(payload)
+    ? payload
+    : (payload as { scores?: unknown } | null)?.scores;
+  const out: Record<string, AssessmentScore[]> = {};
+  if (!Array.isArray(rows)) return out;
+  for (const row of rows as AssessmentScore[]) {
+    if (!row || typeof row.repo !== "string") continue;
+    (out[row.repo] ??= []).push(row);
+  }
+  return out;
+}
+
 function describeError(err: unknown): string {
   if (err instanceof ApiClientError) return `${err.status}: ${err.message}`;
   return err instanceof Error ? err.message : String(err);
@@ -61,6 +78,10 @@ export function ProjectsPage(): React.ReactElement {
   const [notices, setNotices] = React.useState<Record<string, string>>({});
   const [ci, setCi] = React.useState<Record<string, RepoCiStatus>>({});
   const [ciError, setCiError] = React.useState<string | null>(null);
+  const [scores, setScores] = React.useState<Record<string, AssessmentScore[]>>({});
+  const [scoresError, setScoresError] = React.useState<string | null>(null);
+  const [assessing, setAssessing] = React.useState<Record<string, boolean>>({});
+  const [assessNotices, setAssessNotices] = React.useState<Record<string, string>>({});
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -83,6 +104,19 @@ export function ProjectsPage(): React.ReactElement {
       .catch((err: unknown) => {
         setCi({});
         setCiError(describeError(err));
+      });
+    legacyFetch("/api/assessments/scores")
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((payload: unknown) => {
+        setScores(scoresByRepo(payload));
+        setScoresError(null);
+      })
+      .catch((err: unknown) => {
+        setScores({});
+        setScoresError(describeError(err));
       });
   }, []);
 
@@ -120,6 +154,33 @@ export function ProjectsPage(): React.ReactElement {
       .finally(() => setRunning((prev) => ({ ...prev, [repo]: false })));
   }, []);
 
+  const requestAssessment = React.useCallback((repo: string, provider: string) => {
+    setAssessing((prev) => ({ ...prev, [repo]: true }));
+    submitStaffRequest({
+      kind: "assessment.run",
+      target: { repo, ref: "" },
+      provider: provider || null,
+      prompt: "",
+      machine: "local",
+      dry_run: false,
+    })
+      .then((resp) => {
+        const runId = resp.run_id || resp.result?.run_id;
+        const id = runId ? ` (run ${runId.slice(0, 8)})` : "";
+        setAssessNotices((prev) => ({
+          ...prev,
+          [repo]: `Assessment requested${id}.`,
+        }));
+      })
+      .catch((err: unknown) => {
+        setAssessNotices((prev) => ({
+          ...prev,
+          [repo]: `Assessment request failed — ${errorMessage(err)}`,
+        }));
+      })
+      .finally(() => setAssessing((prev) => ({ ...prev, [repo]: false })));
+  }, []);
+
   return (
     <div className="projects-page">
       <div
@@ -151,6 +212,11 @@ export function ProjectsPage(): React.ReactElement {
           CI status unavailable — {ciError}
         </p>
       )}
+      {scoresError && (
+        <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>
+          Assessment scores unavailable — {scoresError}
+        </p>
+      )}
       {!loadError && data?.summary && (
         <FleetSummaryBar
           summary={data.summary}
@@ -178,6 +244,10 @@ export function ProjectsPage(): React.ReactElement {
             notice={notices[project.repo]}
             ci={ci[project.repo]}
             onRunSteward={runSteward}
+            assessments={scores[project.repo]}
+            assessing={Boolean(assessing[project.repo])}
+            assessmentNotice={assessNotices[project.repo]}
+            onRequestAssessment={requestAssessment}
           />
         ))}
       </div>

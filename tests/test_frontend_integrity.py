@@ -74,7 +74,6 @@ _REQUIRED_FUNCTIONS = [
     "function RemediationTab",
     "function WorkflowsTab",
     "function CredentialsTab",
-    "function AssessmentsTab",
     "function CodeRequestsTab",
     "function FeatureRequestsTab",
     "function MaxwellTab",
@@ -349,8 +348,8 @@ def test_mobile_read_mostly_reports_assessments_feature_requests_markers_present
     assert "reports-sidebar" in content
     assert "reports-reader" in content
     assert "report-open-raw" in content
-    assert "assessment-mobile-card-list" in content
-    assert "assessment-mobile-score" in content
+    assert "projects-assessment-history" in content
+    assert "assessment-score" in content
     assert "feature-request-mobile-list" in content
     assert "feature-request-mobile-card" in content
     assert "Feature request history" in content
@@ -664,19 +663,20 @@ def test_workflows_desktop_route_bypasses_legacy_app() -> None:
     assert "export function WorkflowsPage" in workflows_page
 
 
-def test_assessments_desktop_route_bypasses_legacy_app() -> None:
-    """The Assessments desktop tab owns repos/scores/dispatch outside legacy/App.tsx."""
+def test_assessments_tab_is_retired_into_projects() -> None:
+    """Assessments split into Projects: score history plus an assessment.run request (#1338)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
         encoding="utf-8",
     )
-    assessments_page = (_FRONTEND_DIR / "src" / "pages" / "AssessmentsPage.tsx").read_text(encoding="utf-8")
+    projects_page = (_FRONTEND_DIR / "src" / "pages" / "ProjectsPage.tsx").read_text(
+        encoding="utf-8",
+    )
 
-    assert 'case "assessments":' in routed_shell
-    assert "return <AssessmentsPage />;" in routed_shell
-    assert 'legacyFetch("/api/repos"' in assessments_page
-    assert 'legacyFetch("/api/assessments/scores"' in assessments_page
-    assert "submitStaffRequest" in assessments_page
-    assert "export function AssessmentsPage" in assessments_page
+    assert not (_FRONTEND_DIR / "src" / "pages" / "AssessmentsPage.tsx").exists()
+    assert not (_FRONTEND_DIR / "src" / "pages" / "Assessments.tsx").exists()
+    assert 'case "assessments":' not in routed_shell
+    assert 'legacyFetch("/api/assessments/scores"' in projects_page
+    assert 'kind: "assessment.run"' in projects_page
 
 
 def test_credentials_settings_section_bypasses_legacy_app() -> None:

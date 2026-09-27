@@ -1,3 +1,48 @@
+# Current handoff — SC-G6: Assessments split into Projects (DL-#1338-assessments)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1338-assess`
+- Branch: `feat/1338-assessments-split`
+- Baseline commit: `246c0d58`
+- Implementation commit: `SELF`
+- Pull request: #1707 (draft → ready once PR CI is green)
+- Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Assessments"; owner follow-up 2026-09-27: keep the existing `assessment.run` → Jules-Assess-Repo.yml workflow, no assessor staff role); DL-#1338-assessments.
+
+## Objective and status
+
+- Owner decision: "Assess repo X" becomes a request, score history moves to the Projects card, and the Assessments tab retires and redirects to Projects.
+- `pages/Projects/AssessmentHistory.tsx` (new): per-card score history, newest first, with a provider select and a "Request assessment" button.
+- `pages/ProjectsPage.tsx`: fetches `GET /api/assessments/scores` independently of the other fetches (a failure shows a note, the cards stay) and submits `assessment.run` Staff requests with no role.
+- Retired: `pages/Assessments.tsx`, `pages/AssessmentsPage.tsx`, the nav item, the RoutedShell case, the `ClipboardCheckIcon` and the orphaned `.assessment-*` CSS. `/fleet/assessments`, `/t/assessments` and `/assessments` redirect to `/work/projects`.
+- Unchanged: every backend route, including `/api/assessments/scores` and `/api/assessments/dispatch`.
+
+## Files and decisions
+
+- Tests: `shell/__tests__/retiredAssessmentsTab.test.ts` and `pages/__tests__/ProjectsAssessments.test.tsx` (new); RoutedShell redirect cases; `AssessmentsPage.test.tsx` removed with the page. Python: the Assessments route test is replaced by a retirement test, and the mobile smoke profile "Assessments" now opens Projects with the new markers.
+
+## Validation
+
+- The new tests failed first (12 failing).
+- WSL: vitest on `frontend/src/shell` and the Projects tests 154/154; typecheck and eslint clean; pytest `tests/test_frontend_integrity.py tests/test_mobile_test_harness.py` 75 passed, 1 xfailed.
+
+## Blockers and risks
+
+- None. Rebased onto main after #1700 (Settings consolidation) merged.
+
+## Next steps
+
+1. Confirm #1707's CI is green (quality-gate, tests, Vitest, ci-health-check), mark it ready and arm auto-merge via automerge_guard.
+
+## Change log
+
+- 2026-09-27: Assessments split into Projects cards; the tab retires and redirects to Projects.
+
+---
+
 # Current handoff — Restore green main on ci-health-check (Staff.test.tsx line cap) (DL-#1705)
 
 Last updated: 2026-09-27

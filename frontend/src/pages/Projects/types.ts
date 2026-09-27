@@ -93,6 +93,15 @@ export interface RepoCiStatus {
   runUrl: string | null;
 }
 
+/** One parsed assessment score from GET /api/assessments/scores (#1338). */
+export interface AssessmentScore {
+  repo?: string | null;
+  score?: number | string | null;
+  date?: number | string | null;
+  provider?: string | null;
+  summary?: string | null;
+}
+
 export interface ProjectsResponse {
   projects: ProjectOverview[];
   count: number;

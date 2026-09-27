@@ -2539,18 +2539,15 @@ th.sortable.active .sort-indicator {
 .report-open-raw:hover {
   text-decoration: underline;
 }
-.assessment-mobile-card-list,
 .feature-request-mobile-list {
   display: none;
 }
-.assessment-mobile-card,
 .feature-request-mobile-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
   padding: 12px;
 }
-.assessment-mobile-card-title,
 .feature-request-mobile-title {
   display: flex;
   justify-content: space-between;
@@ -2559,27 +2556,18 @@ th.sortable.active .sort-indicator {
   font-size: 13px;
   font-weight: 600;
 }
-.assessment-mobile-score {
-  color: var(--accent-green);
-  font-size: 18px;
-  line-height: 1;
-  white-space: nowrap;
-}
-.assessment-mobile-summary,
 .feature-request-mobile-prompt {
   margin-top: 8px;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
-.assessment-mobile-meta,
 .feature-request-mobile-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
 }
-.assessment-mobile-chip,
 .feature-request-mobile-chip {
   border-radius: var(--radius-pill);
   background: var(--bg-tertiary);
@@ -3128,11 +3116,9 @@ th.sortable.active .sort-indicator {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
-  .assessment-desktop-table,
   .feature-request-desktop-history {
     display: none !important;
   }
-  .assessment-mobile-card-list,
   .feature-request-mobile-list {
     display: grid;
     gap: 10px;
