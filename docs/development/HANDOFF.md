@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `feat/1338-local-tools-in-settings`
 - Baseline commit: `ce6e9311`
 - Implementation commit: `SELF`
-- Pull request: not created
+- Pull request: #1679 (draft)
 - Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Local Tools"); DL-#1338-localtools.
 
 ## Objective and status
@@ -43,6 +43,7 @@ Last updated: 2026-09-27
 ## Change log
 
 - 2026-09-27: Local Tools moved into a Settings page with sections; old routes redirect.
+- 2026-09-27: PR #1679 opened; SPEC change-log row added.
 
 ---
 

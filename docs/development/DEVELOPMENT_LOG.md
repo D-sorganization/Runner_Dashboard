@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1338 (owner decision row "Local Tools", recorded 2026-09-25)
 - **Branch:** `feat/1338-local-tools-in-settings`
-- **PR:** not created
+- **PR:** #1679
 - **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/lib/apiErrorGuidance.ts`, `frontend/src/pages/Maxwell/CodebaseChat.tsx`, `frontend/src/pages/Settings/__tests__/SettingsPage.test.tsx`, `frontend/src/shell/__tests__/retiredLocalToolsTab.test.ts`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (targeted vitest 556 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean)
