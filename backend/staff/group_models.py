@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
+import provider_switch
 from staff.pricing import PRICE_TABLE, Price
 from staff.reply_contract import ProposedAction
 
 DEFAULT_COST_THRESHOLD_USD = 0.50
 # Same budget as a panel turn (panel_models.DEFAULT_TURN_TIMEOUT_SECONDS); real CLI turns run minutes (#1637).
 DEFAULT_SEAT_TIMEOUT_SECONDS = 300.0
+SEAT_STAND_IN_PROVIDER = "claude"
+SEAT_STAND_IN_MODEL = "sonnet-5"
 
 
 @dataclass(frozen=True)
@@ -162,3 +165,30 @@ def lookup_seat_price(provider: str, model: str) -> Price:
         if k in model.lower():
             return price
     return Price(input_usd=2.5, output_usd=10.0, estimate=True)
+
+
+def seat_on_node(seat: SeatSpec) -> SeatSpec:
+    """Resolve the effective seat specification for execution on this node (#1646).
+
+    Preconditions:
+        seat is a valid SeatSpec instance.
+
+    Postconditions:
+        a seat on a provider switched off here (#1597) comes back on
+        SEAT_STAND_IN_PROVIDER / SEAT_STAND_IN_MODEL; any other seat is returned as is.
+        name, title, role and mandate are always kept, so the seat argues the same brief.
+    """
+    if provider_switch.is_disabled(seat.provider):
+        return replace(seat, provider=SEAT_STAND_IN_PROVIDER, model=SEAT_STAND_IN_MODEL)
+    return seat
+
+
+def seat_label(seat: SeatSpec) -> str:
+    """The seat's title as the owner sees it; a stood-in seat says who actually answered.
+
+    Post: ``seat.title`` when the seat runs on its own provider, otherwise the title plus
+    ``(stand-in: <provider> — <pinned provider> disabled on this node)``.
+    """
+    if seat_on_node(seat) is seat:
+        return seat.title
+    return f"{seat.title} (stand-in: {SEAT_STAND_IN_PROVIDER} — {seat.provider} disabled on this node)"

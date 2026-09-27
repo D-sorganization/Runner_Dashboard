@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Pure `staff/turn_prompt.py` (`context_section`, `compose_turn_prompt`, `BOUNDARY_MARKERS`) used by the resume and replay paths; context lines that look like a boundary are quoted so repo/board text cannot forge one.
 - **Next step:** Merge; redeploy OGLaptop and re-run the two-turn Barb memory probe.
 
+### DL-#1646 — Board seat on a disabled provider stands in on claude
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1646
+- **Branch:** `fix/board-seat-stand-in`
+- **PR:** pending
+- **Paths:** `backend/staff/group_models.py`, `backend/staff/groups.py`, `tests/unit/test_staff_board_seat_stand_in.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (stand-in tests red then green; 308 group/board/seat tests pass)
+- **Summary:** Pure `seat_on_node(seat)` swaps only provider/model for a disabled-provider seat; used at the two `group.seats` loops (estimate, fan-out); `seat_label` marks the stand-in in the summary.
+- **Next step:** Merge; redeploy OGLaptop and run one Board turn to confirm 4/4 seats answer.
+
 ### DL-#1645 — Panels leave out providers switched off on the node
 
 - **State:** in_review
