@@ -1,3 +1,35 @@
+# Current handoff — A failed auto-review gets one more attempt (#1662)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `/home/user/Runner_Dashboard`
+- Branch: `claude/runner-dashboard-roles-gaps-k9i38r`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1662 (decision 4 of Repository_Management#1766); DL-#1662. DL-#1660 shipped in #1661.
+
+## Objective and Status
+
+- `_already_reviewed` (`backend/staff/review.py`) ignores review runs that ended `failed`. It reads runner retries too (`logical_only=False`), so an in-flight retry still counts. It stops at `MAX_AUTO_REVIEW_ATTEMPTS = 2` attempts, counting only runs without `retry_of`.
+- Queued, running, succeeded, `needs_input` and `cancelled` reviews still count as reviewed. A cancel is an operator decision.
+- `_review_claim` takes the `flock` only when `store.path` is a `str` or `Path`. A `MagicMock` store used to leave `<MagicMock …>.auto-review.lock` files in the working directory.
+- The owner decided the reviewer stays advisory for two weeks, then gets a blocking decision on P0 repos based on its false-positive rate. That evaluation is tracked on Repository_Management#1766, not here.
+
+## Validation
+
+- `cd backend && python -m pytest ../tests/unit/test_staff_review_runtime.py`: 27 passed. Each new test failed before the change, except the regression guards for statuses that already counted.
+- `pytest tests/unit tests/api -k "staff or review"`: the same 14 failures as on `main` (chat-turn and thread API tests, environment-related), nothing new.
+- `ruff check`, `ruff format --check` and `mypy backend/staff/review.py`: clean.
+
+## Next Steps
+
+1. Merge the PR once CI is green.
+
+---
+
 # Current handoff — LF line endings enforced by .gitattributes (#1660)
 
 Last updated: 2026-09-27

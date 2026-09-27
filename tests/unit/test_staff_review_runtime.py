@@ -207,6 +207,75 @@ def test_auto_review_skips_a_pr_that_already_has_a_review_run(store: RunStore, a
 
 
 @pytest.mark.unit
+def test_review_claim_writes_no_lock_file_for_a_store_without_a_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import MagicMock
+
+    from staff.review import _review_claim
+
+    monkeypatch.chdir(tmp_path)
+    with _review_claim(MagicMock()):
+        pass
+    assert list(tmp_path.glob("*.auto-review.lock")) == []
+
+
+@pytest.mark.unit
+def test_auto_review_retries_a_pr_whose_only_review_failed(store: RunStore, auto_on: None) -> None:
+    author = _add(store, _run("run-author"), pr_number=42)
+    _add(store, _run("run-failed-review", role="code-reviewer", target_kind="pr", target_ref="PR #42", status="failed"))
+    runner = _Runner(store, _roster("gemini"))
+
+    assert auto_review_if_eligible(author, _verified(42), store=store, runner=runner, gh_probe=_Trailers([])) is True
+    assert len(runner.submitted) == 1
+
+
+@pytest.mark.unit
+def test_auto_review_stops_after_two_failed_review_attempts(store: RunStore, auto_on: None) -> None:
+    author = _add(store, _run("run-author"), pr_number=42)
+    for n in (1, 2):
+        _add(
+            store, _run(f"run-failed-{n}", role="code-reviewer", target_kind="pr", target_ref="PR #42", status="failed")
+        )
+    runner = _Runner(store, _roster("gemini"))
+
+    assert auto_review_if_eligible(author, _verified(42), store=store, runner=runner, gh_probe=_Trailers([])) is False
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status", ["cancelled", "needs_input", "succeeded"])
+def test_auto_review_does_not_retry_a_review_that_did_not_fail(store: RunStore, auto_on: None, status: str) -> None:
+    author = _add(store, _run("run-author"), pr_number=42)
+    _add(store, _run("run-old-review", role="code-reviewer", target_kind="pr", target_ref="PR #42", status=status))
+    runner = _Runner(store, _roster("gemini"))
+
+    assert auto_review_if_eligible(author, _verified(42), store=store, runner=runner, gh_probe=_Trailers([])) is False
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_auto_review_waits_for_the_runner_retry_of_a_failed_review(store: RunStore, auto_on: None) -> None:
+    author = _add(store, _run("run-author"), pr_number=42)
+    _add(store, _run("run-review", role="code-reviewer", target_kind="pr", target_ref="PR #42", status="failed"))
+    _add(
+        store,
+        _run(
+            "run-review-retry",
+            role="code-reviewer",
+            target_kind="pr",
+            target_ref="PR #42",
+            retry_of="run-review",
+            attempt=2,
+        ),
+    )
+    runner = _Runner(store, _roster("gemini"))
+
+    assert auto_review_if_eligible(author, _verified(42), store=store, runner=runner, gh_probe=_Trailers([])) is False
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
 def test_auto_review_reports_a_runner_refusal_as_not_dispatched(
     store: RunStore, auto_on: None, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -18,17 +18,17 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1660 — LF line endings enforced by .gitattributes
+### DL-#1662 — A failed auto-review gets one more attempt
 
 - **State:** in_review
 - **Owner:** claude
-- **Issue:** #1660 (decision 5 of Repository_Management#1766)
+- **Issue:** #1662 (decision 4 of Repository_Management#1766)
 - **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
 - **PR:** not created
-- **Paths:** `.gitattributes`
+- **Paths:** `backend/staff/review.py`, `tests/unit/test_staff_review_runtime.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (`git ls-files --eol` shows 0 CRLF files in the index; `git diff --ignore-cr-at-eol` changes only `.gitattributes` and the tracking docs)
-- **Summary:** A Windows host committed CRLF, so every line of the file showed as changed and merges conflicted. `* text=auto eol=lf` fixes the line ending in the repository for every host; batch files keep CRLF in the working tree. The 22 files already stored with CRLF were renormalized with no content change.
+- **Last verified:** 2026-09-27 (`tests/unit/test_staff_review_runtime.py` 27 passed; staff/review unit+api subset has the same 14 pre-existing failures as `main`; ruff and mypy clean)
+- **Summary:** `_already_reviewed` counted a failed review, so a PR whose first review failed for good was never reviewed again. It now ignores reviews that ended `failed` (runner retries included), up to `MAX_AUTO_REVIEW_ATTEMPTS = 2`. `_review_claim` no longer writes stray lock files beside a stub store's mock path.
 - **Next step:** Merge the PR once CI is green.
 
 ### DL-#1655 — Staff chat remembers the previous turn
@@ -2499,6 +2499,19 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1660 — LF line endings enforced by .gitattributes
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1660 (decision 5 of Repository_Management#1766)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** #1661
+- **Paths:** `.gitattributes`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27
+- **Shipped:** 2026-09-27
+- **Summary:** `* text=auto eol=lf` fixes the line ending in the repository for every host; batch files keep CRLF in the working tree. The 22 files already stored with CRLF were renormalized with no content change. Squash-merged via PR #1661 (`f46bddc6`).
 
 ### DL-#1488 · SC-B1-G5: Relay forwarded run-card events back to originating thread across peer nodes
 
