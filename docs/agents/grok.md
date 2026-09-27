@@ -16,7 +16,7 @@ Grok Bot executes tools in environments where a resident MCP host may not be ava
 In the fleet topology, **Barb** is the single front door:
 
 - **Barb (Front Door, Intake & Routing):** Handles work requests, status inquiries, role auto-selection, and conversational routing.
-- *Note:* The Orchestrator role is retired and folded into Barb (Repository_Management#1733).
+- _Note:_ The Orchestrator role is retired and folded into Barb (Repository_Management#1733).
 
 ### Remote Ingress & Connector Path (SC-F6)
 
@@ -57,51 +57,48 @@ All POST requests to `/api/v1/staff` require:
 
 ### Recipe A: Open a Conversation Thread with Barb
 
+A thread is opened first, then the first message is posted into it (Recipe B). The body takes
+`title`, `kind`, `role` and `participants` only; any other key is rejected with 422.
+
 ```bash
-curl -s -X POST "$FLEET_API_URL/api/v1/staff/threads" \
-  -H "Authorization: Bearer $FLEET_API_TOKEN" \
-  -H "X-Requested-With: XMLHttpRequest" \
-  -H "Idempotency-Key: grok-thread-$(date +%s)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "participant_roles": ["barb"],
-    "title": "Grok Triage Inquiry",
-    "initial_message": "Hello Barb, what is the status of active runs?"
-  }'
+THREAD_ID=$(curl -s -X POST "$FLEET_API_URL/api/v1/staff/threads"   -H "Authorization: Bearer $FLEET_API_TOKEN"   -H "X-Requested-With: XMLHttpRequest"   -H "Idempotency-Key: grok-thread-$(date +%s)"   -H "Content-Type: application/json"   -d '{"role": "barb", "title": "Grok Triage Inquiry"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 ```
 
-Response:
+Response (`201`), abridged:
 
 ```json
 {
-  "thread_id": "thr_01HZX89AB...",
-  "status": "active",
-  "created_at": "2026-09-25T07:22:00Z"
+  "id": "th_b47ed2c88efd",
+  "title": "Grok Triage Inquiry",
+  "kind": "direct",
+  "participants": ["barb", "agent-grok"],
+  "status": "open",
+  "created_at": "2026-09-27T03:46:48.490561Z"
 }
 ```
 
-### Recipe B: Send an Idempotent Follow-Up Message
+### Recipe B: Send a Message
+
+The body takes `body` (markdown text), and optionally `kind` and `meta`; any other key is rejected with 422.
+Reuse the same `Idempotency-Key` when retrying the same message, so a retry never posts it twice.
 
 ```bash
-THREAD_ID="thr_01HZX89AB..."
-
-curl -s -X POST "$FLEET_API_URL/api/v1/staff/threads/$THREAD_ID/messages" \
-  -H "Authorization: Bearer $FLEET_API_TOKEN" \
-  -H "X-Requested-With: XMLHttpRequest" \
-  -H "Idempotency-Key: grok-msg-$(date +%s)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Please route this task to the issue remediator."
-  }'
+curl -s -X POST "$FLEET_API_URL/api/v1/staff/threads/$THREAD_ID/messages"   -H "Authorization: Bearer $FLEET_API_TOKEN"   -H "X-Requested-With: XMLHttpRequest"   -H "Idempotency-Key: grok-msg-$(date +%s)"   -H "Content-Type: application/json"   -d '{"body": "Hello Barb, what is the status of active runs?"}'
 ```
+
+The response (`202`) holds the stored `message` and a reply placeholder. Barb's answer arrives in the thread,
+usually within seconds.
 
 ### Recipe C: Read Thread Messages & Poll for Replies
 
 ```bash
-# Read messages since sequence 0 (or cursor)
-curl -s -H "Authorization: Bearer $FLEET_API_TOKEN" \
-  "$FLEET_API_URL/api/v1/staff/threads/$THREAD_ID?since_seq=0&limit=20"
+# Messages after sequence 0; pass the last seq you have seen to read only new ones
+curl -s -H "Authorization: Bearer $FLEET_API_TOKEN"   "$FLEET_API_URL/api/v1/staff/threads/$THREAD_ID?since_seq=0"
 ```
+
+The response is `{"thread": {...}, "messages": [...]}`. Each message has `seq`, `author_kind` (`user`, `role`,
+`system`), `author`, `kind` and the text in `body_md`. `fleetctl.py` and the fleet MCP tools
+(`clients/fleet/`) wrap Recipes A to C, including the two-step open-then-post.
 
 ### Recipe D: Query Active Work Items
 
@@ -139,4 +136,5 @@ To verify Grok's connection from a clean shell:
 
 1. Run Recipe A to open a thread with Barb.
 2. Confirm HTTP status is `200` or `201`.
-3. Read the thread with Recipe C and confirm Barb's automated intake response is returned.
+3. Post a message with Recipe B, then read the thread with Recipe C and confirm a message with
+   `author_kind: "role"` and `author: "barb"` is returned.

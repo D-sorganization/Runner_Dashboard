@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1625 — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1625
+- **Branch:** `fix/v1-thread-contract-strict`
+- **PR:** pending
+- **Paths:** `backend/staff/conversation_models.py`, `tests/api/test_staff_threads_api.py`, `docs/agents/grok.md`, `frontend/src/lib/openapi.json`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (thread/message client suites 197 passed)
+- **Summary:** A client that sends the wrong thread or message fields gets a 422 naming them, and the Grok guide's recipes work as written.
+- **Next step:** Merge; rerun the grok.md recipes against DeskComputer with the agent-grok bearer.
+
 ### DL-#1608 — Ship the Claude Status-Line Quota Script in the Artifact
 
 - **State:** in_review
