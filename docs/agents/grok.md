@@ -107,6 +107,33 @@ curl -s -H "Authorization: Bearer $FLEET_API_TOKEN" \
   "$FLEET_API_URL/api/v1/staff/work-items?state=in_progress&limit=10"
 ```
 
+
+### Recipe E: Run an Expert Panel (#1634)
+
+An expert panel puts 3-4 read-only expert seats on a hard question. They take turns for 1-6 rounds, each
+seeing the whole discussion so far, and a `Moderator` then writes the synthesis (consensus, agreed points,
+open disagreements, recommendation, confidence). A `debate` stops early when every expert in a round ends
+with `STANCE: agree`; a `brainstorm` runs every round and ranks ideas instead.
+
+**When Barb uses it:** only when Dieter asks for a panel, debate or brainstorm in the chat. Propose the
+experts (or a preset from `GET /api/v1/staff/panels/presets`), the rounds and the mode first, and start it
+once he agrees. A panel spends real model time, so never start one on your own initiative.
+
+```bash
+curl -s -X POST "$FLEET_API_URL/api/v1/staff/panels"   -H "Authorization: Bearer $FLEET_API_TOKEN"   -H "X-Requested-With: XMLHttpRequest"   -H "Content-Type: application/json"   -d '{"topic": "<question>", "mode": "debate", "rounds": 3,
+       "experts": [{"name": "Architect", "perspective": "Architecture and maintainability"},
+                   {"name": "Skeptic", "perspective": "Failure modes and hidden costs"},
+                   {"name": "Operator", "perspective": "Operation, cost and monitoring"}]}'
+```
+
+- `202` returns `{"thread": {...}, "estimate": {"total_cost_usd": ...}}`. Seats default to `claude`; set
+  `"provider"` and `"model"` per expert to mix CLIs (`GET .../panels/presets` lists the allowed providers).
+- A `400` with `code: group_cost_guard_threshold_exceeded` means the estimate is over the cost threshold: tell
+  Dieter the estimate and re-send with `"confirm_cost": true` only after he agrees.
+- Poll `GET /api/v1/staff/panels/$THREAD_ID` until `status` is `complete` or `failed`; it returns `turns`
+  (expert, round, stance, position, text), `consensus`, `rounds_used` and `synthesis`. Relay the synthesis,
+  not the whole transcript. A panel thread takes no new messages (409); start a new panel to follow up.
+
 ---
 
 ## 4. CLI Recipes via `fleetctl.py`
