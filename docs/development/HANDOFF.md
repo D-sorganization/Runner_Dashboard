@@ -1,3 +1,202 @@
+# Current handoff — Reap Windows Chrome leaked by WSL runner jobs (DL-#1678)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1678`
+- Branch: `fix/1678-wsl-chrome-reaper`
+- Baseline commit: `origin/main` at `ce6e9311`
+- Implementation commit: `SELF`
+- Pull request: not created yet
+- Governing issue/epic: #1678; DL-#1678.
+
+## Objective and status
+
+- Fleet safety net: self-hosted Linux runners inside WSL can leak Windows
+  `chrome.exe` processes through `/mnt/c` interop (lhci/chrome-launcher was
+  the observed source, fixed separately in Gasification_Model). This adds a
+  reaper to the hourly maintenance path so any future leak of the same shape
+  is cleaned up automatically.
+- The match is anchored to Chrome's `--user-data-dir` flag (`-match '--user-data-dir="?[^" ]*\\AppData\\Local\\lighthouse\.'`), so the user's Chrome opened on a URL or file path containing that string never matches. Verified in PS 7 and 5.1; a read-only run on OGLaptop matched 0 of 18 (all user) Chrome processes.
+- `deploy/reap-wsl-leaked-chrome.sh` (new, standalone, testable): calls
+  `powershell.exe -NoProfile -NonInteractive -Command` (wrapped in
+  `timeout 120`) with a PowerShell 5.1-compatible snippet that uses
+  `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'"`, keeping only
+  processes whose `CommandLine -like '*\AppData\Local\lighthouse.*'` AND
+  whose `[datetime]CreationDate` is older than
+  `LEAKED_CHROME_MAX_AGE_HOURS` (default 2). Dry run (`DRY_RUN=1`, the
+  default guard used by callers) and real run build **distinct** snippet
+  text, so a dry run never contains a literal `Stop-Process` call; a real
+  run (`DRY_RUN=0`) calls `Stop-Process -Force` on the matched process ids
+  and prints the count. `POWERSHELL_BIN` overrides the PowerShell binary for
+  tests. If `powershell.exe`/`POWERSHELL_BIN` is not found, or interop
+  fails/times out, it prints a warning and exits 0 — it never fails
+  maintenance. Profile directories are never deleted.
+- `deploy/scheduled-dashboard-maintenance.sh`: `reap_wsl_leaked_chrome_if_applicable()`
+  is called once from `main()` after `purge_stale_queue`. It guards on
+  `/proc/sys/fs/binfmt_misc/WSLInterop` existing or `WSL_DISTRO_NAME` being
+  set, so non-WSL hosts skip it entirely; a reaper failure is caught and
+  logged as a warning, never fails the run.
+
+## Files and decisions
+
+- `deploy/reap-wsl-leaked-chrome.sh` (new): the reaper, LF line endings,
+  exec bit set in the git index (`git update-index --chmod=+x`; Windows
+  filesystems do not preserve the POSIX bit on disk, so the test checks
+  `git ls-files -s` instead of `os.stat()`).
+- `deploy/scheduled-dashboard-maintenance.sh`: added the WSL-guarded call
+  and added the reaper script to the existing `chmod +x` line in
+  `deploy_dashboard()`.
+- `tests/test_reap_wsl_leaked_chrome.py` (new): drives the bash script via
+  `subprocess` with a fake `powershell.exe` on `PATH`/`POWERSHELL_BIN` that
+  records argv+stdin. Covers: script exists; git index records mode
+  `100755` (skips if the git worktree admin path can't be resolved, a known
+  quirk of running WSL git against a Windows-created worktree over
+  `/mnt/c` — see the "Never WSL git worktree prune" reference note; not a
+  property of the file itself); the snippet contains the lighthouse pattern
+  and `CreationDate` age filter; dry-run never contains `Stop-Process`; a
+  real run does; a custom `LEAKED_CHROME_MAX_AGE_HOURS` is honoured;
+  missing `powershell.exe` exits 0 with a warning; the maintenance script
+  references the reaper strictly after a WSL guard marker (static check).
+
+## Validation
+
+- `PYTHONPATH` not required; ran via WSL Ubuntu-22.04
+  `~/.cache/rd-test-venv/bin/python -m pytest
+tests/test_reap_wsl_leaked_chrome.py tests/test_maintenance_smoke.py -q`:
+  9 passed, 1 skipped (the git-worktree-admin-path quirk above), same
+  result from Windows `py -3.12 -m pytest`.
+- `py -3.12 -m ruff check tests/test_reap_wsl_leaked_chrome.py` and
+  `ruff format --check`: clean.
+- `shellcheck deploy/reap-wsl-leaked-chrome.sh` under WSL: no findings.
+- Confirmed RED first: before the script existed, all 7 initial test cases
+  failed (missing file / `No such file or directory`).
+- Never ran the reaper for real against this machine; all runs in tests use
+  a fake `powershell.exe` that never touches a real process.
+
+## Next steps
+
+1. Commit with message `fix(deploy): Reap Windows Chrome Leaked by WSL Runner Jobs (#1678)`.
+2. Push `fix/1678-wsl-chrome-reaper` and verify the remote SHA.
+3. Open a draft PR (`Fixes #1678`), mark ready, arm auto-merge (squash) via
+   `scripts/automerge_guard.py`.
+4. Release the lease on issue #1678 once the PR is open.
+
+---
+
+# Current handoff — Confident auto-route messages go straight to the specialist (#1567)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1567`
+- Branch: `feat/1567-confident-preroute`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1567 (owner decision 2026-09-27: option 3); DL-#1567.
+
+## Objective and Status
+
+- `backend/staff/chat_preroute.py` (new):
+  - `PRE_ROUTE_CONFIDENCE_THRESHOLD = 0.85`, with its contract in the docstring. `route_deterministic` scores 1.0 for `/role x` and `@x`, 0.85 when one role's keywords match strictly more than any other role's, and 0.70 on a tie. So an explicit target or a clear winner is confident, and a tie goes to Barb.
+  - `confident_route` also requires a loaded role other than Barb.
+  - `preroute_auto_message` acts only on `auto` threads. It skips a specialist whose chat budget is spent. It calls `BarbRouter.execute_handoff` with reason `auto-routed: matched <rule>` and publishes the card. It never raises: any error logs a warning and returns `None`, and Barb takes the turn.
+- `backend/routers/staff_threads.py` `post_message`: a pre-routed message gets the handoff card in the auto thread, then the usual fast acknowledgement ("On it: routing to <role>..."). The reply placeholder and the turn run as the specialist in its direct thread, and the response carries `handoff`.
+  - Why the specialist's own thread: provider sessions are stored per thread. A specialist turn in the auto thread would resume Barb's session, and Barb's next turn would resume the specialist's.
+- `backend/staff/router.py` / `router_models.py`:
+  - `RoutingDecision.matched_rule` records the rule that fired: `/role x`, `@x`, a Barb keyword, or the quoted keywords.
+  - Analysis keywords (analyse, analyze, analysis, investigate, investigation, diagnose, diagnosis, root cause, root-cause, breakdown, break down) are added to `maintenance`, which owns queue and runner diagnosis (`queue.diagnose`).
+  - No role is a general analyst. A message that also matches another role's keyword ties, so Barb triages it.
+- The e2e roster has no `maintenance` role, so the #1548 e2e handoff test ("analyse the queue") still goes through Barb.
+
+## Validation
+
+- New tests fail first (the module did not exist). After the change, `bash rdtest.sh claude-1567 tests/unit/test_staff_chat_preroute.py tests/api/test_staff_chat_preroute_api.py` gives 23 passed.
+- Regression suites in the WSL venv:
+  - `tests/unit/test_staff_chat*.py tests/unit/test_staff_router.py tests/api/test_staff_chat_turns.py tests/api/test_staff_threads_api.py tests/staff/routing_eval`: 144 passed, 2 skipped (this run also included the new API tests).
+  - Groups, panels, spend, thread-runs, chat smoke, availability, run-card relay and coordination API: 165 passed.
+- `ruff check` and `ruff format --check` are clean on the changed files. `mypy backend/` reports Success (309 files).
+
+## Next Steps
+
+1. Merge the PR once CI is green.
+
+---
+
+# Current handoff — Unknown CLI option classified as cli_outdated (#1669)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-cli-preflight`
+- Branch: `fix/1669-cli-outdated`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1669; DL-#1669.
+
+## Objective and Status
+
+- `backend/staff/classifier.py`: new `cli_outdated` failure class in
+  `ALLOWED_FAILURE_CLASSES`, a new `UPGRADE_COMMANDS` dict (claude, codex),
+  and a branch after the `cli_missing` check / before the auth check that
+  extracts the rejected option (`unknown option`, `unknown argument`,
+  `unrecognized argument`, `unexpected argument`) and states the node,
+  option and upgrade command in the remediation.
+- `backend/staff/retry.py`: `cli_outdated` added to
+  `NON_RETRYABLE_FAILURE_CLASSES`.
+- `backend/staff/chat_failures.py`: `cli_outdated` ranked 95 in
+  `FAILURE_SPECIFICITY`.
+- `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`: `cli_outdated`
+  title is "CLI Tool Outdated".
+
+## Validation
+
+- New `tests/unit/test_staff_cli_outdated.py` plus the classifier/retry/
+  chat_failures subset (`-k "classif or retry or chat_failure or
+staff_run_failure"`): 39 passed.
+- `ruff check` and `ruff format --check` on the five changed Python files:
+  clean.
+
+## Next Steps
+
+1. Open the PR for this branch, then merge once CI is green.
+
+---
+
+# Current handoff — v1 staff run detail 500 (#1670)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-v1-rundetail`
+- Branch: `fix/v1-run-detail`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1670; DL-#1670.
+
+## Objective and Status
+
+- `GET /api/v1/staff/runs/{id}` raised `AttributeError: 'RunStore' object has no attribute 'list_events'` for every run (seen live on DeskComputer for `run-2ea7b58468b6`). It now delegates to the legacy handler and keeps the v1 404 envelope.
+
+## Validation
+
+- `tests/api/test_staff_v1_run_detail.py`: RED (500) before the fix, 2 passed after; with `tests/api/test_staff_runner.py`, 22 passed.
+- `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Open the PR, arm auto-merge, deploy to DeskComputer and re-read a run through v1.
+
+---
+
 # Current handoff — Unblock the Windows pre-push suite (#1695)
 
 Last updated: 2026-09-27

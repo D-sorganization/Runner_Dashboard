@@ -18,6 +18,45 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1567 — Confident auto-route messages go straight to the specialist
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1567 (split from #1548; owner decision: option 3)
+- **Branch:** `feat/1567-confident-preroute`
+- **PR:** pending
+- **Paths:** `backend/staff/chat_preroute.py`, `backend/routers/staff_threads.py`, `backend/staff/router.py`, `backend/staff/router_models.py`, `tests/unit/test_staff_chat_preroute.py`, `tests/api/test_staff_chat_preroute_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (new tests 23 passed; staff chat, router, threads, routing-eval and related API suites 309 passed, 2 skipped)
+- **Summary:** In `auto` threads, a `route_deterministic` decision at or above `PRE_ROUTE_CONFIDENCE_THRESHOLD` (0.85) for a loaded role other than Barb calls `BarbRouter.execute_handoff` before any turn: the auto thread gets the handoff card (reason `auto-routed: matched <rule>`), and the turn runs as that role in its direct thread. Analysis keywords route to `maintenance`. Anything else, and any pre-routing failure, leaves the turn with Barb.
+- **Next step:** Merge the PR once CI is green.
+
+### DL-#1669 — Unknown CLI option classified as cli_outdated
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1669
+- **Branch:** `fix/1669-cli-outdated`
+- **PR:** not created
+- **Paths:** `backend/staff/classifier.py`, `backend/staff/retry.py`, `backend/staff/chat_failures.py`, `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`, `tests/unit/test_staff_cli_outdated.py`, `tests/unit/test_staff_classifier.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (new cli_outdated tests + classifier/retry/chat_failures subset: 39 passed; ruff check and ruff format --check clean on changed files)
+- **Summary:** A CLI that rejects an adapter flag (e.g. `error: unknown option '--permission-prompts'` from a too-old `claude` install) now classifies as `cli_outdated`, not retryable, with remediation naming the provider, node, rejected option and upgrade command (`npm install -g @anthropic-ai/claude-code@latest` for claude). Chat specificity rank 95; Staff Console error card title "CLI Tool Outdated".
+- **Next step:** Open the PR for this branch.
+
+### DL-#1670 — v1 staff run detail no longer 500s
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1670
+- **Branch:** `fix/v1-run-detail`
+- **PR:** not created
+- **Paths:** `backend/routers/staff_v1.py`, `tests/api/test_staff_v1_run_detail.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (`tests/api/test_staff_v1_run_detail.py` 2 passed after RED 500; `tests/api/test_staff_runner.py` passes; ruff clean)
+- **Summary:** `get_run_v1` called `RunStore.list_events`, which does not exist, so every v1 run detail (used by Barb and agent clients) was a 500 while the legacy route worked. It now delegates to `routers.staff.get_run` and only reshapes the 404 into the v1 envelope; v1 also gains the remote-run proxy.
+- **Next step:** Merge the PR, deploy, and confirm `GET /api/v1/staff/runs/<id>` returns 200 on DeskComputer.
+
 ### DL-#1695 — Unblock the Windows pre-push suite
 
 - **State:** in_review
@@ -160,6 +199,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (targeted vitest 556 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean)
 - **Summary:** Local Tools is no longer a Settings nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. `/api/local-apps` stays because the section calls it.
 - **Next step:** Merge the PR, then the Organization row.
+
+### DL-#1678 — Reap Windows Chrome leaked by WSL runner jobs
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1678
+- **Branch:** `fix/1678-wsl-chrome-reaper`
+- **PR:** pending
+- **Paths:** `deploy/reap-wsl-leaked-chrome.sh`, `deploy/scheduled-dashboard-maintenance.sh`, `tests/test_reap_wsl_leaked_chrome.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (filter anchored to `--user-data-dir` after review; regex checked in PS 7 and 5.1 against leak, URL, and user-profile samples; `tests/test_reap_wsl_leaked_chrome.py` passes under WSL; OGLaptop read-only run: 0 matches, all 18 user Chrome excluded)
+- **Summary:** New standalone `deploy/reap-wsl-leaked-chrome.sh` stops Windows `chrome.exe` processes leaked into WSL hosts through `/mnt/c` interop (lhci/chrome-launcher). It matches only processes whose `CommandLine` has a `\AppData\Local\lighthouse.` temp profile AND whose `CreationDate` is older than `LEAKED_CHROME_MAX_AGE_HOURS` (default 2h, PowerShell 5.1 compatible `Get-CimInstance Win32_Process`), honours `DRY_RUN`, never deletes profile dirs, and exits 0 with a warning if `powershell.exe`/interop is unavailable or times out (wrapped in `timeout 120`). `POWERSHELL_BIN` is overridable for tests. Wired into `deploy/scheduled-dashboard-maintenance.sh` behind a WSL-only guard (`/proc/sys/fs/binfmt_misc/WSLInterop` or `WSL_DISTRO_NAME`).
+- **Next step:** Open the PR, arm auto-merge, release the lease.
 
 ### DL-#1338-tests — SC-G6: Tests under Operations → Diagnostics
 
