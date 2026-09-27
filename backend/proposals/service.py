@@ -23,6 +23,7 @@ from proposals.models import (
     ProposalDetail,
     ProposalItem,
 )
+from staff.action_executors import BOARD_PROPOSAL_ROLE
 from staff.workspace import rm_root
 
 log = logging.getLogger("dashboard.proposals.service")
@@ -292,5 +293,5 @@ def _secretary_logins() -> frozenset[str]:
     Read from the environment on every call (not cached at import time) so
     tests can set ``BOARD_SECRETARY_LOGINS`` per-case via ``monkeypatch``.
     """
-    raw = os.environ.get("BOARD_SECRETARY_LOGINS", "board-secretary")
+    raw = os.environ.get("BOARD_SECRETARY_LOGINS", BOARD_PROPOSAL_ROLE)
     return frozenset(login.strip().lower() for login in raw.split(",") if login.strip())

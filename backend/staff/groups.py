@@ -17,6 +17,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from staff.action_executors import BOARD_PROPOSAL_ROLE
 from staff.audit import record_audit
 from staff.conversation_models import ThreadRecord
 from staff.conversations import get_conversation_store
@@ -70,7 +71,7 @@ def get_board_group() -> GroupDefinition:
     return GroupDefinition(
         id="board",
         name="Board of Directors",
-        coordinator="board-secretary",
+        coordinator=BOARD_PROPOSAL_ROLE,
         seats=BOARD_SEATS,
         description="Collective priority and governance council coordinated by Board Secretary.",
         cost_threshold_usd=get_group_threshold(),
@@ -408,10 +409,10 @@ def resolve_group_thread_meta(
     participants: list[str],
 ) -> tuple[str, str | None, dict[str, Any]]:
     """Determine thread kind, primary coordinator role, and seat metadata for group threads."""
-    if kind != "group" and role not in ("board", "board-secretary"):
+    if kind != "group" and role not in ("board", BOARD_PROPOSAL_ROLE):
         return kind, role, {}
 
-    group_key = "board" if role in ("board", "board-secretary", None) else str(role)
+    group_key = "board" if role in ("board", BOARD_PROPOSAL_ROLE, None) else str(role)
     group = get_group(group_key) or get_group("board")
     if not group:
         return kind, role, {}
@@ -458,7 +459,7 @@ async def dispatch_group_message(
             },
         )
 
-    target_role = str(thread.meta.get("coordinator") or "board-secretary")
+    target_role = str(thread.meta.get("coordinator") or BOARD_PROPOSAL_ROLE)
     user_msg = store.add_message(
         thread_id=thread.id,
         author_kind="user",

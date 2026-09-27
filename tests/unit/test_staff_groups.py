@@ -12,10 +12,13 @@ Tests:
 
 from __future__ import annotations
 
+import ast
 import asyncio
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
+from staff.action_executors import BOARD_PROPOSAL_ROLE, validate_action_default_roles
 from staff.conversations import (
     ConversationStore,
     get_conversation_store,
@@ -28,6 +31,7 @@ from staff.groups import (
     execute_group_turn,
     get_group,
     list_groups,
+    resolve_group_thread_meta,
 )
 from staff.thread_bus import reset_thread_bus
 
@@ -64,6 +68,66 @@ def test_list_groups_contains_board() -> None:
     groups = list_groups()
     ids = [g.id for g in groups]
     assert "board" in ids
+
+
+@pytest.mark.unit
+def test_board_group_uses_board_proposal_role() -> None:
+    """Board group coordinator is bound to BOARD_PROPOSAL_ROLE."""
+    group = get_group("board")
+    assert group is not None
+    assert group.coordinator == BOARD_PROPOSAL_ROLE
+
+    kind, coord, meta = resolve_group_thread_meta("direct", BOARD_PROPOSAL_ROLE, [])
+    assert kind == "group"
+    assert coord == BOARD_PROPOSAL_ROLE
+    assert meta["coordinator"] == BOARD_PROPOSAL_ROLE
+
+
+@pytest.mark.unit
+def test_no_board_secretary_literals_in_staff_groups() -> None:
+    """staff/groups.py must not contain 'board_secretary' or 'board-secretary' literals."""
+    groups_path = Path(__file__).resolve().parents[2] / "backend" / "staff" / "groups.py"
+    with open(groups_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=str(groups_path))
+
+    literals = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and node.value in ("board_secretary", "board-secretary")
+    ]
+    assert literals == [], f"Found forbidden literals in staff/groups.py: {literals}"
+
+
+@pytest.mark.unit
+def test_board_group_coordinator_validated_in_action_default_roles() -> None:
+    """Board group coordinator is validated against loaded roster in validate_action_default_roles."""
+    from staff.group_models import GroupDefinition
+
+    mock_board = GroupDefinition(
+        id="board",
+        name="Board of Directors",
+        coordinator="nonexistent-coordinator",
+        seats=[],
+        description="Test board",
+        cost_threshold_usd=1.0,
+    )
+    with (
+        patch("staff.roles.roles_dir", return_value=Path("/mock/roles")),
+        patch(
+            "staff.roles.load_roles",
+            return_value={
+                "code-reviewer": MagicMock(dispatchable=True, retired=False, surface="dashboard"),
+                "barb": MagicMock(dispatchable=True, retired=False, surface="dashboard"),
+                BOARD_PROPOSAL_ROLE: MagicMock(dispatchable=True, retired=False, surface="dashboard"),
+            },
+        ),
+        patch("staff.groups.get_board_group", return_value=mock_board),
+    ):
+        errors = validate_action_default_roles(raise_on_error=False)
+        assert any("nonexistent-coordinator" in err for err in errors)
+
+        with pytest.raises(ValueError, match="nonexistent-coordinator"):
+            validate_action_default_roles(raise_on_error=True)
 
 
 # ── 2. COST ESTIMATION & GUARD ───────────────────────────────────────────────
