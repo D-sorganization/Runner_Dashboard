@@ -78,7 +78,7 @@ export function guidanceForFailure(failure: ApiFailure): OperatorGuidance {
     return {
       title: "Service unreachable",
       action:
-        "Maxwell-Daemon isn't responding — start it from the Local Tools tab, then retry.",
+        "Maxwell-Daemon isn't responding — start it from the Local Tools section in Settings, then retry.",
       kind: "connection",
     };
   }
@@ -121,7 +121,7 @@ export function guidanceForFailure(failure: ApiFailure): OperatorGuidance {
     return {
       title: "Service unreachable",
       action:
-        "Maxwell-Daemon isn't responding — start it from the Local Tools tab, then retry.",
+        "Maxwell-Daemon isn't responding — start it from the Local Tools section in Settings, then retry.",
       kind: "connection",
     };
   }
