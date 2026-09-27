@@ -23,7 +23,37 @@ Last updated: 2026-09-27
 
 ---
 
-# Past handoff — Restore green frontend lint on main (#1686)
+# Past handoff — Main red: chat.py line cap and stale Tests-route test (#1689)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-main-red`
+- Branch: `fix/main-red-1338-followups`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1689; DL-#1689.
+
+## Objective and Status
+
+- `backend/staff/chat_scratch.py`: new home of `thread_scratch_dir` (#1655), unchanged. `staff.chat` imports it, so `from staff.chat import thread_scratch_dir` still works. chat.py is now 473 lines (cap 500).
+- `tests/test_frontend_integrity.py`: `test_tests_desktop_route_bypasses_legacy_app` asserts `table["tests"] = TESTS_REDIRECT` in routing.ts and `<TestsPage />` in OperationsTestsSubsection, matching #1674.
+- Not in scope: the SettingsPage `react-refresh/only-export-components` warning (fixed by #1687 from another session).
+
+## Validation
+
+- `rdtest.sh claude-main-red tests/test_frontend_integrity.py tests/unit/test_staff_chat_memory.py -q`: all passed (1 xfail pre-existing).
+- `py -3.12 -m ruff check backend/staff/ tests/test_frontend_integrity.py`: clean.
+
+## Next Steps
+
+1. Push, open the PR (`Fixes #1689`), arm auto-merge via `automerge_guard`.
+
+---
+
+# Current handoff — Restore green frontend lint on main (#1686)
 
 Last updated: 2026-09-27
 
