@@ -149,6 +149,20 @@ def _rerun_run(repo: str, run_id: int, failed_only: bool) -> dict[str, Any]:
     return maintenance_github.rerun_run(repo, run_id, failed_only)
 
 
+VHDX_COMPACTION_RUNBOOK = "docs/runbooks/wsl-vhdx-compaction.md"
+
+
+def _compaction_request(host: str, reason: str) -> dict[str, Any]:
+    """Record an approved compaction request (#1332). Runs nothing: the owner follows the runbook."""
+    return {
+        "status": "compaction_requested",
+        "host": host,
+        "reason": reason,
+        "executed": False,
+        "runbook": VHDX_COMPACTION_RUNBOOK,
+    }
+
+
 def _require_idle_or_drain(target: str, host: str, params: dict[str, Any], *, dry_run: bool) -> None:
     """Refuse to stop a busy runner unless draining (default) or forced."""
     state = _get_runner_state(target, host)
@@ -262,6 +276,9 @@ def _run_action(
         return res, None
     if action_name == "maintenance.trim_worktrees":
         res.update(_trim_worktrees_fs())
+        return res, None
+    if action_name == "maintenance.vhdx_compaction_request":
+        res.update(_compaction_request(host, str(params.get("reason") or "")))
         return res, None
     # fleet_control, runner_remove and diagnose have no backend yet.
     raise _not_wired(f"'{action_name}'")
@@ -380,6 +397,8 @@ def verify_maintenance(
         return maintenance_github.verify_rerun(str(params.get("repo") or ""), run_id, previous)
     if act == "maintenance.runner_remove":
         return True, f"Runner '{target}' verified removed"
+    if act == "maintenance.vhdx_compaction_request":
+        return True, f"Compaction request recorded for host '{host}'; the manual runbook step is pending"
 
     return True, f"Action '{act}' verified"
 
@@ -395,7 +414,7 @@ _FLEET_ALIAS_MAP: dict[str, str] = {
     "run.cancel": "maintenance.run_cancel",
     "run.rerun": "maintenance.run_rerun",
     "queue.diagnose": "maintenance.diagnose",
-    "host.vhdx_compact": "maintenance.vacuum_sqlite",
+    "host.vhdx_compact": "maintenance.vhdx_compaction_request",
     "dashboard.restart": "maintenance.runner_restart",
 }
 

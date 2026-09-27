@@ -429,3 +429,24 @@ def test_interrupted_chat_messages_reconciled_to_failed_with_retry(
     th1_msgs_after = conv_store.list_messages(th1.id)
     sys_msgs_th1_after = [m for m in th1_msgs_after if m.author_kind == "system"]
     assert len(sys_msgs_th1_after) == len(sys_msgs_th1)
+
+
+def test_reconcile_orphaned_runs_sweeps_orphan_run_projects(
+    temp_store: RunStore,
+    staff_runner: runner_mod.StaffRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """reconcile_orphaned_runs invokes sweep_orphan_run_projects with env and worktrees_root."""
+    from collections.abc import Mapping
+
+    from staff import cli_projects
+
+    swept: list[tuple[dict[str, str], Path]] = []
+
+    def fake_sweep(env: Mapping[str, str], wt_root: Path, **kwargs: Any) -> list[str]:
+        swept.append((dict(env), wt_root))
+        return []
+
+    monkeypatch.setattr(cli_projects, "sweep_orphan_run_projects", fake_sweep)
+    reconcile_orphaned_runs(staff_runner, event_store=EventStore())
+    assert len(swept) == 1

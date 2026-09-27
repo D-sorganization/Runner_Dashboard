@@ -90,6 +90,19 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
         "bring online",
         "diagnose runner",
         "diagnose machine",
+        # Analysis questions (#1567): maintenance owns queue/runner diagnosis (queue.diagnose).
+        # A second role's keyword in the same message ties the score, so Barb triages it.
+        "analyse",
+        "analyze",
+        "analysis",
+        "investigate",
+        "investigation",
+        "diagnose",
+        "diagnosis",
+        "root cause",
+        "root-cause",
+        "breakdown",
+        "break down",
         "stalled job",
         "stalled jobs",
         "compact disk",
@@ -208,6 +221,8 @@ class RoutingDecision:
     needs_clarification: bool = False
     clarifying_question: str | None = None
     is_code_change: bool = False
+    # The rule that fired in the deterministic pre-router ("/role x", "@x" or the matched keywords).
+    matched_rule: str | None = None
 
     @property
     def handoff_body(self) -> str:
@@ -229,6 +244,7 @@ class RoutingDecision:
             "needs_clarification": self.needs_clarification,
             "clarifying_question": self.clarifying_question,
             "is_code_change": self.is_code_change,
+            "matched_rule": self.matched_rule,
             "handoff_body": self.handoff_body,
         }
 

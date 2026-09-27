@@ -80,17 +80,6 @@ export function ActivityGlyph({ size }: GlyphProps): React.ReactElement {
   );
 }
 
-/** Pull-request glyph (matches legacy `I.gitPR`). */
-export function GitPrGlyph({ size }: GlyphProps): React.ReactElement {
-  return (
-    <Svg size={size}>
-      <circle cx={18} cy={18} r={3} />
-      <circle cx={6} cy={6} r={3} />
-      <path d="M13 6h3a2 2 0 012 2v7M6 9v12" />
-    </Svg>
-  );
-}
-
 /** Issue (circle-with-bang) glyph (matches legacy `I.issue`). */
 export function IssueGlyph({ size }: GlyphProps): React.ReactElement {
   return (

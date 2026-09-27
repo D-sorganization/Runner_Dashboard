@@ -81,13 +81,20 @@ PINNED_POLICY: dict[str, tuple[str, str, bool, str | None, int | None]] = {
     "maintenance.trim_worktrees": ("medium", "fleet.maintain", False, None, None),
     "maintenance.vacuum_sqlite": ("medium", "fleet.maintain", False, None, None),
     "maintenance.diagnose": ("read", "staff.read", False, None, None),
+    "maintenance.vhdx_compaction_request": ("owner-only", "fleet.maintain", True, "host", None),
 }
 
 # Operations with no real backend yet. They must fail as `not_wired`, never report success.
 # Wired to a real backend: vacuum (#1344) and the GitHub run operations (#1448,
 # covered in tests/staff/test_maintenance_github.py).
 WIRED_ACTIONS = frozenset(
-    {"maintenance.vacuum_sqlite", "maintenance.run_cancel", "maintenance.run_rerun", "maintenance.cancel_and_rerun"}
+    {
+        "maintenance.vacuum_sqlite",
+        "maintenance.run_cancel",
+        "maintenance.run_rerun",
+        "maintenance.cancel_and_rerun",
+        "maintenance.vhdx_compaction_request",
+    }
 )
 UNWIRED_ACTIONS = frozenset(PINNED_POLICY) - WIRED_ACTIONS
 
@@ -108,6 +115,7 @@ VALID_PARAMS: dict[str, dict[str, Any]] = {
     "maintenance.trim_worktrees": {},
     "maintenance.vacuum_sqlite": {"database": "staff_runs.sqlite3"},
     "maintenance.diagnose": {"target": "runner-1", "host": "desk"},
+    "maintenance.vhdx_compaction_request": {"host": "desk", "reason": "C: at 92%"},
 }
 
 DISRUPTIVE = sorted(name for name, row in PINNED_POLICY.items() if row[2])

@@ -18,13 +18,14 @@ Last updated: 2026-09-27
 - **Verified floor: claude 2.1.259.** Bisected the published npm releases (linux-x64 binaries run in WSL, empty `CLAUDE_CONFIG_DIR`): 2.1.258 fails the unattended argv with `error: unknown option '--permission-prompts'`; 2.1.259 accepts it and reaches `system/init`. The chat argv is accepted by both; `dontAsk` is already in 2.1.79.
 - `backend/staff/cli_version.py` (new): `MIN_CLI_VERSIONS` keyed by executable (`claude` covers `claude` and `claude-ollama`), `parse_version`, a `claude --version` probe cached per process and keyed on the resolved binary + mtime (an in-place upgrade is re-probed without a restart), `cli_status`, `version_gate` and `provider_versions`.
 - Runs: `StaffRunner._worker` calls `runner_ops.fail_if_cli_outdated` after `preparing` and before the worktree and lease; a CLI below its floor fails the run `cli_outdated`, `retryable=False`, remediation `claude CLI X.Y.Z < required 2.1.259; upgrade the CLI on this node (...)`. `can_run_unattended` is False for it, so provider selection skips it.
-- Chat: `ChatTurnRunner._run_turn_attempt` runs the same gate (off the event loop) before building the argv. The argv-refusal mapping moved to `chat_failures.chat_argv_refusal` so `chat.py` drops from 504 to 492 lines.
+- Chat: `ChatTurnRunner._run_turn_attempt` runs the same gate (off the event loop) before building the argv.
+- Failure text: `classifier.classify_cli_below_floor` builds the `cli_outdated` refusal with #1699's `UPGRADE_COMMANDS`, so preflight and run-time (#1669) failures share one class and one upgrade command.
 - Roster: `GET /api/staff/roster` and `/api/v1/staff/roster` add `provider_versions` (`StaffProviderCliVersion`: executable, installed, version, min_version, outdated, detail); `providers` is unchanged. The Roster card shows `claude · outdated 2.1.79` (warning tone, remediation as the tooltip) instead of `installed`.
 - No permission-bypass flag was added.
 
 ## Files and decisions
 
-- `cli_outdated` registration (`ALLOWED_FAILURE_CLASSES`, `NON_RETRYABLE_FAILURE_CLASSES`, chat specificity 95, the classifier test's expected set) is byte-identical to PR #1676, so the two PRs merge cleanly in either order.
+- `cli_outdated` registration comes from #1699 (merged); this PR adds no second classification path.
 - A version that cannot be read does not block: a probe glitch must not become an outage, and #1669's classifier still catches a real rejection.
 - Only executables with a floor are probed; codex, gemini and the rest are untouched.
 
@@ -51,10 +52,461 @@ Last updated: 2026-09-27
 
 - 2026-09-27: Floor bisected (2.1.259); version gate for runs and chat; roster `provider_versions` and Roster badge.
 - 2026-09-27: PR #1684 opened; merged origin/main (#1673 docs rows kept).
+- 2026-09-27: Merged origin/main after #1699; gate reuses the classifier (`classify_cli_below_floor`); `chat.py` change reduced to the gate. Tests: 117 passed on the touched staff suites, mypy clean (313 files), api client no drift, Staff vitest 17 passed.
 
 ---
 
-# Current handoff — ADR: agent-client ingress stays local-only (#1335)
+# Current handoff — Reap Windows Chrome leaked by WSL runner jobs (DL-#1678)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1678`
+- Branch: `fix/1678-wsl-chrome-reaper`
+- Baseline commit: `origin/main` at `ce6e9311`
+- Implementation commit: `SELF`
+- Pull request: not created yet
+- Governing issue/epic: #1678; DL-#1678.
+
+## Objective and status
+
+- Fleet safety net: self-hosted Linux runners inside WSL can leak Windows
+  `chrome.exe` processes through `/mnt/c` interop (lhci/chrome-launcher was
+  the observed source, fixed separately in Gasification_Model). This adds a
+  reaper to the hourly maintenance path so any future leak of the same shape
+  is cleaned up automatically.
+- The match is anchored to Chrome's `--user-data-dir` flag (`-match '--user-data-dir="?[^" ]*\\AppData\\Local\\lighthouse\.'`), so the user's Chrome opened on a URL or file path containing that string never matches. Verified in PS 7 and 5.1; a read-only run on OGLaptop matched 0 of 18 (all user) Chrome processes.
+- `deploy/reap-wsl-leaked-chrome.sh` (new, standalone, testable): calls
+  `powershell.exe -NoProfile -NonInteractive -Command` (wrapped in
+  `timeout 120`) with a PowerShell 5.1-compatible snippet that uses
+  `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'"`, keeping only
+  processes whose `CommandLine -like '*\AppData\Local\lighthouse.*'` AND
+  whose `[datetime]CreationDate` is older than
+  `LEAKED_CHROME_MAX_AGE_HOURS` (default 2). Dry run (`DRY_RUN=1`, the
+  default guard used by callers) and real run build **distinct** snippet
+  text, so a dry run never contains a literal `Stop-Process` call; a real
+  run (`DRY_RUN=0`) calls `Stop-Process -Force` on the matched process ids
+  and prints the count. `POWERSHELL_BIN` overrides the PowerShell binary for
+  tests. If `powershell.exe`/`POWERSHELL_BIN` is not found, or interop
+  fails/times out, it prints a warning and exits 0 — it never fails
+  maintenance. Profile directories are never deleted.
+- `deploy/scheduled-dashboard-maintenance.sh`: `reap_wsl_leaked_chrome_if_applicable()`
+  is called once from `main()` after `purge_stale_queue`. It guards on
+  `/proc/sys/fs/binfmt_misc/WSLInterop` existing or `WSL_DISTRO_NAME` being
+  set, so non-WSL hosts skip it entirely; a reaper failure is caught and
+  logged as a warning, never fails the run.
+
+## Files and decisions
+
+- `deploy/reap-wsl-leaked-chrome.sh` (new): the reaper, LF line endings,
+  exec bit set in the git index (`git update-index --chmod=+x`; Windows
+  filesystems do not preserve the POSIX bit on disk, so the test checks
+  `git ls-files -s` instead of `os.stat()`).
+- `deploy/scheduled-dashboard-maintenance.sh`: added the WSL-guarded call
+  and added the reaper script to the existing `chmod +x` line in
+  `deploy_dashboard()`.
+- `tests/test_reap_wsl_leaked_chrome.py` (new): drives the bash script via
+  `subprocess` with a fake `powershell.exe` on `PATH`/`POWERSHELL_BIN` that
+  records argv+stdin. Covers: script exists; git index records mode
+  `100755` (skips if the git worktree admin path can't be resolved, a known
+  quirk of running WSL git against a Windows-created worktree over
+  `/mnt/c` — see the "Never WSL git worktree prune" reference note; not a
+  property of the file itself); the snippet contains the lighthouse pattern
+  and `CreationDate` age filter; dry-run never contains `Stop-Process`; a
+  real run does; a custom `LEAKED_CHROME_MAX_AGE_HOURS` is honoured;
+  missing `powershell.exe` exits 0 with a warning; the maintenance script
+  references the reaper strictly after a WSL guard marker (static check).
+
+## Validation
+
+- `PYTHONPATH` not required; ran via WSL Ubuntu-22.04
+  `~/.cache/rd-test-venv/bin/python -m pytest
+tests/test_reap_wsl_leaked_chrome.py tests/test_maintenance_smoke.py -q`:
+  9 passed, 1 skipped (the git-worktree-admin-path quirk above), same
+  result from Windows `py -3.12 -m pytest`.
+- `py -3.12 -m ruff check tests/test_reap_wsl_leaked_chrome.py` and
+  `ruff format --check`: clean.
+- `shellcheck deploy/reap-wsl-leaked-chrome.sh` under WSL: no findings.
+- Confirmed RED first: before the script existed, all 7 initial test cases
+  failed (missing file / `No such file or directory`).
+- Never ran the reaper for real against this machine; all runs in tests use
+  a fake `powershell.exe` that never touches a real process.
+
+## Next steps
+
+1. Commit with message `fix(deploy): Reap Windows Chrome Leaked by WSL Runner Jobs (#1678)`.
+2. Push `fix/1678-wsl-chrome-reaper` and verify the remote SHA.
+3. Open a draft PR (`Fixes #1678`), mark ready, arm auto-merge (squash) via
+   `scripts/automerge_guard.py`.
+4. Release the lease on issue #1678 once the PR is open.
+
+---
+
+# Current handoff — Confident auto-route messages go straight to the specialist (#1567)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1567`
+- Branch: `feat/1567-confident-preroute`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1567 (owner decision 2026-09-27: option 3); DL-#1567.
+
+## Objective and Status
+
+- `backend/staff/chat_preroute.py` (new):
+  - `PRE_ROUTE_CONFIDENCE_THRESHOLD = 0.85`, with its contract in the docstring. `route_deterministic` scores 1.0 for `/role x` and `@x`, 0.85 when one role's keywords match strictly more than any other role's, and 0.70 on a tie. So an explicit target or a clear winner is confident, and a tie goes to Barb.
+  - `confident_route` also requires a loaded role other than Barb.
+  - `preroute_auto_message` acts only on `auto` threads. It skips a specialist whose chat budget is spent. It calls `BarbRouter.execute_handoff` with reason `auto-routed: matched <rule>` and publishes the card. It never raises: any error logs a warning and returns `None`, and Barb takes the turn.
+- `backend/routers/staff_threads.py` `post_message`: a pre-routed message gets the handoff card in the auto thread, then the usual fast acknowledgement ("On it: routing to <role>..."). The reply placeholder and the turn run as the specialist in its direct thread, and the response carries `handoff`.
+  - Why the specialist's own thread: provider sessions are stored per thread. A specialist turn in the auto thread would resume Barb's session, and Barb's next turn would resume the specialist's.
+- `backend/staff/router.py` / `router_models.py`:
+  - `RoutingDecision.matched_rule` records the rule that fired: `/role x`, `@x`, a Barb keyword, or the quoted keywords.
+  - Analysis keywords (analyse, analyze, analysis, investigate, investigation, diagnose, diagnosis, root cause, root-cause, breakdown, break down) are added to `maintenance`, which owns queue and runner diagnosis (`queue.diagnose`).
+  - No role is a general analyst. A message that also matches another role's keyword ties, so Barb triages it.
+- The e2e roster has no `maintenance` role, so the #1548 e2e handoff test ("analyse the queue") still goes through Barb.
+
+## Validation
+
+- New tests fail first (the module did not exist). After the change, `bash rdtest.sh claude-1567 tests/unit/test_staff_chat_preroute.py tests/api/test_staff_chat_preroute_api.py` gives 23 passed.
+- Regression suites in the WSL venv:
+  - `tests/unit/test_staff_chat*.py tests/unit/test_staff_router.py tests/api/test_staff_chat_turns.py tests/api/test_staff_threads_api.py tests/staff/routing_eval`: 144 passed, 2 skipped (this run also included the new API tests).
+  - Groups, panels, spend, thread-runs, chat smoke, availability, run-card relay and coordination API: 165 passed.
+- `ruff check` and `ruff format --check` are clean on the changed files. `mypy backend/` reports Success (309 files).
+
+## Next Steps
+
+1. Merge the PR once CI is green.
+
+---
+
+# Current handoff — Unknown CLI option classified as cli_outdated (#1669)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-cli-preflight`
+- Branch: `fix/1669-cli-outdated`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1669; DL-#1669.
+
+## Objective and Status
+
+- `backend/staff/classifier.py`: new `cli_outdated` failure class in
+  `ALLOWED_FAILURE_CLASSES`, a new `UPGRADE_COMMANDS` dict (claude, codex),
+  and a branch after the `cli_missing` check / before the auth check that
+  extracts the rejected option (`unknown option`, `unknown argument`,
+  `unrecognized argument`, `unexpected argument`) and states the node,
+  option and upgrade command in the remediation.
+- `backend/staff/retry.py`: `cli_outdated` added to
+  `NON_RETRYABLE_FAILURE_CLASSES`.
+- `backend/staff/chat_failures.py`: `cli_outdated` ranked 95 in
+  `FAILURE_SPECIFICITY`.
+- `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`: `cli_outdated`
+  title is "CLI Tool Outdated".
+
+## Validation
+
+- New `tests/unit/test_staff_cli_outdated.py` plus the classifier/retry/
+  chat_failures subset (`-k "classif or retry or chat_failure or
+staff_run_failure"`): 39 passed.
+- `ruff check` and `ruff format --check` on the five changed Python files:
+  clean.
+
+## Next Steps
+
+1. Open the PR for this branch, then merge once CI is green.
+
+---
+
+# Current handoff — v1 staff run detail 500 (#1670)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-v1-rundetail`
+- Branch: `fix/v1-run-detail`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1670; DL-#1670.
+
+## Objective and Status
+
+- `GET /api/v1/staff/runs/{id}` raised `AttributeError: 'RunStore' object has no attribute 'list_events'` for every run (seen live on DeskComputer for `run-2ea7b58468b6`). It now delegates to the legacy handler and keeps the v1 404 envelope.
+
+## Validation
+
+- `tests/api/test_staff_v1_run_detail.py`: RED (500) before the fix, 2 passed after; with `tests/api/test_staff_runner.py`, 22 passed.
+- `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Open the PR, arm auto-merge, deploy to DeskComputer and re-read a run through v1.
+
+---
+
+# Current handoff — Unblock the Windows pre-push suite (#1695)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_panelwin`; branch `fix/panel-windows-hang`; PR: see DL-#1695; Issue #1695; DL-#1695.
+
+## Objective and Status
+
+- Panel hang: #1685 awaited `asyncio.to_thread(sweep)` before the first round; the await yielded the loop and a short-lived loop (TestClient without a context manager) abandoned the panel task. Linux finished first by timing, so CI stayed green. Bisected by the DeskComputer peer (passes at ef58aa86, fails at 8662f75e).
+- Conductor drift: Repository_Management#1741 added `Capability.issue_authoring` and `TaskClass.plan`; the vendored-source check only runs where a sibling RM checkout exists, so CI never saw it.
+
+## Validation
+
+- New `test_a_blocked_sweep_never_delays_a_panel` (red first); tests/api/test_staff_panels_api.py, tests/staff/test_panel.py, tests/unit/test_staff_cli_projects.py and the conductor tests pass on Windows; full Windows suite with -x run before push.
+
+## Next Steps
+
+1. None.
+
+---
+
+# Past handoff — SC-G6: Organization folds into Projects (DL-#1338-org)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1338-org`
+- Branch: `feat/1338-org-into-projects`
+- Baseline commit: `ae1ce437`
+- Implementation commit: `SELF`
+- Pull request: #1681 (draft)
+- Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Organization"); DL-#1338-org.
+
+## Objective and status
+
+- Owner decision: add a per-repo CI-status badge to Projects cards, retire the Organization tab and redirect it to Projects.
+- `pages/Projects/CiStatusBadge.tsx` (new): shows the latest CI conclusion (or status while running) as a toned badge linked to the run; "No CI" when the repo has no run; "CI unknown" when the repo is not in `/api/repos` or that call failed.
+- `ProjectsPage.tsx`: also loads `GET /api/repos` and passes each card its repo's CI state. A failed `/api/repos` shows "CI status unavailable" and leaves the projects list working.
+- `pages/Org.tsx` and its test are deleted, with the now-unused `GitPrGlyph` icon.
+- `navRegistryData.ts`: the `org` entry is removed. `routing.ts`: `/fleet/org`, `/t/org` and `/org` redirect to `/work/projects`.
+- `RoutedShell.tsx`: the `org` case is removed.
+- `tests/test_frontend_integrity.py`: the Org route check becomes a retirement check (no `Org.tsx`, no `org` case, Projects loads `/api/repos`), and `function OrgTab` leaves the required-marker list.
+
+## Files and decisions
+
+- Backend endpoints are kept: `/api/repos` feeds the badge and Code Requests, Assessments and the assistant tools; `/api/stats` is still used by the polling queries.
+
+## Validation
+
+- New tests failed first against the pre-change source (10 cases: badges, redirects, nav entry).
+- WSL `npx vitest run --maxWorkers=4` on shell, Projects, Settings and components tests: 323 passed. The 2 failures are `mobile nav entry staff|fleet-command renders non-empty content`, which time out the same way on `origin/main` in this WSL checkout.
+- `npx tsc --noEmit -p tsconfig.app.json`: clean.
+- WSL pytest `tests/test_frontend_integrity.py`: all pass except `test_tests_desktop_route_bypasses_legacy_app`, which is red on main and fixed by #1690.
+
+## Blockers and risks
+
+- Held by the coordinator until #1690 (main-red fix) merges; then rebase, confirm PR CI green, re-arm.
+
+## Next steps
+
+1. Merge once CI is green; then the Settings consolidation row of #1338.
+
+## Change log
+
+- 2026-09-27: Organization retired into Projects with a per-repo CI badge; old routes redirect.
+- 2026-09-27: PR #1681 opened; SPEC change-log row added.
+- 2026-09-27: Python integrity test updated for the retired Org page; auto-merge disarmed pending #1690.
+
+---
+
+# Current handoff — Chat and run-worktree CLI project folder cleanup (#1688)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1688`; branch `fix/1688-run-worktree-cli-projects`; PR: see DL-#1688; Issue #1688; DL-#1688.
+
+## Objective and Status
+
+- Run worktrees: `remove_worktree` removes the worktree's project folder; reconcile sweeps orphans whose worktree no longer exists. Folders of live worktrees are kept.
+- Chat threads: stable `staff_chat_<thread>` dirs are kept for `--resume` (#1655) and only swept after 14 days without activity (newest mtime of the project folder, its session files or the scratch dir itself). One-turn fallback dirs are swept the same way.
+- Every removal is limited to direct, non-symlink children with the matching prefix; nothing raises. Tests never sweep the node's real temp dir (autouse conftest fixture).
+- Drafted by agy (Gemini 3.8 Flash) in two runs from written specs; Claude reviewed, closed a sweep-vs-resume race and kept tests off real node state.
+
+## Validation
+
+- pytest tests/unit/test_staff_cli_projects.py tests/unit/test_chat_scratch.py tests/unit/test_staff_reconcile.py tests/staff/test_workspace.py tests/staff/test_panel.py and all staff chat suites: pass.
+- ruff check/format and mypy on the touched modules: clean.
+
+## Next Steps
+
+1. None.
+
+---
+
+# Past handoff — Expert-panel CLI project folder cleanup (#1683)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1683`; branch `fix/1683-panel-cli-projects`; PR: see DL-#1683; Issue #1683; DL-#1683.
+
+## Objective and Status
+
+- Each panel turn ran in a fresh `staff_panel_*` scratch dir; the Claude CLI filed its session under `projects/<encoded cwd>` and nothing removed it (about 45 leaked folders on DeskComputer).
+- New `backend/staff/cli_projects.py`: encodes the cwd the way the CLI does, removes the turn's folder in the runner's `finally` with the same env the CLI was spawned with, and runs an age-based sweep (6 h) before each panel. It never raises and never touches anything outside the projects root or without the panel prefix; symlinks are not followed.
+- Drafted by agy (Gemini 3.8 Flash) from a written spec; reviewed and fixed by Claude.
+
+## Validation
+
+- pytest tests/unit/test_staff_cli_projects.py tests/staff/test_panel.py: pass.
+- ruff check/format and mypy on the touched modules: clean.
+
+## Next Steps
+
+1. Follow-ups not in scope: one-turn chat fallback and run-worktree project folders leak the same way.
+
+---
+
+# Past handoff — Owner-level default approval for disk compaction (#1332-default)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332def`; branch `fix/1332-vhdx-default-owner`; PR: see DL-#1332-default; Issue #1332-default; DL-#1332-default.
+
+## Objective and Status
+
+- Deploy order honoured: the RM maintenance role already sets `host.vhdx_compact: owner` on OGLaptop, DeskComputer and ControlTower (live STAFF_ROLES_DIR at fbbe311, checked read-only 2026-09-27), so raising the default cannot invalidate a live role.
+- The owner-only risk class already enforced owner approval at execution; this aligns the declared policy with it.
+
+## Validation
+
+- pytest tests/unit/test_staff_roles.py tests/staff/test_vhdx_compaction_request.py tests/staff/test_maintenance_safety.py: pass (new parametrized test red first).
+
+## Next Steps
+
+1. Close #1332 and epic #1351 after this and PR #1691 merge.
+
+---
+
+# Past handoff — WSL disk card in Operations Diagnostics (#1332-card)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332card`; branch `feat/1332-wsl-disk-card`; PR: see DL-#1332-card; Issue #1332-card; DL-#1332-card.
+
+## Objective and Status
+
+- New `OperationsWslDiskCard` with its own fetch, loading/error(Retry)/empty/data states; rendered before the Tests subsection.
+- Read-only by design: findings (`not_sparse`, `fstrim_timer_inactive`) are stated as facts; the only button is Retry in the error state.
+- Drafted by agy (Gemini 3.8 Flash) from a written spec; reviewed and tidied by Claude.
+
+## Validation
+
+- vitest frontend/src/pages/Operations: 35 passed; eslint (max-warnings 0) and tsc -p tsconfig.app.json clean.
+
+## Next Steps
+
+1. Raise RD DEFAULT_ACTION_APPROVALS[host.vhdx_compact] to owner once Repository_Management#1829 is live on both nodes, then close #1332 and epic #1351.
+
+---
+
+# Past handoff — WSL disk status and owner-only compaction request (#1332)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332`; branch `fix/1332-wsl-disk-status`; PR: see DL-#1332; Issue #1332; DL-#1332.
+
+## Objective and Status
+
+- Owner decisions 2026-09-23 (owner-only) and 2026-09-25 (sparse + fstrim; no orchestrator; status view + request only).
+- Bug fixed: the `host.vhdx_compact` alias ran `maintenance.vacuum_sqlite`. It now maps to the owner-only `maintenance.vhdx_compaction_request`, which records the request and runs nothing.
+- New read-only `GET /api/diagnostics/wsl-disk` (backend/wsl_disk_status.py), drafted by agy (Gemini 3.8 Flash) from a written spec and reviewed by Claude.
+- Live probe on OGLaptop: the Ubuntu disk is 268 GB logical, 183 GB used, and NOT sparse (fsutil agrees); fstrim timer active.
+- RD `DEFAULT_ACTION_APPROVALS[host.vhdx_compact]` stays `confirm` until Repository_Management#1829 (maintenance role -> owner) is live on both nodes; the owner-only risk class already enforces owner approval at execution.
+
+## Validation
+
+- pytest tests/unit/test_wsl_disk_status.py tests/api/test_wsl_disk_status_api.py tests/staff/test_vhdx_compaction_request.py tests/staff/test_maintenance_safety.py tests/api/test_pool_diagnostics.py: pass (new tests red first).
+- ruff check/format, mypy on the touched modules: clean. OpenAPI snapshot and api-types regenerated.
+
+## Next Steps
+
+1. Merge; then add a read-only WSL disk card to the Diagnostics page and raise the RD default approval to owner after Repository_Management#1829 syncs.
+
+---
+
+# Past handoff — Main red: chat.py line cap and stale Tests-route test (#1689)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-main-red`
+- Branch: `fix/main-red-1338-followups`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1689; DL-#1689.
+
+## Objective and Status
+
+- `backend/staff/chat_scratch.py`: new home of `thread_scratch_dir` (#1655), unchanged. `staff.chat` imports it, so `from staff.chat import thread_scratch_dir` still works. chat.py is now 473 lines (cap 500).
+- `tests/test_frontend_integrity.py`: `test_tests_desktop_route_bypasses_legacy_app` asserts `table["tests"] = TESTS_REDIRECT` in routing.ts and `<TestsPage />` in OperationsTestsSubsection, matching #1674.
+- Not in scope: the SettingsPage `react-refresh/only-export-components` warning (fixed by #1687 from another session).
+
+## Validation
+
+- `rdtest.sh claude-main-red tests/test_frontend_integrity.py tests/unit/test_staff_chat_memory.py -q`: all passed (1 xfail pre-existing).
+- `py -3.12 -m ruff check backend/staff/ tests/test_frontend_integrity.py`: clean.
+
+## Next Steps
+
+1. Push, open the PR (`Fixes #1689`), arm auto-merge via `automerge_guard`.
+
+---
+
+# Current handoff — Restore green frontend lint on main (#1686)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1686`; branch `fix/1686-settings-lint`; PR: see DL-#1686; Issue #1686; DL-#1686.
+
+## Objective and Status
+
+- #1679 exported a constant from a component file; ESLint (max-warnings 0) then failed `Vitest + Coverage` on main and on every PR running the frontend lane.
+
+## Validation
+
+- CI `Vitest + Coverage` lint step on this PR.
+
+## Next Steps
+
+1. None.
+
+---
+
+# Past handoff — ADR: agent-client ingress stays local-only (#1335)
 
 Last updated: 2026-09-27
 

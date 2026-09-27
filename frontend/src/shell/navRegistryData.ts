@@ -4,18 +4,18 @@
  * Defines the 4-area information architecture:
  *   - Staff (Staff Console, Fleet Command, Maxwell)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
- *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Assessments, Org)
+ *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Assessments)
  *   - Settings (Settings, Credentials, Notifications, Linear Setup, Principals)
  *
  * Tests lives under Operations → Diagnostics (#1338), not in the nav.
  * Local Tools is a section of the Settings page (#1338), not a nav entry.
+ * Organization is retired into Projects (per-repo CI badge, #1338).
  */
 import type { NavIcon } from "./navIcons";
 import {
   ServerIcon,
   QueueIcon,
   WrenchIcon,
-  RepoIcon,
   ActivityIcon,
   KeyIcon,
   BotIcon,
@@ -197,17 +197,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: ClipboardCheckIcon,
     tooltip: "Repository health assessments and graded scores.",
     tabId: "assessments",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: true,
-  },
-  {
-    id: "org",
-    label: "Organization",
-    group: "fleet",
-    Icon: RepoIcon,
-    tooltip: "Organization-wide repository and runner overview.",
-    tabId: "org",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

@@ -36,6 +36,7 @@ CAPABILITIES: tuple[str, ...] = (
     "label",
     "comment",
     "doc",
+    "issue_authoring",
 )
 
 #: Conductor ``TaskClass`` StrEnum values.
@@ -50,6 +51,7 @@ TASK_CLASSES: tuple[str, ...] = (
     "refactor",
     "design",
     "security",
+    "plan",
 )
 
 #: Conductor ``AuthMode`` StrEnum values.

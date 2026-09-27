@@ -25,11 +25,167 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1680
 - **Branch:** `fix/claude-cli-version-floor`
 - **PR:** #1684
-- **Paths:** `backend/staff/cli_version.py`, `backend/staff/runner_ops.py`, `backend/staff/runner.py`, `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `backend/staff/classifier.py`, `backend/staff/retry.py`, `backend/staff/models.py`, `backend/staff/adapters.py`, `backend/routers/staff.py`, `backend/routers/staff_v1.py`, `frontend/src/pages/Staff/Roster.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/unit/test_staff_cli_version.py`, `tests/api/test_staff_runner.py`, `tests/unit/test_staff_classifier.py`, `frontend/src/pages/__tests__/Staff.test.tsx`
+- **Paths:** `backend/staff/cli_version.py`, `backend/staff/runner_ops.py`, `backend/staff/runner.py`, `backend/staff/chat.py`, `backend/staff/classifier.py`, `backend/staff/models.py`, `backend/staff/adapters.py`, `backend/routers/staff.py`, `backend/routers/staff_v1.py`, `frontend/src/pages/Staff/Roster.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/unit/test_staff_cli_version.py`, `tests/api/test_staff_runner.py`, `frontend/src/pages/__tests__/Staff.test.tsx`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (cli_version + staff runner tests 50 passed; staff/chat/classifier scope 1254 passed, 3 pre-existing sibling-checkout failures; Staff vitest 17 passed; mypy and ruff clean)
 - **Summary:** claude CLI floor 2.1.259 (bisected: 2.1.258 rejects `--permission-prompts`). The installed version is probed once per binary; a run or chat turn below the floor fails up front as `cli_outdated` (not retryable) with upgrade remediation, provider selection skips it, and the roster reports `provider_versions` so the Roster card shows "outdated". No permission-bypass flag.
 - **Next step:** Merge PR #1684 once CI is green.
+
+### DL-#1567 — Confident auto-route messages go straight to the specialist
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1567 (split from #1548; owner decision: option 3)
+- **Branch:** `feat/1567-confident-preroute`
+- **PR:** pending
+- **Paths:** `backend/staff/chat_preroute.py`, `backend/routers/staff_threads.py`, `backend/staff/router.py`, `backend/staff/router_models.py`, `tests/unit/test_staff_chat_preroute.py`, `tests/api/test_staff_chat_preroute_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (new tests 23 passed; staff chat, router, threads, routing-eval and related API suites 309 passed, 2 skipped)
+- **Summary:** In `auto` threads, a `route_deterministic` decision at or above `PRE_ROUTE_CONFIDENCE_THRESHOLD` (0.85) for a loaded role other than Barb calls `BarbRouter.execute_handoff` before any turn: the auto thread gets the handoff card (reason `auto-routed: matched <rule>`), and the turn runs as that role in its direct thread. Analysis keywords route to `maintenance`. Anything else, and any pre-routing failure, leaves the turn with Barb.
+- **Next step:** Merge the PR once CI is green.
+
+### DL-#1669 — Unknown CLI option classified as cli_outdated
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1669
+- **Branch:** `fix/1669-cli-outdated`
+- **PR:** not created
+- **Paths:** `backend/staff/classifier.py`, `backend/staff/retry.py`, `backend/staff/chat_failures.py`, `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`, `tests/unit/test_staff_cli_outdated.py`, `tests/unit/test_staff_classifier.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (new cli_outdated tests + classifier/retry/chat_failures subset: 39 passed; ruff check and ruff format --check clean on changed files)
+- **Summary:** A CLI that rejects an adapter flag (e.g. `error: unknown option '--permission-prompts'` from a too-old `claude` install) now classifies as `cli_outdated`, not retryable, with remediation naming the provider, node, rejected option and upgrade command (`npm install -g @anthropic-ai/claude-code@latest` for claude). Chat specificity rank 95; Staff Console error card title "CLI Tool Outdated".
+- **Next step:** Open the PR for this branch.
+
+### DL-#1670 — v1 staff run detail no longer 500s
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1670
+- **Branch:** `fix/v1-run-detail`
+- **PR:** not created
+- **Paths:** `backend/routers/staff_v1.py`, `tests/api/test_staff_v1_run_detail.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (`tests/api/test_staff_v1_run_detail.py` 2 passed after RED 500; `tests/api/test_staff_runner.py` passes; ruff clean)
+- **Summary:** `get_run_v1` called `RunStore.list_events`, which does not exist, so every v1 run detail (used by Barb and agent clients) was a 500 while the legacy route worked. It now delegates to `routers.staff.get_run` and only reshapes the 404 into the v1 envelope; v1 also gains the remote-run proxy.
+- **Next step:** Merge the PR, deploy, and confirm `GET /api/v1/staff/runs/<id>` returns 200 on DeskComputer.
+
+### DL-#1695 — Unblock the Windows pre-push suite
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1695
+- **Branch:** `fix/panel-windows-hang`
+- **PR:** pending
+- **Paths:** `backend/staff/cli_projects.py`, `backend/staff/panel.py`, `backend/conductor_constants.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Windows, targeted suites + full -x run)
+- **Summary:** Two failures that stopped `pytest -x` on Windows nodes (every RD push from DeskComputer was blocked).
+- **Next step:** None.
+
+### DL-#1338-org — SC-G6: Organization folds into Projects
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Organization", recorded 2026-09-25)
+- **Branch:** `feat/1338-org-into-projects`
+- **PR:** #1681
+- **Paths:** `frontend/src/pages/Projects/CiStatusBadge.tsx`, `frontend/src/pages/Projects/ProjectCard.tsx`, `frontend/src/pages/Projects/types.ts`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/decompIcons.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/__tests__/ProjectsCiBadge.test.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `frontend/src/shell/__tests__/retiredOrgTab.test.ts`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `tests/test_frontend_integrity.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted vitest 323 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean; integrity pytest green except the main-red Tests check fixed by #1690)
+- **Summary:** Projects cards show each repo's latest CI result from `/api/repos` as a badge linked to the run. The Organization tab and page are removed; `/fleet/org`, `/t/org` and `/org` redirect to `/work/projects`. `/api/repos` and `/api/stats` stay because other pages use them.
+- **Next step:** Rebase onto main after #1690 merges and re-arm auto-merge once PR CI is green.
+
+### DL-#1688 — Chat and run-worktree CLI project folder cleanup
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1688
+- **Branch:** `fix/1688-run-worktree-cli-projects`
+- **PR:** pending
+- **Paths:** `backend/staff/cli_projects.py`, `backend/staff/chat_scratch.py`, `backend/staff/workspace.py`, `backend/staff/reconcile.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites pass)
+- **Summary:** Follow-up to #1683: the same Claude CLI project-folder leak for run worktrees and chat threads.
+- **Next step:** None.
+
+### DL-#1683 — Expert-panel CLI project folder cleanup
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1683
+- **Branch:** `fix/1683-panel-cli-projects`
+- **PR:** pending
+- **Paths:** `backend/staff/cli_projects.py`, `backend/staff/panel.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites pass)
+- **Summary:** Stops the leak of one Claude CLI project folder per expert-panel turn.
+- **Next step:** Follow-ups not in scope: one-turn chat fallback and run-worktree project folders leak the same way.
+
+### DL-#1332-default — Owner-level default approval for disk compaction
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332-default
+- **Branch:** `fix/1332-vhdx-default-owner`
+- **PR:** pending
+- **Paths:** `backend/staff/validator.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites; live role check on 3 nodes)
+- **Summary:** Raises the RD default after Repository_Management#1829 went live on every staff node.
+- **Next step:** Close #1332 and epic #1351 after this and PR #1691 merge.
+
+### DL-#1332-card — WSL disk card in Operations Diagnostics
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332-card
+- **Branch:** `feat/1332-wsl-disk-card`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Operations/OperationsWslDiskCard.tsx`, `frontend/src/pages/Operations/OperationsDiagnosticsSection.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (vitest, eslint, tsc)
+- **Summary:** UI for the read-only WSL disk status endpoint from PR #1682.
+- **Next step:** Raise RD DEFAULT_ACTION_APPROVALS[host.vhdx_compact] to owner once Repository_Management#1829 is live on both nodes, then close #1332 and epic #1351.
+
+### DL-#1332 — WSL disk status and owner-only compaction request
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332
+- **Branch:** `fix/1332-wsl-disk-status`
+- **PR:** pending
+- **Paths:** `backend/wsl_disk_status.py`, `backend/routers/diagnostics.py`, `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `docs/runbooks/wsl-vhdx-compaction.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites pass; live OGLaptop probe)
+- **Summary:** Reduced scope per the 2026-09-25 owner decision: read-only disk status plus an owner-approved compaction request; no orchestrated compaction.
+- **Next step:** Merge; then add a read-only WSL disk card to the Diagnostics page and raise the RD default approval to owner after Repository_Management#1829 syncs.
+
+### DL-#1689 — Main red: chat.py line cap and stale Tests-route test
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1689
+- **Branch:** `fix/main-red-1338-followups`
+- **PR:** not created
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_scratch.py`, `tests/test_frontend_integrity.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (test_frontend_integrity + test_staff_chat_memory pass in WSL; ruff clean)
+- **Summary:** `thread_scratch_dir` moved to `staff/chat_scratch.py` and re-exported from `staff.chat` (no behaviour change), bringing chat.py from 504 to 473 lines. The Tests-route integrity test now asserts the #1338 redirect and the OperationsTestsSubsection render. The SettingsPage lint half is #1686/#1687.
+- **Next step:** Merge the PR once CI is green.
+
+### DL-#1686 — Restore green frontend lint on main
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1686
+- **Branch:** `fix/1686-settings-lint`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (CI)
+- **Summary:** main-is-red fix: one-word change, the constant is only used inside the file.
+- **Next step:** None.
 
 ### DL-#1335 — ADR: agent-client ingress stays local-only
 
@@ -56,6 +212,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (targeted vitest 556 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean)
 - **Summary:** Local Tools is no longer a Settings nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. `/api/local-apps` stays because the section calls it.
 - **Next step:** Merge the PR, then the Organization row.
+
+### DL-#1678 — Reap Windows Chrome leaked by WSL runner jobs
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1678
+- **Branch:** `fix/1678-wsl-chrome-reaper`
+- **PR:** pending
+- **Paths:** `deploy/reap-wsl-leaked-chrome.sh`, `deploy/scheduled-dashboard-maintenance.sh`, `tests/test_reap_wsl_leaked_chrome.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (filter anchored to `--user-data-dir` after review; regex checked in PS 7 and 5.1 against leak, URL, and user-profile samples; `tests/test_reap_wsl_leaked_chrome.py` passes under WSL; OGLaptop read-only run: 0 matches, all 18 user Chrome excluded)
+- **Summary:** New standalone `deploy/reap-wsl-leaked-chrome.sh` stops Windows `chrome.exe` processes leaked into WSL hosts through `/mnt/c` interop (lhci/chrome-launcher). It matches only processes whose `CommandLine` has a `\AppData\Local\lighthouse.` temp profile AND whose `CreationDate` is older than `LEAKED_CHROME_MAX_AGE_HOURS` (default 2h, PowerShell 5.1 compatible `Get-CimInstance Win32_Process`), honours `DRY_RUN`, never deletes profile dirs, and exits 0 with a warning if `powershell.exe`/interop is unavailable or times out (wrapped in `timeout 120`). `POWERSHELL_BIN` is overridable for tests. Wired into `deploy/scheduled-dashboard-maintenance.sh` behind a WSL-only guard (`/proc/sys/fs/binfmt_misc/WSLInterop` or `WSL_DISTRO_NAME`).
+- **Next step:** Open the PR, arm auto-merge, release the lease.
 
 ### DL-#1338-tests — SC-G6: Tests under Operations → Diagnostics
 

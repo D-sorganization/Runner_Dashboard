@@ -31,16 +31,12 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from staff.classifier import FailureClassification
+from staff.classifier import FailureClassification, classify_cli_below_floor
 
 Version = tuple[int, int, int]
 
 # Keyed by executable, not provider: claude and claude-ollama share one binary and argv.
 MIN_CLI_VERSIONS: dict[str, Version] = {"claude": (2, 1, 259)}
-
-UPGRADE_HINTS: dict[str, str] = {
-    "claude": "`claude update`, or `npm install -g @anthropic-ai/claude-code@latest` for an npm install",
-}
 
 PROBE_TIMEOUT_SECONDS = 15.0
 
@@ -141,8 +137,8 @@ def cli_status(executable: str) -> CliVersionStatus:
         return CliVersionStatus(executable, True, None, min_text, False, detail)
     found = format_version(version)
     if version < floor:
-        hint = UPGRADE_HINTS.get(executable, f"upgrade {executable}")
-        detail = f"{executable} CLI {found} < required {min_text}; upgrade the CLI on this node ({hint})"
+        # Remediation text comes from the classifier so run-time and preflight failures agree.
+        detail = classify_cli_below_floor(executable, found, min_text or "").remediation
         return CliVersionStatus(executable, True, found, min_text, True, detail)
     return CliVersionStatus(executable, True, found, min_text, False, "")
 
@@ -160,14 +156,9 @@ def version_gate(executable: str) -> FailureClassification | None:
     if not executable or executable not in MIN_CLI_VERSIONS:
         return None
     status = cli_status(executable)
-    if not status.outdated:
+    if not status.outdated or status.version is None or status.min_version is None:
         return None
-    return FailureClassification(
-        failure_class="cli_outdated",
-        retryable=False,
-        remediation=status.detail,
-        error=f"{executable} CLI {status.version} is older than the minimum supported {status.min_version}",
-    )
+    return classify_cli_below_floor(executable, status.version, status.min_version)
 
 
 def provider_versions(adapters: Mapping[str, Any]) -> dict[str, dict[str, Any]]:

@@ -15,16 +15,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
-import stat
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
-from staff.adapters import ADAPTERS, ChatReadOnlyUnsupportedError, ProviderAdapter, get_adapter
+from staff.adapters import (
+    ADAPTERS,
+    ChatReadOnlyUnsupportedError,
+    ProviderAdapter,
+    get_adapter,
+)
 from staff.availability import (
     execute_degraded_turn,
     get_availability_metrics,
@@ -33,7 +34,6 @@ from staff.availability import (
     resolve_provider_chain,
 )
 from staff.chat_failures import (
-    chat_argv_refusal,
     chat_read_only_tools,
     choose_preferred_chat_failure,
     record_chat_capacity_failure,
@@ -54,7 +54,12 @@ from staff.chat_pool import (
     ChatConcurrencyPool,
     get_chat_pool,
 )
-from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
+from staff.chat_scratch import thread_scratch_dir
+from staff.chat_streaming import (
+    LiveProcessReader,
+    spawn_cli_process,
+    stream_turn_output,
+)
 from staff.classifier import classify_run_failure
 from staff.cli_version import version_gate
 from staff.conversations import ConversationStore, get_conversation_store
@@ -97,34 +102,6 @@ class ChatTurnResult:
     error: str | None = None
     metrics: dict[str, Any] = field(default_factory=dict)
     replayed_history: bool = False
-
-
-def thread_scratch_dir(thread_id: str) -> str:
-    """The read-only working directory every chat turn of ``thread_id`` runs in (#1655).
-
-    The claude CLI files a session under a project directory keyed by the working
-    directory, so ``--resume`` only finds turn 1 when turn 2 runs in the same
-    directory. The directory is stable per thread, distinct between threads, and kept
-    between turns (turns of one thread may overlap, so no turn may remove it).
-
-    Pre: ``thread_id`` is non-empty.
-    Post: the returned directory exists, is not a symlink and (on POSIX) is owned by
-    this process's user. If the predictable path was planted by someone else, the turn
-    runs in a private ``mkdtemp`` directory instead and only loses session resume.
-    """
-    assert thread_id.strip(), "thread_id must be non-empty"  # noqa: S101
-    safe = re.sub(r"[^A-Za-z0-9_-]", "_", thread_id)
-    path = Path(tempfile.gettempdir()) / f"staff_chat_{safe}"
-    try:
-        path.mkdir(mode=0o700, exist_ok=True)
-        info = path.lstat()
-    except OSError:
-        info = None
-    owner_ok = info is not None and (not hasattr(os, "getuid") or info.st_uid == os.getuid())
-    if info is None or stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or not owner_ok:
-        log.warning("Chat scratch path %s is not a private directory; using a one-turn directory", path)
-        return tempfile.mkdtemp(prefix="staff_chat_")
-    return str(path)
 
 
 class ChatTurnRunner:
@@ -344,7 +321,17 @@ class ChatTurnRunner:
             )
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             # Fail closed and visibly: never fall back to a writable argv (#1484).
-            return ChatTurnResult(ok=False, retryable=False, **chat_argv_refusal(exc))
+            failure_class = (
+                "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
+            )
+            remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
+            return ChatTurnResult(
+                ok=False,
+                failure_class=failure_class,
+                retryable=False,
+                remediation=remediation,
+                error=str(exc),
+            )
         env = {**os.environ, **adapter.runtime_env()}
 
         proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)

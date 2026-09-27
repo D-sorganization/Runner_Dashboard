@@ -8,6 +8,22 @@ WSL 2 virtual hard disk files (`ext4.vhdx`) grow dynamically but do not automati
 - The WSL partition size inside Linux is small (e.g. 20GB used), but the `ext4.vhdx` file on the Windows host is massive (e.g. 100GB).
 - Storage health alerts or the Diagnostics tab warn of high Windows disk usage.
 
+## Check First (#1332)
+
+- `GET /api/diagnostics/wsl-disk` is read-only. For each distro it reports:
+  - `sparse`: the NTFS sparse flag;
+  - `vhdx_bytes` against `fs_used_bytes`;
+  - the last `fstrim` run.
+- Findings:
+  - `not_sparse`: the disk does not return freed space to Windows on its own.
+  - `fstrim_timer_inactive`: the in-guest trim timer is off.
+- A sparse disk shrinks with an in-guest `fstrim -av`. It needs no compaction. Compacting it
+  fails anyway, because `diskpart` refuses sparse files.
+- `wsl --manage <distro> --set-sparse true` can be refused on current WSL builds. Do not work
+  around that with `--allow-unsafe`.
+- Compaction is owner-only. Barb's `host.vhdx_compact` action only records an owner-approved
+  request, and the owner then follows this runbook in a maintenance window.
+
 ## Severity
 
 **P3** - Low urgency maintenance task. However, if the host drive runs completely out of space, it can cause database corruption and VM crashes (**P1**).

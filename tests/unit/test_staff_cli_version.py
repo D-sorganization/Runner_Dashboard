@@ -347,3 +347,14 @@ def test_roster_models_accept_provider_versions() -> None:
     )
     assert body.provider_versions["claude"].outdated is True
     assert StaffRosterResponse(machine="m", roles=[], providers={}).provider_versions == {}
+
+
+@pytest.mark.unit
+def test_floor_failure_reuses_the_classifier_upgrade_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff.classifier import UPGRADE_COMMANDS, classify_cli_below_floor
+
+    _pin(monkeypatch, "2.1.79")
+    gate = cli_version.version_gate("claude")
+    assert gate == classify_cli_below_floor("claude", "2.1.79", "2.1.259")
+    assert UPGRADE_COMMANDS["claude"] in gate.remediation
+    assert cli_version.cli_status("claude").detail == gate.remediation

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from staff.adapters import ChatReadOnlyUnsupportedError
 from staff.thread_bus import get_thread_bus
 
 if TYPE_CHECKING:
@@ -97,16 +96,6 @@ async def record_chat_failure(
     message = conv_store.get_message(placeholder_id)
     if message:
         await get_thread_bus().publish_message(thread_id, message.to_dict())
-
-
-def chat_argv_refusal(exc: Exception) -> dict[str, str]:
-    """``failure_class``/``remediation``/``error`` for a turn whose read-only argv was refused (#1484)."""
-    unsupported = isinstance(exc, ChatReadOnlyUnsupportedError)
-    return {
-        "failure_class": "provider_not_read_only" if unsupported else "invalid_chat_tools",
-        "remediation": "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools.",
-        "error": str(exc),
-    }
 
 
 def chat_read_only_tools(role: RoleSpec | None) -> tuple[str, ...]:

@@ -106,6 +106,12 @@ const RETIRED_LOCAL_TOOLS_PATHS = new Set([
   "/t/local-apps",
 ]);
 
+/** The Organization tab folded into Projects (#1338, owner decision). */
+const PROJECTS_REDIRECT: RedirectTarget = { to: "/work/projects", label: "Projects" };
+
+/** Old addresses of the retired Organization tab (#1338). */
+const RETIRED_ORG_PATHS = new Set(["/fleet/org", "/org", "/t/org"]);
+
 /**
  * Static redirect table mapping old tabIds and legacy aliases to their
  * new canonical routes and labels.
@@ -137,6 +143,7 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["scheduled-jobs"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["schedules"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["diagnostics"] = { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
+  table["org"] = PROJECTS_REDIRECT;
   table["tests"] = TESTS_REDIRECT;
   table["local-apps"] = LOCAL_TOOLS_REDIRECT;
   return table;
@@ -207,6 +214,9 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
   if (RETIRED_LOCAL_TOOLS_PATHS.has(normalized)) {
     return LOCAL_TOOLS_REDIRECT;
   }
+  if (RETIRED_ORG_PATHS.has(normalized)) {
+    return PROJECTS_REDIRECT;
+  }
   if (RETIRED_TO_STAFF_CONSOLE.has(normalized)) {
     return { to: "/", label: "Staff Console" };
   }
@@ -261,6 +271,7 @@ export function pathnameToTabId(pathname: string): string | undefined {
   if (normalized === "/settings") return "settings";
   if (normalized === PUSH_SETTINGS_PATH) return PUSH_SETTINGS_TAB_ID;
   if (RETIRED_LOCAL_TOOLS_PATHS.has(normalized)) return "settings";
+  if (RETIRED_ORG_PATHS.has(normalized)) return "projects";
 
   if (normalized === "/fleet/reports" || normalized === "/fleet/analysis") {
     return "insights";

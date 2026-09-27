@@ -20,9 +20,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import provider_switch
+from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
+from staff.cli_projects import PANEL_SCRATCH_PREFIX
 from staff.conversation_models import ThreadRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.group_models import GroupCostEstimate, get_group_threshold, lookup_seat_price
@@ -272,6 +274,10 @@ async def run_panel(
     rounds_used, consensus = 0, False
     _ACTIVE_PANELS.add(thread_id)
     try:
+        try:  # never awaited: the sweep must not hold up or abandon the panel (#1683)
+            cli_projects.start_panel_sweep(os.environ)
+        except Exception as exc:  # noqa: BLE001 — sweep problem must never fail a panel
+            log.warning("failed to start the stale panel project sweep: %s", exc)
         for round_no in range(1, request.rounds + 1):
             round_turns = []
             for expert in request.experts:
@@ -361,8 +367,8 @@ async def default_turn_runner(
 ) -> TurnOutcome:
     """Run one read-only CLI chat turn, streaming tokens into ``message_id`` (or no tokens when None).
 
-    Post: the CLI process is gone and its scratch directory removed, whether the turn
-    finished, failed, timed out or was cancelled.
+    Post: the CLI process is gone, its scratch directory removed, and its CLI project folder
+    removed, whether the turn finished, failed, timed out or was cancelled.
     """
     if provider_switch.is_disabled(speaker.provider):  # #1597 holds on panel and seat turns
         return TurnOutcome(ok=False, error=f"{speaker.provider} {provider_switch.DISABLED_DETAIL}")
@@ -370,14 +376,15 @@ async def default_turn_runner(
         adapter = get_adapter(speaker.provider)
     except KeyError:
         return TurnOutcome(ok=False, error=f"unknown provider {speaker.provider!r}")
-    scratch_dir = tempfile.mkdtemp(prefix="staff_panel_")
+    scratch_dir = tempfile.mkdtemp(prefix=PANEL_SCRATCH_PREFIX)
+    env: dict[str, str] = {**os.environ}
     proc = None
     try:
         try:
             cmd = adapter.chat_argv(prompt=prompt, workdir=scratch_dir, model=speaker.model, read_only_tools=())
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             return TurnOutcome(ok=False, error=str(exc))
-        env = {**os.environ, **adapter.runtime_env()}
+        env.update(adapter.runtime_env())
         proc = spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
         bus = get_thread_bus() if message_id is not None else _NULL_BUS
         out = await stream_turn_output(
@@ -397,3 +404,4 @@ async def default_turn_runner(
             with contextlib.suppress(OSError):
                 proc.kill()
         shutil.rmtree(scratch_dir, ignore_errors=True)
+        cli_projects.remove_turn_project(scratch_dir, env)

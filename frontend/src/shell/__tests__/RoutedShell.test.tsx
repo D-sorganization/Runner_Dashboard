@@ -91,10 +91,6 @@ vi.mock("../../pages/Maxwell", () => ({
   MaxwellMobile: () => <div data-testid="mobile-maxwell">Mobile Maxwell</div>,
 }));
 
-vi.mock("../../pages/Org", () => ({
-  OrgPage: () => <div data-testid="native-org">Org</div>,
-}));
-
 vi.mock("../../pages/OverviewPage", () => ({
   default: () => <div data-testid="native-overview">Overview</div>,
 }));
@@ -291,7 +287,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["code-requests", "native-code-requests"],
     ["linear-setup", "native-linear-setup"],
     ["maxwell", "native-maxwell"],
-    ["org", "native-org"],
     ["principals", "native-principals"],
     ["push-settings", "native-push-settings"],
     ["queue", "native-queue"],
@@ -345,6 +340,18 @@ describe("RoutedShell — URL is the source of truth", () => {
       expect(screen.getByTestId("pathname")).toHaveTextContent(
         "/fleet/operations",
       );
+    },
+  );
+
+  it.each(["/t/org", "/fleet/org"])(
+    "redirects retired %s to Projects (#1338)",
+    async (path) => {
+      renderAt(path);
+      expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+        "projects",
+      );
+      expect(await screen.findByTestId("native-projects")).toBeInTheDocument();
+      expect(screen.getByTestId("pathname")).toHaveTextContent("/work/projects");
     },
   );
 

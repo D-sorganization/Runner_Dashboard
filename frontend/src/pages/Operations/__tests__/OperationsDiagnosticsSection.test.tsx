@@ -52,6 +52,11 @@ function mockDiagnosticsFetch() {
         jsonResponse({ message: "Generated 3 launcher scripts", launchers: ["run.bat"] }),
       );
     }
+    if (urlStr === "/api/diagnostics/wsl-disk") {
+      return Promise.resolve(
+        jsonResponse({ distributions: [], fstrim: {}, current_distro: null }),
+      );
+    }
     return Promise.reject(new Error("unexpected url " + urlStr));
   });
 }
@@ -112,7 +117,7 @@ describe("OperationsDiagnosticsSection", () => {
     render(<OperationsDiagnosticsSection />);
 
     expect(await screen.findByText(/Failed to load diagnostics: Diagnostics error/i)).toBeInTheDocument();
-    const retryBtn = screen.getByRole("button", { name: /Retry/i });
-    expect(retryBtn).toBeInTheDocument();
+    const retryButtons = screen.getAllByRole("button", { name: /Retry/i });
+    expect(retryButtons.length).toBeGreaterThanOrEqual(1);
   });
 });
