@@ -1,4 +1,55 @@
-# Current handoff — Turn providers off on every dispatch path (#1597)
+# Current handoff — Board gate secretary filter and roster-bound board-secretary (#1601)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1601`; branch `fix/1601-board-gate-roster`; Issue #1601; DL-#1601.
+
+## Objective and Status
+
+- Fix Board gate secretary-note filter bug in `backend/code_requests/board_gate.py`:
+  - Query logins from `proposals.service._secretary_logins()` instead of substring matching `"secretary"` or evaluating `c.get("body")`.
+  - Non-secretary comments with bodies are now excluded from Board review notes.
+- Fix hard-coded repository in Code Request URL in `backend/code_requests/board_gate.py`:
+  - Build URL from `ORG` (imported from `dashboard_config`) and `request.repository`.
+- Replace hard-coded `"board-secretary"` / `"board_secretary"` role names with `BOARD_PROPOSAL_ROLE` from `staff/action_executors.py`:
+  - Single source of truth for the board proposal and coordinator role (`BOARD_PROPOSAL_ROLE = "board-secretary"`).
+  - Dropped underscore alias `board_secretary` in `staff/actions.py` (`check_role_permission` for role_name and `reports_to`).
+  - Updated `staff/groups.py` (`coordinator`, `resolve_group_thread_meta`, `dispatch_group_message`), `staff/router_models.py`, and `proposals/service.py` to use `BOARD_PROPOSAL_ROLE`.
+  - Zero `"board-secretary"` or `"board_secretary"` string literals outside `staff/action_executors.py` across `backend/`.
+- Roster-bound Board group coordinator validation:
+  - Added Board group coordinator validation in `validate_action_default_roles` (`staff/action_executors.py`) adhering to the WP-0.1 pattern.
+  - Verified with unit tests when coordinator is missing or invalid.
+
+## Validation
+
+- Target pytest suite in WSL:
+  `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1601 && GH_TOKEN=x HOME=/tmp/rdhome-1601 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_board_gate.py tests/unit/test_staff_actions.py tests/unit/test_staff_groups.py -q -o addopts='' -p no:cacheprovider -W ignore"`
+  Result: 45 passed in 5.37s.
+- Broader pytest suite in WSL:
+  `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1601 && GH_TOKEN=x HOME=/tmp/rdhome-1601 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k \"board or secretary or group or action\" -q -o addopts='' -p no:cacheprovider -W ignore"`
+  Result: 82 passed, 276 deselected in 8.35s.
+- Roster eval test suite in WSL:
+  `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1601 && GH_TOKEN=x HOME=/tmp/rdhome-1601 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/staff/routing_eval/test_action_executor_roles.py -v -o addopts='' -p no:cacheprovider -W ignore"`
+  Result: 3 passed, 2 skipped in 4.90s.
+- Linting and formatting:
+  `py -3.12 -m ruff check backend/code_requests/board_gate.py backend/staff/actions.py backend/staff/groups.py backend/staff/action_executors.py backend/staff/router_models.py backend/proposals/service.py tests/code_requests/test_board_gate.py tests/unit/test_staff_actions.py tests/unit/test_staff_groups.py`
+  Result: All checks passed!
+  `py -3.12 -m ruff format backend/code_requests/board_gate.py backend/staff/actions.py backend/staff/groups.py backend/staff/action_executors.py backend/staff/router_models.py backend/proposals/service.py tests/code_requests/test_board_gate.py tests/unit/test_staff_actions.py tests/unit/test_staff_groups.py`
+  Result: 9 files left unchanged (clean format).
+- Type checking:
+  `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`
+  Result: Success: no issues found in 166 source files.
+
+## Next Steps
+
+1. Reviewer review and commit.
+2. Open PR referencing `Fixes #1601`.
+
+---
+
+# Past handoff — Turn providers off on every dispatch path (#1597)
 
 Last updated: 2026-09-26
 

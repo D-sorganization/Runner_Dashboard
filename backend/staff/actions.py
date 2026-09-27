@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from identity import Principal, format_caller, principal_has_scope
-from staff.action_executors import register_standard_actions
+from staff.action_executors import BOARD_PROPOSAL_ROLE, register_standard_actions
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import get_conversation_store
 from staff.maintenance import register_maintenance_actions
@@ -241,7 +241,7 @@ def check_role_permission(
     if role_name == "maintenance" and (act_name.startswith("maintenance.") or act_name in _MAINTENANCE_ACTIONS):
         return True
 
-    if role_name in ("board-secretary", "board_secretary") and act_name in (
+    if role_name == BOARD_PROPOSAL_ROLE and act_name in (
         "board.propose",
         "submit_proposal",
         "staff.dispatch",
@@ -280,7 +280,7 @@ def check_role_permission(
     if act_name in ("board.propose", "submit_proposal") and (
         "submit_proposal" in role_tools
         or "board.propose" in role_tools
-        or spec.reports_to in ("board-secretary", "board_secretary")
+        or spec.reports_to == BOARD_PROPOSAL_ROLE
         or bool(spec.scope.get("proposals_per_run"))
     ):
         return True

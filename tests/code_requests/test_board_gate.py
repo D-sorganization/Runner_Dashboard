@@ -29,6 +29,7 @@ from code_requests.model import (
     Requester,
     RequesterKind,
 )
+from dashboard_config import ORG
 
 
 def _make_request(
@@ -235,9 +236,73 @@ class TestBoardProposalCreationAndState:
         assert kwargs["target_repos"] == [request.repository]
         assert "456" in updated_request.board_proposal
 
+    def test_route_code_request_url_uses_request_repository(self) -> None:
+        """Code Request URL in proposal must use the request's actual repository."""
+        request = _make_request(
+            state=CodeRequestState.TRIAGE,
+            repository="Maxwell-Daemon",
+            issue_number=42,
+        )
+        decision = BoardRoutingDecision(
+            routes_to_board=True,
+            reasons=["New service or daemon"],
+            criteria_matched=["new_service_or_repo"],
+        )
+        proposal_mock = MagicMock()
+        proposal_mock.number = 789
+        create_proposal_fn = MagicMock(return_value=proposal_mock)
+
+        route_code_request_to_board(
+            request,
+            decision=decision,
+            create_proposal_fn=create_proposal_fn,
+        )
+
+        create_proposal_fn.assert_called_once()
+        kwargs = create_proposal_fn.call_args.kwargs
+        assert kwargs["code_request_url"] == f"https://github.com/{ORG}/Maxwell-Daemon/issues/42"
+
 
 class TestBoardDecisionSync:
     """Test syncing decision labels on linked proposal to Code Request."""
+
+    def test_non_secretary_comment_excluded_from_secretary_notes(self) -> None:
+        """Non-secretary comments with bodies must NOT be included in Board review notes."""
+        request = _make_request(
+            state=CodeRequestState.BOARD_REVIEW,
+            board_proposal="456",
+            prompt="Initial prompt.",
+        )
+
+        get_proposal_fn = MagicMock(
+            return_value={
+                "number": 456,
+                "state": "decided",
+                "decision": "accepted",
+                "decision_labels": ["board:accepted"],
+                "meeting_date": "2026-09-28",
+                "comments": [
+                    {
+                        "user": "board-secretary",
+                        "body": "Accepted with condition: must support offline mode.",
+                    },
+                    {
+                        "user": "contributor-bob",
+                        "body": "Random contributor note that should NOT appear in board review notes.",
+                    },
+                ],
+            }
+        )
+
+        updated_request = sync_board_proposal_decision(
+            request,
+            get_proposal_fn=get_proposal_fn,
+            actor="board-sync",
+        )
+
+        assert updated_request.state == CodeRequestState.PLANNING
+        assert "must support offline mode" in updated_request.prompt
+        assert "Random contributor note" not in updated_request.prompt
 
     def test_accepted_label_moves_to_planning_with_board_notes(self) -> None:
         request = _make_request(

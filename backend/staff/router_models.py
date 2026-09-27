@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from staff.action_executors import BOARD_PROPOSAL_ROLE
+
 DEFAULT_CONFIDENCE_THRESHOLD = 0.65
 
 RE_AT_MENTION = re.compile(r"(?:^|\s)@([a-zA-Z0-9_-]+)", re.IGNORECASE)
@@ -137,7 +139,7 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
         "dependency license",
         "third-party license",
     ),
-    "board-secretary": (
+    BOARD_PROPOSAL_ROLE: (
         "board meeting",
         "meeting agenda",
         "board proposal",

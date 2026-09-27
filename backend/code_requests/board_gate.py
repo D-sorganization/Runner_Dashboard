@@ -17,6 +17,8 @@ from code_requests.model import (
     CodeRequest,
     CodeRequestState,
 )
+from dashboard_config import ORG
+from proposals.service import _secretary_logins
 from pydantic import BaseModel, Field
 
 
@@ -214,8 +216,17 @@ def route_code_request_to_board(
     create_proposal_fn: Callable[..., Any],
     actor: str = "board-gate",
 ) -> CodeRequest:
-    """Create a Board proposal via CR-7 API and transition Code Request to board_review."""
-    code_req_url = f"https://github.com/D-sorganization/Runner_Dashboard/issues/{request.issue_number}"
+    """Create a Board proposal via CR-7 API and transition Code Request to board_review.
+
+    Preconditions:
+        request: Valid CodeRequest with issue_number and repository.
+        decision: Valid BoardRoutingDecision with routes_to_board=True.
+    Postconditions:
+        Returns updated CodeRequest in BOARD_REVIEW state with linked board_proposal.
+    """
+    repo = request.repository
+    repo_slug = repo if "/" in repo else f"{ORG}/{repo}"
+    code_req_url = f"https://github.com/{repo_slug}/issues/{request.issue_number}"
     reasons_str = "; ".join(decision.reasons) or "Significant architectural change"
 
     # Pre-fill proposal fields
@@ -250,9 +261,12 @@ def sync_board_proposal_decision(
 ) -> CodeRequest:
     """Check decision on linked board proposal and transition Code Request accordingly.
 
-    On board:accepted -> moves to PLANNING, appending Board notes to prompt.
-    On board:deferred -> moves to DEFERRED.
-    On board:declined -> moves to DECLINED.
+    Preconditions:
+        request: Valid CodeRequest with linked board_proposal.
+    Postconditions:
+        On board:accepted -> moves to PLANNING, appending verified Board-Secretary notes to prompt.
+        On board:deferred -> moves to DEFERRED.
+        On board:declined -> moves to DECLINED.
     """
     if not request.board_proposal:
         return request
@@ -265,9 +279,16 @@ def sync_board_proposal_decision(
 
     if "board:accepted" in decision_labels or decision == "accepted":
         comments = proposal_data.get("comments", [])
-        secretary_notes = [
-            c.get("body", "") for c in comments if "secretary" in str(c.get("user", "")).lower() or c.get("body")
-        ]
+        secretary_logins = _secretary_logins()
+        secretary_notes: list[str] = []
+        for c in comments:
+            user = c.get("user")
+            login = user.get("login", "") if isinstance(user, dict) else (user if isinstance(user, str) else "")
+            login = str(login).strip().lower()
+            if (login and login in secretary_logins) or (c.get("is_secretary") is True):
+                body = c.get("body", "")
+                if body:
+                    secretary_notes.append(body)
         notes_text = "\n\n".join(secretary_notes).strip()
 
         updated_prompt = request.prompt
