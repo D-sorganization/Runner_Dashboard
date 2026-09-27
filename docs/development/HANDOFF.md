@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 ## Objective and Status
 
 - `main` CI Standard was red: the push-mode `ci-health-check` found `backend/staff/action_executors.py` at 590 lines (cap 500). #1611 and #1615 each added lines and merged separately; PR-mode checks only changed files, so neither PR tripped it.
-- Moved the self-contained hold/unhold executors and verifiers to `backend/staff/hold_actions.py` and the `code_request.create` / `code_request.update` executors (with `CodeRequestUpdateParams`) to `backend/staff/code_request_actions.py`. `action_executors` imports and registers them unchanged; no behaviour change. `action_executors.py` is 413 lines.
+- Moved the self-contained hold/unhold executors and verifiers to `backend/staff/hold_actions.py` and the `code_request.create` / `code_request.update` executors (with `CodeRequestUpdateParams`) to `backend/staff/code_request_actions.py`. `action_executors` imports and registers them unchanged; no behaviour change. `action_executors.py` is 413 lines. #1617 then took `backend/staff/conversations.py` to 501 lines; its module docstring is reflowed one line shorter (500), no code change.
 
 ## Validation
 
