@@ -31,6 +31,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Added `code_request.update` staff action with strict Pydantic parameter validation (`extra="forbid"`) allowing only `{id, description}`, updating `prompt` via `CodeRequestStore.save`, gating execution to `draft` and `triage` states, requiring `code_requests.write` scope and honoring role permissions via `allowed_actions`. Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`.
 - **Next step:** Merge the #1615 PR once CI is green.
 
+### DL-#1601 · WP-2.3: Board Gate Secretary-Note Filter Bug and Roster-Bound Board-Secretary Role
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1601
+- **Branch:** `fix/1601-board-gate-roster`
+- **PR:** #1611
+- **Paths:** `backend/code_requests/board_gate.py`, `backend/proposals/service.py`, `backend/staff/action_executors.py`, `backend/staff/actions.py`, `backend/staff/groups.py`, `backend/staff/router_models.py`, `tests/code_requests/test_board_gate.py`, `tests/unit/test_staff_actions.py`, `tests/unit/test_staff_groups.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (45 passed in targeted suites, 82 passed in broader -k suite; ruff and mypy clean)
+- **Summary:** Filtered secretary notes on logins from `_secretary_logins()` in `board_gate.py`, built Code Request URL from `ORG` and `request.repository`, bound `BOARD_PROPOSAL_ROLE` as single source across staff actions, groups, router models, and proposals service dropping underscore alias `board_secretary`, and added Board group coordinator validation in `validate_action_default_roles`.
+
 ### DL-#1599 · Routing Override Reassigns the Work Item
 
 - **State:** shipped

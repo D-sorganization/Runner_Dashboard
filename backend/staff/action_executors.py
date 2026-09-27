@@ -23,6 +23,23 @@ ACTION_DEFAULT_ROLES: tuple[str, ...] = (
 )
 
 
+def _board_coordinator_extra() -> tuple[str, ...]:
+    """The Board group's coordinator when it is not already validated as a default role (#1601).
+
+    ``BOARD_PROPOSAL_ROLE`` is the coordinator by construction and is checked as a
+    default role, so only a coordinator that has drifted from it is added.
+    """
+    try:
+        from staff.groups import get_board_group  # noqa: PLC0415 - groups imports this module
+
+        coordinator = get_board_group().coordinator
+    except Exception as exc:  # noqa: BLE001 - validation must never break startup
+        log.debug("Board group coordinator could not be loaded for validation: %s", exc)
+        return ()
+    already = (*ACTION_DEFAULT_ROLES, BOARD_PROPOSAL_ROLE)
+    return () if not coordinator or coordinator in already else (coordinator,)
+
+
 def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
     """Validate action default roles against the loaded staff roster.
 
@@ -46,7 +63,7 @@ def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
         return [msg]
 
     errors: list[str] = []
-    for role_name in ACTION_DEFAULT_ROLES:
+    for role_name in (*ACTION_DEFAULT_ROLES, *_board_coordinator_extra()):
         spec = roster.get(role_name)
         if not spec:
             if role_name == DEFAULT_REVIEWER_ROLE and FALLBACK_REVIEWER_ROLE in roster:

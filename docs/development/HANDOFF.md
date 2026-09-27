@@ -37,6 +37,46 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Board gate secretary filter and roster-bound board-secretary (#1601)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1601`; branch `fix/1601-board-gate-roster`; Issue #1601; DL-#1601.
+
+## Objective and Status
+
+- Fix Board gate secretary-note filter bug in `backend/code_requests/board_gate.py`:
+  - Query logins from `proposals.service._secretary_logins()` instead of substring matching `"secretary"` or evaluating `c.get("body")`.
+  - Non-secretary comments with bodies are now excluded from Board review notes.
+- Fix hard-coded repository in Code Request URL in `backend/code_requests/board_gate.py`:
+  - Build URL from `ORG` (imported from `dashboard_config`) and `request.repository`.
+- Replace hard-coded `"board-secretary"` / `"board_secretary"` role names with `BOARD_PROPOSAL_ROLE` from `staff/action_executors.py`:
+  - Single source of truth for the board proposal and coordinator role (`BOARD_PROPOSAL_ROLE = "board-secretary"`).
+  - Dropped underscore alias `board_secretary` in `staff/actions.py` (`check_role_permission` for role_name and `reports_to`).
+  - Updated `staff/groups.py` (`coordinator`, `resolve_group_thread_meta`, `dispatch_group_message`), `staff/router_models.py`, and `proposals/service.py` to use `BOARD_PROPOSAL_ROLE`.
+  - Zero `"board-secretary"` or `"board_secretary"` string literals outside `staff/action_executors.py` across `backend/`.
+- Roster-bound Board group coordinator validation:
+  - Added Board group coordinator validation in `validate_action_default_roles` (`staff/action_executors.py`) adhering to the WP-0.1 pattern.
+  - Verified with unit tests when coordinator is missing or invalid.
+
+## Validation
+
+- Target pytest suite in WSL:
+  `pytest tests/code_requests/test_board_gate.py tests/unit/test_staff_actions.py tests/unit/test_staff_groups.py`
+  Result: 45 passed.
+- Linting and formatting:
+  `ruff check` and `ruff format` clean on changed files.
+- Type checking:
+  `mypy` clean on changed files.
+
+## Next Steps
+
+1. Merged as PR #1611.
+
+---
+
 # Past handoff — Routing override reassigns the work item (#1599)
 
 Last updated: 2026-09-26

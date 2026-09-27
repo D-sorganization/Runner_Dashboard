@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import datetime as _dt
 from collections.abc import Iterator
 from functools import partial
@@ -15,6 +16,7 @@ from code_requests.lifecycle import CodeRequestState
 from code_requests.model import CodeRequest, Requester, RequesterKind
 from code_requests.store import get_code_request_store, reset_code_request_store
 from identity import Principal
+from staff.action_executors import BOARD_PROPOSAL_ROLE
 from staff.actions import (
     ACTION_REGISTRY,
     ActionContext,
@@ -186,6 +188,55 @@ def test_permission_denial_role_not_permitted() -> None:
     restart_act = ACTION_REGISTRY.get("maintenance.runner_restart")
     assert check_role_permission(restart_act, "maintenance", role_spec=maint_role)
     assert not check_role_permission(restart_act, "intern_bot", role_spec=unauthorized_role)
+
+
+def test_check_role_permission_board_proposal_role_and_dropped_alias() -> None:
+    """BOARD_PROPOSAL_ROLE has default permission; underscore alias 'board_secretary' is dropped."""
+    board_act = ACTION_REGISTRY.get("board.propose")
+    dispatch_act = ACTION_REGISTRY.get("staff.dispatch")
+    submit_act = ActionDefinition(
+        name="submit_proposal",
+        description="Submit a proposal",
+        risk_class=ActionRiskClass.MEDIUM,
+    )
+
+    # BOARD_PROPOSAL_ROLE ('board-secretary') is authorized
+    assert check_role_permission(board_act, BOARD_PROPOSAL_ROLE)
+    assert check_role_permission(dispatch_act, BOARD_PROPOSAL_ROLE)
+    assert check_role_permission(submit_act, BOARD_PROPOSAL_ROLE)
+
+    # Underscore alias 'board_secretary' must be rejected
+    assert not check_role_permission(board_act, "board_secretary")
+    assert not check_role_permission(dispatch_act, "board_secretary")
+    assert not check_role_permission(submit_act, "board_secretary")
+
+    # reports_to check: BOARD_PROPOSAL_ROLE is accepted, 'board_secretary' is rejected
+    role_reporting_canonical = RoleSpec(
+        name="delegate_canonical",
+        title="Delegate Canonical",
+        reports_to=BOARD_PROPOSAL_ROLE,
+    )
+    role_reporting_alias = RoleSpec(
+        name="delegate_alias",
+        title="Delegate Alias",
+        reports_to="board_secretary",
+    )
+    assert check_role_permission(board_act, "delegate_canonical", role_spec=role_reporting_canonical)
+    assert not check_role_permission(board_act, "delegate_alias", role_spec=role_reporting_alias)
+
+
+def test_no_board_secretary_literals_in_staff_actions() -> None:
+    """staff/actions.py must not contain 'board_secretary' or 'board-secretary' literals."""
+    actions_path = Path(__file__).resolve().parents[2] / "backend" / "staff" / "actions.py"
+    with open(actions_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=str(actions_path))
+
+    literals = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and node.value in ("board_secretary", "board-secretary")
+    ]
+    assert literals == [], f"Found forbidden literals in staff/actions.py: {literals}"
 
 
 def test_proposal_expiry_24h() -> None:
