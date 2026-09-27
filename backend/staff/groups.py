@@ -32,6 +32,7 @@ from staff.group_models import (
     SeatSpec,
     get_group_threshold,
     lookup_seat_price,
+    seat_on_node,
 )
 from staff.group_seat_runner import run_seat
 from staff.proposal_cards import post_proposal
@@ -130,7 +131,7 @@ def estimate_group_turn_cost(group_id: str, prompt: str = "") -> GroupCostEstima
 
     seat_costs: dict[str, float] = {}
     total_cost = 0.0
-    for seat in group.seats:
+    for seat in map(seat_on_node, group.seats):  # price what actually runs (#1646)
         price = lookup_seat_price(seat.provider, seat.model)
         seat_cost = price.cost(prompt_tokens, estimated_output_tokens)
         seat_costs[seat.name] = seat_cost
@@ -280,7 +281,7 @@ async def execute_group_turn(
                 error_detail=str(exc),
             )
 
-    tasks = [_run_single_seat(seat) for seat in group.seats]
+    tasks = [_run_single_seat(seat_on_node(seat)) for seat in group.seats]
     replies = await asyncio.gather(*tasks)
 
     return collate_consensus(group, prompt, list(replies))

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1646 — Board seat on a disabled provider stands in on claude
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1646
+- **Branch:** `fix/board-seat-stand-in`
+- **PR:** pending
+- **Paths:** `backend/staff/group_models.py`, `backend/staff/groups.py`, `tests/unit/test_staff_board_seat_stand_in.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (stand-in tests red then green; 308 group/board/seat tests pass)
+- **Summary:** Pure `seat_on_node(seat)` swaps only provider/model for a disabled-provider seat; used at the two `group.seats` loops (estimate, fan-out).
+- **Next step:** Merge; redeploy OGLaptop and run one Board turn to confirm 4/4 seats answer.
+
 ### DL-#1637 — Board seats call a real model
 
 - **State:** in_review
