@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1335 — ADR: agent-client ingress stays local-only
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1335 (SC-F6, part of SC-F #1352 under the Staff Console epic #1354)
+- **Branch:** `docs/1335-adr-local-only`
+- **PR:** not created
+- **Paths:** `docs/adr/0007-agent-client-ingress-local-only.md`, `docs/adr/README.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (ADR written and cross-linked from the index; no code changed)
+- **Summary:** Owner decided option (c): agent clients (Grok's servers, claude.ai connectors) reach the dashboard only from fleet machines already on the tailnet. No Tailscale Funnel and no outbound relay. Any future exposed option needs per-agent minimal-scope tokens, rate limits (SC-F7), audit (SC-A8), an identity allowlist and a kill switch first.
+- **Next step:** Open the PR and close #1335 once merged.
+
 ### DL-#1338-localtools — SC-G6: Local Tools becomes a Settings section
 
 - **State:** in_review
