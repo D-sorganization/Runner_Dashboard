@@ -89,7 +89,7 @@ def get_default_profiles() -> list[AgentProfile]:
             model="gpt-5-codex",
             effort="medium",
             role="executor",
-            staff_role="chief-architect",
+            staff_role="issue-remediator",
             standards=["tdd", "dbc"],
             prompt_template="",
             prompt_notes="",

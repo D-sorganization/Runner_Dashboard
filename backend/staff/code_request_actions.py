@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
-    from staff.action_executors import CODE_REQUEST_OWNER_ROLE
+    from staff.action_executors import code_request_owner_role
     from staff.actions import ActionResult
 
     title = str(params.get("title") or "").strip()
@@ -23,7 +23,7 @@ def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> A
     from staff.work_items import get_work_item_store
 
     wi_store = get_work_item_store()
-    role = str(params.get("role") or CODE_REQUEST_OWNER_ROLE)
+    role = str(params.get("role") or code_request_owner_role())
     wi = wi_store.create_work_item(
         title=f"[Code Request] {title}",
         owner_role=role,

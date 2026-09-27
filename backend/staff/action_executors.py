@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from identity import format_caller
@@ -14,7 +15,10 @@ log = logging.getLogger("dashboard.staff.action_executors")
 
 DEFAULT_REVIEWER_ROLE = "code-reviewer"
 FALLBACK_REVIEWER_ROLE = "fleet-critic"
-CODE_REQUEST_OWNER_ROLE = "barb"
+# Phase 2 of Repository_Management#1766 (#1665): product-owner owns Code Requests; barb
+# holds them until a node's Repository_Management checkout carries the role.
+CODE_REQUEST_OWNER_ROLE = "product-owner"
+FALLBACK_CODE_REQUEST_OWNER_ROLE = "barb"
 BOARD_PROPOSAL_ROLE = "board-secretary"
 
 ACTION_DEFAULT_ROLES: tuple[str, ...] = (
@@ -74,6 +78,13 @@ def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
                     FALLBACK_REVIEWER_ROLE,
                 )
                 continue
+            if role_name == CODE_REQUEST_OWNER_ROLE and FALLBACK_CODE_REQUEST_OWNER_ROLE in roster:
+                log.warning(
+                    "Code Request owner '%s' not loaded; falling back to %s",
+                    role_name,
+                    FALLBACK_CODE_REQUEST_OWNER_ROLE,
+                )
+                continue
             errors.append(f"Role '{role_name}' does not exist in loaded roster")
         elif not spec.dispatchable:
             errors.append(f"Role '{role_name}' is not dispatchable (retired={spec.retired}, surface={spec.surface})")
@@ -84,6 +95,23 @@ def validate_action_default_roles(raise_on_error: bool = False) -> list[str]:
         if raise_on_error:
             raise ValueError("; ".join(errors))
     return errors
+
+
+def code_request_owner_role(roster: Mapping[str, Any] | None = None) -> str:
+    """The role that owns new Code Requests: product-owner once loaded, else barb.
+
+    Post: always returns a role name; a roster that cannot be loaded yields the fallback.
+    """
+    if roster is None:
+        from staff.roles import load_roles, roles_dir
+
+        r_dir = roles_dir()
+        try:
+            roster = load_roles(r_dir) if r_dir is not None else {}
+        except Exception:  # noqa: BLE001 - ownership must never break Code Request creation
+            log.warning("Staff roles could not be loaded; Code Requests go to %s", FALLBACK_CODE_REQUEST_OWNER_ROLE)
+            roster = {}
+    return CODE_REQUEST_OWNER_ROLE if CODE_REQUEST_OWNER_ROLE in roster else FALLBACK_CODE_REQUEST_OWNER_ROLE
 
 
 # Validate at import time without crashing the server

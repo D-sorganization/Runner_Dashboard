@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from identity import Principal, format_caller, principal_has_scope
-from staff.action_executors import BOARD_PROPOSAL_ROLE, register_standard_actions
+from staff.action_executors import BOARD_PROPOSAL_ROLE, CODE_REQUEST_OWNER_ROLE, register_standard_actions
 from staff.conversation_models import PROPOSAL_TTL_SECONDS, ActionProposalRecord
 from staff.conversations import get_conversation_store
 from staff.maintenance import register_maintenance_actions
@@ -244,6 +244,10 @@ def check_role_permission(
         "submit_proposal",
         "staff.dispatch",
     ):
+        return True
+
+    # The role schema has no allowed_actions key, so the owner role is granted by name (#1665).
+    if role_name == CODE_REQUEST_OWNER_ROLE and act_name.startswith("code_request."):
         return True
 
     spec = role_spec or load_roles().get(role_name)
