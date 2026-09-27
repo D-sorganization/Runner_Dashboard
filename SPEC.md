@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1638 | `scripts/staff_chat_smoke.py` (stdlib): creates a v1 staff thread, asks a role a read-only question and checks the reply is complete, non-empty and stored after the 'On it' ack; exit 0/1/2 for pass/failed check/error; optional bearer from `STAFF_SMOKE_TOKEN`, never printed. |
 | 2026-09-27 | #1630 | Staff threads: the 'On it: routing to …' system ack is stored before the role's reply placeholder, so a thread read in `seq` order shows user → ack → reply (it was user → reply → ack). |
 | 2026-09-27 | #1631 | Staff chat history replay skips system-authored messages (routing acks, budget notices) and drops the trailing user turn that equals the current prompt, so the question is sent once and the role never 'remembers' saying a dashboard notice. |
 | 2026-09-27 | #1628 | Code Request acceptance check: `POST .../executor/complete` enters `done` through the `acceptance` gate only when every child PR is merged with green CI and every recorded acceptance check passed, else 409 listing what is unmet. |

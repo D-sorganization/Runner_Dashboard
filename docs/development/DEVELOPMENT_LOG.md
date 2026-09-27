@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1638 — Staff chat smoke check
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1638
+- **Branch:** `feat/staff-chat-smoke`
+- **PR:** pending
+- **Paths:** `scripts/staff_chat_smoke.py`, `tests/test_staff_chat_smoke.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (10 unit tests; live OGLaptop run detects #1630)
+- **Summary:** One-command go-live check of the thread path Grok/Barb uses: pure check_thread over the messages list, injectable transport/clock/sleep.
+- **Next step:** Merge; after #1632 deploys, the OGLaptop run should exit 0.
+
 ### DL-#1630 — Staff chat ack stored before the reply slot
 
 - **State:** in_review
