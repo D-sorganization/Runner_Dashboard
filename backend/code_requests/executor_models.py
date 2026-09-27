@@ -7,6 +7,7 @@ execution configuration, and rollup summaries for multi-wave planned child issue
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -52,6 +53,16 @@ class ChildIssuePayload(_Strict):
     acceptance_criteria: list[str] = Field(min_length=1)
 
 
+class AcceptanceCheck(_Strict):
+    """One recorded check of one acceptance criterion (#1605): a scripted result or a ``qa-verifier`` run."""
+
+    criterion: str = Field(min_length=1)
+    passed: bool
+    evidence: str = Field(min_length=1, max_length=2000)
+    source: Literal["script", "qa-verifier"]
+    recorded_by: str = ""
+
+
 class ChildExecutionRecord(BaseModel):
     """Runtime tracking record for one planned child issue."""
 
@@ -76,6 +87,7 @@ class ChildExecutionRecord(BaseModel):
     escalation_history: list[str] = Field(default_factory=list)
     lease_receipt: str | None = None
     acceptance_criteria: list[str] = Field(default_factory=list)
+    acceptance_checks: list[AcceptanceCheck] = Field(default_factory=list)
 
 
 class ExecutionConfig(_Strict):
