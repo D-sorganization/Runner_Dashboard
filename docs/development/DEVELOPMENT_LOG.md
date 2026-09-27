@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1332-card — WSL disk card in Operations Diagnostics
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332-card
+- **Branch:** `feat/1332-wsl-disk-card`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Operations/OperationsWslDiskCard.tsx`, `frontend/src/pages/Operations/OperationsDiagnosticsSection.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (vitest, eslint, tsc)
+- **Summary:** UI for the read-only WSL disk status endpoint from PR #1682.
+- **Next step:** Raise RD DEFAULT_ACTION_APPROVALS[host.vhdx_compact] to owner once Repository_Management#1829 is live on both nodes, then close #1332 and epic #1351.
+
 ### DL-#1332 — WSL disk status and owner-only compaction request
 
 - **State:** in_review
