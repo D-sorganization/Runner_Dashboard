@@ -22,6 +22,34 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Acceptance Check Gating Code Request `executing -> done` (#1605 Part 2)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1605`; branch `feat/1605-acceptance-check`; PR #1628 (open); Issue #1605 (Phase 2 of #1463, WP-2.5); DL-#1605.
+- Implementation commit: SELF.
+
+## Objective and Status
+
+- A Code Request enters `done` only through `POST /api/code-requests/{id}/executor/complete`, which passes `TransitionGate.ACCEPTANCE` after `code_requests.acceptance.unmet_conditions` returns nothing. Otherwise it answers 409 with `detail.unmet`, one line per failed condition; a request that is not `executing` is 409 too.
+- Conditions: the pipeline has children; every child is `merged`; its PR, fetched by number (`GhCliPrProbe.get`), is merged with green head CI, judged by the same `staff.verification.decide` the run verifier uses; the latest recorded check of every acceptance criterion passed. A PR lookup failure is unmet (fail-closed).
+- Checks are recorded through `report-child` with `event: acceptance_checked` plus `criterion`, `passed`, `evidence` and `source` (`script` or `qa-verifier`); the recorder is the authenticated principal. An unknown criterion or a missing field is 422. Checks persist on `ChildExecutionRecord.acceptance_checks`.
+- Files: `backend/code_requests/acceptance.py` (new), `executor_models.py` (`AcceptanceCheck`), `routers/code_requests_executor.py`, `staff/verification.py` (`get` by number), `frontend/src/lib/openapi.json` and `api-types.ts` (regenerated), tests `tests/code_requests/test_acceptance_check.py` (new, 15) and `tests/staff/test_run_verification.py` (+1).
+
+## Validation
+
+- RED: `test_acceptance_check.py` failed to import `code_requests.acceptance` on `main`.
+- WSL rd-test-venv: `pytest tests -k 'code_request or executor or plan or verification or staff_runner'`: 369 passed, 2 skipped, 1 xfailed.
+- `py -3.12 -m mypy backend/`: no issues in 301 files. `ruff check` and `ruff format --check` clean. Full-tree 500-line size check clean.
+
+## Next Steps
+
+1. Merge once CI is green; then the QA-verifier staff role can post `acceptance_checked` events and call `executor/complete` (no UI yet).
+
+---
+
 # Past handoff — Code Reviewer: Current Alternate Models, Review Scope From Priority Tiers (#1623)
 
 Last updated: 2026-09-27

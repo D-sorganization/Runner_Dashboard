@@ -211,16 +211,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1605 · Guarded Code Request lifecycle (plan and acceptance gates)
 
-- **State:** in_progress
+- **State:** in_review
 - **Owner:** claude
 - **Issue:** #1605
-- **Branch:** `fix/1605-guarded-lifecycle`
-- **PR:** #1609
-- **Paths:** `backend/code_requests/lifecycle.py`, `backend/code_requests/store.py`, `backend/code_requests/plan_service.py`, `tests/code_requests/test_lifecycle.py`, `tests/api/test_code_requests.py`
+- **Branch:** `feat/1605-acceptance-check` (part 1 `fix/1605-guarded-lifecycle` merged as #1609)
+- **PR:** #1628
+- **Paths:** `backend/code_requests/lifecycle.py`, `backend/code_requests/store.py`, `backend/code_requests/plan_service.py`, `backend/code_requests/acceptance.py`, `backend/code_requests/executor_models.py`, `backend/routers/code_requests_executor.py`, `tests/code_requests/test_lifecycle.py`, `tests/code_requests/test_acceptance_check.py`, `tests/api/test_code_requests.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (code-request suites 468 passed; mypy backend clean; ruff clean)
-- **Summary:** `planned` and `done` are entered only with their `TransitionGate` or an audited operator override; the plan service names `plan_filed`. Part 2 adds the acceptance check that names `acceptance`.
-- **Next step:** Implement the acceptance check for `executing -> done` once #1602 and #1606 merge.
+- **Last verified:** 2026-09-27 (code-request, executor and verification suites 369 passed; mypy backend clean; ruff clean)
+- **Summary:** `planned` and `done` are entered only with their `TransitionGate` or an audited operator override; the plan service names `plan_filed`, and `executor/complete` names `acceptance` once every child PR is merged and verified and every criterion's latest check passed.
+- **Next step:** Merge PR #1628 once CI is green.
 
 ### DL-#1597 · Turn Providers Off on Every Dispatch Path
 
