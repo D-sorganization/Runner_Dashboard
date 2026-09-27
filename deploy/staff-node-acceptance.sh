@@ -14,16 +14,10 @@
 #   9. Providers: local provider flags on /api/staff/board, and optional ad-hoc run verification
 set -Eeuo pipefail
 
-PORT="8321"
-HOST="127.0.0.1"
-ROLE=""
+PORT="8321"; HOST="127.0.0.1"; ROLE=""; VERBOSE=0; EXPECT_SHA=""
+SKIP_SERVICE=0; SKIP_NETWORK=0; RUN_AD_HOC=0
 ENV_FILE="${HOME}/.config/runner-dashboard/env"
 DROPIN_FILE="/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf"
-SKIP_SERVICE=0
-SKIP_NETWORK=0
-RUN_AD_HOC=0
-VERBOSE=0
-EXPECT_SHA=""
 
 usage() {
     cat <<EOF
@@ -82,32 +76,21 @@ if [[ "$ROLE" == "scheduler" ]]; then
     EXPECTED_SCHEDULER="1"
 fi
 
-PASS_COUNT=0
-FAIL_COUNT=0
-TOTAL_COUNT=0
-
+PASS_COUNT=0; FAIL_COUNT=0; SKIP_COUNT=0; TOTAL_COUNT=0
 report_pass() {
-    local name="$1"
-    local detail="${2:-}"
-    TOTAL_COUNT=$((TOTAL_COUNT + 1))
-    PASS_COUNT=$((PASS_COUNT + 1))
-    if [[ -n "$detail" ]]; then
-        printf '  [PASS] %s (%s)\n' "$name" "$detail"
-    else
-        printf '  [PASS] %s\n' "$name"
-    fi
+    local name="$1" detail="${2:-}"
+    TOTAL_COUNT=$((TOTAL_COUNT + 1)); PASS_COUNT=$((PASS_COUNT + 1))
+    if [[ -n "$detail" ]]; then printf '  [PASS] %s (%s)\n' "$name" "$detail"; else printf '  [PASS] %s\n' "$name"; fi
 }
-
+report_skip() {
+    local name="$1" detail="${2:-}"
+    TOTAL_COUNT=$((TOTAL_COUNT + 1)); SKIP_COUNT=$((SKIP_COUNT + 1))
+    if [[ -n "$detail" ]]; then printf '  [SKIP] %s (%s)\n' "$name" "$detail"; else printf '  [SKIP] %s\n' "$name"; fi
+}
 report_fail() {
-    local name="$1"
-    local detail="${2:-}"
-    TOTAL_COUNT=$((TOTAL_COUNT + 1))
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-    if [[ -n "$detail" ]]; then
-        printf '  [FAIL] %s: %s\n' "$name" "$detail" >&2
-    else
-        printf '  [FAIL] %s\n' "$name" >&2
-    fi
+    local name="$1" detail="${2:-}"
+    TOTAL_COUNT=$((TOTAL_COUNT + 1)); FAIL_COUNT=$((FAIL_COUNT + 1))
+    if [[ -n "$detail" ]]; then printf '  [FAIL] %s: %s\n' "$name" "$detail" >&2; else printf '  [FAIL] %s\n' "$name" >&2; fi
 }
 
 log_verbose() {
@@ -447,8 +430,22 @@ fi
 
 if [[ "$RUN_AD_HOC" == "1" ]]; then
     printf "\nRunning live ad-hoc runs for providers (--run-ad-hoc):\n"
+    ROSTER_JSON="$(curl -fsS --max-time 5 "http://${HOST}:${PORT}/api/staff/roster" 2>/dev/null || echo "")"
     for prov in "${REQUIRED_PROVIDERS[@]}"; do
         DISPATCH_PROV="$prov"
+
+        # Check if provider is chat-only per backend roster or board (DRY: adapter capability, #1697)
+        IS_CHAT_ONLY="False"
+        if [[ -n "$ROSTER_JSON" ]]; then
+            IS_CHAT_ONLY="$(printf '%s' "$ROSTER_JSON" | json_get "'${prov}' in (d.get('chat_only_providers') or [])")"
+        fi
+        if [[ "$IS_CHAT_ONLY" != "True" && -n "$BOARD_JSON" ]]; then
+            IS_CHAT_ONLY="$(printf '%s' "$BOARD_JSON" | json_get "'${prov}' in (d.get('chat_only_providers') or [])")"
+        fi
+        if [[ "$IS_CHAT_ONLY" == "True" ]]; then
+            report_skip "Ad-hoc run skipped: ${DISPATCH_PROV}" "chat-only provider"
+            continue
+        fi
 
         log_verbose "Dispatching ad-hoc run for provider ${DISPATCH_PROV}..."
         PAYLOAD="$(printf '{"provider":"%s","machine":"local","prompt":"Health check: do not change anything. Reply OK, then STAFF_RESULT: ok"}' "$DISPATCH_PROV")"
@@ -467,12 +464,12 @@ if [[ "$RUN_AD_HOC" == "1" ]]; then
             # Poll for completion (up to 15 minutes; real provider runs take minutes, not seconds)
             STATUS=""
             for ((i=0; i<90; i++)); do
-                sleep 10
                 RUN_DETAIL="$(curl -fsS "http://${HOST}:${PORT}/api/staff/runs/${RUN_ID}" 2>/dev/null || echo "")"
                 STATUS="$(printf '%s' "$RUN_DETAIL" | json_get '(d.get("run") or d).get("status", "")')"
                 if [[ "$STATUS" == "succeeded" || "$STATUS" == "failed" || "$STATUS" == "cancelled" ]]; then
                     break
                 fi
+                sleep 10
             done
 
             if [[ "$STATUS" == "succeeded" ]]; then
@@ -481,12 +478,25 @@ if [[ "$RUN_AD_HOC" == "1" ]]; then
                 report_fail "Ad-hoc run failed: ${DISPATCH_PROV}" "status=${STATUS}, run_id=${RUN_ID}"
             fi
         else
-            report_fail "Ad-hoc dispatch failed for ${DISPATCH_PROV}"
+            # Defensive check: backend returned validation error for chat-only (#1697)
+            ERR_RESP="$(curl -s -X POST "http://${HOST}:${PORT}/api/staff/ad-hoc/run" \
+                -H 'Content-Type: application/json' \
+                -H 'X-Requested-With: XMLHttpRequest' \
+                --data "$PAYLOAD" 2>/dev/null || echo "")"
+            if printf '%s' "$ERR_RESP" | grep -qi "chat-only"; then
+                report_skip "Ad-hoc run skipped: ${DISPATCH_PROV}" "chat-only provider"
+            else
+                report_fail "Ad-hoc dispatch failed for ${DISPATCH_PROV}"
+            fi
         fi
     done
 fi
 
-printf "\n=== Summary: %d passed, %d failed (total: %d) ===\n" "$PASS_COUNT" "$FAIL_COUNT" "$TOTAL_COUNT"
+if [[ "$SKIP_COUNT" -gt 0 ]]; then
+    printf "\n=== Summary: %d passed, %d failed, %d skipped (total: %d) ===\n" "$PASS_COUNT" "$FAIL_COUNT" "$SKIP_COUNT" "$TOTAL_COUNT"
+else
+    printf "\n=== Summary: %d passed, %d failed (total: %d) ===\n" "$PASS_COUNT" "$FAIL_COUNT" "$TOTAL_COUNT"
+fi
 
 if [[ "$FAIL_COUNT" -gt 0 ]]; then
     exit 1

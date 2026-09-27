@@ -95,7 +95,19 @@ class StaffRosterResponse(BaseModel):
     providers: dict[str, bool]
     # Providers whose CLI has a minimum version; an ``outdated`` one is refused before launch (#1680).
     provider_versions: dict[str, StaffProviderCliVersion] = Field(default_factory=dict)
+    chat_only_providers: list[str] = Field(default_factory=list)
     active_runs: int = 0
+
+    model_config = ConfigDict(extra="allow")
+
+
+class StaffProvidersResponse(BaseModel):
+    """Response model for GET /api/staff/providers (#1697)."""
+
+    providers: dict[str, bool]
+    chat_only_providers: list[str] = Field(default_factory=list)
+    unattended_providers: dict[str, bool] = Field(default_factory=dict)
+    provider_versions: dict[str, StaffProviderCliVersion] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="allow")
 
@@ -257,6 +269,7 @@ class StaffBoardResponse(BaseModel):
         description="Per-provider spend in USD plus a 'total' key (issue #1289)",
     )
     providers: dict[str, Any]
+    chat_only_providers: list[str] = Field(default_factory=list)
     liveness: list[StaffRoleLiveness] = Field(default_factory=list)
     liveness_alerts: list[StaffRoleLiveness] = Field(default_factory=list)
     machines: dict[str, dict[str, Any]] | None = Field(default=None)

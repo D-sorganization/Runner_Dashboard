@@ -173,3 +173,58 @@ def test_unit_namespaces_allowing_cursor_sandbox_pass(tmp_path: Path) -> None:
 def test_unit_namespaces_blocking_cursor_sandbox_fail(tmp_path: Path) -> None:
     out = _run_with_systemctl(tmp_path, "yes")
     assert "[FAIL] Unit blocks cursor-agent sandbox namespaces" in out, out
+
+
+def test_run_ad_hoc_skips_chat_only_antigravity(tmp_path: Path) -> None:
+    """staff-node-acceptance --run-ad-hoc skips chat-only providers reported by backend (#1697)."""
+    assert BASH is not None
+    fake, env, dropin = _fake_node(tmp_path)
+    home = tmp_path / "home"
+    (home / "staff-repos").mkdir(parents=True)
+    (home / "staff-worktrees").mkdir(parents=True)
+    (home / ".config/runner-dashboard").mkdir(parents=True)
+    # Add mock endpoints for roster and ad-hoc runs to fake curl
+    board = (
+        '{"providers":{"claude":true,"codex":true,"antigravity":true,"gemini":false,'
+        '"cursor-agent":true,"ollama":true,"claude-ollama":true},'
+        '"chat_only_providers":["antigravity"],'
+        '"rm_source":{"status":"unchanged","check_age_seconds":120}}'
+    )
+    roster = (
+        '{"machine":"DeskComputer","roles":[],"providers":{"claude":true,"codex":true,"antigravity":true,'
+        '"cursor-agent":true,"ollama":true,"claude-ollama":true},'
+        '"chat_only_providers":["antigravity"],'
+        '"provider_versions":{},"active_runs":0}'
+    )
+    (fake / "curl").write_text(
+        "#!/usr/bin/env bash\n"
+        'url=""\n'
+        'for a in "$@"; do\n'
+        '  if [[ "$a" == http* ]]; then url="$a"; fi\n'
+        "done\n"
+        'case "$url" in\n'
+        f"  */api/health) echo '{_HEALTH}' ;;\n"
+        f"  */api/staff/board*) echo '{board}' ;;\n"
+        f"  */api/staff/roster*) echo '{roster}' ;;\n"
+        f"  */api/staff/schedule) echo '{_SCHEDULE}' ;;\n"
+        '  */api/fleet/identity) echo \'{"name":"DeskComputer","role":"node","unregistered":false}\' ;;\n'
+        '  */api/staff/ad-hoc/run) echo \'{"run":{"id":"run-adhoc-test"}}\' ;;\n'
+        '  */api/staff/runs/*) echo \'{"run":{"id":"run-adhoc-test","status":"succeeded"}}\' ;;\n'
+        "  *) exit 22 ;;\n"
+        "esac\n",
+        newline="\n",
+    )
+    cmd = (
+        f'HOME="{as_bash_path(home)}" DISPLAY_NAME="DeskComputer" '
+        f'PATH="{as_bash_path(fake)}:$PATH" exec bash "{as_bash_path(SCRIPT)}" --role scheduler '
+        f'--env-file "{as_bash_path(env)}" --dropin-file "{as_bash_path(dropin)}" '
+        "--skip-service --skip-network --run-ad-hoc"
+    )
+    res = subprocess.run([BASH, "-c", cmd], capture_output=True, text=True)
+    out = res.stdout + res.stderr
+    assert "[SKIP] Ad-hoc run skipped: antigravity" in out, out
+    assert "Provider available on board: antigravity" in out, out
+    assert "Ad-hoc run succeeded: claude" in out, out
+    assert "Ad-hoc dispatch failed for antigravity" not in out, out
+    assert "Ad-hoc run failed: antigravity" not in out, out
+    assert res.returncode == 0, out

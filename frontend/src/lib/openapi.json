@@ -3495,6 +3495,13 @@
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/board (issue #1289).",
         "properties": {
+          "chat_only_providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chat Only Providers",
+            "type": "array"
+          },
           "generated_at": {
             "description": "ISO-8601 UTC timestamp",
             "title": "Generated At",
@@ -4182,6 +4189,43 @@
         "title": "StaffProviderCliVersion",
         "type": "object"
       },
+      "StaffProvidersResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/providers (#1697).",
+        "properties": {
+          "chat_only_providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chat Only Providers",
+            "type": "array"
+          },
+          "provider_versions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StaffProviderCliVersion"
+            },
+            "title": "Provider Versions",
+            "type": "object"
+          },
+          "providers": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Providers",
+            "type": "object"
+          },
+          "unattended_providers": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Unattended Providers",
+            "type": "object"
+          }
+        },
+        "required": ["providers"],
+        "title": "StaffProvidersResponse",
+        "type": "object"
+      },
       "StaffQuotaResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/quota (#1587): live subscription windows per provider.",
@@ -4588,6 +4632,13 @@
             "default": 0,
             "title": "Active Runs",
             "type": "integer"
+          },
+          "chat_only_providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chat Only Providers",
+            "type": "array"
           },
           "machine": {
             "title": "Machine",
@@ -14355,6 +14406,34 @@
         "tags": ["staff-inbox"]
       }
     },
+    "/api/staff/providers": {
+      "get": {
+        "description": "Provider availability, chat-only/unattended capabilities, and CLI versions (#1697).",
+        "operationId": "providers_api_staff_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffProvidersResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Providers",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/quota": {
       "get": {
         "description": "Billing kind and current plan windows for every staff provider on this node.\n\nReads local files only (the quota store and Codex session logs); never runs a\nCLI, so asking costs no quota. ``quota`` is null until a source has been seen.",
@@ -16677,6 +16756,34 @@
         ],
         "summary": "Execute Approved Proposal",
         "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/providers": {
+      "get": {
+        "description": "Provider availability, chat-only/unattended capabilities, and CLI versions (#1697).",
+        "operationId": "providers_v1_api_v1_staff_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffProvidersResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Providers V1",
+        "tags": ["staff-v1"]
       }
     },
     "/api/v1/staff/requests": {
