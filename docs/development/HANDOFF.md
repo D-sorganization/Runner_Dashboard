@@ -1,4 +1,30 @@
-# Current handoff — Turn providers off on every dispatch path (#1597)
+# Current handoff — Guarded Code Request lifecycle: plan and acceptance gates (#1605)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1605`; branch `fix/1605-guarded-lifecycle`; PR: see DL-#1605; Issue #1605 (Phase 2 of #1463, WP-2.1/WP-2.5); DL-#1605.
+
+## Objective and Status
+
+- Part 1 (this PR): `planned` and `done` are now gated targets. `lifecycle.transition` refuses them unless the caller names the matching `TransitionGate` (`plan_filed`, `acceptance`) or uses an operator override, which the audit event already records. `is_legal_transition` keeps its table-only meaning.
+- `plan_service._file` is the only code path to `planned` and passes `plan_filed`, so approved and auto-filed plans work as before. The generic `POST /api/code-requests/{id}/transition` can no longer skip plan approval or acceptance without `is_operator_override`.
+- Nothing in code moves a request to `done` yet. Part 2 adds the acceptance check (every child PR merged and verified, every criterion checked) that passes `acceptance`; it needs #1602 (criteria on child records) and #1606 (executor built from the plan).
+
+## Validation
+
+- RED: the new lifecycle tests failed to import `TransitionGate` / `required_gate` on `main`.
+- WSL rd-test-venv: `pytest tests/code_requests tests/api/test_code_requests.py tests/api/test_code_request_plans_api.py`: 153 passed. `pytest tests -k 'code_request or plan or board or executor or proposal or lifecycle'`: 468 passed, 2 skipped, 1 xfailed.
+- `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: no issues in 294 files. `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Merge once CI is green, then implement #1605 part 2 (acceptance check) after #1602 and #1606 land.
+
+---
+
+# Past handoff — Turn providers off on every dispatch path (#1597)
 
 Last updated: 2026-09-26
 

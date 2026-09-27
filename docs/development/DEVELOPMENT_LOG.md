@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1605 · Guarded Code Request lifecycle (plan and acceptance gates)
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1605
+- **Branch:** `fix/1605-guarded-lifecycle`
+- **PR:** pending
+- **Paths:** `backend/code_requests/lifecycle.py`, `backend/code_requests/store.py`, `backend/code_requests/plan_service.py`, `tests/code_requests/test_lifecycle.py`, `tests/api/test_code_requests.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (code-request suites 468 passed; mypy backend clean; ruff clean)
+- **Summary:** `planned` and `done` are entered only with their `TransitionGate` or an audited operator override; the plan service names `plan_filed`. Part 2 adds the acceptance check that names `acceptance`.
+- **Next step:** Implement the acceptance check for `executing -> done` once #1602 and #1606 merge.
+
 ### DL-#1597 · Turn Providers Off on Every Dispatch Path
 
 - **State:** in_review
