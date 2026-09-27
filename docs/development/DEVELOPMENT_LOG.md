@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338-org — SC-G6: Organization folds into Projects
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Organization", recorded 2026-09-25)
+- **Branch:** `feat/1338-org-into-projects`
+- **PR:** #1681
+- **Paths:** `frontend/src/pages/Projects/CiStatusBadge.tsx`, `frontend/src/pages/Projects/ProjectCard.tsx`, `frontend/src/pages/Projects/types.ts`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/decompIcons.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/__tests__/ProjectsCiBadge.test.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `frontend/src/shell/__tests__/retiredOrgTab.test.ts`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `tests/test_frontend_integrity.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted vitest 323 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean; integrity pytest green except the main-red Tests check fixed by #1690)
+- **Summary:** Projects cards show each repo's latest CI result from `/api/repos` as a badge linked to the run. The Organization tab and page are removed; `/fleet/org`, `/t/org` and `/org` redirect to `/work/projects`. `/api/repos` and `/api/stats` stay because other pages use them.
+- **Next step:** Rebase onto main after #1690 merges and re-arm auto-merge once PR CI is green.
+
 ### DL-#1688 — Chat and run-worktree CLI project folder cleanup
 
 - **State:** in_review

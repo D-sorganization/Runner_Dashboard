@@ -86,6 +86,13 @@ export interface ProjectOverview {
   coverage_error?: string;
 }
 
+/** Latest CI run of a repository, from `GET /api/repos` (#1338). */
+export interface RepoCiStatus {
+  status: string | null;
+  conclusion: string | null;
+  runUrl: string | null;
+}
+
 export interface ProjectsResponse {
   projects: ProjectOverview[];
   count: number;
