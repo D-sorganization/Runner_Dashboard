@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1352 — Grok connection guide on the v1 contract
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1352
+- **Branch:** `docs/grok-guide-v1-live`
+- **PR:** pending
+- **Paths:** `docs/agents/grok.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (fleetctl `--help` matches the documented verbs; v1 threads return 200 on the deployed node)
+- **Summary:** The Grok guide uses the v1 threads API with the `agent-grok` token, names Barb as the single front door, and records the go-live scope: reads, plus dispatch after one supervised dry run.
+- **Next step:** Merge the #1352 PR once CI is green.
+
 ### DL-#1602 · WP-2.2: Executor Keeps Acceptance Criteria
 
 - **State:** in_review

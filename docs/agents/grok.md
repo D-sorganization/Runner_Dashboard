@@ -1,6 +1,6 @@
 # Grok Bot Connection Guide
 
-This guide details how **Grok Bot** connects to the Runner Dashboard staff hub via local execution (`curl` and `fleetctl.py`), interacts with active staff roles (**Barb** and **Orchestrator**), and prepares for the remote connector path.
+This guide details how **Grok Bot** connects to the Runner Dashboard staff hub via local execution (`curl` and `fleetctl.py`), interacts with staff front door **Barb** (the Orchestrator role is retired and folded into Barb per Repository_Management#1733), and prepares for the remote connector path.
 
 ---
 
@@ -13,10 +13,10 @@ Grok Bot executes tools in environments where a resident MCP host may not be ava
 
 ### Active Grok Agents in the Fleet
 
-In the fleet topology, two Grok agent configurations stay active:
+In the fleet topology, **Barb** is the single front door:
 
-- **Barb (Intake & Routing):** Handles work requests, status inquiries, role auto-selection, and conversational routing.
-- **Orchestrator (Execution & Scheduling):** Coordinates multi-step runs, monitors holds and schedules, and executes tasks across fleet nodes.
+- **Barb (Front Door, Intake & Routing):** Handles work requests, status inquiries, role auto-selection, and conversational routing.
+- *Note:* The Orchestrator role is retired and folded into Barb (Repository_Management#1733).
 
 ### Remote Ingress & Connector Path (SC-F6)
 
@@ -30,11 +30,19 @@ Set environment variables in Grok's execution context:
 
 ```bash
 export FLEET_API_URL="http://deskcomputer:8321"
-export FLEET_API_TOKEN="svc_YOUR_TOKEN_HERE"
+export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-grok.token)"
 export FLEET_AGENT="grok"
 ```
 
-A principal `agent-grok` must be registered in `principals.yml` with `roles: [bot]`.
+A principal `agent-grok` must be registered in `principals.yml` with `roles: [bot]`. The bot token file is `~/.config/runner-dashboard/agent-tokens/agent-grok.token` (never include token contents in commits or logs).
+
+### Go-live scope (owner decision, 2026-09-26)
+
+The first live contract is the `/api/v1/staff` threads API with the `agent-grok` bearer token above:
+
+- **Reads:** briefing, threads, work items, staff summary and priorities.
+- **Dispatch:** only after one supervised dry run (`POST /api/staff/barb/run` with `dry_run: true`, reviewed by the operator). Every later dispatch goes through Barb.
+- **Not in scope:** directive writes and hold/unhold writes. These wait for a later owner decision.
 
 ---
 
@@ -113,14 +121,14 @@ When Python 3 is available in Grok's environment, `fleetctl.py` handles session 
 python3 clients/fleet/fleetctl.py briefing --repo Runner_Dashboard
 
 # 2. Open thread with Barb
-python3 clients/fleet/fleetctl.py staff-thread-open --role barb \
-  --message "Grok checking in on fleet health"
+python3 clients/fleet/fleetctl.py thread-open --role barb \
+  --initial-message "Grok checking in on fleet health"
 
 # 3. Read thread updates
-python3 clients/fleet/fleetctl.py staff-thread-read --thread-id <thread_id> --since-seq 0
+python3 clients/fleet/fleetctl.py thread-read <thread_id> --since-seq 0
 
 # 4. Cancel a stalled run
-python3 clients/fleet/fleetctl.py staff-run-cancel --run-id <run_id> --reason "Operator override"
+python3 clients/fleet/fleetctl.py cancel <run_id>
 ```
 
 ---
