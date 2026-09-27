@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+import provider_switch
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from staff.adapter_policies import _CHAT_READ_ONLY_FLAGS
 
@@ -22,9 +23,16 @@ DEFAULT_TURN_TIMEOUT_SECONDS = 300.0
 MAX_ACTIVE_PANELS = 2
 
 
+def enabled_panel_providers() -> tuple[str, ...]:
+    """Panel providers not switched off on this node (#1597); read per call so the env file governs."""
+    return tuple(p for p in PANEL_PROVIDERS if not provider_switch.is_disabled(p))
+
+
 def _check_provider(provider: str) -> str:
     if provider not in PANEL_PROVIDERS:
         raise ValueError(f"provider {provider!r} has no read-only chat mode; use one of {', '.join(PANEL_PROVIDERS)}")
+    if provider_switch.is_disabled(provider):
+        raise ValueError(f"provider {provider!r} is {provider_switch.DISABLED_DETAIL}")
     return provider
 
 
