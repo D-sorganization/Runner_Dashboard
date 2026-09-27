@@ -69,6 +69,7 @@ def route_deterministic(
             reason=f"Explicit /role command specified '{target}'",
             mode="explicit",
             is_code_change=is_code,
+            matched_rule=f"/role {target}",
         )
 
     # 2. Explicit @mention
@@ -81,6 +82,7 @@ def route_deterministic(
             reason=f"Explicit @mention targeted '{target}'",
             mode="explicit",
             is_code_change=is_code,
+            matched_rule=f"@{target}",
         )
 
     low = stripped.lower()
@@ -94,14 +96,12 @@ def route_deterministic(
                 reason="Barb directly manages portfolio status, directives, priorities, and fleet overviews",
                 mode="pre_router",
                 is_code_change=False,
+                matched_rule=bkw,
             )
 
     # 4. Specialist role keyword rules
-    scores: dict[str, int] = {}
-    for role, kws in ROLE_KEYWORD_RULES.items():
-        matched = sum(1 for kw in kws if kw in low)
-        if matched > 0:
-            scores[role] = matched
+    hits = {role: [kw for kw in kws if kw in low] for role, kws in ROLE_KEYWORD_RULES.items()}
+    scores = {role: len(kws) for role, kws in hits.items() if kws}
 
     if scores:
         sorted_roles = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -116,6 +116,7 @@ def route_deterministic(
             alternatives=alternatives,
             mode="pre_router",
             is_code_change=is_code,
+            matched_rule=", ".join(f'"{kw}"' for kw in hits[best_role]),
         )
 
     return None

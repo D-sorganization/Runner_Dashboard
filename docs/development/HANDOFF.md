@@ -1,3 +1,44 @@
+# Current handoff — Confident auto-route messages go straight to the specialist (#1567)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1567`
+- Branch: `feat/1567-confident-preroute`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1567 (owner decision 2026-09-27: option 3); DL-#1567.
+
+## Objective and Status
+
+- `backend/staff/chat_preroute.py` (new):
+  - `PRE_ROUTE_CONFIDENCE_THRESHOLD = 0.85`, with its contract in the docstring. `route_deterministic` scores 1.0 for `/role x` and `@x`, 0.85 when one role's keywords match strictly more than any other role's, and 0.70 on a tie. So an explicit target or a clear winner is confident, and a tie goes to Barb.
+  - `confident_route` also requires a loaded role other than Barb.
+  - `preroute_auto_message` acts only on `auto` threads. It skips a specialist whose chat budget is spent. It calls `BarbRouter.execute_handoff` with reason `auto-routed: matched <rule>` and publishes the card. It never raises: any error logs a warning and returns `None`, and Barb takes the turn.
+- `backend/routers/staff_threads.py` `post_message`: a pre-routed message gets the handoff card in the auto thread, then the usual fast acknowledgement ("On it: routing to <role>..."). The reply placeholder and the turn run as the specialist in its direct thread, and the response carries `handoff`.
+  - Why the specialist's own thread: provider sessions are stored per thread. A specialist turn in the auto thread would resume Barb's session, and Barb's next turn would resume the specialist's.
+- `backend/staff/router.py` / `router_models.py`:
+  - `RoutingDecision.matched_rule` records the rule that fired: `/role x`, `@x`, a Barb keyword, or the quoted keywords.
+  - Analysis keywords (analyse, analyze, analysis, investigate, investigation, diagnose, diagnosis, root cause, root-cause, breakdown, break down) are added to `maintenance`, which owns queue and runner diagnosis (`queue.diagnose`).
+  - No role is a general analyst. A message that also matches another role's keyword ties, so Barb triages it.
+- The e2e roster has no `maintenance` role, so the #1548 e2e handoff test ("analyse the queue") still goes through Barb.
+
+## Validation
+
+- New tests fail first (the module did not exist). After the change, `bash rdtest.sh claude-1567 tests/unit/test_staff_chat_preroute.py tests/api/test_staff_chat_preroute_api.py` gives 23 passed.
+- Regression suites in the WSL venv:
+  - `tests/unit/test_staff_chat*.py tests/unit/test_staff_router.py tests/api/test_staff_chat_turns.py tests/api/test_staff_threads_api.py tests/staff/routing_eval`: 144 passed, 2 skipped (this run also included the new API tests).
+  - Groups, panels, spend, thread-runs, chat smoke, availability, run-card relay and coordination API: 165 passed.
+- `ruff check` and `ruff format --check` are clean on the changed files. `mypy backend/` reports Success (309 files).
+
+## Next Steps
+
+1. Merge the PR once CI is green.
+
+---
+
 # Current handoff — Unknown CLI option classified as cli_outdated (#1669)
 
 Last updated: 2026-09-27

@@ -24,6 +24,7 @@ from staff.audit import record_audit
 from staff.availability import record_fast_acknowledgment
 from staff.budget import get_global_budget_guard
 from staff.chat import run_chat_turn_in_background
+from staff.chat_preroute import preroute_auto_message, thread_reply_role
 from staff.conversation_models import (
     AnswerNeedsInputRequest,
     CreateThreadRequest,
@@ -286,22 +287,20 @@ async def post_message(
             delivery="complete",
         )
 
-        # Resolve target role for reply placeholder
-        target_role = "barb"
-        for p in thread.participants:
-            if p not in (caller_id, caller.id) and p:
-                target_role = p
-                break
-
         budget_guard = get_global_budget_guard()
-        can_chat, _ = budget_guard.can_chat(target_role)
         bus = get_thread_bus()
+        # A confident auto-route message runs as the specialist, in its own thread, with no Barb turn (#1567).
+        pre = await preroute_auto_message(
+            thread=thread, user_msg=user_msg, caller_id=caller_id, store=store, bus=bus, can_chat=budget_guard.can_chat
+        )
+        target_role = pre.role if pre else thread_reply_role(thread, (caller_id, caller.id))
+        can_chat, _ = budget_guard.can_chat(target_role)
         ack_msg = None
         if can_chat:
             # Ack before the reply slot so seq order reads user -> ack -> reply.
             ack_msg = await record_fast_acknowledgment(store, bus, thread_id, user_msg.id, target_role, body.body)
             reply_placeholder_rec = store.add_message(
-                thread_id=thread_id,
+                thread_id=pre.thread_id if pre else thread_id,
                 author_kind="role",
                 author=target_role,
                 kind="text",
@@ -331,17 +330,20 @@ async def post_message(
 
         # Broadcast live events on thread bus
         asyncio.create_task(bus.publish_message(thread_id, user_msg.to_dict()))
-        asyncio.create_task(bus.publish_message(thread_id, reply_placeholder_rec.to_dict()))
+        turn_thread_id = reply_placeholder_rec.thread_id
+        asyncio.create_task(bus.publish_message(turn_thread_id, reply_placeholder_rec.to_dict()))
 
         # Spawn background chat turn execution (SC-B4, #1307)
         asyncio.create_task(
-            run_chat_turn_in_background(thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id)
+            run_chat_turn_in_background(turn_thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id)
         )
 
         resp_data: dict[str, Any] = {
             "message": user_msg.to_dict(),
             "reply_placeholder": reply_placeholder_rec.to_dict(),
         }
+        if pre and (card := store.get_message(pre.handoff_message_id)):
+            resp_data["handoff"] = card.to_dict()
         if ack_msg:
             resp_data["acknowledgement"] = ack_msg.to_dict()
         return resp_data

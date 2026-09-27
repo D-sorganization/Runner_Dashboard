@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1567 — Confident auto-route messages go straight to the specialist
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1567 (split from #1548; owner decision: option 3)
+- **Branch:** `feat/1567-confident-preroute`
+- **PR:** pending
+- **Paths:** `backend/staff/chat_preroute.py`, `backend/routers/staff_threads.py`, `backend/staff/router.py`, `backend/staff/router_models.py`, `tests/unit/test_staff_chat_preroute.py`, `tests/api/test_staff_chat_preroute_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (new tests 23 passed; staff chat, router, threads, routing-eval and related API suites 309 passed, 2 skipped)
+- **Summary:** In `auto` threads, a `route_deterministic` decision at or above `PRE_ROUTE_CONFIDENCE_THRESHOLD` (0.85) for a loaded role other than Barb calls `BarbRouter.execute_handoff` before any turn: the auto thread gets the handoff card (reason `auto-routed: matched <rule>`), and the turn runs as that role in its direct thread. Analysis keywords route to `maintenance`. Anything else, and any pre-routing failure, leaves the turn with Barb.
+- **Next step:** Merge the PR once CI is green.
+
 ### DL-#1669 — Unknown CLI option classified as cli_outdated
 
 - **State:** in_review
