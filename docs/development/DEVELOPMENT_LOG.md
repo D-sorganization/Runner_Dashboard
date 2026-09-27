@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1683 — Expert-panel CLI project folder cleanup
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1683
+- **Branch:** `fix/1683-panel-cli-projects`
+- **PR:** pending
+- **Paths:** `backend/staff/cli_projects.py`, `backend/staff/panel.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites pass)
+- **Summary:** Stops the leak of one Claude CLI project folder per expert-panel turn.
+- **Next step:** Follow-ups not in scope: one-turn chat fallback and run-worktree project folders leak the same way.
+
 ### DL-#1332-default — Owner-level default approval for disk compaction
 
 - **State:** in_review

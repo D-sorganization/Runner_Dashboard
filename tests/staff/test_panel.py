@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import ValidationError
 from staff.chat_streaming import TurnStreamOutput
+from staff.cli_projects import encode_project_name
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.panel import (
     PanelSpeaker,
@@ -285,3 +286,97 @@ async def test_default_turn_runner_refuses_a_disabled_provider(monkeypatch: pyte
     assert outcome.ok is False
     assert "STAFF_DISABLED_PROVIDERS" in (outcome.error or "")
     assert spawned == []
+
+
+@pytest.mark.asyncio
+async def test_default_turn_runner_removes_project_folder_on_success_and_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #1683: default_turn_runner removes <CLAUDE_CONFIG_DIR>/projects/<encoded cwd> on success and failure."""
+    cfg_dir = tmp_path / "cfg"
+    projects_dir = cfg_dir / "projects"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+
+    fake_temp = tmp_path / "tmp"
+    fake_temp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(fake_temp))
+
+    mock_adapter = MagicMock()
+    mock_adapter.chat_argv.return_value = ["dummy", "cmd"]
+    mock_adapter.runtime_env.return_value = {"CLAUDE_CONFIG_DIR": str(cfg_dir)}
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = 0
+
+    captured_cwds: list[str] = []
+
+    def fake_spawn(**kw: Any) -> Any:
+        cwd = kw["cwd"]
+        captured_cwds.append(cwd)
+        proj_dir = projects_dir / encode_project_name(cwd)
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        return mock_proc
+
+    turn_output = TurnStreamOutput(
+        stdout_lines=["All good\n"],
+        stderr_lines=[],
+        returncode=0,
+        json_lines=False,
+    )
+
+    async def fake_stream_turn_output(*_args: Any, **_kwargs: Any) -> TurnStreamOutput:
+        return turn_output
+
+    monkeypatch.setattr("staff.panel.get_adapter", lambda _prov: mock_adapter)
+    monkeypatch.setattr("staff.panel.spawn_cli_process", fake_spawn)
+    monkeypatch.setattr("staff.panel.stream_turn_output", fake_stream_turn_output)
+
+    speaker = PanelSpeaker(name="Ada", perspective="numerical methods", provider="claude", model="opus-5")
+
+    # Success turn
+    outcome_ok = await default_turn_runner(speaker, "prompt", "thread-1", None)
+    assert outcome_ok.ok is True
+    assert len(captured_cwds) == 1
+    first_scratch = captured_cwds[0]
+    first_proj = projects_dir / encode_project_name(first_scratch)
+    assert not first_proj.exists()
+    assert not Path(first_scratch).exists()
+
+    # Failing turn
+    turn_output = TurnStreamOutput(
+        stdout_lines=[],
+        stderr_lines=["turn crashed\n"],
+        returncode=1,
+        json_lines=False,
+    )
+    outcome_fail = await default_turn_runner(speaker, "prompt", "thread-1", None)
+    assert outcome_fail.ok is False
+    assert len(captured_cwds) == 2
+    second_scratch = captured_cwds[1]
+    second_proj = projects_dir / encode_project_name(second_scratch)
+    assert not second_proj.exists()
+    assert not Path(second_scratch).exists()
+
+
+@pytest.mark.unit
+def test_run_panel_sweeps_stale_panel_projects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """run_panel invokes sweep_stale_panel_projects before the first round and tolerates sweep failures."""
+    swept: list[dict[str, str]] = []
+
+    def fake_sweep(env: Any) -> list[str]:
+        swept.append(dict(env))
+        return []
+
+    monkeypatch.setattr("staff.panel.cli_projects.sweep_stale_panel_projects", fake_sweep)
+    runner = ScriptedRunner()
+    _run(_request(rounds=1), runner)
+    assert len(swept) == 1
+
+    # Verify that an exception during sweep is logged and does not fail the panel
+    def exploding_sweep(_env: Any) -> list[str]:
+        raise RuntimeError("simulated disk error during sweep")
+
+    monkeypatch.setattr("staff.panel.cli_projects.sweep_stale_panel_projects", exploding_sweep)
+    thread_id = _run(_request(rounds=1), runner)
+    res = panel_result(get_conversation_store(), thread_id)
+    assert res is not None and res["status"] == "complete"

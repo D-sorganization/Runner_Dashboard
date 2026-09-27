@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1683 | Expert-panel CLI project cleanup (#1683): each panel turn removes its Claude CLI project folder (`<CLAUDE_CONFIG_DIR>/projects/<encoded scratch dir>`) when the turn ends, and `run_panel` sweeps panel project folders older than 6 h first; only direct, non-symlink children of the projects root that carry the panel scratch prefix are ever removed (`backend/staff/cli_projects.py`). |
 | 2026-09-27 | #1332-default | Disk compaction default approval is owner (#1332): `DEFAULT_ACTION_APPROVALS["host.vhdx_compact"]` is now `owner`, so no role can approve a compaction request below owner level (the validator rejects loosening). |
 | 2026-09-27 | #1332-card | WSL disk card (#1332): Operations → Diagnostics shows the read-only `GET /api/diagnostics/wsl-disk` status per distro (VHDX size, space used inside WSL, slack, sparse flag), the fstrim timer and last run, and findings as plain facts with a pointer to the manual runbook; it has no buttons that change anything. |
 | 2026-09-27 | #1332 | WSL disk status and owner-only compaction request (#1332): read-only `GET /api/diagnostics/wsl-disk` reports per distro the sparse flag, VHDX size vs space used and the last fstrim; `host.vhdx_compact` now maps to the owner-only `maintenance.vhdx_compaction_request`, which records the approved request and runs nothing (it previously ran a SQLite VACUUM). |

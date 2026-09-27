@@ -1,4 +1,29 @@
-# Current handoff — Owner-level default approval for disk compaction (#1332-default)
+# Current handoff — Expert-panel CLI project folder cleanup (#1683)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1683`; branch `fix/1683-panel-cli-projects`; PR: see DL-#1683; Issue #1683; DL-#1683.
+
+## Objective and Status
+
+- Each panel turn ran in a fresh `staff_panel_*` scratch dir; the Claude CLI filed its session under `projects/<encoded cwd>` and nothing removed it (about 45 leaked folders on DeskComputer).
+- New `backend/staff/cli_projects.py`: encodes the cwd the way the CLI does, removes the turn's folder in the runner's `finally` with the same env the CLI was spawned with, and runs an age-based sweep (6 h) before each panel. It never raises and never touches anything outside the projects root or without the panel prefix; symlinks are not followed.
+- Drafted by agy (Gemini 3.8 Flash) from a written spec; reviewed and fixed by Claude.
+
+## Validation
+
+- pytest tests/unit/test_staff_cli_projects.py tests/staff/test_panel.py: pass.
+- ruff check/format and mypy on the touched modules: clean.
+
+## Next Steps
+
+1. Follow-ups not in scope: one-turn chat fallback and run-worktree project folders leak the same way.
+
+---
+
+# Past handoff — Owner-level default approval for disk compaction (#1332-default)
 
 Last updated: 2026-09-27
 
