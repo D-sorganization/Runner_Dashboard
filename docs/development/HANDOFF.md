@@ -1,3 +1,38 @@
+# Current handoff — A failed auto-review gets one more attempt (#1662)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `/home/user/Runner_Dashboard`
+- Branch: `claude/runner-dashboard-roles-gaps-k9i38r`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1662 (decision 4 of Repository_Management#1766); DL-#1662. DL-#1660 shipped in #1661.
+
+## Objective and Status
+
+- `_already_reviewed` (`backend/staff/review.py`) ignores review runs that ended `failed`. It stops at `MAX_AUTO_REVIEW_ATTEMPTS = 2` attempts, counting only runs without `retry_of`.
+- It reads the PR's full review history, runner retries included, through the new `RunStore.list_runs_for_target(role, repo, target_ref)`. An in-flight retry still counts.
+- Codex review (P2): the earlier `list_runs(limit=200)` window could hide old attempts behind newer reviews of other PRs.
+- The new tests live in `tests/unit/test_staff_review_retry.py`, which imports the helpers from `test_staff_review_runtime.py`. Codex review (P1): the runtime module had gone over the 400-line limit.
+- Queued, running, succeeded, `needs_input` and `cancelled` reviews still count as reviewed. A cancel is an operator decision.
+- `_review_claim` takes the `flock` only when `store.path` is a `str` or `Path`. A `MagicMock` store used to leave `<MagicMock …>.auto-review.lock` files in the working directory.
+- The owner decided the reviewer stays advisory for two weeks, then gets a blocking decision on P0 repos based on its false-positive rate. That evaluation is tracked on Repository_Management#1766, not here.
+
+## Validation
+
+- `cd backend && python -m pytest ../tests/unit/test_staff_review_runtime.py ../tests/unit/test_staff_review_retry.py`: 28 passed. The retry, lock-file and window tests each failed before their fix. The status tests are regression guards.
+- `pytest tests/unit tests/api -k "staff or review"`: the same 14 failures as on `main` (chat-turn and thread API tests, environment-related), nothing new.
+- `ruff check`, `ruff format --check` and `mypy backend/staff/review.py`: clean.
+
+## Next Steps
+
+1. Merge the PR once CI is green.
+
+---
+
 # Current handoff — Code-read-only staff runs (#1659)
 
 Last updated: 2026-09-27

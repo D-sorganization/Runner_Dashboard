@@ -288,6 +288,7 @@ def prepare_review_params(
 # verifications of one PR (a worker finish and a recheck) cannot both pass the check.
 # The thread lock covers one process; ``_review_claim`` adds an ``flock`` on a file next
 # to the shared runs DB so uvicorn workers (``WORKERS > 1``) are serialised too.
+MAX_AUTO_REVIEW_ATTEMPTS = 2  # the first review plus one retry after it fails
 _AUTO_REVIEW_LOCK = threading.Lock()
 
 
@@ -300,7 +301,7 @@ def _review_claim(store: Any) -> Iterator[None]:
             import fcntl
         except ImportError:  # pragma: no cover - Windows has no fcntl; one process there
             fcntl = None  # type: ignore[assignment]
-        if fcntl is None or db_path is None:
+        if fcntl is None or not isinstance(db_path, str | Path):  # a stub store has no file to lock beside
             yield
             return
         with Path(f"{db_path}.auto-review.lock").open("w") as fh:
@@ -312,9 +313,18 @@ def _review_claim(store: Any) -> Iterator[None]:
 
 
 def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWER_ROLE) -> bool:
-    """Whether a ``role`` review run for this PR exists; ``role`` is the resolved reviewer."""
+    """Whether this PR needs no new ``role`` review run; ``role`` is the resolved reviewer.
+
+    A review that is queued, running, done or cancelled counts, and so does one the
+    runner is still retrying. A review that ended ``failed`` does not, so the PR's next
+    verification queues one more attempt, up to MAX_AUTO_REVIEW_ATTEMPTS (#1662).
+    """
     target = f"PR #{pr_number}"
-    return any(r.repo == repo and r.target_ref == target for r in store.list_runs(limit=RUN_LOOKUP_LIMIT, role=role))
+    runs = store.list_runs_for_target(role=role, repo=repo, target_ref=target)  # retries included
+    if any(r.status != "failed" for r in runs):
+        return True
+    attempts = [r for r in runs if not getattr(r, "retry_of", "")]  # runner retries share one attempt
+    return len(attempts) >= MAX_AUTO_REVIEW_ATTEMPTS
 
 
 def auto_review_if_eligible(

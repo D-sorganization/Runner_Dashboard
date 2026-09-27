@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1662 — A failed auto-review gets one more attempt
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1662 (decision 4 of Repository_Management#1766)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** not created
+- **Paths:** `backend/staff/review.py`, `backend/staff/store.py`, `tests/unit/test_staff_review_retry.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (review tests 28 passed across `test_staff_review_runtime.py` and `test_staff_review_retry.py`; staff/review/store subset has the same 14 pre-existing failures as `main`; ruff and mypy clean; review fixes: full-history attempt count, test module split)
+- **Summary:** `_already_reviewed` counted a failed review, so a PR whose first review failed for good was never reviewed again. It now ignores reviews that ended `failed` (runner retries included), up to `MAX_AUTO_REVIEW_ATTEMPTS = 2`. `_review_claim` no longer writes stray lock files beside a stub store's mock path.
+- **Next step:** Merge the PR once CI is green.
+
 ### DL-#1659 — Code-read-only staff runs
 
 - **State:** in_review
@@ -30,19 +43,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (staff tests 1221 passed; new tests red then green)
 - **Summary:** Opt-in `permissions.code_read_only` gives a role's unattended runs an allowlisted read-only Claude argv and read-only fleet rules; Barb is the first user.
 - **Next step:** Merge; set `code_read_only: true` on Barb in Repository_Management (schema plus barb.yml), redeploy both nodes, and re-run the Grok dry run.
-
-### DL-#1660 — LF line endings enforced by .gitattributes
-
-- **State:** in_review
-- **Owner:** claude
-- **Issue:** #1660 (decision 5 of Repository_Management#1766)
-- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
-- **PR:** not created
-- **Paths:** `.gitattributes`
-- **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (`git ls-files --eol` shows 0 CRLF files in the index; `git diff --ignore-cr-at-eol` changes only `.gitattributes` and the tracking docs)
-- **Summary:** A Windows host committed CRLF, so every line of the file showed as changed and merges conflicted. `* text=auto eol=lf` fixes the line ending in the repository for every host; batch files keep CRLF in the working tree. The 22 files already stored with CRLF were renormalized with no content change.
-- **Next step:** Merge the PR once CI is green.
 
 ### DL-#1655 — Staff chat remembers the previous turn
 
@@ -2512,6 +2512,19 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1660 — LF line endings enforced by .gitattributes
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1660 (decision 5 of Repository_Management#1766)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** #1661
+- **Paths:** `.gitattributes`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27
+- **Shipped:** 2026-09-27
+- **Summary:** `* text=auto eol=lf` fixes the line ending in the repository for every host; batch files keep CRLF in the working tree. The 22 files already stored with CRLF were renormalized with no content change. Squash-merged via PR #1661 (`f46bddc6`).
 
 ### DL-#1488 · SC-B1-G5: Relay forwarded run-card events back to originating thread across peer nodes
 
