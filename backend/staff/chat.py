@@ -40,6 +40,7 @@ from staff.chat_failures import (
     record_chat_capacity_failure,
     record_chat_failure_if_pending,
 )
+from staff.chat_fleet_context import build_fleet_context_block
 from staff.chat_handoff import post_reply_handoff
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
@@ -148,7 +149,9 @@ class ChatTurnRunner:
         user_msg = self.conv_store.get_message(user_message_id)
         raw_prompt = user_msg.body_md if user_msg else ""
         knowledge_block = build_knowledge_turn_block(role, raw_prompt)
-        prompt_text = f"{knowledge_block}\n\n{raw_prompt}" if knowledge_block else raw_prompt
+        fleet_block = await build_fleet_context_block(role)
+        blocks = [b for b in (fleet_block, knowledge_block, raw_prompt) if b]
+        prompt_text = "\n\n".join(blocks)
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:

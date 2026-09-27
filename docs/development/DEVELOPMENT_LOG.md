@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1627 — Fleet Facts in Barb's Chat Turns
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1627
+- **Branch:** `feat/barb-chat-fleet-context`
+- **PR:** pending
+- **Paths:** `backend/staff/chat_fleet_context.py`, `backend/staff/summary_view.py`, `backend/staff/chat.py`, `backend/routers/staff.py`, `tests/unit/test_staff_chat_fleet_context.py`, `tests/unit/test_staff_chat_fleet_prompt.py`, `tests/api/test_staff_fleet.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (staff/chat suites 810 passed; mypy clean)
+- **Summary:** Barb (and any role declaring read\_\* chat tools) sees the fleet's current state in dashboard chat turns instead of asking for curl approval.
+- **Next step:** Merge; redeploy OGLaptop and ask Barb a status question in a thread to confirm she answers from the block.
+
 ### DL-#1625 — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API
 
 - **State:** in_review

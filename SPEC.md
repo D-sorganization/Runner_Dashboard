@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1627 | Staff chat turns inject a bounded `## Fleet now` block (before the knowledge block) for each target-free read tool the role declares in `chat.tools`: `read_staff_summary`, `read_priorities`, `read_briefing`, `read_sessions`, read in-process (5 s per source, 2.5k chars per section, 8k total, never raises, errors shown only as `unavailable (<ExceptionClass>)`); `GET /api/staff/summary` and the chat context share `staff.summary_view.build_staff_summary()`. |
 | 2026-09-27 | #1625 | `POST /api/v1/staff/threads` and `POST /api/v1/staff/threads/{id}/messages` reject unknown body keys with 422 (`extra="forbid"`) instead of dropping them; `docs/agents/grok.md` recipes use the verified shapes (open with `role`, response `id`, post `body`, read `body_md`). |
 | 2026-09-27 | #1608 | The dashboard artifact ships `scripts/claude_statusline_quota.py` (only that script) so the Claude Code status line that feeds `/api/staff/quota` survives the installer's `rsync --delete`; `docs/staff-hub.md` gives the deployed path and the Windows `wsl.exe` command form. |
 | 2026-09-26 | #1606 | WP-2.2: `POST /api/code-requests/{id}/executor/initialize` builds children from the filed plan (caller-supplied children are refused with 422), requires a `planned` request with a filed plan (409 otherwise) and moves it to `executing`; executor pipelines persist in `code_request_pipelines.json` through a shared `KeyedJsonStore`, so dispatch, report-child and rollup survive restarts. |

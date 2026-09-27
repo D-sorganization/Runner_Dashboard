@@ -1,4 +1,31 @@
-# Current handoff — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API (#1625)
+# Current handoff — Fleet Facts in Barb's Chat Turns (#1627)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_barbctx`; branch `feat/barb-chat-fleet-context`; PR: see DL-#1627; Issue #1627; DL-#1627.
+
+## Objective and Status
+
+- Live e2e on OGLaptop: Barb answered a status question with 'The curl call needs approval before I can run it'; her declared `chat.tools` were never provided.
+- `staff/chat_fleet_context.py` reads the four target-free tools concurrently and renders compact JSON sections; `read_run`/`read_issue`/`read_repo` need a target and are out of scope.
+- `staff/summary_view.py` holds the summary body moved unchanged from `routers/staff.py` (DRY; LoD for the chat module).
+- Drafted by an agy (Antigravity CLI, edit-only) agent from a written spec; reviewed; the prompt test was reworked (frozen adapter dataclass; history replay quotes the question earlier).
+
+## Validation
+
+- TDD: `tests/unit/test_staff_chat_fleet_context.py` (6) and `test_staff_chat_fleet_prompt.py` (1); summary keys covered in `tests/api/test_staff_fleet.py`.
+- `pytest tests/api tests/unit -k 'staff or chat or summary or barb'`: 810 passed, 2 skipped.
+- `mypy` clean on the 4 changed backend modules; `ruff` clean; `chat.py` 475 lines.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and ask Barb a status question in a thread to confirm she answers from the block.
+
+---
+
+# Past handoff — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API (#1625)
 
 Last updated: 2026-09-27
 
