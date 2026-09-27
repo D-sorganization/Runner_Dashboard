@@ -320,8 +320,7 @@ def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWE
     verification queues one more attempt, up to MAX_AUTO_REVIEW_ATTEMPTS (#1662).
     """
     target = f"PR #{pr_number}"
-    rows = store.list_runs(limit=RUN_LOOKUP_LIMIT, role=role, logical_only=False)  # include runner retries
-    runs = [r for r in rows if r.repo == repo and r.target_ref == target]
+    runs = store.list_runs_for_target(role=role, repo=repo, target_ref=target)  # retries included
     if any(r.status != "failed" for r in runs):
         return True
     attempts = [r for r in runs if not getattr(r, "retry_of", "")]  # runner retries share one attempt

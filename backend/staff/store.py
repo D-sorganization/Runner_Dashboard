@@ -282,6 +282,19 @@ class RunStore:
             ).fetchall()
         return [RunRecord(**dict(r)) for r in rows]
 
+    def list_runs_for_target(self, *, role: str, repo: str, target_ref: str) -> list[RunRecord]:
+        """Every run (retries included) of ``role`` against one repo target, oldest first.
+
+        Unbounded on purpose: a caller counting attempts must see the whole history,
+        not the newest N rows of a busy role (#1662).
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM runs WHERE role = ? AND repo = ? AND target_ref = ? ORDER BY created_at",
+                (role, repo, target_ref),
+            ).fetchall()
+        return [RunRecord(**dict(r)) for r in rows]
+
     def list_runs_for_thread(self, thread_id: str) -> list[RunRecord]:
         if not thread_id:
             return []
