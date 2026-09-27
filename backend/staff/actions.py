@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from identity import Principal, format_caller, principal_has_scope
 from staff.action_executors import BOARD_PROPOSAL_ROLE, register_standard_actions
-from staff.conversation_models import ActionProposalRecord
+from staff.conversation_models import PROPOSAL_TTL_SECONDS, ActionProposalRecord
 from staff.conversations import get_conversation_store
 from staff.maintenance import register_maintenance_actions
 from staff.roles import RoleSpec, load_roles
@@ -34,8 +34,6 @@ if TYPE_CHECKING:
 UTC = getattr(_dt, "UTC", _dt.UTC)
 datetime = _dt.datetime
 log = logging.getLogger("dashboard.staff.actions")
-
-PROPOSAL_TTL_SECONDS = 86400  # 24 hours
 
 
 class ActionRiskClass:

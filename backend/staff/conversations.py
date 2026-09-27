@@ -385,6 +385,8 @@ class ConversationStore:
         risk: str = "low",
         proposal_id: str | None = None,
         principal: str = "",
+        decide_by: str | None = None,
+        default_if_silent: str = "",
     ) -> ActionProposalRecord:
         self._ensure_available()
         return _proposals.create_proposal(
@@ -398,6 +400,8 @@ class ConversationStore:
             proposal_id=proposal_id,
             principal=principal,
             audit_store=self._audit_store,
+            decide_by=decide_by,
+            default_if_silent=default_if_silent,
         )
 
     def get_proposal(self, proposal_id: str) -> ActionProposalRecord | None:

@@ -6,13 +6,17 @@ import json
 import logging
 import sqlite3
 import threading
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from staff.audit import record_audit
 from staff.conversation_models import (
     _VALID_PROPOSAL_TRANSITIONS,
+    DEFAULTS_IF_SILENT,
     PROPOSAL_RISKS,
     PROPOSAL_STATES,
+    PROPOSAL_TTL_SECONDS,
+    SILENT_APPROVE_RISKS,
     ActionProposalRecord,
     _now,
 )
@@ -22,6 +26,34 @@ if TYPE_CHECKING:
     from staff.audit import StaffAuditStore
 
 log = logging.getLogger("dashboard.staff.conversations.proposals")
+
+
+def _parse_iso(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def validate_decision_sla(decide_by: str | None, default_if_silent: str, risk: str, created_at: str) -> None:
+    """The decision SLA a source may attach to a proposal (WP-2.6, #1607).
+
+    Pre: ``default_if_silent`` is one of :data:`DEFAULTS_IF_SILENT` and needs a ``decide_by``;
+    ``decide_by`` is an ISO-8601 datetime no later than the proposal's expiry; ``approve`` by
+    silence only for :data:`SILENT_APPROVE_RISKS`. Raises ``ValueError`` otherwise.
+    """
+    if default_if_silent not in DEFAULTS_IF_SILENT:
+        raise ValueError(f"default_if_silent must be one of {DEFAULTS_IF_SILENT}, got {default_if_silent!r}")
+    if decide_by is None:
+        if default_if_silent:
+            raise ValueError("default_if_silent needs a decide_by deadline")
+        return
+    try:
+        deadline = _parse_iso(decide_by)
+    except ValueError as exc:
+        raise ValueError(f"decide_by must be an ISO-8601 datetime, got {decide_by!r}") from exc
+    if deadline > _parse_iso(created_at) + timedelta(seconds=PROPOSAL_TTL_SECONDS):
+        raise ValueError(f"decide_by {decide_by} is after the proposal would expire ({PROPOSAL_TTL_SECONDS}s)")
+    if default_if_silent == "approve" and risk not in SILENT_APPROVE_RISKS:
+        raise ValueError(f"approve by silence is only allowed for a low-risk action, not risk {risk!r}")
 
 
 def create_proposal(
@@ -35,12 +67,15 @@ def create_proposal(
     proposal_id: str | None = None,
     principal: str = "",
     audit_store: StaffAuditStore | None = None,
+    decide_by: str | None = None,
+    default_if_silent: str = "",
 ) -> ActionProposalRecord:
     assert risk in PROPOSAL_RISKS, f"Invalid risk: {risk}"  # noqa: S101
     import uuid
 
     pid = proposal_id or f"prop_{uuid.uuid4().hex[:12]}"
     now = _now()
+    validate_decision_sla(decide_by, default_if_silent, risk, now)
     param_dict = redact_value(dict(params or {}))
 
     rec = ActionProposalRecord(
@@ -52,13 +87,15 @@ def create_proposal(
         risk=risk,
         state="proposed",
         created_at=now,
+        decide_by=decide_by,
+        default_if_silent=default_if_silent,
     )
 
     with lock:
         conn.execute(
             "INSERT INTO action_proposals (id, message_id, thread_id, action, params, risk, state, "
-            "decided_by, decided_at, reason, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "decided_by, decided_at, reason, created_at, decide_by, default_if_silent) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 rec.id,
                 rec.message_id,
@@ -71,6 +108,8 @@ def create_proposal(
                 rec.decided_at,
                 rec.reason,
                 rec.created_at,
+                rec.decide_by,
+                rec.default_if_silent,
             ),
         )
 
@@ -81,7 +120,13 @@ def create_proposal(
         surface="thread",
         thread_id=rec.thread_id,
         outcome="success",
-        detail={"action": rec.action, "risk": rec.risk, "params": rec.params},
+        detail={
+            "action": rec.action,
+            "risk": rec.risk,
+            "params": rec.params,
+            "decide_by": rec.decide_by,
+            "default_if_silent": rec.default_if_silent,
+        },
         fail_closed=True,
         store=audit_store,
     )

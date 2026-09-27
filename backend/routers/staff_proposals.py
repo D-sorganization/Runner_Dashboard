@@ -38,6 +38,12 @@ class CreateActionProposalRequest(BaseModel):
     risk: str | None = Field(
         default=None, description="Ignored: the risk always comes from the action registry (#1485)"
     )
+    decide_by: str | None = Field(
+        default=None, description="ISO-8601 deadline for the owner's decision (WP-2.6, #1607)"
+    )
+    default_if_silent: str = Field(
+        default="", description="'approve' (low-risk actions only), 'deny', or '' to only ping when overdue"
+    )
 
 
 async def _refresh_card(store: Any, proposal_id: str) -> None:
@@ -164,6 +170,8 @@ async def create_proposal(
             params=body.params,
             risk=registered_risk(body.action),
             principal=format_caller(caller),
+            decide_by=body.decide_by,
+            default_if_silent=body.default_if_silent,
         )
         return prop.to_dict()
     except ValueError as exc:
