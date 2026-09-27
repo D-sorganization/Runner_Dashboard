@@ -6,12 +6,16 @@ the run store or the provider CLIs.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 from pathlib import Path
 
+from staff import cli_projects
 from staff.roles import RoleSpec
+
+log = logging.getLogger("dashboard.staff.workspace")
 
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
 
@@ -230,6 +234,11 @@ def remove_worktree(worktree: Path, checkout: Path | None = None) -> None:
             pass
     if worktree.exists():
         shutil.rmtree(worktree, ignore_errors=True)
+    if os.path.normpath(str(worktree.parent)) == os.path.normpath(str(staff_worktrees_root())):
+        try:
+            cli_projects.remove_worktree_project(worktree, staff_worktrees_root(), os.environ)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("failed to remove CLI project for worktree %s: %s", worktree, exc)
 
 
 def compose_prompt(

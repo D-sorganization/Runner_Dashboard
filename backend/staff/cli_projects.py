@@ -26,6 +26,9 @@ __all__ = [
     "panel_project_prefix",
     "projects_root",
     "remove_turn_project",
+    "remove_worktree_project",
+    "run_project_prefix",
+    "sweep_orphan_run_projects",
     "sweep_stale_panel_projects",
 ]
 
@@ -57,8 +60,8 @@ def panel_project_prefix(tmpdir: str | None = None) -> str:
     return encode_project_name(os.path.join(base_dir, PANEL_SCRATCH_PREFIX))
 
 
-def _is_panel_project(path: Path, root: Path, prefix: str) -> bool:
-    """Return True if path is a genuine direct panel project directory under root."""
+def _is_prefixed_project(path: Path, root: Path, prefix: str) -> bool:
+    """Return True if path is a genuine direct project directory under root matching prefix."""
     try:
         return (
             path.parent.resolve() == root.resolve()
@@ -69,6 +72,11 @@ def _is_panel_project(path: Path, root: Path, prefix: str) -> bool:
         )
     except OSError:
         return False
+
+
+def _is_panel_project(path: Path, root: Path, prefix: str) -> bool:
+    """Return True if path is a genuine direct panel project directory under root."""
+    return _is_prefixed_project(path, root, prefix)
 
 
 def remove_turn_project(cwd: str, env: Mapping[str, str]) -> bool:
@@ -121,5 +129,85 @@ def sweep_stale_panel_projects(
                 removed.append(child.name)
         except OSError as exc:
             log.warning("failed to sweep project %s: %s", child, exc)
+            continue
+    return sorted(removed)
+
+
+def run_project_prefix(worktrees_root: Path) -> str:
+    """Return the encoded project prefix for run worktrees directly under worktrees_root."""
+    return encode_project_name(str(worktrees_root)) + "-"
+
+
+def remove_worktree_project(worktree: Path, worktrees_root: Path, env: Mapping[str, str]) -> bool:
+    """Remove the Claude CLI project folder corresponding to worktree if it matches the run prefix.
+
+    Pre: worktree is a direct child of worktrees_root (compared as normpath strings).
+    Never raises: catches OSError, logs a warning, and returns False.
+    """
+    assert os.path.normpath(str(worktree.parent)) == os.path.normpath(str(worktrees_root)), (  # noqa: S101
+        f"worktree must be a direct child of worktrees_root: {worktree!r} vs {worktrees_root!r}"
+    )
+    try:
+        root = projects_root(env)
+        target = root / encode_project_name(str(worktree))
+        prefix = run_project_prefix(worktrees_root)
+        if _is_prefixed_project(target, root, prefix):
+            shutil.rmtree(target)
+            return True
+        return False
+    except OSError as exc:
+        log.warning("failed to remove worktree project for %s: %s", worktree, exc)
+        return False
+
+
+def sweep_orphan_run_projects(
+    env: Mapping[str, str],
+    worktrees_root: Path,
+    *,
+    min_age_seconds: float = DEFAULT_PANEL_PROJECT_MAX_AGE_SECONDS,
+    now: float | None = None,
+) -> list[str]:
+    """Sweep and remove orphaned run Claude CLI project directories older than min_age_seconds.
+
+    Pre: min_age_seconds > 0.
+    Never raises: catches OSError per entry, logs a warning, and returns sorted removed names.
+    """
+    assert min_age_seconds > 0, f"min_age_seconds must be positive: {min_age_seconds}"  # noqa: S101
+    current_time = time.time() if now is None else now
+
+    live: set[str] = set()
+    try:
+        if worktrees_root.is_dir():
+            for child in worktrees_root.iterdir():
+                try:
+                    if child.exists():
+                        live.add(encode_project_name(str(worktrees_root / child.name)))
+                except OSError:
+                    continue
+    except OSError as exc:
+        log.warning("failed to iterate worktrees root %s: %s", worktrees_root, exc)
+
+    try:
+        root = projects_root(env)
+        if not root.is_dir():
+            return []
+        children = list(root.iterdir())
+    except OSError as exc:
+        log.warning("failed to iterate projects root: %s", exc)
+        return []
+
+    prefix = run_project_prefix(worktrees_root)
+    removed: list[str] = []
+    for child in children:
+        try:
+            if not _is_prefixed_project(child, root, prefix):
+                continue
+            if child.name in live:
+                continue
+            if current_time - child.stat().st_mtime > min_age_seconds:
+                shutil.rmtree(child)
+                removed.append(child.name)
+        except OSError as exc:
+            log.warning("failed to sweep run project %s: %s", child, exc)
             continue
     return sorted(removed)
