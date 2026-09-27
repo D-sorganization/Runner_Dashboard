@@ -1,4 +1,27 @@
-# Current handoff — TypeScript always treated as text (#1667)
+# Current handoff — Grok dispatch gate open (allow with confirm) (#1671)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_gate`; branch `docs/grok-dispatch-gate`; PR: see DL-#1671; Issue #1671; DL-#1671.
+
+## Objective and Status
+
+- Owner decision 2026-09-27 (~09:40 PT, given in the DeskComputer session): allow dispatch with confirmation.
+- The dry-run re-run on dfbd139d passed after #1664 and Repository_Management#1818/#1822.
+
+## Validation
+
+- Docs-only; prettier clean.
+
+## Next Steps
+
+1. Merge; the owner runs the first real Grok→Barb dispatch, with confirmation.
+
+---
+
+# Past handoff — TypeScript always treated as text (#1667)
 
 Last updated: 2026-09-27
 

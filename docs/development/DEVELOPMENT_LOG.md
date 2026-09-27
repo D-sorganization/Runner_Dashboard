@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1671 — Grok dispatch gate open (allow with confirm)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1671
+- **Branch:** `docs/grok-dispatch-gate`
+- **PR:** pending
+- **Paths:** `docs/agents/grok.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (docs-only)
+- **Summary:** The Grok go-live scope records the passed supervised dry run and the owner's allow-with-confirm dispatch decision.
+- **Next step:** Merge; the owner runs the first real Grok→Barb dispatch, with confirmation.
+
 ### DL-#1667 — TypeScript always treated as text for line endings
 
 - **State:** in_review
