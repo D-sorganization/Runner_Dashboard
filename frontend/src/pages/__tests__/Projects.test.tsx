@@ -171,10 +171,10 @@ describe("ProjectsPage", () => {
         "Steward run submitted (run run-0001, queued).",
       ),
     );
-    const [url, init] = fetchMock.mock.calls[1] as unknown as [
-      string,
-      RequestInit,
-    ];
+    // The page also reads CI status from /api/repos (#1338); pick the POST.
+    const [url, init] = fetchMock.mock.calls.find(
+      ([u]) => u === "/api/v1/staff/requests",
+    ) as unknown as [string, RequestInit];
     expect(url).toBe("/api/v1/staff/requests");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["X-Requested-With"]).toBe(

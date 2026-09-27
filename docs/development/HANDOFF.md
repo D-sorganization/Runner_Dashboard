@@ -1,3 +1,54 @@
+# Current handoff — SC-G6: Organization folds into Projects (DL-#1338-org)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1338-org`
+- Branch: `feat/1338-org-into-projects`
+- Baseline commit: `ae1ce437`
+- Implementation commit: `SELF`
+- Pull request: #1681 (draft)
+- Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Organization"); DL-#1338-org.
+
+## Objective and status
+
+- Owner decision: add a per-repo CI-status badge to Projects cards, retire the Organization tab and redirect it to Projects.
+- `pages/Projects/CiStatusBadge.tsx` (new): shows the latest CI conclusion (or status while running) as a toned badge linked to the run; "No CI" when the repo has no run; "CI unknown" when the repo is not in `/api/repos` or that call failed.
+- `ProjectsPage.tsx`: also loads `GET /api/repos` and passes each card its repo's CI state. A failed `/api/repos` shows "CI status unavailable" and leaves the projects list working.
+- `pages/Org.tsx` and its test are deleted, with the now-unused `GitPrGlyph` icon.
+- `navRegistryData.ts`: the `org` entry is removed. `routing.ts`: `/fleet/org`, `/t/org` and `/org` redirect to `/work/projects`.
+- `RoutedShell.tsx`: the `org` case is removed.
+- `tests/test_frontend_integrity.py`: the Org route check becomes a retirement check (no `Org.tsx`, no `org` case, Projects loads `/api/repos`), and `function OrgTab` leaves the required-marker list.
+
+## Files and decisions
+
+- Backend endpoints are kept: `/api/repos` feeds the badge and Code Requests, Assessments and the assistant tools; `/api/stats` is still used by the polling queries.
+
+## Validation
+
+- New tests failed first against the pre-change source (10 cases: badges, redirects, nav entry).
+- WSL `npx vitest run --maxWorkers=4` on shell, Projects, Settings and components tests: 323 passed. The 2 failures are `mobile nav entry staff|fleet-command renders non-empty content`, which time out the same way on `origin/main` in this WSL checkout.
+- `npx tsc --noEmit -p tsconfig.app.json`: clean.
+- WSL pytest `tests/test_frontend_integrity.py`: all pass except `test_tests_desktop_route_bypasses_legacy_app`, which is red on main and fixed by #1690.
+
+## Blockers and risks
+
+- Held by the coordinator until #1690 (main-red fix) merges; then rebase, confirm PR CI green, re-arm.
+
+## Next steps
+
+1. Merge once CI is green; then the Settings consolidation row of #1338.
+
+## Change log
+
+- 2026-09-27: Organization retired into Projects with a per-repo CI badge; old routes redirect.
+- 2026-09-27: PR #1681 opened; SPEC change-log row added.
+- 2026-09-27: Python integrity test updated for the retired Org page; auto-merge disarmed pending #1690.
+
+---
+
 # Current handoff — Chat and run-worktree CLI project folder cleanup (#1688)
 
 Last updated: 2026-09-27

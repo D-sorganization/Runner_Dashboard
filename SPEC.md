@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1681 | SC-G6 (#1338): Organization is retired into Projects. Projects cards show a per-repo CI badge from `/api/repos` linked to the latest run; `/fleet/org`, `/t/org` and `/org` redirect to `/work/projects`. |
 | 2026-09-27 | #1688 | Chat and run CLI project cleanup (#1688): run worktrees remove their Claude CLI project folder in `workspace.remove_worktree` and startup reconcile sweeps run project folders whose worktree is gone (older than 6 h); chat scratch dirs idle for 14 days are swept with their project folders at most hourly from `thread_scratch_dir`, which touches the thread's dir so a resumed thread is never swept mid-turn. |
 | 2026-09-27 | #1683 | Expert-panel CLI project cleanup (#1683): each panel turn removes its Claude CLI project folder (`<CLAUDE_CONFIG_DIR>/projects/<encoded scratch dir>`) when the turn ends, and `run_panel` sweeps panel project folders older than 6 h first; only direct, non-symlink children of the projects root that carry the panel scratch prefix are ever removed (`backend/staff/cli_projects.py`). |
 | 2026-09-27 | #1332-default | Disk compaction default approval is owner (#1332): `DEFAULT_ACTION_APPROVALS["host.vhdx_compact"]` is now `owner`, so no role can approve a compaction request below owner level (the validator rejects loosening). |

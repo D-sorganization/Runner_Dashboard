@@ -61,7 +61,6 @@ import { CodeRequestsPage } from "../pages/CodeRequestsPage";
 import { LinearSetup } from "../pages/LinearSetup";
 import { MachinesPage } from "../pages/Machines";
 import { MaxwellPage } from "../pages/MaxwellPage";
-import { OrgPage } from "../pages/Org";
 import { PrincipalsTab } from "../pages/Principals";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
 import { RunnerSchedulePage } from "../pages/RunnerSchedule";
@@ -157,8 +156,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <MachinesPage />;
     case "maxwell":
       return <MaxwellPage />;
-    case "org":
-      return <OrgPage />;
     case "principals":
       return <PrincipalsTab />;
     case "projects":

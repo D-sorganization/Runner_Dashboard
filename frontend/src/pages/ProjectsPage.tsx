@@ -9,16 +9,44 @@
  * (`POST /api/staff/project-steward/run`) through `apiRequest`, which carries
  * the CSRF sentinel header. A repo whose charter is missing or malformed shows
  * the reason on its card; the page itself never fails on one bad repo.
+ *
+ * Each card also shows the repo's latest CI result from `GET /api/repos`
+ * (#1338, folded in from the retired Organization tab). That fetch is
+ * independent: if it fails the cards stay and a note names the failure.
  */
 import React from "react";
-import { apiRequest, ApiClientError } from "../lib/api";
+import { apiRequest, ApiClientError, legacyFetch } from "../lib/api";
 import { errorMessage, submitStaffRequest } from "./Staff/staffApi";
 import {
   FleetSummaryBar,
   ProjectCard,
   STEWARD_RUN_BODY,
 } from "./Projects";
-import type { ProjectsResponse } from "./Projects";
+import type { ProjectsResponse, RepoCiStatus } from "./Projects";
+
+interface RepoCiRow {
+  name?: string;
+  last_ci_status?: string | null;
+  last_ci_conclusion?: string | null;
+  last_ci_run_url?: string | null;
+}
+
+function ciByRepo(payload: unknown): Record<string, RepoCiStatus> {
+  const rows: unknown = Array.isArray(payload)
+    ? payload
+    : (payload as { repos?: unknown } | null)?.repos;
+  const out: Record<string, RepoCiStatus> = {};
+  if (!Array.isArray(rows)) return out;
+  for (const row of rows as RepoCiRow[]) {
+    if (!row || typeof row.name !== "string") continue;
+    out[row.name] = {
+      status: row.last_ci_status ?? null,
+      conclusion: row.last_ci_conclusion ?? null,
+      runUrl: row.last_ci_run_url ?? null,
+    };
+  }
+  return out;
+}
 
 function describeError(err: unknown): string {
   if (err instanceof ApiClientError) return `${err.status}: ${err.message}`;
@@ -31,6 +59,8 @@ export function ProjectsPage(): React.ReactElement {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState<Record<string, boolean>>({});
   const [notices, setNotices] = React.useState<Record<string, string>>({});
+  const [ci, setCi] = React.useState<Record<string, RepoCiStatus>>({});
+  const [ciError, setCiError] = React.useState<string | null>(null);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -41,6 +71,19 @@ export function ProjectsPage(): React.ReactElement {
       })
       .catch((err: unknown) => setLoadError(describeError(err)))
       .finally(() => setLoading(false));
+    legacyFetch("/api/repos")
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((payload: unknown) => {
+        setCi(ciByRepo(payload));
+        setCiError(null);
+      })
+      .catch((err: unknown) => {
+        setCi({});
+        setCiError(describeError(err));
+      });
   }, []);
 
   React.useEffect(() => {
@@ -103,6 +146,11 @@ export function ProjectsPage(): React.ReactElement {
           Could not load projects — {loadError}
         </p>
       )}
+      {ciError && (
+        <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>
+          CI status unavailable — {ciError}
+        </p>
+      )}
       {!loadError && data?.summary && (
         <FleetSummaryBar
           summary={data.summary}
@@ -128,6 +176,7 @@ export function ProjectsPage(): React.ReactElement {
             project={project}
             running={Boolean(running[project.repo])}
             notice={notices[project.repo]}
+            ci={ci[project.repo]}
             onRunSteward={runSteward}
           />
         ))}
