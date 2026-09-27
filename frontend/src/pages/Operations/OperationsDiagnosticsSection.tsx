@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../../lib/api";
+import { OperationsTestsSubsection } from "./OperationsTestsSubsection";
 import type {
   DiagnosticsSummary,
   GitDrift,
@@ -444,6 +445,8 @@ export function OperationsDiagnosticsSection({
           )}
         </div>
       </div>
+
+      <OperationsTestsSubsection />
 
       {/* Quick API Links */}
       <div

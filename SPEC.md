@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1674 | SC-G6 (#1338): Tests is no longer a Settings nav tab. It is a collapsed `#tests` subsection of the Diagnostics section on Operations; `/t/tests`, `/settings/tests` and `/tests` redirect to `/fleet/operations#tests`. |
 | 2026-09-27 | #1671 | `docs/agents/grok.md` records the Grok dispatch gate as open with owner confirmation: Barb proposes each run in chat and dispatches only after Dieter says yes; cost guard applies; directive and hold writes stay out of scope. |
 | 2026-09-27 | #1667 | `.gitattributes` marks `*.ts` and `*.tsx` as text, so a file holding a NUL byte (`frontend/src/lib/fleetAlerts.ts`) is not auto-classed binary and gets LF; that file is renormalized, line endings only. |
 | 2026-09-27 | #1665 | Code Requests are owned by `product-owner` (Repository_Management#1823) and fall back to `barb` while a node's roster lacks it; the owner role may run `code_request.*` actions by name. The seeded `executor-cli` profile's `staff_role` is `issue-remediator` (it was mislabelled `chief-architect`, the planner). `pr_requires_approval` stays stored but unenforced pending the reviewer-blocking decision. |

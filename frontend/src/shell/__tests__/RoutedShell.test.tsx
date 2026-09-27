@@ -162,17 +162,13 @@ vi.mock("../../pages/ScheduledJobs", () => ({
   default: () => <div data-testid="native-scheduled-jobs">Scheduled Jobs</div>,
 }));
 
-let testsPageShouldThrow = false;
-
-vi.mock("../../pages/TestsPage", () => ({
-  TestsPage: () => {
-    if (testsPageShouldThrow) throw new Error("Boom in TestsPage");
-    return <div data-testid="native-tests">Tests</div>;
-  },
-}));
+let workflowsPageShouldThrow = false;
 
 vi.mock("../../pages/WorkflowsPage", () => ({
-  WorkflowsPage: () => <div data-testid="native-workflows">Workflows</div>,
+  WorkflowsPage: () => {
+    if (workflowsPageShouldThrow) throw new Error("Boom in WorkflowsPage");
+    return <div data-testid="native-workflows">Workflows</div>;
+  },
 }));
 
 vi.mock("../../components/ThemeSettings", () => ({
@@ -305,7 +301,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
     ["settings", "native-settings"],
-    ["tests", "native-tests"],
     ["workflows", "native-workflows"],
   ])("routes desktop tab %s to its native page", async (tabId, testId) => {
     renderAt(`/t/${tabId}`);
@@ -328,6 +323,22 @@ describe("RoutedShell — URL is the source of truth", () => {
     );
     expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
   });
+
+  it.each(["/t/tests", "/settings/tests"])(
+    "redirects retired %s to Operations → Diagnostics (#1338)",
+    async (path) => {
+      renderAt(path);
+      expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+        "operations",
+      );
+      expect(
+        await screen.findByTestId("native-operations"),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("pathname")).toHaveTextContent(
+        "/fleet/operations",
+      );
+    },
+  );
 
   it("redirects legacy operational tabs to /fleet/operations (SC-G3)", async () => {
     renderAt("/t/deployment");
@@ -379,16 +390,16 @@ describe("RoutedShell — URL is the source of truth", () => {
 
   it("catches tab errors in TabErrorBoundary without crashing the shell, and navigates away cleanly", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    testsPageShouldThrow = true;
-    renderAt("/t/tests");
+    workflowsPageShouldThrow = true;
+    renderAt("/t/workflows");
 
     // The shell chrome stays rendered
-    expect(screen.getByTestId("active-tab")).toHaveTextContent("tests");
+    expect(screen.getByTestId("active-tab")).toHaveTextContent("workflows");
     // Tab error boundary renders the alert
     const alert = screen.getByRole("alert");
     expect(alert).toBeInTheDocument();
-    expect(alert.textContent).toContain("Tests");
-    expect(alert.textContent).toContain("Boom in TestsPage");
+    expect(alert.textContent).toContain("Workflows");
+    expect(alert.textContent).toContain("Boom in WorkflowsPage");
 
     // Click navigation button in shell chrome to navigate to maxwell
     const user = userEvent.setup();
@@ -398,7 +409,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(screen.getByTestId("pathname")).toHaveTextContent("/staff/maxwell");
     expect(await screen.findByTestId("native-maxwell")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    testsPageShouldThrow = false;
+    workflowsPageShouldThrow = false;
     errorSpy.mockRestore();
   });
 });

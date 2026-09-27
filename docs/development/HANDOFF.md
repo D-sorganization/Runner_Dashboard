@@ -1,3 +1,50 @@
+# Current handoff — SC-G6: Tests under Operations → Diagnostics (DL-#1338-tests)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1338-tests`
+- Branch: `feat/1338-tests-under-diagnostics`
+- Baseline commit: `1dbc28f1`
+- Implementation commit: `SELF`
+- Pull request: #1674 (draft)
+- Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Tests"); DL-#1338-tests.
+
+## Objective and status
+
+- Owner decision: Tests is a diagnostic, not top-level nav.
+- `navRegistryData.ts`: the `tests` item is gone from the Settings group.
+- `OperationsTestsSubsection.tsx` (new): a collapsed "Tests" subsection with anchor `#tests`, rendered inside the Diagnostics section of Operations. It renders the existing `TestsPage` only when opened, or when the URL hash is `#tests`, so opening Operations does not fetch the CI results.
+- `routing.ts`: `/t/tests`, `/settings/tests` and `/tests` redirect to `/fleet/operations#tests` ("Tests (Diagnostics)").
+- `RoutedShell.tsx`: the `tests` tab case is removed.
+- Backend endpoints (`/api/tests/*`, `/api/heavy-tests/*`) are unchanged: the subsection still calls them.
+
+## Files and decisions
+
+- The tab error-boundary test in `RoutedShell.test.tsx` used the Tests page; it now uses Workflows.
+
+## Validation
+
+- `npx vitest run` (WSL): new tests failed first (8 routing, 4 shell). After the change 1259 passed; the only failures are the two `mobile nav entry staff|fleet-command renders non-empty content` cases, which fail the same way on `origin/main` in this WSL checkout (1 s lazy-load timeout).
+- `npx tsc --noEmit -p tsconfig.app.json`: clean.
+
+## Blockers and risks
+
+- None.
+
+## Next steps
+
+1. Merge once CI is green; then the Local Tools row of #1338.
+
+## Change log
+
+- 2026-09-27: Tests moved under Operations → Diagnostics; old routes redirect.
+- 2026-09-27: PR #1674 opened; SPEC change-log row added.
+
+---
+
 # Current handoff — Grok dispatch gate open (allow with confirm) (#1671)
 
 Last updated: 2026-09-27
