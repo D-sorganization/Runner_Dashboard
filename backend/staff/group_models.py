@@ -181,3 +181,14 @@ def seat_on_node(seat: SeatSpec) -> SeatSpec:
     if provider_switch.is_disabled(seat.provider):
         return replace(seat, provider=SEAT_STAND_IN_PROVIDER, model=SEAT_STAND_IN_MODEL)
     return seat
+
+
+def seat_label(seat: SeatSpec) -> str:
+    """The seat's title as the owner sees it; a stood-in seat says who actually answered.
+
+    Post: ``seat.title`` when the seat runs on its own provider, otherwise the title plus
+    ``(stand-in: <provider> — <pinned provider> disabled on this node)``.
+    """
+    if seat_on_node(seat) is seat:
+        return seat.title
+    return f"{seat.title} (stand-in: {SEAT_STAND_IN_PROVIDER} — {seat.provider} disabled on this node)"

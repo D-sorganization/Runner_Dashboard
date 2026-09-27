@@ -15,9 +15,10 @@ from staff.group_models import (
     SeatReply,
     SeatSpec,
     lookup_seat_price,
+    seat_label,
     seat_on_node,
 )
-from staff.groups import estimate_group_turn_cost, execute_group_turn
+from staff.groups import collate_consensus, estimate_group_turn_cost, execute_group_turn, get_group
 
 
 @pytest.mark.unit
@@ -120,3 +121,25 @@ async def test_fanout_with_disabled_provider(monkeypatch: pytest.MonkeyPatch) ->
     assert "bravo" in seat_by_name
     assert seat_by_name["bravo"].provider == "claude"
     assert seat_by_name["bravo"].model == "sonnet-5"
+
+
+@pytest.mark.unit
+def test_seat_label_names_the_stand_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stood-in seat says so; Bravo is on gemini for model diversity, so a silent swap would misattribute."""
+    bravo_seat = next(s for s in BOARD_SEATS if s.name == "bravo")
+    monkeypatch.delenv("STAFF_DISABLED_PROVIDERS", raising=False)
+    assert seat_label(bravo_seat) == bravo_seat.title
+    monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "gemini")
+    assert seat_label(bravo_seat) == f"{bravo_seat.title} (stand-in: claude — gemini disabled on this node)"
+
+
+@pytest.mark.unit
+def test_board_summary_marks_the_stand_in_seat(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both the positions line and the seat's reply header carry the stand-in marker."""
+    monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "gemini")
+    replies = [SeatReply(seat_name=s.name, status="ok", text=f"{s.name} says yes") for s in BOARD_SEATS]
+    res = collate_consensus(get_group("board"), "Adopt the plan?", replies)
+    marker = "Bravo (Science) (stand-in: claude — gemini disabled on this node)"
+    assert f"- **{marker}:**" in res.summary
+    assert f"#### {marker}\n" in res.summary
+    assert "Alpha (Architecture) (stand-in" not in res.summary

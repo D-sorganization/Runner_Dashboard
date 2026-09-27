@@ -32,6 +32,7 @@ from staff.group_models import (
     SeatSpec,
     get_group_threshold,
     lookup_seat_price,
+    seat_label,
     seat_on_node,
 )
 from staff.group_seat_runner import run_seat
@@ -164,7 +165,7 @@ POSITION_CHARS = 240
 
 def _seat_title(group: GroupDefinition, seat_name: str) -> str:
     seat = next((s for s in group.seats if s.name == seat_name), None)
-    return seat.title if seat else seat_name.title()
+    return seat_label(seat) if seat else seat_name.title()
 
 
 def _position(text: str) -> str:

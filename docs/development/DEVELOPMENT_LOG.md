@@ -28,7 +28,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `backend/staff/group_models.py`, `backend/staff/groups.py`, `tests/unit/test_staff_board_seat_stand_in.py`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (stand-in tests red then green; 308 group/board/seat tests pass)
-- **Summary:** Pure `seat_on_node(seat)` swaps only provider/model for a disabled-provider seat; used at the two `group.seats` loops (estimate, fan-out).
+- **Summary:** Pure `seat_on_node(seat)` swaps only provider/model for a disabled-provider seat; used at the two `group.seats` loops (estimate, fan-out); `seat_label` marks the stand-in in the summary.
 - **Next step:** Merge; redeploy OGLaptop and run one Board turn to confirm 4/4 seats answer.
 
 ### DL-#1637 — Board seats call a real model
