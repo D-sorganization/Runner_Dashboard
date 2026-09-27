@@ -17,7 +17,7 @@ export interface SettingsSection {
 }
 
 /** Sections in display order. Ids are the URL anchors. */
-export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "theme", title: "Theme", render: () => <ThemeSettings /> },
   { id: "local-tools", title: "Local Tools", render: () => <LocalAppsPage /> },
 ];
