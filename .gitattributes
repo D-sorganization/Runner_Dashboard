@@ -1,0 +1,8 @@
+# Store and check out text files with LF on every host (#1660).
+# A Windows host with core.autocrlf unset otherwise commits CRLF, and every
+# line of the file then shows as changed.
+* text=auto eol=lf
+
+# cmd.exe expects CRLF in batch files; the index still stores LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf

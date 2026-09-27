@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1660 — LF line endings enforced by .gitattributes
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1660 (decision 5 of Repository_Management#1766)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** not created
+- **Paths:** `.gitattributes`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (`git ls-files --eol` shows 0 CRLF files in the index; `git diff --ignore-cr-at-eol` changes only `.gitattributes` and the tracking docs)
+- **Summary:** A Windows host committed CRLF, so every line of the file showed as changed and merges conflicted. `* text=auto eol=lf` fixes the line ending in the repository for every host; batch files keep CRLF in the working tree. The 22 files already stored with CRLF were renormalized with no content change.
+- **Next step:** Merge the PR once CI is green.
+
 ### DL-#1655 — Staff chat remembers the previous turn
 
 - **State:** in_review

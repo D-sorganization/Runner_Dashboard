@@ -1,3 +1,33 @@
+# Current handoff — LF line endings enforced by .gitattributes (#1660)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `/home/user/Runner_Dashboard`
+- Branch: `claude/runner-dashboard-roles-gaps-k9i38r`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1660 (decision 5 of Repository_Management#1766); DL-#1660
+
+## Objective and Status
+
+- Added `.gitattributes`: `* text=auto eol=lf`, with `*.bat` and `*.cmd` kept as CRLF in the working tree.
+- Ran `git add --renormalize .`. It changed 22 text files, including `backend/server.py` and `backend/staff/store.py`: line endings only, no content.
+
+## Validation
+
+- `git ls-files --eol | grep -c i/crlf` returned 0.
+- `git diff --cached --ignore-cr-at-eol` showed only `.gitattributes`, `SPEC.md` and the two tracking docs.
+
+## Next Steps
+
+1. Merge the PR once CI is green.
+2. Owner: set `git config --global core.autocrlf input` on the Conductor host.
+
+---
+
 # Current handoff — Staff chat remembers the previous turn (#1655)
 
 Last updated: 2026-09-27
