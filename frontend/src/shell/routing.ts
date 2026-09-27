@@ -84,6 +84,15 @@ export interface RedirectTarget {
   label: string;
 }
 
+/** Tests moved under Operations → Diagnostics (#1338, owner decision). */
+const TESTS_REDIRECT: RedirectTarget = {
+  to: "/fleet/operations#tests",
+  label: "Tests (Diagnostics)",
+};
+
+/** Old addresses of the Tests page, which is no longer a nav tab (#1338). */
+const RETIRED_TESTS_PATHS = new Set(["/settings/tests", "/tests", "/t/tests"]);
+
 /**
  * Static redirect table mapping old tabIds and legacy aliases to their
  * new canonical routes and labels.
@@ -115,6 +124,7 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["scheduled-jobs"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["schedules"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["diagnostics"] = { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
+  table["tests"] = TESTS_REDIRECT;
   return table;
 })();
 
@@ -176,6 +186,9 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
   }
   if (normalized === "/settings/diagnostics" || normalized === "/diagnostics") {
     return { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
+  }
+  if (RETIRED_TESTS_PATHS.has(normalized)) {
+    return TESTS_REDIRECT;
   }
   if (RETIRED_TO_STAFF_CONSOLE.has(normalized)) {
     return { to: "/", label: "Staff Console" };
@@ -263,7 +276,8 @@ export function pathnameToTabId(pathname: string): string | undefined {
     normalized === "/settings/diagnostics" ||
     normalized === "/diagnostics" ||
     normalized === "/fleet/operations" ||
-    normalized === "/operations"
+    normalized === "/operations" ||
+    RETIRED_TESTS_PATHS.has(normalized)
   ) {
     return "operations";
   }
