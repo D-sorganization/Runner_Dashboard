@@ -6,6 +6,7 @@ The planning flow itself is covered end to end in tests/code_requests/test_plann
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
 from code_requests.plan_service import PlanningError  # noqa: E402
 from code_requests.plan_store import PlanSessionStore  # noqa: E402
-from code_requests.planner import PlanningSession  # noqa: E402
+from code_requests.planner import PlanningSession, PlanningStatus  # noqa: E402
 from routers import code_request_plans  # noqa: E402
 from server import app  # noqa: E402
 
@@ -65,3 +66,47 @@ def test_planning_errors_map_to_their_http_status(
     res = TestClient(app, headers=HEADERS).post("/api/code-requests/cr-1/plan/approve")
     assert res.status_code == status
     assert res.json()["detail"] == "explained refusal"
+
+
+def test_get_plan_returns_session_with_approval_and_staff_role(mock_auth: Any, sessions: PlanSessionStore) -> None:
+    client = TestClient(app, headers=HEADERS)
+    now = datetime.now(UTC)
+    sessions.save(
+        PlanningSession(
+            request_id="cr-1",
+            status=PlanningStatus.FILED,
+            attempts=1,
+            staff_role="chief-architect",
+            approved_by="test-operator",
+            approved_at=now,
+        )
+    )
+    body = client.get("/api/code-requests/cr-1/plan").json()
+    assert body["staff_role"] == "chief-architect"
+    assert body["approved_by"] == "test-operator"
+    assert body["approved_at"] is not None
+
+
+def test_approve_route_records_acting_principal(
+    mock_auth: Any, sessions: PlanSessionStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_approve(deps: Any, request_id: str, *, actor: str) -> PlanningSession:
+        captured["request_id"] = request_id
+        captured["actor"] = actor
+        return PlanningSession(
+            request_id=request_id,
+            status=PlanningStatus.FILED,
+            approved_by=actor,
+            approved_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setattr(code_request_plans, "approve_plan", fake_approve)
+    monkeypatch.setattr(code_request_plans, "_deps", lambda: None)
+    res = TestClient(app, headers=HEADERS).post("/api/code-requests/cr-1/plan/approve")
+    assert res.status_code == 200
+    assert captured["actor"] == "test-admin"
+    body = res.json()
+    assert body["approved_by"] == "test-admin"
+    assert body["approved_at"] is not None
