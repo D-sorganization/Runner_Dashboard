@@ -123,6 +123,37 @@ def test_presets_list(client: TestClient) -> None:
 
 
 @pytest.mark.unit
+def test_presets_leave_out_providers_switched_off_on_this_node(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "gemini")
+    providers = client.get("/api/v1/staff/panels/presets").json()["providers"]
+    assert "gemini" not in providers
+    assert "claude" in providers
+
+
+def _gemini_expert() -> dict[str, Any]:
+    return {**BODY, "experts": [{**BODY["experts"][0], "provider": "gemini"}, *BODY["experts"][1:]]}
+
+
+def _gemini_moderator() -> dict[str, Any]:
+    return {**BODY, "moderator_provider": "gemini"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_body", [_gemini_expert, _gemini_moderator], ids=["expert", "moderator"])
+def test_a_seat_on_a_disabled_provider_is_422_like_an_unknown_one(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, make_body: Any
+) -> None:
+    monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "gemini")
+    res = client.post("/api/v1/staff/panels", json=make_body())
+    assert res.status_code == 422, res.text
+    assert "disabled on this node" in res.text
+    monkeypatch.delenv("STAFF_DISABLED_PROVIDERS")
+    assert client.post("/api/v1/staff/panels", json=make_body()).status_code == 202
+
+
+@pytest.mark.unit
 def test_a_non_panel_thread_is_404(client: TestClient) -> None:
     thread = get_conversation_store().create_thread(title="chat", kind="direct")
     assert client.get(f"/api/v1/staff/panels/{thread.id}").status_code == 404
