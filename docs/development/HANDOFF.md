@@ -1,4 +1,30 @@
-# Current handoff — Guarded Code Request lifecycle: plan and acceptance gates (#1605)
+# Current handoff — Routing override reassigns the work item (#1599)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/router-override-work-item`; Issue #1599; DL-#1599.
+- Worktree `Runner_Dashboard-worktrees/router-override-fix`; base `5369d4a5`; commit `SELF`; PR #1612.
+
+## Objective and Status
+
+- `BarbRouter.override_routing` passed `updated_by`/`reason` to `WorkItemStore.update_work_item`, which does not accept them; the blanket `except Exception` hid the `TypeError`, so the work item kept its original owner.
+- Fix: pass only `owner_role`; narrow the handler to `KeyError` (the documented missing-item failure) so signature drift fails loudly.
+- Audit trail: who/why was already in `routing_feedback` and the `staff.routing.override` audit event; the audit detail now also carries `work_item_id`. `update_work_item` is unchanged.
+
+## Validation
+
+- RED first: `test_override_routing_reassigns_work_item_owner` failed with `'librarian' == 'pragmatic-programmer'` and the swallowed `unexpected keyword argument 'updated_by'` warning.
+- Green: `tests/unit/test_staff_router.py` (11 passed with the router/work-item subset); `mypy --explicit-package-bases staff/router.py` clean (was 2 `call-arg` errors); ruff check/format clean.
+
+## Next Steps
+
+1. Merge the PR.
+
+---
+
+# Past handoff — Guarded Code Request lifecycle: plan and acceptance gates (#1605)
 
 Last updated: 2026-09-27
 
