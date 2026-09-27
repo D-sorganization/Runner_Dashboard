@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1332 — WSL disk status and owner-only compaction request
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332
+- **Branch:** `fix/1332-wsl-disk-status`
+- **PR:** pending
+- **Paths:** `backend/wsl_disk_status.py`, `backend/routers/diagnostics.py`, `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `docs/runbooks/wsl-vhdx-compaction.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites pass; live OGLaptop probe)
+- **Summary:** Reduced scope per the 2026-09-25 owner decision: read-only disk status plus an owner-approved compaction request; no orchestrated compaction.
+- **Next step:** Merge; then add a read-only WSL disk card to the Diagnostics page and raise the RD default approval to owner after Repository_Management#1829 syncs.
+
 ### DL-#1689 — Main red: chat.py line cap and stale Tests-route test
 
 - **State:** in_review

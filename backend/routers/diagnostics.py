@@ -4,6 +4,7 @@ Extracted from server.py (issue #360).
 Routes:
   GET  /api/diagnostics/summary
   GET  /api/diagnostics/vhdx
+  GET  /api/diagnostics/wsl-disk
   GET  /api/diagnostics/pool-recovery
   POST /api/diagnostics/restart-service
   POST /api/launchers/generate
@@ -26,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import wsl_disk_status
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -519,6 +521,16 @@ async def get_vhdx_diagnostics() -> dict[str, Any]:
         "storage_incident": incident,
         "generated_at": datetime.now(UTC).isoformat(),
     }
+
+
+@router.get("/api/diagnostics/wsl-disk")
+async def get_wsl_disk_status() -> dict[str, Any]:
+    """Read-only WSL disk status (#1332).
+
+    Per distro: sparse flag, VHDX size vs space used inside WSL, and the last fstrim.
+    Changes nothing on the host.
+    """
+    return await wsl_disk_status.collect_disk_status()
 
 
 @router.get("/api/diagnostics/pool-recovery")
