@@ -27,6 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import provider_switch
 from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
@@ -163,6 +164,8 @@ class StaffRunner:
         if req.provider and req.provider not in role.providers and role.name != "ad-hoc":
             allowed = ", ".join(role.providers)
             raise ValueError(f"provider '{req.provider}' is not allowed for role '{role.name}' (allowed: {allowed})")
+        if provider_switch.is_disabled(provider):
+            raise ValueError(f"provider '{provider}' is {provider_switch.DISABLED_DETAIL}")
         if not getattr(self._adapters[provider], "unattended", True):
             raise ValueError(
                 f"provider '{provider}' is chat-only: it cannot run unattended without bypassing permissions"

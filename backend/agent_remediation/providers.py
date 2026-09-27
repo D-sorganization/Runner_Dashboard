@@ -16,6 +16,7 @@ import shutil
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+import provider_switch
 from agent_remediation.provider_registry import PROVIDER_REGISTRY, ProviderEntry
 
 
@@ -86,6 +87,14 @@ def probe_provider_availability(
     env_map = env or os.environ
     availability: dict[str, ProviderAvailability] = {}
     for provider_id, provider in PROVIDERS.items():
+        if provider_switch.is_disabled(provider_id):
+            availability[provider_id] = ProviderAvailability(
+                provider_id=provider_id,
+                available=False,
+                status="disabled",
+                detail=provider_switch.DISABLED_DETAIL,
+            )
+            continue
         if provider.required_env:
             missing = [name for name in provider.required_env if not env_map.get(name)]
             if missing:

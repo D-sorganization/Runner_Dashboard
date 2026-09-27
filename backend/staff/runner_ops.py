@@ -11,12 +11,18 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import provider_switch
 from staff import quota as quota_mod
 from staff import workspace
 from staff.adapters import ProviderAdapter
 from staff.redaction import redact_sensitive_content
 from staff.store import RunRecord, RunStore
 from staff.watchdog import StaffWatchdog
+
+
+def can_run_unattended(adapters: Mapping[str, ProviderAdapter], pid: str) -> bool:
+    """Known, not chat-only (#1586) and not switched off on this node (#1597)."""
+    return pid in adapters and getattr(adapters[pid], "unattended", True) and not provider_switch.is_disabled(pid)
 
 
 def select_first_available_provider(
@@ -30,7 +36,7 @@ def select_first_available_provider(
     (the gates in the scheduler and dispatch decide whether it may run); when
     none is installed, the first that can run unattended.
     """
-    runnable = [pid for pid in providers if pid in adapters and getattr(adapters[pid], "unattended", True)]
+    runnable = [pid for pid in providers if can_run_unattended(adapters, pid)]
     installed = [pid for pid in runnable if adapters[pid].installed()]
     limit = quota_mod.ceiling_percent(None) if ceiling is None else ceiling
     for pid in installed:

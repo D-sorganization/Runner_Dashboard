@@ -34,6 +34,7 @@ import shutil
 from collections.abc import Callable, Mapping
 from typing import Any
 
+import provider_switch
 from agent_remediation.provider_registry import PROVIDER_REGISTRY, ProviderEntry
 
 log = logging.getLogger("dashboard")
@@ -133,6 +134,13 @@ def probe_provider_availability(
             continue
         binary = entry.availability_probe[0]
         installed = shutil.which(binary) is not None
+        if provider_switch.is_disabled(entry.dashboard_id):
+            result[entry.dashboard_id] = {
+                "installed": installed,
+                "authenticated": False,
+                "detail": provider_switch.DISABLED_DETAIL,
+            }
+            continue
         result[entry.dashboard_id] = _probe_one(
             entry,
             installed=installed,

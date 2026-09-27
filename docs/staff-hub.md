@@ -206,6 +206,7 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | `STAFF_QUOTA_STATE`           | `<config dir>/staff_quota.json`                                                 | Newest plan-window snapshot per account (#1587)                                           |
 | `STAFF_CODEX_SESSION_DIRS`    | `$CODEX_HOME/sessions` or `~/.codex/sessions`                                   | Codex session-log dirs read for its plan windows (`os.pathsep` list)                      |
 | `STAFF_QUOTA_CEILING_PERCENT` | `85`                                                                            | Window share a run may start at when the role sets no `budget.max_window_percent` (#1588) |
+| `STAFF_DISABLED_PROVIDERS`    | unset                                                                           | Comma-separated providers turned off on every dispatch path, e.g. `gemini` (#1597)        |
 | `CLAUDE_CONFIG_DIR`           | unset (CLI uses `~/.claude`)                                                    | Service-owned Claude seat; required under `ProtectHome=read-only` (see Node setup)        |
 | `GIT_CONFIG_GLOBAL`           | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                          |
 
@@ -525,6 +526,19 @@ Dollars are a notional effort figure: the Staff tab prints them as `≈ $`, and
 `/api/staff/usage` totals carry `cost_basis: "notional"`. The budget day and the usage day
 are the same: local midnight in the schedule timezone (`America/Los_Angeles`).
 The Board shows a **Plan quota** panel from `GET /api/staff/quota`.
+
+### Turning a provider off (#1597)
+
+Set `STAFF_DISABLED_PROVIDERS` in the node env file to a comma-separated list of provider ids,
+e.g. `STAFF_DISABLED_PROVIDERS=gemini`, then restart the dashboard. Staff, dashboard and
+Conductor spellings all match (`gemini`, `gemini_cli`, `gemini-cli`). A disabled provider:
+
+- is never picked for a staff run or a retry, and an explicit request for it is rejected;
+- does not keep a role due in the budget gate (no quota data no longer counts as headroom for it);
+- is reported unavailable (`disabled on this node`) to quick dispatch, code requests, the agent
+  dispatch router and CI remediation, and unhealthy to staff chat.
+
+Roles keep listing it; removing it from the env re-enables it with no role edits.
 
 ## External Agent Clients (SC-F5, #1334)
 
