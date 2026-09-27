@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1634 — Expert Panels: Backend Engine and API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1634 (epic #1633)
+- **Branch:** `feat/1634-expert-panels`
+- **PR:** #1640
+- **Paths:** `backend/staff/panel.py`, `backend/staff/panel_models.py`, `backend/routers/staff_panels.py`, `backend/routers/staff_threads.py`, `tests/staff/test_panel.py`, `tests/api/test_staff_panels_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (panel engine 24 + API 11 tests pass; staff/api suites green; mypy backend clean)
+- **Summary:** 3-4 read-only expert seats take turns for N rounds on a topic (debate stops at unanimous agreement, brainstorm runs all rounds) and a moderator writes the consensus synthesis; `POST/GET /api/v1/staff/panels`.
+- **Next step:** Merge PR #1640 once CI is green.
+
 ### DL-#1638 — Staff chat smoke check
 
 - **State:** in_review

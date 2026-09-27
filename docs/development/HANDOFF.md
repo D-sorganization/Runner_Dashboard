@@ -1,4 +1,34 @@
-# Current handoff — Staff chat smoke check (#1638)
+# Current handoff — Expert Panels: Backend Engine and API (#1634)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1634`; branch `feat/1634-expert-panels`; PR #1640 (open); Issue #1634 (epic #1633); DL-#1634.
+- Implementation commit: SELF.
+
+## Objective and Status
+
+- An expert panel is a `kind="panel"` thread: 3-4 experts (name, perspective, read-only provider, optional model) discuss a topic for 1-6 rounds, one turn at a time, then the `Moderator` writes the synthesis. Modes: `debate` (a round where every expert ends with `STANCE: agree` stops early) and `brainstorm` (all rounds run).
+- Every expert prompt carries the persona, the other panelists, the mode brief, `round N of R`, the topic and the whole discussion so far (each earlier turn up to 3000 chars), and asks for closing `STANCE:` and `POSITION:` lines; `parse_stance` takes the last ones.
+- A failed or timed-out turn (default 300 s) is recorded as a missed turn (`panel_status` `error`/`timeout`, message `kind=error`) and the panel continues; a missed turn never counts as agreement. A failed synthesis marks the panel `failed`.
+- API under `/api/v1/staff`: `POST /panels` (scope `staff.chat`, rate limit `dispatches`, 429 beyond 2 running panels, cost guard 400 `group_cost_guard_threshold_exceeded` unless `confirm_cost`) returns 202 `{thread, estimate}`; `GET /panels/presets` and `GET /panels/{thread_id}` (scope `staff.read`, 404 for non-panel threads). `POST /threads` with `kind=panel` is 422; posting into a panel thread is 409.
+- `staff.panel.default_turn_runner(speaker, prompt, thread_id, message_id) -> TurnOutcome` runs `adapter.chat_argv(..., read_only_tools=())` and streams tokens into the turn message; the process is killed and the scratch dir removed on any exit. #1637 (Board seats) reuses it.
+- Files: `backend/staff/panel_models.py`, `backend/staff/panel.py`, `backend/routers/staff_panels.py` (new); `conversation_models.THREAD_KINDS` += `panel`; `routers/staff_threads.py` (422/409); `server.py` (mount); regenerated `frontend/src/lib/openapi.json` and `api-types.ts`; tests `tests/staff/test_panel.py` (24) and `tests/api/test_staff_panels_api.py` (11).
+
+## Validation
+
+- RED: both test files failed to import `staff.panel` / `routers.staff_panels` before the implementation.
+- WSL rd-test-venv: `pytest tests/staff tests/api tests/frontend/test_api_generation_contract.py`: 1541 passed, 21 skipped (includes the new 24 engine + 11 API tests).
+- `py -3.12 -m mypy backend/`: no issues in 305 files. `ruff check` and `ruff format --check` clean. New files under 500 lines.
+
+## Next Steps
+
+1. Merge once CI is green; then #1635 (Panels UI, tier:cli via agy) builds on the merged OpenAPI and #1637 moves Board seats onto `default_turn_runner`.
+
+---
+
+# Past handoff — Staff chat smoke check (#1638)
 
 Last updated: 2026-09-27
 

@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from staff.store import _now
 
-THREAD_KINDS = ("direct", "group", "auto")
+THREAD_KINDS = ("direct", "group", "auto", "panel")
 THREAD_STATUSES = ("open", "archived")
 MESSAGE_AUTHOR_KINDS = ("user", "role", "system")
 MESSAGE_KINDS = (

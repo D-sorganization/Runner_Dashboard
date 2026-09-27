@@ -5245,6 +5245,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/panels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start an expert panel
+         * @description Create a panel thread and run it in the background.
+         *
+         *     Pre: ``body`` passed :class:`PanelCreateRequest`; fewer than ``MAX_ACTIVE_PANELS`` are running;
+         *     the estimate is under the group cost threshold or ``confirm_cost`` is true.
+         *     Post: 202 with the thread and the estimate; the turns arrive on the thread's stream.
+         */
+        post: operations["create_panel_api_v1_staff_panels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/panels/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expert panel presets
+         * @description Ready-made expert line-ups; every seat defaults to the ``claude`` provider.
+         */
+        get: operations["get_panel_presets_api_v1_staff_panels_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/panels/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expert panel state
+         * @description Turns in speaking order, each expert's stance, consensus and the synthesis. 404 if not a panel.
+         */
+        get: operations["get_panel_api_v1_staff_panels__thread_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/proposals": {
         parameters: {
             query?: never;
@@ -7161,6 +7225,61 @@ export interface components {
              * @description Nav item identifier
              */
             tab_id: string;
+        };
+        /**
+         * PanelCreateRequest
+         * @description ``POST /api/v1/staff/panels`` body.
+         *
+         *     Pre: 3-4 experts with unique names (case-insensitive, never ``Moderator``), 1-6 rounds,
+         *     a non-blank topic, and read-only providers for every seat.
+         */
+        PanelCreateRequest: {
+            /**
+             * Confirm Cost
+             * @default false
+             */
+            confirm_cost: boolean;
+            /** Experts */
+            experts: components["schemas"]["PanelExpert"][];
+            /**
+             * Mode
+             * @default debate
+             * @enum {string}
+             */
+            mode: "debate" | "brainstorm";
+            /** Moderator Model */
+            moderator_model?: string | null;
+            /**
+             * Moderator Provider
+             * @default claude
+             */
+            moderator_provider: string;
+            /**
+             * Rounds
+             * @default 3
+             */
+            rounds: number;
+            /** Title */
+            title?: string | null;
+            /** Topic */
+            topic: string;
+        };
+        /**
+         * PanelExpert
+         * @description One panelist: a display name, the perspective it argues from, and the CLI seat that speaks for it.
+         */
+        PanelExpert: {
+            /** Model */
+            model?: string | null;
+            /** Name */
+            name: string;
+            /** Perspective */
+            perspective: string;
+            /**
+             * Provider
+             * @default claude
+             */
+            provider: string;
         };
         /** PatchWorkItemRequest */
         PatchWorkItemRequest: {
@@ -16304,6 +16423,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffOutcomesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_panel_api_v1_staff_panels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PanelCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_panel_presets_api_v1_staff_panels_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_panel_api_v1_staff_panels__thread_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

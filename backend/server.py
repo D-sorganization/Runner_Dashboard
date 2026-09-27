@@ -717,6 +717,7 @@ from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
 from routers import staff_inbox as _staff_inbox_router  # noqa: E402
 from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
+from routers import staff_panels as _staff_panels_router  # noqa: E402
 from routers import staff_proposals as _staff_proposals_router  # noqa: E402
 from routers import staff_requests as _staff_requests_router  # noqa: E402
 from routers import staff_routing as _staff_routing_router  # noqa: E402
@@ -730,6 +731,7 @@ app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
 app.include_router(_staff_export_router.router, prefix="/api/v1/staff")  # Thread export & retention (issue #1490)
 app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
+app.include_router(_staff_panels_router.router, prefix="/api/v1/staff")  # Expert panels (issue #1634)
 app.include_router(_staff_routing_router.router, prefix="/api/v1/staff")  # Barb routing (#1315)
 app.include_router(_staff_work_items_router.router, prefix="/api/v1/staff")  # Work-item ledger (issue #1316)
 app.include_router(_staff_followup_router.router, prefix="/api/v1/staff")  # Barb follow-up engine (issue #1327)
