@@ -5,7 +5,10 @@
  *   - Staff (Staff Console, Fleet Command, Maxwell)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
  *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Assessments, Org)
- *   - Settings (Settings, Credentials, Notifications, Linear Setup, Local Tools, Tests, Diagnostics, Principals)
+ *   - Settings (Settings, Credentials, Notifications, Linear Setup, Principals)
+ *
+ * Tests lives under Operations → Diagnostics (#1338), not in the nav.
+ * Local Tools is a section of the Settings page (#1338), not a nav entry.
  */
 import type { NavIcon } from "./navIcons";
 import {
@@ -13,7 +16,6 @@ import {
   QueueIcon,
   WrenchIcon,
   RepoIcon,
-  FlaskIcon,
   ActivityIcon,
   KeyIcon,
   BotIcon,
@@ -26,7 +28,6 @@ import {
   LinearIcon,
   BellIcon,
   ClipboardCheckIcon,
-  HardDriveIcon,
   BriefcaseIcon,
   CompassIcon,
 } from "./navIcons";
@@ -218,7 +219,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Preferences",
     group: "settings",
     Icon: SettingsIcon,
-    tooltip: "Dashboard settings and preferences.",
+    tooltip: "Dashboard settings: theme and Local Tools.",
     tabId: "settings",
     frequent: false,
     mobilePrimary: false,
@@ -256,28 +257,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,
-  },
-  {
-    id: "local-apps",
-    label: "Local Tools",
-    group: "settings",
-    Icon: HardDriveIcon,
-    tooltip: "Local application processes and their health.",
-    tabId: "local-apps",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: false,
-  },
-  {
-    id: "tests",
-    label: "Tests",
-    group: "settings",
-    Icon: FlaskIcon,
-    tooltip: "Test suites and their latest results.",
-    tabId: "tests",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: false,
   },
   {
     id: "principals",
