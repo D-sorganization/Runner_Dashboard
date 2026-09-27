@@ -1,4 +1,30 @@
-# Current handoff — Executor built from the filed plan, pipelines persisted (#1606)
+# Current handoff — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API (#1625)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_v1strict`; branch `fix/v1-thread-contract-strict`; PR: see DL-#1625; Issue #1625; DL-#1625.
+
+## Objective and Status
+
+- Live e2e on OGLaptop: the old Recipe A returned 201 with participants `[caller]` and no message, because `participant_roles`/`initial_message` were dropped silently.
+- `CreateThreadRequest` and `PostMessageRequest` now use `ConfigDict(extra="forbid")`; the frontend (`staffApi.ts`) and `clients/fleet` already send only known keys.
+- grok.md Recipes A to C were rewritten from the live responses; the OpenAPI snapshot gains `additionalProperties: false` on both schemas (api-types.ts unchanged).
+
+## Validation
+
+- TDD: 2 new tests failed first, then passed.
+- `pytest` over every thread/message client (threads, chat turns, groups, spend limits, export, thread runs, clients/, run-card relay, assistant retirement): 197 passed.
+- `scripts/gen-api-client.sh` regenerated the snapshot.
+
+## Next Steps
+
+1. Merge; rerun the grok.md recipes against DeskComputer with the agent-grok bearer.
+
+---
+
+# Past handoff — Executor built from the filed plan, pipelines persisted (#1606)
 
 Last updated: 2026-09-26
 
@@ -47,6 +73,7 @@ Last updated: 2026-09-27
 ## Next Steps
 
 1. Merge once CI is green; then rebase #1610 and #1617 onto it.
+
 # Past handoff — Decision SLA on owner inbox items (#1607)
 
 Last updated: 2026-09-27
@@ -76,6 +103,7 @@ Last updated: 2026-09-27
 ---
 
 # Past handoff — Grok connection guide on the v1 contract (#1352)
+
 - Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-grokdoc`; branch `docs/grok-guide-v1-live`; PR: #1620; Issue #1352; DL-#1352.
 
 ## Objective and Status
@@ -760,6 +788,7 @@ Last updated: 2026-09-26
 Removed two duplicate/phantom entries from `docs/development/DEVELOPMENT_LOG.md` that were called out in the previous handoff as pre-existing issues. The file was at 199,867 bytes — 133 bytes below the 200,000-byte validator ceiling — with two redundant blocks consuming ~3,500 bytes.
 
 **Removed:**
+
 1. **DL-#1513 duplicate in Active section** (lines 452–463 before edit): The canonical shipped record lives in the `## Shipped (Last 90 Days)` section at the end of the file. The Active-section copy had no `Issue:` field and listed only PR #1519; the canonical copy has both PRs (#1515 and #1519) and a `Shipped:` date.
 2. **Phantom DL-#1339 entry** (lines 477–488 before edit): The heading read `DL-#1339 · SC-B9: Group threads…` but the body (owner `claude`, issue `#1479`, branch `agy/issue-1479`, knowledge-pack paths, state `in_review`) was entirely DL-#1479 content — mislabeled, stale, and superseded by the correct DL-#1479 entry (shipped, PR #1512) immediately above it and the correct DL-#1339 entry (shipped, PR #1480) immediately below it.
 

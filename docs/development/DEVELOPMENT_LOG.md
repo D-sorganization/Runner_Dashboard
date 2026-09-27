@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1625 — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1625
+- **Branch:** `fix/v1-thread-contract-strict`
+- **PR:** pending
+- **Paths:** `backend/staff/conversation_models.py`, `tests/api/test_staff_threads_api.py`, `docs/agents/grok.md`, `frontend/src/lib/openapi.json`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (thread/message client suites 197 passed)
+- **Summary:** A client that sends the wrong thread or message fields gets a 422 naming them, and the Grok guide's recipes work as written.
+- **Next step:** Merge; rerun the grok.md recipes against DeskComputer with the agent-grok bearer.
+
 ### DL-#1606 — WP-2.2: Executor Built From the Filed Plan, Persisted Pipelines
 
 - **State:** in_review
@@ -43,6 +56,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (staff/action suites 1495 passed; full-tree line cap clean; mypy clean)
 - **Summary:** Hold and Code Request executors move to their own modules so `action_executors.py` is back under the 500-line cap that turned `main` red; the `conversations.py` docstring is reflowed one line shorter after #1617 took it to 501.
 - **Next step:** Merge the #1618 PR once CI is green.
+
 ### DL-#1607 · Decision SLA on owner inbox items
 
 - **State:** in_review

@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1625 | `POST /api/v1/staff/threads` and `POST /api/v1/staff/threads/{id}/messages` reject unknown body keys with 422 (`extra="forbid"`) instead of dropping them; `docs/agents/grok.md` recipes use the verified shapes (open with `role`, response `id`, post `body`, read `body_md`). |
 | 2026-09-26 | #1606 | WP-2.2: `POST /api/code-requests/{id}/executor/initialize` builds children from the filed plan (caller-supplied children are refused with 422), requires a `planned` request with a filed plan (409 otherwise) and moves it to `executing`; executor pipelines persist in `code_request_pipelines.json` through a shared `KeyedJsonStore`, so dispatch, report-child and rollup survive restarts. |
 | 2026-09-27 | #1618 | Staff hold and Code Request action executors move to `staff/hold_actions.py` and `staff/code_request_actions.py`, bringing `action_executors.py` back under the 500-line cap and reflows the `staff/conversations.py` module docstring so #1617 leaves it at 500 lines (restores green `main`); no behaviour change. |
 | 2026-09-27 | #1607 | Decision SLA: action proposals carry `decide_by` and `default_if_silent` (`approve` only for low-risk actions, re-checked at sweep); Barb's follow-up sweep applies the default through the store or the action executor, audits it (`decision_default_applied`/`_refused`), and pings overdue proposals without one. |

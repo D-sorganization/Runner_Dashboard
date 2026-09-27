@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from staff.store import _now
 
 THREAD_KINDS = ("direct", "group", "auto")
@@ -240,6 +240,10 @@ class ActionProposalRecord:
 
 
 class CreateThreadRequest(BaseModel):
+    # Unknown keys are a 422, never silently dropped: a client that sent
+    # ``participant_roles``/``initial_message`` got an empty thread with no role.
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = None
     kind: str = "direct"
     role: str | None = None
@@ -252,6 +256,8 @@ class UpdateThreadRequest(BaseModel):
 
 
 class PostMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     body: str
     kind: str = "text"
     meta: dict[str, Any] = Field(default_factory=dict)
