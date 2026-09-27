@@ -1,4 +1,31 @@
-# Current handoff — SC-G6: Local Tools becomes a Settings section (DL-#1338-localtools)
+# Current handoff — WSL disk status and owner-only compaction request (#1332)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332`; branch `fix/1332-wsl-disk-status`; PR: see DL-#1332; Issue #1332; DL-#1332.
+
+## Objective and Status
+
+- Owner decisions 2026-09-23 (owner-only) and 2026-09-25 (sparse + fstrim; no orchestrator; status view + request only).
+- Bug fixed: the `host.vhdx_compact` alias ran `maintenance.vacuum_sqlite`. It now maps to the owner-only `maintenance.vhdx_compaction_request`, which records the request and runs nothing.
+- New read-only `GET /api/diagnostics/wsl-disk` (backend/wsl_disk_status.py), drafted by agy (Gemini 3.8 Flash) from a written spec and reviewed by Claude.
+- Live probe on OGLaptop: the Ubuntu disk is 268 GB logical, 183 GB used, and NOT sparse (fsutil agrees); fstrim timer active.
+- RD `DEFAULT_ACTION_APPROVALS[host.vhdx_compact]` stays `confirm` until Repository_Management#1829 (maintenance role -> owner) is live on both nodes; the owner-only risk class already enforces owner approval at execution.
+
+## Validation
+
+- pytest tests/unit/test_wsl_disk_status.py tests/api/test_wsl_disk_status_api.py tests/staff/test_vhdx_compaction_request.py tests/staff/test_maintenance_safety.py tests/api/test_pool_diagnostics.py: pass (new tests red first).
+- ruff check/format, mypy on the touched modules: clean. OpenAPI snapshot and api-types regenerated.
+
+## Next Steps
+
+1. Merge; then add a read-only WSL disk card to the Diagnostics page and raise the RD default approval to owner after Repository_Management#1829 syncs.
+
+---
+
+# Past handoff — SC-G6: Local Tools becomes a Settings section (DL-#1338-localtools)
 
 Last updated: 2026-09-27
 
