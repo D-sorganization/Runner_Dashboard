@@ -88,6 +88,7 @@ OPTIONAL_PERMISSION_KEYS: tuple[str, ...] = (
     "fleet_actions",
     "approvals",
     "action_approvals",
+    "code_read_only",
 )
 PERMISSION_KEYS: tuple[str, ...] = REQUIRED_PERMISSION_KEYS
 BUDGET_KEYS: tuple[str, ...] = ("usd_per_run", "usd_per_day")
@@ -257,6 +258,8 @@ def _validate_dicts(data: dict[str, Any]) -> list[str]:
         for key in permissions:
             if key not in REQUIRED_PERMISSION_KEYS and key not in OPTIONAL_PERMISSION_KEYS:
                 problems.append(f"unknown permissions key {key!r}")
+        if "code_read_only" in permissions and not isinstance(permissions["code_read_only"], bool):
+            problems.append("permissions.code_read_only must be a boolean")
         problems.extend(_validate_fleet_actions_and_approvals(permissions))
     return problems
 
