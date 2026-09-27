@@ -316,6 +316,20 @@ def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
     assert len(calls) == 2  # one scoped lookup plus the head's check runs; never a sweep
 
 
+def test_gh_probe_gets_a_pr_by_number_with_its_head_ci() -> None:
+    """The Code Request acceptance check (#1605) looks a child's PR up by number."""
+    calls: list[list[str]] = []
+    pull = {"number": 7, "state": "closed", "merged_at": "2026-09-26T10:00:00Z", "head": {"sha": "def"}}
+    runner = _gh({"/pulls/7": pull, "/commits/def/check-runs": {"check_runs": [_check()]}})
+
+    def recording(argv: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return runner(argv, **kw)
+
+    assert v.GhCliPrProbe(org="o", run=recording).get("r", 7) == v.PullRequest(7, "merged", "green")
+    assert [c[2] for c in calls] == ["/repos/o/r/pulls/7", "/repos/o/r/commits/def/check-runs?per_page=100"]
+
+
 def test_gh_probe_returns_none_without_a_pr() -> None:
     assert v.GhCliPrProbe(org="o", run=_gh({"/pulls?": []})).find("r", "b") is None
 

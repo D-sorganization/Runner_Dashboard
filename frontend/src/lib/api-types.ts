@@ -1108,6 +1108,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/code-requests/{id}/executor/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Code Request
+         * @description Enter ``done`` through the acceptance gate, or list every unmet condition (409).
+         */
+        post: operations["complete_code_request_api_code_requests__id__executor_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/code-requests/{id}/executor/dispatch": {
         parameters: {
             query?: never;
@@ -6298,6 +6318,28 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AcceptanceCheck
+         * @description One recorded check of one acceptance criterion (#1605): a scripted result or a ``qa-verifier`` run.
+         */
+        AcceptanceCheck: {
+            /** Criterion */
+            criterion: string;
+            /** Evidence */
+            evidence: string;
+            /** Passed */
+            passed: boolean;
+            /**
+             * Recorded By
+             * @default
+             */
+            recorded_by: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "script" | "qa-verifier";
+        };
+        /**
          * AckBody
          * @description ``ack``: confirm receipt (not agreement) of a message.
          */
@@ -6502,6 +6544,8 @@ export interface components {
          * @description Runtime tracking record for one planned child issue.
          */
         ChildExecutionRecord: {
+            /** Acceptance Checks */
+            acceptance_checks?: components["schemas"]["AcceptanceCheck"][];
             /** Acceptance Criteria */
             acceptance_criteria?: string[];
             /** Agent */
@@ -7630,10 +7674,22 @@ export interface components {
              * @default 0
              */
             cost: number;
+            /**
+             * Criterion
+             * @default
+             */
+            criterion: string;
             /** Event */
             event: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
             /** Key */
             key: string;
+            /** Passed */
+            passed?: boolean | null;
             /**
              * Pr Body
              * @default
@@ -7648,6 +7704,8 @@ export interface components {
              * @default
              */
             reason: string;
+            /** Source */
+            source?: ("script" | "qa-verifier") | null;
             /**
              * Updated Handoff
              * @default
@@ -10578,6 +10636,39 @@ export interface operations {
                 "application/json": components["schemas"]["EvaluateBoardPayload"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_code_request_api_code_requests__id__executor_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

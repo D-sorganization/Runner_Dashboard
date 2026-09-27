@@ -1,6 +1,40 @@
 {
   "components": {
     "schemas": {
+      "AcceptanceCheck": {
+        "additionalProperties": false,
+        "description": "One recorded check of one acceptance criterion (#1605): a scripted result or a ``qa-verifier`` run.",
+        "properties": {
+          "criterion": {
+            "minLength": 1,
+            "title": "Criterion",
+            "type": "string"
+          },
+          "evidence": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "recorded_by": {
+            "default": "",
+            "title": "Recorded By",
+            "type": "string"
+          },
+          "source": {
+            "enum": ["script", "qa-verifier"],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": ["criterion", "passed", "evidence", "source"],
+        "title": "AcceptanceCheck",
+        "type": "object"
+      },
       "AckBody": {
         "additionalProperties": false,
         "description": "``ack``: confirm receipt (not agreement) of a message.",
@@ -426,6 +460,13 @@
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
+          "acceptance_checks": {
+            "items": {
+              "$ref": "#/components/schemas/AcceptanceCheck"
+            },
+            "title": "Acceptance Checks",
+            "type": "array"
+          },
           "acceptance_criteria": {
             "items": {
               "type": "string"
@@ -2738,13 +2779,34 @@
             "title": "Cost",
             "type": "number"
           },
+          "criterion": {
+            "default": "",
+            "title": "Criterion",
+            "type": "string"
+          },
           "event": {
             "title": "Event",
+            "type": "string"
+          },
+          "evidence": {
+            "default": "",
+            "title": "Evidence",
             "type": "string"
           },
           "key": {
             "title": "Key",
             "type": "string"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
           },
           "pr_body": {
             "default": "",
@@ -2773,6 +2835,18 @@
             "default": "",
             "title": "Reason",
             "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": ["script", "qa-verifier"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
           },
           "updated_handoff": {
             "default": "",
@@ -7581,6 +7655,57 @@
         ],
         "summary": "Evaluate Board",
         "tags": ["code-requests-board"]
+      }
+    },
+    "/api/code-requests/{id}/executor/complete": {
+      "post": {
+        "description": "Enter ``done`` through the acceptance gate, or list every unmet condition (409).",
+        "operationId": "complete_code_request_api_code_requests__id__executor_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Code Request Api Code Requests  Id  Executor Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Complete Code Request",
+        "tags": ["code-requests-executor"]
       }
     },
     "/api/code-requests/{id}/executor/dispatch": {

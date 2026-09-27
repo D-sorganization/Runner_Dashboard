@@ -239,14 +239,22 @@ class GhCliPrProbe:
         except ValueError as exc:
             raise GitHubLookupError(f"gh api {path}: invalid JSON") from exc
 
-    def find(self, repo: str, branch: str) -> PullRequest | None:
-        full = repo if "/" in repo else f"{self.org}/{repo}"
-        owner = full.split("/", 1)[0]
-        head = quote(f"{owner}:{branch}", safe=":")
-        pulls = self._api(f"/repos/{full}/pulls?head={head}&state=all&per_page=1")
-        if not pulls:
-            return None
-        pr = pulls[0]
+    def _full(self, repo: str) -> str:
+        return repo if "/" in repo else f"{self.org}/{repo}"
+
+    def _with_ci(self, full: str, pr: Mapping[str, Any]) -> PullRequest:
         state = "merged" if pr.get("merged_at") else str(pr.get("state") or "open")
         checks = self._api(f"/repos/{full}/commits/{pr['head']['sha']}/check-runs?per_page=100")
         return PullRequest(number=int(pr["number"]), state=state, ci=ci_state(checks.get("check_runs") or []))
+
+    def find(self, repo: str, branch: str) -> PullRequest | None:
+        full = self._full(repo)
+        owner = full.split("/", 1)[0]
+        head = quote(f"{owner}:{branch}", safe=":")
+        pulls = self._api(f"/repos/{full}/pulls?head={head}&state=all&per_page=1")
+        return self._with_ci(full, pulls[0]) if pulls else None
+
+    def get(self, repo: str, number: int) -> PullRequest:
+        """PR ``number`` in ``repo`` with its head CI state (the Code Request acceptance check, #1605)."""
+        full = self._full(repo)
+        return self._with_ci(full, self._api(f"/repos/{full}/pulls/{int(number)}"))
