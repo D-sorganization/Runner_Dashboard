@@ -21,6 +21,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import provider_switch
 from staff import quota
 from staff.roles import RoleSpec
 from staff.schedule import DEFAULT_TZ
@@ -87,7 +88,8 @@ class BudgetGuard:
         if not ok:
             return ok, reason
         ceiling = quota.ceiling_percent(role.budget_max_window_percent)
-        checks = [self._quota_check(provider, ceiling) for provider in role.providers]
+        enabled = [p for p in role.providers if not provider_switch.is_disabled(p)]
+        checks = [self._quota_check(provider, ceiling) for provider in enabled]
         if checks and not any(fits for fits, _ in checks):
             return False, "quota: " + "; ".join(why for _, why in checks)
         return True, reason

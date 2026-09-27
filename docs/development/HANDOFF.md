@@ -1,3 +1,33 @@
+# Current handoff — Turn providers off on every dispatch path (#1597)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1597-disabled-providers`; Issue #1597; DL-#1597.
+- Worktree `_wt_claude_rd_switch` on OGLaptop; base `790d199a`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- Owner decision (2026-09-26): do not use Gemini for now (the Gemini CLI may bill per use; agy stays).
+- New `backend/provider_switch.py`: `canonical_id`, `disabled_providers`, `is_disabled`, reading `STAFF_DISABLED_PROVIDERS`.
+- `staff/runner_ops.can_run_unattended` (known, not chat-only, not disabled) drives `select_first_available_provider` and the retry fallback.
+- `StaffRunner._resolve_provider` rejects an explicit disabled provider; `BudgetGuard.can_run` checks headroom only for enabled providers.
+- `staff/availability.is_provider_healthy` uses the shared switch.
+- Registry probes (`agent_remediation/provider_probe.py`, `agent_remediation/providers.py`) report disabled rows unavailable.
+- Node step (outside this PR): add `STAFF_DISABLED_PROVIDERS=gemini` to `~/.config/runner-dashboard/env` and redeploy.
+
+## Validation
+
+- RED first: `tests/api/test_provider_switch.py` failed to collect before `provider_switch` existed.
+- Green: that file plus `test_staff_unattended_permissions.py`, `test_staff_quota_budget.py`, `test_staff_runner.py` (77 passed); `mypy backend/` clean.
+
+## Next Steps
+
+1. Merge, set `STAFF_DISABLED_PROVIDERS=gemini` on the node and redeploy the dashboard.
+
+---
+
 Last updated: 2026-09-26
 
 ## Identity

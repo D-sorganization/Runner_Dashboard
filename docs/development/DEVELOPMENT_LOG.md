@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1597 · Turn Providers Off on Every Dispatch Path
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1597
+- **Branch:** `feat/1597-disabled-providers`
+- **PR:** not created
+- **Paths:** `backend/provider_switch.py`, `backend/staff/runner_ops.py`, `backend/staff/runner.py`, `backend/staff/retry.py`, `backend/staff/budget.py`, `backend/staff/availability.py`, `backend/agent_remediation/provider_probe.py`, `backend/agent_remediation/providers.py`, `tests/api/test_provider_switch.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `790d199a` (switch, staff runner and budget suites green)
+- **Summary:** One node switch, `STAFF_DISABLED_PROVIDERS`, keeps a provider out of staff runs, retries, the budget gate and every registry-backed dispatcher.
+- **Next step:** Merge the PR and set `STAFF_DISABLED_PROVIDERS=gemini` on OGLaptop.
+
 ### DL-#1595 · Restore Green Main: Split adapters.py Under 500 Lines
 
 - **State:** in_progress

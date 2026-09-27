@@ -13,6 +13,7 @@ import threading
 import time
 from typing import Any
 
+import provider_switch
 from staff.adapters import ADAPTERS
 from staff.conversations import (
     ConversationStore,
@@ -67,11 +68,8 @@ def is_provider_healthy(provider_id: str) -> bool:
         if pid in _HEALTH_OVERRIDE:
             return _HEALTH_OVERRIDE[pid]
 
-    disabled_env = os.environ.get("STAFF_DISABLED_PROVIDERS", "")
-    if disabled_env:
-        disabled = {p.strip().lower() for p in disabled_env.split(",") if p.strip()}
-        if pid in disabled:
-            return False
+    if provider_switch.is_disabled(pid):
+        return False
 
     if os.environ.get("STAFF_MOCK_INSTALLED") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
         return True

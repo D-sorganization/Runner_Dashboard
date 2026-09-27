@@ -19,6 +19,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from staff.runner_ops import can_run_unattended
+
 if TYPE_CHECKING:
     from staff.budget import BudgetGuard
     from staff.roles import RoleSpec
@@ -237,7 +239,7 @@ def handle_post_execution_retry(
         fallback = next_fallback_provider(
             role,
             plan.provider,
-            usable=lambda pid: pid in runner._adapters and getattr(runner._adapters[pid], "unattended", True),
+            usable=lambda pid: can_run_unattended(runner._adapters, pid),
         )
         if fallback:
             can_run, _ = guard.can_run(role)
