@@ -31,6 +31,32 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** One-command go-live check of the thread path Grok/Barb uses: pure check_thread over the messages list, injectable transport/clock/sleep.
 - **Next step:** Merge; after #1632 deploys, the OGLaptop run should exit 0.
 
+### DL-#1630 — Staff chat ack stored before the reply slot
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1630
+- **Branch:** `fix/staff-ack-order`
+- **PR:** pending
+- **Paths:** `backend/routers/staff_threads.py`, `tests/api/test_staff_threads_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (staff tests green; new seq-order test red then green)
+- **Summary:** post_message records the fast acknowledgement before creating the pending reply placeholder; budget-exhausted path unchanged (no ack).
+- **Next step:** Merge; redeploy OGLaptop and re-run the Barb thread probe.
+
+### DL-#1631 — Staff chat history replay: no duplicate question, no system acks
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1631
+- **Branch:** `fix/staff-replay-dedupe`
+- **PR:** pending
+- **Paths:** `backend/staff/chat_history.py`, `tests/unit/test_staff_chat_history_replay.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (replay tests red then green; 87 chat/history unit tests pass)
+- **Summary:** format_history_replay ignores author_kind=system and pops the last collected turn when it is the already-persisted current question.
+- **Next step:** Merge; redeploy OGLaptop with #1630 and re-run the Barb thread probe.
+
 ### DL-#1623 — Code Reviewer: Current Alternate Models, Review Scope From Priority Tiers
 
 - **State:** in_review

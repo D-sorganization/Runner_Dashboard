@@ -22,6 +22,54 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Staff chat ack stored before the reply slot (#1630)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_ackorder`; branch `fix/staff-ack-order`; PR: see DL-#1630; Issue #1630; DL-#1630.
+
+## Objective and Status
+
+- Found in the live Grok→Barb e2e on OGLaptop: Barb's reply (seq 2) read before the ack (seq 3).
+- Fixed by acknowledging first inside the `can_chat` branch; the budget-exhausted branch still writes only its system notice.
+
+## Validation
+
+- New `test_ack_is_stored_before_the_reply_slot` failed first (`3 < 2`), now passes.
+- `pytest tests -k staff` green.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and re-run the Barb thread probe.
+
+---
+
+# Past handoff — Staff chat history replay: no duplicate question, no system acks (#1631)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_replay`; branch `fix/staff-replay-dedupe`; PR: see DL-#1631; Issue #1631; DL-#1631.
+
+## Objective and Status
+
+- Found in the live Barb e2e on OGLaptop: fresh-session replay listed the current question twice and prefixed the 'On it' ack with the role title.
+- Implemented by agy (accept-edits mode) from a written spec; reviewed and validated by Claude.
+
+## Validation
+
+- `tests/unit/test_staff_chat_history_replay.py`: 7 failed on the old code, 7 pass with the fix.
+- `pytest tests/unit -k 'history or chat'`: 87 passed; mypy clean on chat_history.py.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop with #1630 and re-run the Barb thread probe.
+
+---
+
 # Past handoff — Acceptance Check Gating Code Request `executing -> done` (#1605 Part 2)
 
 Last updated: 2026-09-27
