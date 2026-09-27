@@ -52,9 +52,35 @@ class TestExecutorRoutes:
         mock_store.get = AsyncMock(return_value=None)
         res = client.post(
             "/api/code-requests/nonexistent/executor/initialize",
-            json={"children": [{"key": "task1", "title": "Task 1", "repository": "repo"}]},
+            json={
+                "children": [
+                    {
+                        "key": "task1",
+                        "title": "Task 1",
+                        "repository": "repo",
+                        "acceptance_criteria": ["Criteria 1"],
+                    }
+                ]
+            },
         )
         assert res.status_code == 404
+
+    def test_initialize_empty_acceptance_criteria_returns_422(self, client: TestClient, mock_store: MagicMock):
+        mock_store.get = AsyncMock(return_value=_make_code_request())
+        res = client.post(
+            "/api/code-requests/cr-test-exec-1/executor/initialize",
+            json={
+                "children": [
+                    {
+                        "key": "step1",
+                        "title": "Step 1",
+                        "repository": "Runner_Dashboard",
+                        "acceptance_criteria": [],
+                    }
+                ]
+            },
+        )
+        assert res.status_code == 422
 
     def test_initialize_cycle_validation_error(self, client: TestClient, mock_store: MagicMock):
         mock_store.get = AsyncMock(return_value=_make_code_request())
@@ -62,8 +88,20 @@ class TestExecutorRoutes:
             "/api/code-requests/cr-test-exec-1/executor/initialize",
             json={
                 "children": [
-                    {"key": "A", "title": "A", "repository": "repo", "dependencies": ["B"]},
-                    {"key": "B", "title": "B", "repository": "repo", "dependencies": ["A"]},
+                    {
+                        "key": "A",
+                        "title": "A",
+                        "repository": "repo",
+                        "dependencies": ["B"],
+                        "acceptance_criteria": ["Crit A"],
+                    },
+                    {
+                        "key": "B",
+                        "title": "B",
+                        "repository": "repo",
+                        "dependencies": ["A"],
+                        "acceptance_criteria": ["Crit B"],
+                    },
                 ]
             },
         )
@@ -76,8 +114,19 @@ class TestExecutorRoutes:
             "/api/code-requests/cr-test-exec-1/executor/initialize",
             json={
                 "children": [
-                    {"key": "step1", "title": "Step 1", "repository": "Runner_Dashboard"},
-                    {"key": "step2", "title": "Step 2", "repository": "Runner_Dashboard", "dependencies": ["step1"]},
+                    {
+                        "key": "step1",
+                        "title": "Step 1",
+                        "repository": "Runner_Dashboard",
+                        "acceptance_criteria": ["Criteria 1"],
+                    },
+                    {
+                        "key": "step2",
+                        "title": "Step 2",
+                        "repository": "Runner_Dashboard",
+                        "dependencies": ["step1"],
+                        "acceptance_criteria": ["Criteria 2"],
+                    },
                 ]
             },
         )
@@ -85,6 +134,8 @@ class TestExecutorRoutes:
         data = init_res.json()
         assert data["status"] == "initialized"
         assert len(data["rollup"]["waves"]) == 2
+        assert data["rollup"]["children"]["step1"]["acceptance_criteria"] == ["Criteria 1"]
+        assert data["rollup"]["children"]["step2"]["acceptance_criteria"] == ["Criteria 2"]
 
         # Get rollup
         rollup_res = client.get("/api/code-requests/cr-test-exec-1/executor/rollup")
@@ -93,6 +144,8 @@ class TestExecutorRoutes:
         assert rollup["code_request_id"] == "cr-test-exec-1"
         assert "step1" in rollup["children"]
         assert "step2" in rollup["children"]
+        assert rollup["children"]["step1"]["acceptance_criteria"] == ["Criteria 1"]
+        assert rollup["children"]["step2"]["acceptance_criteria"] == ["Criteria 2"]
 
     def test_dispatch_ready_children(self, client: TestClient, mock_store: MagicMock):
         mock_store.get = AsyncMock(return_value=_make_code_request())
@@ -100,7 +153,13 @@ class TestExecutorRoutes:
             "/api/code-requests/cr-test-exec-1/executor/initialize",
             json={
                 "children": [
-                    {"key": "step1", "title": "Step 1", "repository": "Runner_Dashboard", "tier": "ollama"},
+                    {
+                        "key": "step1",
+                        "title": "Step 1",
+                        "repository": "Runner_Dashboard",
+                        "tier": "ollama",
+                        "acceptance_criteria": ["Criteria 1"],
+                    },
                 ]
             },
         )
@@ -118,7 +177,13 @@ class TestExecutorRoutes:
             "/api/code-requests/cr-test-exec-1/executor/initialize",
             json={
                 "children": [
-                    {"key": "step1", "title": "Step 1", "repository": "Runner_Dashboard", "issue_number": 50},
+                    {
+                        "key": "step1",
+                        "title": "Step 1",
+                        "repository": "Runner_Dashboard",
+                        "issue_number": 50,
+                        "acceptance_criteria": ["Criteria 1"],
+                    },
                 ]
             },
         )
@@ -131,6 +196,7 @@ class TestExecutorRoutes:
         )
         assert pr_res.status_code == 200
         assert pr_res.json()["child"]["state"] == "pr_open"
+        assert pr_res.json()["child"]["acceptance_criteria"] == ["Criteria 1"]
 
         # Report CI running
         ci_res = client.post(

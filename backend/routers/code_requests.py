@@ -28,7 +28,7 @@ from code_requests.model import (
     RequesterKind,
 )
 from code_requests.profiles import AgentProfileStore
-from code_requests.store import CodeRequestStore
+from code_requests.store import CodeRequestStore, get_code_request_store
 from dashboard_config import ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from identity import Principal, require_fleet_peer, require_scope
@@ -119,15 +119,10 @@ def _migrate_storage_if_needed() -> None:
 
 # ─── Store Instance ───────────────────────────────────────────────────────────
 
-_store: CodeRequestStore | None = None
-
 
 def _get_store() -> CodeRequestStore:
-    global _store
-    storage_path = _active_storage_path()
-    if _store is None or _store.cache_path != storage_path:
-        _store = CodeRequestStore(cache_path=storage_path)
-    return _store
+    """The process-wide store (shared with staff actions, #1604) at the active storage path."""
+    return get_code_request_store(cache_path=_active_storage_path())
 
 
 _profile_store: AgentProfileStore = AgentProfileStore()

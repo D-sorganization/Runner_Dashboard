@@ -1,4 +1,118 @@
-# Current handoff — Board gate secretary filter and roster-bound board-secretary (#1601)
+# Current handoff — Code_request.update staff action (#1604)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Worktree: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-p2cons`
+- Branch: `feat/staff-phase2-consolidated-2026-09-27` (based on `origin/main`)
+- Commit: `SELF`
+- Pull Request: pending (do not commit or push; reviewer commits)
+- Governing Issue: #1604
+- DL Entry: `DL-#1604`
+
+## Objective and Status
+
+- Implemented `code_request.update` staff action in `backend/staff/action_executors.py` enabling the `product-owner` role to write the PRD section of a Code Request during `draft -> triage`.
+- Enforced strict DbC parameters schema allowing exactly `{id, description}` with Pydantic model (`extra="forbid"`); extra or invalid fields return `failure_class="invalid_params"`.
+- Updates `CodeRequest.prompt` and persists via `CodeRequestStore.save`.
+- Enforces lifecycle gate: updates are permitted only while request is in `draft` or `triage` state; any other state returns a failed `ActionResult` with `failure_class="invalid_state"` naming the state.
+- Returns `failure_class="not_found"` for unknown Code Request IDs.
+- Configured with `required_scope="code_requests.write"` and role permission check via `allowed_actions` in `staff/actions.py`.
+- Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store` in `backend/code_requests/store.py`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`. (Claude's review replaced agy's private `asyncio.run` fallback.)
+- Added unit tests in `tests/code_requests/test_store.py` for store helpers.
+- Added comprehensive unit tests in `tests/unit/test_staff_actions.py` covering all acceptance criteria (draft and triage update, extra field rejection, non-draft/triage state rejection, unknown id rejection, role permission denial and grant).
+
+## Validation
+
+- Tested via TDD (RED -> GREEN):
+  1. `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_store.py -k test_get_and_reset_code_request_store -q -o addopts='' -p no:cacheprovider -W ignore"`: Confirmed failed with `ImportError` before implementation; 1 passed after implementation.
+  2. `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_actions.py -k code_request_update -q -o addopts='' -p no:cacheprovider -W ignore"`: Confirmed all 5 new tests failed with `unknown_action` / missing action before implementation; 5 passed after implementation.
+  3. All staff action unit tests: `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_actions.py -q -o addopts='' -p no:cacheprovider -W ignore"` -> 14 passed in 13.16s.
+  4. Broader test set: `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k 'action or code_request' -q -o addopts='' -p no:cacheprovider -W ignore"` -> 182 passed, 333 deselected in 49.30s.
+  5. Linting: `py -3.12 -m ruff check backend/code_requests/store.py backend/staff/action_executors.py tests/code_requests/test_store.py tests/unit/test_staff_actions.py` -> All checks passed!
+  6. Formatting: `py -3.12 -m ruff format backend/code_requests/store.py backend/staff/action_executors.py tests/code_requests/test_store.py tests/unit/test_staff_actions.py` -> 4 files left unchanged / reformatted.
+  7. Type checking: `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` -> Success: no issues found in 294 source files.
+
+## Next Steps
+
+1. Reviewer review and commit changes on branch `feat/staff-phase2-consolidated-2026-09-27`.
+
+---
+
+# Past handoff — Plan approval audit and planner staff role (#1603)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-p2cons`; branch `feat/staff-phase2-consolidated-2026-09-27`; commit `SELF` (HEAD `ed1e9824510500858f25d98dea57cfba584cb09d`); PR: pending; Issue #1603; DL-#1603.
+
+## Objective and Status
+
+- Add approval audit (`approved_by`, `approved_at`) to `PlanningSession` (`backend/code_requests/planner.py`), set upon operator approval in `approve_plan` (`backend/code_requests/plan_service.py`), with state transition reason `plan approved by <principal>`.
+- Auto-filed plans (`plan_requires_approval` false) leave `approved_by` and `approved_at` unset (`None`) and keep transition reason starting with "plan filed".
+- Bind `AgentProfile` to roster role `staff_role: str = "chief-architect"` (`backend/code_requests/profiles.py`), validated against `roles.load_roles()` with warning on unknown names without crashing server startup.
+- Surface `staff_role` in `PlanningSession` for attribution.
+
+## Validation
+
+- Exact test commands and results:
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1603 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py tests/code_requests/test_planner_stage.py -q -o addopts='' -p no:cacheprovider -W ignore"`: 27 passed in 18.48s.
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1603 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k 'plan or profile' -q -o addopts='' -p no:cacheprovider -W ignore"`: 65 passed, 449 deselected in 25.73s.
+  - `py -3.12 -m ruff check backend/code_requests/planner.py backend/code_requests/profiles.py backend/code_requests/plan_service.py tests/code_requests/test_planner_stage.py tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py`: All checks passed!
+  - `py -3.12 -m ruff format backend/code_requests/planner.py backend/code_requests/profiles.py backend/code_requests/plan_service.py tests/code_requests/test_planner_stage.py tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py`: 5 files reformatted, 1 file left unchanged.
+  - `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: Success: no issues found in 294 source files.
+
+## Next Steps
+
+1. Review uncommitted changes and create PR for issue #1603.
+
+---
+
+# Past handoff — Executor keeps acceptance criteria (#1602)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/staff-phase2-consolidated-2026-09-27`; worktree `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-p2cons` (implemented by agy in `agy-1602`); Issue #1602; DL-#1602.
+- Base: `origin/main`; commit: `uncommitted`; PR: pending.
+
+## Objective and Status
+
+- Implement WP-2.2 (Issue #1602): retain each child's acceptance criteria in the executor and reject children without them.
+- Completed:
+  1. `backend/code_requests/executor_models.py`:
+     - Added `acceptance_criteria: list[str] = Field(default_factory=list)` to `ChildExecutionRecord`.
+     - Required at least one criterion on `ChildIssuePayload` via `acceptance_criteria: list[str] = Field(min_length=1)`.
+  2. `backend/code_requests/executor_stage.py`:
+     - Updated `initialize` to carry `acceptance_criteria` into `ChildExecutionRecord` instances and validate that each child provides criteria (DbC with preconditions and postconditions).
+  3. `tests/code_requests/test_executor_stage.py` & `tests/code_requests/test_executor_routes.py`:
+     - Added TDD unit test `test_initialize_carries_acceptance_criteria` verifying that initialized child records carry their criteria.
+     - Added TDD route test `test_initialize_empty_acceptance_criteria_returns_422` verifying that an empty criteria list answers 422.
+     - Updated existing test fixtures that previously relied on the empty default to supply acceptance criteria.
+     - Verified criteria exposure in both child and rollup responses.
+
+## Validation
+
+- Tested with pytest in WSL:
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1602 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_executor_stage.py tests/code_requests/test_executor_routes.py -q -o addopts='' -p no:cacheprovider -W ignore"` -> 24 passed in 15.36s.
+  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-p2cons && GH_TOKEN=x HOME=/tmp/rdhome-1602 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k \"executor\" -q -o addopts='' -p no:cacheprovider -W ignore"` -> 4 passed, 507 deselected in 25.79s.
+- Linting and type checking in PowerShell:
+  - `py -3.12 -m ruff check backend/code_requests/executor_models.py backend/code_requests/executor_stage.py tests/code_requests/test_executor_stage.py tests/code_requests/test_executor_routes.py` -> All checks passed!
+  - `py -3.12 -m ruff format backend/code_requests/executor_models.py backend/code_requests/executor_stage.py tests/code_requests/test_executor_stage.py tests/code_requests/test_executor_routes.py` -> 4 files left unchanged (formatted).
+  - `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` -> Success: no issues found in 294 source files.
+
+## Next Steps
+
+1. Review diff and commit changes.
+2. Open PR for issue #1602.
+
+---
+
+# Past handoff — Board gate secretary filter and roster-bound board-secretary (#1601)
 
 Last updated: 2026-09-27
 

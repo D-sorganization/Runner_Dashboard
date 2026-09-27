@@ -18,6 +18,45 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1604 · Staff action code_request.update limited to the description (product-owner PRD)
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1604
+- **Branch:** `feat/staff-phase2-consolidated-2026-09-27`
+- **PR:** pending
+- **Paths:** `backend/code_requests/store.py`, `backend/staff/action_executors.py`, `tests/code_requests/test_store.py`, `tests/unit/test_staff_actions.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (14 passed in test_staff_actions.py, 182 passed in broader test set, ruff and mypy clean)
+- **Summary:** Added `code_request.update` staff action with strict Pydantic parameter validation (`extra="forbid"`) allowing only `{id, description}`, updating `prompt` via `CodeRequestStore.save`, gating execution to `draft` and `triage` states, requiring `code_requests.write` scope and honoring role permissions via `allowed_actions`. Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`.
+- **Next step:** Merge the #1604 PR once CI is green.
+
+### DL-#1603 · Record Plan Approval and Bind Planner to Roster Role
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1603
+- **Branch:** `feat/staff-phase2-consolidated-2026-09-27`
+- **PR:** pending
+- **Paths:** `backend/code_requests/planner.py`, `backend/code_requests/profiles.py`, `backend/code_requests/plan_service.py`, `tests/code_requests/test_planner_stage.py`, `tests/code_requests/test_profiles.py`, `tests/api/test_code_request_plans_api.py`, `SPEC.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 at `ed1e9824` (27 passed in test_profiles.py, test_code_request_plans_api.py, test_planner_stage.py; 65 passed in broader test set; ruff and mypy clean)
+- **Summary:** Added `approved_by` and `approved_at` to `PlanningSession`, set in `approve_plan` from the acting principal with transition reason `plan approved by <principal>` (auto-filed plans leave unset and keep reason "plan filed"). Bound planner profiles to roster role `staff_role="chief-architect"` on `AgentProfile`, added non-crashing `validate_profile_staff_roles` against `roles.load_roles()`, and surfaced `staff_role` in `PlanningSession`.
+- **Next step:** Merge the #1603 PR once CI is green.
+
+### DL-#1602 · WP-2.2: Executor Keeps Acceptance Criteria
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1602
+- **Branch:** `feat/staff-phase2-consolidated-2026-09-27`
+- **PR:** pending
+- **Paths:** `backend/code_requests/executor_models.py`, `backend/code_requests/executor_stage.py`, `tests/code_requests/test_executor_stage.py`, `tests/code_requests/test_executor_routes.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (24 passed in tests/code_requests/test_executor_stage.py and tests/code_requests/test_executor_routes.py; ruff check, ruff format, and mypy backend/ clean)
+- **Summary:** Added `acceptance_criteria: list[str]` to `ChildExecutionRecord` (default empty list), enforced `min_length=1` on `ChildIssuePayload.acceptance_criteria` so routes return 422 on empty or missing criteria, carried criteria through `ExecutorPipeline.initialize`, and exposed criteria in child and rollup responses.
+- **Next step:** Merge the #1602 PR once CI is green.
+
 ### DL-#1601 · WP-2.3: Board Gate Secretary-Note Filter Bug and Roster-Bound Board-Secretary Role
 
 - **State:** in_review
