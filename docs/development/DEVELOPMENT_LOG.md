@@ -25,9 +25,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1697
 - **Branch:** `fix/1697-acceptance-chat-only`
 - **PR:** pending
-- **Paths:** `deploy/staff-node-acceptance.sh`, `backend/staff/adapters.py`, `backend/staff/fleet.py`, `backend/staff/models.py`, `tests/deploy/test_staff_node_acceptance.py`
+- **Paths:** `deploy/staff-node-acceptance.sh`, `backend/staff/adapters.py`, `backend/staff/fleet.py`, `backend/staff/models.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/deploy/test_staff_node_acceptance.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (`pytest -q tests/deploy/test_staff_node_acceptance.py` plus the staff/board regression suites, all green; ruff clean)
+- **Last verified:** 2026-09-27 (`pytest -q tests/deploy/test_staff_node_acceptance.py` plus the staff/board regression suites, all green; ruff clean; generate-api:check clean)
 - **Summary:** `--run-ad-hoc` dispatched every `REQUIRED_PROVIDERS` entry including `antigravity`, which the backend rejects as chat-only (#1586) — every node acceptance run reported a spurious FAIL. `chat_only_providers()` (new in `staff/adapters.py`) is now exposed on the `/api/staff/board` response the script already queries; the ad-hoc loop reads it and prints `[SKIP]` for a chat-only provider instead of dispatching. The "Provider available on board" check is unchanged.
 - **Next step:** None.
 

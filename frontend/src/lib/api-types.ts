@@ -8106,6 +8106,11 @@ export interface components {
          */
         StaffBoardResponse: {
             /**
+             * Chat Only Providers
+             * @description Provider ids that cannot run unattended (#1586, #1697)
+             */
+            chat_only_providers?: string[];
+            /**
              * Generated At
              * @description ISO-8601 UTC timestamp
              */

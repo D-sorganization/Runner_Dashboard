@@ -3495,6 +3495,14 @@
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/board (issue #1289).",
         "properties": {
+          "chat_only_providers": {
+            "description": "Provider ids that cannot run unattended (#1586, #1697)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Chat Only Providers",
+            "type": "array"
+          },
           "generated_at": {
             "description": "ISO-8601 UTC timestamp",
             "title": "Generated At",

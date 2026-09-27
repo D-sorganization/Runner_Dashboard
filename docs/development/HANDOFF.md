@@ -16,10 +16,11 @@ Last updated: 2026-09-27
 - New `test_run_ad_hoc_skips_chat_only_provider` (red first) in `tests/deploy/test_staff_node_acceptance.py`, plus the existing suite in that file: `.venv/Scripts/python.exe -m pytest -q tests/deploy/test_staff_node_acceptance.py` — 8 passed.
 - Broader staff/board regression: `.venv/Scripts/python.exe -m pytest -q tests/api/test_staff_auth_perimeter.py tests/api/test_staff_contracts.py tests/api/test_staff_fleet.py tests/api/test_staff_liveness.py tests/api/test_staff_runner.py tests/clients/test_fleet_client.py tests/deploy/test_fleet_health_monitor.py tests/unit/test_staff_availability.py tests/api/test_staff_unattended_permissions.py` — all passed.
 - `ruff check` / `ruff format --check` on the changed Python files — clean.
+- `StaffBoardResponse` is part of the committed frontend contract, so `npm run generate-api` regenerated `frontend/src/lib/openapi.json` and `api-types.ts` (+13 lines, LF). `npm run generate-api:check` is clean.
 
 ## Next Steps
 
-1. None.
+1. Merge PR #1701 once CI is green.
 
 ---
 
