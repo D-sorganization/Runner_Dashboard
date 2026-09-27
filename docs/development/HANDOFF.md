@@ -22,6 +22,31 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Code Reviewer: Current Alternate Models, Review Scope From Priority Tiers (#1623)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_review`; branch `fix/review-alternates-priorities`; PR: see DL-#1623; Issue #1623; DL-#1623.
+
+## Objective and Status
+
+- `ALTERNATE_MODELS` holds only CLI-accepted ids/aliases; a missing entry means the provider default (`None`), not `default-alternate` (which the CLI rejected).
+- `projects.service.cached_repos_in_tiers(tiers)` reads the `projects:priorities` cache only (never fetches); `staff.review.review_scope_repos()` uses it for P0/P1 and falls back to `FALLBACK_P0_P1_REPOS`.
+- Implementation drafted by an agy (Antigravity CLI, edit-only) agent from a written spec; reviewed and trimmed (two unrequested aliases removed).
+
+## Validation
+
+- `pytest tests/unit/test_staff_review.py tests/unit/test_projects_cached_tiers.py`: 28 passed (9 new).
+- `mypy backend/staff/review.py backend/projects/service.py`: clean; `ruff check` / `ruff format` clean.
+
+## Next Steps
+
+1. Merge; the next auto-review on OGLaptop confirms the scope comes from the cached tiers.
+
+---
+
 # Past handoff — Fleet Facts in Barb's Chat Turns (#1627)
 
 Last updated: 2026-09-27
