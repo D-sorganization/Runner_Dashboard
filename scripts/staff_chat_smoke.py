@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Operator smoke check for staff role chat threads (#1638).
+"""Operator smoke check for staff role chat threads (#1638, #1651).
 
 Verifies that a staff role answers a thread end to end against a live dashboard
 instance, ensuring reply completion, non-empty body, and prompt acknowledgement ordering.
+Supports an optional two-turn memory verification (--memory, #1651).
 """
 
 from __future__ import annotations
@@ -70,6 +71,30 @@ def check_thread(messages: list[dict[str, Any]]) -> list[Check]:
     return checks
 
 
+def _role_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Role replies in ``seq`` order (a message without an int seq sorts first)."""
+    roles = [m for m in messages if isinstance(m, dict) and m.get("author_kind") == "role"]
+    return sorted(roles, key=lambda m: m["seq"] if isinstance(m.get("seq"), int) else -1)
+
+
+def check_memory(messages: list[dict[str, Any]], codeword: str) -> Check:
+    sorted_roles = _role_messages(messages)
+    if len(sorted_roles) < 2:
+        return Check("memory next turn", False, "second reply missing")
+
+    second_role = sorted_roles[1]
+    delivery = second_role.get("delivery")
+    if delivery != "complete":
+        return Check("memory next turn", False, f"delivery is {delivery!r}")
+
+    body = second_role.get("body_md")
+    body_str = body if isinstance(body, str) else ""
+    if codeword.lower() in body_str.lower():
+        return Check("memory next turn", True, f"recalled {codeword}")
+
+    return Check("memory next turn", False, f"codeword not in reply: {' '.join(body_str.split())[:60]}")
+
+
 Transport = Callable[[str, str, dict[str, Any] | None, dict[str, str]], tuple[int, dict[str, Any]]]
 
 
@@ -96,12 +121,58 @@ def urllib_transport(
         return int(exc.code), parsed if isinstance(parsed, dict) else {}
 
 
+def _post_and_wait(
+    transport: Transport,
+    base: str,
+    thread_id: str,
+    body: str,
+    headers: dict[str, str],
+    *,
+    n_roles: int,
+    timeout_s: float,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+    poll_s: float,
+    start: float,
+) -> list[dict[str, Any]]:
+    post_headers = {**headers, "Idempotency-Key": f"smoke-{uuid4().hex}"}
+    status, _ = transport("POST", f"{base}/api/v1/staff/threads/{thread_id}/messages", {"body": body}, post_headers)
+    if status != 202:
+        raise RuntimeError(f"post message failed with status {status}")
+
+    get_url = f"{base}/api/v1/staff/threads/{thread_id}?since_seq=0"
+    messages: list[dict[str, Any]] = []
+
+    while True:
+        status, get_data = transport("GET", get_url, None, headers)
+        if status != 200:
+            raise RuntimeError(f"get thread failed with status {status}")
+        raw_msgs = get_data.get("messages")
+        if isinstance(raw_msgs, list):
+            messages = [m for m in raw_msgs if isinstance(m, dict)]
+
+        sorted_roles = _role_messages(messages)
+        if len(sorted_roles) >= n_roles:
+            delivery = sorted_roles[-1].get("delivery")
+            if delivery not in ("pending", "streaming"):
+                break
+
+        now = clock()
+        if now - start >= timeout_s:
+            break
+        sleep(poll_s)
+
+    return messages
+
+
 def run_smoke(
     base_url: str,
     role: str,
     question: str,
     timeout_s: float,
     *,
+    memory: bool = False,
+    codeword: str | None = None,
     transport: Transport = urllib_transport,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
@@ -129,34 +200,53 @@ def run_smoke(
     if not thread_id:
         raise RuntimeError(f"create thread response missing id: {create_data}")
 
-    post_headers = {**headers, "Idempotency-Key": f"smoke-{uuid4().hex}"}
-    status, _ = transport("POST", f"{base}/api/v1/staff/threads/{thread_id}/messages", {"body": question}, post_headers)
-    if status != 202:
-        raise RuntimeError(f"post message failed with status {status}")
+    first_question = question
+    effective_codeword = codeword
+    if memory:
+        if effective_codeword is None:
+            effective_codeword = f"SMOKE-{uuid4().hex[:6].upper()}"
+        first_question = f"{question}\nAlso, for this thread only, the codeword is {effective_codeword}."
 
-    get_url = f"{base}/api/v1/staff/threads/{thread_id}?since_seq=0"
     start = clock()
-    messages: list[dict[str, Any]] = []
+    messages = _post_and_wait(
+        transport,
+        base,
+        thread_id,
+        first_question,
+        headers,
+        n_roles=1,
+        timeout_s=timeout_s,
+        sleep=sleep,
+        clock=clock,
+        poll_s=poll_s,
+        start=start,
+    )
+    checks = check_thread(messages)
 
-    while True:
-        status, get_data = transport("GET", get_url, None, headers)
-        if status != 200:
-            raise RuntimeError(f"get thread failed with status {status}")
-        raw_msgs = get_data.get("messages")
-        if isinstance(raw_msgs, list):
-            messages = [m for m in raw_msgs if isinstance(m, dict)]
+    if memory:
+        assert effective_codeword is not None
+        if all(c.ok for c in checks):
+            second_question = (
+                "Read-only check: what codeword did I give you in my first message? Reply with only the codeword."
+            )
+            messages = _post_and_wait(
+                transport,
+                base,
+                thread_id,
+                second_question,
+                headers,
+                n_roles=2,
+                timeout_s=timeout_s,
+                sleep=sleep,
+                clock=clock,
+                poll_s=poll_s,
+                start=clock(),  # each turn gets the full timeout
+            )
+            checks.append(check_memory(messages, effective_codeword))
+        else:
+            checks.append(Check("memory next turn", False, "skipped: first turn failed"))
 
-        role_msg = next((m for m in messages if m.get("author_kind") == "role"), None)
-        delivery = role_msg.get("delivery") if role_msg else None
-        if role_msg is not None and delivery not in ("pending", "streaming"):
-            break
-
-        now = clock()
-        if now - start >= timeout_s:
-            break
-        sleep(poll_s)
-
-    return check_thread(messages), clock() - start
+    return checks, clock() - start
 
 
 def main(argv: list[str] | None = None, *, transport: Transport | None = None) -> int:
@@ -171,6 +261,11 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         help="Question to post to thread",
     )
     parser.add_argument("--timeout", type=float, default=180.0, help="Polling timeout in seconds (default: 180)")
+    parser.add_argument(
+        "--memory",
+        action="store_true",
+        help="Also check the role recalls turn 1 on turn 2",
+    )
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -178,7 +273,12 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
 
     try:
         checks, elapsed = run_smoke(
-            args.base_url, args.role, args.question, args.timeout, transport=transport or urllib_transport
+            args.base_url,
+            args.role,
+            args.question,
+            args.timeout,
+            memory=args.memory,
+            transport=transport or urllib_transport,
         )
         all_ok = True
         for c in checks:
