@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1623 — Code Reviewer: Current Alternate Models, Review Scope From Priority Tiers
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1623
+- **Branch:** `fix/review-alternates-priorities`
+- **PR:** pending
+- **Paths:** `backend/staff/review.py`, `backend/projects/service.py`, `tests/unit/test_staff_review.py`, `tests/unit/test_projects_cached_tiers.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (review + cached-tier tests 28 passed; mypy clean)
+- **Summary:** Same-provider reviews no longer fail on a stale or placeholder model id, and review scope follows the owner's priority tiers.
+- **Next step:** Merge; the next auto-review on OGLaptop confirms the scope comes from the cached tiers.
+
 ### DL-#1606 — WP-2.2: Executor Built From the Filed Plan, Persisted Pipelines
 
 - **State:** in_review
@@ -43,6 +56,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (staff/action suites 1495 passed; full-tree line cap clean; mypy clean)
 - **Summary:** Hold and Code Request executors move to their own modules so `action_executors.py` is back under the 500-line cap that turned `main` red; the `conversations.py` docstring is reflowed one line shorter after #1617 took it to 501.
 - **Next step:** Merge the #1618 PR once CI is green.
+
 ### DL-#1607 · Decision SLA on owner inbox items
 
 - **State:** in_review

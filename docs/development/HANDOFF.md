@@ -1,4 +1,29 @@
-# Current handoff — Executor built from the filed plan, pipelines persisted (#1606)
+# Current handoff — Code Reviewer: Current Alternate Models, Review Scope From Priority Tiers (#1623)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_review`; branch `fix/review-alternates-priorities`; PR: see DL-#1623; Issue #1623; DL-#1623.
+
+## Objective and Status
+
+- `ALTERNATE_MODELS` holds only CLI-accepted ids/aliases; a missing entry means the provider default (`None`), not `default-alternate` (which the CLI rejected).
+- `projects.service.cached_repos_in_tiers(tiers)` reads the `projects:priorities` cache only (never fetches); `staff.review.review_scope_repos()` uses it for P0/P1 and falls back to `FALLBACK_P0_P1_REPOS`.
+- Implementation drafted by an agy (Antigravity CLI, edit-only) agent from a written spec; reviewed and trimmed (two unrequested aliases removed).
+
+## Validation
+
+- `pytest tests/unit/test_staff_review.py tests/unit/test_projects_cached_tiers.py`: 28 passed (9 new).
+- `mypy backend/staff/review.py backend/projects/service.py`: clean; `ruff check` / `ruff format` clean.
+
+## Next Steps
+
+1. Merge; the next auto-review on OGLaptop confirms the scope comes from the cached tiers.
+
+---
+
+# Past handoff — Executor built from the filed plan, pipelines persisted (#1606)
 
 Last updated: 2026-09-26
 
@@ -47,6 +72,7 @@ Last updated: 2026-09-27
 ## Next Steps
 
 1. Merge once CI is green; then rebase #1610 and #1617 onto it.
+
 # Past handoff — Decision SLA on owner inbox items (#1607)
 
 Last updated: 2026-09-27
@@ -76,6 +102,7 @@ Last updated: 2026-09-27
 ---
 
 # Past handoff — Grok connection guide on the v1 contract (#1352)
+
 - Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-grokdoc`; branch `docs/grok-guide-v1-live`; PR: #1620; Issue #1352; DL-#1352.
 
 ## Objective and Status
@@ -760,6 +787,7 @@ Last updated: 2026-09-26
 Removed two duplicate/phantom entries from `docs/development/DEVELOPMENT_LOG.md` that were called out in the previous handoff as pre-existing issues. The file was at 199,867 bytes — 133 bytes below the 200,000-byte validator ceiling — with two redundant blocks consuming ~3,500 bytes.
 
 **Removed:**
+
 1. **DL-#1513 duplicate in Active section** (lines 452–463 before edit): The canonical shipped record lives in the `## Shipped (Last 90 Days)` section at the end of the file. The Active-section copy had no `Issue:` field and listed only PR #1519; the canonical copy has both PRs (#1515 and #1519) and a `Shipped:` date.
 2. **Phantom DL-#1339 entry** (lines 477–488 before edit): The heading read `DL-#1339 · SC-B9: Group threads…` but the body (owner `claude`, issue `#1479`, branch `agy/issue-1479`, knowledge-pack paths, state `in_review`) was entirely DL-#1479 content — mislabeled, stale, and superseded by the correct DL-#1479 entry (shipped, PR #1512) immediately above it and the correct DL-#1339 entry (shipped, PR #1480) immediately below it.
 
