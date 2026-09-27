@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -359,24 +361,52 @@ async def test_default_turn_runner_removes_project_folder_on_success_and_failure
 
 
 @pytest.mark.unit
-def test_run_panel_sweeps_stale_panel_projects(monkeypatch: pytest.MonkeyPatch) -> None:
-    """run_panel invokes sweep_stale_panel_projects before the first round and tolerates sweep failures."""
-    swept: list[dict[str, str]] = []
+def test_run_panel_sweeps_stale_panel_projects_off_the_critical_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1683: the pre-panel sweep runs in the background and a problem there never fails a panel."""
+    swept = threading.Event()
 
     def fake_sweep(env: Any) -> list[str]:
-        swept.append(dict(env))
+        assert "PATH" in env or env == {} or isinstance(env, dict)
+        swept.set()
         return []
 
     monkeypatch.setattr("staff.panel.cli_projects.sweep_stale_panel_projects", fake_sweep)
     runner = ScriptedRunner()
     _run(_request(rounds=1), runner)
-    assert len(swept) == 1
+    assert swept.wait(5)
 
-    # Verify that an exception during sweep is logged and does not fail the panel
+    exploded = threading.Event()
+
     def exploding_sweep(_env: Any) -> list[str]:
+        exploded.set()
         raise RuntimeError("simulated disk error during sweep")
 
     monkeypatch.setattr("staff.panel.cli_projects.sweep_stale_panel_projects", exploding_sweep)
     thread_id = _run(_request(rounds=1), runner)
+    assert exploded.wait(5)
     res = panel_result(get_conversation_store(), thread_id)
     assert res is not None and res["status"] == "complete"
+
+
+@pytest.mark.unit
+def test_a_blocked_sweep_never_delays_a_panel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression (Windows hang after #1685): run_panel must not await the sweep.
+
+    Awaiting it handed control back to the event loop, and a short-lived loop (TestClient without a
+    context manager) then abandoned the panel task, which never finished.
+    """
+    release = threading.Event()
+
+    def blocked_sweep(_env: Any) -> list[str]:
+        release.wait(10)
+        return []
+
+    monkeypatch.setattr("staff.panel.cli_projects.sweep_stale_panel_projects", blocked_sweep)
+    try:
+        started = time.monotonic()
+        thread_id = _run(_request(rounds=1), ScriptedRunner(), timeout=5.0)
+        assert time.monotonic() - started < 3.0, "run_panel waited for the sweep"
+        res = panel_result(get_conversation_store(), thread_id)
+        assert res is not None and res["status"] == "complete"
+    finally:
+        release.set()

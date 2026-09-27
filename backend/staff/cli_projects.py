@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import tempfile
+import threading
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -33,6 +34,7 @@ __all__ = [
     "run_project_prefix",
     "sweep_idle_chat_scratch",
     "sweep_orphan_run_projects",
+    "start_panel_sweep",
     "sweep_stale_panel_projects",
 ]
 
@@ -147,6 +149,26 @@ def sweep_stale_panel_projects(
             log.warning("failed to sweep project %s: %s", child, exc)
             continue
     return sorted(removed)
+
+
+def start_panel_sweep(env: Mapping[str, str]) -> threading.Thread:
+    """Run ``sweep_stale_panel_projects`` on a daemon thread and return at once.
+
+    Callers must never wait for the sweep: awaiting it from a panel handed control back to
+    the event loop, and a short-lived loop then abandoned the panel (the Windows hang
+    found after #1685). A failure inside the sweep is logged and never propagates.
+    """
+    snapshot = dict(env)
+
+    def _sweep() -> None:
+        try:
+            sweep_stale_panel_projects(snapshot)
+        except Exception as exc:  # noqa: BLE001 — a sweep problem must never surface
+            log.warning("background panel project sweep failed: %s", exc)
+
+    worker = threading.Thread(target=_sweep, name="panel-project-sweep", daemon=True)
+    worker.start()
+    return worker
 
 
 def run_project_prefix(worktrees_root: Path) -> str:

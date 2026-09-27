@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1695 — Unblock the Windows pre-push suite
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1695
+- **Branch:** `fix/panel-windows-hang`
+- **PR:** pending
+- **Paths:** `backend/staff/cli_projects.py`, `backend/staff/panel.py`, `backend/conductor_constants.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Windows, targeted suites + full -x run)
+- **Summary:** Two failures that stopped `pytest -x` on Windows nodes (every RD push from DeskComputer was blocked).
+- **Next step:** None.
+
 ### DL-#1338-org — SC-G6: Organization folds into Projects
 
 - **State:** in_review
