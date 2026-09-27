@@ -160,6 +160,15 @@ MAINTENANCE_POLICY: dict[str, MaintenancePolicy] = {
         "staff.read",
         {"target": "string?", "host": "string?"},
     ),
+    # #1332: a request only. Compaction is a manual, owner-run runbook step (owner decision 2026-09-25).
+    "maintenance.vhdx_compaction_request": MaintenancePolicy(
+        "Request a WSL disk compaction on one host; records the owner-approved request and runs nothing.",
+        "owner-only",
+        "fleet.maintain",
+        {"host": "string", "reason": "string?"},
+        disruptive=True,
+        target_param="host",
+    ),
 }
 
 

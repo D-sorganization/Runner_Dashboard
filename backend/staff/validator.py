@@ -66,7 +66,7 @@ DEFAULT_ACTION_APPROVALS: dict[str, str] = {
     "dashboard.restart": "confirm",
     "fleet.node_down": "owner",
     "fleet.node_up": "confirm",
-    "host.vhdx_compact": "confirm",
+    "host.vhdx_compact": "owner",
     "queue.diagnose": "auto",
     "queue.purge_stale": "auto",
     "run.cancel": "confirm",
