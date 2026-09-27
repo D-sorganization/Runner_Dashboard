@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1697 | staff-node-acceptance skips chat-only providers in Section 9 ad-hoc dispatch loop: queries backend `chat_only_providers` (sourced dynamically from provider adapter `unattended=False`, e.g. `antigravity`) on `/api/staff/roster`, `/api/v1/staff/roster` or `/api/staff/board`, reporting `[SKIP]` instead of `[FAIL]`; retains board availability check. |
 | 2026-09-27 | #1680 | Staff runs and chat turns refuse a `claude` CLI older than 2.1.259 (first release accepting `--permission-prompts`) with non-retryable `cli_outdated` and upgrade remediation; the version is probed once per binary, provider selection skips an outdated CLI, and the roster adds `provider_versions` so the Roster card shows it as outdated. |
 | 2026-09-27 | #1567 | "Ask Barb (auto-route)" pre-routes confident messages (`PRE_ROUTE_CONFIDENCE_THRESHOLD = 0.85`: `/role x`, `@x` or one role's keywords matching strictly more than any other's) to a loaded specialist: a handoff card `auto-routed: matched <rule>` in the auto thread, and the turn runs as that role in its own direct thread with no Barb turn. Analysis keywords (analyse/analyze/analysis, investigate, diagnose/diagnosis, root cause, breakdown) route to `maintenance`. Ties, unknown roles, an exhausted specialist budget and any pre-routing error leave the turn with Barb. |
 | 2026-09-27 | #1669 | Classify unknown-CLI-option staff failures as cli_outdated with upgrade remediation |

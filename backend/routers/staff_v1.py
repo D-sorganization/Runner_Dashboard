@@ -29,7 +29,7 @@ from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_schedule import HoldsBody
 from staff import fleet as staff_fleet
 from staff import usage
-from staff.adapters import ADAPTERS, available_providers
+from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
     get_audit_store,
     record_audit,
@@ -47,6 +47,7 @@ from staff.models import (
     StaffDispatchResponse,
     StaffHoldsResponse,
     StaffPricingResponse,
+    StaffProvidersResponse,
     StaffRosterResponse,
     StaffRunDetailResponse,
     StaffScheduleResponse,
@@ -161,7 +162,21 @@ async def roster_v1(
         "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
+        "chat_only_providers": chat_only_providers(),
         "active_runs": len(active),
+    }
+
+
+@router.get("/providers", response_model=StaffProvidersResponse, response_model_exclude_none=True)
+async def providers_v1(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Provider availability, chat-only/unattended capabilities, and CLI versions (#1697)."""
+    return {
+        "providers": available_providers(),
+        "chat_only_providers": chat_only_providers(),
+        "unattended_providers": unattended_providers(),
+        "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
     }
 
 

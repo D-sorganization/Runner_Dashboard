@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1697 — Skip chat-only providers in staff-node-acceptance ad-hoc loop
+
+- **State:** in_review
+- **Owner:** local
+- **Issue:** #1697
+- **Branch:** `fix/1697-acceptance-skip-chat-only-antigravity`
+- **PR:** pending
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/models.py`, `backend/routers/staff.py`, `backend/routers/staff_v1.py`, `backend/staff/fleet.py`, `deploy/staff-node-acceptance.sh`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/deploy/test_staff_node_acceptance.py`, `tests/api/test_staff_unattended_permissions.py`, `tests/api/test_staff_chat_only.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (commit 350f4ea3; unit/api/deploy acceptance tests passed; mypy passed in 313 files; ruff clean; line counts strictly <= 500)
+- **Summary:** staff-node-acceptance.sh --run-ad-hoc previously failed on antigravity because the backend rejects unattended runs for chat-only providers. Sourced chat-only classification dynamically from provider adapter capabilities (not getattr(adapter, "unattended", True)), exposed chat_only_providers on roster/providers/board endpoints, and updated staff-node-acceptance.sh to skip ad-hoc dispatch for chat-only providers with SKIP while preserving board availability check.
+- **Next step:** Open PR and enable auto-merge.
+
 ### DL-#1680 — Minimum claude CLI version enforced before runs and chat
 
 - **State:** in_review

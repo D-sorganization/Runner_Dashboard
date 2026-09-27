@@ -70,10 +70,13 @@ __all__ = [
     "UnattendedUnsupportedError",
     "_CHAT_BYPASS_FLAGS",
     "_CHAT_READ_ONLY_FLAGS",
+    "available_providers",
+    "chat_only_providers",
     "claude_allowed_tools",
     "claude_read_only_run_tools",
     "claude_unattended_tools",
     "gemini_policy_toml",
+    "unattended_providers",
 ]
 
 
@@ -108,16 +111,13 @@ class ProviderAdapter:
 
     @property
     def chat_json(self) -> bool:
-        """True when :meth:`chat_argv` output is JSON lines (codex chats stay plain text)."""
         return self.json_lines if self.chat_json_lines is None else self.chat_json_lines
 
     @property
     def lease_agent(self) -> str:
-        """RM ``AGENT_IDS`` entry this provider's runs lease under."""
         return self.lease_as or self.provider_id
 
     def runtime_env(self) -> dict[str, str]:
-        """Static ``extra_env`` overlaid with the launch-time ``env_builder`` values."""
         return {**self.extra_env, **(self.env_builder() if self.env_builder else {})}
 
     def build_command(
@@ -278,15 +278,7 @@ def _extract_text(raw: dict[str, Any]) -> str:
     if isinstance(raw.get("item"), dict):  # codex --json: only agent messages are answers
         item = raw["item"]
         return str(item.get("text") or "") if item.get("type") == "agent_message" else ""
-    for key in (
-        "result",
-        "text",
-        "message",
-        "content",
-        "output",
-        "response",
-        "delta",
-    ):  # agy: result.response, claude: delta
+    for key in ("result", "text", "message", "content", "output", "response", "delta"):  # agy: response, claude: delta
         val = raw.get(key)
         if isinstance(val, str) and val.strip():
             return val
@@ -310,13 +302,14 @@ def _extract_usage(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(src, dict) and isinstance(nested, dict):
         src = nested.get("usage")  # agy reports usage inside the result event
     if isinstance(src, dict):
-        for key in (
+        token_keys = (
             "input_tokens",
             "output_tokens",
             "cache_read_input_tokens",
             "cache_creation_input_tokens",
             "total_tokens",
-        ):
+        )
+        for key in token_keys:
             if isinstance(src.get(key), int | float):
                 usage[key] = src[key]
         for camel, snake in _CAMEL_USAGE.items():  # cursor-agent reports camelCase
@@ -491,3 +484,13 @@ def get_adapter(provider_id: str) -> ProviderAdapter:
 def available_providers() -> dict[str, bool]:
     """Map provider id → whether its executable is on PATH on this node."""
     return {pid: adapter.installed() for pid, adapter in ADAPTERS.items()}
+
+
+def unattended_providers() -> dict[str, bool]:
+    """Map provider id → whether the adapter can run unattended without a bypass (#1586, #1697)."""
+    return {pid: bool(getattr(adapter, "unattended", True)) for pid, adapter in ADAPTERS.items()}
+
+
+def chat_only_providers() -> list[str]:
+    """Provider ids that are chat-only and cannot run unattended (#1586, #1697)."""
+    return sorted(pid for pid, adapter in ADAPTERS.items() if not getattr(adapter, "unattended", True))

@@ -4465,6 +4465,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Providers
+         * @description Provider availability, chat-only/unattended capabilities, and CLI versions (#1697).
+         */
+        get: operations["providers_api_staff_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/quota": {
         parameters: {
             query?: never;
@@ -5415,6 +5435,26 @@ export interface paths {
          * @description Execute an ``approved`` proposal through the action registry (409 for any other live state).
          */
         post: operations["execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Providers V1
+         * @description Provider availability, chat-only/unattended capabilities, and CLI versions (#1697).
+         */
+        get: operations["providers_v1_api_v1_staff_providers_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8105,6 +8145,8 @@ export interface components {
          * @description Response model for GET /api/staff/board (issue #1289).
          */
         StaffBoardResponse: {
+            /** Chat Only Providers */
+            chat_only_providers?: string[];
             /**
              * Generated At
              * @description ISO-8601 UTC timestamp
@@ -8416,6 +8458,28 @@ export interface components {
             version?: string | null;
         };
         /**
+         * StaffProvidersResponse
+         * @description Response model for GET /api/staff/providers (#1697).
+         */
+        StaffProvidersResponse: {
+            /** Chat Only Providers */
+            chat_only_providers?: string[];
+            /** Provider Versions */
+            provider_versions?: {
+                [key: string]: components["schemas"]["StaffProviderCliVersion"];
+            };
+            /** Providers */
+            providers: {
+                [key: string]: boolean;
+            };
+            /** Unattended Providers */
+            unattended_providers?: {
+                [key: string]: boolean;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * StaffQuotaResponse
          * @description Response model for GET /api/staff/quota (#1587): live subscription windows per provider.
          */
@@ -8608,6 +8672,8 @@ export interface components {
              * @default 0
              */
             active_runs: number;
+            /** Chat Only Providers */
+            chat_only_providers?: string[];
             /** Machine */
             machine: string;
             /** Provider Versions */
@@ -15355,6 +15421,26 @@ export interface operations {
             };
         };
     };
+    providers_api_staff_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffProvidersResponse"];
+                };
+            };
+        };
+    };
     get_quota_api_staff_quota_get: {
         parameters: {
             query?: never;
@@ -16770,6 +16856,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    providers_v1_api_v1_staff_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffProvidersResponse"];
                 };
             };
         };
@@ -18297,6 +18403,7 @@ export interface operations {
         };
     };
 }
+
 
 // ── Client compatibility aliases ─────────────────────────────────────────────
 // These aliases keep the hand-written API client on stable names while the
