@@ -1,4 +1,31 @@
-# Current handoff — Executor built from the filed plan, pipelines persisted (#1606)
+# Current handoff — Fleet Facts in Barb's Chat Turns (#1627)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_barbctx`; branch `feat/barb-chat-fleet-context`; PR: see DL-#1627; Issue #1627; DL-#1627.
+
+## Objective and Status
+
+- Live e2e on OGLaptop: Barb answered a status question with 'The curl call needs approval before I can run it'; her declared `chat.tools` were never provided.
+- `staff/chat_fleet_context.py` reads the four target-free tools concurrently and renders compact JSON sections; `read_run`/`read_issue`/`read_repo` need a target and are out of scope.
+- `staff/summary_view.py` holds the summary body moved unchanged from `routers/staff.py` (DRY; LoD for the chat module).
+- Drafted by an agy (Antigravity CLI, edit-only) agent from a written spec; reviewed; the prompt test was reworked (frozen adapter dataclass; history replay quotes the question earlier).
+
+## Validation
+
+- TDD: `tests/unit/test_staff_chat_fleet_context.py` (6) and `test_staff_chat_fleet_prompt.py` (1); summary keys covered in `tests/api/test_staff_fleet.py`.
+- `pytest tests/api tests/unit -k 'staff or chat or summary or barb'`: 810 passed, 2 skipped.
+- `mypy` clean on the 4 changed backend modules; `ruff` clean; `chat.py` 475 lines.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and ask Barb a status question in a thread to confirm she answers from the block.
+
+---
+
+# Past handoff — Executor built from the filed plan, pipelines persisted (#1606)
 
 Last updated: 2026-09-26
 
@@ -47,6 +74,7 @@ Last updated: 2026-09-27
 ## Next Steps
 
 1. Merge once CI is green; then rebase #1610 and #1617 onto it.
+
 # Past handoff — Decision SLA on owner inbox items (#1607)
 
 Last updated: 2026-09-27
@@ -76,6 +104,7 @@ Last updated: 2026-09-27
 ---
 
 # Past handoff — Grok connection guide on the v1 contract (#1352)
+
 - Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-grokdoc`; branch `docs/grok-guide-v1-live`; PR: #1620; Issue #1352; DL-#1352.
 
 ## Objective and Status
@@ -760,6 +789,7 @@ Last updated: 2026-09-26
 Removed two duplicate/phantom entries from `docs/development/DEVELOPMENT_LOG.md` that were called out in the previous handoff as pre-existing issues. The file was at 199,867 bytes — 133 bytes below the 200,000-byte validator ceiling — with two redundant blocks consuming ~3,500 bytes.
 
 **Removed:**
+
 1. **DL-#1513 duplicate in Active section** (lines 452–463 before edit): The canonical shipped record lives in the `## Shipped (Last 90 Days)` section at the end of the file. The Active-section copy had no `Issue:` field and listed only PR #1519; the canonical copy has both PRs (#1515 and #1519) and a `Shipped:` date.
 2. **Phantom DL-#1339 entry** (lines 477–488 before edit): The heading read `DL-#1339 · SC-B9: Group threads…` but the body (owner `claude`, issue `#1479`, branch `agy/issue-1479`, knowledge-pack paths, state `in_review`) was entirely DL-#1479 content — mislabeled, stale, and superseded by the correct DL-#1479 entry (shipped, PR #1512) immediately above it and the correct DL-#1339 entry (shipped, PR #1480) immediately below it.
 

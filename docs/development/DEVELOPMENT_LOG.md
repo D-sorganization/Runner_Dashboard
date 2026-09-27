@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1627 — Fleet Facts in Barb's Chat Turns
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1627
+- **Branch:** `feat/barb-chat-fleet-context`
+- **PR:** pending
+- **Paths:** `backend/staff/chat_fleet_context.py`, `backend/staff/summary_view.py`, `backend/staff/chat.py`, `backend/routers/staff.py`, `tests/unit/test_staff_chat_fleet_context.py`, `tests/unit/test_staff_chat_fleet_prompt.py`, `tests/api/test_staff_fleet.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (staff/chat suites 810 passed; mypy clean)
+- **Summary:** Barb (and any role declaring read\_\* chat tools) sees the fleet's current state in dashboard chat turns instead of asking for curl approval.
+- **Next step:** Merge; redeploy OGLaptop and ask Barb a status question in a thread to confirm she answers from the block.
+
 ### DL-#1606 — WP-2.2: Executor Built From the Filed Plan, Persisted Pipelines
 
 - **State:** in_review
@@ -43,6 +56,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (staff/action suites 1495 passed; full-tree line cap clean; mypy clean)
 - **Summary:** Hold and Code Request executors move to their own modules so `action_executors.py` is back under the 500-line cap that turned `main` red; the `conversations.py` docstring is reflowed one line shorter after #1617 took it to 501.
 - **Next step:** Merge the #1618 PR once CI is green.
+
 ### DL-#1607 · Decision SLA on owner inbox items
 
 - **State:** in_review
