@@ -1,4 +1,28 @@
-# Current handoff — Panels leave out providers switched off on the node (#1645)
+# Current handoff — Board seat on a disabled provider stands in on claude (#1646)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1646`; branch `fix/board-seat-stand-in`; PR: see DL-#1646; Issue #1646; DL-#1646.
+
+## Objective and Status
+
+- Bravo (Science) is pinned to gemini; since #1643 the disabled-provider guard made it error on every Board turn on OGLaptop (quorum 3/4) while the estimate still charged it.
+- Implemented by agy from a TDD spec; reviewed and tidied (single dataclasses import, map() in the estimate loop).
+
+## Validation
+
+- New `tests/unit/test_staff_board_seat_stand_in.py` (6 tests) fails without the backend change, passes with it.
+- `pytest tests -k 'group or board or seat'`: 308 passed; ruff clean; groups.py 464 lines.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and run one Board turn to confirm 4/4 seats answer.
+
+---
+
+# Past handoff — Panels leave out providers switched off on the node (#1645)
 
 Last updated: 2026-09-27
 
