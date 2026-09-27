@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import anyio
 from fastapi import (
     APIRouter,
     Depends,
@@ -36,8 +37,12 @@ async def trigger_sweep(
     caller: Principal = Depends(require_scope("staff.dispatch")),
     engine: FollowupEngine = Depends(get_followup_engine),
 ) -> dict[str, Any]:
-    """Execute an on-demand follow-up sweep over active work items and runs."""
-    result = engine.sweep()
+    """Execute an on-demand follow-up sweep over active work items and runs.
+
+    Runs in a worker thread: a decision default may execute an action, and executors reach
+    loop-bound clients through the loop bridge, which a call on the loop itself cannot (#1448).
+    """
+    result = await anyio.to_thread.run_sync(engine.sweep)
     return {
         "ok": True,
         **result.to_dict(),

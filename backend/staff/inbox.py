@@ -63,6 +63,9 @@ class InboxItem:
     created_at: str
     link: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Decision SLA (WP-2.6, #1607): when the owner must decide, and what Barb applies if silent.
+    decide_by: str | None = None
+    default_if_silent: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -130,6 +133,8 @@ def _collect_approvals(c_store: ConversationStore) -> list[InboxItem]:
                     "risk": prop.risk,
                     "params": prop.params,
                 },
+                decide_by=prop.decide_by,
+                default_if_silent=prop.default_if_silent,
             )
         )
     return items

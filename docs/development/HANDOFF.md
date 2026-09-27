@@ -1,10 +1,38 @@
-# Current handoff — Grok connection guide on the v1 contract (#1352)
+# Current handoff — Decision SLA on owner inbox items (#1607)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1607-decision-sla`; PR: #1617; Issue #1607 (Phase 2 of #1463, WP-2.6); DL-#1607.
+
+## Objective and Status
+
+- Action proposals (the inbox `approval` source) carry `decide_by` and `default_if_silent` (`approve`, `deny` or empty). The source sets them at creation (`ConversationStore.create_proposal` and `POST /api/v1/staff/proposals`); conversation migration 3 adds the two columns. The approval `InboxItem` exposes both.
+- Contract (`validate_decision_sla`): a default needs a deadline; `decide_by` is ISO-8601 and no later than the 24 h proposal expiry; `approve` by silence only for `read`/`low` risk (`SILENT_APPROVE_RISKS`). `PROPOSAL_TTL_SECONDS` moved to `conversation_models` so both modules share it.
+- New `staff/decision_sla.py`: `apply_decision_defaults` denies through the proposal store (decided by `barb`) or approves through `execute_proposal` with a Barb principal holding only `staff.approve` plus the action's scope. The risk is re-read from the registry at sweep time; a riskier action is refused and stays with the owner. Every outcome is audited (`decision_default_applied` / `decision_default_refused`).
+- `FollowupEngine.sweep` applies defaults and pings (Barb thread + `barb_followup_decision_ping` audit) overdue proposals without one or whose default was refused, at most once per sweep interval. `POST /followup/sweep` now runs the sweep in a worker thread so an executor can use the loop bridge.
+- Design choice: only proposals get an SLA. Other inbox sources (needs-input, escalations, project decisions, board proposals, sign-ins) have no default action a sweep could safely apply; they keep today's pings.
+
+## Validation
+
+- RED: `tests/unit/test_decision_sla.py` failed to import `staff.decision_sla` on `main`.
+- WSL rd-test-venv: `pytest tests/unit/test_decision_sla.py tests/api/test_staff_proposal_hardening.py tests/api/test_staff_followup.py tests/api/test_staff_inbox.py tests/unit/test_staff_inbox_proposals.py tests/api/test_staff_proposals_api.py`: 51 passed.
+- `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: no issues in 295 files. `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Merge once CI is green; then let sources (Barb, planner) set `decide_by` on the proposals they raise.
+
+---
+
+# Past handoff — Grok connection guide on the v1 contract (#1352)
 
 Last updated: 2026-09-26
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-grokdoc`; branch `docs/grok-guide-v1-live`; PR: see DL-#1352; Issue #1352; DL-#1352.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-grokdoc`; branch `docs/grok-guide-v1-live`; PR: #1620; Issue #1352; DL-#1352.
 
 ## Objective and Status
 
@@ -19,7 +47,7 @@ Last updated: 2026-09-26
 
 ## Next Steps
 
-1. Merge; then update Repository_Management `docs/grok-bridge.md` to the same contract.
+1. Merged as PR #1620.
 
 ---
 

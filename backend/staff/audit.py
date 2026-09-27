@@ -49,6 +49,8 @@ ALLOWED_ACTIONS = frozenset(
         "work_item_create",
         "work_item_transition",
         "message_reconcile",
+        "decision_default_applied",
+        "decision_default_refused",
     }
 )
 
@@ -69,6 +71,7 @@ MUTATING_ACTIONS = frozenset(
         "work_item_create",
         "work_item_transition",
         "message_reconcile",
+        "decision_default_applied",
     }
 )
 

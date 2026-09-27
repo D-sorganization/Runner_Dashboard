@@ -5013,6 +5013,9 @@ export interface paths {
         /**
          * Trigger Sweep
          * @description Execute an on-demand follow-up sweep over active work items and runs.
+         *
+         *     Runs in a worker thread: a decision default may execute an action, and executors reach
+         *     loop-bound clients through the loop bridge, which a call on the loop itself cannot (#1448).
          */
         post: operations["trigger_sweep_api_v1_staff_followup_sweep_post"];
         delete?: never;
@@ -6690,6 +6693,17 @@ export interface components {
              * @description Name of allowlisted action
              */
             action: string;
+            /**
+             * Decide By
+             * @description ISO-8601 deadline for the owner's decision (WP-2.6, #1607)
+             */
+            decide_by?: string | null;
+            /**
+             * Default If Silent
+             * @description 'approve' (low-risk actions only), 'deny', or '' to only ping when overdue
+             * @default
+             */
+            default_if_silent: string;
             /**
              * Message Id
              * @description Originating message ID

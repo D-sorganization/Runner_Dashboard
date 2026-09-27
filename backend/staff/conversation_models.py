@@ -33,6 +33,11 @@ PROPOSAL_STATES = (
     "expired",
 )
 PROPOSAL_RISKS = ("read", "low", "medium", "high", "critical", "owner-only")
+PROPOSAL_TTL_SECONDS = 86400  # 24 hours; an undecided proposal expires after this
+# What Barb applies when the owner is silent past ``decide_by`` (WP-2.6, #1607); "" = ping only.
+DEFAULTS_IF_SILENT = ("", "approve", "deny")
+# ``approve`` by silence is limited to these risks; anything riskier needs a human decision.
+SILENT_APPROVE_RISKS = ("read", "low")
 
 _VALID_PROPOSAL_TRANSITIONS: dict[str, set[str]] = {
     "proposed": {"approved", "denied", "expired", "executing", "failed"},
@@ -192,6 +197,8 @@ class ActionProposalRecord:
     decided_at: str | None = None
     reason: str = ""
     created_at: str = field(default_factory=_now)
+    decide_by: str | None = None
+    default_if_silent: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -206,6 +213,8 @@ class ActionProposalRecord:
             "decided_at": self.decided_at,
             "reason": self.reason,
             "created_at": self.created_at,
+            "decide_by": self.decide_by,
+            "default_if_silent": self.default_if_silent,
         }
 
     @classmethod
@@ -225,6 +234,8 @@ class ActionProposalRecord:
             decided_at=d.get("decided_at"),
             reason=str(d.get("reason") or ""),
             created_at=str(d["created_at"]),
+            decide_by=d.get("decide_by") or None,
+            default_if_silent=str(d.get("default_if_silent") or ""),
         )
 
 

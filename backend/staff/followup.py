@@ -17,7 +17,9 @@ from typing import Any
 from fleet_events import FleetEvent, get_event_store
 from push import send_push
 from staff.audit import record_audit
+from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.decision_sla import apply_decision_defaults, overdue_decisions
 from staff.roles import load_roles
 from staff.store import RunRecord, RunStore, get_run_store
 from staff.work_items import (
@@ -79,8 +81,10 @@ class SweepResult:
         }
 
 
-def _mk_record(item_id: str, cond: str, act: str, detail: dict[str, Any], ts: str) -> FollowupRecord:
-    return FollowupRecord(f"flw-{uuid.uuid4().hex[:10]}", item_id, "work_item", cond, act, detail, ts)
+def _mk_record(
+    item_id: str, cond: str, act: str, detail: dict[str, Any], ts: str, kind: str = "work_item"
+) -> FollowupRecord:
+    return FollowupRecord(f"flw-{uuid.uuid4().hex[:10]}", item_id, kind, cond, act, detail, ts)
 
 
 def _audit(action: str, target: str, thread_id: str, detail: dict[str, Any]) -> None:
@@ -213,6 +217,13 @@ class FollowupEngine:
                     if ckey in self._counters:
                         self._counters[ckey] += 1
 
+        for rec in self._sweep_decisions(dt):
+            followups.append(rec)
+            counts[rec.action_taken] = counts.get(rec.action_taken, 0) + 1
+            with self._lock:
+                self._last_followup[rec.target_id] = ts
+                self._followup_history.setdefault(rec.target_id, []).append(rec)
+
         return SweepResult(iso, len(items), followups, counts, self.get_daily_digest(now=dt))
 
     def _process_item(self, item: WorkItemRecord, now: datetime, valid_roles: dict[str, Any]) -> FollowupRecord | None:
@@ -252,6 +263,51 @@ class FollowupEngine:
         if item.expected_by and item.expected_by < now_iso:
             return self._handle_overdue_item(item, now)
         return None
+
+    def _recently_followed(self, target_id: str, ts: float) -> bool:
+        with self._lock:
+            return ts - self._last_followup.get(target_id, float("-inf")) < self.sweep_interval_seconds
+
+    def _sweep_decisions(self, now: datetime) -> list[FollowupRecord]:
+        """Decision SLA (WP-2.6, #1607): apply each overdue default, ping overdue decisions without one.
+
+        A default that was refused stays with the owner and is pinged like a silent item.
+        """
+        ts, now_iso = now.timestamp(), now.isoformat().replace("+00:00", "Z")
+        overdue = overdue_decisions(self.conversation_store, now)
+        recent = {p.id for p in overdue if self._recently_followed(p.id, ts)}
+        records: list[FollowupRecord] = []
+        refused: set[str] = set()
+        for o in apply_decision_defaults(self.conversation_store, now=now, skip=recent):
+            if o.outcome == "refused":
+                refused.add(o.proposal_id)
+                continue
+            detail = {"default_if_silent": o.applied, "outcome": o.outcome, "detail": o.detail}
+            rec = _mk_record(o.proposal_id, "decision_overdue", "default_applied", detail, now_iso, "proposal")
+            records.append(rec)
+        for prop in overdue:
+            if prop.id in recent or (prop.default_if_silent and prop.id not in refused):
+                continue
+            records.append(self._ping_decision(prop, now_iso))
+        return records
+
+    def _ping_decision(self, prop: ActionProposalRecord, now_iso: str) -> FollowupRecord:
+        msg = (
+            f"⏰ **Barb → Owner: Decision Overdue**\n\n"
+            f"Proposal `{prop.id}` (`{prop.action}`) was due for a decision by {prop.decide_by}. "
+            f"Please approve or deny it."
+        )
+        self.conversation_store.add_message(
+            thread_id=self._get_barb_thread_id(),
+            author_kind="role",
+            author="barb",
+            body_md=msg,
+            kind="text",
+            meta={"proposal_id": prop.id, "decide_by": prop.decide_by},
+        )
+        detail = {"decide_by": prop.decide_by, "action": prop.action}
+        _audit("barb_followup_decision_ping", prop.id, prop.thread_id, detail)
+        return _mk_record(prop.id, "decision_overdue", "decision_ping", detail, now_iso, "proposal")
 
     def _handle_stalled_or_failed_run(
         self, item: WorkItemRecord, run: RunRecord, now: datetime, condition: str

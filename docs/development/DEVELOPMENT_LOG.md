@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1352 — Grok connection guide on the v1 contract
+### DL-#1607 · Decision SLA on owner inbox items
 
 - **State:** in_review
 - **Owner:** claude
+- **Issue:** #1607
+- **Branch:** `feat/1607-decision-sla`
+- **PR:** pending
+- **Paths:** `backend/staff/decision_sla.py`, `backend/staff/followup.py`, `backend/staff/conversation_proposals.py`, `backend/staff/conversation_models.py`, `backend/staff/conversation_migrations.py`, `backend/staff/inbox.py`, `backend/routers/staff_proposals.py`, `backend/routers/staff_followup.py`, `tests/unit/test_decision_sla.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (SLA, proposal, follow-up and inbox suites 51 passed; mypy backend clean; ruff clean)
+- **Summary:** Proposals carry `decide_by` and `default_if_silent`; Barb's sweep applies `deny` through the store or `approve` (low risk only, re-checked) through the action executor, audits it, and pings overdue proposals without a default.
+- **Next step:** Merge the #1607 PR once CI is green.
+
+### DL-#1352 — Grok connection guide on the v1 contract
+
+- **State:** shipped
+- **Owner:** claude
 - **Issue:** #1352
 - **Branch:** `docs/grok-guide-v1-live`
-- **PR:** pending
+- **PR:** #1620
 - **Paths:** `docs/agents/grok.md`
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 (fleetctl `--help` matches the documented verbs; v1 threads return 200 on the deployed node)
 - **Summary:** The Grok guide uses the v1 threads API with the `agent-grok` token, names Barb as the single front door, and records the go-live scope: reads, plus dispatch after one supervised dry run.
-- **Next step:** Merge the #1352 PR once CI is green.
+- **Next step:** Shipped in PR #1620.
 
 ### DL-#1602 · WP-2.2: Executor Keeps Acceptance Criteria
 

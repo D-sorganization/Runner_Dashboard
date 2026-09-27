@@ -71,9 +71,16 @@ _MIGRATION_2_SQL = """
 ALTER TABLE threads ADD COLUMN meta TEXT NOT NULL DEFAULT '{}';
 """
 
+# Decision SLA (WP-2.6, #1607): the source sets a deadline and what happens if the owner is silent.
+_MIGRATION_3_SQL = """
+ALTER TABLE action_proposals ADD COLUMN decide_by TEXT;
+ALTER TABLE action_proposals ADD COLUMN default_if_silent TEXT NOT NULL DEFAULT '';
+"""
+
 CORE_MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "conversations_core_tables", _MIGRATION_1_SQL),
     (2, "threads_meta_column", _MIGRATION_2_SQL),
+    (3, "action_proposals_decision_sla", _MIGRATION_3_SQL),
 ]
 
 

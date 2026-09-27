@@ -133,6 +133,29 @@ def test_create_rejects_a_missing_thread_or_foreign_message(client: TestClient) 
 
 
 @pytest.mark.unit
+def test_create_accepts_a_decision_sla_and_rejects_an_incoherent_one(client: TestClient) -> None:
+    """WP-2.6 (#1607): the source sets ``decide_by`` and ``default_if_silent``."""
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    th, msg = _thread_and_message()
+    decide_by = (datetime.now(UTC) + timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    ok = client.post(
+        "/api/v1/staff/proposals",
+        json=_body(th, msg, decide_by=decide_by, default_if_silent="deny"),
+        headers=_XHR,
+    )
+    assert ok.status_code == 200, ok.text
+    assert (ok.json()["decide_by"], ok.json()["default_if_silent"]) == (decide_by, "deny")
+    # staff.dispatch is medium risk: silence may deny it but never approve it.
+    refused = client.post(
+        "/api/v1/staff/proposals",
+        json=_body(th, msg, decide_by=decide_by, default_if_silent="approve"),
+        headers=_XHR,
+    )
+    assert refused.status_code == 400 and "low-risk" in refused.text
+
+
+@pytest.mark.unit
 def test_create_takes_risk_from_the_registry_not_the_caller(client: TestClient) -> None:
     th, msg = _thread_and_message()
     resp = client.post("/api/v1/staff/proposals", json=_body(th, msg, risk="read"), headers=_XHR)

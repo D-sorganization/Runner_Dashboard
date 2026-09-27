@@ -826,6 +826,24 @@
             "title": "Action",
             "type": "string"
           },
+          "decide_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO-8601 deadline for the owner's decision (WP-2.6, #1607)",
+            "title": "Decide By"
+          },
+          "default_if_silent": {
+            "default": "",
+            "description": "'approve' (low-risk actions only), 'deny', or '' to only ping when overdue",
+            "title": "Default If Silent",
+            "type": "string"
+          },
           "message_id": {
             "description": "Originating message ID",
             "title": "Message Id",
@@ -15345,7 +15363,7 @@
     },
     "/api/v1/staff/followup/sweep": {
       "post": {
-        "description": "Execute an on-demand follow-up sweep over active work items and runs.",
+        "description": "Execute an on-demand follow-up sweep over active work items and runs.\n\nRuns in a worker thread: a decision default may execute an action, and executors reach\nloop-bound clients through the loop bridge, which a call on the loop itself cannot (#1448).",
         "operationId": "trigger_sweep_api_v1_staff_followup_sweep_post",
         "responses": {
           "200": {
