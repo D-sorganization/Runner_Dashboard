@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from code_requests.lifecycle import TransitionGate
 from code_requests.model import CodeRequest, CodeRequestState
 from code_requests.plan import PlanDraft
 from code_requests.plan_filing import Fetch, Write, file_plan
@@ -157,7 +158,11 @@ async def _file(
     epic = session.filing.epic_url or f"{deps.org}/{request.repository}#{session.filing.epic_number}"
     transition_reason = reason or f"plan filed as {epic}"
     planned = await deps.requests.transition(
-        request.id, CodeRequestState.PLANNED, actor=actor, reason=transition_reason
+        request.id,
+        CodeRequestState.PLANNED,
+        actor=actor,
+        reason=transition_reason,
+        gate=TransitionGate.PLAN_FILED,
     )
     await deps.requests.save(planned.model_copy(update={"plan_epic": epic}))
     return session

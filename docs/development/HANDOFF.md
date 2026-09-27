@@ -4,7 +4,7 @@ Last updated: 2026-09-27
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-1603`; branch `fix/1603-plan-approval-audit`; commit `SELF` (HEAD `ed1e9824510500858f25d98dea57cfba584cb09d`); PR: pending; Issue #1603; DL-#1603.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1603-plan-approval-audit`; PR: #1613; Issue #1603; DL-#1603.
 
 ## Objective and Status
 
@@ -16,15 +16,69 @@ Last updated: 2026-09-27
 ## Validation
 
 - Exact test commands and results:
-  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1603 && GH_TOKEN=x HOME=/tmp/rdhome-1603 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py tests/code_requests/test_planner_stage.py -q -o addopts='' -p no:cacheprovider -W ignore"`: 27 passed in 18.48s.
-  - `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1603 && GH_TOKEN=x HOME=/tmp/rdhome-1603 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k 'plan or profile' -q -o addopts='' -p no:cacheprovider -W ignore"`: 65 passed, 449 deselected in 25.73s.
-  - `py -3.12 -m ruff check backend/code_requests/planner.py backend/code_requests/profiles.py backend/code_requests/plan_service.py tests/code_requests/test_planner_stage.py tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py`: All checks passed!
-  - `py -3.12 -m ruff format backend/code_requests/planner.py backend/code_requests/profiles.py backend/code_requests/plan_service.py tests/code_requests/test_planner_stage.py tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py`: 5 files reformatted, 1 file left unchanged.
-  - `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: Success: no issues found in 294 source files.
+  - `pytest tests/code_requests/test_profiles.py tests/api/test_code_request_plans_api.py tests/code_requests/test_planner_stage.py`: 27 passed.
+  - `ruff check` and `ruff format` clean on changed files.
+  - `mypy` clean on changed files.
 
 ## Next Steps
 
-1. Review uncommitted changes and create PR for issue #1603.
+1. Merge PR #1613 once CI is green.
+
+---
+
+# Past handoff — Restore the SPEC Change Log separator row (#1600)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/spec-changelog-separator`; Issue #1600; DL-#1600.
+- Worktree `Runner_Dashboard-worktrees/spec-changelog-separator` on OGLaptop; base `5369d4a5`; commit `SELF`; PR: #1614.
+
+## Objective and Status
+
+- `SPEC.md`'s Change Log rendered as plain text: #1554 replaced the `| --- |` separator under the header with its own row.
+- Neither Repository_Management's `spec-rows` merge driver nor `fleet_hooks.py spec-changelog` is installed here (no `.gitattributes`, no `shared_scripts/spec_changelog.py`), so neither dropped it; it was a hand edit.
+- A stray blank line (from #1585) also split the table; rows below it rendered as orphan text. Removed it.
+- With a valid table, the pinned Prettier hook rewrote other contributors' rows (splits cells on `|` inside code spans, strips spaces around code). Wrapped the table in `<!-- prettier-ignore-start/end -->`, the same fence RM's `spec_changelog.ensure_prettier_fence` adds.
+- `tests/test_spec_changelog_table.py`: header followed by exactly one matching separator; no dated rows outside the table; table fenced from Prettier.
+- Not touched: the legacy `- **date:**` prose bullets below the table (line ~135 on), which include one stray `| #1251 |` row.
+- `Spec Version` unchanged.
+
+## Validation
+
+- RED first: the separator test failed on `main`; the split and fence tests failed after the separator alone was restored. All 3 pass after the fix.
+- `python -m pre_commit run prettier --files SPEC.md docs/development/*.md` passes.
+
+## Next Steps
+
+1. Merge. When adding a Change Log row, insert it BELOW the `| --- | --- | --- |` line, never over it.
+
+---
+
+# Past handoff — Guarded Code Request lifecycle: plan and acceptance gates (#1605)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1605`; branch `fix/1605-guarded-lifecycle`; PR: see DL-#1605; Issue #1605 (Phase 2 of #1463, WP-2.1/WP-2.5); DL-#1605.
+
+## Objective and Status
+
+- Part 1 (this PR): `planned` and `done` are now gated targets. `lifecycle.transition` refuses them unless the caller names the matching `TransitionGate` (`plan_filed`, `acceptance`) or uses an operator override, which the audit event already records. `is_legal_transition` keeps its table-only meaning.
+- `plan_service._file` is the only code path to `planned` and passes `plan_filed`, so approved and auto-filed plans work as before. The generic `POST /api/code-requests/{id}/transition` can no longer skip plan approval or acceptance without `is_operator_override`.
+- Nothing in code moves a request to `done` yet. Part 2 adds the acceptance check (every child PR merged and verified, every criterion checked) that passes `acceptance`; it needs #1602 (criteria on child records) and #1606 (executor built from the plan).
+
+## Validation
+
+- RED: the new lifecycle tests failed to import `TransitionGate` / `required_gate` on `main`.
+- WSL rd-test-venv: `pytest tests/code_requests tests/api/test_code_requests.py tests/api/test_code_request_plans_api.py`: 153 passed. `pytest tests -k 'code_request or plan or board or executor or proposal or lifecycle'`: 468 passed, 2 skipped, 1 xfailed.
+- `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: no issues in 294 files. `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Merge once CI is green, then implement #1605 part 2 (acceptance check) after #1602 and #1606 land.
 
 ---
 
@@ -35,7 +89,7 @@ Last updated: 2026-09-26
 ## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1597-disabled-providers`; Issue #1597; DL-#1597.
-- Worktree `_wt_claude_rd_switch` on OGLaptop; base `790d199a`; commit `SELF`; PR: opened right after this commit.
+- Worktree `_wt_claude_rd_switch` on OGLaptop; base `5369d4a5`; commit `SELF`; PR: #1614.
 
 ## Objective and Status
 

@@ -24,12 +24,38 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** antigravity
 - **Issue:** #1603
 - **Branch:** `fix/1603-plan-approval-audit`
-- **PR:** pending
+- **PR:** #1613
 - **Paths:** `backend/code_requests/planner.py`, `backend/code_requests/profiles.py`, `backend/code_requests/plan_service.py`, `tests/code_requests/test_planner_stage.py`, `tests/code_requests/test_profiles.py`, `tests/api/test_code_request_plans_api.py`, `SPEC.md`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 at `ed1e9824` (27 passed in test_profiles.py, test_code_request_plans_api.py, test_planner_stage.py; 65 passed in broader test set; ruff and mypy clean)
 - **Summary:** Added `approved_by` and `approved_at` to `PlanningSession`, set in `approve_plan` from the acting principal with transition reason `plan approved by <principal>` (auto-filed plans leave unset and keep reason "plan filed"). Bound planner profiles to roster role `staff_role="chief-architect"` on `AgentProfile`, added non-crashing `validate_profile_staff_roles` against `roles.load_roles()`, and surfaced `staff_role` in `PlanningSession`.
-- **Next step:** Merge the #1603 PR once CI is green.
+- **Next step:** Merge the #1613 PR once CI is green.
+
+### DL-#1600 · Restore the SPEC Change Log Separator Row
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1600
+- **Branch:** `fix/spec-changelog-separator`
+- **PR:** #1614
+- **Paths:** `SPEC.md`, `tests/test_spec_changelog_table.py`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `5369d4a5` (new SPEC table test red before, green after)
+- **Summary:** The Change Log renders as one table again (separator restored, split rows joined, Prettier fence); a test guards all three.
+- **Next step:** Merge the PR.
+
+### DL-#1605 · Guarded Code Request lifecycle (plan and acceptance gates)
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1605
+- **Branch:** `fix/1605-guarded-lifecycle`
+- **PR:** #1609
+- **Paths:** `backend/code_requests/lifecycle.py`, `backend/code_requests/store.py`, `backend/code_requests/plan_service.py`, `tests/code_requests/test_lifecycle.py`, `tests/api/test_code_requests.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (code-request suites 468 passed; mypy backend clean; ruff clean)
+- **Summary:** `planned` and `done` are entered only with their `TransitionGate` or an audited operator override; the plan service names `plan_filed`. Part 2 adds the acceptance check that names `acceptance`.
+- **Next step:** Implement the acceptance check for `executing -> done` once #1602 and #1606 merge.
 
 ### DL-#1597 · Turn Providers Off on Every Dispatch Path
 
