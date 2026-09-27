@@ -13,6 +13,8 @@ function getFailureClassTitle(failureClass?: string | null): string {
       return "Authentication Expired";
     case "cli_missing":
       return "CLI Tool Missing";
+    case "cli_outdated":
+      return "CLI Tool Outdated";
     case "needs_input":
       return "Input Required";
     case "timeout":

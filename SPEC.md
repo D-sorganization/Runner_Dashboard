@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1669 | Classify unknown-CLI-option staff failures as cli_outdated with upgrade remediation |
 | 2026-09-27 | #1670 | `GET /api/v1/staff/runs/{id}` delegates to the legacy run-detail handler (events via `events_after`, remote-run proxy); it called a nonexistent `RunStore.list_events` and returned 500 for every run. The v1 404 envelope is unchanged. |
 | 2026-09-27 | #1688 | Chat and run CLI project cleanup (#1688): run worktrees remove their Claude CLI project folder in `workspace.remove_worktree` and startup reconcile sweeps run project folders whose worktree is gone (older than 6 h); chat scratch dirs idle for 14 days are swept with their project folders at most hourly from `thread_scratch_dir`, which touches the thread's dir so a resumed thread is never swept mid-turn. |
 | 2026-09-27 | #1683 | Expert-panel CLI project cleanup (#1683): each panel turn removes its Claude CLI project folder (`<CLAUDE_CONFIG_DIR>/projects/<encoded scratch dir>`) when the turn ends, and `run_panel` sweeps panel project folders older than 6 h first; only direct, non-symlink children of the projects root that carry the panel scratch prefix are ever removed (`backend/staff/cli_projects.py`). |

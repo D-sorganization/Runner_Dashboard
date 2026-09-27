@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1669 — Unknown CLI option classified as cli_outdated
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1669
+- **Branch:** `fix/1669-cli-outdated`
+- **PR:** not created
+- **Paths:** `backend/staff/classifier.py`, `backend/staff/retry.py`, `backend/staff/chat_failures.py`, `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`, `tests/unit/test_staff_cli_outdated.py`, `tests/unit/test_staff_classifier.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (new cli_outdated tests + classifier/retry/chat_failures subset: 39 passed; ruff check and ruff format --check clean on changed files)
+- **Summary:** A CLI that rejects an adapter flag (e.g. `error: unknown option '--permission-prompts'` from a too-old `claude` install) now classifies as `cli_outdated`, not retryable, with remediation naming the provider, node, rejected option and upgrade command (`npm install -g @anthropic-ai/claude-code@latest` for claude). Chat specificity rank 95; Staff Console error card title "CLI Tool Outdated".
+- **Next step:** Open the PR for this branch.
+
 ### DL-#1670 — v1 staff run detail no longer 500s
 
 - **State:** in_review
