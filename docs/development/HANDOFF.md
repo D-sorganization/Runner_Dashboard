@@ -1,4 +1,26 @@
-# Current handoff — Decision SLA on owner inbox items (#1607)
+# Current handoff — Split staff action executors under the 500-line cap (#1618)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-execsplit`; branch `fix/action-executors-size`; PR: see DL-#1618; Issue #1618; DL-#1618.
+
+## Objective and Status
+
+- `main` CI Standard was red: the push-mode `ci-health-check` found `backend/staff/action_executors.py` at 590 lines (cap 500). #1611 and #1615 each added lines and merged separately; PR-mode checks only changed files, so neither PR tripped it.
+- Moved the self-contained hold/unhold executors and verifiers to `backend/staff/hold_actions.py` and the `code_request.create` / `code_request.update` executors (with `CodeRequestUpdateParams`) to `backend/staff/code_request_actions.py`. `action_executors` imports and registers them unchanged; no behaviour change. `action_executors.py` is 413 lines.
+
+## Validation
+
+- Full-tree line-cap check from `ci-standard.yml`: no file over 500.
+- WSL rd-test-venv `pytest tests -k 'staff or action or hold or code_request or board or proposal'`: 1495 passed, 18 skipped.
+- `mypy backend/`: no issues in 296 files; `ruff check` / `ruff format --check` clean on the three files.
+
+## Next Steps
+
+1. Merge once CI is green; then rebase #1610 and #1617 onto it.
+# Past handoff — Decision SLA on owner inbox items (#1607)
 
 Last updated: 2026-09-27
 

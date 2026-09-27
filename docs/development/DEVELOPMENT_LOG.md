@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1618 — Staff action executors under the 500-line cap
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1618
+- **Branch:** `fix/action-executors-size`
+- **PR:** pending
+- **Paths:** `backend/staff/action_executors.py`, `backend/staff/hold_actions.py`, `backend/staff/code_request_actions.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (staff/action suites 1495 passed; full-tree line cap clean; mypy clean)
+- **Summary:** Hold and Code Request executors move to their own modules so `action_executors.py` is back under the 500-line cap that turned `main` red.
+- **Next step:** Merge the #1618 PR once CI is green.
 ### DL-#1607 · Decision SLA on owner inbox items
 
 - **State:** in_review
