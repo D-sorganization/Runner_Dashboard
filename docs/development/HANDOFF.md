@@ -1,3 +1,43 @@
+# Current handoff — Code Requests owned by product-owner (#1665)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `/home/user/Runner_Dashboard`
+- Branch: `claude/runner-dashboard-roles-gaps-k9i38r`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1665 (Phase 2 of Repository_Management#1766; roles in Repository_Management#1823); DL-#1665. DL-#1662 shipped in #1663.
+
+## Objective and Status
+
+- `backend/staff/action_executors.py`:
+  - `CODE_REQUEST_OWNER_ROLE = "product-owner"` and `FALLBACK_CODE_REQUEST_OWNER_ROLE = "barb"`.
+  - New `code_request_owner_role(roster=None)` returns the owner, or `barb` when `product-owner` is not loaded or the roster cannot be loaded.
+  - `validate_action_default_roles` accepts the `barb` fallback, as it already does for the reviewer.
+- `backend/staff/code_request_actions.py`: `code_request.create` assigns the work item to `code_request_owner_role()` when no role is given.
+- `backend/staff/actions.py`: `check_role_permission` grants `code_request.*` to the owner role by name. The Repository_Management role schema has no `allowed_actions` key, which is the same reason `board-secretary` is special-cased.
+- `backend/code_requests/profiles.py`:
+  - The seeded `executor-cli` profile's `staff_role` is now `issue-remediator`.
+  - Profiles persisted in `agent_profiles.json` on existing nodes keep their old value until edited, because seeds apply only on first creation.
+- `pr_requires_approval` is not enforced. The options and the recommendation are in the design note on #1665 (use the reviewer's verdict, decided with the 2026-10-11 reviewer-blocking review).
+
+## Validation
+
+- `cd backend && STAFF_ROLES_DIR=<Repository_Management with #1823>/staff/roles python -m pytest ../tests/unit/test_code_request_owner_role.py`: 6 passed. The tests failed at import before the change.
+- The staff / code_request / api subset has the same 14 order-dependent failures as `main` (chat-turn, thread, panel and spend API tests that pass in isolation).
+- `tests/staff/routing_eval/test_action_executor_roles.py::test_action_executor_default_roles_resolve_and_are_dispatchable` fails against a Repository_Management `main` that lacks `product-owner`, and passes against #1823.
+- `ruff check`, `ruff format --check` and `mypy` on the four changed modules: clean.
+
+## Next Steps
+
+1. Once Repository_Management#1823's PR is on its `main`, push and open the PR and merge it when green.
+2. Owner: decide the reviewer-blocking question on or after 2026-10-11. That also settles `pr_requires_approval` (#1665 design note).
+
+---
+
 # Current handoff — A failed auto-review gets one more attempt (#1662)
 
 Last updated: 2026-09-27

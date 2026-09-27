@@ -18,18 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1662 — A failed auto-review gets one more attempt
+### DL-#1665 — Code Requests owned by product-owner; executor profile relabelled
 
 - **State:** in_review
 - **Owner:** claude
-- **Issue:** #1662 (decision 4 of Repository_Management#1766)
+- **Issue:** #1665 (Phase 2 of Repository_Management#1766; roles in Repository_Management#1823)
 - **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
 - **PR:** not created
-- **Paths:** `backend/staff/review.py`, `backend/staff/store.py`, `tests/unit/test_staff_review_retry.py`
+- **Paths:** `backend/staff/action_executors.py`, `backend/staff/actions.py`, `backend/staff/code_request_actions.py`, `backend/code_requests/profiles.py`, `tests/unit/test_code_request_owner_role.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (review tests 28 passed across `test_staff_review_runtime.py` and `test_staff_review_retry.py`; staff/review/store subset has the same 14 pre-existing failures as `main`; ruff and mypy clean; review fixes: full-history attempt count, test module split)
-- **Summary:** `_already_reviewed` counted a failed review, so a PR whose first review failed for good was never reviewed again. It now ignores reviews that ended `failed` (runner retries included), up to `MAX_AUTO_REVIEW_ATTEMPTS = 2`. `_review_claim` no longer writes stray lock files beside a stub store's mock path.
-- **Next step:** Merge the PR once CI is green.
+- **Last verified:** 2026-09-27 (`tests/unit/test_code_request_owner_role.py` 6 passed; staff/code_request/api subset has the same 14 order-dependent failures as `main`, plus the roster check until Repository_Management#1823 is on its `main`; ruff and mypy clean)
+- **Summary:** `CODE_REQUEST_OWNER_ROLE` is `product-owner`, with `barb` as the fallback until a node's Repository_Management checkout carries the role (`code_request_owner_role()`, and the same fallback in validation). The owner role may run `code_request.*` actions by name, since the role schema has no `allowed_actions`. The seeded `executor-cli` profile is labelled `issue-remediator` instead of the planner's `chief-architect`. `pr_requires_approval` stays unenforced pending the owner's reviewer-blocking decision (design note on #1665).
+- **Next step:** Merge the PR after Repository_Management#1823's PR is on its `main`.
 
 ### DL-#1659 — Code-read-only staff runs
 
@@ -2512,6 +2512,20 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1662 — A failed auto-review gets one more attempt
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1662 (decision 4 of Repository_Management#1766)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** #1663
+- **Paths:** `backend/staff/review.py`, `backend/staff/store.py`, `tests/unit/test_staff_review_retry.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (review tests 28 passed across `test_staff_review_runtime.py` and `test_staff_review_retry.py`; staff/review/store subset has the same 14 pre-existing failures as `main`; ruff and mypy clean; review fixes: full-history attempt count, test module split)
+- **Summary:** `_already_reviewed` counted a failed review, so a PR whose first review failed for good was never reviewed again. It now ignores reviews that ended `failed` (runner retries included), up to `MAX_AUTO_REVIEW_ATTEMPTS = 2`. `_review_claim` no longer writes stray lock files beside a stub store's mock path.
+- **Shipped:** 2026-09-27
+- **Next step:** Shipped in PR #1663 (`02419867`).
 
 ### DL-#1660 — LF line endings enforced by .gitattributes
 
