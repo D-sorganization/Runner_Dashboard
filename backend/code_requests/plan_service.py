@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from code_requests.lifecycle import TransitionGate
 from code_requests.model import CodeRequest, CodeRequestState
 from code_requests.plan import PlanDraft
 from code_requests.plan_filing import Fetch, Write, file_plan
@@ -134,7 +135,11 @@ async def _file(deps: PlanDeps, request: CodeRequest, session: PlanningSession, 
     deps.sessions.save(session)
     epic = session.filing.epic_url or f"{deps.org}/{request.repository}#{session.filing.epic_number}"
     planned = await deps.requests.transition(
-        request.id, CodeRequestState.PLANNED, actor=actor, reason=f"plan filed as {epic}"
+        request.id,
+        CodeRequestState.PLANNED,
+        actor=actor,
+        reason=f"plan filed as {epic}",
+        gate=TransitionGate.PLAN_FILED,
     )
     await deps.requests.save(planned.model_copy(update={"plan_epic": epic}))
     return session

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from code_requests.model import CodeRequest, CodeRequestAuditEvent, CodeRequestState
 
@@ -31,6 +32,30 @@ LEGAL_TRANSITIONS: dict[CodeRequestState, frozenset[CodeRequestState]] = {
     CodeRequestState.DECLINED: frozenset(),
     CodeRequestState.CANCELLED: frozenset(),
 }
+
+
+class TransitionGate(StrEnum):
+    """Evidence a caller must name to enter a gated state (#1605).
+
+    Only the service that checked the evidence passes its gate: the plan service
+    after it files the plan (and after owner approval when the profile requires
+    it), and the acceptance check once every child PR is verified.
+    """
+
+    PLAN_FILED = "plan_filed"
+    ACCEPTANCE = "acceptance"
+
+
+GATED_TARGETS: dict[CodeRequestState, TransitionGate] = {
+    CodeRequestState.PLANNED: TransitionGate.PLAN_FILED,
+    CodeRequestState.DONE: TransitionGate.ACCEPTANCE,
+}
+
+
+def required_gate(to_state: CodeRequestState) -> TransitionGate | None:
+    """Return the gate a transition into ``to_state`` needs, or None if it is ungated."""
+    return GATED_TARGETS.get(to_state)
+
 
 PRE_PLANNING_STATES: frozenset[CodeRequestState] = frozenset(
     {
@@ -70,6 +95,7 @@ def transition(
     actor: str,
     reason: str,
     is_operator_override: bool = False,
+    gate: TransitionGate | None = None,
     now: str | None = None,
 ) -> CodeRequest:
     """Execute a pure state machine transition on a CodeRequest.
@@ -77,7 +103,10 @@ def transition(
     Appends an audit event to the request's audit trail, updates its state and
     updated_at timestamp, and returns a new CodeRequest instance.
 
-    Raises InvalidTransitionError if the transition is illegal.
+    Preconditions: the move is legal (``is_legal_transition``), and a gated target
+    (``GATED_TARGETS``) is entered only with its ``gate`` or an operator override,
+    which the audit event records.
+    Raises InvalidTransitionError if either precondition fails.
     """
     if isinstance(to_state, str):
         try:
@@ -94,6 +123,13 @@ def transition(
         raise InvalidTransitionError(
             f"Cannot transition Code Request {request.id} from {from_state.value!r} to "
             f"{target_state.value!r}{override_suffix}"
+        )
+
+    needed = required_gate(target_state)
+    if needed is not None and gate is not needed and not is_operator_override:
+        raise InvalidTransitionError(
+            f"Cannot move Code Request {request.id} to {target_state.value!r} without the "
+            f"{needed.value!r} gate; use its service or an operator override"
         )
 
     timestamp = now or datetime.now(UTC).isoformat()

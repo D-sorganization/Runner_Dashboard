@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from code_requests.lifecycle import transition
+from code_requests.lifecycle import TransitionGate, transition
 from code_requests.model import (
     CodeRequest,
     CodeRequestAuditEvent,
@@ -200,6 +200,7 @@ class CodeRequestStore:
         actor: str,
         reason: str,
         is_operator_override: bool = False,
+        gate: TransitionGate | None = None,
         now: str | None = None,
     ) -> CodeRequest:
         """Execute a state transition, post an audit comment, and update records."""
@@ -213,6 +214,7 @@ class CodeRequestStore:
             actor=actor,
             reason=reason,
             is_operator_override=is_operator_override,
+            gate=gate,
             now=now,
         )
         audit_event = updated.audit_trail[-1]

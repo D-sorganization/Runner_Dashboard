@@ -280,6 +280,32 @@ def test_transition_code_request(client: TestClient, cr_env: tuple[Path, Path, P
     assert not_found_resp.status_code == 404
 
 
+def test_transition_route_cannot_skip_plan_approval(client: TestClient, cr_env: tuple[Path, Path, Path]) -> None:
+    """#1605: the generic route reaches ``planned`` only with an audited operator override."""
+    with patch(
+        "code_requests.store.gh_api_write",
+        new=AsyncMock(return_value={"number": 104, "html_url": "https://github.com/o/r/issues/104"}),
+    ):
+        req_id = client.post(
+            "/api/code-requests", json={"repository": "Runner_Dashboard", "prompt": "Gated", "submitted": True}
+        ).json()["id"]
+
+    def move(to_state: str, **extra: object) -> Any:
+        with patch("code_requests.store.gh_api_write", new=AsyncMock(return_value={})):
+            return client.post(
+                f"/api/code-requests/{req_id}/transition", json={"to_state": to_state, "reason": "r", **extra}
+            )
+
+    assert move("planning").status_code == 200
+    skipped = move("planned")
+    assert skipped.status_code == 400
+    assert "plan_filed" in skipped.json()["detail"]
+
+    forced = move("planned", is_operator_override=True)
+    assert forced.status_code == 200
+    assert forced.json()["audit_trail"][-1]["override"] is True
+
+
 def test_scope_authorization(cr_env: tuple[Path, Path, Path]) -> None:
     """Bots are allowed to create requests only when holding code-requests.manage."""
     p_bot_allowed = Principal(id="allowed-bot", type="bot", name="Allowed", scopes=["code-requests.manage"])
