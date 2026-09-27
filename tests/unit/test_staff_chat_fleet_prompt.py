@@ -15,6 +15,7 @@ from staff.conversations import (
 )
 from staff.roles import RoleSpec
 from staff.thread_bus import reset_thread_bus
+from staff.turn_prompt import MESSAGE_HEADER
 
 
 @pytest.fixture
@@ -35,7 +36,12 @@ async def test_chat_turn_passes_fleet_context_before_user_text(conv_store: Conve
         chat={"tools": ["read_staff_summary"]},
     )
 
-    thread = conv_store.create_thread(title="Barb Turn", role="barb", created_by="alice")
+    thread = conv_store.create_thread(
+        title="Barb Turn",
+        role="barb",
+        created_by="alice",
+        meta={"provider_sessions": {"claude": "claude_fleet_123"}},
+    )
     user_msg = conv_store.add_message(
         thread.id,
         author_kind="user",
@@ -89,7 +95,9 @@ async def test_chat_turn_passes_fleet_context_before_user_text(conv_store: Conve
         argv = mock_spawn.call_args.kwargs["cmd"]
         prompt = next(arg for arg in argv if "What is the current fleet state?" in arg)
         assert "## Fleet now" in prompt
+        assert MESSAGE_HEADER in prompt
         # History replay may quote the question earlier; the current turn is the last occurrence.
         fleet_idx = prompt.rindex("## Fleet now")
+        header_idx = prompt.rindex(MESSAGE_HEADER)
         user_idx = prompt.rindex("What is the current fleet state?")
-        assert fleet_idx < user_idx
+        assert fleet_idx < header_idx < user_idx

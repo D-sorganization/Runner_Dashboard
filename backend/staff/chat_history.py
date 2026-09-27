@@ -55,11 +55,22 @@ def format_history_replay(
     thread_id: str,
     current_prompt: str,
     role: RoleSpec | None,
+    *,
+    context: str = "",
     token_budget: int = DEFAULT_TOKEN_BUDGET,
 ) -> str:
-    """Format conversation history and role persona into a prompt for history replay.
+    """Format conversation history, role persona, and gathered context for replay (#1307, #1649).
 
-    Estimates ~4 characters per token to ensure prompt stays strictly within budget.
+    Preconditions:
+        conv_store: Active ConversationStore instance.
+        thread_id: Conversation thread identifier.
+        current_prompt: The raw user message prompt for the current turn.
+        role: RoleSpec defining assistant identity and instructions.
+        context: Optional dashboard-gathered reference context block to inject.
+        token_budget: Maximum token budget (estimates ~4 chars/token).
+
+    Postconditions:
+        Returns formatted replay prompt staying strictly within char_budget.
     """
     char_budget = token_budget * 4
 
@@ -72,6 +83,7 @@ def format_history_replay(
         persona_header = f"### Role: {role_title}\n{role.summary}\n\n{role_body}\n\n"
 
     contract_fragment = get_chat_contract_text() + "\n\n"
+    context_fragment = f"{context.strip()}\n\n" if context.strip() else ""
     messages = conv_store.list_messages(thread_id, limit=50)
 
     turns: list[str] = []
@@ -97,7 +109,7 @@ def format_history_replay(
     current_turn = f"User: {current_prompt.strip()}\nAssistant:"
 
     included_turns: list[str] = []
-    base_len = len(persona_header) + len(contract_fragment) + len(current_turn)
+    base_len = len(persona_header) + len(contract_fragment) + len(context_fragment) + len(current_turn)
     remaining_chars = max(0, char_budget - base_len)
 
     for turn in reversed(turns):
@@ -112,6 +124,8 @@ def format_history_replay(
     dialogue_section = "\n\n".join(included_turns)
 
     parts: list[str] = [persona_header, contract_fragment]
+    if context_fragment:
+        parts.append(context_fragment)
     if dialogue_section:
         parts.append(f"### Prior Conversation\n{dialogue_section}\n\n")
     parts.append(current_turn)

@@ -1,10 +1,11 @@
-"""Unit tests for chat history replay prompt formatting (Issue #1631).
+"""Unit tests for chat history replay prompt formatting (Issue #1631, Issue #1649).
 
 Verifies:
 a) system ack message text does not appear in the replay output;
 b) the current question appears exactly once (count == 1) when it is the last stored user message;
 c) an earlier identical question (followed by a role reply) is kept, so the text appears twice in total;
-d) a normal prior user+role exchange still appears under "### Prior Conversation".
+d) a normal prior user+role exchange still appears under "### Prior Conversation";
+e) context parameter placement and de-dup on raw message (#1649).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from staff.conversations import (
     ConversationStore,
     reset_conversation_store,
 )
+from staff.reply_contract import get_chat_contract_text
 from staff.roles import RoleSpec
 
 
@@ -334,3 +336,117 @@ def test_current_question_matching_with_whitespace_stripping(
 
     assert replay.count("What is the queue depth?") == 1
     assert "### Prior Conversation" not in replay
+
+
+@pytest.mark.unit
+def test_history_replay_with_context_dedup_and_placement(
+    conv_store: ConversationStore,
+    barb_role: RoleSpec,
+) -> None:
+    """With context, persisted current user message appears once, context appears after contract and before prior."""
+    thread = conv_store.create_thread(title="Replay Context Test", role="barb")
+    current_prompt = "What is the runner status?"
+
+    # Prior exchange
+    conv_store.add_message(
+        thread_id=thread.id,
+        author_kind="user",
+        author="alice",
+        kind="text",
+        body_md="Good morning Barb.",
+    )
+    conv_store.add_message(
+        thread_id=thread.id,
+        author_kind="role",
+        author="barb",
+        kind="text",
+        body_md="Good morning Alice!",
+    )
+    # The current user question is already persisted in the store
+    conv_store.add_message(
+        thread_id=thread.id,
+        author_kind="user",
+        author="alice",
+        kind="text",
+        body_md=current_prompt,
+    )
+
+    context_str = "## Fleet now\nx"
+    replay = format_history_replay(
+        conv_store=conv_store,
+        thread_id=thread.id,
+        current_prompt=current_prompt,
+        role=barb_role,
+        context=context_str,
+    )
+
+    # Persisted current user message appears exactly once (de-dup works on raw message)
+    assert replay.count(current_prompt) == 1
+    assert f"User: {current_prompt}\nAssistant:" in replay
+
+    # Context appears in replay
+    assert "## Fleet now\nx" in replay
+
+    # Context appears before "### Prior Conversation" and after the contract fragment
+    contract_text = get_chat_contract_text()
+    contract_idx = replay.index(contract_text)
+    context_idx = replay.index("## Fleet now\nx")
+    prior_idx = replay.index("### Prior Conversation")
+    current_idx = replay.index(f"User: {current_prompt}\nAssistant:")
+
+    assert contract_idx < context_idx < prior_idx < current_idx
+
+
+@pytest.mark.unit
+def test_history_replay_without_context_unchanged(
+    conv_store: ConversationStore,
+    barb_role: RoleSpec,
+) -> None:
+    """Without context or with empty context, the replay output is completely unchanged from default."""
+    thread = conv_store.create_thread(title="Replay No Context Test", role="barb")
+    current_prompt = "What is the runner status?"
+
+    conv_store.add_message(
+        thread_id=thread.id,
+        author_kind="user",
+        author="alice",
+        kind="text",
+        body_md="Hello Barb.",
+    )
+    conv_store.add_message(
+        thread_id=thread.id,
+        author_kind="role",
+        author="barb",
+        kind="text",
+        body_md="Hello Alice.",
+    )
+    conv_store.add_message(
+        thread_id=thread.id,
+        author_kind="user",
+        author="alice",
+        kind="text",
+        body_md=current_prompt,
+    )
+
+    replay_no_kwarg = format_history_replay(
+        conv_store=conv_store,
+        thread_id=thread.id,
+        current_prompt=current_prompt,
+        role=barb_role,
+    )
+    replay_empty_str = format_history_replay(
+        conv_store=conv_store,
+        thread_id=thread.id,
+        current_prompt=current_prompt,
+        role=barb_role,
+        context="",
+    )
+    replay_whitespace = format_history_replay(
+        conv_store=conv_store,
+        thread_id=thread.id,
+        current_prompt=current_prompt,
+        role=barb_role,
+        context="   \n\t  ",
+    )
+
+    assert replay_no_kwarg == replay_empty_str == replay_whitespace

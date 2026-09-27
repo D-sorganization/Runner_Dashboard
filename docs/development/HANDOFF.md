@@ -1,4 +1,29 @@
-# Current handoff — Panels leave out providers switched off on the node (#1645)
+# Current handoff — Chat prompt boundary between fleet context and the owner's message (#1649)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1649`; branch `fix/turn-prompt-boundary`; PR: see DL-#1649; Issue #1649; DL-#1649.
+
+## Objective and Status
+
+- Live probe on OGLaptop (096c7de): Barb called the owner's message an out-of-band instruction at the end of the Fleet now data and refused it twice; the Librarian (no fleet block) passed.
+- Cause: chat.py joined fleet block, knowledge block and message with no boundary; replay also got the combined text, so the #1636 de-dup never matched for roles with context.
+- Drafted by agy from a TDD spec; I added boundary neutralisation at the DeskComputer peer's review request.
+
+## Validation
+
+- New turn-prompt, replay and fleet-prompt tests failed first, now pass (including a hostile block carrying the message header).
+- `pytest tests -k 'chat or turn_prompt or knowledge or fleet'`: 540 passed, 1 skipped; ruff clean; chat.py 477 lines.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and re-run the two-turn Barb memory probe.
+
+---
+
+# Past handoff — Panels leave out providers switched off on the node (#1645)
 
 Last updated: 2026-09-27
 

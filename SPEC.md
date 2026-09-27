@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1649 | Staff chat turns separate dashboard-gathered context from the person's message: a reference note, the context blocks (boundary-like lines quoted), then `## Message from the person you are talking to` and the message; plain turns are unchanged. The history replay de-dups against the raw message and places the context before the prior conversation. |
 | 2026-09-27 | #1645 | Expert panels honour `STAFF_DISABLED_PROVIDERS` (#1597): `GET /panels/presets` lists only enabled providers, and `POST /panels` rejects an expert or moderator seat on a disabled provider with the same 422 as an unknown provider. |
 | 2026-09-27 | #1637 | Board group-thread seats run as real read-only provider turns (`staff/group_seat_runner.run_seat` over `panel.default_turn_runner`) instead of canned stub text, with cost from the seat price table; `default_turn_runner(message_id=None)` runs the same argv without streaming tokens. |
 | 2026-09-27 | #1635 | Staff Console expert panels UI: roster 'New panel' form (topic, mode, rounds, 3–4 experts, presets) over `/api/v1/staff/panels`, cost-guard confirm reusing a generalised `GroupCostConfirm`, panel threads grouped under 'Round N' with stance/status chips, a consensus card for the synthesis, and a read-only composer in panel threads. |
