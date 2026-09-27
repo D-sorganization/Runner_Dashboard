@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** #1647 changed a route docstring (part of the OpenAPI description) on a backend-only PR, so the frontend lane that verifies the committed contract never ran; main then failed that check.
 - **Next step:** Merge; then #1652's frontend lane passes on update.
 
+### DL-#1653 — Regenerate API contract after #1647
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1653
+- **Branch:** `fix/regen-api-contract-presets`
+- **PR:** pending
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (generator output matches the committed contract)
+- **Summary:** #1647 changed a route docstring (part of the OpenAPI description) on a backend-only PR, so the frontend lane that verifies the committed contract never ran; main then failed that check.
+- **Next step:** Merge; then #1652's frontend lane passes on update.
+
 ### DL-#1651 — Chat smoke --memory two-turn check
 
 - **State:** in_review
