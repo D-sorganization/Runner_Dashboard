@@ -284,7 +284,21 @@ async def post_message(
 
         budget_guard = get_global_budget_guard()
         can_chat, _ = budget_guard.can_chat(target_role)
-        if not can_chat:
+        bus = get_thread_bus()
+        ack_msg = None
+        if can_chat:
+            # Ack before the reply slot so seq order reads user -> ack -> reply.
+            ack_msg = await record_fast_acknowledgment(store, bus, thread_id, user_msg.id, target_role, body.body)
+            reply_placeholder_rec = store.add_message(
+                thread_id=thread_id,
+                author_kind="role",
+                author=target_role,
+                kind="text",
+                body_md="",
+                meta={"in_reply_to": user_msg.id},
+                delivery="pending",
+            )
+        else:
             reply_placeholder_rec = store.add_message(
                 thread_id=thread_id,
                 author_kind="system",
@@ -303,23 +317,8 @@ async def post_message(
                 detail={"role": target_role, "thread_id": thread_id},
                 fail_closed=False,
             )
-        else:
-            reply_placeholder_rec = store.add_message(
-                thread_id=thread_id,
-                author_kind="role",
-                author=target_role,
-                kind="text",
-                body_md="",
-                meta={"in_reply_to": user_msg.id},
-                delivery="pending",
-            )
 
         # Broadcast live events on thread bus
-        bus = get_thread_bus()
-        ack_msg = None
-        if can_chat:
-            ack_msg = await record_fast_acknowledgment(store, bus, thread_id, user_msg.id, target_role, body.body)
-
         asyncio.create_task(bus.publish_message(thread_id, user_msg.to_dict()))
         asyncio.create_task(bus.publish_message(thread_id, reply_placeholder_rec.to_dict()))
 

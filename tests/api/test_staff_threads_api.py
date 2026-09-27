@@ -354,3 +354,28 @@ def test_post_message_rejects_unknown_fields(client: TestClient):
     )
     assert resp.status_code == 422, resp.text
     assert "content" in resp.text
+
+
+def test_ack_is_stored_before_the_reply_slot(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    """The 'On it' ack reads before the role's reply in seq order (#1630)."""
+
+    async def _no_turn(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("routers.staff_threads.run_chat_turn_in_background", _no_turn)
+    tid = client.post("/api/v1/staff/threads", json={"title": "T", "role": "barb"}).json()["id"]
+    resp = client.post(
+        f"/api/v1/staff/threads/{tid}/messages",
+        headers={"Idempotency-Key": "example-key-ack-order"},  # gitleaks:allow
+        json={"body": "fleet status?"},
+    )
+    assert resp.status_code == 202, resp.text
+    data = resp.json()
+    user_seq = data["message"]["seq"]
+    ack_seq = data["acknowledgement"]["seq"]
+    reply_seq = data["reply_placeholder"]["seq"]
+    assert user_seq < ack_seq < reply_seq
+
+    detail = client.get(f"/api/v1/staff/threads/{tid}?since_seq=0").json()
+    kinds = [m["author_kind"] for m in sorted(detail["messages"], key=lambda m: m["seq"])]
+    assert kinds == ["user", "system", "role"]
