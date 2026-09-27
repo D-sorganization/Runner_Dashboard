@@ -1,3 +1,91 @@
+# Current handoff — Reap Windows Chrome leaked by WSL runner jobs (DL-#1678)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1678`
+- Branch: `fix/1678-wsl-chrome-reaper`
+- Baseline commit: `origin/main` at `ce6e9311`
+- Implementation commit: `SELF`
+- Pull request: not created yet
+- Governing issue/epic: #1678; DL-#1678.
+
+## Objective and status
+
+- Fleet safety net: self-hosted Linux runners inside WSL can leak Windows
+  `chrome.exe` processes through `/mnt/c` interop (lhci/chrome-launcher was
+  the observed source, fixed separately in Gasification_Model). This adds a
+  reaper to the hourly maintenance path so any future leak of the same shape
+  is cleaned up automatically.
+- The match is anchored to Chrome's `--user-data-dir` flag (`-match '--user-data-dir="?[^" ]*\\AppData\\Local\\lighthouse\.'`), so the user's Chrome opened on a URL or file path containing that string never matches. Verified in PS 7 and 5.1; a read-only run on OGLaptop matched 0 of 18 (all user) Chrome processes.
+- `deploy/reap-wsl-leaked-chrome.sh` (new, standalone, testable): calls
+  `powershell.exe -NoProfile -NonInteractive -Command` (wrapped in
+  `timeout 120`) with a PowerShell 5.1-compatible snippet that uses
+  `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'"`, keeping only
+  processes whose `CommandLine -like '*\AppData\Local\lighthouse.*'` AND
+  whose `[datetime]CreationDate` is older than
+  `LEAKED_CHROME_MAX_AGE_HOURS` (default 2). Dry run (`DRY_RUN=1`, the
+  default guard used by callers) and real run build **distinct** snippet
+  text, so a dry run never contains a literal `Stop-Process` call; a real
+  run (`DRY_RUN=0`) calls `Stop-Process -Force` on the matched process ids
+  and prints the count. `POWERSHELL_BIN` overrides the PowerShell binary for
+  tests. If `powershell.exe`/`POWERSHELL_BIN` is not found, or interop
+  fails/times out, it prints a warning and exits 0 — it never fails
+  maintenance. Profile directories are never deleted.
+- `deploy/scheduled-dashboard-maintenance.sh`: `reap_wsl_leaked_chrome_if_applicable()`
+  is called once from `main()` after `purge_stale_queue`. It guards on
+  `/proc/sys/fs/binfmt_misc/WSLInterop` existing or `WSL_DISTRO_NAME` being
+  set, so non-WSL hosts skip it entirely; a reaper failure is caught and
+  logged as a warning, never fails the run.
+
+## Files and decisions
+
+- `deploy/reap-wsl-leaked-chrome.sh` (new): the reaper, LF line endings,
+  exec bit set in the git index (`git update-index --chmod=+x`; Windows
+  filesystems do not preserve the POSIX bit on disk, so the test checks
+  `git ls-files -s` instead of `os.stat()`).
+- `deploy/scheduled-dashboard-maintenance.sh`: added the WSL-guarded call
+  and added the reaper script to the existing `chmod +x` line in
+  `deploy_dashboard()`.
+- `tests/test_reap_wsl_leaked_chrome.py` (new): drives the bash script via
+  `subprocess` with a fake `powershell.exe` on `PATH`/`POWERSHELL_BIN` that
+  records argv+stdin. Covers: script exists; git index records mode
+  `100755` (skips if the git worktree admin path can't be resolved, a known
+  quirk of running WSL git against a Windows-created worktree over
+  `/mnt/c` — see the "Never WSL git worktree prune" reference note; not a
+  property of the file itself); the snippet contains the lighthouse pattern
+  and `CreationDate` age filter; dry-run never contains `Stop-Process`; a
+  real run does; a custom `LEAKED_CHROME_MAX_AGE_HOURS` is honoured;
+  missing `powershell.exe` exits 0 with a warning; the maintenance script
+  references the reaper strictly after a WSL guard marker (static check).
+
+## Validation
+
+- `PYTHONPATH` not required; ran via WSL Ubuntu-22.04
+  `~/.cache/rd-test-venv/bin/python -m pytest
+tests/test_reap_wsl_leaked_chrome.py tests/test_maintenance_smoke.py -q`:
+  9 passed, 1 skipped (the git-worktree-admin-path quirk above), same
+  result from Windows `py -3.12 -m pytest`.
+- `py -3.12 -m ruff check tests/test_reap_wsl_leaked_chrome.py` and
+  `ruff format --check`: clean.
+- `shellcheck deploy/reap-wsl-leaked-chrome.sh` under WSL: no findings.
+- Confirmed RED first: before the script existed, all 7 initial test cases
+  failed (missing file / `No such file or directory`).
+- Never ran the reaper for real against this machine; all runs in tests use
+  a fake `powershell.exe` that never touches a real process.
+
+## Next steps
+
+1. Commit with message `fix(deploy): Reap Windows Chrome Leaked by WSL Runner Jobs (#1678)`.
+2. Push `fix/1678-wsl-chrome-reaper` and verify the remote SHA.
+3. Open a draft PR (`Fixes #1678`), mark ready, arm auto-merge (squash) via
+   `scripts/automerge_guard.py`.
+4. Release the lease on issue #1678 once the PR is open.
+
+---
+
 # Current handoff — Confident auto-route messages go straight to the specialist (#1567)
 
 Last updated: 2026-09-27
