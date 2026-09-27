@@ -1,4 +1,27 @@
-# Current handoff — WSL disk card in Operations Diagnostics (#1332-card)
+# Current handoff — Owner-level default approval for disk compaction (#1332-default)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332def`; branch `fix/1332-vhdx-default-owner`; PR: see DL-#1332-default; Issue #1332-default; DL-#1332-default.
+
+## Objective and Status
+
+- Deploy order honoured: the RM maintenance role already sets `host.vhdx_compact: owner` on OGLaptop, DeskComputer and ControlTower (live STAFF_ROLES_DIR at fbbe311, checked read-only 2026-09-27), so raising the default cannot invalidate a live role.
+- The owner-only risk class already enforced owner approval at execution; this aligns the declared policy with it.
+
+## Validation
+
+- pytest tests/unit/test_staff_roles.py tests/staff/test_vhdx_compaction_request.py tests/staff/test_maintenance_safety.py: pass (new parametrized test red first).
+
+## Next Steps
+
+1. Close #1332 and epic #1351 after this and PR #1691 merge.
+
+---
+
+# Past handoff — WSL disk card in Operations Diagnostics (#1332-card)
 
 Last updated: 2026-09-27
 

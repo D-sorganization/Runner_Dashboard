@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1332-default — Owner-level default approval for disk compaction
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332-default
+- **Branch:** `fix/1332-vhdx-default-owner`
+- **PR:** pending
+- **Paths:** `backend/staff/validator.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites; live role check on 3 nodes)
+- **Summary:** Raises the RD default after Repository_Management#1829 went live on every staff node.
+- **Next step:** Close #1332 and epic #1351 after this and PR #1691 merge.
+
 ### DL-#1332-card — WSL disk card in Operations Diagnostics
 
 - **State:** in_review
