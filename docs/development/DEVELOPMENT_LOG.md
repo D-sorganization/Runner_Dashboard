@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1686 — Restore green frontend lint on main
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1686
+- **Branch:** `fix/1686-settings-lint`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (CI)
+- **Summary:** main-is-red fix: one-word change, the constant is only used inside the file.
+- **Next step:** None.
+
 ### DL-#1335 — ADR: agent-client ingress stays local-only
 
 - **State:** in_review
