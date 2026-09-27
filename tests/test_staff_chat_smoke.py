@@ -319,7 +319,7 @@ def test_bearer_header_sent_and_token_never_printed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     smoke = _load()
-    secret_token = "secret-token-xyz-12345"
+    secret_token = "secret-token-xyz-12345"  # pragma: allowlist secret
     monkeypatch.setenv("STAFF_SMOKE_TOKEN", secret_token)
 
     recorded_headers: list[dict[str, str]] = []
