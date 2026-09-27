@@ -11,13 +11,16 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
+from staff.chat_streaming import TurnStreamOutput
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.panel import (
     PanelSpeaker,
     TurnOutcome,
+    default_turn_runner,
     estimate_panel_cost,
     panel_result,
     parse_stance,
@@ -25,7 +28,7 @@ from staff.panel import (
     start_panel_thread,
 )
 from staff.panel_models import PANEL_PRESETS, PanelCreateRequest
-from staff.thread_bus import reset_thread_bus
+from staff.thread_bus import get_thread_bus, reset_thread_bus
 
 EXPERTS = [
     {"name": "Ada", "perspective": "numerical methods"},
@@ -211,3 +214,59 @@ def test_cost_grows_with_rounds_and_experts() -> None:
     )
     assert 0 < small.total_cost_usd < large.total_cost_usd
     assert set(large.cost_per_seat) == {"Ada", "Brook", "Cy", "Di", "Moderator"}
+
+
+@pytest.mark.asyncio
+async def test_default_turn_runner_message_id_none_publishes_no_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When message_id is None, default_turn_runner passes a null bus so no tokens stream."""
+    mock_adapter = MagicMock()
+    mock_adapter.chat_argv.return_value = ["dummy", "cmd"]
+    mock_adapter.runtime_env.return_value = {}
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = 0
+
+    passed_bus: Any = None
+
+    async def fake_stream_turn_output(
+        reader: Any, adapter: Any, bus: Any, thread_id: str, placeholder_id: str
+    ) -> TurnStreamOutput:
+        nonlocal passed_bus
+        passed_bus = bus
+        return TurnStreamOutput(
+            stdout_lines=["All good\n"],
+            stderr_lines=[],
+            returncode=0,
+            json_lines=False,
+        )
+
+    monkeypatch.setattr("staff.panel.get_adapter", lambda _prov: mock_adapter)
+    spawned: list[list[str]] = []
+
+    def fake_spawn(**kw: Any) -> Any:
+        spawned.append(list(kw["cmd"]))
+        return mock_proc
+
+    monkeypatch.setattr("staff.panel.spawn_cli_process", fake_spawn)
+    monkeypatch.setattr("staff.panel.stream_turn_output", fake_stream_turn_output)
+
+    speaker = PanelSpeaker(name="Ada", perspective="numerical methods", provider="claude", model="opus-5")
+    real_bus = get_thread_bus()
+    real_bus_mock = AsyncMock()
+    monkeypatch.setattr(real_bus, "publish_token", real_bus_mock)
+
+    outcome = await default_turn_runner(speaker, "prompt", "thread-1", None)
+    assert outcome.ok is True
+    assert outcome.text == "All good"
+    assert passed_bus is not real_bus
+    # Calling publish_token on the passed null bus must not raise and does nothing
+    await passed_bus.publish_token("thread-1", "", "token")
+    real_bus_mock.assert_not_called()
+
+    # When message_id is provided, real bus is passed
+    await default_turn_runner(speaker, "prompt", "thread-1", "msg-123")
+    assert passed_bus is real_bus
+    # The silent path spawns exactly the same CLI argv as the streaming panel path.
+    assert len(spawned) == 2 and spawned[0] == spawned[1]
