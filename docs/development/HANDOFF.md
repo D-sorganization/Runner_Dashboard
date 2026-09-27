@@ -1,4 +1,28 @@
-# Current handoff — Regenerate API contract after #1647 (#1653)
+# Current handoff — Deploy health gate: off-by-one and too-short window (#1656)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1656`; branch `fix/deploy-health-window`; PR: see DL-#1656; Issue #1656; DL-#1656.
+
+## Objective and Status
+
+- DeskComputer's afd7a4c redeploy rolled back after the gate gave up at ~15 s; a re-run passed on attempt 5.
+- The old loop was check-then-sleep over (1 2 4 8 16) with no check after the final 16 s sleep.
+
+## Validation
+
+- New `tests/deploy/test_wait_healthy.py` (5 tests, stub check and sleep) failed first (rc=127), now pass.
+- `pytest tests/deploy tests/test_deploy_hardening.py tests/test_today_deploy_hardening.py`: 333 passed, 17 skipped; `bash -n` clean.
+
+## Next Steps
+
+1. Merge; the next OGLaptop or DeskComputer redeploy exercises the new gate.
+
+---
+
+# Past handoff — Regenerate API contract after #1647 (#1653)
 
 Last updated: 2026-09-27
 

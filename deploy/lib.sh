@@ -12,6 +12,24 @@ info() { echo -e "${CYAN}[INFO]${NC} $*"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*" >&2; exit 1; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
+# Health gate (#1656): run "$@" until it succeeds, sleeping DEPLOY_HEALTH_DELAYS between tries.
+# Checks once up front and again after EVERY sleep (the old loop skipped the check after its
+# last sleep). Default window ~75 s; a restart on a busy host can take longer than 15 s.
+# Returns 0 as soon as the check passes, 1 when the window is exhausted.
+wait_healthy() {
+    local -a delays
+    read -r -a delays <<< "${DEPLOY_HEALTH_DELAYS:-1 2 4 8 15 15 15 15}"
+    local attempt=1
+    "$@" && return 0
+    for delay in "${delays[@]}"; do
+        warn "Health check attempt ${attempt} failed; retrying in ${delay}s..."
+        sleep "$delay"
+        attempt=$((attempt + 1))
+        "$@" && return 0
+    done
+    return 1
+}
+
 # Guard helpers
 require_dir()  { [[ -d "$1" ]] || fail "Required directory not found: $1"; }
 require_file() { [[ -f "$1" ]] || fail "Required file not found: $1"; }
