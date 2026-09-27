@@ -20,16 +20,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1634 — Expert Panels: Backend Engine and API
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1634 (epic #1633)
-- **Branch:** `feat/1634-expert-panels`
+- **Branch:** `feat/1634-expert-panels` (merged as #1640, `6ddddf75`); recipe `docs/1634-barb-panel-recipe`
 - **PR:** #1640
-- **Paths:** `backend/staff/panel.py`, `backend/staff/panel_models.py`, `backend/routers/staff_panels.py`, `backend/routers/staff_threads.py`, `tests/staff/test_panel.py`, `tests/api/test_staff_panels_api.py`
+- **Paths:** `backend/staff/panel.py`, `backend/staff/panel_models.py`, `backend/routers/staff_panels.py`, `backend/routers/staff_threads.py`, `tests/staff/test_panel.py`, `tests/api/test_staff_panels_api.py`, `docs/agents/grok.md`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (panel engine 24 + API 11 tests pass; staff/api suites green; mypy backend clean)
+- **Last verified:** 2026-09-27 (DeskComputer redeployed at `6ddddf75`; live 3-seat haiku debate completed: 3 turns ok, stances parsed, synthesis written, no consensus reported)
 - **Summary:** 3-4 read-only expert seats take turns for N rounds on a topic (debate stops at unanimous agreement, brainstorm runs all rounds) and a moderator writes the consensus synthesis; `POST/GET /api/v1/staff/panels`.
-- **Next step:** Merge PR #1640 once CI is green.
+- **Next step:** Review the #1637 change that lets `default_turn_runner` take `message_id=None` for Board seats.
 
 ### DL-#1638 — Staff chat smoke check
 
