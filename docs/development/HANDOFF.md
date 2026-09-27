@@ -1,4 +1,28 @@
-# Current handoff — Barb's Expert-Panel Recipe; #1634 Shipped and Live (#1634)
+# Current handoff — Expert panels UI (#1635)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_panelui`; branch `feat/staff-panel-ui`; PR: see DL-#1635; Issue #1635; DL-#1635.
+
+## Objective and Status
+
+- Drafted by agy (edit-only) from a written spec; reviewed by Claude.
+- Review fixes: panel turns render before the generic ErrorCard (a timed-out expert is stored `failed`, and Retry would 409); createPanel parsing tests moved to panelApi.test.ts (the form tests mock the module); mobile composer also read-only in panel threads.
+
+## Validation
+
+- `vitest run frontend/src/pages/StaffConsole`: 25 files, 180 tests passed.
+- `tsc -p tsconfig.app.json` and eslint (max-warnings 0) clean.
+
+## Next Steps
+
+1. Merge; open a 3-expert panel from the Staff Console on a deployed node.
+
+---
+
+# Past handoff — Barb's Expert-Panel Recipe; #1634 Shipped and Live (#1634)
 
 Last updated: 2026-09-27
 

@@ -93,6 +93,7 @@ export interface RosterProps {
   errorMessage?: string;
   isStale?: boolean;
   className?: string;
+  onThreadCreated?: (thread: import("./threadTypes").ThreadInfo) => void;
 }
 
 export interface RosterRowProps {

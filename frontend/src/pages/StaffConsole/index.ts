@@ -35,3 +35,11 @@ export * from "./consoleThreads";
 export * from "./useStaffConsole";
 export * from "./ConsoleErrorBanner";
 export * from "./Desktop";
+
+// #1635: Expert panels (epic #1633)
+export * from "./panelApi";
+export * from "./panelTurn";
+export * from "./GroupCostConfirm";
+export * from "./NewPanelForm";
+export * from "./PanelTurnCard";
+export * from "./PanelConsensusCard";

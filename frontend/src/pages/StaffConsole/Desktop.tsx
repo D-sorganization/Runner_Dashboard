@@ -13,6 +13,7 @@ import { GroupCostConfirm } from "./GroupCostConfirm";
 import type { ThreadApi } from "./consoleThreads";
 import { Roster } from "./Roster";
 import { Thread } from "./Thread";
+import { isPanelThread } from "./panelTurn";
 import type { StaffRoleItem } from "./types";
 import { useStaffConsole } from "./useStaffConsole";
 import "./desktop.css";
@@ -38,6 +39,7 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
         roles={roles}
         selectedRoleId={sc.selectedRole ?? undefined}
         onSelectRole={(name) => void sc.openRole(name)}
+        onThreadCreated={(thread) => sc.openThread(thread)}
         isLoading={sc.rosterLoading}
         isError={Boolean(rosterError)}
         errorMessage={rosterError ?? undefined}
@@ -103,6 +105,7 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
               onSendMessage={sc.sendMessage}
               placeholder={`Message ${currentRole.title || "staff"}…`}
               focusOnThreadChange
+              isPanel={isPanelThread(activeThread)}
             />
           </>
         ) : (
