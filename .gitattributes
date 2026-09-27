@@ -3,6 +3,11 @@
 # line of the file then shows as changed.
 * text=auto eol=lf
 
+# Explicitly text even when a file holds a NUL byte, which makes text=auto
+# call it binary (frontend/src/lib/fleetAlerts.ts, #1667).
+*.ts text
+*.tsx text
+
 # cmd.exe expects CRLF in batch files; the index still stores LF.
 *.bat text eol=crlf
 *.cmd text eol=crlf

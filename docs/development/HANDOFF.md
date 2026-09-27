@@ -1,3 +1,32 @@
+# Current handoff — TypeScript always treated as text (#1667)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `/home/user/Runner_Dashboard`
+- Branch: `claude/runner-dashboard-roles-gaps-k9i38r`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1667; DL-#1667. DL-#1665 shipped in #1666.
+
+## Objective and Status
+
+- `.gitattributes`: added `*.ts text` and `*.tsx text`.
+- `frontend/src/lib/fleetAlerts.ts` contains three literal NUL separators, so `text=auto` classed it as binary and it kept its CRLF endings through #1661 (Codex review on #1661). It is now renormalized: line endings only, 9925 bytes down to 9656.
+
+## Validation
+
+- `git ls-files --eol`: no file is stored in the index with CRLF.
+- `git diff --cached --ignore-cr-at-eol`: only `.gitattributes`, `SPEC.md` and the two tracking docs.
+
+## Next Steps
+
+1. Open the PR, then merge it once CI is green.
+
+---
+
 # Current handoff — Code Requests owned by product-owner (#1665)
 
 Last updated: 2026-09-27

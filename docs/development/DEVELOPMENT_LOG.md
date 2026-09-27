@@ -18,18 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1665 — Code Requests owned by product-owner; executor profile relabelled
+### DL-#1667 — TypeScript always treated as text for line endings
 
 - **State:** in_review
 - **Owner:** claude
-- **Issue:** #1665 (Phase 2 of Repository_Management#1766; roles in Repository_Management#1823)
+- **Issue:** #1667 (follow-up to #1660)
 - **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
 - **PR:** not created
-- **Paths:** `backend/staff/action_executors.py`, `backend/staff/actions.py`, `backend/staff/code_request_actions.py`, `backend/code_requests/profiles.py`, `tests/unit/test_code_request_owner_role.py`
+- **Paths:** `.gitattributes`, `frontend/src/lib/fleetAlerts.ts`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (`tests/unit/test_code_request_owner_role.py` 6 passed; staff/code_request/api subset has the same 14 order-dependent failures as `main`, plus the roster check until Repository_Management#1823 is on its `main`; ruff and mypy clean)
-- **Summary:** `CODE_REQUEST_OWNER_ROLE` is `product-owner`, with `barb` as the fallback until a node's Repository_Management checkout carries the role (`code_request_owner_role()`, and the same fallback in validation). The owner role may run `code_request.*` actions by name, since the role schema has no `allowed_actions`. The seeded `executor-cli` profile is labelled `issue-remediator` instead of the planner's `chief-architect`. `pr_requires_approval` stays unenforced pending the owner's reviewer-blocking decision (design note on #1665).
-- **Next step:** Merge the PR after Repository_Management#1823's PR is on its `main`.
+- **Last verified:** 2026-09-27 (`fleetAlerts.ts` stored with 0 CRLF after renormalize; `git diff --ignore-cr-at-eol` changes only `.gitattributes` and tracking docs)
+- **Summary:** `fleetAlerts.ts` holds three literal NUL separators, so `text=auto` classed it as binary and it kept its CRLF endings through #1661. Explicit `*.ts text` / `*.tsx text` rules make the LF policy apply; the file is renormalized, line endings only.
+- **Next step:** Open the PR for this branch.
 
 ### DL-#1659 — Code-read-only staff runs
 
@@ -2512,6 +2512,20 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1665 — Code Requests owned by product-owner; executor profile relabelled
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1665 (Phase 2 of Repository_Management#1766; roles in Repository_Management#1823)
+- **Branch:** `claude/runner-dashboard-roles-gaps-k9i38r`
+- **PR:** #1666
+- **Paths:** `backend/staff/action_executors.py`, `backend/staff/actions.py`, `backend/staff/code_request_actions.py`, `backend/code_requests/profiles.py`, `tests/unit/test_code_request_owner_role.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (`tests/unit/test_code_request_owner_role.py` 6 passed; staff/code_request/api subset has the same 14 order-dependent failures as `main`, plus the roster check until Repository_Management#1823 is on its `main`; ruff and mypy clean)
+- **Summary:** `CODE_REQUEST_OWNER_ROLE` is `product-owner`, with `barb` as the fallback until a node's Repository_Management checkout carries the role (`code_request_owner_role()`, and the same fallback in validation). The owner role may run `code_request.*` actions by name, since the role schema has no `allowed_actions`. The seeded `executor-cli` profile is labelled `issue-remediator` instead of the planner's `chief-architect`. `pr_requires_approval` stays unenforced pending the owner's reviewer-blocking decision (design note on #1665).
+- **Shipped:** 2026-09-27
+- **Next step:** Shipped in PR #1666 (`bb0aa29d`).
 
 ### DL-#1662 — A failed auto-review gets one more attempt
 
