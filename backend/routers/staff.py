@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -37,7 +37,6 @@ from staff.audit import (
     get_audit_store,
     record_audit,
 )
-from staff.classifier import format_attention_items
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.models import (
     StaffAuditListResponse,
@@ -52,6 +51,7 @@ from staff.models import (
 from staff.rm_sync import source_status as source_status  # noqa: F401
 from staff.runner import get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
+from staff.summary_view import build_staff_summary
 
 log = logging.getLogger("dashboard.staff")
 router = APIRouter(prefix="/api/staff", tags=["staff"])
@@ -136,50 +136,7 @@ async def summary(
     per machine, active holds, late/dead scheduled roles (#1209) and the
     roster with schedules.
     """
-    runner = get_runner()
-    board_view = await staff_fleet.aggregate_board(staff_fleet.local_board(runner))
-    since = (datetime.now(UTC) - timedelta(hours=24)).isoformat().replace("+00:00", "Z")
-    recent = runner.store.list_runs(limit=200, since=since)
-    counts: dict[str, int] = {}
-    for run in recent:
-        counts[run.status] = counts.get(run.status, 0) + 1
-    attention = format_attention_items(recent)
-    keep = (
-        "id",
-        "role",
-        "provider",
-        "machine",
-        "repo",
-        "target_ref",
-        "status",
-        "started_at",
-        "last_line",
-    )
-    in_flight = [{k: r.get(k) for k in keep} for r in [*board_view["running"], *board_view["queued"]]]
-    roles = runner.roles()
-    return {
-        "generated_at": board_view["generated_at"],
-        "hub": board_view["hub"],
-        "machines_online": board_view["online"],
-        "machines_offline": board_view["offline"],
-        "in_flight": in_flight,
-        "recent_24h": counts,
-        "attention": attention[:20],
-        "spend_today_usd": board_view["spend_today_usd"],
-        "providers": board_view["providers"],
-        "holds": staff_fleet.holds_snapshot(),
-        "liveness_alerts": board_view.get("liveness_alerts", []),
-        "roles": [
-            {
-                "name": s.name,
-                "title": s.title,
-                "schedule": s.schedule,
-                "surface": s.surface,
-                "retired": s.retired,
-            }
-            for s in sorted(roles.values(), key=lambda s: s.name)
-        ],
-    }
+    return await build_staff_summary()
 
 
 @router.get("/audit", response_model=StaffAuditListResponse, response_model_exclude_none=True)
