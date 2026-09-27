@@ -66,6 +66,7 @@ from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
 from staff.roles import RoleSpec, load_roles
 from staff.thread_bus import get_thread_bus
+from staff.turn_prompt import compose_turn_prompt, context_section
 
 log = logging.getLogger("dashboard.staff.chat")
 
@@ -150,8 +151,8 @@ class ChatTurnRunner:
         raw_prompt = user_msg.body_md if user_msg else ""
         knowledge_block = build_knowledge_turn_block(role, raw_prompt)
         fleet_block = await build_fleet_context_block(role)
-        blocks = [b for b in (fleet_block, knowledge_block, raw_prompt) if b]
-        prompt_text = "\n\n".join(blocks)
+        context_blocks = (fleet_block, knowledge_block)
+        prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:
@@ -221,8 +222,9 @@ class ChatTurnRunner:
                 replay_prompt = format_history_replay(
                     conv_store=self.conv_store,
                     thread_id=thread_id,
-                    current_prompt=prompt_text,
+                    current_prompt=raw_prompt,
                     role=role,
+                    context=context_section(context_blocks),
                 )
                 result = await self._run_turn_attempt(
                     thread_id=thread_id,

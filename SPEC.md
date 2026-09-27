@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1649 | Staff chat turns separate dashboard-gathered context from the person's message: a reference note, the context blocks (boundary-like lines quoted), then `## Message from the person you are talking to` and the message; plain turns are unchanged. The history replay de-dups against the raw message and places the context before the prior conversation. |
 | 2026-09-27 | #1646 | Board seats on a provider switched off on the node (#1597) stand in on `claude`/`sonnet-5` with the same name, title and mandate, labelled `(stand-in: claude — gemini disabled on this node)` in the Board summary; the cost estimate and the fan-out both use `seat_on_node`, so the Board stays 4/4 and prices what actually runs. |
 | 2026-09-27 | #1645 | Expert panels honour `STAFF_DISABLED_PROVIDERS` (#1597): `GET /panels/presets` lists only enabled providers, and `POST /panels` rejects an expert or moderator seat on a disabled provider with the same 422 as an unknown provider. |
 | 2026-09-27 | #1637 | Board group-thread seats run as real read-only provider turns (`staff/group_seat_runner.run_seat` over `panel.default_turn_runner`) instead of canned stub text, with cost from the seat price table; `default_turn_runner(message_id=None)` runs the same argv without streaming tokens. |

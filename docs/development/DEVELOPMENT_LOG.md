@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1649 — Chat prompt boundary between fleet context and the owner's message
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1649
+- **Branch:** `fix/turn-prompt-boundary`
+- **PR:** pending
+- **Paths:** `backend/staff/turn_prompt.py`, `backend/staff/chat.py`, `backend/staff/chat_history.py`, `tests/unit/test_staff_turn_prompt.py`, `tests/unit/test_staff_chat_history_replay.py`, `tests/unit/test_staff_chat_fleet_prompt.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (540 chat/fleet tests pass; new boundary tests red then green)
+- **Summary:** Pure `staff/turn_prompt.py` (`context_section`, `compose_turn_prompt`, `BOUNDARY_MARKERS`) used by the resume and replay paths; context lines that look like a boundary are quoted so repo/board text cannot forge one.
+- **Next step:** Merge; redeploy OGLaptop and re-run the two-turn Barb memory probe.
+
 ### DL-#1646 — Board seat on a disabled provider stands in on claude
 
 - **State:** in_review
