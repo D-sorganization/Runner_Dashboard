@@ -16194,7 +16194,7 @@
     },
     "/api/v1/staff/panels/presets": {
       "get": {
-        "description": "Ready-made expert line-ups; every seat defaults to the ``claude`` provider.",
+        "description": "Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.",
         "operationId": "get_panel_presets_api_v1_staff_panels_presets_get",
         "responses": {
           "200": {
