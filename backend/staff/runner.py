@@ -40,6 +40,7 @@ from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
 from staff.runner_ops import (
+    fail_if_cli_outdated,
     pump_output,
     read_only_kwargs,
     resolve_launch_paths,
@@ -252,6 +253,8 @@ class StaffRunner:
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
                 handle_run_status_change(rec, "preparing")
+                if fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
+                    return  # below the CLI floor: no worktree, no lease (#1680)
                 workdir = self._prepare_workdir(rec, plan)
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent

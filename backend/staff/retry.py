@@ -43,6 +43,7 @@ NON_RETRYABLE_FAILURE_CLASSES = frozenset(
         "auth_expired",
         "lease_blocked",
         "cli_missing",
+        "cli_outdated",
         "orphaned",
         "unkillable",
         "timeout",

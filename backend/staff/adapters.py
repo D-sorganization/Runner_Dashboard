@@ -11,7 +11,7 @@ allow-list rendered from one shared table; the flags were verified against the
 installed CLIs on 2026-09-26:
 
   claude  -p --output-format stream-json --verbose --permission-mode dontAsk --permission-prompts none
-          --allowedTools <tools> --disallowedTools <tools> (default model sonnet)
+          --allowedTools <tools> --disallowedTools <tools> (default model sonnet; claude >= 2.1.259, cli_version.py)
   codex   exec --sandbox workspace-write --add-dir <git common dir> -c sandbox_workspace_write.network_access=true
           --skip-git-repo-check --json (0.156; --full-auto removed)
   gemini  -p --approval-mode auto_edit --policy <generated policy> --output-format stream-json

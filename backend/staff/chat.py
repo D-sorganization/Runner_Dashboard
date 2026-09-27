@@ -12,6 +12,7 @@ Provides fast, read-only conversational replies with:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -23,12 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from staff.adapters import (
-    ADAPTERS,
-    ChatReadOnlyUnsupportedError,
-    ProviderAdapter,
-    get_adapter,
-)
+from staff.adapters import ADAPTERS, ChatReadOnlyUnsupportedError, ProviderAdapter, get_adapter
 from staff.availability import (
     execute_degraded_turn,
     get_availability_metrics,
@@ -37,6 +33,7 @@ from staff.availability import (
     resolve_provider_chain,
 )
 from staff.chat_failures import (
+    chat_argv_refusal,
     chat_read_only_tools,
     choose_preferred_chat_failure,
     record_chat_capacity_failure,
@@ -57,12 +54,9 @@ from staff.chat_pool import (
     ChatConcurrencyPool,
     get_chat_pool,
 )
-from staff.chat_streaming import (
-    LiveProcessReader,
-    spawn_cli_process,
-    stream_turn_output,
-)
+from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
 from staff.classifier import classify_run_failure
+from staff.cli_version import version_gate
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
@@ -336,6 +330,10 @@ class ChatTurnRunner:
         stdout_text: list[str] = []
         stderr_text: list[str] = []
 
+        # The version probe may spawn ``--version`` once per binary; keep it off the event loop (#1680).
+        gate = await asyncio.to_thread(version_gate, getattr(adapter, "executable", ""))
+        if gate is not None:
+            return ChatTurnResult(ok=False, **gate.to_dict())
         try:
             cmd = adapter.chat_argv(
                 prompt=prompt,
@@ -346,17 +344,7 @@ class ChatTurnRunner:
             )
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             # Fail closed and visibly: never fall back to a writable argv (#1484).
-            failure_class = (
-                "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
-            )
-            remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
-            return ChatTurnResult(
-                ok=False,
-                failure_class=failure_class,
-                retryable=False,
-                remediation=remediation,
-                error=str(exc),
-            )
+            return ChatTurnResult(ok=False, retryable=False, **chat_argv_refusal(exc))
         env = {**os.environ, **adapter.runtime_env()}
 
         proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)

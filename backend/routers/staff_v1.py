@@ -29,12 +29,13 @@ from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_schedule import HoldsBody
 from staff import fleet as staff_fleet
 from staff import usage
-from staff.adapters import available_providers
+from staff.adapters import ADAPTERS, available_providers
 from staff.audit import (
     get_audit_store,
     record_audit,
 )
 from staff.classifier import format_attention_items
+from staff.cli_version import provider_versions
 from staff.idempotency import (
     IdempotencyStoreError,
     get_idempotency_store,
@@ -159,6 +160,7 @@ async def roster_v1(
         "machine": runner.machine,
         "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
         "providers": available_providers(),
+        "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "active_runs": len(active),
     }
 

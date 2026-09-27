@@ -23,6 +23,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
     {
         "auth_expired",
         "cli_missing",
+        "cli_outdated",
         "provider_error",
         "rate_limited",
         "needs_input",

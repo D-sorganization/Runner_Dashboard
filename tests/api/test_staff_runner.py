@@ -423,6 +423,24 @@ def test_roster_lists_roles_and_providers(client: TestClient) -> None:
 
 
 @pytest.mark.unit
+def test_roster_reports_an_outdated_claude_cli(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff import cli_version
+
+    cli_version.reset_cache()
+    monkeypatch.setattr(cli_version.shutil, "which", lambda exe: f"/opt/{exe}")
+    monkeypatch.setattr(cli_version, "_binary_key", lambda path: (path, 1))
+    monkeypatch.setattr(cli_version, "_probe", lambda path: (2, 1, 79))
+    try:
+        versions = client.get("/api/staff/roster").json()["provider_versions"]
+    finally:
+        cli_version.reset_cache()
+    assert versions["claude"]["version"] == "2.1.79"
+    assert versions["claude"]["min_version"] == "2.1.259"
+    assert versions["claude"]["outdated"] is True
+    assert "claude CLI 2.1.79 < required 2.1.259; upgrade the CLI on this node" in versions["claude"]["detail"]
+
+
+@pytest.mark.unit
 def test_dry_run_returns_plan_without_creating_a_run(client: TestClient, staff: runner_mod.StaffRunner) -> None:
     resp = client.post(
         "/api/staff/night-watch/run",
