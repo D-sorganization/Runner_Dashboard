@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1698 — Dashboard unit allows cursor-agent's command sandbox
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1698
+- **Branch:** `fix/1698-cursor-sandbox-namespaces`
+- **PR:** see branch
+- **Paths:** `deploy/runner-dashboard.service`, `deploy/setup.sh`, `tests/test_deploy_hardening.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (`tests/test_deploy_hardening.py` 58 passed; DeskComputer cursor-agent run `run-f500600268bf` succeeded with a sandboxed shell call)
+- **Summary:** `RestrictNamespaces=user mnt net ipc uts` plus a `SystemCallFilter` addition (`@mount`, Landlock, `seccomp`), measured as the minimum that Cursor's bubblewrap sandbox (#1586) needs. The rest of the unit's hardening is unchanged. Existing nodes get the same allowances as a systemd drop-in.
+- **Next step:** Merge the PR, then install the drop-in on ControlTower and OGLaptop and re-run acceptance.
+
 ### DL-#1680 — Minimum claude CLI version enforced before runs and chat
 
 - **State:** in_review

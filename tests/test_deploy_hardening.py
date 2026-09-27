@@ -26,7 +26,7 @@ _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u2"
 # These must appear in both the .service template files AND in the setup.sh
 # heredoc so that installed units stay in sync.
 _NEW_HARDENING_DIRECTIVES_391 = (
-    "RestrictNamespaces=true",
+    "RestrictNamespaces=user mnt net ipc uts",
     "CapabilityBoundingSet=",
     "SystemCallFilter=@system-service",
     "LockPersonality=true",
@@ -182,7 +182,16 @@ def test_dashboard_service_allows_wsl_interop_address_families() -> None:
 
 def test_dashboard_service_has_restrict_namespaces() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
-    assert "RestrictNamespaces=true" in content
+    # #1698: cursor-agent --sandbox enabled (#1586) runs commands in bubblewrap, which
+    # needs these namespace types; cgroup and pid stay forbidden.
+    assert "RestrictNamespaces=user mnt net ipc uts" in content
+    assert "RestrictNamespaces=true" not in content
+
+
+def test_dashboard_service_allows_cursor_sandbox_syscalls() -> None:
+    """#1698: bubblewrap remounts / and pivots root (@mount), then applies Landlock and seccomp."""
+    content = _read(_DEPLOY / "runner-dashboard.service")
+    assert "SystemCallFilter=@mount landlock_create_ruleset landlock_add_rule landlock_restrict_self seccomp" in content
 
 
 def test_dashboard_service_has_capability_bounding_set() -> None:
