@@ -1,4 +1,28 @@
-# Current handoff — Acceptance Check Gating Code Request `executing -> done` (#1605 Part 2)
+# Current handoff — Staff chat smoke check (#1638)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_smoke`; branch `feat/staff-chat-smoke`; PR: see DL-#1638; Issue #1638; DL-#1638.
+
+## Objective and Status
+
+- Drafted by agy (edit-only) from a written spec; Claude fixed the test loader (dataclass needs sys.modules registration) and made the transport an explicit main() argument so no test can reach the network.
+- Live run against OGLaptop (22a9df9): reply complete, 291 chars, 10 s; `ack before reply` FAILS (ack=3, reply=2), i.e. it detects #1630 until #1632 deploys.
+
+## Validation
+
+- `pytest tests/test_staff_chat_smoke.py`: 10 passed; ruff and mypy clean.
+- Live OGLaptop run: exit 1 on the known #1630 ordering bug, as intended.
+
+## Next Steps
+
+1. Merge; after #1632 deploys, the OGLaptop run should exit 0.
+
+---
+
+# Past handoff — Acceptance Check Gating Code Request `executing -> done` (#1605 Part 2)
 
 Last updated: 2026-09-27
 
