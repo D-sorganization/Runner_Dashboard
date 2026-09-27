@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1600 · Restore the SPEC Change Log Separator Row
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1600
+- **Branch:** `fix/spec-changelog-separator`
+- **PR:** #1614
+- **Paths:** `SPEC.md`, `tests/test_spec_changelog_table.py`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `5369d4a5` (new SPEC table test red before, green after)
+- **Summary:** The Change Log renders as one table again (separator restored, split rows joined, Prettier fence); a test guards all three.
+- **Next step:** Merge the PR.
+
 ### DL-#1605 · Guarded Code Request lifecycle (plan and acceptance gates)
 
 - **State:** in_progress
