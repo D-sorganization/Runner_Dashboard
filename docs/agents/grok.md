@@ -36,12 +36,19 @@ export FLEET_AGENT="grok"
 
 A principal `agent-grok` must be registered in `principals.yml` with `roles: [bot]`. The bot token file is `~/.config/runner-dashboard/agent-tokens/agent-grok.token` (never include token contents in commits or logs).
 
-### Go-live scope (owner decision, 2026-09-26)
+### Go-live scope (owner decisions, 2026-09-26 and 2026-09-27)
 
 The first live contract is the `/api/v1/staff` threads API with the `agent-grok` bearer token above:
 
 - **Reads:** briefing, threads, work items, staff summary and priorities.
-- **Dispatch:** only after one supervised dry run (`POST /api/staff/barb/run` with `dry_run: true`, reviewed by the operator). Every later dispatch goes through Barb.
+- **Dispatch: open, with owner confirmation** (2026-09-27, "Allow with confirm"). Every dispatch goes through Barb:
+  she proposes the run in chat and posts it (`POST /api/v1/staff/{role}/run`) only after Dieter explicitly says
+  yes. The cost guard still applies; a cost-guard overrun needs its own yes.
+  - The supervised dry run gate is met. The first dry run (2026-09-27, DeskComputer) showed that Barb's run plan
+    carried write tools and push/PR rules. That was fixed by the opt-in `permissions.code_read_only` (#1659,
+    Repository_Management#1822) and by removing Barb's directive-write recipe (Repository_Management#1818).
+  - The re-run on `dfbd139d` passed: a read-only tool allowlist, no draft-PR rules, no directive write, and
+    nothing queued.
 - **Not in scope:** directive writes and hold/unhold writes. These wait for a later owner decision.
 
 ---
@@ -106,7 +113,6 @@ The response is `{"thread": {...}, "messages": [...]}`. Each message has `seq`, 
 curl -s -H "Authorization: Bearer $FLEET_API_TOKEN" \
   "$FLEET_API_URL/api/v1/staff/work-items?state=in_progress&limit=10"
 ```
-
 
 ### Recipe E: Run an Expert Panel (#1634)
 
