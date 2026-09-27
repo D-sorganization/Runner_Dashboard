@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1670 — v1 staff run detail no longer 500s
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1670
+- **Branch:** `fix/v1-run-detail`
+- **PR:** not created
+- **Paths:** `backend/routers/staff_v1.py`, `tests/api/test_staff_v1_run_detail.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (`tests/api/test_staff_v1_run_detail.py` 2 passed after RED 500; `tests/api/test_staff_runner.py` passes; ruff clean)
+- **Summary:** `get_run_v1` called `RunStore.list_events`, which does not exist, so every v1 run detail (used by Barb and agent clients) was a 500 while the legacy route worked. It now delegates to `routers.staff.get_run` and only reshapes the 404 into the v1 envelope; v1 also gains the remote-run proxy.
+- **Next step:** Merge the PR, deploy, and confirm `GET /api/v1/staff/runs/<id>` returns 200 on DeskComputer.
+
 ### DL-#1667 — TypeScript always treated as text for line endings
 
 - **State:** in_review

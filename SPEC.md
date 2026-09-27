@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1670 | `GET /api/v1/staff/runs/{id}` delegates to the legacy run-detail handler (events via `events_after`, remote-run proxy); it called a nonexistent `RunStore.list_events` and returned 500 for every run. The v1 404 envelope is unchanged. |
 | 2026-09-27 | #1667 | `.gitattributes` marks `*.ts` and `*.tsx` as text, so a file holding a NUL byte (`frontend/src/lib/fleetAlerts.ts`) is not auto-classed binary and gets LF; that file is renormalized, line endings only. |
 | 2026-09-27 | #1665 | Code Requests are owned by `product-owner` (Repository_Management#1823) and fall back to `barb` while a node's roster lacks it; the owner role may run `code_request.*` actions by name. The seeded `executor-cli` profile's `staff_role` is `issue-remediator` (it was mislabelled `chief-architect`, the planner). `pr_requires_approval` stays stored but unenforced pending the reviewer-blocking decision. |
 | 2026-09-27 | #1662 | A failed auto-review no longer blocks later reviews of its PR: the next verification queues one more attempt (`MAX_AUTO_REVIEW_ATTEMPTS = 2`, counted over the PR's full review history via `RunStore.list_runs_for_target`; runner retries share their parent attempt; queued, running, succeeded, `needs_input` and `cancelled` reviews still count). `_review_claim` locks only beside a real runs-DB path. |
