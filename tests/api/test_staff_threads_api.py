@@ -332,3 +332,25 @@ def test_reconcile_shows_system_retry_message_in_thread(client: TestClient):
     assert system_msg["author_kind"] == "system"
     assert system_msg["delivery"] == "complete"
     assert "retry" in system_msg["body_md"].lower() or system_msg["meta"].get("retryable") is True
+
+
+def test_create_thread_rejects_unknown_fields(client: TestClient):
+    """Unknown keys are a 422, not silently dropped (a Grok recipe sent participant_roles/initial_message)."""
+    resp = client.post(
+        "/api/v1/staff/threads",
+        json={"participant_roles": ["barb"], "title": "T", "initial_message": "Hello"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "participant_roles" in resp.text
+
+
+def test_post_message_rejects_unknown_fields(client: TestClient):
+    """A message sent as ``content`` instead of ``body`` is a 422 naming the stray key."""
+    tid = client.post("/api/v1/staff/threads", json={"title": "T", "role": "barb"}).json()["id"]
+    resp = client.post(
+        f"/api/v1/staff/threads/{tid}/messages",
+        json={"body": "Hello", "content": "Hello"},
+        headers={"Idempotency-Key": "strict-1"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "content" in resp.text

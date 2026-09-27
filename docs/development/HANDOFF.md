@@ -23,6 +23,32 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API (#1625)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_v1strict`; branch `fix/v1-thread-contract-strict`; PR: see DL-#1625; Issue #1625; DL-#1625.
+
+## Objective and Status
+
+- Live e2e on OGLaptop: the old Recipe A returned 201 with participants `[caller]` and no message, because `participant_roles`/`initial_message` were dropped silently.
+- `CreateThreadRequest` and `PostMessageRequest` now use `ConfigDict(extra="forbid")`; the frontend (`staffApi.ts`) and `clients/fleet` already send only known keys.
+- grok.md Recipes A to C were rewritten from the live responses; the OpenAPI snapshot gains `additionalProperties: false` on both schemas (api-types.ts unchanged).
+
+## Validation
+
+- TDD: 2 new tests failed first, then passed.
+- `pytest` over every thread/message client (threads, chat turns, groups, spend limits, export, thread runs, clients/, run-card relay, assistant retirement): 197 passed.
+- `scripts/gen-api-client.sh` regenerated the snapshot.
+
+## Next Steps
+
+1. Merge; rerun the grok.md recipes against DeskComputer with the agent-grok bearer.
+
+---
+
 # Past handoff — Ship the Claude Status-Line Quota Script in the Artifact (#1608)
 
 Last updated: 2026-09-27
