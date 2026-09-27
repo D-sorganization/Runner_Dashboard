@@ -1,4 +1,28 @@
-# Current handoff — Expert panels UI (#1635)
+# Current handoff — Board seats call a real model (#1637)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_seats`; branch `fix/board-seats-real-runner`; PR: see DL-#1637; Issue #1637; DL-#1637.
+
+## Objective and Status
+
+- Drafted by agy (edit-only) from a written spec; reviewed by Claude, who added the same-argv assertion the panel owner (DeskComputer session) asked for.
+- groups.py shrinks 491 → 464 lines; the panel streaming path is unchanged.
+
+## Validation
+
+- `tests/staff/test_panel.py`, `tests/unit/test_staff_group_seat_runner.py`, `tests/api/test_staff_groups_api.py`: 37 passed.
+- mypy clean on group_seat_runner.py, panel.py, groups.py.
+
+## Next Steps
+
+1. Merge; ask the Board a question in a group thread on a deployed node and confirm real seat text and cost.
+
+---
+
+# Past handoff — Expert panels UI (#1635)
 
 Last updated: 2026-09-27
 

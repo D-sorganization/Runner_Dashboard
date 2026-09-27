@@ -10,7 +10,8 @@ from staff.pricing import PRICE_TABLE, Price
 from staff.reply_contract import ProposedAction
 
 DEFAULT_COST_THRESHOLD_USD = 0.50
-DEFAULT_SEAT_TIMEOUT_SECONDS = 30.0
+# Same budget as a panel turn (panel_models.DEFAULT_TURN_TIMEOUT_SECONDS); real CLI turns run minutes (#1637).
+DEFAULT_SEAT_TIMEOUT_SECONDS = 300.0
 
 
 @dataclass(frozen=True)

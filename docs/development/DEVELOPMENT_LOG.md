@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1637 — Board seats call a real model
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1637
+- **Branch:** `fix/board-seats-real-runner`
+- **PR:** pending
+- **Paths:** `backend/staff/group_seat_runner.py`, `backend/staff/groups.py`, `backend/staff/panel.py`, `tests/unit/test_staff_group_seat_runner.py`, `tests/staff/test_panel.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (37 tests; mypy clean)
+- **Summary:** The \_default_seat_runner stub is gone; seats get a pure seat_prompt (title, mandate, question, position-first), run silently (null bus) because seats run concurrently into one summary, and report cost via lookup_seat_price.
+- **Next step:** Merge; ask the Board a question in a group thread on a deployed node and confirm real seat text and cost.
+
 ### DL-#1635 — Expert panels UI
 
 - **State:** in_review

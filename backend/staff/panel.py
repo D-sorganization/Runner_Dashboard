@@ -19,6 +19,7 @@ import tempfile
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import provider_switch
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
@@ -345,12 +346,26 @@ def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | N
 
 
 # ── the real turn runner ────────────────────────────────────────────────────
-async def default_turn_runner(speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str) -> TurnOutcome:
-    """Run one read-only CLI chat turn, streaming tokens into ``message_id``.
+class _NullBus:
+    """Null bus that discards all published tokens."""
+
+    async def publish_token(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+
+_NULL_BUS = _NullBus()
+
+
+async def default_turn_runner(
+    speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str | None
+) -> TurnOutcome:
+    """Run one read-only CLI chat turn, streaming tokens into ``message_id`` (or no tokens when None).
 
     Post: the CLI process is gone and its scratch directory removed, whether the turn
     finished, failed, timed out or was cancelled.
     """
+    if provider_switch.is_disabled(speaker.provider):  # #1597 holds on panel and seat turns
+        return TurnOutcome(ok=False, error=f"{speaker.provider} {provider_switch.DISABLED_DETAIL}")
     try:
         adapter = get_adapter(speaker.provider)
     except KeyError:
@@ -364,12 +379,13 @@ async def default_turn_runner(speaker: PanelSpeaker, prompt: str, thread_id: str
             return TurnOutcome(ok=False, error=str(exc))
         env = {**os.environ, **adapter.runtime_env()}
         proc = spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
+        bus = get_thread_bus() if message_id is not None else _NULL_BUS
         out = await stream_turn_output(
             reader=LiveProcessReader(proc),
             adapter=adapter,
-            bus=get_thread_bus(),
+            bus=bus,
             thread_id=thread_id,
-            placeholder_id=message_id,
+            placeholder_id=message_id or "",
         )
         text = out.reply_text.strip()
         if out.returncode != 0 or not text:
