@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** post_message records the fast acknowledgement before creating the pending reply placeholder; budget-exhausted path unchanged (no ack).
 - **Next step:** Merge; redeploy OGLaptop and re-run the Barb thread probe.
 
+### DL-#1623 — Code Reviewer: Current Alternate Models, Review Scope From Priority Tiers
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1623
+- **Branch:** `fix/review-alternates-priorities`
+- **PR:** pending
+- **Paths:** `backend/staff/review.py`, `backend/projects/service.py`, `tests/unit/test_staff_review.py`, `tests/unit/test_projects_cached_tiers.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (review + cached-tier tests 28 passed; mypy clean)
+- **Summary:** Same-provider reviews no longer fail on a stale or placeholder model id, and review scope follows the owner's priority tiers.
+- **Next step:** Merge; the next auto-review on OGLaptop confirms the scope comes from the cached tiers.
+
 ### DL-#1627 — Fleet Facts in Barb's Chat Turns
 
 - **State:** in_review

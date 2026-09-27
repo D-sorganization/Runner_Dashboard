@@ -26,7 +26,7 @@ import json
 import logging
 import os
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +37,14 @@ from gh_utils import gh_api
 from projects import rollup
 from projects.charter import CharterError, Feature, feature_progress, parse_charter, parse_decisions_needed
 from projects.coverage import classify
-from projects.priorities import PRIORITIES_PATH, PRIORITIES_REPO, PriorityError, ProjectPriority, parse_priorities
+from projects.priorities import (
+    PRIORITIES_PATH,
+    PRIORITIES_REPO,
+    TIERS,
+    PriorityError,
+    ProjectPriority,
+    parse_priorities,
+)
 from staff.store import RunStore, get_store
 
 log = logging.getLogger("dashboard.projects")
@@ -151,6 +158,34 @@ async def load_priorities(fetch: Fetcher | None = None) -> tuple[dict[str, Proje
         result = ({}, f"github: {exc.detail}")
     cache_set("projects:priorities", result)
     return result
+
+
+def cached_repos_in_tiers(tiers: Iterable[str]) -> frozenset[str] | None:
+    """Return repository names matching the given priority tiers from cache without network fetch.
+
+    Precondition: ``tiers`` is non-empty and every member is in ``priorities.TIERS``
+    (raises ``ValueError`` otherwise).
+    Postcondition: Returns ``None`` when nothing is cached under ``projects:priorities``,
+    the cache holds an error tuple, or the parsed priorities dictionary is empty.
+    """
+    tiers_tuple = tuple(tiers)
+    if not tiers_tuple:
+        raise ValueError("tiers must be non-empty")
+    for t in tiers_tuple:
+        if t not in TIERS:
+            raise ValueError(f"invalid tier {t!r}; expected one of {', '.join(TIERS)}")
+
+    cached = cache_get("projects:priorities", CACHE_TTL_SECONDS)
+    if cached is None:
+        return None
+    if not isinstance(cached, tuple) or len(cached) != 2:
+        return None
+    priorities_dict, error = cached
+    if error is not None or not priorities_dict:
+        return None
+
+    wanted = frozenset(tiers_tuple)
+    return frozenset(repo for repo, p in priorities_dict.items() if getattr(p, "tier", None) in wanted)
 
 
 def last_steward_run(repo: str, store: RunStore | None = None) -> dict[str, Any] | None:

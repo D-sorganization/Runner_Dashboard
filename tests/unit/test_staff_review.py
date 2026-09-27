@@ -7,14 +7,20 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from cache_utils import cache_clear, cache_set
+from projects.priorities import ProjectPriority
 from staff.action_executors import DEFAULT_REVIEWER_ROLE
 from staff.review import (
+    ALTERNATE_MODELS,
     DEFAULT_REVIEW_FOCUS,
+    FALLBACK_P0_P1_REPOS,
     PROVIDER_FAMILY,
+    auto_review_if_eligible,
     detect_author_provider,
     parse_outcome,
     parse_review_verdict,
     prepare_review_params,
+    review_scope_repos,
     select_reviewer_provider,
 )
 from staff.store import RunRecord
@@ -61,6 +67,29 @@ class TestProviderSelection:
         assert sel.same_provider
         assert sel.model is not None
         assert "haiku" in sel.model.lower() or sel.model != "default"
+
+    def test_same_family_fallback_claude_selects_haiku_model(self) -> None:
+        """Same-family fallback for 'claude' selects model 'haiku' with same_provider True."""
+        role_providers = ["claude"]
+        sel = select_reviewer_provider(author_provider="claude", role_providers=role_providers)
+        assert sel.provider == "claude"
+        assert sel.model == "haiku"
+        assert sel.same_provider is True
+
+    def test_fallback_provider_without_alternate_yields_none_model(self) -> None:
+        """A fallback provider with no alternate (e.g. 'codex') yields model None and same_provider True."""
+        role_providers = ["codex"]
+        sel = select_reviewer_provider(author_provider="codex", role_providers=role_providers)
+        assert sel.provider == "codex"
+        assert sel.model is None
+        assert sel.same_provider is True
+
+    def test_alternate_models_has_no_stale_2024_or_default_alternate(self) -> None:
+        """No value in ALTERNATE_MODELS contains '2024' and none equals 'default-alternate'."""
+        assert ALTERNATE_MODELS == {"claude": "haiku", "antigravity": "gemini-3.8-flash-medium"}
+        for model in ALTERNATE_MODELS.values():
+            assert "2024" not in model
+            assert model != "default-alternate"
 
     def test_detect_author_from_store(self) -> None:
         """Find author provider from run store by pr_number and repo."""
@@ -177,3 +206,47 @@ class TestReviewExecutor:
         assert "enforce" not in prepared
         assert prepared.get("role") == "code-reviewer"
         assert "Advisory only" in prepared.get("prompt", "") or DEFAULT_REVIEW_FOCUS in prepared.get("prompt", "")
+
+
+class TestReviewScopeRepos:
+    def test_review_scope_repos_returns_fallback_when_cache_empty(self) -> None:
+        """review_scope_repos() returns FALLBACK_P0_P1_REPOS when the cache is empty."""
+        cache_clear()
+        assert review_scope_repos() == FALLBACK_P0_P1_REPOS
+
+    def test_review_scope_repos_returns_cached_set_when_seeded(self) -> None:
+        """review_scope_repos() returns cached P0/P1 repos when seeded."""
+        cache_set(
+            "projects:priorities",
+            (
+                {
+                    "RepoAlpha": ProjectPriority(tier="P0"),
+                    "RepoBeta": ProjectPriority(tier="P1"),
+                    "RepoGamma": ProjectPriority(tier="P2"),
+                },
+                None,
+            ),
+        )
+        assert review_scope_repos() == frozenset({"RepoAlpha", "RepoBeta"})
+
+    def test_auto_review_uses_review_scope_repos(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """auto_review_if_eligible uses review_scope_repos to gate repo eligibility."""
+        monkeypatch.setenv("STAFF_AUTO_REVIEW", "1")
+        rec_unsupported = make_run(repo="UnscopedRepo", role="pragmatic-programmer")
+        verdict = MagicMock(verification="verified", pr_number=42)
+        assert not auto_review_if_eligible(rec_unsupported, verdict)
+
+        cache_set(
+            "projects:priorities",
+            (
+                {"UnscopedRepo": ProjectPriority(tier="P0")},
+                None,
+            ),
+        )
+        runner_mock = MagicMock()
+        runner_mock.roles.return_value = {"code-reviewer": MagicMock()}
+        store_mock = MagicMock()
+        store_mock.list_runs.return_value = []
+        runner_mock.store = store_mock
+        res = auto_review_if_eligible(rec_unsupported, verdict, runner=runner_mock, store=store_mock)
+        assert res is True

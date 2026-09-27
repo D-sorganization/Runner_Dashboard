@@ -37,17 +37,14 @@ PROVIDER_FAMILY: dict[str, str] = {
     "grok-chat": "xai",
 }
 
+# Alternates must be CLI-accepted ids or aliases; a provider without an entry reviews on its default model.
 ALTERNATE_MODELS: dict[str, str] = {
-    "claude": "claude-3-5-haiku-20241022",
-    "codex": "gpt-4o-mini",
-    "gemini": "gemini-1.5-flash",
-    "antigravity": "flash",
-    "cursor-agent": "cursor-small",
-    "ollama": "llama3.1:8b",
+    "claude": "haiku",
+    "antigravity": "gemini-3.8-flash-medium",
 }
 
-# The P0 and P1 repos from config/project_priorities.yaml
-P0_P1_REPOS: frozenset[str] = frozenset(
+# Used only until the priority file has been loaded.
+FALLBACK_P0_P1_REPOS: frozenset[str] = frozenset(
     {
         "Gasification_Model",
         "Runner_Dashboard",
@@ -58,6 +55,18 @@ P0_P1_REPOS: frozenset[str] = frozenset(
         "Tools_Private",
     }
 )
+
+
+def review_scope_repos() -> frozenset[str]:
+    """Return the set of repos in review scope (P0 and P1).
+
+    Uses cached priority tiers from projects.service when available, falling back to
+    FALLBACK_P0_P1_REPOS until the priority file has been loaded.
+    """
+    from projects.service import cached_repos_in_tiers
+
+    return cached_repos_in_tiers(("P0", "P1")) or FALLBACK_P0_P1_REPOS
+
 
 FORBIDDEN_REVIEW_KEYS: frozenset[str] = frozenset(
     {
@@ -136,7 +145,7 @@ def select_reviewer_provider(
 
     # Only the author's provider or provider family is available
     fallback_provider = providers[0]
-    alt_model = ALTERNATE_MODELS.get(fallback_provider, "default-alternate")
+    alt_model = ALTERNATE_MODELS.get(fallback_provider)
     return ReviewSelection(provider=fallback_provider, model=alt_model, same_provider=True)
 
 
@@ -339,7 +348,7 @@ def auto_review_if_eligible(
         return False
 
     repo = getattr(rec, "repo", "")
-    if repo not in P0_P1_REPOS:
+    if repo not in review_scope_repos():
         return False
 
     try:
