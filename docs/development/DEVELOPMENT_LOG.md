@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1602 · WP-2.2: Executor Keeps Acceptance Criteria
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1602
+- **Branch:** `fix/1602-executor-acceptance-criteria`
+- **PR:** pending
+- **Paths:** `backend/code_requests/executor_models.py`, `backend/code_requests/executor_stage.py`, `tests/code_requests/test_executor_stage.py`, `tests/code_requests/test_executor_routes.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (24 passed in tests/code_requests/test_executor_stage.py and tests/code_requests/test_executor_routes.py; ruff check, ruff format, and mypy backend/ clean)
+- **Summary:** Added `acceptance_criteria: list[str]` to `ChildExecutionRecord` (default empty list), enforced `min_length=1` on `ChildIssuePayload.acceptance_criteria` so routes return 422 on empty or missing criteria, carried criteria through `ExecutorPipeline.initialize`, and exposed criteria in child and rollup responses.
+- **Next step:** Merge the #1602 PR once CI is green.
+
 ### DL-#1604 · Staff action code_request.update limited to the description (product-owner PRD)
 
 - **State:** in_review

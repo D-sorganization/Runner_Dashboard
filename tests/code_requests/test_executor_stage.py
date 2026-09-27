@@ -184,20 +184,44 @@ class TestExecutorCoordination:
 class TestExecutorPipeline:
     """Tests for pipeline orchestrator, wave computation, and failure escalation."""
 
+    def test_initialize_carries_acceptance_criteria(self):
+        pipeline = ExecutorPipeline("cr-test")
+        payload = [
+            ChildIssuePayload(
+                key="task_1",
+                title="Task 1",
+                repository="repo",
+                acceptance_criteria=["Criterion 1", "Criterion 2"],
+            )
+        ]
+        pipeline.initialize(payload)
+        rec = pipeline.children["task_1"]
+        assert rec.acceptance_criteria == ["Criterion 1", "Criterion 2"]
+
     def test_compute_waves_acyclic(self):
         children = [
-            ChildIssuePayload(key="A", title="A", repository="repo", dependencies=[]),
-            ChildIssuePayload(key="B", title="B", repository="repo", dependencies=["A"]),
-            ChildIssuePayload(key="C", title="C", repository="repo", dependencies=["A"]),
-            ChildIssuePayload(key="D", title="D", repository="repo", dependencies=["B", "C"]),
+            ChildIssuePayload(key="A", title="A", repository="repo", dependencies=[], acceptance_criteria=["crit A"]),
+            ChildIssuePayload(
+                key="B", title="B", repository="repo", dependencies=["A"], acceptance_criteria=["crit B"]
+            ),
+            ChildIssuePayload(
+                key="C", title="C", repository="repo", dependencies=["A"], acceptance_criteria=["crit C"]
+            ),
+            ChildIssuePayload(
+                key="D", title="D", repository="repo", dependencies=["B", "C"], acceptance_criteria=["crit D"]
+            ),
         ]
         waves = compute_waves(children)
         assert waves == [["A"], ["B", "C"], ["D"]]
 
     def test_compute_waves_cycle_raises(self):
         children = [
-            ChildIssuePayload(key="A", title="A", repository="repo", dependencies=["B"]),
-            ChildIssuePayload(key="B", title="B", repository="repo", dependencies=["A"]),
+            ChildIssuePayload(
+                key="A", title="A", repository="repo", dependencies=["B"], acceptance_criteria=["crit A"]
+            ),
+            ChildIssuePayload(
+                key="B", title="B", repository="repo", dependencies=["A"], acceptance_criteria=["crit B"]
+            ),
         ]
         with pytest.raises(ValueError, match="dependency_cycle"):
             compute_waves(children)
@@ -205,14 +229,25 @@ class TestExecutorPipeline:
     def test_concurrency_cap_per_repo(self):
         config = ExecutionConfig(max_concurrent_per_repo=2)
         pipeline = ExecutorPipeline("cr-test", config=config)
-        children = [ChildIssuePayload(key=f"task_{i}", title=f"Task {i}", repository="repo1") for i in range(4)]
+        children = [
+            ChildIssuePayload(key=f"task_{i}", title=f"Task {i}", repository="repo1", acceptance_criteria=[f"crit {i}"])
+            for i in range(4)
+        ]
         pipeline.initialize(children)
         ready = pipeline.get_ready_children()
         assert len(ready) == 2  # capped at 2
 
     def test_tier_escalation_after_two_failures(self):
         pipeline = ExecutorPipeline("cr-test")
-        payload = [ChildIssuePayload(key="task_1", title="Task", repository="repo", tier=ExecutorTier.OLLAMA)]
+        payload = [
+            ChildIssuePayload(
+                key="task_1",
+                title="Task",
+                repository="repo",
+                tier=ExecutorTier.OLLAMA,
+                acceptance_criteria=["crit 1"],
+            )
+        ]
         pipeline.initialize(payload)
 
         # Attempt 1: fail at OLLAMA
@@ -229,8 +264,20 @@ class TestExecutorPipeline:
     def test_strong_tier_exhaustion_pauses_branch_for_human(self):
         pipeline = ExecutorPipeline("cr-test")
         payload = [
-            ChildIssuePayload(key="root", title="Root", repository="repo", tier=ExecutorTier.STRONG),
-            ChildIssuePayload(key="dep", title="Dep", repository="repo", dependencies=["root"]),
+            ChildIssuePayload(
+                key="root",
+                title="Root",
+                repository="repo",
+                tier=ExecutorTier.STRONG,
+                acceptance_criteria=["crit root"],
+            ),
+            ChildIssuePayload(
+                key="dep",
+                title="Dep",
+                repository="repo",
+                dependencies=["root"],
+                acceptance_criteria=["crit dep"],
+            ),
         ]
         pipeline.initialize(payload)
 
@@ -266,6 +313,7 @@ class TestExecutorPipeline:
                 repository="Runner_Dashboard",
                 tier=ExecutorTier.OLLAMA,
                 task_class="format",
+                acceptance_criteria=["schemas validate"],
             ),
             ChildIssuePayload(
                 key="W0_B",
@@ -273,6 +321,7 @@ class TestExecutorPipeline:
                 repository="Runner_Dashboard",
                 tier=ExecutorTier.CLI,
                 task_class="bug",
+                acceptance_criteria=["parser handles edge cases"],
             ),
             # Wave 1 (depends on W0_A and W0_B)
             ChildIssuePayload(
@@ -282,6 +331,7 @@ class TestExecutorPipeline:
                 dependencies=["W0_A", "W0_B"],
                 tier=ExecutorTier.CLI,
                 task_class="feature",
+                acceptance_criteria=["services integrated"],
             ),
             # Wave 2 (depends on W1_A)
             ChildIssuePayload(
@@ -291,6 +341,7 @@ class TestExecutorPipeline:
                 dependencies=["W1_A"],
                 tier=ExecutorTier.CLI,
                 task_class="feature",
+                acceptance_criteria=["ui renders properly"],
             ),
         ]
         pipeline.initialize(plan)
