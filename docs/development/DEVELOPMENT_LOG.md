@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1630 — Staff chat ack stored before the reply slot
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1630
+- **Branch:** `fix/staff-ack-order`
+- **PR:** pending
+- **Paths:** `backend/routers/staff_threads.py`, `tests/api/test_staff_threads_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (staff tests green; new seq-order test red then green)
+- **Summary:** post_message records the fast acknowledgement before creating the pending reply placeholder; budget-exhausted path unchanged (no ack).
+- **Next step:** Merge; redeploy OGLaptop and re-run the Barb thread probe.
+
 ### DL-#1631 — Staff chat history replay: no duplicate question, no system acks
 
 - **State:** in_review
