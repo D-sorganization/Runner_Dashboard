@@ -16,6 +16,7 @@ def test_allowed_failure_classes_complete() -> None:
     expected = {
         "auth_expired",
         "cli_missing",
+        "cli_outdated",
         "provider_error",
         "rate_limited",
         "needs_input",

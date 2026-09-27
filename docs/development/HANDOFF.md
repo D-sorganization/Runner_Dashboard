@@ -1,3 +1,45 @@
+# Current handoff — Unknown CLI option classified as cli_outdated (#1669)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-cli-preflight`
+- Branch: `fix/1669-cli-outdated`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1669; DL-#1669.
+
+## Objective and Status
+
+- `backend/staff/classifier.py`: new `cli_outdated` failure class in
+  `ALLOWED_FAILURE_CLASSES`, a new `UPGRADE_COMMANDS` dict (claude, codex),
+  and a branch after the `cli_missing` check / before the auth check that
+  extracts the rejected option (`unknown option`, `unknown argument`,
+  `unrecognized argument`, `unexpected argument`) and states the node,
+  option and upgrade command in the remediation.
+- `backend/staff/retry.py`: `cli_outdated` added to
+  `NON_RETRYABLE_FAILURE_CLASSES`.
+- `backend/staff/chat_failures.py`: `cli_outdated` ranked 95 in
+  `FAILURE_SPECIFICITY`.
+- `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`: `cli_outdated`
+  title is "CLI Tool Outdated".
+
+## Validation
+
+- New `tests/unit/test_staff_cli_outdated.py` plus the classifier/retry/
+  chat_failures subset (`-k "classif or retry or chat_failure or
+staff_run_failure"`): 39 passed.
+- `ruff check` and `ruff format --check` on the five changed Python files:
+  clean.
+
+## Next Steps
+
+1. Open the PR for this branch, then merge once CI is green.
+
+---
+
 # Current handoff — TypeScript always treated as text (#1667)
 
 Last updated: 2026-09-27
