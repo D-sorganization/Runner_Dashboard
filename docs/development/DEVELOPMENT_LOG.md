@@ -31,6 +31,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Added `approved_by` and `approved_at` to `PlanningSession`, set in `approve_plan` from the acting principal with transition reason `plan approved by <principal>` (auto-filed plans leave unset and keep reason "plan filed"). Bound planner profiles to roster role `staff_role="chief-architect"` on `AgentProfile`, added non-crashing `validate_profile_staff_roles` against `roles.load_roles()`, and surfaced `staff_role` in `PlanningSession`.
 - **Next step:** Merge the #1613 PR once CI is green.
 
+### DL-#1599 · Routing Override Reassigns the Work Item
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1599
+- **Branch:** `fix/router-override-work-item`
+- **PR:** #1612
+- **Paths:** `backend/staff/router.py`, `tests/unit/test_staff_router.py`, `SPEC.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `5369d4a5` (`test_staff_router.py` 11 passed; `mypy staff/router.py` clean)
+- **Summary:** `override_routing` called `update_work_item` with unsupported kwargs; the `TypeError` was swallowed, so overrides never moved the work item. Pass only `owner_role`, narrow the `except` to `KeyError`, add `work_item_id` to the audit detail.
+
 ### DL-#1600 · Restore the SPEC Change Log Separator Row
 
 - **State:** shipped
@@ -42,7 +54,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 at `5369d4a5` (new SPEC table test red before, green after)
 - **Summary:** The Change Log renders as one table again (separator restored, split rows joined, Prettier fence); a test guards all three.
-- **Next step:** Merge the PR.
 
 ### DL-#1605 · Guarded Code Request lifecycle (plan and acceptance gates)
 
