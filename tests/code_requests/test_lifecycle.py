@@ -12,7 +12,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
 from code_requests.lifecycle import (  # noqa: E402
     InvalidTransitionError,
+    TransitionGate,
     is_legal_transition,
+    required_gate,
     transition,
 )
 from code_requests.model import (  # noqa: E402
@@ -50,6 +52,7 @@ def test_lifecycle_property_all_transitions() -> None:
                 actor="operator-1",
                 reason="testing transition",
                 is_operator_override=override,
+                gate=required_gate(to_state),
                 now="2026-09-25T13:00:00Z",
             )
             assert updated.state == to_state
@@ -70,6 +73,7 @@ def test_lifecycle_property_all_transitions() -> None:
                     actor="operator-1",
                     reason="testing illegal transition",
                     is_operator_override=override,
+                    gate=required_gate(to_state),
                 )
 
 
@@ -83,13 +87,15 @@ def test_standard_happy_path() -> None:
     req = transition(req, CodeRequestState.PLANNING, actor="triage-bot", reason="Fast-tracked to planning")
     assert req.state == CodeRequestState.PLANNING
 
-    req = transition(req, CodeRequestState.PLANNED, actor="planner", reason="Plan accepted")
+    req = transition(
+        req, CodeRequestState.PLANNED, actor="planner", reason="Plan accepted", gate=TransitionGate.PLAN_FILED
+    )
     assert req.state == CodeRequestState.PLANNED
 
     req = transition(req, CodeRequestState.EXECUTING, actor="runner", reason="Job started")
     assert req.state == CodeRequestState.EXECUTING
 
-    req = transition(req, CodeRequestState.DONE, actor="runner", reason="PR merged")
+    req = transition(req, CodeRequestState.DONE, actor="runner", reason="PR merged", gate=TransitionGate.ACCEPTANCE)
     assert req.state == CodeRequestState.DONE
     assert len(req.audit_trail) == 5
 
@@ -173,3 +179,64 @@ def test_invalid_transitions_raise() -> None:
     # Unknown state string
     with pytest.raises(InvalidTransitionError, match="Unknown target state"):
         transition(req, "non_existent_state", actor="admin", reason="bad")
+
+
+GATED = [
+    (CodeRequestState.PLANNING, CodeRequestState.PLANNED, TransitionGate.PLAN_FILED),
+    (CodeRequestState.EXECUTING, CodeRequestState.DONE, TransitionGate.ACCEPTANCE),
+]
+
+
+def test_only_planned_and_done_are_gated() -> None:
+    gated = {s for s in CodeRequestState if required_gate(s) is not None}
+    assert gated == {CodeRequestState.PLANNED, CodeRequestState.DONE}
+
+
+@pytest.mark.parametrize(("from_state", "to_state", "gate"), GATED)
+def test_gated_target_without_its_gate_is_refused(
+    from_state: CodeRequestState, to_state: CodeRequestState, gate: TransitionGate
+) -> None:
+    """#1605: a plain transition can no longer skip plan approval or acceptance."""
+    req = _sample_request(from_state)
+    with pytest.raises(InvalidTransitionError, match=gate.value):
+        transition(req, to_state, actor="operator-1", reason="skip the gate")
+
+
+@pytest.mark.parametrize(("from_state", "to_state", "gate"), GATED)
+def test_gated_target_with_the_wrong_gate_is_refused(
+    from_state: CodeRequestState, to_state: CodeRequestState, gate: TransitionGate
+) -> None:
+    wrong = next(g for g in TransitionGate if g is not gate)
+    with pytest.raises(InvalidTransitionError, match=gate.value):
+        transition(_sample_request(from_state), to_state, actor="svc", reason="wrong gate", gate=wrong)
+
+
+@pytest.mark.parametrize(("from_state", "to_state", "gate"), GATED)
+def test_gated_target_with_its_gate_succeeds(
+    from_state: CodeRequestState, to_state: CodeRequestState, gate: TransitionGate
+) -> None:
+    updated = transition(_sample_request(from_state), to_state, actor="svc", reason="gate met", gate=gate)
+    assert updated.state == to_state
+    assert updated.audit_trail[-1].override is False
+
+
+@pytest.mark.parametrize(("from_state", "to_state", "gate"), GATED)
+def test_operator_override_passes_a_gate_and_is_audited(
+    from_state: CodeRequestState, to_state: CodeRequestState, gate: TransitionGate
+) -> None:
+    updated = transition(
+        _sample_request(from_state), to_state, actor="admin", reason="owner accepted by hand", is_operator_override=True
+    )
+    assert updated.state == to_state
+    assert updated.audit_trail[-1].override is True
+
+
+def test_a_gate_does_not_make_an_illegal_move_legal() -> None:
+    with pytest.raises(InvalidTransitionError):
+        transition(
+            _sample_request(CodeRequestState.DRAFT),
+            CodeRequestState.DONE,
+            actor="svc",
+            reason="jump",
+            gate=TransitionGate.ACCEPTANCE,
+        )
