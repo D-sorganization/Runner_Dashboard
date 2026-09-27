@@ -617,16 +617,21 @@ def test_machines_desktop_route_bypasses_legacy_app() -> None:
 
 
 def test_tests_desktop_route_bypasses_legacy_app() -> None:
-    """The Tests desktop tab owns its data outside legacy/App.tsx (#949)."""
-    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+    """The Tests view owns its data outside legacy/App.tsx (#949).
+
+    Since #1338 it renders inside Operations → Diagnostics, and the old ``tests``
+    route redirects there instead of routing to a top-level tab.
+    """
+    routing = (_FRONTEND_DIR / "src" / "shell" / "routing.ts").read_text(encoding="utf-8")
+    subsection = (_FRONTEND_DIR / "src" / "pages" / "Operations" / "OperationsTestsSubsection.tsx").read_text(
         encoding="utf-8",
     )
     tests_page = (_FRONTEND_DIR / "src" / "pages" / "TestsPage.tsx").read_text(
         encoding="utf-8",
     )
 
-    assert 'case "tests":' in routed_shell
-    assert "return <TestsPage />;" in routed_shell
+    assert 'table["tests"] = TESTS_REDIRECT;' in routing
+    assert "<TestsPage />" in subsection
     assert 'legacyFetch("/api/heavy-tests/repos"' in tests_page
     assert 'legacyFetch("/api/tests/ci-results"' in tests_page
     assert "export function TestsPage" in tests_page
