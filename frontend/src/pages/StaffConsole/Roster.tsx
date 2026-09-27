@@ -14,6 +14,7 @@ import { ROSTER_GROUPS } from "./types";
 import { categorizeRole, filterRoles } from "./rosterUtils";
 import { RosterRow } from "./RosterRow";
 import { RosterGroup } from "./RosterGroup";
+import { NewPanelForm } from "./NewPanelForm";
 
 const PINNED_STORAGE_KEY = "staff-console:pinned-roles";
 const COLLAPSED_STORAGE_KEY = "staff-console:collapsed-groups";
@@ -32,7 +33,11 @@ export const Roster: React.FC<RosterProps> = ({
   errorMessage,
   isStale = false,
   className = "",
+  onThreadCreated,
 }) => {
+  // ── New Panel Form State ───────────────────────────────────────────────────
+  const [showPanelForm, setShowPanelForm] = useState(false);
+
   // ── Search State ────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -268,17 +273,38 @@ export const Roster: React.FC<RosterProps> = ({
           )}
         </div>
 
-        {isLoading && (
-          <span
-            data-testid="roster-loading-indicator"
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <button
+            type="button"
+            className="roster-new-panel-btn"
+            data-testid="roster-new-panel-button"
+            aria-label="New panel"
+            onClick={() => setShowPanelForm(true)}
             style={{
+              padding: "2px 8px",
               fontSize: "11px",
-              color: "var(--text-secondary, #8b949e)",
+              fontWeight: 600,
+              borderRadius: "4px",
+              border: "1px solid var(--border, #30363d)",
+              background: "var(--bg-tertiary, #21262d)",
+              color: "var(--text-primary, #c9d1d9)",
+              cursor: "pointer",
             }}
           >
-            Syncing...
-          </span>
-        )}
+            + New panel
+          </button>
+          {isLoading && (
+            <span
+              data-testid="roster-loading-indicator"
+              style={{
+                fontSize: "11px",
+                color: "var(--text-secondary, #8b949e)",
+              }}
+            >
+              Syncing...
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Search Input */}
@@ -421,6 +447,26 @@ export const Roster: React.FC<RosterProps> = ({
           focusedRoleId={focusedRoleId}
         />
       ))}
+
+      {/* New Panel Dialog */}
+      {showPanelForm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="New expert panel"
+          className="panel-dialog-overlay"
+        >
+          <div className="panel-dialog-content">
+            <NewPanelForm
+              onCreated={(thread) => {
+                setShowPanelForm(false);
+                onThreadCreated?.(thread);
+              }}
+              onCancel={() => setShowPanelForm(false)}
+            />
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

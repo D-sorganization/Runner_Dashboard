@@ -18,6 +18,7 @@ import { ContextPane } from "./ContextPane";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { InboxPanel } from "../Staff/InboxPanel";
 import { threadKindForRole } from "./consoleThreads";
+import { isPanelThread } from "./panelTurn";
 import { useStaffConsole } from "./useStaffConsole";
 import "./mobile.css";
 
@@ -232,6 +233,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               selectedRole={selectedRole || undefined}
               onSendMessage={handleSendMessage}
               placeholder={`Message ${currentRoleObj.title || "staff"}…`}
+              isPanel={isPanelThread(activeThread)}
             />
           </div>
 

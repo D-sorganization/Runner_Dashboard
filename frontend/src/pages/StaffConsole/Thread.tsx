@@ -10,9 +10,34 @@ import { MessageItem } from "./MessageItem";
 import { Composer } from "./Composer";
 import { formatSeparatorDate, getDateKey } from "./threadUtils";
 import { prefersReducedMotion } from "../../design/motion";
+import { groupByRound, isPanelThread } from "./panelTurn";
 
 /** Scroll instantly when the user asks for reduced motion (SC-D9). */
 const scrollBehavior = (): ScrollBehavior => (prefersReducedMotion() ? "auto" : "smooth");
+
+export const RoundHeader: React.FC<{ round: number }> = ({ round }) => {
+  return (
+    <div
+      role="separator"
+      className="panel-round-header"
+      aria-label={`Round ${round}`}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        margin: "16px 0 8px 0",
+        color: "var(--accent-blue, #58a6ff)",
+        fontSize: 12,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+      }}
+    >
+      <div style={{ flex: 1, height: 1, background: "var(--border, #30363d)" }} />
+      <span style={{ padding: "0 12px" }}>Round {round}</span>
+      <div style={{ flex: 1, height: 1, background: "var(--border, #30363d)" }} />
+    </div>
+  );
+};
 
 export const DateSeparator: React.FC<{ label: string }> = ({ label }) => {
   return (
@@ -59,9 +84,58 @@ export const Thread: React.FC<ThreadProps> = ({
   const [showJumpToUnread, setShowJumpToUnread] = useState<boolean>(false);
   const [userScrolledUp, setUserScrolledUp] = useState<boolean>(false);
 
-  // Group messages by date
+  const isPanel = isPanelThread(thread);
+
+  // Group messages by date or by round (for panel threads)
   const groupedItems = useMemo(() => {
-    const elements: Array<{ type: "separator" | "message"; key: string; label?: string; message?: ThreadMessage }> = [];
+    if (isPanel) {
+      const roundGroups = groupByRound(messages);
+      const roundFirstMessageId = new Map<number, string>();
+      for (const rg of roundGroups) {
+        if (rg.messages.length > 0) {
+          roundFirstMessageId.set(rg.round, rg.messages[0].id);
+        }
+      }
+      const messageToRoundStart = new Map<string, number>();
+      for (const [r, msgId] of roundFirstMessageId.entries()) {
+        messageToRoundStart.set(msgId, r);
+      }
+
+      const elements: Array<{
+        type: "separator" | "message" | "round_header";
+        key: string;
+        label?: string;
+        round?: number;
+        message?: ThreadMessage;
+      }> = [];
+
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (messageToRoundStart.has(msg.id)) {
+          const r = messageToRoundStart.get(msg.id)!;
+          elements.push({
+            type: "round_header",
+            key: `round-${r}`,
+            label: `Round ${r}`,
+            round: r,
+          });
+        }
+        elements.push({
+          type: "message",
+          key: `msg-${msg.id}`,
+          message: msg,
+        });
+      }
+      return elements;
+    }
+
+    const elements: Array<{
+      type: "separator" | "message" | "round_header";
+      key: string;
+      label?: string;
+      round?: number;
+      message?: ThreadMessage;
+    }> = [];
     let lastDateKey = "";
 
     for (let i = 0; i < messages.length; i++) {
@@ -85,7 +159,7 @@ export const Thread: React.FC<ThreadProps> = ({
     }
 
     return elements;
-  }, [messages]);
+  }, [messages, isPanel]);
 
   // Check if unread messages exist
   const firstUnread = useMemo(() => {
@@ -206,6 +280,10 @@ export const Thread: React.FC<ThreadProps> = ({
         }}
       >
         {groupedItems.map((item) => {
+          if (item.type === "round_header" && item.round != null) {
+            return <RoundHeader key={item.key} round={item.round} />;
+          }
+
           if (item.type === "separator") {
             return <DateSeparator key={item.key} label={item.label || ""} />;
           }
@@ -276,6 +354,7 @@ export const Thread: React.FC<ThreadProps> = ({
           roles={roles}
           onSendMessage={onSendMessage}
           focusOnThreadChange
+          isPanel={isPanel}
         />
       )}
     </div>
