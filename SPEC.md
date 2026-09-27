@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1631 | Staff chat history replay skips system-authored messages (routing acks, budget notices) and drops the trailing user turn that equals the current prompt, so the question is sent once and the role never 'remembers' saying a dashboard notice. |
 | 2026-09-27 | #1628 | Code Request acceptance check: `POST .../executor/complete` enters `done` through the `acceptance` gate only when every child PR is merged with green CI and every recorded acceptance check passed, else 409 listing what is unmet. |
 | 2026-09-27 | #1623 | Code reviewer: a same-provider review uses a CLI-accepted alternate (`claude` → `haiku`, `antigravity` → `gemini-3.8-flash-medium`) or the provider's default model (`model=None`), never the old 2024 ids or `default-alternate`; the auto-review repo scope is the cached P0/P1 tiers from `config/project_priorities.yaml` (`projects.service.cached_repos_in_tiers`), with `FALLBACK_P0_P1_REPOS` only until the file has loaded. |
 | 2026-09-27 | #1627 | Staff chat turns inject a bounded `## Fleet now` block (before the knowledge block) for each target-free read tool the role declares in `chat.tools`: `read_staff_summary`, `read_priorities`, `read_briefing`, `read_sessions`, read in-process (5 s per source, 2.5k chars per section, 8k total, never raises, errors shown only as `unavailable (<ExceptionClass>)`); `GET /api/staff/summary` and the chat context share `staff.summary_view.build_staff_summary()`. |
