@@ -24,6 +24,31 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Ship the Claude Status-Line Quota Script in the Artifact (#1608)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_polish`; branch `chore/overnight-polish`; PR: see DL-#1608; Issue #1608; DL-#1608.
+
+## Objective and Status
+
+- `deploy/package-dashboard-artifact.sh` step 5b copies `scripts/claude_statusline_quota.py` into the staged `scripts/`; the script resolves `../backend`, so the deployed layout works unchanged.
+- OGLaptop runs the status line from `~/actions-runners/dashboard/scripts/` (hand copy since 2026-09-26); the next artifact install replaces it with the shipped copy.
+- DL-#1588 and DL-#1597 marked shipped (both deployed on OGLaptop).
+
+## Validation
+
+- `pytest tests/deploy/test_artifact_deployment.py`: 13 passed (2 new).
+- `ruff check` / `ruff format` clean.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and confirm `scripts/claude_statusline_quota.py` is in the artifact's `FILES.txt`.
+
+---
+
 # Past handoff — Executor built from the filed plan, pipelines persisted (#1606)
 
 Last updated: 2026-09-26

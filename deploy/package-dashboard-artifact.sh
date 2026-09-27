@@ -173,6 +173,10 @@ if [[ -d "${SCRIPT_DIR}/config" ]]; then
     cp -r "${SCRIPT_DIR}/config/." "${STAGE_DIR}/config/"
 fi
 
+# 5b. Operator scripts shipped with the artifact (#1608)
+mkdir -p "${STAGE_DIR}/scripts"
+cp "${SCRIPT_DIR}/scripts/claude_statusline_quota.py" "${STAGE_DIR}/scripts/claude_statusline_quota.py"
+
 # 6. Generate deployment.json
 BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")
 python3 - "${STAGE_DIR}/deployment.json" "${VERSION}" "${GIT_SHA}" "${GIT_BRANCH}" "${BUILD_TIMESTAMP}" "${PYTHON_MINOR}" <<'PY'
