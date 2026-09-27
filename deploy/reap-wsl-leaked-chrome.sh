@@ -9,8 +9,9 @@
 #
 # This script uses PowerShell interop (Win32_Process via Get-CimInstance) to
 # stop Windows chrome.exe processes that BOTH:
-#   - have a CommandLine matching a lighthouse/chrome-launcher temp profile
-#     (\AppData\Local\lighthouse.<n>), and
+#   - have a --user-data-dir pointing at a lighthouse/chrome-launcher temp
+#     profile (\AppData\Local\lighthouse.<n>); anchored to the flag so a URL or
+#     file path mentioning it elsewhere on the command line never matches, and
 #   - are older than LEAKED_CHROME_MAX_AGE_HOURS (default 2h), so running CI
 #     jobs are left untouched.
 #
@@ -55,7 +56,7 @@ PS_FILTER=$(cat <<EOF
 \$maxAgeHours = ${MAX_AGE_HOURS}
 \$cutoff = (Get-Date).AddHours(-\$maxAgeHours)
 \$procs = Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object {
-    \$_.CommandLine -like '*\\AppData\\Local\\lighthouse.*' -and [datetime]\$_.CreationDate -lt \$cutoff
+    \$_.CommandLine -match '--user-data-dir="?[^" ]*\\\\AppData\\\\Local\\\\lighthouse\\.' -and [datetime]\$_.CreationDate -lt \$cutoff
 }
 \$count = 0
 if (\$procs) { \$count = @(\$procs).Count }

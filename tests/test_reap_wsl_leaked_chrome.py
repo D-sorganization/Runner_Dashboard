@@ -128,7 +128,11 @@ def test_snippet_contains_lighthouse_pattern_and_age_filter(tmp_path: Path) -> N
     )
 
     assert "chrome.exe" in invocation
-    assert r"\AppData\Local\lighthouse." in invocation
+    # Anchored to the profile flag, so the user's Chrome opened on a URL or file
+    # path containing "lighthouse." never matches.
+    assert r"-match '--user-data-dir=" in invocation
+    assert r"\\AppData\\Local\\lighthouse\." in invocation
+    assert "-like" not in invocation
     assert "CreationDate" in invocation
     # Default age threshold of 2 hours must appear somewhere in the snippet.
     assert "2" in invocation

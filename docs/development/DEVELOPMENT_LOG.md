@@ -118,7 +118,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** pending
 - **Paths:** `deploy/reap-wsl-leaked-chrome.sh`, `deploy/scheduled-dashboard-maintenance.sh`, `tests/test_reap_wsl_leaked_chrome.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (9 pytest cases in `tests/test_reap_wsl_leaked_chrome.py` + `tests/test_maintenance_smoke.py` pass under WSL Ubuntu-22.04, 1 skipped for a cross-mount worktree git-index quirk unrelated to the reaper; ruff check/format clean; shellcheck clean)
+- **Last verified:** 2026-09-27 (filter anchored to `--user-data-dir` after review; regex checked in PS 7 and 5.1 against leak, URL, and user-profile samples; `tests/test_reap_wsl_leaked_chrome.py` passes under WSL; OGLaptop read-only run: 0 matches, all 18 user Chrome excluded)
 - **Summary:** New standalone `deploy/reap-wsl-leaked-chrome.sh` stops Windows `chrome.exe` processes leaked into WSL hosts through `/mnt/c` interop (lhci/chrome-launcher). It matches only processes whose `CommandLine` has a `\AppData\Local\lighthouse.` temp profile AND whose `CreationDate` is older than `LEAKED_CHROME_MAX_AGE_HOURS` (default 2h, PowerShell 5.1 compatible `Get-CimInstance Win32_Process`), honours `DRY_RUN`, never deletes profile dirs, and exits 0 with a warning if `powershell.exe`/interop is unavailable or times out (wrapped in `timeout 120`). `POWERSHELL_BIN` is overridable for tests. Wired into `deploy/scheduled-dashboard-maintenance.sh` behind a WSL-only guard (`/proc/sys/fs/binfmt_misc/WSLInterop` or `WSL_DISTRO_NAME`).
 - **Next step:** Open the PR, arm auto-merge, release the lease.
 

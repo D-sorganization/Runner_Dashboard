@@ -19,6 +19,7 @@ Last updated: 2026-09-27
   the observed source, fixed separately in Gasification_Model). This adds a
   reaper to the hourly maintenance path so any future leak of the same shape
   is cleaned up automatically.
+- The match is anchored to Chrome's `--user-data-dir` flag (`-match '--user-data-dir="?[^" ]*\\AppData\\Local\\lighthouse\.'`), so the user's Chrome opened on a URL or file path containing that string never matches. Verified in PS 7 and 5.1; a read-only run on OGLaptop matched 0 of 18 (all user) Chrome processes.
 - `deploy/reap-wsl-leaked-chrome.sh` (new, standalone, testable): calls
   `powershell.exe -NoProfile -NonInteractive -Command` (wrapped in
   `timeout 120`) with a PowerShell 5.1-compatible snippet that uses
