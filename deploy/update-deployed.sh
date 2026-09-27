@@ -213,22 +213,9 @@ _check_health() {
     curl -fsS --max-time 10 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1
 }
 
-_wait_healthy() {
-    local attempt=0 delays=(1 2 4 8 16)
-    for delay in "${delays[@]}"; do
-        if _check_health; then
-            return 0
-        fi
-        warn "Health check attempt $((attempt+1)) failed; retrying in ${delay}s..."
-        sleep "$delay"
-        ((attempt++)) || true
-    done
-    return 1
-}
-
 # Brief wait then check status — skipped in dry-run mode
 if [[ "$DRY_RUN" != "true" ]]; then
-    if ! _wait_healthy; then
+    if ! wait_healthy _check_health; then
         warn "Service failed health checks — attempting rollback..."
         if [[ -n "${_BACKUP:-}" && -d "$_BACKUP" ]]; then
             "$(dirname "$0")/rollback-deployed.sh" --backup-dir "$_BACKUP" --deploy-dir "$DEPLOY_DIR"

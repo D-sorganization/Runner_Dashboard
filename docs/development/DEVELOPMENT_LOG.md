@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1656 — Deploy health gate: off-by-one and too-short window
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1656
+- **Branch:** `fix/deploy-health-window`
+- **PR:** pending
+- **Paths:** `deploy/lib.sh`, `deploy/update-deployed.sh`, `tests/deploy/test_wait_healthy.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (health-gate tests red then green; deploy suites pass)
+- **Summary:** `wait_healthy <check...>` in lib.sh (configurable delays, final check after last sleep) replaces update-deployed.sh's private `_wait_healthy`.
+- **Next step:** Merge; the next OGLaptop or DeskComputer redeploy exercises the new gate.
+
 ### DL-#1653 — Regenerate API contract after #1647
 
 - **State:** in_review

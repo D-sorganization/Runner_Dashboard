@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1656 | Deploy health gate: shared `wait_healthy` in `deploy/lib.sh` checks after every retry sleep (the old loop skipped the check after its last sleep) over a `DEPLOY_HEALTH_DELAYS` window, default ~75 s; `update-deployed.sh` uses it. |
 | 2026-09-27 | #1653 | Regenerated API contract (`frontend/src/lib/openapi.json`, `api-types.ts`) for the #1647 panels-presets description; `npm run generate-api:check` passes again. |
 | 2026-09-27 | #1651 | `scripts/staff_chat_smoke.py --memory` adds a second turn: the first message plants a random codeword, the second asks for it, and the `memory next turn` check passes only when the role's second reply recalls it (SC-B acceptance, #1348). |
 | 2026-09-27 | #1649 | Staff chat turns separate dashboard-gathered context from the person's message: a reference note, the context blocks (boundary-like lines quoted), then `## Message from the person you are talking to` and the message; plain turns are unchanged. The history replay de-dups against the raw message and places the context before the prior conversation. |
