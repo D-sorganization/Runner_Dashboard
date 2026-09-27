@@ -1,4 +1,29 @@
-# Current handoff — Executor built from the filed plan, pipelines persisted (#1606)
+# Current handoff — Ship the Claude Status-Line Quota Script in the Artifact (#1608)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_polish`; branch `chore/overnight-polish`; PR: see DL-#1608; Issue #1608; DL-#1608.
+
+## Objective and Status
+
+- `deploy/package-dashboard-artifact.sh` step 5b copies `scripts/claude_statusline_quota.py` into the staged `scripts/`; the script resolves `../backend`, so the deployed layout works unchanged.
+- OGLaptop runs the status line from `~/actions-runners/dashboard/scripts/` (hand copy since 2026-09-26); the next artifact install replaces it with the shipped copy.
+- DL-#1588 and DL-#1597 marked shipped (both deployed on OGLaptop).
+
+## Validation
+
+- `pytest tests/deploy/test_artifact_deployment.py`: 13 passed (2 new).
+- `ruff check` / `ruff format` clean.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and confirm `scripts/claude_statusline_quota.py` is in the artifact's `FILES.txt`.
+
+---
+
+# Past handoff — Executor built from the filed plan, pipelines persisted (#1606)
 
 Last updated: 2026-09-26
 
@@ -47,6 +72,7 @@ Last updated: 2026-09-27
 ## Next Steps
 
 1. Merge once CI is green; then rebase #1610 and #1617 onto it.
+
 # Past handoff — Decision SLA on owner inbox items (#1607)
 
 Last updated: 2026-09-27
@@ -76,6 +102,7 @@ Last updated: 2026-09-27
 ---
 
 # Past handoff — Grok connection guide on the v1 contract (#1352)
+
 - Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-grokdoc`; branch `docs/grok-guide-v1-live`; PR: #1620; Issue #1352; DL-#1352.
 
 ## Objective and Status
@@ -760,6 +787,7 @@ Last updated: 2026-09-26
 Removed two duplicate/phantom entries from `docs/development/DEVELOPMENT_LOG.md` that were called out in the previous handoff as pre-existing issues. The file was at 199,867 bytes — 133 bytes below the 200,000-byte validator ceiling — with two redundant blocks consuming ~3,500 bytes.
 
 **Removed:**
+
 1. **DL-#1513 duplicate in Active section** (lines 452–463 before edit): The canonical shipped record lives in the `## Shipped (Last 90 Days)` section at the end of the file. The Active-section copy had no `Issue:` field and listed only PR #1519; the canonical copy has both PRs (#1515 and #1519) and a `Shipped:` date.
 2. **Phantom DL-#1339 entry** (lines 477–488 before edit): The heading read `DL-#1339 · SC-B9: Group threads…` but the body (owner `claude`, issue `#1479`, branch `agy/issue-1479`, knowledge-pack paths, state `in_review`) was entirely DL-#1479 content — mislabeled, stale, and superseded by the correct DL-#1479 entry (shipped, PR #1512) immediately above it and the correct DL-#1339 entry (shipped, PR #1480) immediately below it.
 
