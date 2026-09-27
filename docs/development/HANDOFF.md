@@ -1,4 +1,27 @@
-# Current handoff — Chat smoke --memory two-turn check (#1651)
+# Current handoff — Regenerate API contract after #1647 (#1653)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1653`; branch `fix/regen-api-contract-presets`; PR: see DL-#1653; Issue #1653; DL-#1653.
+
+## Objective and Status
+
+- Seen on #1652: TypeScript typecheck (tsc) → Verify generated API contract types, a one-line description diff for GET /api/v1/staff/panels/presets.
+- `npm run generate-api` regenerated both files; ignoring line endings, the output equals this two-line change.
+
+## Validation
+
+- Regenerated locally: `git diff --ignore-cr-at-eol` against the generator output is exactly the two description lines.
+
+## Next Steps
+
+1. Merge; then #1652's frontend lane passes on update.
+
+---
+
+# Past handoff — Chat smoke --memory two-turn check (#1651)
 
 Last updated: 2026-09-27
 

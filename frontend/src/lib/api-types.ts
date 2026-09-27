@@ -5278,7 +5278,7 @@ export interface paths {
         };
         /**
          * Expert panel presets
-         * @description Ready-made expert line-ups; every seat defaults to the ``claude`` provider.
+         * @description Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.
          */
         get: operations["get_panel_presets_api_v1_staff_panels_presets_get"];
         put?: never;
