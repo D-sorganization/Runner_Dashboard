@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** `thread_scratch_dir` moved to `staff/chat_scratch.py` and re-exported from `staff.chat` (no behaviour change), bringing chat.py from 504 to 473 lines. The Tests-route integrity test now asserts the #1338 redirect and the OperationsTestsSubsection render. The SettingsPage lint half is #1686/#1687.
 - **Next step:** Merge the PR once CI is green.
 
+### DL-#1686 — Restore green frontend lint on main
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1686
+- **Branch:** `fix/1686-settings-lint`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (CI)
+- **Summary:** main-is-red fix: one-word change, the constant is only used inside the file.
+- **Next step:** None.
+
 ### DL-#1335 — ADR: agent-client ingress stays local-only
 
 - **State:** in_review
