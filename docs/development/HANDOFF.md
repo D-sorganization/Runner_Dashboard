@@ -5,10 +5,8 @@ Last updated: 2026-09-27
 ## Identity
 
 - Repository: `D-sorganization/Runner_Dashboard`
-- Worktree: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-1604`
-- Branch: `feat/1604-code-request-update` (based on `origin/main`)
-- Commit: `SELF`
-- Pull Request: pending (do not commit or push; reviewer commits)
+- Branch: `feat/1604-code-request-update`
+- PR: #1615
 - Governing Issue: #1604
 - DL Entry: `DL-#1604`
 
@@ -20,24 +18,104 @@ Last updated: 2026-09-27
 - Enforces lifecycle gate: updates are permitted only while request is in `draft` or `triage` state; any other state returns a failed `ActionResult` with `failure_class="invalid_state"` naming the state.
 - Returns `failure_class="not_found"` for unknown Code Request IDs.
 - Configured with `required_scope="code_requests.write"` and role permission check via `allowed_actions` in `staff/actions.py`.
-- Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store` in `backend/code_requests/store.py`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`. (Claude's review replaced agy's private `asyncio.run` fallback.)
+- Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store` in `backend/code_requests/store.py`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`.
 - Added unit tests in `tests/code_requests/test_store.py` for store helpers.
-- Added comprehensive unit tests in `tests/unit/test_staff_actions.py` covering all acceptance criteria (draft and triage update, extra field rejection, non-draft/triage state rejection, unknown id rejection, role permission denial and grant).
+- Added comprehensive unit tests in `tests/unit/test_staff_actions.py` covering all acceptance criteria.
 
 ## Validation
 
 - Tested via TDD (RED -> GREEN):
-  1. `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_store.py -k test_get_and_reset_code_request_store -q -o addopts='' -p no:cacheprovider -W ignore"`: Confirmed failed with `ImportError` before implementation; 1 passed after implementation.
-  2. `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_actions.py -k code_request_update -q -o addopts='' -p no:cacheprovider -W ignore"`: Confirmed all 5 new tests failed with `unknown_action` / missing action before implementation; 5 passed after implementation.
-  3. All staff action unit tests: `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_actions.py -q -o addopts='' -p no:cacheprovider -W ignore"` -> 14 passed in 13.16s.
-  4. Broader test set: `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k 'action or code_request' -q -o addopts='' -p no:cacheprovider -W ignore"` -> 182 passed, 333 deselected in 49.30s.
-  5. Linting: `py -3.12 -m ruff check backend/code_requests/store.py backend/staff/action_executors.py tests/code_requests/test_store.py tests/unit/test_staff_actions.py` -> All checks passed!
-  6. Formatting: `py -3.12 -m ruff format backend/code_requests/store.py backend/staff/action_executors.py tests/code_requests/test_store.py tests/unit/test_staff_actions.py` -> 4 files left unchanged / reformatted.
-  7. Type checking: `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` -> Success: no issues found in 294 source files.
+  - `pytest tests/code_requests/test_store.py -k test_get_and_reset_code_request_store`: 1 passed.
+  - `pytest tests/unit/test_staff_actions.py -k code_request_update`: 5 passed.
+  - `pytest tests/unit/test_staff_actions.py`: 14 passed.
+  - Linting: `ruff check` and `ruff format` clean on changed files.
+  - Type checking: `mypy` clean on changed files.
 
 ## Next Steps
 
-1. Reviewer review and commit changes on branch `feat/1604-code-request-update`.
+1. Merge PR #1615 once CI is green.
+
+---
+
+# Past handoff — Routing override reassigns the work item (#1599)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/router-override-work-item`; Issue #1599; DL-#1599.
+- Worktree `Runner_Dashboard-worktrees/router-override-fix`; base `5369d4a5`; commit `SELF`; PR #1612.
+
+## Objective and Status
+
+- `BarbRouter.override_routing` passed `updated_by`/`reason` to `WorkItemStore.update_work_item`, which does not accept them; the blanket `except Exception` hid the `TypeError`, so the work item kept its original owner.
+- Fix: pass only `owner_role`; narrow the handler to `KeyError` (the documented missing-item failure) so signature drift fails loudly.
+- Audit trail: who/why was already in `routing_feedback` and the `staff.routing.override` audit event; the audit detail now also carries `work_item_id`. `update_work_item` is unchanged.
+
+## Validation
+
+- RED first: `test_override_routing_reassigns_work_item_owner` failed with `'librarian' == 'pragmatic-programmer'` and the swallowed `unexpected keyword argument 'updated_by'` warning.
+- Green: `tests/unit/test_staff_router.py` (11 passed with the router/work-item subset); `mypy --explicit-package-bases staff/router.py` clean (was 2 `call-arg` errors); ruff check/format clean.
+
+## Next Steps
+
+1. Merged as PR #1612.
+
+---
+
+# Past handoff — Restore the SPEC Change Log separator row (#1600)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/spec-changelog-separator`; Issue #1600; DL-#1600.
+- Worktree `Runner_Dashboard-worktrees/spec-changelog-separator` on OGLaptop; base `5369d4a5`; commit `SELF`; PR: #1614.
+
+## Objective and Status
+
+- `SPEC.md`'s Change Log rendered as plain text: #1554 replaced the `| --- |` separator under the header with its own row.
+- Neither Repository_Management's `spec-rows` merge driver nor `fleet_hooks.py spec-changelog` is installed here (no `.gitattributes`, no `shared_scripts/spec_changelog.py`), so neither dropped it; it was a hand edit.
+- A stray blank line (from #1585) also split the table; rows below it rendered as orphan text. Removed it.
+- With a valid table, the pinned Prettier hook rewrote other contributors' rows (splits cells on `|` inside code spans, strips spaces around code). Wrapped the table in `<!-- prettier-ignore-start/end -->`, the same fence RM's `spec_changelog.ensure_prettier_fence` adds.
+- `tests/test_spec_changelog_table.py`: header followed by exactly one matching separator; no dated rows outside the table; table fenced from Prettier.
+- Not touched: the legacy `- **date:**` prose bullets below the table (line ~135 on), which include one stray `| #1251 |` row.
+- `Spec Version` unchanged.
+
+## Validation
+
+- RED first: the separator test failed on `main`; the split and fence tests failed after the separator alone was restored. All 3 pass after the fix.
+- `python -m pre_commit run prettier --files SPEC.md docs/development/*.md` passes.
+
+## Next Steps
+
+1. Merge. When adding a Change Log row, insert it BELOW the `| --- | --- | --- |` line, never over it.
+
+---
+
+# Past handoff — Guarded Code Request lifecycle: plan and acceptance gates (#1605)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1605`; branch `fix/1605-guarded-lifecycle`; PR: see DL-#1605; Issue #1605 (Phase 2 of #1463, WP-2.1/WP-2.5); DL-#1605.
+
+## Objective and Status
+
+- Part 1 (this PR): `planned` and `done` are now gated targets. `lifecycle.transition` refuses them unless the caller names the matching `TransitionGate` (`plan_filed`, `acceptance`) or uses an operator override, which the audit event already records. `is_legal_transition` keeps its table-only meaning.
+- `plan_service._file` is the only code path to `planned` and passes `plan_filed`, so approved and auto-filed plans work as before. The generic `POST /api/code-requests/{id}/transition` can no longer skip plan approval or acceptance without `is_operator_override`.
+- Nothing in code moves a request to `done` yet. Part 2 adds the acceptance check (every child PR merged and verified, every criterion checked) that passes `acceptance`; it needs #1602 (criteria on child records) and #1606 (executor built from the plan).
+
+## Validation
+
+- RED: the new lifecycle tests failed to import `TransitionGate` / `required_gate` on `main`.
+- WSL rd-test-venv: `pytest tests/code_requests tests/api/test_code_requests.py tests/api/test_code_request_plans_api.py`: 153 passed. `pytest tests -k 'code_request or plan or board or executor or proposal or lifecycle'`: 468 passed, 2 skipped, 1 xfailed.
+- `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: no issues in 294 files. `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Merge once CI is green, then implement #1605 part 2 (acceptance check) after #1602 and #1606 land.
 
 ---
 
@@ -48,7 +126,7 @@ Last updated: 2026-09-26
 ## Identity
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1597-disabled-providers`; Issue #1597; DL-#1597.
-- Worktree `_wt_claude_rd_switch` on OGLaptop; base `790d199a`; commit `SELF`; PR: opened right after this commit.
+- Worktree `_wt_claude_rd_switch` on OGLaptop; base `5369d4a5`; commit `SELF`; PR: #1614.
 
 ## Objective and Status
 

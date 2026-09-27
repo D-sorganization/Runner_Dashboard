@@ -24,12 +24,49 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** antigravity
 - **Issue:** #1604
 - **Branch:** `feat/1604-code-request-update`
-- **PR:** pending
+- **PR:** #1615
 - **Paths:** `backend/code_requests/store.py`, `backend/staff/action_executors.py`, `tests/code_requests/test_store.py`, `tests/unit/test_staff_actions.py`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (14 passed in test_staff_actions.py, 182 passed in broader test set, ruff and mypy clean)
 - **Summary:** Added `code_request.update` staff action with strict Pydantic parameter validation (`extra="forbid"`) allowing only `{id, description}`, updating `prompt` via `CodeRequestStore.save`, gating execution to `draft` and `triage` states, requiring `code_requests.write` scope and honoring role permissions via `allowed_actions`. Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`.
-- **Next step:** Merge the #1604 PR once CI is green.
+- **Next step:** Merge the #1615 PR once CI is green.
+
+### DL-#1599 · Routing Override Reassigns the Work Item
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1599
+- **Branch:** `fix/router-override-work-item`
+- **PR:** #1612
+- **Paths:** `backend/staff/router.py`, `tests/unit/test_staff_router.py`, `SPEC.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `5369d4a5` (`test_staff_router.py` 11 passed; `mypy staff/router.py` clean)
+- **Summary:** `override_routing` called `update_work_item` with unsupported kwargs; the `TypeError` was swallowed, so overrides never moved the work item. Pass only `owner_role`, narrow the `except` to `KeyError`, add `work_item_id` to the audit detail.
+
+### DL-#1600 · Restore the SPEC Change Log Separator Row
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1600
+- **Branch:** `fix/spec-changelog-separator`
+- **PR:** #1614
+- **Paths:** `SPEC.md`, `tests/test_spec_changelog_table.py`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `5369d4a5` (new SPEC table test red before, green after)
+- **Summary:** The Change Log renders as one table again (separator restored, split rows joined, Prettier fence); a test guards all three.
+
+### DL-#1605 · Guarded Code Request lifecycle (plan and acceptance gates)
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1605
+- **Branch:** `fix/1605-guarded-lifecycle`
+- **PR:** #1609
+- **Paths:** `backend/code_requests/lifecycle.py`, `backend/code_requests/store.py`, `backend/code_requests/plan_service.py`, `tests/code_requests/test_lifecycle.py`, `tests/api/test_code_requests.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (code-request suites 468 passed; mypy backend clean; ruff clean)
+- **Summary:** `planned` and `done` are entered only with their `TransitionGate` or an audited operator override; the plan service names `plan_filed`. Part 2 adds the acceptance check that names `acceptance`.
+- **Next step:** Implement the acceptance check for `executing -> done` once #1602 and #1606 merge.
 
 ### DL-#1597 · Turn Providers Off on Every Dispatch Path
 

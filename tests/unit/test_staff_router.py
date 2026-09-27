@@ -204,3 +204,46 @@ def test_override_routing_logs_feedback_and_redirects() -> None:
     assert fb.original_role == "librarian"
     assert fb.override_role == "pragmatic-programmer"
     assert "code refactoring" in fb.reason
+
+
+def test_override_routing_reassigns_work_item_owner() -> None:
+    """Override reassigns the tracked work item to the new target role (Issue #1599)."""
+    store = get_conversation_store()
+    source_th = store.create_thread(title="Auto Thread", kind="auto", participants=["barb", "dieter"])
+    router = BarbRouter()
+    decision = RoutingDecision(
+        chosen_role="librarian",
+        confidence=0.85,
+        reason="Docs mention",
+        mode="deterministic",
+    )
+    work_item_store = WorkItemStore(store.path)
+    res = router.execute_handoff(
+        decision=decision,
+        original_message="Fix documentation code block",
+        caller_id="dieter",
+        source_thread_id=source_th.id,
+        store=store,
+        work_item_store=work_item_store,
+    )
+
+    with patch("staff.router.record_audit") as audit:
+        override_res = router.override_routing(
+            handoff_message_id=res.handoff_message_id,
+            new_target_role="pragmatic-programmer",
+            reason="This is a code refactoring task, not docs",
+            overridden_by="dieter",
+            store=store,
+            work_item_store=work_item_store,
+        )
+
+    assert override_res.work_item_id == res.work_item_id
+    wi = work_item_store.get_work_item(res.work_item_id)
+    assert wi is not None
+    assert wi.owner_role == "pragmatic-programmer"
+
+    # Who/why is carried by the audit event, which now names the reassigned work item.
+    detail = audit.call_args.kwargs["detail"]
+    assert audit.call_args.kwargs["principal"] == "dieter"
+    assert detail["reason"] == "This is a code refactoring task, not docs"
+    assert detail["work_item_id"] == res.work_item_id
