@@ -1,4 +1,43 @@
-# Current handoff — Plan approval audit and planner staff role (#1603)
+# Current handoff — Code_request.update staff action (#1604)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `feat/1604-code-request-update`
+- PR: #1615
+- Governing Issue: #1604
+- DL Entry: `DL-#1604`
+
+## Objective and Status
+
+- Implemented `code_request.update` staff action in `backend/staff/action_executors.py` enabling the `product-owner` role to write the PRD section of a Code Request during `draft -> triage`.
+- Enforced strict DbC parameters schema allowing exactly `{id, description}` with Pydantic model (`extra="forbid"`); extra or invalid fields return `failure_class="invalid_params"`.
+- Updates `CodeRequest.prompt` and persists via `CodeRequestStore.save`.
+- Enforces lifecycle gate: updates are permitted only while request is in `draft` or `triage` state; any other state returns a failed `ActionResult` with `failure_class="invalid_state"` naming the state.
+- Returns `failure_class="not_found"` for unknown Code Request IDs.
+- Configured with `required_scope="code_requests.write"` and role permission check via `allowed_actions` in `staff/actions.py`.
+- Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store` in `backend/code_requests/store.py`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`.
+- Added unit tests in `tests/code_requests/test_store.py` for store helpers.
+- Added comprehensive unit tests in `tests/unit/test_staff_actions.py` covering all acceptance criteria.
+
+## Validation
+
+- Tested via TDD (RED -> GREEN):
+  - `pytest tests/code_requests/test_store.py -k test_get_and_reset_code_request_store`: 1 passed.
+  - `pytest tests/unit/test_staff_actions.py -k code_request_update`: 5 passed.
+  - `pytest tests/unit/test_staff_actions.py`: 14 passed.
+  - Linting: `ruff check` and `ruff format` clean on changed files.
+  - Type checking: `mypy` clean on changed files.
+
+## Next Steps
+
+1. Merge PR #1615 once CI is green.
+
+---
+
+# Past handoff — Plan approval audit and planner staff role (#1603)
 
 Last updated: 2026-09-27
 
@@ -22,7 +61,7 @@ Last updated: 2026-09-27
 
 ## Next Steps
 
-1. Merge PR #1613 once CI is green.
+1. Merged as PR #1613.
 
 ---
 

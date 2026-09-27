@@ -236,3 +236,24 @@ async def test_deleting_local_cache_rebuilds_from_github(tmp_path: Path, monkeyp
     assert rebuilt[0].prompt == req.prompt
     assert rebuilt[0].state == CodeRequestState.TRIAGE
     assert cache_path.exists(), "Cache must be repopulated after rebuild"
+
+
+def test_get_and_reset_code_request_store(tmp_path: Path) -> None:
+    from code_requests.store import get_code_request_store, reset_code_request_store
+
+    reset_code_request_store()
+    c1 = tmp_path / "cache1.json"
+    c2 = tmp_path / "cache2.json"
+
+    s1 = get_code_request_store(cache_path=c1)
+    s2 = get_code_request_store(cache_path=c1)
+    assert s1 is s2
+    assert s1.cache_path == c1
+
+    s3 = get_code_request_store(cache_path=c2)
+    assert s3 is not s1
+    assert s3.cache_path == c2
+
+    reset_code_request_store()
+    s4 = get_code_request_store(cache_path=c2)
+    assert s4 is not s3

@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1604 | Staff action `code_request.update` (product-owner PRD): params exactly `{id, description}` (`extra="forbid"`), allowed only in `draft`/`triage`, scope `code_requests.write`; runs on the loop bridge and saves through the same `CodeRequestStore` the API uses (`get_code_request_store`). |
 | 2026-09-27 | #1603 | WP-2.1: Record plan approval audit (approved_by, approved_at) in PlanningSession and transition reason ("plan approved by <principal>"), while auto-filed plans leave fields unset and preserve "plan filed". Bind AgentProfile to staff_role="chief-architect", validate against roles.load_roles() without crashing startup, and surface staff_role in PlanningSession. |
 | 2026-09-27 | #1601 | WP-2.3: Fix Board gate secretary-note filter to query logins from _secretary_logins(), build Code Request URL from ORG and request.repository, establish BOARD_PROPOSAL_ROLE in staff/action_executors.py as single source for board secretary role dropping underscore alias board_secretary, and validate Board group coordinator in validate_action_default_roles. |
 | 2026-09-26 | #1599 | Barb routing override now actually reassigns the tracked work item to the new role: `override_routing` passed unsupported `updated_by`/`reason` kwargs to `update_work_item`, and a blanket `except` swallowed the `TypeError`. Only `owner_role` is passed; who/why stays in `routing_feedback` and the `staff.routing.override` audit event, which now also names `work_item_id`. |

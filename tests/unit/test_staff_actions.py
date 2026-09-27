@@ -12,6 +12,9 @@ from typing import Any
 import anyio
 import anyio.to_thread
 import pytest
+from code_requests.lifecycle import CodeRequestState
+from code_requests.model import CodeRequest, Requester, RequesterKind
+from code_requests.store import get_code_request_store, reset_code_request_store
 from identity import Principal
 from staff.action_executors import BOARD_PROPOSAL_ROLE
 from staff.actions import (
@@ -22,6 +25,7 @@ from staff.actions import (
     ActionRiskClass,
     ProposalExpiredError,
     ProposalReplayError,
+    RolePermissionDeniedError,
     check_approval_policy,
     check_role_permission,
     execute_proposal,
@@ -67,6 +71,7 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
     db_file = tmp_path / "staff_actions_test.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_file))
     monkeypatch.setattr(StaffRunner, "_worker", lambda *args, **kwargs: None)
+    get_code_request_store(cache_path=tmp_path / "code_requests.json")
     reset_runner()
     reset_store()
     reset_conversation_store()
@@ -76,6 +81,7 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
     reset_store()
     reset_conversation_store()
     reset_audit_store()
+    reset_code_request_store()
 
 
 def test_action_registry_contains_initial_actions() -> None:
@@ -87,12 +93,18 @@ def test_action_registry_contains_initial_actions() -> None:
         "staff.hold",
         "staff.unhold",
         "code_request.create",
+        "code_request.update",
         "board.propose",
         "maintenance.runner_restart",
         "maintenance.runner_stop",
         "maintenance.diagnose",
     }
     assert expected.issubset(names), f"Missing actions: {expected - names}"
+
+    update_act = ACTION_REGISTRY.get("code_request.update")
+    assert update_act is not None
+    assert update_act.risk_class == ActionRiskClass.MEDIUM
+    assert update_act.required_scope == "code_requests.write"
 
     dispatch_act = ACTION_REGISTRY.get("staff.dispatch")
     assert dispatch_act is not None
@@ -461,3 +473,163 @@ def test_staff_hold_and_unhold_lifecycle() -> None:
     res_unhold = execute_proposal(unhold_prop.id, approver=TEST_OWNER, store=store, approve=True)
     assert res_unhold.success is True
     assert res_unhold.verification_ok is True
+
+
+def _in_worker(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Run ``fn`` in an anyio worker thread, where executors reach the loop bridge (as in production)."""
+    return anyio.run(partial(anyio.to_thread.run_sync, partial(fn, *args, **kwargs)))
+
+
+def _make_code_request(
+    req_id: str,
+    state: CodeRequestState = CodeRequestState.DRAFT,
+    prompt: str = "Initial description",
+) -> CodeRequest:
+    now = datetime.now(UTC).isoformat()
+    return CodeRequest(
+        id=req_id,
+        repository="Runner_Dashboard",
+        title="Test Code Request",
+        state=state,
+        prompt=prompt,
+        requester=Requester(id="test-user", kind=RequesterKind.HUMAN),
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_code_request_update_draft_and_triage() -> None:
+    cr_store = get_code_request_store()
+    draft_req = _make_code_request("cr-up-draft", state=CodeRequestState.DRAFT, prompt="Draft PRD")
+    triage_req = _make_code_request("cr-up-triage", state=CodeRequestState.TRIAGE, prompt="Triage PRD")
+    cr_store._write_cache([draft_req, triage_req])
+
+    store = get_conversation_store()
+    th = store.create_thread(title="Test Update", kind="direct", participants=["barb", "user"])
+
+    prop_draft = store.create_proposal(
+        message_id="msg_draft",
+        thread_id=th.id,
+        action="code_request.update",
+        params={"id": "cr-up-draft", "description": "Updated PRD draft"},
+        risk="medium",
+        principal="barb",
+    )
+    res_draft = _in_worker(execute_proposal, prop_draft.id, approver=TEST_OWNER, store=store, approve=True)
+    assert res_draft.success is True, res_draft.error
+    assert res_draft.result["id"] == "cr-up-draft"
+    assert res_draft.result["prompt"] == "Updated PRD draft"
+
+    cached = cr_store._read_cache()
+    matching_draft = next(c for c in cached if c["id"] == "cr-up-draft")
+    assert matching_draft["prompt"] == "Updated PRD draft"
+
+    prop_triage = store.create_proposal(
+        message_id="msg_triage",
+        thread_id=th.id,
+        action="code_request.update",
+        params={"id": "cr-up-triage", "description": "Updated PRD triage"},
+        risk="medium",
+        principal="barb",
+    )
+    res_triage = _in_worker(execute_proposal, prop_triage.id, approver=TEST_OWNER, store=store, approve=True)
+    assert res_triage.success is True, res_triage.error
+    assert res_triage.result["prompt"] == "Updated PRD triage"
+
+
+def test_code_request_update_rejects_extra_field() -> None:
+    cr_store = get_code_request_store()
+    req = _make_code_request("cr-up-extra", state=CodeRequestState.DRAFT)
+    cr_store._write_cache([req])
+
+    store = get_conversation_store()
+    th = store.create_thread(title="Test Extra", kind="direct", participants=["barb", "user"])
+    prop = store.create_proposal(
+        message_id="msg_extra",
+        thread_id=th.id,
+        action="code_request.update",
+        params={"id": "cr-up-extra", "description": "New PRD", "title": "disallowed"},
+        risk="medium",
+        principal="barb",
+    )
+    res = _in_worker(execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True)
+    assert res.success is False
+    assert res.failure_class == "invalid_params"
+
+
+def test_code_request_update_rejects_non_draft_triage_state() -> None:
+    cr_store = get_code_request_store()
+    req = _make_code_request("cr-up-plan", state=CodeRequestState.PLANNING)
+    cr_store._write_cache([req])
+
+    store = get_conversation_store()
+    th = store.create_thread(title="Test Non Draft", kind="direct", participants=["barb", "user"])
+    prop = store.create_proposal(
+        message_id="msg_plan",
+        thread_id=th.id,
+        action="code_request.update",
+        params={"id": "cr-up-plan", "description": "New PRD"},
+        risk="medium",
+        principal="barb",
+    )
+    res = _in_worker(execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True)
+    assert res.success is False
+    assert res.failure_class == "invalid_state"
+    assert "planning" in (res.error or "").lower()
+
+
+def test_code_request_update_rejects_unknown_id() -> None:
+    store = get_conversation_store()
+    th = store.create_thread(title="Test Unknown", kind="direct", participants=["barb", "user"])
+    prop = store.create_proposal(
+        message_id="msg_unk",
+        thread_id=th.id,
+        action="code_request.update",
+        params={"id": "cr-nonexistent-404", "description": "New PRD"},
+        risk="medium",
+        principal="barb",
+    )
+    res = _in_worker(execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True)
+    assert res.success is False
+    assert res.failure_class == "not_found"
+    assert "cr-nonexistent-404" in (res.error or "")
+
+
+def test_code_request_update_role_permission_denial() -> None:
+    unauthorized_role = RoleSpec(
+        name="intern_bot",
+        title="Intern Bot",
+        permissions={"allowed_actions": ["maintenance.diagnose"]},
+    )
+    product_owner_role = RoleSpec(
+        name="product-owner",
+        title="Product Owner",
+        permissions={"allowed_actions": ["code_request.update"]},
+    )
+
+    update_act = ACTION_REGISTRY.get("code_request.update")
+    assert not check_role_permission(update_act, "intern_bot", role_spec=unauthorized_role)
+    assert check_role_permission(update_act, "product-owner", role_spec=product_owner_role)
+
+    store = get_conversation_store()
+    th = store.create_thread(title="Test Role Denial", kind="direct", participants=["intern_bot", "user"])
+    prop = store.create_proposal(
+        message_id="msg_denied",
+        thread_id=th.id,
+        action="code_request.update",
+        params={"id": "cr-1", "description": "New PRD", "proposing_role": "intern_bot"},
+        risk="medium",
+        principal="intern_bot",
+    )
+    with pytest.raises(RolePermissionDeniedError, match="not permitted"):
+        execute_proposal(prop.id, approver=TEST_OWNER, store=store, approve=True)
+
+
+def test_code_request_update_outside_a_worker_thread_is_bridge_unavailable() -> None:
+    """Without the loop bridge the action fails cleanly instead of spinning up its own loop (#1604)."""
+    from staff.action_executors import execute_code_request_update
+    from staff.actions import ActionContext
+
+    res = execute_code_request_update({"id": "cr-x", "description": "d"}, ActionContext(caller=None, thread_id="th"))
+    assert res.success is False
+    assert res.failure_class == "bridge_unavailable"

@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from identity import format_caller
+from pydantic import BaseModel, ConfigDict
 from staff.audit import record_audit
 
 log = logging.getLogger("dashboard.staff.action_executors")
@@ -91,6 +92,7 @@ except Exception:  # noqa: BLE001
     log.exception("Unexpected error during action default roles initial validation")
 
 if TYPE_CHECKING:
+    from code_requests.store import CodeRequestStore
     from staff.actions import ActionContext, ActionRegistry, ActionResult
 
 
@@ -322,6 +324,67 @@ def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> A
     return ActionResult(success=True, result={"work_item_id": wi.id, "title": title, "repo": repo})
 
 
+class CodeRequestUpdateParams(BaseModel):
+    """Parameters for code_request.update action.
+
+    Preconditions:
+    - id: identifier of the Code Request
+    - description: updated prompt/PRD description
+    - extra fields: forbidden
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    description: str
+
+
+def execute_code_request_update(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    """Update a Code Request's prompt/PRD description while in draft or triage state.
+
+    Preconditions:
+    - params must contain exactly 'id' and 'description' (extra fields forbidden).
+    - Code Request with specified 'id' must exist.
+    - Code Request must be in 'draft' or 'triage' state.
+    Postconditions:
+    - Code Request's prompt is updated and persisted via CodeRequestStore.save.
+    - Returns ActionResult indicating success or failure with appropriate failure_class.
+    """
+    from code_requests.store import get_code_request_store
+    from pydantic import ValidationError
+    from staff.actions import ActionResult
+    from staff.loop_bridge import BridgeUnavailableError, run_on_loop
+
+    try:
+        parsed = CodeRequestUpdateParams.model_validate(params)
+    except ValidationError as exc:
+        return ActionResult(success=False, error=str(exc), failure_class="invalid_params")
+    try:
+        outcome = run_on_loop(_update_code_request_prompt, get_code_request_store(), parsed)
+    except BridgeUnavailableError as exc:
+        return ActionResult(success=False, error=f"code_request.update {exc}", failure_class="bridge_unavailable")
+    if isinstance(outcome, str):
+        failure_class, _, error = outcome.partition(":")
+        return ActionResult(success=False, error=error, failure_class=failure_class)
+    return ActionResult(success=True, result=outcome)
+
+
+async def _update_code_request_prompt(store: CodeRequestStore, parsed: CodeRequestUpdateParams) -> dict[str, Any] | str:
+    """Load, check and save on the server loop; return the result or ``"<failure_class>:<error>"``."""
+    from datetime import UTC, datetime
+
+    from code_requests.model import CodeRequestState
+
+    req = await store.get(parsed.id)
+    if req is None:
+        return f"not_found:Code Request '{parsed.id}' not found"
+    if req.state not in (CodeRequestState.DRAFT, CodeRequestState.TRIAGE):
+        return f"invalid_state:Cannot update Code Request in state '{req.state.value}' (must be 'draft' or 'triage')"
+    updated = req.model_copy(update={"prompt": parsed.description, "updated_at": datetime.now(UTC).isoformat()})
+    saved = await store.save(updated)
+    return {"id": saved.id, "prompt": saved.prompt, "state": saved.state.value}
+
+
 def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     from staff.actions import ActionResult
 
@@ -470,6 +533,17 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             required_scope="code_requests.write",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_code_request_create,
+        ),
+        ActionDefinition(
+            name="code_request.update",
+            description="Update the description of a Code Request in draft or triage state.",
+            params_schema={
+                "id": "string",
+                "description": "string",
+            },
+            required_scope="code_requests.write",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_code_request_update,
         ),
         ActionDefinition(
             name="board.propose",
