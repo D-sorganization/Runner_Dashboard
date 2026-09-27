@@ -1,4 +1,26 @@
-# Current handoff — ADR: agent-client ingress stays local-only (#1335)
+# Current handoff — Restore green frontend lint on main (#1686)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1686`; branch `fix/1686-settings-lint`; PR: see DL-#1686; Issue #1686; DL-#1686.
+
+## Objective and Status
+
+- #1679 exported a constant from a component file; ESLint (max-warnings 0) then failed `Vitest + Coverage` on main and on every PR running the frontend lane.
+
+## Validation
+
+- CI `Vitest + Coverage` lint step on this PR.
+
+## Next Steps
+
+1. None.
+
+---
+
+# Past handoff — ADR: agent-client ingress stays local-only (#1335)
 
 Last updated: 2026-09-27
 
