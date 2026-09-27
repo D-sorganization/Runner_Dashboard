@@ -1,4 +1,33 @@
-# Current handoff — Deploy health gate: off-by-one and too-short window (#1656)
+# Current handoff — Staff chat remembers the previous turn (#1655)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1655`; branch `fix/1655-chat-memory`; PR: see DL-#1655; Issue #1655; DL-#1655.
+- Implementation commit: SELF.
+
+## Objective and Status
+
+- Symptom: on DeskComputer at afd7a4c7, `scripts/staff_chat_smoke.py --memory` sent as `agent-grok` failed for Barb. On turn 2 she said no codeword had been given. The journal logged `Session resume failed for claude … falling back to replay`.
+- Cause 1: every chat turn ran in a fresh `mkdtemp` directory. The claude CLI files sessions under `$CLAUDE_CONFIG_DIR/projects/<cwd-slug>/` (on DeskComputer, turn 1 was under `-tmp-staff-chat-v68qcbv2`), so `--resume` from a new directory never found them. Fix: `staff.chat.thread_scratch_dir(thread_id)` is a stable per-thread directory under the temp dir, kept between turns because turns of one thread can overlap.
+- Cause 2: `format_history_replay` charged the persona, contract and context against its 16k-char budget before any history, so a long persona plus a full fleet block (up to 8k) left no room for prior turns. Fix: the budget now covers only the prior turns plus the current turn. The persona and context keep their own caps.
+- Files: `backend/staff/chat.py`, `backend/staff/chat_history.py`, `tests/unit/test_staff_chat_memory.py` (new, 2 tests).
+
+## Validation
+
+- RED: both new tests failed before the change (turn 2 ran in a different cwd; the codeword was missing from the replay).
+- WSL rd-test-venv: 5013 passed, 76 skipped, 1 xfailed; 1 failed = tests/frontend/test_vite_config.py::test_no_stale_vite_config_is_tracked (environmental: WSL git cannot read a Windows worktree; neither file is tracked)
+- `py -3.12 -m mypy backend/`: no issues. `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Merge, redeploy DeskComputer, and run `staff_chat_smoke.py --base-url http://127.0.0.1:8321 --memory` as `agent-grok`. Turn 2 should recall the codeword, and the role message meta should not show `replayed_history`.
+2. Follow-up (not in this PR): per-turn `staff_panel_*` directories still leave one claude project folder per panel turn under `$CLAUDE_CONFIG_DIR/projects` (45 on DeskComputer).
+
+---
+
+# Past handoff — Deploy health gate: off-by-one and too-short window (#1656)
 
 Last updated: 2026-09-27
 

@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1655 | Staff chat keeps memory across turns: a thread's turns run in one stable per-thread scratch directory, so `claude --resume` finds the session filed under that working directory (a fresh `mkdtemp` per turn made every resume fail). The history-replay budget now covers only prior turns, so a long persona plus a full fleet block no longer drops them. |
 | 2026-09-27 | #1656 | Deploy health gate: shared `wait_healthy` in `deploy/lib.sh` checks after every retry sleep (the old loop skipped the check after its last sleep) over a `DEPLOY_HEALTH_DELAYS` window, default ~75 s; `update-deployed.sh` uses it. |
 | 2026-09-27 | #1653 | Regenerated API contract (`frontend/src/lib/openapi.json`, `api-types.ts`) for the #1647 panels-presets description; `npm run generate-api:check` passes again. |
 | 2026-09-27 | #1651 | `scripts/staff_chat_smoke.py --memory` adds a second turn: the first message plants a random codeword, the second asks for it, and the `memory next turn` check passes only when the role's second reply recalls it (SC-B acceptance, #1348). |

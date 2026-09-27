@@ -67,10 +67,13 @@ def format_history_replay(
         current_prompt: The raw user message prompt for the current turn.
         role: RoleSpec defining assistant identity and instructions.
         context: Optional dashboard-gathered reference context block to inject.
-        token_budget: Maximum token budget (estimates ~4 chars/token).
+        token_budget: Token budget for the replayed prior turns (estimates ~4 chars/token).
 
     Postconditions:
-        Returns formatted replay prompt staying strictly within char_budget.
+        The prior turns plus the current turn stay within the budget, newest turns kept
+        first. The persona and the context are not charged against it: they have their
+        own size caps, and charging them let a long persona plus a full fleet block
+        squeeze every prior turn out of the replay (#1655).
     """
     char_budget = token_budget * 4
 
@@ -109,8 +112,7 @@ def format_history_replay(
     current_turn = f"User: {current_prompt.strip()}\nAssistant:"
 
     included_turns: list[str] = []
-    base_len = len(persona_header) + len(contract_fragment) + len(context_fragment) + len(current_turn)
-    remaining_chars = max(0, char_budget - base_len)
+    remaining_chars = max(0, char_budget - len(current_turn))
 
     for turn in reversed(turns):
         turn_len = len(turn) + 2

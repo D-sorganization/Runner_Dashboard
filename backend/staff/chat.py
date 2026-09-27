@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
+import re
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from staff.adapters import (
@@ -101,6 +102,24 @@ class ChatTurnResult:
     error: str | None = None
     metrics: dict[str, Any] = field(default_factory=dict)
     replayed_history: bool = False
+
+
+def thread_scratch_dir(thread_id: str) -> str:
+    """The read-only working directory every chat turn of ``thread_id`` runs in (#1655).
+
+    The claude CLI files a session under a project directory keyed by the working
+    directory, so ``--resume`` only finds turn 1 when turn 2 runs in the same
+    directory. The directory is stable per thread, distinct between threads, and kept
+    between turns (turns of one thread may overlap, so no turn may remove it).
+
+    Pre: ``thread_id`` is non-empty.
+    Post: the returned directory exists.
+    """
+    assert thread_id.strip(), "thread_id must be non-empty"  # noqa: S101
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", thread_id)
+    path = Path(tempfile.gettempdir()) / f"staff_chat_{safe}"
+    path.mkdir(mode=0o700, exist_ok=True)
+    return str(path)
 
 
 class ChatTurnRunner:
@@ -296,7 +315,7 @@ class ChatTurnRunner:
         is_resume: bool,
         replayed_history: bool = False,
     ) -> ChatTurnResult:
-        scratch_dir = tempfile.mkdtemp(prefix="staff_chat_")
+        scratch_dir = thread_scratch_dir(thread_id)
         bus = get_thread_bus()
 
         t_start = time.monotonic()
@@ -307,140 +326,137 @@ class ChatTurnRunner:
         stderr_text: list[str] = []
 
         try:
-            try:
-                cmd = adapter.chat_argv(
-                    prompt=prompt,
-                    workdir=scratch_dir,
-                    model=role.model if role else None,
-                    session_id=session_id,
-                    read_only_tools=chat_read_only_tools(role),
-                )
-            except (ChatReadOnlyUnsupportedError, ValueError) as exc:
-                # Fail closed and visibly: never fall back to a writable argv (#1484).
-                failure_class = (
-                    "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
-                )
-                remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
-                return ChatTurnResult(
-                    ok=False,
-                    failure_class=failure_class,
-                    retryable=False,
-                    remediation=remediation,
-                    error=str(exc),
-                )
-            env = {**os.environ, **adapter.runtime_env()}
-
-            proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
-
-            # Stream stdout lines incrementally and publish tokens live (SC-B1-G10)
-            stream_out = await stream_turn_output(
-                reader=LiveProcessReader(proc),
-                adapter=adapter,
-                bus=bus,
-                thread_id=thread_id,
-                placeholder_id=placeholder_id,
+            cmd = adapter.chat_argv(
+                prompt=prompt,
+                workdir=scratch_dir,
+                model=role.model if role else None,
+                session_id=session_id,
+                read_only_tools=chat_read_only_tools(role),
             )
-            stdout_text = stream_out.stdout_lines
-            stderr_text = stream_out.stderr_lines
-            returncode = stream_out.returncode
-            if stream_out.session_id:
-                captured_session_id = stream_out.session_id
-            t_first_token = stream_out.t_first_token
-
-            t_end = time.monotonic()
-            ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
-            turn_duration = t_end - t_start
-
-            raw_combined = "".join(stdout_text)
-
-            if returncode != 0:
-                classified = classify_run_failure(
-                    provider=adapter.provider_id,
-                    exit_code=returncode,
-                    output_text=raw_combined,
-                    error_message="".join(stderr_text),
-                )
-                return ChatTurnResult(
-                    ok=False,
-                    failure_class=classified.failure_class,
-                    retryable=classified.retryable,
-                    remediation=classified.remediation,
-                    error=classified.error,
-                )
-
-            # Parse structured reply contract
-            parsed = parse_reply(stream_out.reply_text or raw_combined, role=role)
-
-            metrics = {
-                "time_to_first_token_seconds": round(ttft, 3),
-                "turn_duration_seconds": round(turn_duration, 3),
-                "provider": adapter.provider_id,
-            }
-
-            # Update placeholder message to complete
-            msg_meta: dict[str, Any] = {
-                "metrics": metrics,
-                "session_id": captured_session_id,
-                "warnings": parsed.warnings,
-            }
-            if replayed_history:
-                msg_meta["replayed_history"] = True
-            if parsed.handoff:
-                msg_meta["handoff"] = parsed.handoff
-            if parsed.question:
-                msg_meta["question"] = parsed.question
-
-            self.conv_store.update_message(
-                placeholder_id,
-                kind="text",
-                delivery="complete",
-                body_md=parsed.reply,
-                meta=msg_meta,
+        except (ChatReadOnlyUnsupportedError, ValueError) as exc:
+            # Fail closed and visibly: never fall back to a writable argv (#1484).
+            failure_class = (
+                "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
             )
-
-            # Each proposed action becomes an ActionCard message after the reply (#1547)
-            created_proposals: list[ProposedAction] = []
-            for action in parsed.actions:
-                try:
-                    await post_proposal(
-                        self.conv_store,
-                        bus,
-                        thread_id=thread_id,
-                        author=role.name if role else "assistant",
-                        action=action.action,
-                        params=action.params,
-                        reason=action.reason,
-                    )
-                    created_proposals.append(action)
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("Failed to persist action proposal %s: %s", action.action, exc)
-
-            # Persist provider session id on thread metadata
-            if captured_session_id:
-                th = self.conv_store.get_thread(thread_id)
-                if th:
-                    cur_sessions = dict(th.meta.get("provider_sessions", {}))
-                    cur_sessions[adapter.provider_id] = captured_session_id
-                    th_meta = dict(th.meta)
-                    th_meta["provider_sessions"] = cur_sessions
-                    self.conv_store.update_thread(thread_id, meta=th_meta)
-
-            # Publish completed message on bus
-            completed_msg = self.conv_store.get_message(placeholder_id)
-            if completed_msg:
-                await bus.publish_message(thread_id, completed_msg.to_dict())
-
+            remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
             return ChatTurnResult(
-                ok=True,
-                reply=parsed.reply,
-                session_id=captured_session_id,
-                handoff=parsed.handoff,
-                question=parsed.question,
-                actions=created_proposals,
-                metrics=metrics,
+                ok=False,
+                failure_class=failure_class,
+                retryable=False,
+                remediation=remediation,
+                error=str(exc),
             )
-        finally:
-            shutil.rmtree(scratch_dir, ignore_errors=True)
+        env = {**os.environ, **adapter.runtime_env()}
+
+        proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
+
+        # Stream stdout lines incrementally and publish tokens live (SC-B1-G10)
+        stream_out = await stream_turn_output(
+            reader=LiveProcessReader(proc),
+            adapter=adapter,
+            bus=bus,
+            thread_id=thread_id,
+            placeholder_id=placeholder_id,
+        )
+        stdout_text = stream_out.stdout_lines
+        stderr_text = stream_out.stderr_lines
+        returncode = stream_out.returncode
+        if stream_out.session_id:
+            captured_session_id = stream_out.session_id
+        t_first_token = stream_out.t_first_token
+
+        t_end = time.monotonic()
+        ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
+        turn_duration = t_end - t_start
+
+        raw_combined = "".join(stdout_text)
+
+        if returncode != 0:
+            classified = classify_run_failure(
+                provider=adapter.provider_id,
+                exit_code=returncode,
+                output_text=raw_combined,
+                error_message="".join(stderr_text),
+            )
+            return ChatTurnResult(
+                ok=False,
+                failure_class=classified.failure_class,
+                retryable=classified.retryable,
+                remediation=classified.remediation,
+                error=classified.error,
+            )
+
+        # Parse structured reply contract
+        parsed = parse_reply(stream_out.reply_text or raw_combined, role=role)
+
+        metrics = {
+            "time_to_first_token_seconds": round(ttft, 3),
+            "turn_duration_seconds": round(turn_duration, 3),
+            "provider": adapter.provider_id,
+        }
+
+        # Update placeholder message to complete
+        msg_meta: dict[str, Any] = {
+            "metrics": metrics,
+            "session_id": captured_session_id,
+            "warnings": parsed.warnings,
+        }
+        if replayed_history:
+            msg_meta["replayed_history"] = True
+        if parsed.handoff:
+            msg_meta["handoff"] = parsed.handoff
+        if parsed.question:
+            msg_meta["question"] = parsed.question
+
+        self.conv_store.update_message(
+            placeholder_id,
+            kind="text",
+            delivery="complete",
+            body_md=parsed.reply,
+            meta=msg_meta,
+        )
+
+        # Each proposed action becomes an ActionCard message after the reply (#1547)
+        created_proposals: list[ProposedAction] = []
+        for action in parsed.actions:
+            try:
+                await post_proposal(
+                    self.conv_store,
+                    bus,
+                    thread_id=thread_id,
+                    author=role.name if role else "assistant",
+                    action=action.action,
+                    params=action.params,
+                    reason=action.reason,
+                )
+                created_proposals.append(action)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Failed to persist action proposal %s: %s", action.action, exc)
+
+        # Persist provider session id on thread metadata
+        if captured_session_id:
+            th = self.conv_store.get_thread(thread_id)
+            if th:
+                cur_sessions = dict(th.meta.get("provider_sessions", {}))
+                cur_sessions[adapter.provider_id] = captured_session_id
+                th_meta = dict(th.meta)
+                th_meta["provider_sessions"] = cur_sessions
+                self.conv_store.update_thread(thread_id, meta=th_meta)
+
+        # Publish completed message on bus
+        completed_msg = self.conv_store.get_message(placeholder_id)
+        if completed_msg:
+            await bus.publish_message(thread_id, completed_msg.to_dict())
+
+        return ChatTurnResult(
+            ok=True,
+            reply=parsed.reply,
+            session_id=captured_session_id,
+            handoff=parsed.handoff,
+            question=parsed.question,
+            actions=created_proposals,
+            metrics=metrics,
+        )
 
 
 async def run_chat_turn_in_background(
