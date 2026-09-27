@@ -270,3 +270,18 @@ async def test_default_turn_runner_message_id_none_publishes_no_tokens(
     assert passed_bus is real_bus
     # The silent path spawns exactly the same CLI argv as the streaming panel path.
     assert len(spawned) == 2 and spawned[0] == spawned[1]
+
+
+@pytest.mark.asyncio
+async def test_default_turn_runner_refuses_a_disabled_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """STAFF_DISABLED_PROVIDERS (#1597) holds on panel and Board seat turns too: no CLI is spawned."""
+    spawned: list[Any] = []
+    monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "gemini")
+    monkeypatch.setattr("staff.panel.spawn_cli_process", lambda **kw: spawned.append(kw))
+
+    speaker = PanelSpeaker(name="Gem", perspective="p", provider="gemini")
+    outcome = await default_turn_runner(speaker, "prompt", "thread-1", None)
+
+    assert outcome.ok is False
+    assert "STAFF_DISABLED_PROVIDERS" in (outcome.error or "")
+    assert spawned == []

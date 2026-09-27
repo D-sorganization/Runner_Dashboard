@@ -19,6 +19,7 @@ import tempfile
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import provider_switch
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
@@ -363,6 +364,8 @@ async def default_turn_runner(
     Post: the CLI process is gone and its scratch directory removed, whether the turn
     finished, failed, timed out or was cancelled.
     """
+    if provider_switch.is_disabled(speaker.provider):  # #1597 holds on panel and seat turns
+        return TurnOutcome(ok=False, error=f"{speaker.provider} {provider_switch.DISABLED_DETAIL}")
     try:
         adapter = get_adapter(speaker.provider)
     except KeyError:
