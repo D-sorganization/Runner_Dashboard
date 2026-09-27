@@ -144,3 +144,32 @@ def test_fleet_identity_mismatch_fails(tmp_path: Path) -> None:
     res = subprocess.run([BASH, "-c", cmd], capture_output=True, text=True)
     out = res.stdout + res.stderr
     assert "[FAIL] Local fleet identity mismatch" in out, out
+
+
+# --- #1698: the live unit must let cursor-agent's command sandbox create namespaces ---
+
+
+def _run_with_systemctl(tmp_path: Path, restrict_namespaces: str) -> str:
+    assert BASH is not None
+    fake, env, dropin = _fake_node(tmp_path)
+    (fake / "systemctl").write_text(
+        f'#!/usr/bin/env bash\ncase "$*" in *RestrictNamespaces*) echo "{restrict_namespaces}" ;; esac\nexit 0\n',
+        newline="\n",
+    )
+    (fake / "systemctl").chmod(0o755)
+    cmd = (
+        f'PATH="{as_bash_path(fake)}:$PATH" exec bash "{as_bash_path(SCRIPT)}" --role scheduler '
+        f'--env-file "{as_bash_path(env)}" --dropin-file "{as_bash_path(dropin)}" --skip-network'
+    )
+    res = subprocess.run([BASH, "-c", cmd], capture_output=True, text=True)
+    return res.stdout + res.stderr
+
+
+def test_unit_namespaces_allowing_cursor_sandbox_pass(tmp_path: Path) -> None:
+    out = _run_with_systemctl(tmp_path, "ipc net mnt user uts")
+    assert "[PASS] Unit allows cursor-agent sandbox namespaces" in out, out
+
+
+def test_unit_namespaces_blocking_cursor_sandbox_fail(tmp_path: Path) -> None:
+    out = _run_with_systemctl(tmp_path, "yes")
+    assert "[FAIL] Unit blocks cursor-agent sandbox namespaces" in out, out

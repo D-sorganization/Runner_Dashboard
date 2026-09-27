@@ -23,16 +23,18 @@ Last updated: 2026-09-27
 
 ## Deploying to existing nodes
 
-- `update-deployed.sh` does not re-render the unit; only `setup.sh` does. Existing nodes therefore need the drop-in: a `[Service]` section with `RestrictNamespaces=` (reset), `RestrictNamespaces=user mnt net ipc uts`, and `SystemCallFilter=@mount landlock_create_ruleset landlock_add_rule landlock_restrict_self seccomp`. Then run `systemctl daemon-reload` and restart the service.
-- Installed so far: DeskComputer. ControlTower and OGLaptop get it with their redeploy.
+- `update-deployed.sh` does not re-render the unit, so the same allowances ship as `deploy/systemd-dropins/40-cursor-sandbox.conf`. `update-deployed.sh` installs it with `install_cursor_sandbox_dropin` before it restarts the service. The function is idempotent (`cmp`), needs passwordless sudo, and otherwise warns with the exact command.
+- `staff-node-acceptance.sh` section 4 reads `systemctl show runner-dashboard -p RestrictNamespaces` and fails "Unit blocks cursor-agent sandbox namespaces" unless `user mnt net ipc uts` are all allowed. `no` means unrestricted and passes.
+- Installed by hand on 2026-09-27 on DeskComputer, ControlTower and OGLaptop, all on main `350f4ea`. Acceptance: cursor-agent ad-hoc runs pass on ControlTower and OGLaptop, each 43/45. The two remaining failures are the C3 board hold and antigravity (#1697, PR #1701).
 
 ## Validation
 
-- `pytest tests/test_deploy_hardening.py`: 58 passed. The two new or updated tests were red before the unit change.
+- `pytest tests/test_deploy_hardening.py tests/deploy/`: 306 passed, 17 skipped (POSIX-only). The four new tests were red first.
+- The updated acceptance script on DeskComputer reports `[PASS] Unit allows cursor-agent sandbox namespaces (RestrictNamespaces=ipc net mnt user uts)`.
 
 ## Next steps
 
-1. Merge the PR, then install the drop-in on ControlTower and OGLaptop and re-run `staff-node-acceptance.sh --role worker --run-ad-hoc --expect-sha <main>`.
+1. Merge the PR once CI is green.
 
 ---
 
