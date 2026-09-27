@@ -367,17 +367,13 @@ class BarbRouter:
             store=s,
         )
 
-        # 2. Redirect or update work item
+        # 2. Reassign the tracked work item. Who/why is recorded by the routing
+        # feedback row above and the audit event below (Issue #1599).
         if old_wi_id:
             try:
-                w_store.update_work_item(
-                    old_wi_id,
-                    owner_role=new_target_role,
-                    updated_by=overridden_by,
-                    reason=f"Routing override: {reason}",
-                )
-            except Exception as exc:  # noqa: BLE001
-                log.warning("Failed to update work item %s owner: %s", old_wi_id, exc)
+                w_store.update_work_item(old_wi_id, owner_role=new_target_role)
+            except KeyError:
+                log.warning("Work item %s for handoff %s no longer exists", old_wi_id, handoff_message_id)
 
         # 3. Create or resolve destination thread for new role
         threads = s.list_threads(limit=100)
@@ -425,6 +421,7 @@ class BarbRouter:
                 "reason": reason,
                 "feedback_id": fb_id,
                 "handoff_message_id": handoff_message_id,
+                "work_item_id": old_wi_id or None,
             },
             fail_closed=False,
         )

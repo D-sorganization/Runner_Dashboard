@@ -31,6 +31,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Filtered secretary notes on logins from `_secretary_logins()` in `board_gate.py`, built Code Request URL from `ORG` and `request.repository`, bound `BOARD_PROPOSAL_ROLE` as single source across staff actions, groups, router models, and proposals service dropping underscore alias `board_secretary`, and added Board group coordinator validation in `validate_action_default_roles`.
 - **Next step:** Merge the #1611 PR once CI is green.
 
+### DL-#1599 · Routing Override Reassigns the Work Item
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1599
+- **Branch:** `fix/router-override-work-item`
+- **PR:** #1612
+- **Paths:** `backend/staff/router.py`, `tests/unit/test_staff_router.py`, `SPEC.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 at `5369d4a5` (`test_staff_router.py` 11 passed; `mypy staff/router.py` clean)
+- **Summary:** `override_routing` called `update_work_item` with unsupported kwargs; the `TypeError` was swallowed, so overrides never moved the work item. Pass only `owner_role`, narrow the `except` to `KeyError`, add `work_item_id` to the audit detail.
+
 ### DL-#1600 · Restore the SPEC Change Log Separator Row
 
 - **State:** shipped
@@ -42,7 +54,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-26
 - **Last verified:** 2026-09-26 at `5369d4a5` (new SPEC table test red before, green after)
 - **Summary:** The Change Log renders as one table again (separator restored, split rows joined, Prettier fence); a test guards all three.
-- **Next step:** Merge the PR.
 
 ### DL-#1605 · Guarded Code Request lifecycle (plan and acceptance gates)
 
