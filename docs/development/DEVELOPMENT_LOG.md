@@ -18,6 +18,45 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1332-default — Owner-level default approval for disk compaction
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332-default
+- **Branch:** `fix/1332-vhdx-default-owner`
+- **PR:** pending
+- **Paths:** `backend/staff/validator.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites; live role check on 3 nodes)
+- **Summary:** Raises the RD default after Repository_Management#1829 went live on every staff node.
+- **Next step:** Close #1332 and epic #1351 after this and PR #1691 merge.
+
+### DL-#1332-card — WSL disk card in Operations Diagnostics
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332-card
+- **Branch:** `feat/1332-wsl-disk-card`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Operations/OperationsWslDiskCard.tsx`, `frontend/src/pages/Operations/OperationsDiagnosticsSection.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (vitest, eslint, tsc)
+- **Summary:** UI for the read-only WSL disk status endpoint from PR #1682.
+- **Next step:** Raise RD DEFAULT_ACTION_APPROVALS[host.vhdx_compact] to owner once Repository_Management#1829 is live on both nodes, then close #1332 and epic #1351.
+
+### DL-#1332 — WSL disk status and owner-only compaction request
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1332
+- **Branch:** `fix/1332-wsl-disk-status`
+- **PR:** pending
+- **Paths:** `backend/wsl_disk_status.py`, `backend/routers/diagnostics.py`, `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `docs/runbooks/wsl-vhdx-compaction.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted suites pass; live OGLaptop probe)
+- **Summary:** Reduced scope per the 2026-09-25 owner decision: read-only disk status plus an owner-approved compaction request; no orchestrated compaction.
+- **Next step:** Merge; then add a read-only WSL disk card to the Diagnostics page and raise the RD default approval to owner after Repository_Management#1829 syncs.
+
 ### DL-#1689 — Main red: chat.py line cap and stale Tests-route test
 
 - **State:** in_review

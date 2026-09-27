@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../../lib/api";
 import { OperationsTestsSubsection } from "./OperationsTestsSubsection";
+import { OperationsWslDiskCard } from "./OperationsWslDiskCard";
 import type {
   DiagnosticsSummary,
   GitDrift,
@@ -445,6 +446,8 @@ export function OperationsDiagnosticsSection({
           )}
         </div>
       </div>
+
+      <OperationsWslDiskCard />
 
       <OperationsTestsSubsection />
 

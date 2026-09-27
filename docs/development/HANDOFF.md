@@ -85,7 +85,81 @@ tests/test_reap_wsl_leaked_chrome.py tests/test_maintenance_smoke.py -q`:
 
 ---
 
-# Current handoff — Main red: chat.py line cap and stale Tests-route test (#1689)
+# Current handoff — Owner-level default approval for disk compaction (#1332-default)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332def`; branch `fix/1332-vhdx-default-owner`; PR: see DL-#1332-default; Issue #1332-default; DL-#1332-default.
+
+## Objective and Status
+
+- Deploy order honoured: the RM maintenance role already sets `host.vhdx_compact: owner` on OGLaptop, DeskComputer and ControlTower (live STAFF_ROLES_DIR at fbbe311, checked read-only 2026-09-27), so raising the default cannot invalidate a live role.
+- The owner-only risk class already enforced owner approval at execution; this aligns the declared policy with it.
+
+## Validation
+
+- pytest tests/unit/test_staff_roles.py tests/staff/test_vhdx_compaction_request.py tests/staff/test_maintenance_safety.py: pass (new parametrized test red first).
+
+## Next Steps
+
+1. Close #1332 and epic #1351 after this and PR #1691 merge.
+
+---
+
+# Past handoff — WSL disk card in Operations Diagnostics (#1332-card)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332card`; branch `feat/1332-wsl-disk-card`; PR: see DL-#1332-card; Issue #1332-card; DL-#1332-card.
+
+## Objective and Status
+
+- New `OperationsWslDiskCard` with its own fetch, loading/error(Retry)/empty/data states; rendered before the Tests subsection.
+- Read-only by design: findings (`not_sparse`, `fstrim_timer_inactive`) are stated as facts; the only button is Retry in the error state.
+- Drafted by agy (Gemini 3.8 Flash) from a written spec; reviewed and tidied by Claude.
+
+## Validation
+
+- vitest frontend/src/pages/Operations: 35 passed; eslint (max-warnings 0) and tsc -p tsconfig.app.json clean.
+
+## Next Steps
+
+1. Raise RD DEFAULT_ACTION_APPROVALS[host.vhdx_compact] to owner once Repository_Management#1829 is live on both nodes, then close #1332 and epic #1351.
+
+---
+
+# Past handoff — WSL disk status and owner-only compaction request (#1332)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1332`; branch `fix/1332-wsl-disk-status`; PR: see DL-#1332; Issue #1332; DL-#1332.
+
+## Objective and Status
+
+- Owner decisions 2026-09-23 (owner-only) and 2026-09-25 (sparse + fstrim; no orchestrator; status view + request only).
+- Bug fixed: the `host.vhdx_compact` alias ran `maintenance.vacuum_sqlite`. It now maps to the owner-only `maintenance.vhdx_compaction_request`, which records the request and runs nothing.
+- New read-only `GET /api/diagnostics/wsl-disk` (backend/wsl_disk_status.py), drafted by agy (Gemini 3.8 Flash) from a written spec and reviewed by Claude.
+- Live probe on OGLaptop: the Ubuntu disk is 268 GB logical, 183 GB used, and NOT sparse (fsutil agrees); fstrim timer active.
+- RD `DEFAULT_ACTION_APPROVALS[host.vhdx_compact]` stays `confirm` until Repository_Management#1829 (maintenance role -> owner) is live on both nodes; the owner-only risk class already enforces owner approval at execution.
+
+## Validation
+
+- pytest tests/unit/test_wsl_disk_status.py tests/api/test_wsl_disk_status_api.py tests/staff/test_vhdx_compaction_request.py tests/staff/test_maintenance_safety.py tests/api/test_pool_diagnostics.py: pass (new tests red first).
+- ruff check/format, mypy on the touched modules: clean. OpenAPI snapshot and api-types regenerated.
+
+## Next Steps
+
+1. Merge; then add a read-only WSL disk card to the Diagnostics page and raise the RD default approval to owner after Repository_Management#1829 syncs.
+
+---
+
+# Past handoff — Main red: chat.py line cap and stale Tests-route test (#1689)
 
 Last updated: 2026-09-27
 

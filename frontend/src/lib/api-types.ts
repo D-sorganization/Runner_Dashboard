@@ -1878,6 +1878,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diagnostics/wsl-disk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Wsl Disk Status
+         * @description Read-only WSL disk status (#1332).
+         *
+         *     Per distro: sparse flag, VHDX size vs space used inside WSL, and the last fstrim.
+         *     Changes nothing on the host.
+         */
+        get: operations["get_wsl_disk_status_api_diagnostics_wsl_disk_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/disk/pool-pressure": {
         parameters: {
             query?: never;
@@ -11975,6 +11998,28 @@ export interface operations {
         };
     };
     get_vhdx_diagnostics_api_diagnostics_vhdx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_wsl_disk_status_api_diagnostics_wsl_disk_get: {
         parameters: {
             query?: never;
             header?: never;

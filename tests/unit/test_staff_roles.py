@@ -227,6 +227,23 @@ def test_parse_role_with_fleet_actions_and_approvals() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(("level", "ok"), [("owner", True), ("confirm", False), ("auto", False)])
+def test_vhdx_compaction_default_approval_is_owner(level: str, ok: bool) -> None:
+    """#1332: a role may not approve a disk-compaction request below owner level."""
+    from staff.validator import DEFAULT_ACTION_APPROVALS, validate_role_data
+
+    assert DEFAULT_ACTION_APPROVALS["host.vhdx_compact"] == "owner"
+    role_dict = dict(_VALID_ROLE_DICT)
+    role_dict["permissions"] = dict(_VALID_ROLE_DICT["permissions"])
+    role_dict["permissions"]["fleet_actions"] = ["host.vhdx_compact"]
+    role_dict["permissions"]["approvals"] = {"host.vhdx_compact": level}
+    problems = validate_role_data(role_dict)
+    assert (problems == []) is ok
+    if not ok:
+        assert any("cannot loosen default policy" in p for p in problems)
+
+
+@pytest.mark.unit
 def test_validate_role_fleet_actions_and_approvals(tmp_path: Path) -> None:
     from staff.validator import validate_role_data
 
