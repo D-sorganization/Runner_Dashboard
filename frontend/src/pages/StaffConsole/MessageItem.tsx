@@ -9,6 +9,9 @@ import { ThreadMarkdown } from "./threadMarkdown";
 import { formatMessageTime } from "./threadUtils";
 import { GroupDeliberationCard } from "./GroupDeliberationCard";
 import { parseGroupTurn } from "./groupTurn";
+import { panelMeta } from "./panelTurn";
+import { PanelTurnCard } from "./PanelTurnCard";
+import { PanelConsensusCard } from "./PanelConsensusCard";
 import {
   ActionCard,
   type ActionProposalData,
@@ -60,6 +63,16 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const timeStr = formatMessageTime(message.created_at);
 
   const renderContent = () => {
+    // 0. Expert panel turn or synthesis (#1635). Before the error card: a timed-out
+    // expert is stored as failed, but panels cannot be retried by posting (409).
+    if (message.meta?.is_panel_synthesis) {
+      return <PanelConsensusCard message={message} />;
+    }
+    const pMeta = panelMeta(message);
+    if (pMeta) {
+      return <PanelTurnCard message={message} meta={pMeta} />;
+    }
+
     // 1. Error Card
     if (isFailed) {
       return (

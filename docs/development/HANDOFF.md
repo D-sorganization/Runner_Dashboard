@@ -1,4 +1,54 @@
-# Current handoff — Expert Panels: Backend Engine and API (#1634)
+# Current handoff — Expert panels UI (#1635)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_panelui`; branch `feat/staff-panel-ui`; PR: see DL-#1635; Issue #1635; DL-#1635.
+
+## Objective and Status
+
+- Drafted by agy (edit-only) from a written spec; reviewed by Claude.
+- Review fixes: panel turns render before the generic ErrorCard (a timed-out expert is stored `failed`, and Retry would 409); createPanel parsing tests moved to panelApi.test.ts (the form tests mock the module); mobile composer also read-only in panel threads.
+
+## Validation
+
+- `vitest run frontend/src/pages/StaffConsole`: 25 files, 180 tests passed.
+- `tsc -p tsconfig.app.json` and eslint (max-warnings 0) clean.
+
+## Next Steps
+
+1. Merge; open a 3-expert panel from the Staff Console on a deployed node.
+
+---
+
+# Past handoff — Barb's Expert-Panel Recipe; #1634 Shipped and Live (#1634)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1634`; branch `docs/1634-barb-panel-recipe`; PR not created yet at commit time; Issue #1634 (epic #1633); DL-#1634 (shipped).
+- Implementation commit: SELF.
+
+## Objective and Status
+
+- #1634 merged as #1640 (`6ddddf75`). DeskComputer is redeployed at that SHA (`/api/version` git_sha `6ddddf75`).
+- Live smoke on DeskComputer: `POST /api/v1/staff/panels` with 3 `claude`/`haiku` seats, 1 round, debate. All 3 turns `ok` with parsed stances (disagree, partly, partly), the moderator synthesis was written and reported no consensus, and `status` was `complete`.
+- `docs/agents/grok.md` gains Recipe E: how Barb runs a panel. She starts one only when Dieter asks, proposes the experts, rounds and mode first, and re-sends with `confirm_cost` only after he agrees.
+- Deploy note: the `claude-deploy-main` worktree's `node_modules` came from a Windows install; WSL builds need `@rollup/rollup-linux-x64-gnu` pinned to the installed rollup version (4.63.0), plus nvm node on PATH.
+
+## Validation
+
+- Docs-only change; no code touched. Live smoke as above.
+
+## Next Steps
+
+1. Review the peer's #1637 PR, which changes `default_turn_runner` to accept `message_id=None`, and the #1635 UI PR.
+
+---
+
+# Past handoff — Expert Panels: Backend Engine and API (#1634)
 
 Last updated: 2026-09-27
 
