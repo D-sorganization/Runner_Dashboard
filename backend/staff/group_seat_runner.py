@@ -57,7 +57,8 @@ async def run_seat(
         name=seat.title or seat.name,
         perspective=seat.mandate,
         provider=seat.provider,
-        model=seat.model or None,
+        # Seat model ids are pricing labels, not CLI ids: run on the provider default (#1637).
+        model=None,
     )
     formatted_prompt = seat_prompt(seat, prompt)
     outcome = await turn_runner(speaker, formatted_prompt, thread_id, None)

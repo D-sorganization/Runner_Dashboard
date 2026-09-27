@@ -121,3 +121,26 @@ def test_regression_no_canned_stub_strings_in_backend_staff() -> None:
         content = py_file.read_text(encoding="utf-8")
         assert canned_1 not in content, f"Found canned string {canned_1!r} in {py_file}"
         assert canned_2 not in content, f"Found canned string {canned_2!r} in {py_file}"
+
+
+def test_seat_timeout_matches_panel_turn_budget() -> None:
+    """Real seat turns take as long as panel turns; the 30 s stub budget cut them off (#1637)."""
+    from staff.group_models import DEFAULT_SEAT_TIMEOUT_SECONDS
+    from staff.panel_models import DEFAULT_TURN_TIMEOUT_SECONDS
+
+    assert DEFAULT_SEAT_TIMEOUT_SECONDS == DEFAULT_TURN_TIMEOUT_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_run_seat_uses_provider_default_model_but_prices_seat_model() -> None:
+    """Board seat model ids are pricing labels, not CLI ids, so the turn runs on the provider default (#1637)."""
+    seen: list[PanelSpeaker] = []
+
+    async def fake(speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str | None) -> TurnOutcome:
+        seen.append(speaker)
+        return TurnOutcome(ok=True, text="Position: yes")
+
+    seat = SeatSpec(name="architect", title="Architect", role="r", provider="claude", model="opus-5", mandate="m")
+    reply = await run_seat(seat, "q?", "t-1", turn_runner=fake)
+    assert seen[0].model is None
+    assert reply.cost_usd == seat_cost_usd(seat, seat_prompt(seat, "q?"), "Position: yes")
