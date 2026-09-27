@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1604 · Staff action code_request.update limited to the description (product-owner PRD)
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1604
+- **Branch:** `feat/1604-code-request-update`
+- **PR:** pending
+- **Paths:** `backend/code_requests/store.py`, `backend/staff/action_executors.py`, `tests/code_requests/test_store.py`, `tests/unit/test_staff_actions.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (14 passed in test_staff_actions.py, 182 passed in broader test set, ruff and mypy clean)
+- **Summary:** Added `code_request.update` staff action with strict Pydantic parameter validation (`extra="forbid"`) allowing only `{id, description}`, updating `prompt` via `CodeRequestStore.save`, gating execution to `draft` and `triage` states, requiring `code_requests.write` scope and honoring role permissions via `allowed_actions`. Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`.
+- **Next step:** Merge the #1604 PR once CI is green.
+
 ### DL-#1597 · Turn Providers Off on Every Dispatch Path
 
 - **State:** in_review

@@ -13,6 +13,7 @@ import builtins
 import json
 import logging
 import re
+import threading
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -315,3 +316,45 @@ class CodeRequestStore:
 
         self._write_cache(requests)
         return requests
+
+
+_CODE_REQUEST_STORE: CodeRequestStore | None = None
+_STORE_LOCK = threading.Lock()
+
+
+def get_code_request_store(
+    cache_path: Path | None = None,
+    org: str = ORG,
+    fetch_fn: Callable[[str], Awaitable[Any]] | None = None,
+    write_fn: Callable[..., Awaitable[Any]] | None = None,
+) -> CodeRequestStore:
+    """Retrieve singleton CodeRequestStore instance (DbC: thread-safe singleton).
+
+    Preconditions:
+    - cache_path, org, fetch_fn, write_fn: optional overrides for store initialization.
+    Postconditions:
+    - Returns active CodeRequestStore instance, creating a new one if not yet initialized
+      or if parameter overrides change.
+    """
+    global _CODE_REQUEST_STORE
+    with _STORE_LOCK:
+        if (
+            _CODE_REQUEST_STORE is None
+            or (cache_path is not None and _CODE_REQUEST_STORE.cache_path != cache_path)
+            or (fetch_fn is not None and _CODE_REQUEST_STORE._fetch_fn != fetch_fn)
+            or (write_fn is not None and _CODE_REQUEST_STORE._write_fn != write_fn)
+        ):
+            _CODE_REQUEST_STORE = CodeRequestStore(
+                cache_path=cache_path,
+                org=org,
+                fetch_fn=fetch_fn,
+                write_fn=write_fn,
+            )
+        return _CODE_REQUEST_STORE
+
+
+def reset_code_request_store() -> None:
+    """Reset singleton instance (useful for test isolation)."""
+    global _CODE_REQUEST_STORE
+    with _STORE_LOCK:
+        _CODE_REQUEST_STORE = None

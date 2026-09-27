@@ -1,4 +1,47 @@
-# Current handoff — Turn providers off on every dispatch path (#1597)
+# Current handoff — Code_request.update staff action (#1604)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Worktree: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\claude-1604`
+- Branch: `feat/1604-code-request-update` (based on `origin/main`)
+- Commit: `SELF`
+- Pull Request: pending (do not commit or push; reviewer commits)
+- Governing Issue: #1604
+- DL Entry: `DL-#1604`
+
+## Objective and Status
+
+- Implemented `code_request.update` staff action in `backend/staff/action_executors.py` enabling the `product-owner` role to write the PRD section of a Code Request during `draft -> triage`.
+- Enforced strict DbC parameters schema allowing exactly `{id, description}` with Pydantic model (`extra="forbid"`); extra or invalid fields return `failure_class="invalid_params"`.
+- Updates `CodeRequest.prompt` and persists via `CodeRequestStore.save`.
+- Enforces lifecycle gate: updates are permitted only while request is in `draft` or `triage` state; any other state returns a failed `ActionResult` with `failure_class="invalid_state"` naming the state.
+- Returns `failure_class="not_found"` for unknown Code Request IDs.
+- Configured with `required_scope="code_requests.write"` and role permission check via `allowed_actions` in `staff/actions.py`.
+- Added thread-safe singleton store helpers `get_code_request_store` and `reset_code_request_store` in `backend/code_requests/store.py`. The API router's `_get_store()` now delegates to `get_code_request_store`, so the action and the API share one store (one cache, one lock). The executor runs on the loop bridge (`run_on_loop`), and fails as `bridge_unavailable` outside a worker thread, like `staff.dispatch`. (Claude's review replaced agy's private `asyncio.run` fallback.)
+- Added unit tests in `tests/code_requests/test_store.py` for store helpers.
+- Added comprehensive unit tests in `tests/unit/test_staff_actions.py` covering all acceptance criteria (draft and triage update, extra field rejection, non-draft/triage state rejection, unknown id rejection, role permission denial and grant).
+
+## Validation
+
+- Tested via TDD (RED -> GREEN):
+  1. `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests/test_store.py -k test_get_and_reset_code_request_store -q -o addopts='' -p no:cacheprovider -W ignore"`: Confirmed failed with `ImportError` before implementation; 1 passed after implementation.
+  2. `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_actions.py -k code_request_update -q -o addopts='' -p no:cacheprovider -W ignore"`: Confirmed all 5 new tests failed with `unknown_action` / missing action before implementation; 5 passed after implementation.
+  3. All staff action unit tests: `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_actions.py -q -o addopts='' -p no:cacheprovider -W ignore"` -> 14 passed in 13.16s.
+  4. Broader test set: `wsl -e bash -c "cd /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1604 && GH_TOKEN=x HOME=/tmp/rdhome-1604 USERNAME=nobody /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest tests/code_requests tests/unit -k 'action or code_request' -q -o addopts='' -p no:cacheprovider -W ignore"` -> 182 passed, 333 deselected in 49.30s.
+  5. Linting: `py -3.12 -m ruff check backend/code_requests/store.py backend/staff/action_executors.py tests/code_requests/test_store.py tests/unit/test_staff_actions.py` -> All checks passed!
+  6. Formatting: `py -3.12 -m ruff format backend/code_requests/store.py backend/staff/action_executors.py tests/code_requests/test_store.py tests/unit/test_staff_actions.py` -> 4 files left unchanged / reformatted.
+  7. Type checking: `py -3.12 -m mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` -> Success: no issues found in 294 source files.
+
+## Next Steps
+
+1. Reviewer review and commit changes on branch `feat/1604-code-request-update`.
+
+---
+
+# Past handoff — Turn providers off on every dispatch path (#1597)
 
 Last updated: 2026-09-26
 
