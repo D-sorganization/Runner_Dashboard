@@ -1,10 +1,13 @@
-"""REST endpoints for Code Request executor stage (CR-5, #1287).
+"""REST endpoints for Code Request executor stage (CR-5, #1287; WP-2.2, #1606).
 
 Endpoints:
-- POST /api/code-requests/{id}/executor/initialize: Initialize executor with planned children
+- POST /api/code-requests/{id}/executor/initialize: Build the executor from the filed plan and start executing
 - POST /api/code-requests/{id}/executor/dispatch: Dispatch ready children in the current wave
 - POST /api/code-requests/{id}/executor/report-child: Report child progress, PR, CI or failure
 - GET /api/code-requests/{id}/executor/rollup: Get status rollup and per-child states and costs
+
+Pipelines persist in ``code_request_pipelines.json`` next to the Code Request store, so a
+restart resumes where execution stopped.
 """
 
 from __future__ import annotations
@@ -12,34 +15,54 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from code_requests.executor_models import (
-    ChildIssuePayload,
-    ExecutionConfig,
-    ExecutorRollup,
-)
+from code_requests.executor_models import ExecutionConfig, ExecutorRollup
+from code_requests.executor_plan import PlanNotFiledError, children_from_plan
 from code_requests.executor_stage import ExecutorPipeline
+from code_requests.executor_store import PipelineStore
+from code_requests.model import CodeRequest, CodeRequestState
+from code_requests.plan_store import PlanSessionStore
 from fastapi import APIRouter, Depends, HTTPException
 from identity import Principal, require_scope
-from pydantic import BaseModel, Field
-from routers.code_requests import _get_store
+from pydantic import BaseModel, ConfigDict, Field
+from routers import code_request_plans
+from routers.code_requests import _active_storage_path, _get_store
 
 log = logging.getLogger("dashboard.code_requests.executor_router")
 
 router = APIRouter(tags=["code-requests-executor"])
 
-_ACTIVE_PIPELINES: dict[str, ExecutorPipeline] = {}
+
+def _plan_sessions() -> PlanSessionStore:
+    return code_request_plans._sessions
 
 
-def _get_pipeline(cr_id: str) -> ExecutorPipeline:
-    pipeline = _ACTIVE_PIPELINES.get(cr_id)
-    if pipeline is None:
-        pipeline = ExecutorPipeline(code_request_id=cr_id)
-        _ACTIVE_PIPELINES[cr_id] = pipeline
-    return pipeline
+def _pipeline_store() -> PipelineStore:
+    return PipelineStore(_active_storage_path().with_name("code_request_pipelines.json"))
+
+
+async def _get_request(cr_id: str) -> CodeRequest:
+    request = await _get_store().get(cr_id)
+    if request is None:
+        raise HTTPException(status_code=404, detail=f"Code Request {cr_id!r} not found")
+    return request
+
+
+def _load_pipeline(cr_id: str) -> ExecutorPipeline:
+    snap = _pipeline_store().get(cr_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail=f"Code Request {cr_id!r} has no executor pipeline")
+    return ExecutorPipeline.from_snapshot(snap)
+
+
+def _save_pipeline(pipeline: ExecutorPipeline) -> None:
+    _pipeline_store().save(pipeline.snapshot())
 
 
 class InitializeExecutorPayload(BaseModel):
-    children: list[ChildIssuePayload] = Field(min_length=1)
+    """Children always come from the filed plan; the caller may only tune execution."""
+
+    model_config = ConfigDict(extra="forbid")
+
     config: ExecutionConfig | None = None
 
 
@@ -66,25 +89,35 @@ async def initialize_executor(
     *,
     principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Initialize the executor pipeline with a list of planned child issues."""
-    store = _get_store()
-    request = await store.get(id)
-    if request is None:
-        raise HTTPException(status_code=404, detail=f"Code Request {id!r} not found")
+    """Build the executor from the filed plan and move the Code Request ``planned -> executing``.
 
-    pipeline = ExecutorPipeline(
-        code_request_id=id,
-        config=payload.config,
-        session_id=principal.id or "executor-api",
-    )
+    Pre: the request is ``planned`` and its plan is filed (409 otherwise).
+    Post: the pipeline is persisted and the request is ``executing``.
+    """
+    request = await _get_request(id)
+    if request.state is not CodeRequestState.PLANNED:
+        raise HTTPException(status_code=409, detail=f"Code Request must be planned (state {request.state.value!r})")
+    session = _plan_sessions().get(id)
     try:
-        pipeline.initialize(payload.children, request=request)
+        children = children_from_plan(session, repository=request.repository)
+    except PlanNotFiledError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    pipeline = ExecutorPipeline(code_request_id=id, config=payload.config, session_id=principal.id or "executor-api")
+    try:
+        pipeline.initialize(list(children), request=request)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    _ACTIVE_PIPELINES[id] = pipeline
-    rollup = pipeline.get_rollup()
-    return {"status": "initialized", "rollup": rollup.model_dump()}
+    assert session is not None  # children_from_plan refused a missing session
+    await _get_store().transition(
+        id,
+        CodeRequestState.EXECUTING,
+        actor=principal.id,
+        reason=f"executor initialized from plan #{session.filing.epic_number}",
+    )
+    _save_pipeline(pipeline)
+    return {"status": "initialized", "rollup": pipeline.get_rollup().model_dump()}
 
 
 @router.post("/api/code-requests/{id}/executor/dispatch")
@@ -95,12 +128,8 @@ async def dispatch_executor(
     principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
 ) -> dict[str, Any]:
     """Dispatch ready children in the current wave."""
-    store = _get_store()
-    request = await store.get(id)
-    if request is None:
-        raise HTTPException(status_code=404, detail=f"Code Request {id!r} not found")
-
-    pipeline = _get_pipeline(id)
+    request = await _get_request(id)
+    pipeline = _load_pipeline(id)
     target_keys = payload.keys or [c.key for c in pipeline.get_ready_children()]
     dispatched: list[str] = []
     skipped: dict[str, str] = {}
@@ -112,6 +141,7 @@ async def dispatch_executor(
         else:
             skipped[k] = reason
 
+    _save_pipeline(pipeline)
     return {
         "dispatched": dispatched,
         "skipped": skipped,
@@ -127,12 +157,8 @@ async def report_child_status(
     principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
 ) -> dict[str, Any]:
     """Report progress, PR, CI or failure event on a child issue."""
-    store = _get_store()
-    request = await store.get(id)
-    if request is None:
-        raise HTTPException(status_code=404, detail=f"Code Request {id!r} not found")
-
-    pipeline = _get_pipeline(id)
+    await _get_request(id)
+    pipeline = _load_pipeline(id)
     if payload.key not in pipeline.children:
         raise HTTPException(status_code=404, detail=f"Child issue {payload.key!r} not in pipeline")
 
@@ -155,6 +181,7 @@ async def report_child_status(
     else:
         raise HTTPException(status_code=422, detail=f"Unknown event type: {payload.event!r}")
 
+    _save_pipeline(pipeline)
     rollup = pipeline.get_rollup()
     return {"status": "reported", "child": pipeline.children[payload.key].model_dump(), "rollup_state": rollup.state}
 
@@ -166,10 +193,6 @@ async def get_executor_rollup(
     principal: Principal = Depends(require_scope("code-requests.view")),  # noqa: B008
 ) -> ExecutorRollup:
     """Get the current aggregate status rollup for a Code Request plan."""
-    store = _get_store()
-    request = await store.get(id)
-    if request is None:
-        raise HTTPException(status_code=404, detail=f"Code Request {id!r} not found")
-
-    pipeline = _get_pipeline(id)
+    await _get_request(id)
+    pipeline = _load_pipeline(id)
     return pipeline.get_rollup()
