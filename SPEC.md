@@ -12,6 +12,7 @@
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
 | 2026-09-27 | #1332 | WSL disk status and owner-only compaction request (#1332): read-only `GET /api/diagnostics/wsl-disk` reports per distro the sparse flag, VHDX size vs space used and the last fstrim; `host.vhdx_compact` now maps to the owner-only `maintenance.vhdx_compaction_request`, which records the approved request and runs nothing (it previously ran a SQLite VACUUM). |
+| 2026-09-27 | #1686 | Frontend lint green again (#1686): `SETTINGS_SECTIONS` is no longer exported from `SettingsPage.tsx`, which satisfies `react-refresh/only-export-components` under `--max-warnings 0`. |
 | 2026-09-27 | #1335 | ADR 0007: agent-client ingress stays local-only (owner decision); no Funnel or relay. |
 | 2026-09-27 | #1679 | SC-G6 (#1338): Local Tools is no longer a nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. |
 | 2026-09-27 | #1674 | SC-G6 (#1338): Tests is no longer a Settings nav tab. It is a collapsed `#tests` subsection of the Diagnostics section on Operations; `/t/tests`, `/settings/tests` and `/tests` redirect to `/fleet/operations#tests`. |

@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Reduced scope per the 2026-09-25 owner decision: read-only disk status plus an owner-approved compaction request; no orchestrated compaction.
 - **Next step:** Merge; then add a read-only WSL disk card to the Diagnostics page and raise the RD default approval to owner after Repository_Management#1829 syncs.
 
+### DL-#1686 — Restore green frontend lint on main
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1686
+- **Branch:** `fix/1686-settings-lint`
+- **PR:** pending
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (CI)
+- **Summary:** main-is-red fix: one-word change, the constant is only used inside the file.
+- **Next step:** None.
+
 ### DL-#1335 — ADR: agent-client ingress stays local-only
 
 - **State:** in_review
