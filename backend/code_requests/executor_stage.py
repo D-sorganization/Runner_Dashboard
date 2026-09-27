@@ -30,6 +30,7 @@ from code_requests.executor_models import (
     ExecutorRollup,
 )
 from code_requests.executor_router import escalate_tier, resolve_child_executor
+from code_requests.executor_store import PipelineSnapshot
 from code_requests.model import CodeRequest
 
 log = logging.getLogger("dashboard.code_requests.executor_stage")
@@ -333,6 +334,30 @@ class ExecutorPipeline:
             self.audit_log.append(
                 f"Wave {self.current_wave_idx - 1} completed; advanced to wave {self.current_wave_idx}"
             )
+
+    def snapshot(self) -> PipelineSnapshot:
+        """Everything needed to resume this pipeline after a restart (#1606)."""
+        return PipelineSnapshot(
+            code_request_id=self.code_request_id,
+            session_id=self.session_id,
+            config=self.config,
+            children={k: c.model_copy(deep=True) for k, c in self.children.items()},
+            waves=[list(w) for w in self.waves],
+            current_wave_idx=self.current_wave_idx,
+            paused_branches=sorted(self.paused_branches),
+            audit_log=list(self.audit_log),
+        )
+
+    @classmethod
+    def from_snapshot(cls, snap: PipelineSnapshot, **coordination_fns: Any) -> ExecutorPipeline:
+        """Rebuild a pipeline from :meth:`snapshot`; ``coordination_fns`` are the ``*_fn`` hooks."""
+        pipeline = cls(snap.code_request_id, snap.config, session_id=snap.session_id, **coordination_fns)
+        pipeline.children = {k: c.model_copy(deep=True) for k, c in snap.children.items()}
+        pipeline.waves = [list(w) for w in snap.waves]
+        pipeline.current_wave_idx = snap.current_wave_idx
+        pipeline.paused_branches = set(snap.paused_branches)
+        pipeline.audit_log = list(snap.audit_log)
+        return pipeline
 
     def get_rollup(self) -> ExecutorRollup:
         """Compute aggregate progress, costs, and terminal state."""

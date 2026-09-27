@@ -426,6 +426,13 @@
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
+          "acceptance_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acceptance Criteria",
+            "type": "array"
+          },
           "agent": {
             "anyOf": [
               {
@@ -576,84 +583,6 @@
         ],
         "title": "ChildExecutionState",
         "type": "string"
-      },
-      "ChildIssuePayload": {
-        "additionalProperties": false,
-        "description": "Input payload to register or plan a child issue.",
-        "properties": {
-          "acceptance_criteria": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Acceptance Criteria",
-            "type": "array"
-          },
-          "complexity": {
-            "default": "routine",
-            "title": "Complexity",
-            "type": "string"
-          },
-          "dependencies": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Dependencies",
-            "type": "array"
-          },
-          "file_scope": {
-            "items": {
-              "type": "string"
-            },
-            "title": "File Scope",
-            "type": "array"
-          },
-          "issue_number": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Issue Number"
-          },
-          "key": {
-            "maxLength": 40,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "title": "Key",
-            "type": "string"
-          },
-          "repository": {
-            "minLength": 1,
-            "title": "Repository",
-            "type": "string"
-          },
-          "task_class": {
-            "default": "feature",
-            "title": "Task Class",
-            "type": "string"
-          },
-          "tier": {
-            "$ref": "#/components/schemas/ExecutorTier",
-            "default": "ollama"
-          },
-          "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "turnover_doc": {
-            "default": "",
-            "title": "Turnover Doc",
-            "type": "string"
-          }
-        },
-        "required": ["key", "title", "repository"],
-        "title": "ChildIssuePayload",
-        "type": "object"
       },
       "ClaimBody": {
         "additionalProperties": false,
@@ -1550,15 +1479,9 @@
         "type": "object"
       },
       "InitializeExecutorPayload": {
+        "additionalProperties": false,
+        "description": "Children always come from the filed plan; the caller may only tune execution.",
         "properties": {
-          "children": {
-            "items": {
-              "$ref": "#/components/schemas/ChildIssuePayload"
-            },
-            "minItems": 1,
-            "title": "Children",
-            "type": "array"
-          },
           "config": {
             "anyOf": [
               {
@@ -1570,7 +1493,6 @@
             ]
           }
         },
-        "required": ["children"],
         "title": "InitializeExecutorPayload",
         "type": "object"
       },
@@ -7722,7 +7644,7 @@
     },
     "/api/code-requests/{id}/executor/initialize": {
       "post": {
-        "description": "Initialize the executor pipeline with a list of planned child issues.",
+        "description": "Build the executor from the filed plan and move the Code Request ``planned -> executing``.\n\nPre: the request is ``planned`` and its plan is filed (409 otherwise).\nPost: the pipeline is persisted and the request is ``executing``.",
         "operationId": "initialize_executor_api_code_requests__id__executor_initialize_post",
         "parameters": [
           {

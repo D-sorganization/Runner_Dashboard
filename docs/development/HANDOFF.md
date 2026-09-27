@@ -1,4 +1,31 @@
-# Current handoff — Split staff action executors under the 500-line cap (#1618)
+# Current handoff — Executor built from the filed plan, pipelines persisted (#1606)
+
+Last updated: 2026-09-26
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1606`; branch `feat/1606-executor-from-plan`; PR: see DL-#1606; Issue #1606 (WP-2.2 of #1463); DL-#1606.
+
+## Objective and Status
+
+- `POST /api/code-requests/{id}/executor/initialize` no longer takes children from the caller. It needs a `planned` Code Request with a filed plan, builds the children from the plan session (`draft` plus `filing.children` issue numbers) via `code_requests/executor_plan.py`, and moves the request to `executing` with the epic number in the transition reason. The payload accepts only `config` (`extra="forbid"`), so caller-supplied children are a 422.
+- Pipelines persist in `code_request_pipelines.json` beside the active store (`PipelineStore`, keyed by `code_request_id`). `ExecutorPipeline.snapshot()` / `from_snapshot()` round-trip the state; the in-memory `_ACTIVE_PIPELINES` dict is gone, so dispatch, report-child and rollup survive a restart. Rollup before initialize is a 404.
+- `KeyedJsonStore` (`code_requests/keyed_json_store.py`) is the one locked, atomic JSON store; `PlanSessionStore` and `PipelineStore` both subclass it.
+- Errors: unfiled plan or unfiled child → 409; request not `planned` → 409; dependency cycle → 422.
+- `frontend/src/lib/openapi.json` and `api-types.ts` regenerated (the `ChildIssuePayload` request body is gone from the API; no frontend code used it).
+
+## Validation
+
+- WSL rd-test-venv `pytest tests -k 'code_request or executor or plan'`: 237 passed, 2 skipped, 1 xfailed. New `tests/code_requests/test_executor_from_plan.py` (8 tests); `test_executor_routes.py` seeds from a filed plan.
+- `mypy backend/`: no issues in 297 files. `ruff check` and `ruff format --check` clean.
+
+## Next Steps
+
+1. Merge; then #1605 part 2 (acceptance gate for `executing -> done`).
+
+---
+
+# Past handoff — Split staff action executors under the 500-line cap (#1618)
 
 Last updated: 2026-09-27
 

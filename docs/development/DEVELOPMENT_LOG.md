@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1606 — WP-2.2: Executor Built From the Filed Plan, Persisted Pipelines
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1606
+- **Branch:** `feat/1606-executor-from-plan`
+- **PR:** pending
+- **Paths:** `backend/code_requests/executor_plan.py`, `backend/code_requests/executor_store.py`, `backend/code_requests/keyed_json_store.py`, `backend/code_requests/plan_store.py`, `backend/code_requests/executor_stage.py`, `backend/routers/code_requests_executor.py`
+- **Started:** 2026-09-26
+- **Last verified:** 2026-09-26 (code-request/executor/plan tests 237 passed; mypy clean on 297 files)
+- **Summary:** The executor takes its children from the filed plan, moves the Code Request from `planned` to `executing`, and keeps each pipeline in a JSON store so it survives a restart.
+- **Next step:** Merge the #1606 PR once CI is green.
+
 ### DL-#1618 — Staff action executors under the 500-line cap
 
 - **State:** in_review

@@ -1139,7 +1139,10 @@ export interface paths {
         put?: never;
         /**
          * Initialize Executor
-         * @description Initialize the executor pipeline with a list of planned child issues.
+         * @description Build the executor from the filed plan and move the Code Request ``planned -> executing``.
+         *
+         *     Pre: the request is ``planned`` and its plan is filed (409 otherwise).
+         *     Post: the pipeline is persisted and the request is ``executing``.
          */
         post: operations["initialize_executor_api_code_requests__id__executor_initialize_post"];
         delete?: never;
@@ -6499,6 +6502,8 @@ export interface components {
          * @description Runtime tracking record for one planned child issue.
          */
         ChildExecutionRecord: {
+            /** Acceptance Criteria */
+            acceptance_criteria?: string[];
             /** Agent */
             agent?: string | null;
             /**
@@ -6567,43 +6572,6 @@ export interface components {
          * @enum {string}
          */
         ChildExecutionState: "queued" | "claimed" | "pr_open" | "ci" | "merged" | "failed" | "blocked" | "paused_for_human";
-        /**
-         * ChildIssuePayload
-         * @description Input payload to register or plan a child issue.
-         */
-        ChildIssuePayload: {
-            /** Acceptance Criteria */
-            acceptance_criteria?: string[];
-            /**
-             * Complexity
-             * @default routine
-             */
-            complexity: string;
-            /** Dependencies */
-            dependencies?: string[];
-            /** File Scope */
-            file_scope?: string[];
-            /** Issue Number */
-            issue_number?: number | null;
-            /** Key */
-            key: string;
-            /** Repository */
-            repository: string;
-            /**
-             * Task Class
-             * @default feature
-             */
-            task_class: string;
-            /** @default ollama */
-            tier: components["schemas"]["ExecutorTier"];
-            /** Title */
-            title: string;
-            /**
-             * Turnover Doc
-             * @default
-             */
-            turnover_doc: string;
-        };
         /**
          * ClaimBody
          * @description Lease ``repo#issue`` for ``agent``; 409 when another agent holds it.
@@ -7018,10 +6986,11 @@ export interface components {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
         };
-        /** InitializeExecutorPayload */
+        /**
+         * InitializeExecutorPayload
+         * @description Children always come from the filed plan; the caller may only tune execution.
+         */
         InitializeExecutorPayload: {
-            /** Children */
-            children: components["schemas"]["ChildIssuePayload"][];
             config?: components["schemas"]["ExecutionConfig"] | null;
         };
         /** LaunchAuthRequest */
