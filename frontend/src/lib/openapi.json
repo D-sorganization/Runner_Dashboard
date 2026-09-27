@@ -902,6 +902,7 @@
         "type": "object"
       },
       "CreateThreadRequest": {
+        "additionalProperties": false,
         "properties": {
           "kind": {
             "default": "direct",
@@ -1922,6 +1923,7 @@
         "type": "object"
       },
       "PostMessageRequest": {
+        "additionalProperties": false,
         "properties": {
           "body": {
             "title": "Body",

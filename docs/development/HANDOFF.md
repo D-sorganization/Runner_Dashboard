@@ -25,6 +25,57 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Strict v1 Thread and Message Bodies; Grok Recipes Match the Live API (#1625)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_v1strict`; branch `fix/v1-thread-contract-strict`; PR: see DL-#1625; Issue #1625; DL-#1625.
+
+## Objective and Status
+
+- Live e2e on OGLaptop: the old Recipe A returned 201 with participants `[caller]` and no message, because `participant_roles`/`initial_message` were dropped silently.
+- `CreateThreadRequest` and `PostMessageRequest` now use `ConfigDict(extra="forbid")`; the frontend (`staffApi.ts`) and `clients/fleet` already send only known keys.
+- grok.md Recipes A to C were rewritten from the live responses; the OpenAPI snapshot gains `additionalProperties: false` on both schemas (api-types.ts unchanged).
+
+## Validation
+
+- TDD: 2 new tests failed first, then passed.
+- `pytest` over every thread/message client (threads, chat turns, groups, spend limits, export, thread runs, clients/, run-card relay, assistant retirement): 197 passed.
+- `scripts/gen-api-client.sh` regenerated the snapshot.
+
+## Next Steps
+
+1. Merge; rerun the grok.md recipes against DeskComputer with the agent-grok bearer.
+
+---
+
+# Past handoff — Ship the Claude Status-Line Quota Script in the Artifact (#1608)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_polish`; branch `chore/overnight-polish`; PR: see DL-#1608; Issue #1608; DL-#1608.
+
+## Objective and Status
+
+- `deploy/package-dashboard-artifact.sh` step 5b copies `scripts/claude_statusline_quota.py` into the staged `scripts/`; the script resolves `../backend`, so the deployed layout works unchanged.
+- OGLaptop runs the status line from `~/actions-runners/dashboard/scripts/` (hand copy since 2026-09-26); the next artifact install replaces it with the shipped copy.
+- DL-#1588 and DL-#1597 marked shipped (both deployed on OGLaptop).
+
+## Validation
+
+- `pytest tests/deploy/test_artifact_deployment.py`: 13 passed (2 new).
+- `ruff check` / `ruff format` clean.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and confirm `scripts/claude_statusline_quota.py` is in the artifact's `FILES.txt`.
+
+---
+
 # Past handoff — Executor built from the filed plan, pipelines persisted (#1606)
 
 Last updated: 2026-09-26
