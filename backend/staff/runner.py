@@ -34,13 +34,14 @@ from staff import lease as lease_ritual
 from staff import quota as quota_mod
 from staff import retry as retry_mod
 from staff import usage as usage_mod
-from staff.adapters import ADAPTERS, ProviderAdapter
+from staff.adapters import ADAPTERS, READ_ONLY_RUN_PROVIDERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
 from staff.runner_ops import (
     pump_output,
+    read_only_kwargs,
     resolve_launch_paths,
     select_first_available_provider,
 )
@@ -125,7 +126,9 @@ class StaffRunner:
             consolidation=paragraph,
             focus=focus,
         )
-        argv = self._adapters[provider].build_command(prompt, "<workdir>", req.model or role.model)
+        argv = self._adapters[provider].build_command(
+            prompt, "<workdir>", req.model or role.model, **read_only_kwargs(role)
+        )
         return RunPlan(
             role=role.name,
             provider=provider,
@@ -156,8 +159,15 @@ class StaffRunner:
         return role
 
     def _resolve_provider(self, req: RunRequest, role: RoleSpec) -> str:
+        if role.code_read_only and req.provider and req.provider not in READ_ONLY_RUN_PROVIDERS:
+            raise ValueError(
+                f"role '{role.name}' runs code-read-only; provider {req.provider!r} has no read-only unattended mode"
+            )
+        candidate_providers = (
+            tuple(p for p in role.providers if p in READ_ONLY_RUN_PROVIDERS) if role.code_read_only else role.providers
+        )
         provider = req.provider or self._first_available(
-            role.providers, quota_mod.ceiling_percent(role.budget_max_window_percent)
+            candidate_providers, quota_mod.ceiling_percent(role.budget_max_window_percent)
         )
         if provider not in self._adapters:
             raise ValueError(f"unknown provider '{provider}'")
@@ -304,7 +314,9 @@ class StaffRunner:
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
         )
-        argv = adapter.build_command(prompt, str(workdir), plan.model, **self._launch_paths(adapter, workdir))
+        argv = adapter.build_command(
+            prompt, str(workdir), plan.model, **read_only_kwargs(role), **self._launch_paths(adapter, workdir)
+        )
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))

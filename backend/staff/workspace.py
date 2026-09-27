@@ -27,6 +27,14 @@ FLEET_RULES = (
     "PR URL if any."
 )
 
+READ_ONLY_FLEET_RULES = (
+    "Fleet rules (code-read-only run, #1659): read and report only; do not edit, create or delete files, "
+    "do not commit, push branches or open, comment on or merge pull requests or issues; use the local "
+    "dashboard API and read-only gh/git commands; never take an issue or PR labelled claim:local or under "
+    "another agent's live lease; when done, print a final line starting with 'STAFF_RESULT:' followed by a "
+    "one-sentence summary."
+)
+
 PLAYBOOK_MAX_CHARS = 16000
 
 
@@ -265,6 +273,8 @@ def compose_prompt(
     if repo:
         if chat_turn:
             parts.append(f"Repository context: {ORG}/{repo}. Target: {target}.")
+        elif role.code_read_only:
+            parts.append(f"Repository: {ORG}/{repo}. Target: {target}. You are in a read-only working copy.")
         else:
             parts.append(
                 f"Repository: {ORG}/{repo}. Target: {target}. You are in an isolated git worktree on branch {branch}."
@@ -290,6 +300,6 @@ def compose_prompt(
         )
         parts.append(get_chat_contract_text(contract_rel))
     else:
-        parts.append(FLEET_RULES)
+        parts.append(READ_ONLY_FLEET_RULES if role.code_read_only else FLEET_RULES)
 
     return "\n\n".join(parts)

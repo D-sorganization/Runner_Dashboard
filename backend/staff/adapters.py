@@ -36,11 +36,15 @@ from staff.adapter_policies import (
     CHAT_READ_ONLY_TOOLS,
     CLAUDE_WRITE_TOOLS,
     PERMISSION_BYPASS_FLAGS,
+    READ_ONLY_RUN_PROVIDERS,
+    READ_ONLY_RUN_SHELL_ALLOW,
+    READ_ONLY_RUN_SHELL_DENY,
     UNATTENDED_SHELL_ALLOW,
     UNATTENDED_SHELL_DENY,
     ChatReadOnlyUnsupportedError,
     UnattendedUnsupportedError,
     claude_allowed_tools,
+    claude_read_only_run_tools,
     claude_unattended_tools,
     gemini_policy_toml,
 )
@@ -58,12 +62,16 @@ __all__ = [
     "PERMISSION_BYPASS_FLAGS",
     "ProviderAdapter",
     "ProviderId",
+    "READ_ONLY_RUN_PROVIDERS",
+    "READ_ONLY_RUN_SHELL_ALLOW",
+    "READ_ONLY_RUN_SHELL_DENY",
     "UNATTENDED_SHELL_ALLOW",
     "UNATTENDED_SHELL_DENY",
     "UnattendedUnsupportedError",
     "_CHAT_BYPASS_FLAGS",
     "_CHAT_READ_ONLY_FLAGS",
     "claude_allowed_tools",
+    "claude_read_only_run_tools",
     "claude_unattended_tools",
     "gemini_policy_toml",
 ]
@@ -120,6 +128,7 @@ class ProviderAdapter:
         *,
         gitdir: str | None = None,
         policy: str | None = None,
+        read_only: bool = False,
     ) -> list[str]:
         """Return argv for one unattended run.
 
@@ -127,13 +136,18 @@ class ProviderAdapter:
         ``gitdir`` is the worktree's git common dir (defaults to ``workdir``);
         ``policy`` is the path the runner wrote ``policy_text()`` to.
         Post: the returned list never contains an unexpanded ``{...}`` slot nor a
-        :data:`PERMISSION_BYPASS_FLAGS` entry. A provider that cannot run without
-        a bypass raises :class:`UnattendedUnsupportedError`.
+        :data:`PERMISSION_BYPASS_FLAGS` entry. When ``read_only`` is True, no allowed
+        tool is in :data:`CLAUDE_WRITE_TOOLS`. A provider that cannot run without
+        a bypass or has no code-read-only unattended mode raises :class:`UnattendedUnsupportedError`.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
         if not self.unattended:
             raise UnattendedUnsupportedError(
                 f"provider {self.provider_id!r} cannot run unattended without bypassing its permissions (#1586)"
+            )
+        if read_only and self.provider_id not in READ_ONLY_RUN_PROVIDERS:
+            raise UnattendedUnsupportedError(
+                f"provider {self.provider_id!r} has no code-read-only unattended mode (#1659)"
             )
         chosen_model = model or self.default_model or ""
         slots = {
@@ -153,6 +167,18 @@ class ProviderAdapter:
             for slot, value in slots.items():
                 part = part.replace(slot, value)
             out.append(part)
+        if read_only:
+            ro_allowed, ro_denied = claude_read_only_run_tools()
+            for idx, item in enumerate(out):
+                if item == "--allowedTools" and idx + 1 < len(out):
+                    out[idx + 1] = ro_allowed
+                elif item == "--disallowedTools" and idx + 1 < len(out):
+                    out[idx + 1] = ro_denied
+            if "--allowedTools" in out:
+                allowed_entries = out[out.index("--allowedTools") + 1].split(",")
+                assert not any(tool in allowed_entries for tool in CLAUDE_WRITE_TOOLS), (  # noqa: S101
+                    "allowed tools must not contain write tools in read-only mode"
+                )
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
         assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
         return out

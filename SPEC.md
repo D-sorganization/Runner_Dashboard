@@ -12,6 +12,7 @@
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
 | 2026-09-27 | #1662 | A failed auto-review no longer blocks later reviews of its PR: the next verification queues one more attempt (`MAX_AUTO_REVIEW_ATTEMPTS = 2`; runner retries share their parent attempt; queued, running, succeeded, `needs_input` and `cancelled` reviews still count). `_review_claim` locks only beside a real runs-DB path. |
+| 2026-09-27 | #1659 | Staff roles can opt into code-read-only unattended runs with `permissions.code_read_only: true`. Claude gets a read-only tool and shell allowlist (no Edit/Write, no bare git/gh/curl, no `gh api`), and the prompt carries read-only fleet rules instead of "push and open a DRAFT pull request". Other providers fail closed. |
 | 2026-09-27 | #1660 | `.gitattributes` stores and checks out LF on every host (`*.bat`/`*.cmd` keep CRLF); the 22 files committed with CRLF are renormalized, line endings only. |
 | 2026-09-27 | #1655 | Staff chat keeps memory across turns: a thread's turns run in one stable per-thread scratch directory, so `claude --resume` finds the session filed under that working directory (a fresh `mkdtemp` per turn made every resume fail). The history-replay budget now covers only prior turns, so a long persona plus a full fleet block no longer drops them. |
 | 2026-09-27 | #1656 | Deploy health gate: shared `wait_healthy` in `deploy/lib.sh` checks after every retry sleep (the old loop skipped the check after its last sleep) over a `DEPLOY_HEALTH_DELAYS` window, default ~75 s; `update-deployed.sh` uses it. |

@@ -137,6 +137,71 @@ def claude_unattended_tools() -> tuple[str, str]:
     return ",".join(allowed), ",".join(denied)
 
 
+# ── Code-read-only unattended runs (#1659) ──────────────────────────────────
+READ_ONLY_RUN_SHELL_ALLOW: tuple[str, ...] = (
+    "gh pr view",
+    "gh pr list",
+    "gh pr checks",
+    "gh pr diff",
+    "gh issue view",
+    "gh issue list",
+    "gh run view",
+    "gh run list",
+    "gh search",
+    "git log",
+    "git show",
+    "git diff",
+    "git status",
+    "git branch --list",
+    "git rev-parse",
+    "git ls-files",
+    "curl -s http://127.0.0.1:8321/api/",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "rg",
+    "wc",
+    "sort",
+    "jq",
+)
+READ_ONLY_RUN_SHELL_DENY: tuple[str, ...] = UNATTENDED_SHELL_DENY + (
+    "git push",
+    "git commit",
+    "gh pr create",
+    "gh pr merge",
+    "gh pr edit",
+    "gh issue create",
+    "gh issue edit",
+    "gh issue close",
+    "gh issue comment",
+    "gh pr comment",
+    "gh release",
+    "gh api",
+)
+_CLAUDE_READ_ONLY_RUN_TOOLS = ("Read", "Grep", "Glob", "TodoWrite", "WebFetch", "WebSearch")
+READ_ONLY_RUN_PROVIDERS: frozenset[str] = frozenset({"claude"})
+
+
+def claude_read_only_run_tools() -> tuple[str, str]:
+    """Tool allowlist and denylist for code-read-only unattended Claude runs (#1659).
+
+    Uses an explicit allowlist for shell commands and tools. Note that the curl
+    rule is limited to the local dashboard, whose own auth and the run token's scopes
+    are the backstop for non-GET methods.
+
+    Post: no write tool in CLAUDE_WRITE_TOOLS is allowed; no bare git/gh/curl rule is allowed.
+    """
+    allowed = [*_CLAUDE_READ_ONLY_RUN_TOOLS, *(f"Bash({cmd}:*)" for cmd in READ_ONLY_RUN_SHELL_ALLOW)]
+    denied = [*CLAUDE_WRITE_TOOLS, *(f"Bash({cmd}:*)" for cmd in READ_ONLY_RUN_SHELL_DENY)]
+    assert not any(tool in allowed for tool in CLAUDE_WRITE_TOOLS), "no write tool allowed"  # noqa: S101
+    assert not any(rule in allowed for rule in ("Bash(git:*)", "Bash(gh:*)", "Bash(curl:*)")), (  # noqa: S101
+        "no bare git/gh/curl rule allowed"
+    )
+    return ",".join(allowed), ",".join(denied)
+
+
 def _toml_list(items: Sequence[str]) -> str:
     return "[" + ", ".join(json.dumps(item) for item in items) + "]"
 

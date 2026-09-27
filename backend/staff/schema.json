@@ -120,6 +120,10 @@
         "merge": { "type": "boolean" },
         "host_shell": { "type": "boolean" },
         "notify_user": { "type": "boolean" },
+        "code_read_only": {
+          "type": "boolean",
+          "description": "Opt-in: unattended runs are code-read-only (no edits, commits, pushes or PR/issue writes; read-only gh/git and the local dashboard API). Runner_Dashboard#1659."
+        },
         "fleet_actions": {
           "type": "array",
           "uniqueItems": true,

@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** `_already_reviewed` counted a failed review, so a PR whose first review failed for good was never reviewed again. It now ignores reviews that ended `failed` (runner retries included), up to `MAX_AUTO_REVIEW_ATTEMPTS = 2`. `_review_claim` no longer writes stray lock files beside a stub store's mock path.
 - **Next step:** Merge the PR once CI is green.
 
+### DL-#1659 — Code-read-only staff runs
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1659
+- **Branch:** `fix/staff-read-only-runs`
+- **PR:** pending
+- **Paths:** `backend/staff/roles.py`, `backend/staff/adapter_policies.py`, `backend/staff/adapters.py`, `backend/staff/workspace.py`, `backend/staff/runner.py`, `backend/staff/runner_ops.py`, `backend/staff/retry.py`, `backend/staff/schema.json`, `tests/unit/test_staff_read_only_run.py`, `backend/staff/validator.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (staff tests 1221 passed; new tests red then green)
+- **Summary:** Opt-in `permissions.code_read_only` gives a role's unattended runs an allowlisted read-only Claude argv and read-only fleet rules; Barb is the first user.
+- **Next step:** Merge; set `code_read_only: true` on Barb in Repository_Management (schema plus barb.yml), redeploy both nodes, and re-run the Grok dry run.
+
 ### DL-#1655 — Staff chat remembers the previous turn
 
 - **State:** in_review
