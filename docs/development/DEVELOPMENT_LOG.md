@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338-localtools — SC-G6: Local Tools becomes a Settings section
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Local Tools", recorded 2026-09-25)
+- **Branch:** `feat/1338-local-tools-in-settings`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/lib/apiErrorGuidance.ts`, `frontend/src/pages/Maxwell/CodebaseChat.tsx`, `frontend/src/pages/Settings/__tests__/SettingsPage.test.tsx`, `frontend/src/shell/__tests__/retiredLocalToolsTab.test.ts`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted vitest 556 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean)
+- **Summary:** Local Tools is no longer a Settings nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. `/api/local-apps` stays because the section calls it.
+- **Next step:** Merge the PR, then the Organization row.
+
 ### DL-#1338-tests — SC-G6: Tests under Operations → Diagnostics
 
 - **State:** in_review

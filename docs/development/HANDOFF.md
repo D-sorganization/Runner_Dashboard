@@ -1,3 +1,51 @@
+# Current handoff — SC-G6: Local Tools becomes a Settings section (DL-#1338-localtools)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1338-localtools`
+- Branch: `feat/1338-local-tools-in-settings`
+- Baseline commit: `ce6e9311`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Local Tools"); DL-#1338-localtools.
+
+## Objective and status
+
+- Owner decision: Local Tools becomes a section of the consolidated Settings area.
+- `pages/Settings/SettingsPage.tsx` (new): one Settings page built from an ordered `SETTINGS_SECTIONS` list, with a jump-link nav, anchored `<section>`s and hash scrolling. Sections now: Theme (`#theme`) and Local Tools (`#local-tools`). The Settings consolidation row adds the remaining sections to this list.
+- `navRegistryData.ts`: the `local-apps` entry is removed; the Settings tooltip names its sections.
+- `routing.ts`: `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`.
+- `RoutedShell.tsx`: `settings` renders `SettingsPage`; the `local-apps` case is removed.
+- Copy that pointed at the Local Tools tab (intro, Help, API error guidance, Maxwell chat) now says Settings → Local Tools; Help's quick link goes to Settings.
+- `/api/local-apps` is unchanged: the section still calls it.
+
+## Files and decisions
+
+- Section wrappers carry only `aria-label` and the anchor; the section content keeps its own heading, so nothing is shown twice.
+
+## Validation
+
+- New tests failed first (8 cases: nav entry, redirects, pathname resolution, missing SettingsPage module).
+- WSL `npx vitest run --maxWorkers=4` on shell, Settings, Operations, components, lib, Maxwell and LocalApps tests: 556 passed. The 2 failures are `mobile nav entry staff|fleet-command renders non-empty content`, which time out the same way on `origin/main` in this WSL checkout. A full-suite run here: 1406 passed with the same 2 failures, plus 5 vitest worker-start timeouts on unrelated files (host load).
+- `npx tsc --noEmit -p tsconfig.app.json`: clean.
+
+## Blockers and risks
+
+- Depends on nothing; conflicts with the Tests row only in the `navRegistryData.ts` header comment.
+
+## Next steps
+
+1. Merge once CI is green; then the Organization row of #1338.
+
+## Change log
+
+- 2026-09-27: Local Tools moved into a Settings page with sections; old routes redirect.
+
+---
+
 # Current handoff — SC-G6: Tests under Operations → Diagnostics (DL-#1338-tests)
 
 Last updated: 2026-09-27

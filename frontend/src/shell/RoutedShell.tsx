@@ -59,7 +59,6 @@ import { CredentialsPage } from "../pages/CredentialsPage";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
 import { LinearSetup } from "../pages/LinearSetup";
-import { LocalAppsPage } from "../pages/LocalApps";
 import { MachinesPage } from "../pages/Machines";
 import { MaxwellPage } from "../pages/MaxwellPage";
 import { OrgPage } from "../pages/Org";
@@ -68,7 +67,7 @@ import { RunnerAuditPage } from "../pages/RunnerAudit";
 import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { WorkflowsPage } from "../pages/WorkflowsPage";
 import PushSettings from "../pages/PushSettings";
-import { ThemeSettings } from "../components/ThemeSettings";
+import { SettingsPage } from "../pages/Settings/SettingsPage";
 import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
 import { navItemById } from "./navRegistry";
@@ -154,8 +153,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LazyFleetCommandPage />;
     case "linear-setup":
       return <LinearSetup />;
-    case "local-apps":
-      return <LocalAppsPage />;
     case "machines":
       return <MachinesPage />;
     case "maxwell":
@@ -175,7 +172,7 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
     case "runner-audit":
       return <RunnerAuditPage />;
     case "settings":
-      return <ThemeSettings />;
+      return <SettingsPage />;
     case "staff":
       return <LazyStaffPage />;
     case "workflows":

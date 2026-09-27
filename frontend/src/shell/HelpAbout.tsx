@@ -55,7 +55,7 @@ const DEFAULT_QUICK_LINKS = [
   "queue",
   "remediation",
   "credentials",
-  "local-apps",
+  "settings",
   "operations",
 ];
 
@@ -64,7 +64,7 @@ const FIRST_CHECKS: readonly string[] = [
   "Are you signed in? The topbar shows Login vs Logout.",
   "Is the runner fleet healthy? Open the Fleet tab.",
   "Is anything stuck? Check the Queue tab for long-waiting jobs.",
-  "AI features quiet? Maxwell-Daemon must be running — start it from Local Tools.",
+  "AI features quiet? Maxwell-Daemon must be running — start it from Settings → Local Tools.",
   "Something failing? The Diagnostics tab runs self-checks.",
 ];
 
