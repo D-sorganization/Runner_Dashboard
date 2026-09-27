@@ -66,7 +66,6 @@ _REQUIRED_FUNCTIONS = [
     "function HistoryTab",
     "function QueueTab",
     "function MachinesTab",
-    "function OrgTab",
     "function TestsTab",
     "function StatsTab",
     "function ReportsTab",
@@ -584,20 +583,18 @@ def test_queue_desktop_route_bypasses_legacy_app() -> None:
     assert "p.queue ?? localQueue ?? {}" in queue_page
 
 
-def test_org_desktop_route_bypasses_legacy_app() -> None:
-    """The Organization desktop tab owns its data outside legacy/App.tsx (#949)."""
+def test_org_tab_is_retired_into_projects() -> None:
+    """Organization folded into Projects, which shows per-repo CI from /api/repos (#1338)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
         encoding="utf-8",
     )
-    org_page = (_FRONTEND_DIR / "src" / "pages" / "Org.tsx").read_text(
+    projects_page = (_FRONTEND_DIR / "src" / "pages" / "ProjectsPage.tsx").read_text(
         encoding="utf-8",
     )
 
-    assert 'case "org":' in routed_shell
-    assert "return <OrgPage />;" in routed_shell
-    assert 'legacyFetch("/api/repos"' in org_page
-    assert 'legacyFetch("/api/stats"' in org_page
-    assert "export function OrgPage" in org_page
+    assert not (_FRONTEND_DIR / "src" / "pages" / "Org.tsx").exists()
+    assert 'case "org":' not in routed_shell
+    assert 'legacyFetch("/api/repos"' in projects_page
 
 
 def test_machines_desktop_route_bypasses_legacy_app() -> None:

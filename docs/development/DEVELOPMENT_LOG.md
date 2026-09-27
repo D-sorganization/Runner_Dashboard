@@ -57,6 +57,32 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** `get_run_v1` called `RunStore.list_events`, which does not exist, so every v1 run detail (used by Barb and agent clients) was a 500 while the legacy route worked. It now delegates to `routers.staff.get_run` and only reshapes the 404 into the v1 envelope; v1 also gains the remote-run proxy.
 - **Next step:** Merge the PR, deploy, and confirm `GET /api/v1/staff/runs/<id>` returns 200 on DeskComputer.
 
+### DL-#1695 — Unblock the Windows pre-push suite
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1695
+- **Branch:** `fix/panel-windows-hang`
+- **PR:** pending
+- **Paths:** `backend/staff/cli_projects.py`, `backend/staff/panel.py`, `backend/conductor_constants.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Windows, targeted suites + full -x run)
+- **Summary:** Two failures that stopped `pytest -x` on Windows nodes (every RD push from DeskComputer was blocked).
+- **Next step:** None.
+
+### DL-#1338-org — SC-G6: Organization folds into Projects
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Organization", recorded 2026-09-25)
+- **Branch:** `feat/1338-org-into-projects`
+- **PR:** #1681
+- **Paths:** `frontend/src/pages/Projects/CiStatusBadge.tsx`, `frontend/src/pages/Projects/ProjectCard.tsx`, `frontend/src/pages/Projects/types.ts`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/decompIcons.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/__tests__/ProjectsCiBadge.test.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `frontend/src/shell/__tests__/retiredOrgTab.test.ts`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `tests/test_frontend_integrity.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted vitest 323 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean; integrity pytest green except the main-red Tests check fixed by #1690)
+- **Summary:** Projects cards show each repo's latest CI result from `/api/repos` as a badge linked to the run. The Organization tab and page are removed; `/fleet/org`, `/t/org` and `/org` redirect to `/work/projects`. `/api/repos` and `/api/stats` stay because other pages use them.
+- **Next step:** Rebase onto main after #1690 merges and re-arm auto-merge once PR CI is green.
+
 ### DL-#1688 — Chat and run-worktree CLI project folder cleanup
 
 - **State:** in_review

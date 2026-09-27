@@ -10,7 +10,8 @@ import { FeatureProgressBar } from "./FeatureProgressBar";
 import { FeatureDetails } from "./FeatureDetails";
 import { CoverageDetails } from "./CoverageDetails";
 import { PriorityBadge } from "./PriorityBadge";
-import type { ProjectOverview, StewardRun } from "./types";
+import { CiStatusBadge } from "./CiStatusBadge";
+import type { ProjectOverview, RepoCiStatus, StewardRun } from "./types";
 
 export interface ProjectCardProps {
   project: ProjectOverview;
@@ -18,6 +19,8 @@ export interface ProjectCardProps {
   running: boolean;
   /** Result line from the last "Run steward now" click, if any. */
   notice?: string;
+  /** Latest CI run from GET /api/repos; undefined when unknown (#1338). */
+  ci?: RepoCiStatus;
   onRunSteward: (repo: string) => void;
 }
 
@@ -67,6 +70,7 @@ export function ProjectCard({
   project,
   running,
   notice,
+  ci,
   onRunSteward,
 }: ProjectCardProps): React.ReactElement {
   const {
@@ -96,7 +100,7 @@ export function ProjectCard({
         }}
       >
         <h3 style={{ margin: 0 }}>
-          {repo} <PriorityBadge priority={priority} />
+          {repo} <PriorityBadge priority={priority} /> <CiStatusBadge ci={ci} />
         </h3>
         <button
           type="button"
