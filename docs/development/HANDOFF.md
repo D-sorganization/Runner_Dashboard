@@ -1,4 +1,27 @@
-# Current handoff — SC-G6: Organization folds into Projects (DL-#1338-org)
+# Current handoff — Unblock the Windows pre-push suite (#1695)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_panelwin`; branch `fix/panel-windows-hang`; PR: see DL-#1695; Issue #1695; DL-#1695.
+
+## Objective and Status
+
+- Panel hang: #1685 awaited `asyncio.to_thread(sweep)` before the first round; the await yielded the loop and a short-lived loop (TestClient without a context manager) abandoned the panel task. Linux finished first by timing, so CI stayed green. Bisected by the DeskComputer peer (passes at ef58aa86, fails at 8662f75e).
+- Conductor drift: Repository_Management#1741 added `Capability.issue_authoring` and `TaskClass.plan`; the vendored-source check only runs where a sibling RM checkout exists, so CI never saw it.
+
+## Validation
+
+- New `test_a_blocked_sweep_never_delays_a_panel` (red first); tests/api/test_staff_panels_api.py, tests/staff/test_panel.py, tests/unit/test_staff_cli_projects.py and the conductor tests pass on Windows; full Windows suite with -x run before push.
+
+## Next Steps
+
+1. None.
+
+---
+
+# Past handoff — SC-G6: Organization folds into Projects (DL-#1338-org)
 
 Last updated: 2026-09-27
 

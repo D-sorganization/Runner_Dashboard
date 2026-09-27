@@ -274,10 +274,10 @@ async def run_panel(
     rounds_used, consensus = 0, False
     _ACTIVE_PANELS.add(thread_id)
     try:
-        try:
-            await asyncio.to_thread(cli_projects.sweep_stale_panel_projects, dict(os.environ))
+        try:  # never awaited: the sweep must not hold up or abandon the panel (#1683)
+            cli_projects.start_panel_sweep(os.environ)
         except Exception as exc:  # noqa: BLE001 — sweep problem must never fail a panel
-            log.warning("failed to sweep stale panel projects: %s", exc)
+            log.warning("failed to start the stale panel project sweep: %s", exc)
         for round_no in range(1, request.rounds + 1):
             round_turns = []
             for expert in request.experts:
