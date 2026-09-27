@@ -16,6 +16,7 @@ from staff import quota as quota_mod
 from staff import workspace
 from staff.adapters import ProviderAdapter
 from staff.redaction import redact_sensitive_content
+from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
 from staff.watchdog import StaffWatchdog
 
@@ -47,6 +48,14 @@ def select_first_available_provider(
     if runnable:
         return runnable[0]
     return providers[0] if providers else "claude"
+
+
+def read_only_kwargs(role: RoleSpec) -> dict[str, bool]:
+    """``read_only`` keyword for ``adapter.build_command`` (#1659), passed only when set.
+
+    Post: empty for a normal role, so an adapter with the older signature still works.
+    """
+    return {"read_only": True} if role.code_read_only else {}
 
 
 def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, str]:

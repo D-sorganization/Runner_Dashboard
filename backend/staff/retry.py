@@ -19,7 +19,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from staff.runner_ops import can_run_unattended
+from staff.adapters import READ_ONLY_RUN_PROVIDERS
+from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 if TYPE_CHECKING:
     from staff.budget import BudgetGuard
@@ -239,7 +240,10 @@ def handle_post_execution_retry(
         fallback = next_fallback_provider(
             role,
             plan.provider,
-            usable=lambda pid: can_run_unattended(runner._adapters, pid),
+            usable=lambda pid: (
+                can_run_unattended(runner._adapters, pid)
+                and (not role.code_read_only or pid in READ_ONLY_RUN_PROVIDERS)
+            ),
         )
         if fallback:
             can_run, _ = guard.can_run(role)
@@ -247,7 +251,9 @@ def handle_post_execution_retry(
                 next_attempt = latest.attempt + 1
                 attempt_id = f"run-{uuid.uuid4().hex[:12]}"
                 next_branch = f"{plan.branch}-fallback-{next_attempt}"
-                argv = runner._adapters[fallback].build_command(plan.prompt, "<workdir>", plan.model)
+                argv = runner._adapters[fallback].build_command(
+                    plan.prompt, "<workdir>", plan.model, **read_only_kwargs(role)
+                )
                 fallback_plan = RunPlan(
                     role=plan.role,
                     provider=fallback,

@@ -77,6 +77,15 @@ class RoleSpec:
         return bool(self.permissions.get("open_pr"))
 
     @property
+    def code_read_only(self) -> bool:
+        """Unattended runs of this role are code-read-only (explicit ``permissions.code_read_only``; #1659).
+
+        Opt-in, not derived from ``push_branch``/``open_pr``: roles such as code-reviewer
+        or maintenance push nothing yet still post reviews or call write APIs.
+        """
+        return self.permissions.get("code_read_only") is True
+
+    @property
     def fleet_actions(self) -> tuple[str, ...]:
         """Allowed fleet maintenance actions (RM#1734, RD#1310)."""
         actions = self.permissions.get("fleet_actions")

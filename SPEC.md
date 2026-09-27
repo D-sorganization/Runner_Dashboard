@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1659 | Staff roles can opt into code-read-only unattended runs with `permissions.code_read_only: true`. Claude gets a read-only tool and shell allowlist (no Edit/Write, no bare git/gh/curl, no `gh api`), and the prompt carries read-only fleet rules instead of "push and open a DRAFT pull request". Other providers fail closed. |
 | 2026-09-27 | #1655 | Staff chat keeps memory across turns: a thread's turns run in one stable per-thread scratch directory, so `claude --resume` finds the session filed under that working directory (a fresh `mkdtemp` per turn made every resume fail). The history-replay budget now covers only prior turns, so a long persona plus a full fleet block no longer drops them. |
 | 2026-09-27 | #1656 | Deploy health gate: shared `wait_healthy` in `deploy/lib.sh` checks after every retry sleep (the old loop skipped the check after its last sleep) over a `DEPLOY_HEALTH_DELAYS` window, default ~75 s; `update-deployed.sh` uses it. |
 | 2026-09-27 | #1653 | Regenerated API contract (`frontend/src/lib/openapi.json`, `api-types.ts`) for the #1647 panels-presets description; `npm run generate-api:check` passes again. |
