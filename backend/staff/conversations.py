@@ -1,9 +1,8 @@
 """Node-local SQLite store for staff conversations, threads, messages, and action proposals.
 
-Persists threads, sequential messages, and action proposal state machines
-in staff_runs.sqlite3 under SQLite WAL mode with threading.RLock() concurrency,
-forward-only schema migrations, automatic pre-migration backups, and fail-safe
-degraded mode banners (SC-B2, Issue #1305).
+Persists threads, sequential messages, and action proposal state machines in
+staff_runs.sqlite3 (SQLite WAL, threading.RLock()), with forward-only schema migrations,
+automatic pre-migration backups and fail-safe degraded mode banners (SC-B2, Issue #1305).
 """
 
 from __future__ import annotations

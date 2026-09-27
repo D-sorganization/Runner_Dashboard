@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1618 | Staff hold and Code Request action executors move to `staff/hold_actions.py` and `staff/code_request_actions.py`, bringing `action_executors.py` back under the 500-line cap and reflows the `staff/conversations.py` module docstring so #1617 leaves it at 500 lines (restores green `main`); no behaviour change. |
 | 2026-09-27 | #1607 | Decision SLA: action proposals carry `decide_by` and `default_if_silent` (`approve` only for low-risk actions, re-checked at sweep); Barb's follow-up sweep applies the default through the store or the action executor, audits it (`decision_default_applied`/`_refused`), and pings overdue proposals without one. |
 | 2026-09-26 | #1352 | Grok connection guide moves to the v1 threads contract with the `agent-grok` token, Barb as the single front door, correct `fleetctl` verbs and the go-live scope (reads plus supervised dispatch). |
 | 2026-09-27 | #1602 | WP-2.2: Executor keeps each child's acceptance criteria and rejects children without them. Added `acceptance_criteria: list[str]` to `ChildExecutionRecord` (default empty list); updated `ChildIssuePayload.acceptance_criteria` to validate with `min_length=1` returning 422 on empty or missing criteria; carried criteria through `pipeline.initialize`; and exposed criteria in child and rollup responses. |
