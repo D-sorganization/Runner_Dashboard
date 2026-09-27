@@ -11,10 +11,11 @@ Last updated: 2026-09-27
 - Found in the supervised Grok dry run on DeskComputer: Barb's plan carried Edit/Write, `Bash(git:*)`, `Bash(gh:*)` and the push/DRAFT-PR fleet rules despite `push_branch: false` and `open_pr: false`.
 - Opt-in, not derived from `push_branch`/`open_pr`: code-reviewer, maintenance, disciple and research-scout also push nothing, yet post reviews, call write APIs or run `python -m` helpers.
 - `read_only` reaches `build_command` only when set (`runner_ops.read_only_kwargs`), so adapters with the older signature keep working.
+- The validator accepts a boolean `permissions.code_read_only` (anything else is a problem), so RD must deploy before Repository_Management sets the flag on Barb; otherwise she turns invalid.
 
 ## Validation
 
-- `tests/unit/test_staff_read_only_run.py` fails on main (import error); now 14 pass, including an allowlist test that fails on Edit, Write, `git push`, `gh pr create`, `gh api` or a bare `Bash(gh:*)`.
+- `tests/unit/test_staff_read_only_run.py` fails on main (import error); now 17 pass, including an allowlist test that fails on Edit, Write, `git push`, `gh pr create`, `gh api` or a bare `Bash(gh:*)`.
 - `pytest tests -k staff`: 1221 passed, 15 skipped; ruff and mypy are clean on the changed modules.
 
 ## Next Steps
@@ -23,7 +24,37 @@ Last updated: 2026-09-27
 
 ---
 
-# Past handoff — Staff chat remembers the previous turn (#1655)
+# Past handoff — LF line endings enforced by .gitattributes (#1660)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `/home/user/Runner_Dashboard`
+- Branch: `claude/runner-dashboard-roles-gaps-k9i38r`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1660 (decision 5 of Repository_Management#1766); DL-#1660
+
+## Objective and Status
+
+- Added `.gitattributes`: `* text=auto eol=lf`, with `*.bat` and `*.cmd` kept as CRLF in the working tree.
+- Ran `git add --renormalize .`. It changed 22 text files, including `backend/server.py` and `backend/staff/store.py`: line endings only, no content.
+
+## Validation
+
+- `git ls-files --eol | grep -c i/crlf` returned 0.
+- `git diff --cached --ignore-cr-at-eol` showed only `.gitattributes`, `SPEC.md` and the two tracking docs.
+
+## Next Steps
+
+1. Merge the PR once CI is green.
+2. Owner: set `git config --global core.autocrlf input` on the Conductor host.
+
+---
+
+# Current handoff — Staff chat remembers the previous turn (#1655)
 
 Last updated: 2026-09-27
 
