@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `fix/1697-acceptance-skip-chat-only-antigravity`
 - Baseline commit: `350f4ea3`
 - Implementation commit: `SELF`
-- Pull request: pending
+- Pull request: #1702 (open)
 - Governing issue/epic: #1697; DL-#1697. Related: #1586.
 
 ## Objective and status

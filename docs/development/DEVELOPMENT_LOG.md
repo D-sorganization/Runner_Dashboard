@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** local
 - **Issue:** #1697
 - **Branch:** `fix/1697-acceptance-skip-chat-only-antigravity`
-- **PR:** pending
+- **PR:** #1702
 - **Paths:** `backend/staff/adapters.py`, `backend/staff/models.py`, `backend/routers/staff.py`, `backend/routers/staff_v1.py`, `backend/staff/fleet.py`, `deploy/staff-node-acceptance.sh`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/deploy/test_staff_node_acceptance.py`, `tests/api/test_staff_unattended_permissions.py`, `tests/api/test_staff_chat_only.py`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 350f4ea3; unit/api/deploy acceptance tests passed; mypy passed in 313 files; ruff clean; line counts strictly <= 500)

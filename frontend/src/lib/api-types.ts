@@ -18404,7 +18404,6 @@ export interface operations {
     };
 }
 
-
 // ── Client compatibility aliases ─────────────────────────────────────────────
 // These aliases keep the hand-written API client on stable names while the
 // canonical paths/components/operations surface above is generated from FastAPI.
