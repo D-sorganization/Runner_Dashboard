@@ -1,3 +1,61 @@
+# Current handoff — Minimum claude CLI version enforced before runs and chat (DL-#1680)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `_wt_claude_rd_cli_floor` (worktree beside the primary checkout)
+- Branch: `fix/claude-cli-version-floor`
+- Baseline commit: `a24fa3b2`
+- Implementation commit: `SELF`
+- Pull request: #1684 (open)
+- Governing issue/epic: #1680; DL-#1680. Related: #1669 / PR #1676 (reactive `cli_outdated` classification), #1586.
+
+## Objective and status
+
+- Problem: DeskComputer's WSL `claude` was 2.1.79; `_UNATTENDED_CLAUDE` passes `--permission-prompts none`, so seven staff runs died with `unknown option` and the roster still said `claude: true`.
+- **Verified floor: claude 2.1.259.** Bisected the published npm releases (linux-x64 binaries run in WSL, empty `CLAUDE_CONFIG_DIR`): 2.1.258 fails the unattended argv with `error: unknown option '--permission-prompts'`; 2.1.259 accepts it and reaches `system/init`. The chat argv is accepted by both; `dontAsk` is already in 2.1.79.
+- `backend/staff/cli_version.py` (new): `MIN_CLI_VERSIONS` keyed by executable (`claude` covers `claude` and `claude-ollama`), `parse_version`, a `claude --version` probe cached per process and keyed on the resolved binary + mtime (an in-place upgrade is re-probed without a restart), `cli_status`, `version_gate` and `provider_versions`.
+- Runs: `StaffRunner._worker` calls `runner_ops.fail_if_cli_outdated` after `preparing` and before the worktree and lease; a CLI below its floor fails the run `cli_outdated`, `retryable=False`, remediation `claude CLI X.Y.Z < required 2.1.259; upgrade the CLI on this node (...)`. `can_run_unattended` is False for it, so provider selection skips it.
+- Chat: `ChatTurnRunner._run_turn_attempt` runs the same gate (off the event loop) before building the argv.
+- Failure text: `classifier.classify_cli_below_floor` builds the `cli_outdated` refusal with #1699's `UPGRADE_COMMANDS`, so preflight and run-time (#1669) failures share one class and one upgrade command.
+- Roster: `GET /api/staff/roster` and `/api/v1/staff/roster` add `provider_versions` (`StaffProviderCliVersion`: executable, installed, version, min_version, outdated, detail); `providers` is unchanged. The Roster card shows `claude · outdated 2.1.79` (warning tone, remediation as the tooltip) instead of `installed`.
+- No permission-bypass flag was added.
+
+## Files and decisions
+
+- `cli_outdated` registration comes from #1699 (merged); this PR adds no second classification path.
+- A version that cannot be read does not block: a probe glitch must not become an outage, and #1669's classifier still catches a real rejection.
+- Only executables with a floor are probed; codex, gemini and the rest are untouched.
+
+## Validation
+
+- New tests failed first: `tests/unit/test_staff_cli_version.py` (import error), the roster-model case, and the frontend `outdated` badge case.
+- `pytest -o addopts="" tests/unit/test_staff_cli_version.py tests/api/test_staff_runner.py`: 50 passed.
+- `pytest -o addopts="" tests/unit tests/api tests/staff -k "staff or chat or classifier or retry or runner_ops or provider or roster" -n 8`: 1254 passed, 3 failed. The 3 (`test_action_executor_default_roles_resolve_and_are_dispatchable`, `TestConductorEnumDrift` x2) fail identically on clean `origin/main` in this checkout: they read the local Repository_Management sibling.
+- `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx`: 17 passed. `tsc -p tsconfig.app.json` and eslint on the changed TSX: clean.
+- `ruff check`, `ruff format --check` on changed Python: clean. `mypy backend/ --ignore-missing-imports --no-implicit-optional`: no issues in 309 files.
+- `scripts/gen-api-client.sh` regenerated `openapi.json` and `api-types.ts` (additive diff only).
+- `runner.py` is exactly 500 lines (the cap is `> 500`).
+
+## Blockers and risks
+
+- Floor table is hand-maintained: when an adapter gains a newer flag, bisect again and raise `MIN_CLI_VERSIONS`.
+- The first probe per binary spawns `claude --version` (about 1 s); chat and roster run it via `asyncio.to_thread`, run selection calls it synchronously.
+
+## Next steps
+
+1. Merge PR #1684 once CI is green; then mark DL-#1680 shipped.
+
+## Change log
+
+- 2026-09-27: Floor bisected (2.1.259); version gate for runs and chat; roster `provider_versions` and Roster badge.
+- 2026-09-27: PR #1684 opened; merged origin/main (#1673 docs rows kept).
+- 2026-09-27: Merged origin/main after #1699; gate reuses the classifier (`classify_cli_below_floor`); `chat.py` change reduced to the gate. Tests: 117 passed on the touched staff suites, mypy clean (313 files), api client no drift, Staff vitest 17 passed.
+
+---
+
 # Current handoff — Reap Windows Chrome leaked by WSL runner jobs (DL-#1678)
 
 Last updated: 2026-09-27

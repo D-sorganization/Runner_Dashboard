@@ -87,6 +87,24 @@ def _upgrade_command(provider: str) -> str:
     return UPGRADE_COMMANDS.get(provider, f"upgrade the {provider} CLI")
 
 
+def classify_cli_below_floor(provider: str, found: str, required: str) -> FailureClassification:
+    """``cli_outdated`` for a CLI whose installed version is below the adapter's minimum (#1680).
+
+    The preflight twin of the rejected-option branch below: same class, same upgrade command.
+    Pre: ``found`` and ``required`` are non-empty version strings.
+    """
+    assert found and required, "found and required versions must be non-empty"  # noqa: S101
+    return FailureClassification(
+        failure_class="cli_outdated",
+        retryable=False,
+        remediation=(
+            f"{provider} CLI {found} < required {required}; upgrade the CLI on this node "
+            f"(run `{_upgrade_command(provider)}` in the dashboard service's environment)."
+        ),
+        error=f"{provider} CLI {found} is older than the minimum supported {required}",
+    )
+
+
 def _extract_last_line_text(text: str) -> str:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     for raw_line in reversed(lines):

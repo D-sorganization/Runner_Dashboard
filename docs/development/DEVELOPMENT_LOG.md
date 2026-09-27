@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1680 — Minimum claude CLI version enforced before runs and chat
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1680
+- **Branch:** `fix/claude-cli-version-floor`
+- **PR:** #1684
+- **Paths:** `backend/staff/cli_version.py`, `backend/staff/runner_ops.py`, `backend/staff/runner.py`, `backend/staff/chat.py`, `backend/staff/classifier.py`, `backend/staff/models.py`, `backend/staff/adapters.py`, `backend/routers/staff.py`, `backend/routers/staff_v1.py`, `frontend/src/pages/Staff/Roster.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/unit/test_staff_cli_version.py`, `tests/api/test_staff_runner.py`, `frontend/src/pages/__tests__/Staff.test.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (cli_version + staff runner tests 50 passed; staff/chat/classifier scope 1254 passed, 3 pre-existing sibling-checkout failures; Staff vitest 17 passed; mypy and ruff clean)
+- **Summary:** claude CLI floor 2.1.259 (bisected: 2.1.258 rejects `--permission-prompts`). The installed version is probed once per binary; a run or chat turn below the floor fails up front as `cli_outdated` (not retryable) with upgrade remediation, provider selection skips it, and the roster reports `provider_versions` so the Roster card shows "outdated". No permission-bypass flag.
+- **Next step:** Merge PR #1684 once CI is green.
+
 ### DL-#1567 — Confident auto-route messages go straight to the specialist
 
 - **State:** in_review
