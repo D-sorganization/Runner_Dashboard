@@ -78,6 +78,11 @@ async def create_thread(
     caller_id = format_caller(caller)
 
     kind = body.kind or "direct"
+    if kind == "panel":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "panel_via_panels_api", "message": "Start a panel with POST /api/v1/staff/panels"},
+        )
     role = body.role
     if kind == "auto" or role == "auto":
         kind = "auto"
@@ -257,6 +262,12 @@ async def post_message(
                 "message": user_msg_dict,
                 "reply_placeholder": reply_placeholder,
             }
+
+        if thread.kind == "panel":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "panel_thread_read_only", "message": "A panel thread takes no new messages"},
+            )
 
         from staff.groups import dispatch_group_message, is_group_thread
 
