@@ -31,6 +31,45 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Owner decided option (c): agent clients (Grok's servers, claude.ai connectors) reach the dashboard only from fleet machines already on the tailnet. No Tailscale Funnel and no outbound relay. Any future exposed option needs per-agent minimal-scope tokens, rate limits (SC-F7), audit (SC-A8), an identity allowlist and a kill switch first.
 - **Next step:** Open the PR and close #1335 once merged.
 
+### DL-#1338-localtools — SC-G6: Local Tools becomes a Settings section
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Local Tools", recorded 2026-09-25)
+- **Branch:** `feat/1338-local-tools-in-settings`
+- **PR:** #1679
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/lib/apiErrorGuidance.ts`, `frontend/src/pages/Maxwell/CodebaseChat.tsx`, `frontend/src/pages/Settings/__tests__/SettingsPage.test.tsx`, `frontend/src/shell/__tests__/retiredLocalToolsTab.test.ts`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted vitest 556 passed, 2 pre-existing WSL mobile lazy-load timeouts; tsc clean)
+- **Summary:** Local Tools is no longer a Settings nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. `/api/local-apps` stays because the section calls it.
+- **Next step:** Merge the PR, then the Organization row.
+
+### DL-#1338-tests — SC-G6: Tests under Operations → Diagnostics
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Tests", recorded 2026-09-25)
+- **Branch:** `feat/1338-tests-under-diagnostics`
+- **PR:** #1674
+- **Paths:** `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Operations/OperationsTestsSubsection.tsx`, `frontend/src/pages/Operations/OperationsDiagnosticsSection.tsx`, `frontend/src/shell/__tests__/retiredTestsTab.test.ts`, `frontend/src/pages/Operations/__tests__/OperationsTestsSubsection.test.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (vitest 1259 passed, 2 pre-existing mobile lazy-load timeouts also on main; tsc clean)
+- **Summary:** Tests is no longer a Settings nav tab. It is a collapsed subsection (`#tests`) of the Diagnostics section on Operations; `/t/tests`, `/settings/tests` and `/tests` redirect there. The test endpoints stay because the subsection calls them.
+- **Next step:** Merge the PR, then the Local Tools row.
+
+### DL-#1671 — Grok dispatch gate open (allow with confirm)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1671
+- **Branch:** `docs/grok-dispatch-gate`
+- **PR:** pending
+- **Paths:** `docs/agents/grok.md`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (docs-only)
+- **Summary:** The Grok go-live scope records the passed supervised dry run and the owner's allow-with-confirm dispatch decision.
+- **Next step:** Merge; the owner runs the first real Grok→Barb dispatch, with confirmation.
+
 ### DL-#1667 — TypeScript always treated as text for line endings
 
 - **State:** in_review

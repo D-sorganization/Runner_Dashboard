@@ -146,7 +146,7 @@ export function CodebaseChat({
         updateMessage(assistantId, {
           content:
             "Could not reach the codebase assistant. Maxwell-Daemon must be running — " +
-            "start it from Local Tools, then retry.",
+            "start it from Settings → Local Tools, then retry.",
           streaming: false,
           error: true,
         });

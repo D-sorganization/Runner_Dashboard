@@ -84,6 +84,28 @@ export interface RedirectTarget {
   label: string;
 }
 
+/** Tests moved under Operations → Diagnostics (#1338, owner decision). */
+const TESTS_REDIRECT: RedirectTarget = {
+  to: "/fleet/operations#tests",
+  label: "Tests (Diagnostics)",
+};
+
+/** Old addresses of the Tests page, which is no longer a nav tab (#1338). */
+const RETIRED_TESTS_PATHS = new Set(["/settings/tests", "/tests", "/t/tests"]);
+
+/** Local Tools is a section of the Settings page (#1338, owner decision). */
+const LOCAL_TOOLS_REDIRECT: RedirectTarget = {
+  to: "/settings#local-tools",
+  label: "Local Tools (Settings)",
+};
+
+/** Old addresses of the Local Tools tab (#1338). */
+const RETIRED_LOCAL_TOOLS_PATHS = new Set([
+  "/settings/local-apps",
+  "/local-apps",
+  "/t/local-apps",
+]);
+
 /**
  * Static redirect table mapping old tabIds and legacy aliases to their
  * new canonical routes and labels.
@@ -115,6 +137,8 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["scheduled-jobs"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["schedules"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["diagnostics"] = { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
+  table["tests"] = TESTS_REDIRECT;
+  table["local-apps"] = LOCAL_TOOLS_REDIRECT;
   return table;
 })();
 
@@ -177,6 +201,12 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
   if (normalized === "/settings/diagnostics" || normalized === "/diagnostics") {
     return { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
   }
+  if (RETIRED_TESTS_PATHS.has(normalized)) {
+    return TESTS_REDIRECT;
+  }
+  if (RETIRED_LOCAL_TOOLS_PATHS.has(normalized)) {
+    return LOCAL_TOOLS_REDIRECT;
+  }
   if (RETIRED_TO_STAFF_CONSOLE.has(normalized)) {
     return { to: "/", label: "Staff Console" };
   }
@@ -230,6 +260,7 @@ export function pathnameToTabId(pathname: string): string | undefined {
   if (normalized === "/fleet") return "overview";
   if (normalized === "/settings") return "settings";
   if (normalized === PUSH_SETTINGS_PATH) return PUSH_SETTINGS_TAB_ID;
+  if (RETIRED_LOCAL_TOOLS_PATHS.has(normalized)) return "settings";
 
   if (normalized === "/fleet/reports" || normalized === "/fleet/analysis") {
     return "insights";
@@ -263,7 +294,8 @@ export function pathnameToTabId(pathname: string): string | undefined {
     normalized === "/settings/diagnostics" ||
     normalized === "/diagnostics" ||
     normalized === "/fleet/operations" ||
-    normalized === "/operations"
+    normalized === "/operations" ||
+    RETIRED_TESTS_PATHS.has(normalized)
   ) {
     return "operations";
   }
