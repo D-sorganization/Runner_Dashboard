@@ -33,6 +33,7 @@ from staff.group_models import (
     get_group_threshold,
     lookup_seat_price,
 )
+from staff.group_seat_runner import run_seat
 from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction
 from staff.thread_bus import get_thread_bus
@@ -154,35 +155,6 @@ def estimate_group_turn_cost(group_id: str, prompt: str = "") -> GroupCostEstima
     )
 
 
-# ── DEFAULT SEAT RUNNER ──────────────────────────────────────────────────────
-
-
-async def _default_seat_runner(seat: SeatSpec, prompt: str, thread_id: str) -> SeatReply:
-    """Default seat execution invoking ChatTurnRunner or stubbed reply."""
-    from staff.chat import ChatTurnRunner  # noqa: PLC0415
-
-    runner = ChatTurnRunner()
-    try:
-        adapter = runner.adapters.get(seat.provider)
-        if adapter:
-            reply_text = f"Seat {seat.title} perspective: Analyzed prompt in accordance with mandate '{seat.mandate}'."
-            return SeatReply(seat_name=seat.name, status="ok", text=reply_text, cost_usd=0.01)
-        return SeatReply(
-            seat_name=seat.name,
-            status="ok",
-            text=f"Seat {seat.title} concurs with general recommendation.",
-            cost_usd=0.005,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("Seat %s failed: %s", seat.name, exc)
-        return SeatReply(
-            seat_name=seat.name,
-            status="error",
-            text=f"(No response - error: {exc})",
-            error_detail=str(exc),
-        )
-
-
 # ── FANOUT & CONSENSUS COLLATION ─────────────────────────────────────────────
 
 
@@ -283,7 +255,7 @@ async def execute_group_turn(
     if not group:
         raise ValueError(f"Group '{group_id}' not found")
 
-    runner = seat_runner or _RUNNER_OVERRIDE or _default_seat_runner
+    runner = seat_runner or _RUNNER_OVERRIDE or run_seat
 
     async def _run_single_seat(seat: SeatSpec) -> SeatReply:
         try:
