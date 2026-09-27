@@ -2,7 +2,8 @@
  * Roster.tsx — one card per staff role from `GET /api/staff/roster` (#1198).
  *
  * Shows title, providers (with an "installed" badge from the roster's
- * `providers` availability map), schedule/window, active runs, budget and the
+ * `providers` availability map, or "outdated" when `provider_versions` says the
+ * CLI is below its minimum, #1680), schedule/window, active runs, budget and the
  * retired / dispatchable state. Presentational: the roster is fetched once by
  * StaffPage and shared with the Assign form (DRY).
  */
@@ -29,10 +30,12 @@ function budgetLabel(role: RoleSpec): string {
 export function RoleCard({
   role,
   providers,
+  versions,
   onAssign,
 }: {
   role: RoleSpec;
   providers: Record<string, boolean>;
+  versions?: RosterResponse["provider_versions"];
   onAssign?: (role: string) => void;
 }) {
   const isInvalid = role.valid === false;
@@ -76,17 +79,28 @@ export function RoleCard({
           {role.providers.length === 0 ? (
             <span className="staff-muted">none</span>
           ) : (
-            role.providers.map((pid) => (
-              <Badge
-                key={pid}
-                tone={providers[pid] ? "success" : "neutral"}
-                size="sm"
-                title={providers[pid] ? `${pid} is installed on this node` : `${pid} is not installed`}
-              >
-                {pid}
-                {providers[pid] ? " · installed" : ""}
-              </Badge>
-            ))
+            role.providers.map((pid) => {
+              // An installed CLI below its minimum version is refused at launch; say so here.
+              const outdated = providers[pid] && versions?.[pid]?.outdated ? versions[pid] : null;
+              if (outdated) {
+                return (
+                  <Badge key={pid} tone="warning" size="sm" title={outdated.detail}>
+                    {pid} · outdated {outdated.version}
+                  </Badge>
+                );
+              }
+              return (
+                <Badge
+                  key={pid}
+                  tone={providers[pid] ? "success" : "neutral"}
+                  size="sm"
+                  title={providers[pid] ? `${pid} is installed on this node` : `${pid} is not installed`}
+                >
+                  {pid}
+                  {providers[pid] ? " · installed" : ""}
+                </Badge>
+              );
+            })
           )}
         </dd>
         <dt>Schedule</dt>
@@ -166,7 +180,13 @@ export function Roster({ roster, loading, error, onRetry, onAssign }: RosterProp
       </div>
       <div className="staff-roster" data-testid="staff-roster">
         {roster.roles.map((role) => (
-          <RoleCard key={role.name} role={role} providers={roster.providers} onAssign={onAssign} />
+          <RoleCard
+            key={role.name}
+            role={role}
+            providers={roster.providers}
+            versions={roster.provider_versions}
+            onAssign={onAssign}
+          />
         ))}
       </div>
     </div>

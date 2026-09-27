@@ -23,6 +23,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
     {
         "auth_expired",
         "cli_missing",
+        "cli_outdated",
         "provider_error",
         "rate_limited",
         "needs_input",
@@ -67,8 +68,41 @@ class FailureClassification:
         }
 
 
+CLI_OUTDATED_RE = re.compile(
+    r"^\s*error: (?:unknown option|unknown argument|unrecognized arguments?|unexpected argument).*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+UPGRADE_COMMANDS: dict[str, str] = {
+    "claude": "npm install -g @anthropic-ai/claude-code@latest",
+    "codex": "npm install -g @openai/codex@latest",
+}
+
+
 def _login_command(provider: str) -> str:
     return LOGIN_COMMANDS.get(provider, f"{provider} login")
+
+
+def _upgrade_command(provider: str) -> str:
+    return UPGRADE_COMMANDS.get(provider, f"upgrade the {provider} CLI")
+
+
+def classify_cli_below_floor(provider: str, found: str, required: str) -> FailureClassification:
+    """``cli_outdated`` for a CLI whose installed version is below the adapter's minimum (#1680).
+
+    The preflight twin of the rejected-option branch below: same class, same upgrade command.
+    Pre: ``found`` and ``required`` are non-empty version strings.
+    """
+    assert found and required, "found and required versions must be non-empty"  # noqa: S101
+    return FailureClassification(
+        failure_class="cli_outdated",
+        retryable=False,
+        remediation=(
+            f"{provider} CLI {found} < required {required}; upgrade the CLI on this node "
+            f"(run `{_upgrade_command(provider)}` in the dashboard service's environment)."
+        ),
+        error=f"{provider} CLI {found} is older than the minimum supported {required}",
+    )
 
 
 def _extract_last_line_text(text: str) -> str:
@@ -177,6 +211,25 @@ def classify_run_failure(
             retryable=False,
             remediation=f"Install `{provider}` on node {node} and ensure it is in PATH.",
             error=f"Executable for {provider} not found on node {node}",
+        )
+
+    # 3b. CLI Outdated: adapter passes a flag the installed CLI doesn't support
+    # Match only the argument parser's own "error: ..." line, so a transcript that merely
+    # mentions these words is not misread as an outdated CLI.
+    outdated_line = CLI_OUTDATED_RE.search(combined)
+    if outdated_line:
+        rejected = outdated_line.group(0)
+        option_match = re.search(r"['\"](--[\w-]+)['\"]", rejected) or re.search(r"(--[\w-]+)", rejected)
+        option = option_match.group(1) if option_match else "the rejected option"
+        upgrade_cmd = _upgrade_command(provider)
+        return FailureClassification(
+            failure_class="cli_outdated",
+            retryable=False,
+            remediation=(
+                f"The {provider} CLI on node {node} is too old for option {option}; "
+                f"run `{upgrade_cmd}` in the dashboard service's environment."
+            ),
+            error=f"{provider} CLI on node {node} rejected option {option}",
         )
 
     # 4. Authentication / OAuth Expired

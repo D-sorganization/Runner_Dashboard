@@ -29,12 +29,13 @@ from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_schedule import HoldsBody
 from staff import fleet as staff_fleet
 from staff import usage
-from staff.adapters import available_providers
+from staff.adapters import ADAPTERS, available_providers
 from staff.audit import (
     get_audit_store,
     record_audit,
 )
 from staff.classifier import format_attention_items
+from staff.cli_version import provider_versions
 from staff.idempotency import (
     IdempotencyStoreError,
     get_idempotency_store,
@@ -159,6 +160,7 @@ async def roster_v1(
         "machine": runner.machine,
         "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
         "providers": available_providers(),
+        "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "active_runs": len(active),
     }
 
@@ -261,9 +263,15 @@ async def get_run_v1(
     run_id: str,
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    runner = get_runner()
-    run = runner.store.get_run(run_id)
-    if not run:
+    # Delegate to the legacy handler so both routes share one read path (and v1 gains its
+    # remote-run proxy); only the 404 is reshaped into the v1 error envelope.
+    from routers.staff import get_run as staff_get_run
+
+    try:
+        return await staff_get_run(run_id=run_id, events=200, _peer=_peer)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
         raise HTTPException(
             status_code=404,
             detail={
@@ -272,10 +280,7 @@ async def get_run_v1(
                 "retryable": False,
                 "hint": "Check the run ID or list runs via GET /api/v1/staff/runs.",
             },
-        )
-    events = [e.to_dict() for e in runner.store.list_events(run_id, limit=200)]
-    attempts = [a.to_dict() for a in runner.store.get_attempts(run_id)]
-    return {"run": run.to_dict(), "events": events, "attempts": attempts}
+        ) from exc
 
 
 @router.get("/runs/{run_id}/stream")

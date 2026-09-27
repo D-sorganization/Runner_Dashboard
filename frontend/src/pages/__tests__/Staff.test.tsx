@@ -342,6 +342,19 @@ describe("StaffPage", () => {
     expect(screen.queryByTestId("board-liveness-alerts")).not.toBeInTheDocument();
   });
 
+  it("marks a provider whose CLI is below the minimum version as outdated (#1680)", async () => {
+    const detail = "claude CLI 2.1.79 < required 2.1.259; upgrade the CLI on this node";
+    const claude = { executable: "claude", installed: true, version: "2.1.79", min_version: "2.1.259", outdated: true, detail };
+    stubFetch((url) =>
+      url === "/api/staff/roster" ? { status: 200, body: { ...ROSTER, provider_versions: { claude } } } : undefined,
+    );
+    render(<StaffPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Roster" }));
+    const card = await screen.findByTestId("role-card-night-watch");
+    expect(within(card).getByText("claude · outdated 2.1.79")).toHaveAttribute("title", detail);
+    expect(within(card).queryByText("claude · installed")).not.toBeInTheDocument();
+  });
+
   it("assign lists only dispatchable, non-retired roles", async () => {
     const chatOnly = { ...ROSTER.roles[0], name: "barb", title: "Barb", dispatchable: false, surface: "grok-chat" };
     stubFetch((url) =>

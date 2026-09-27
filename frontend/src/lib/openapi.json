@@ -4134,6 +4134,54 @@
         "title": "StaffPricingResponse",
         "type": "object"
       },
+      "StaffProviderCliVersion": {
+        "description": "Installed CLI version of one provider against its minimum (#1680).",
+        "properties": {
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "executable": {
+            "title": "Executable",
+            "type": "string"
+          },
+          "installed": {
+            "title": "Installed",
+            "type": "boolean"
+          },
+          "min_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Version"
+          },
+          "outdated": {
+            "default": false,
+            "title": "Outdated",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": ["executable", "installed"],
+        "title": "StaffProviderCliVersion",
+        "type": "object"
+      },
       "StaffQuotaResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/quota (#1587): live subscription windows per provider.",
@@ -4544,6 +4592,13 @@
           "machine": {
             "title": "Machine",
             "type": "string"
+          },
+          "provider_versions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StaffProviderCliVersion"
+            },
+            "title": "Provider Versions",
+            "type": "object"
           },
           "providers": {
             "additionalProperties": {

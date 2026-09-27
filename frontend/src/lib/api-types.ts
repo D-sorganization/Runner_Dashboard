@@ -8392,6 +8392,30 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * StaffProviderCliVersion
+         * @description Installed CLI version of one provider against its minimum (#1680).
+         */
+        StaffProviderCliVersion: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Executable */
+            executable: string;
+            /** Installed */
+            installed: boolean;
+            /** Min Version */
+            min_version?: string | null;
+            /**
+             * Outdated
+             * @default false
+             */
+            outdated: boolean;
+            /** Version */
+            version?: string | null;
+        };
+        /**
          * StaffQuotaResponse
          * @description Response model for GET /api/staff/quota (#1587): live subscription windows per provider.
          */
@@ -8586,6 +8610,10 @@ export interface components {
             active_runs: number;
             /** Machine */
             machine: string;
+            /** Provider Versions */
+            provider_versions?: {
+                [key: string]: components["schemas"]["StaffProviderCliVersion"];
+            };
             /** Providers */
             providers: {
                 [key: string]: boolean;

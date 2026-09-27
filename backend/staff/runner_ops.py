@@ -12,18 +12,45 @@ from pathlib import Path
 from typing import Any
 
 import provider_switch
+from staff import cli_version, workspace
 from staff import quota as quota_mod
-from staff import workspace
 from staff.adapters import ProviderAdapter
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
-from staff.store import RunRecord, RunStore
+from staff.store import RunRecord, RunStore, _now
 from staff.watchdog import StaffWatchdog
 
 
 def can_run_unattended(adapters: Mapping[str, ProviderAdapter], pid: str) -> bool:
-    """Known, not chat-only (#1586) and not switched off on this node (#1597)."""
-    return pid in adapters and getattr(adapters[pid], "unattended", True) and not provider_switch.is_disabled(pid)
+    """Known, not chat-only (#1586), not switched off on this node (#1597), CLI not below its floor (#1680)."""
+    return (
+        pid in adapters
+        and getattr(adapters[pid], "unattended", True)
+        and not provider_switch.is_disabled(pid)
+        and not cli_version.is_outdated(getattr(adapters[pid], "executable", ""))
+    )
+
+
+def fail_if_cli_outdated(store: RunStore, rec: RunRecord, adapter: ProviderAdapter) -> bool:
+    """Fail ``rec`` up front when the adapter's CLI is below its minimum version (#1680).
+
+    Post: when True, the run is ``failed`` with the non-retryable ``cli_outdated`` class
+    and nothing was launched; when False, the run is untouched.
+    """
+    gate = cli_version.version_gate(getattr(adapter, "executable", ""))
+    if gate is None:
+        return False
+    store.update_run(
+        rec.id,
+        status="failed",
+        failure_class=gate.failure_class,
+        retryable=gate.retryable,
+        remediation=gate.remediation,
+        error=gate.error,
+        ended_at=_now(),
+    )
+    store.append_event(rec.id, "error", gate.remediation)
+    return True
 
 
 def select_first_available_provider(

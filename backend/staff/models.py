@@ -76,12 +76,25 @@ class StaffRoleSpec(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class StaffProviderCliVersion(BaseModel):
+    """Installed CLI version of one provider against its minimum (#1680)."""
+
+    executable: str
+    installed: bool
+    version: str | None = None
+    min_version: str | None = None
+    outdated: bool = False
+    detail: str = ""
+
+
 class StaffRosterResponse(BaseModel):
     """Response model for GET /api/staff/roster and GET /api/staff/roles."""
 
     machine: str
     roles: list[StaffRoleSpec]
     providers: dict[str, bool]
+    # Providers whose CLI has a minimum version; an ``outdated`` one is refused before launch (#1680).
+    provider_versions: dict[str, StaffProviderCliVersion] = Field(default_factory=dict)
     active_runs: int = 0
 
     model_config = ConfigDict(extra="allow")

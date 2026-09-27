@@ -30,13 +30,14 @@ from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
 from staff import fleet as staff_fleet
-from staff.adapters import available_providers
+from staff.adapters import ADAPTERS, available_providers
 from staff.audit import (
     export_audit_csv,
     export_audit_ndjson,
     get_audit_store,
     record_audit,
 )
+from staff.cli_version import provider_versions
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.models import (
     StaffAuditListResponse,
@@ -104,6 +105,7 @@ async def roster(
         "machine": runner.machine,
         "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
         "providers": available_providers(),
+        "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "active_runs": len(active),
     }
 

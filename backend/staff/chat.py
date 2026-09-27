@@ -12,6 +12,7 @@ Provides fast, read-only conversational replies with:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import subprocess
@@ -60,6 +61,7 @@ from staff.chat_streaming import (
     stream_turn_output,
 )
 from staff.classifier import classify_run_failure
+from staff.cli_version import version_gate
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
@@ -305,6 +307,10 @@ class ChatTurnRunner:
         stdout_text: list[str] = []
         stderr_text: list[str] = []
 
+        # The version probe may spawn ``--version`` once per binary; keep it off the event loop (#1680).
+        gate = await asyncio.to_thread(version_gate, getattr(adapter, "executable", ""))
+        if gate is not None:
+            return ChatTurnResult(ok=False, **gate.to_dict())
         try:
             cmd = adapter.chat_argv(
                 prompt=prompt,

@@ -28,6 +28,7 @@ FAILURE_SPECIFICITY: dict[str, int] = {
     "stalled": 70,
     "unkillable": 70,
     "orphaned": 70,
+    "cli_outdated": 95,
     "unknown": 50,
     "provider_error": 30,
     "cli_missing": 20,
