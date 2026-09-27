@@ -79,10 +79,6 @@ vi.mock("../../pages/LinearSetup", () => ({
   LinearSetup: () => <div data-testid="native-linear-setup">Linear Setup</div>,
 }));
 
-vi.mock("../../pages/LocalApps", () => ({
-  LocalAppsPage: () => <div data-testid="native-local-apps">Local Apps</div>,
-}));
-
 vi.mock("../../pages/Machines", () => ({
   MachinesPage: () => <div data-testid="native-machines">Machines</div>,
 }));
@@ -171,8 +167,9 @@ vi.mock("../../pages/WorkflowsPage", () => ({
   },
 }));
 
-vi.mock("../../components/ThemeSettings", () => ({
-  ThemeSettings: () => <div data-testid="native-settings">Settings</div>,
+vi.mock("../../pages/Settings/SettingsPage", () => ({
+  SettingsPage: () => <div data-testid="native-settings">Settings</div>,
+  default: () => <div data-testid="native-settings">Settings</div>,
 }));
 
 // Force the desktop shell branch by default so DesktopShell renders
@@ -293,7 +290,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["credentials", "native-credentials"],
     ["code-requests", "native-code-requests"],
     ["linear-setup", "native-linear-setup"],
-    ["local-apps", "native-local-apps"],
     ["maxwell", "native-maxwell"],
     ["org", "native-org"],
     ["principals", "native-principals"],
@@ -323,6 +319,18 @@ describe("RoutedShell — URL is the source of truth", () => {
     );
     expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
   });
+
+  it.each(["/t/local-apps", "/settings/local-apps"])(
+    "redirects retired %s to the Local Tools section of Settings (#1338)",
+    async (path) => {
+      renderAt(path);
+      expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+        "settings",
+      );
+      expect(await screen.findByTestId("native-settings")).toBeInTheDocument();
+      expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/settings$/);
+    },
+  );
 
   it.each(["/t/tests", "/settings/tests"])(
     "redirects retired %s to Operations → Diagnostics (#1338)",
