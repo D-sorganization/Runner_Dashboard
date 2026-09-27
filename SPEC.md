@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1683 | Expert-panel CLI project cleanup (#1683): each panel turn removes its Claude CLI project folder (`<CLAUDE_CONFIG_DIR>/projects/<encoded scratch dir>`) when the turn ends, and `run_panel` sweeps panel project folders older than 6 h first; only direct, non-symlink children of the projects root that carry the panel scratch prefix are ever removed (`backend/staff/cli_projects.py`). |
 | 2026-09-27 | #1335 | ADR 0007: agent-client ingress stays local-only (owner decision); no Funnel or relay. |
 | 2026-09-27 | #1679 | SC-G6 (#1338): Local Tools is no longer a nav tab. A new Settings page renders ordered, anchored sections (Theme, Local Tools); `/settings/local-apps`, `/t/local-apps` and `/local-apps` redirect to `/settings#local-tools`. |
 | 2026-09-27 | #1674 | SC-G6 (#1338): Tests is no longer a Settings nav tab. It is a collapsed `#tests` subsection of the Diagnostics section on Operations; `/t/tests`, `/settings/tests` and `/tests` redirect to `/fleet/operations#tests`. |
