@@ -1,3 +1,31 @@
+# Current handoff — v1 staff run detail 500 (#1670)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-v1-rundetail`
+- Branch: `fix/v1-run-detail`
+- Implementation commit: `SELF`
+- Pull request: not created
+- Governing issue: #1670; DL-#1670.
+
+## Objective and Status
+
+- `GET /api/v1/staff/runs/{id}` raised `AttributeError: 'RunStore' object has no attribute 'list_events'` for every run (seen live on DeskComputer for `run-2ea7b58468b6`). It now delegates to the legacy handler and keeps the v1 404 envelope.
+
+## Validation
+
+- `tests/api/test_staff_v1_run_detail.py`: RED (500) before the fix, 2 passed after; with `tests/api/test_staff_runner.py`, 22 passed.
+- `ruff check` and `ruff format --check` clean on the changed files.
+
+## Next Steps
+
+1. Open the PR, arm auto-merge, deploy to DeskComputer and re-read a run through v1.
+
+---
+
 # Current handoff — Chat and run-worktree CLI project folder cleanup (#1688)
 
 Last updated: 2026-09-27
