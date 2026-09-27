@@ -235,7 +235,7 @@ Get-ScheduledTask -TaskName 'WSL-Runner-KeepAlive' | Select-Object TaskName,Stat
 }
 
 deploy_dashboard() {
-    chmod +x "${DASHBOARD_DIR}/deploy/setup.sh" "${DASHBOARD_DIR}/deploy/update-deployed.sh"
+    chmod +x "${DASHBOARD_DIR}/deploy/setup.sh" "${DASHBOARD_DIR}/deploy/update-deployed.sh" "${DASHBOARD_DIR}/deploy/reap-wsl-leaked-chrome.sh"
 
     if [[ ! -d "${DEPLOY_DIR}" ]]; then
         if [[ "${INSTALL_IF_MISSING}" != "1" ]]; then
@@ -259,6 +259,17 @@ install_autoscaler_if_requested() {
     info "Installing/updating runner autoscaler"
     chmod +x "${DASHBOARD_DIR}/deploy/install-autoscaler.sh"
     "${DASHBOARD_DIR}/deploy/install-autoscaler.sh"
+}
+
+reap_wsl_leaked_chrome_if_applicable() {
+    # WSL fleet safety net (issue #1678): self-hosted Linux runners inside WSL
+    # can leak Windows chrome.exe processes through /mnt/c interop (e.g. lhci
+    # autorun). Only run this on WSL hosts.
+    if [[ ! -e /proc/sys/fs/binfmt_misc/WSLInterop && -z "${WSL_DISTRO_NAME:-}" ]]; then
+        return
+    fi
+    info "WSL host detected; reaping leaked lighthouse chrome.exe processes"
+    DRY_RUN="${DRY_RUN:-0}" "${DASHBOARD_DIR}/deploy/reap-wsl-leaked-chrome.sh" || warn "reap-wsl-leaked-chrome.sh failed; continuing maintenance"
 }
 
 verify_dashboard() {
@@ -427,6 +438,7 @@ main() {
     install_autoscaler_if_requested
     verify_dashboard
     purge_stale_queue
+    reap_wsl_leaked_chrome_if_applicable
     backup_state
     ok "Scheduled dashboard maintenance complete"
 }
