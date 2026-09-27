@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Pure `seat_on_node(seat)` swaps only provider/model for a disabled-provider seat; used at the two `group.seats` loops (estimate, fan-out); `seat_label` marks the stand-in in the summary.
 - **Next step:** Merge; redeploy OGLaptop and run one Board turn to confirm 4/4 seats answer.
 
+### DL-#1645 — Panels leave out providers switched off on the node
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1645
+- **Branch:** `fix/panel-disabled-providers`
+- **PR:** pending
+- **Paths:** `backend/staff/panel_models.py`, `backend/routers/staff_panels.py`, `tests/api/test_staff_panels_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (panel suites green; new disabled-provider tests red then green)
+- **Summary:** `_check_provider` (shared by expert and moderator seats) rejects disabled providers; new `enabled_panel_providers()` feeds the presets route.
+- **Next step:** Merge; redeploy OGLaptop and confirm presets omit gemini.
+
 ### DL-#1637 — Board seats call a real model
 
 - **State:** in_review

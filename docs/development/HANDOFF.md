@@ -22,6 +22,30 @@ Last updated: 2026-09-27
 
 ---
 
+# Past handoff — Panels leave out providers switched off on the node (#1645)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `_wt_claude_rd_1645`; branch `fix/panel-disabled-providers`; PR: see DL-#1645; Issue #1645; DL-#1645.
+
+## Objective and Status
+
+- Found after deploying 096c7de to OGLaptop: presets listed `gemini` although `STAFF_DISABLED_PROVIDERS=gemini`, so the New-panel form offered a seat that fails at turn time.
+- One check in `_check_provider` covers both seat kinds; the presets route filters through `enabled_panel_providers()`, read per request.
+
+## Validation
+
+- Three new API tests failed first (gemini listed; gemini expert and moderator accepted with 202), now pass.
+- Panel API, panel engine and Board seat runner suites: 46 passed; ruff clean.
+
+## Next Steps
+
+1. Merge; redeploy OGLaptop and confirm presets omit gemini.
+
+---
+
 # Past handoff — Board seats call a real model (#1637)
 
 Last updated: 2026-09-27

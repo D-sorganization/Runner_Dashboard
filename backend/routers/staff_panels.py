@@ -26,7 +26,7 @@ from staff.panel import (
     run_panel,
     start_panel_thread,
 )
-from staff.panel_models import MAX_ACTIVE_PANELS, PANEL_PRESETS, PANEL_PROVIDERS, PanelCreateRequest
+from staff.panel_models import MAX_ACTIVE_PANELS, PANEL_PRESETS, PanelCreateRequest, enabled_panel_providers
 from staff.rate_limit import check_rate_limit
 
 log = logging.getLogger("dashboard.staff.panels_router")
@@ -92,8 +92,8 @@ async def create_panel(
 async def get_panel_presets(
     _caller: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    """Ready-made expert line-ups; every seat defaults to the ``claude`` provider."""
-    return {"presets": list(PANEL_PRESETS), "providers": list(PANEL_PROVIDERS)}
+    """Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out."""
+    return {"presets": list(PANEL_PRESETS), "providers": list(enabled_panel_providers())}
 
 
 @router.get("/panels/{thread_id}", summary="Expert panel state")
