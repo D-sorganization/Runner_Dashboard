@@ -244,6 +244,10 @@ class StaffBoardResponse(BaseModel):
         description="Per-provider spend in USD plus a 'total' key (issue #1289)",
     )
     providers: dict[str, Any]
+    chat_only_providers: list[str] = Field(
+        default_factory=list,
+        description="Provider ids that cannot run unattended (#1586, #1697)",
+    )
     liveness: list[StaffRoleLiveness] = Field(default_factory=list)
     liveness_alerts: list[StaffRoleLiveness] = Field(default_factory=list)
     machines: dict[str, dict[str, Any]] | None = Field(default=None)

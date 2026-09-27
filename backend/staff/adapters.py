@@ -491,3 +491,13 @@ def get_adapter(provider_id: str) -> ProviderAdapter:
 def available_providers() -> dict[str, bool]:
     """Map provider id → whether its executable is on PATH on this node."""
     return {pid: adapter.installed() for pid, adapter in ADAPTERS.items()}
+
+
+def chat_only_providers() -> list[str]:
+    """Provider ids that cannot run unattended (#1586): the ``unattended=False`` adapters.
+
+    Consumers (e.g. ``deploy/staff-node-acceptance.sh``) use this to skip ad-hoc
+    dispatch for providers the backend would reject with a "chat-only" validation
+    error, without duplicating that set as a second hard-coded list.
+    """
+    return sorted(pid for pid, adapter in ADAPTERS.items() if not adapter.unattended)

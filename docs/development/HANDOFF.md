@@ -1,3 +1,28 @@
+# Current handoff — staff-node-acceptance ad-hoc loop skips chat-only providers (#1697)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1697`; branch `fix/1697-acceptance-chat-only`; PR: see DL-#1697; Issue #1697; DL-#1697.
+
+## Objective and Status
+
+- `deploy/staff-node-acceptance.sh --run-ad-hoc` dispatched an ad-hoc run for every entry in `REQUIRED_PROVIDERS`, including `antigravity`, which `/api/staff/ad-hoc/run` has rejected as chat-only since #1586 ("provider 'antigravity' is chat-only..."). Every node's acceptance run reported a spurious FAIL.
+- Fix: `backend/staff/adapters.py` gains `chat_only_providers()` (providers with `unattended=False`); `staff/fleet.py:local_board()` and `staff/models.py:StaffBoardResponse` expose it as `chat_only_providers` on the board response the script already queries (`GET /api/staff/board?local=1`). The script reads that list, and its ad-hoc loop now prints `[SKIP]` and `continue`s for a chat-only provider instead of dispatching and failing. The "Provider available on board" check (section 9's first loop) is unchanged. No second hard-coded chat-only list, and no change to the backend's chat-only validation policy.
+
+## Validation
+
+- New `test_run_ad_hoc_skips_chat_only_provider` (red first) in `tests/deploy/test_staff_node_acceptance.py`, plus the existing suite in that file: `.venv/Scripts/python.exe -m pytest -q tests/deploy/test_staff_node_acceptance.py` — 8 passed.
+- Broader staff/board regression: `.venv/Scripts/python.exe -m pytest -q tests/api/test_staff_auth_perimeter.py tests/api/test_staff_contracts.py tests/api/test_staff_fleet.py tests/api/test_staff_liveness.py tests/api/test_staff_runner.py tests/clients/test_fleet_client.py tests/deploy/test_fleet_health_monitor.py tests/unit/test_staff_availability.py tests/api/test_staff_unattended_permissions.py` — all passed.
+- `ruff check` / `ruff format --check` on the changed Python files — clean.
+
+## Next Steps
+
+1. None.
+
+---
+
 # Current handoff — Unblock the Windows pre-push suite (#1695)
 
 Last updated: 2026-09-27

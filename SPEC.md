@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1697 | `deploy/staff-node-acceptance.sh --run-ad-hoc` skips chat-only providers (#1586) instead of failing on them: `staff/adapters.chat_only_providers()` is exposed as `chat_only_providers` on `GET /api/staff/board`, which the script now reads to print `[SKIP]` and skip dispatch for `antigravity` while keeping the "Provider available on board" check. |
 | 2026-09-27 | #1695 | Windows pre-push unblocked (#1695): the pre-panel CLI project sweep runs fire-and-forget on a daemon thread (`cli_projects.start_panel_sweep`) instead of being awaited, which had let a short-lived event loop abandon the panel on Windows; vendored Conductor constants gain `issue_authoring` and `plan` to match Repository_Management#1741. |
 | 2026-09-27 | #1681 | SC-G6 (#1338): Organization is retired into Projects. Projects cards show a per-repo CI badge from `/api/repos` linked to the latest run; `/fleet/org`, `/t/org` and `/org` redirect to `/work/projects`. |
 | 2026-09-27 | #1688 | Chat and run CLI project cleanup (#1688): run worktrees remove their Claude CLI project folder in `workspace.remove_worktree` and startup reconcile sweeps run project folders whose worktree is gone (older than 6 h); chat scratch dirs idle for 14 days are swept with their project folders at most hourly from `thread_scratch_dir`, which touches the thread's dir so a resumed thread is never swept mid-turn. |

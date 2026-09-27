@@ -417,6 +417,16 @@ printf "\n9. Provider Availability & Ad-hoc Verification\n"
 
 REQUIRED_PROVIDERS=("claude" "codex" "antigravity" "cursor-agent" "ollama" "claude-ollama")
 
+# Providers the backend reports as chat-only (#1586): it rejects an ad-hoc dispatch for these
+# with "provider '<id>' is chat-only: it cannot run unattended without bypassing permissions".
+# Sourced from the board response so this stays a single list, not a second hard-coded one (#1697).
+CHAT_ONLY_CSV="$(printf '%s' "$BOARD_JSON" | json_get "','.join(d.get('chat_only_providers') or [])")"
+
+is_chat_only_provider() {
+    local prov="$1"
+    [[ ",${CHAT_ONLY_CSV}," == *",${prov},"* ]]
+}
+
 if [[ -n "$BOARD_JSON" ]]; then
     for prov in "${REQUIRED_PROVIDERS[@]}"; do
         if [[ "$(printf '%s' "$BOARD_JSON" | json_get "(d.get('providers') or {}).get('${prov}') is True")" == "True" ]]; then
@@ -431,6 +441,11 @@ if [[ "$RUN_AD_HOC" == "1" ]]; then
     printf "\nRunning live ad-hoc runs for providers (--run-ad-hoc):\n"
     for prov in "${REQUIRED_PROVIDERS[@]}"; do
         DISPATCH_PROV="$prov"
+
+        if is_chat_only_provider "$DISPATCH_PROV"; then
+            printf '  [SKIP] Ad-hoc dispatch for %s (chat-only, per backend policy #1586)\n' "$DISPATCH_PROV"
+            continue
+        fi
 
         log_verbose "Dispatching ad-hoc run for provider ${DISPATCH_PROV}..."
         PAYLOAD="$(printf '{"provider":"%s","machine":"local","prompt":"Health check: do not change anything. Reply OK, then STAFF_RESULT: ok"}' "$DISPATCH_PROV")"

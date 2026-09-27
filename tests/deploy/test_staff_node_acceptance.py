@@ -132,6 +132,74 @@ def test_expect_sha_mismatch_fails(tmp_path: Path) -> None:
     assert "[FAIL] Deployed commit" in bad.stderr, bad.stdout + bad.stderr
 
 
+# --- #1697: ad-hoc loop must skip chat-only providers, not FAIL --------------
+
+
+def _fake_node_ad_hoc(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    """A fake node wired for --run-ad-hoc: records dispatched providers, all runs succeed instantly."""
+    fake = tmp_path / "bin"
+    fake.mkdir(parents=True)
+    board = _BOARD.replace("RM_STATUS", "unchanged").replace(
+        '"providers"', '"chat_only_providers":["antigravity"],"providers"'
+    )
+    dispatch_log = tmp_path / "dispatched.log"
+    (fake / "curl").write_text(
+        "#!/usr/bin/env bash\n"
+        'for a in "$@"; do last="$a"; done\n'
+        'if [[ "$*" == *"/api/staff/ad-hoc/run"* ]]; then\n'
+        f'  echo "$*" >> "{as_bash_path(dispatch_log)}"\n'
+        '  echo \'{"run":{"id":"run-1"}}\'\n'
+        'elif [[ "$*" == *"/api/staff/runs/run-1"* ]]; then\n'
+        '  echo \'{"run":{"id":"run-1","status":"succeeded"}}\'\n'
+        "else\n"
+        '  case "$last" in\n'
+        f"    */api/health) echo '{_HEALTH}' ;;\n"
+        f"    */api/staff/board*) echo '{board}' ;;\n"
+        f"    */api/staff/schedule) echo '{_SCHEDULE}' ;;\n"
+        '    */api/fleet/identity) echo \'{"name":"DeskComputer","role":"node","unregistered":false}\' ;;\n'
+        "    *) exit 22 ;;\n"
+        "  esac\n"
+        "fi\n",
+        newline="\n",
+    )
+    (fake / "sleep").write_text("#!/usr/bin/env bash\nexit 0\n", newline="\n")
+    for cli in ("gh", "node", "claude", "codex", "agy", "cursor-agent"):
+        (fake / cli).write_text("#!/usr/bin/env bash\necho 'Logged in to github.com'\n", newline="\n")
+    for exe in fake.iterdir():
+        exe.chmod(0o755)
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "night-watch.yml").write_text("name: night-watch\n")
+    gitcfg = tmp_path / "staff.gitconfig"
+    gitcfg.write_text("[user]\n")
+    env = tmp_path / "env"
+    env.write_text(
+        f"STAFF_SCHEDULER_ENABLED=1\nSTAFF_RM_ROOT={as_bash_path(tmp_path)}\n"
+        f"STAFF_ROLES_DIR={as_bash_path(roles)}\nGIT_CONFIG_GLOBAL={as_bash_path(gitcfg)}\n",
+        newline="\n",
+    )
+    return fake, env, tmp_path / "missing-dropin.conf", dispatch_log
+
+
+def test_run_ad_hoc_skips_chat_only_provider(tmp_path: Path) -> None:
+    assert BASH is not None
+    fake, env, dropin, dispatch_log = _fake_node_ad_hoc(tmp_path)
+    cmd = (
+        f'PATH="{as_bash_path(fake)}:$PATH" exec bash "{as_bash_path(SCRIPT)}" --role scheduler '
+        f'--env-file "{as_bash_path(env)}" --dropin-file "{as_bash_path(dropin)}" '
+        "--skip-service --skip-network --run-ad-hoc"
+    )
+    res = subprocess.run([BASH, "-c", cmd], capture_output=True, text=True)
+    out = res.stdout + res.stderr
+    assert "[SKIP]" in out, out
+    assert "antigravity" in out, out
+    assert "Ad-hoc dispatch failed for antigravity" not in out, out
+    assert "Ad-hoc run failed: antigravity" not in out, out
+    dispatched = dispatch_log.read_text() if dispatch_log.exists() else ""
+    assert '"provider":"antigravity"' not in dispatched, dispatched
+    assert '"provider":"codex"' in dispatched, dispatched
+
+
 def test_fleet_identity_mismatch_fails(tmp_path: Path) -> None:
     assert BASH is not None
     fake, env, dropin = _fake_node(tmp_path)
