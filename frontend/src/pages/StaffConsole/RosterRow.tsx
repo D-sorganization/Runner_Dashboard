@@ -75,7 +75,7 @@ export const RosterRow: React.FC<RosterRowProps> = ({
     ? {}
     : {
         backgroundColor: `hsl(${hue}, 42%, 30%)`,
-        color: "#ffffff",
+        color: "var(--text-on-accent)",
         borderColor: `hsl(${hue}, 48%, 42%)`,
       };
 

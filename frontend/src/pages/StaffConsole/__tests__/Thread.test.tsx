@@ -362,4 +362,74 @@ describe("Thread Component", () => {
     expect(screen.getByText("That is an analysis question.")).toBeInTheDocument();
     expect(onFollowHandoff).toHaveBeenCalledWith("e2e-analyst");
   });
+
+  it("collapses header for consecutive messages from the same author within 5 minutes", () => {
+    const consecutiveMessages: ThreadMessage[] = [
+      {
+        id: "m-group-1",
+        thread_id: "thread-123",
+        author: "barb",
+        author_kind: "staff",
+        kind: "text",
+        body_md: "First point of analysis.",
+        delivery: "complete",
+        created_at: "2026-09-25T09:00:00Z",
+      },
+      {
+        id: "m-group-2",
+        thread_id: "thread-123",
+        author: "barb",
+        author_kind: "staff",
+        kind: "text",
+        body_md: "Second point right after.",
+        delivery: "complete",
+        created_at: "2026-09-25T09:02:00Z",
+      },
+      {
+        id: "m-group-3",
+        thread_id: "thread-123",
+        author: "barb",
+        author_kind: "staff",
+        kind: "text",
+        body_md: "Third point much later.",
+        delivery: "complete",
+        created_at: "2026-09-25T09:15:00Z",
+      },
+    ];
+
+    render(<Thread thread={MOCK_THREAD} messages={consecutiveMessages} />);
+
+    const msg1 = screen.getByTestId("message-m-group-1");
+    expect(msg1.querySelector(".thread-message-header")).toBeInTheDocument();
+    expect(msg1).toHaveTextContent("Barb");
+
+    const msg2 = screen.getByTestId("message-m-group-2");
+    expect(msg2.querySelector(".thread-message-header")).not.toBeInTheDocument();
+
+    const msg3 = screen.getByTestId("message-m-group-3");
+    expect(msg3.querySelector(".thread-message-header")).toBeInTheDocument();
+    expect(msg3).toHaveTextContent("Barb");
+  });
+
+  it("renders '<Role> is thinking...' typing indicator with three dots when reply is pending or streaming with empty body", () => {
+    const thinkingMessages: ThreadMessage[] = [
+      {
+        id: "m-thinking-1",
+        thread_id: "thread-123",
+        author: "barb",
+        author_kind: "staff",
+        kind: "text",
+        body_md: "",
+        delivery: "pending",
+        streaming: true,
+        created_at: "2026-09-25T10:00:00Z",
+      },
+    ];
+
+    render(<Thread thread={MOCK_THREAD} messages={thinkingMessages} />);
+
+    expect(screen.getByText("Barb is thinking…")).toBeInTheDocument();
+    expect(screen.getByTestId("thinking-indicator")).toBeInTheDocument();
+  });
 });
+

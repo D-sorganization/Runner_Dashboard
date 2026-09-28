@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1720 — Staff Console thread and composer restyled
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1720
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `frontend/src/pages/StaffConsole/{Desktop,Thread,MessageItem,Composer,threadMarkdown}.tsx`, `cards/**`, `thread.css`, `threadMarkdown.css`, `composer.css`, `desktop.css`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (StaffConsole vitest 27 files / 214 passed; tsc and eslint clean)
+- **Summary:** Chat-style thread (user bubbles right, assistant prose left, 15px prose type), the composer pinned to the bottom of the console, cards restyled with inline styles moved to CSS; Approve/Deny gating unchanged; accent-text colours use `--text-on-accent`.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1719 — Neutral design tokens, type scale and flat cards
 
 - **State:** in_review

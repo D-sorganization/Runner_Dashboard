@@ -7,6 +7,7 @@
 import React, { useMemo, useState } from "react";
 import { marked, type Token } from "marked";
 import { extractIssueOrRunLinks, sanitizeMarkdown } from "./threadUtils";
+import "./threadMarkdown.css";
 
 interface CodeBlockProps {
   code: string;
@@ -29,57 +30,19 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
   };
 
   return (
-    <div
-      className="thread-code-block"
-      style={{
-        position: "relative",
-        background: "var(--bg-tertiary, #161b22)",
-        border: "1px solid var(--border, #30363d)",
-        borderRadius: 8,
-        margin: "8px 0",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "4px 10px",
-          fontSize: 11,
-          color: "var(--text-muted, #8b949e)",
-          borderBottom: "1px solid var(--border, #30363d)",
-          background: "rgba(255, 255, 255, 0.02)",
-        }}
-      >
+    <div className="thread-code-block">
+      <div className="thread-code-block__header">
         <span>{language || "code"}</span>
         <button
           type="button"
           onClick={handleCopy}
           aria-label={copied ? "Copied" : "Copy code"}
-          style={{
-            background: "transparent",
-            border: "1px solid var(--border, #30363d)",
-            borderRadius: 4,
-            color: copied ? "var(--accent-green, #3fb950)" : "var(--text-secondary, #c9d1d9)",
-            cursor: "pointer",
-            fontSize: 11,
-            padding: "2px 8px",
-          }}
+          className={`thread-code-block__copy ${copied ? "thread-code-block__copy--copied" : ""}`}
         >
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <pre
-        style={{
-          margin: 0,
-          padding: "10px 12px",
-          overflowX: "auto",
-          fontSize: 12,
-          lineHeight: 1.45,
-          fontFamily: "var(--font-mono, monospace)",
-        }}
-      >
+      <pre className="thread-code-block__pre">
         <code>{code}</code>
       </pre>
     </div>
@@ -121,7 +84,7 @@ export const ThreadMarkdown: React.FC<ThreadMarkdownProps> = ({ content, classNa
       if (hasBadges && token.type === "paragraph") {
         // Render rich badges for plain paragraphs with references
         return (
-          <p key={`p-badge-${idx}`} style={{ margin: "6px 0", lineHeight: 1.5 }}>
+          <p key={`p-badge-${idx}`} style={{ margin: "6px 0", lineHeight: 1.6 }}>
             {extractIssueOrRunLinks(token.text)}
           </p>
         );
@@ -134,7 +97,6 @@ export const ThreadMarkdown: React.FC<ThreadMarkdownProps> = ({ content, classNa
           className="thread-md-chunk"
           // safe: cleanHtml is sanitized via DOMPurify.sanitize in lexMarkdownTokens
           dangerouslySetInnerHTML={{ __html: cleanHtml }}
-          style={{ lineHeight: 1.5 }}
         />
       );
     });

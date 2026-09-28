@@ -77,6 +77,26 @@ describe("StaffConsoleDesktop", () => {
     expect(api.fetchThreads).not.toHaveBeenCalled();
   });
 
+  it("renders welcome message and suggestion chips when no thread is selected, and clicking a chip pre-fills composer without sending", () => {
+    render(<StaffConsoleDesktop roles={ROLES} />);
+
+    expect(screen.getByText("Ask Barb anything, or pick a staff role")).toBeInTheDocument();
+    const chipWaiting = screen.getByRole("button", { name: "What's waiting on me?" });
+    const chipSummarise = screen.getByRole("button", { name: "Summarise today's fleet status" });
+    const chipBlocked = screen.getByRole("button", { name: "Which PRs are blocked?" });
+
+    expect(chipWaiting).toBeInTheDocument();
+    expect(chipSummarise).toBeInTheDocument();
+    expect(chipBlocked).toBeInTheDocument();
+
+    fireEvent.click(chipWaiting);
+
+    const textarea = screen.getByRole("textbox", { name: /staff conversation input/i });
+    expect(textarea).toHaveValue("What's waiting on me?");
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+  });
+
+
   it("opens the selected role's thread with its history", async () => {
     render(<StaffConsoleDesktop roles={ROLES} />);
     openMaintenance();

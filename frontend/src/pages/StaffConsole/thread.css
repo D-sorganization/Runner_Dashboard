@@ -1,0 +1,251 @@
+/**
+ * thread.css — Claude-style thread view and message items.
+ * Strictly uses design tokens; calm, dense, precise.
+ */
+
+.staff-thread-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  position: relative;
+}
+
+.thread-messages-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 16px 0;
+}
+
+.thread-messages-container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Date and Round Separators ── */
+
+.thread-date-separator,
+.panel-round-header {
+  display: flex;
+  align-items: center;
+  margin: 16px 0 8px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.thread-separator-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.thread-separator-label {
+  padding: 0 12px;
+}
+
+/* ── Message Items ── */
+
+.thread-message-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.thread-message-item--user {
+  align-items: flex-end;
+}
+
+.thread-message-item--agent {
+  align-items: flex-start;
+}
+
+.thread-message-item--system {
+  align-items: center;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 12px auto;
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-pill, 9999px);
+  border: 1px solid var(--border);
+  max-width: 80%;
+}
+
+/* ── Assistant Header: Avatar + Role Display Name + Time ── */
+
+.thread-message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.thread-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm, 6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+  flex-shrink: 0;
+  user-select: none;
+  border: 1px solid var(--border);
+}
+
+.thread-author-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.thread-message-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Message Body Styles ── */
+
+/* User bubble: right-aligned, --bg-tertiary, rounded --radius-lg, max-width 85% */
+.thread-bubble--user {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 14px);
+  padding: 10px 14px;
+  max-width: 85%;
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.55;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+}
+
+/* Staff/assistant message: full-width plain prose, NO bubble */
+.thread-prose--agent {
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  word-break: break-word;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* ── Message Actions (Copy) ── */
+
+.thread-message-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease-out;
+}
+
+.thread-message-item:hover .thread-message-actions,
+.thread-message-item:focus-within .thread-message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.thread-action-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+
+.thread-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.thread-action-btn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+/* ── Typing & Thinking Indicator ── */
+
+.thread-thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.thread-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.thread-thinking-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: thread-dot-pulse 1.4s infinite ease-in-out both;
+}
+
+.thread-thinking-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.thread-thinking-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes thread-dot-pulse {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.3;
+  }
+  40% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-thinking-dots span {
+    animation: none;
+    opacity: 0.7;
+  }
+  .thread-message-actions {
+    transition: none;
+  }
+}

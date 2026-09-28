@@ -1,6 +1,6 @@
 /**
- * cards.css — Styles for Action, Run, Handoff, Review, and Error cards.
- * Mobile-first BEM architecture adhering to repo web standards.
+ * cards.css — Shared styles for Action, Run, Handoff, Review, and Error cards.
+ * Uses design tokens only.
  */
 
 .staff-action-card,
@@ -10,43 +10,144 @@
 .staff-error-card {
   box-sizing: border-box;
   width: 100%;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  max-width: 540px;
+  margin: 8px 0;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
 }
 
-.staff-action-card:hover,
-.staff-run-card:hover,
-.staff-handoff-card:hover,
-.staff-review-card:hover {
-  border-color: var(--border-hover, #444c56);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+/* Card Header */
+.staff-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
+.staff-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.staff-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.staff-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Card Key/Value Grid */
+.staff-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px 12px;
+  font-size: 12px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+}
+
+.staff-card-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.staff-card-k {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.staff-card-v {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Actions Footer */
 .staff-action-card__actions {
   display: flex;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 10px;
   flex-wrap: wrap;
+}
+
+.staff-action-card__btn {
+  border-radius: var(--radius-sm, 6px);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.staff-action-card__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.staff-action-card__btn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.staff-action-card__btn--approve {
+  background: var(--accent-blue);
+  color: var(--text-on-accent, #ffffff);
+  border: 1px solid transparent;
+}
+
+.staff-action-card__btn--approve:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+.staff-action-card__btn--deny {
+  background: transparent;
+  color: var(--accent-red);
+  border: 1px solid var(--border);
+}
+
+.staff-action-card__btn--deny:not(:disabled):hover {
+  border-color: var(--accent-red);
+  background: var(--badge-danger-bg);
 }
 
 @media (max-width: 768px) {
   .staff-action-card__actions {
-    gap: 12px;
+    gap: 10px;
   }
 
   .staff-action-card__btn {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 10px 16px !important;
-    font-size: 14px !important;
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 13px;
     flex: 1 1 calc(50% - 6px);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    touch-action: manipulation;
   }
 }
 
-/* Reduced-Motion Support (SC-D9) */
+/* Reduced-Motion Support */
 @media (prefers-reduced-motion: reduce) {
   .staff-action-card,
   .staff-run-card,

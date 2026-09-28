@@ -1,0 +1,118 @@
+/**
+ * composer.css — Claude-grade Composer for Staff Console.
+ * Tokens only, no hardcoded colors.
+ */
+
+.staff-composer {
+  position: relative;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+
+.staff-composer__box {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 14px);
+  padding: 8px 12px;
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+.staff-composer__box:focus-within {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px var(--accent-blue);
+}
+
+.staff-composer__textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+  padding: 0;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-composer__textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.staff-composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.staff-composer__voice-btn {
+  height: 32px;
+  width: 32px;
+  border-radius: var(--radius-pill, 9999px);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+  padding: 0;
+}
+
+.staff-composer__voice-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.staff-composer__voice-btn--recording {
+  background: var(--accent-red);
+  color: var(--text-on-accent);
+  border-color: var(--accent-red);
+}
+
+.staff-composer__send-btn {
+  height: 32px;
+  width: 32px;
+  border-radius: var(--radius-pill, 9999px);
+  border: none;
+  background: var(--accent-blue);
+  color: var(--text-on-accent, #ffffff);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 140ms ease-out, transform 140ms ease-out, background-color 140ms ease-out;
+  flex-shrink: 0;
+}
+
+.staff-composer__send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.staff-composer__send-btn:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+.staff-composer__send-btn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.staff-composer__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  text-align: center;
+  user-select: none;
+}

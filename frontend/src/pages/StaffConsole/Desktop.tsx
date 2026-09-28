@@ -16,6 +16,7 @@ import { Thread } from "./Thread";
 import { isPanelThread } from "./panelTurn";
 import type { StaffRoleItem } from "./types";
 import { useStaffConsole } from "./useStaffConsole";
+import { Dropdown } from "../../primitives/Dropdown";
 import "./desktop.css";
 
 export interface StaffConsoleDesktopProps {
@@ -26,11 +27,33 @@ export interface StaffConsoleDesktopProps {
   initialThreadId?: string | null;
 }
 
+const EMPTY_SUGGESTIONS = [
+  "What's waiting on me?",
+  "Summarise today's fleet status",
+  "Which PRs are blocked?",
+  "Show active runner jobs",
+];
+
 export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThreadId }: StaffConsoleDesktopProps) {
   const sc = useStaffConsole({ roles: seedRoles, threadApi, initialThreadId });
   const [showContext, setShowContext] = useState(true);
+  const [composerPrefill, setComposerPrefill] = useState("");
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
+
+  const handleExport = (format: "markdown" | "json") => {
+    if (!activeThread) return;
+    const url = `/api/v1/staff/threads/${activeThread.id}/export?format=${format}`;
+    const filename = `thread-${activeThread.id}.${format === "markdown" ? "md" : "json"}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const participantsCount = activeThread?.participants?.length ?? 0;
 
   return (
     <div className={`staff-console${showContext ? "" : " staff-console--no-context"}`} data-testid="staff-console-desktop">
@@ -47,35 +70,97 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
 
       <section className="staff-console__main" role="region" aria-label="Staff conversation">
         <header className="staff-console__header">
-          <h2 className="staff-console__title">{activeThread ? activeThread.title : "Staff Console"}</h2>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <div className="staff-console__header-left">
+            <h2 className="staff-console__title">{activeThread ? activeThread.title : "Staff Console"}</h2>
+            {participantsCount > 0 && (
+              <span
+                className="staff-console__participants"
+                title={`Participants: ${activeThread?.participants.join(", ")}`}
+                aria-label={`${participantsCount} participants`}
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="12"
+                  height="12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                </svg>
+                <span>{participantsCount}</span>
+              </span>
+            )}
+          </div>
+
+          <div className="staff-console__header-actions">
             {activeThread && (
-              <div className="staff-console__export-actions">
-                <a
-                  href={`/api/v1/staff/threads/${activeThread.id}/export?format=markdown`}
-                  download={`thread-${activeThread.id}.md`}
-                  className="staff-console__export-btn"
-                  title="Export thread as Markdown"
-                >
-                  Export MD
-                </a>
-                <a
-                  href={`/api/v1/staff/threads/${activeThread.id}/export?format=json`}
-                  download={`thread-${activeThread.id}.json`}
-                  className="staff-console__export-btn"
-                  title="Export thread as JSON"
-                >
-                  Export JSON
-                </a>
-              </div>
+              <>
+                <Dropdown
+                  label="Export"
+                  items={[
+                    {
+                      id: "export-md",
+                      label: "Export MD",
+                      onSelect: () => handleExport("markdown"),
+                    },
+                    {
+                      id: "export-json",
+                      label: "Export JSON",
+                      onSelect: () => handleExport("json"),
+                    },
+                  ]}
+                />
+                {/* Fallback hidden anchors with titles/hrefs for compatibility */}
+                <div style={{ display: "none" }} aria-hidden="true">
+                  <a
+                    href={`/api/v1/staff/threads/${activeThread.id}/export?format=markdown`}
+                    download={`thread-${activeThread.id}.md`}
+                    className="staff-console__export-btn"
+                    title="Export thread as Markdown"
+                    data-testid="export-md"
+                  >
+                    Export MD
+                  </a>
+                  <a
+                    href={`/api/v1/staff/threads/${activeThread.id}/export?format=json`}
+                    download={`thread-${activeThread.id}.json`}
+                    className="staff-console__export-btn"
+                    title="Export thread as JSON"
+                    data-testid="export-json"
+                  >
+                    Export JSON
+                  </a>
+                </div>
+              </>
             )}
             <button
               type="button"
               className="staff-console__context-toggle"
               aria-expanded={showContext}
+              aria-label={showContext ? "Hide role context" : "Show role context"}
+              title={showContext ? "Hide role context" : "Show role context"}
               onClick={() => setShowContext((shown) => !shown)}
             >
-              {showContext ? "Hide role context" : "Show role context"}
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="15" y1="3" x2="15" y2="21" />
+              </svg>
             </button>
           </div>
         </header>
@@ -106,12 +191,46 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
               placeholder={`Message ${currentRole.title || "staff"}…`}
               focusOnThreadChange
               isPanel={isPanelThread(activeThread)}
+              prefilledText={composerPrefill}
             />
           </>
         ) : (
-          <p className="staff-console__empty">
-            {sc.openingRole ? `Opening conversation with ${sc.openingRole}…` : "Pick a role or ask Barb to start a conversation."}
-          </p>
+          <>
+            <div className="staff-console__empty">
+              <h3 className="staff-console__empty-title">
+                {sc.openingRole
+                  ? `Opening conversation with ${sc.openingRole}…`
+                  : "Ask Barb anything, or pick a staff role"}
+              </h3>
+              {!sc.openingRole && (
+                <>
+                  <p className="staff-console__empty-subtitle">
+                    Pick a role or ask Barb to start a conversation.
+                  </p>
+                  <div className="staff-console__suggestions">
+                    {EMPTY_SUGGESTIONS.map((text) => (
+                      <button
+                        key={text}
+                        type="button"
+                        className="staff-console__suggestion-chip"
+                        onClick={() => setComposerPrefill(text)}
+                      >
+                        {text}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <Composer
+              threadId="new"
+              roles={roles}
+              selectedRole={sc.selectedRole ?? undefined}
+              onSendMessage={sc.sendMessage}
+              placeholder="Message Barb or type /dispatch…"
+              prefilledText={composerPrefill}
+            />
+          </>
         )}
       </section>
 
