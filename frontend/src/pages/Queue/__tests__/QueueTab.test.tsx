@@ -166,8 +166,10 @@ describe("QueueTab Component", () => {
       <QueueTab queue={undefined} loading={false} />
     );
 
-    // Should render without errors and show empty state
-    expect(screen.getAllByText(/Queue is empty/i)[0]).toBeInTheDocument();
+    // With no queue prop the tab fetches its own; until that returns it shows
+    // the loading state, not an empty queue (#1742).
+    expect(screen.getByText(/Loading queue/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Queue is empty/i)).not.toBeInTheDocument();
   });
 
   it("displays mobile KPI strip", () => {
