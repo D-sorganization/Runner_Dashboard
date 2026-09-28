@@ -1,0 +1,504 @@
+/**
+ * roster.css — Modern, calm, dense, precise styles for Staff Console Roster sidebar.
+ * Workstream C (Issue #1721, Epic #1718).
+ */
+
+/* ── Sidebar Container ─────────────────────────────────────────────────────── */
+.staff-roster-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 320px;
+  height: 100%;
+  min-height: 400px;
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  padding: 12px 10px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  user-select: none;
+  font-family: inherit;
+}
+
+.staff-roster-sidebar:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+.roster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 0 4px;
+}
+
+.roster-header__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.roster-header__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.roster-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roster-new-panel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.roster-new-panel-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.roster-new-panel-btn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.roster-syncing-indicator {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.roster-stale-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill, 9999px);
+  background-color: var(--badge-warning-bg);
+  color: var(--badge-warning-fg);
+  border: 1px solid var(--badge-warning-fg);
+}
+
+/* ── Search Bar ───────────────────────────────────────────────────────────── */
+.roster-search-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.roster-search-icon {
+  position: absolute;
+  left: 9px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.roster-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 6px 28px 6px 29px;
+  font-size: 13px;
+  line-height: 1.4;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-primary);
+  font-family: inherit;
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+.roster-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.roster-search-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px var(--accent-blue);
+}
+
+.roster-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.roster-search-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.roster-search-clear:focus-visible {
+  outline: 2px solid var(--accent-blue);
+}
+
+.roster-search-shortcut {
+  position: absolute;
+  right: 8px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  pointer-events: none;
+}
+
+.roster-empty-search {
+  padding: 20px 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.roster-divider {
+  height: 1px;
+  background-color: var(--border);
+  margin: 6px 0 10px 0;
+}
+
+/* ── Groups ───────────────────────────────────────────────────────────────── */
+.roster-group {
+  margin-bottom: 8px;
+}
+
+.roster-group__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius-sm, 6px);
+  text-align: left;
+  transition: color 140ms ease-out, background-color 140ms ease-out;
+}
+
+.roster-group__header:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.roster-group__header:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -1px;
+}
+
+.roster-group__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roster-group__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  transition: transform 140ms ease-out;
+}
+
+.roster-group__chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.roster-group__count {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  background-color: var(--bg-card);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: var(--radius-pill, 9999px);
+  font-weight: 500;
+}
+
+.roster-group__content {
+  margin-top: 1px;
+}
+
+/* ── Roster Row (Slack/Linear Density) ─────────────────────────────────────── */
+.staff-roster-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 5px 8px 5px 8px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  transition: background-color 140ms ease-out, border-color 140ms ease-out;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.staff-roster-row:hover {
+  background-color: var(--bg-hover);
+}
+
+.staff-roster-row--selected {
+  background-color: var(--bg-hover);
+  border-left: 2px solid var(--accent-blue);
+}
+
+.staff-roster-row--focused:not(.staff-roster-row--selected) {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-light);
+}
+
+.staff-roster-row:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -1px;
+}
+
+.staff-roster-row--barb {
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+/* ── Row Main (Clickable Button) ─────────────────────────────────────────── */
+.roster-row-btn {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: 9px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.roster-row-btn:focus-visible {
+  outline: none;
+}
+
+/* ── Avatar & Dot ─────────────────────────────────────────────────────────── */
+.roster-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+}
+
+.staff-roster-row--barb .roster-avatar-wrap {
+  width: 28px;
+  height: 28px;
+}
+
+.roster-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm, 6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 11.5px;
+  line-height: 1;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-roster-row--barb .roster-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  background: var(--accent-blue);
+  color: var(--text-on-accent, #ffffff);
+  border: 1px solid var(--accent-blue);
+}
+
+.roster-status-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill, 9999px);
+  border: 1.5px solid var(--bg-secondary);
+  box-sizing: border-box;
+  display: block;
+}
+
+.roster-status-dot--available {
+  background-color: var(--accent-green, #3fb950);
+}
+
+.roster-status-dot--busy {
+  background-color: var(--accent-yellow, #d29922);
+}
+
+.roster-status-dot--unavailable {
+  background-color: var(--text-muted, #868e98);
+}
+
+.roster-status-dot--invalid {
+  background-color: var(--accent-red, #f85149);
+}
+
+/* ── Role Details Text ───────────────────────────────────────────────────── */
+.roster-row-details {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.roster-row-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roster-row-name {
+  font-weight: 500;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-roster-row--selected .roster-row-name {
+  font-weight: 600;
+  color: var(--accent-blue);
+}
+
+.roster-row-mandate {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Right Controls ───────────────────────────────────────────────────────── */
+.roster-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.roster-unread-badge {
+  background-color: var(--accent-blue);
+  color: var(--text-on-accent, #ffffff);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill, 9999px);
+  min-width: 16px;
+  text-align: center;
+}
+
+.roster-pin-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 140ms ease-out, color 140ms ease-out;
+}
+
+.staff-roster-row:hover .roster-pin-button,
+.staff-roster-row:focus-within .roster-pin-button,
+.roster-pin-button:focus-visible,
+.roster-pin-button--pinned {
+  opacity: 1;
+}
+
+.roster-pin-button--pinned {
+  color: var(--accent-blue);
+}
+
+.roster-pin-button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.roster-pin-button:focus-visible {
+  outline: 2px solid var(--accent-blue);
+}
+
+/* Screen-reader only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roster-new-panel-btn,
+  .roster-search-input,
+  .roster-group__header,
+  .roster-group__chevron,
+  .staff-roster-row,
+  .roster-pin-button {
+    transition: none !important;
+  }
+}

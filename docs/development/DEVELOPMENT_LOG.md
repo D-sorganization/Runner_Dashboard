@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1721 — Staff Console roster and context pane restyled
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1721
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `frontend/src/pages/StaffConsole/{Roster,RosterGroup,RosterRow,ContextPane}.tsx`, `roster.css`, `context.css`, `rosterUtils.ts`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (StaffConsole vitest 27 files / 207 passed; tsc and eslint clean)
+- **Summary:** Roster rows get tinted avatars, status dots and a full-reason tooltip; held roles read "N standing rules" instead of the raw hold text (guardrail vs schedule split tracked in #1726); groups collapse and persist; the context pane gets skeleton loading and token-only styling.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1713 — Desktop top bar no longer widens the page
 
 - **State:** in_review

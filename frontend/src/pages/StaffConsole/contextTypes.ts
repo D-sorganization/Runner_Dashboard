@@ -59,4 +59,5 @@ export interface ContextPaneProps {
   threadContext?: ThreadContextData | null;
   onToggleSchedule?: (roleName: string, enabled: boolean) => Promise<void> | void;
   className?: string;
+  isLoading?: boolean;
 }

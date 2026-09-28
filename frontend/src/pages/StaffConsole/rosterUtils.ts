@@ -33,9 +33,11 @@ export function computeRoleStatus(
   // 2. Unavailable operational blocks
   // 2a. Operational holds active
   if (role.holds && role.holds.length > 0) {
+    // TODO(#1726): distinguish guardrails from scheduling holds
+    const count = role.holds.length;
     return {
       status: "unavailable",
-      reason: `held: ${role.holds.join(", ")}`,
+      reason: `${count} standing rule${count === 1 ? "" : "s"}`,
     };
   }
 
@@ -173,4 +175,31 @@ export function formatRelativeTime(isoString?: string | null): string {
 
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays}d ago`;
+}
+
+/**
+ * Returns full tooltip text describing the role's status.
+ * For roles with holds, lists every hold reason in full.
+ */
+export function getRoleTooltipText(
+  role: StaffRoleItem,
+  availableProviders?: Record<string, boolean>
+): string {
+  if (role.holds && role.holds.length > 0) {
+    return role.holds.join(", ");
+  }
+  const { reason, status } = computeRoleStatus(role, availableProviders);
+  return reason || status;
+}
+
+/**
+ * Computes a deterministic hue (0-359) from the role name for avatar tinting.
+ */
+export function getRoleHue(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 360;
 }

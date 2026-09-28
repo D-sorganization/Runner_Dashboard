@@ -1,3 +1,37 @@
+# Current handoff — UI/UX overhaul, epic #1718 (DL-#1721)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-ux`
+- Branch: `feat/ux-overhaul`
+- Baseline commit: `07eb3613`
+- Implementation commit: `SELF`
+- Pull request: not opened yet
+- Governing issues: #1718 and children #1719–#1725.
+
+## Objective and status
+
+- Professional-grade UI polish from the owner's live review: the grey centre on hover, the document-like Staff page, sign-in and approval noise, phone access over the private tailnet. agy (Gemini 3.8) drafted each workstream from a spec; Claude reviews, fixes and integrates each one here.
+- #1721 Workstream C roster and context pane: integrated.
+- #1719 Workstream A design tokens and global type: pending review.
+- #1720 Workstream B thread and composer: pending review.
+- #1722 Workstream D Staff page and attention drawer: pending review.
+- #1723 Workstream E app shell and primitives: pending review.
+- #1724 Workstream F phone access and Web Push: pending review.
+- #1725 Workstream G inbox noise: pending review.
+
+## Next steps
+
+1. Integrate the remaining workstreams, rebase on main after #1727 merges, open one PR (draft, then ready) and arm via `automerge_guard`.
+2. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, and the holds decision in #1726.
+
+---
+
+<!-- ux-overhaul-handoff -->
+
 # Current handoff — Staff live-test fixes, consolidated (DL-#1708, DL-#1712, DL-#1711, DL-#1713)
 
 Last updated: 2026-09-27
