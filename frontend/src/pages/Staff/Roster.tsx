@@ -10,6 +10,7 @@
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
+import { formatRoleWindow } from "../StaffConsole/rosterUtils";
 import { formatUsd, strategyLabel, type RoleSpec, type RosterResponse } from "./staffApi";
 
 export interface RosterProps {
@@ -18,6 +19,16 @@ export interface RosterProps {
   error: string | null;
   onRetry: () => void;
   onAssign?: (role: string) => void;
+}
+
+function AlertTriangleIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
 }
 
 function budgetLabel(role: RoleSpec): string {
@@ -68,8 +79,9 @@ export function RoleCard({
         </Badge>
       </div>
       {errorMessage ? (
-        <p className="staff-role__error" style={{ color: "var(--danger, #dc2626)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
-          ⚠️ {errorMessage}
+        <p className="staff-role__error" style={{ color: "var(--status-danger, #dc2626)", fontSize: "0.85rem", marginTop: "0.25rem", display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <AlertTriangleIcon />
+          <span>{errorMessage}</span>
         </p>
       ) : null}
       {role.summary ? <p className="staff-role__summary">{role.summary}</p> : null}
@@ -106,7 +118,7 @@ export function RoleCard({
         <dt>Schedule</dt>
         <dd>
           {role.schedule ?? <span className="staff-muted">manual</span>}
-          {role.window ? ` (${role.window})` : ""}
+          {role.window ? ` (${formatRoleWindow(role.window)})` : ""}
         </dd>
         <dt>Active runs</dt>
         <dd data-testid={`role-active-${role.name}`}>{role.active_runs}</dd>
@@ -147,21 +159,21 @@ export function RoleCard({
 export function Roster({ roster, loading, error, onRetry, onAssign }: RosterProps) {
   if (loading && !roster) {
     return (
-      <div className="glass-card staff-panel" aria-busy="true">
+      <div className="staff-panel" aria-busy="true">
         <p className="staff-muted">Loading roster...</p>
       </div>
     );
   }
   if (error && !roster) {
     return (
-      <div className="glass-card staff-panel">
+      <div className="staff-panel">
         <EmptyState variant="error" title="Failed to load roster" description={error} onRetry={onRetry} />
       </div>
     );
   }
   if (!roster || roster.roles.length === 0) {
     return (
-      <div className="glass-card staff-panel">
+      <div className="staff-panel">
         <EmptyState
           title="No staff roles found"
           description="Set STAFF_ROLES_DIR to the Repository_Management staff/roles directory on this node."
@@ -171,7 +183,7 @@ export function Roster({ roster, loading, error, onRetry, onAssign }: RosterProp
     );
   }
   return (
-    <div className="glass-card staff-panel">
+    <div className="staff-panel">
       <div className="staff-panel__header">
         <h3 className="staff-panel__title">Roster</h3>
         <span className="staff-muted">

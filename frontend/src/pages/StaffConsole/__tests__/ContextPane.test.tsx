@@ -123,4 +123,37 @@ describe("ContextPane (SC-D6, Issue #1320)", () => {
       "/api/v1/staff/threads/th_nw_123/export?format=json",
     );
   });
+
+  it("renders loading skeletons from primitives/Skeleton when isLoading is true", () => {
+    render(<ContextPane isLoading={true} />);
+
+    const skeletonContainer = screen.getByRole("status", { name: /loading context details/i });
+    expect(skeletonContainer).toBeInTheDocument();
+  });
+
+  it("renders budget progress bar and values with tabular nums", () => {
+    render(
+      <ContextPane
+        role={mockRole}
+        threadContext={mockThreadContext}
+      />
+    );
+
+    expect(screen.getByText("Budget & Spend")).toBeInTheDocument();
+    expect(screen.getByText("$3.50")).toBeInTheDocument();
+    expect(screen.getByText("$15.00")).toBeInTheDocument();
+  });
+
+  it("shows Today: — and no progress fill when usd_today is unknown (#1744)", () => {
+    const roleNoSpend: RoleDetail = {
+      ...mockRole,
+      budget: { usd_per_day: 8, usd_today: undefined as unknown as number },
+    };
+    render(<ContextPane role={roleNoSpend} threadContext={mockThreadContext} />);
+
+    expect(screen.getByText("Today:")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("$8.00")).toBeInTheDocument();
+  });
 });
+

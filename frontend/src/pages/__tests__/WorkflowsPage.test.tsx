@@ -47,6 +47,29 @@ describe("WorkflowsPage", () => {
     );
   });
 
+  it("explains a warming catalogue and retries until workflows arrive", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ workflows: [], total: 0, status: "warming" }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ workflows: WORKFLOWS }), { status: 200 }),
+      );
+
+    // Long enough that the warming notice is observed before the retry replaces it under load.
+    render(<WorkflowsPage warmingRetryMs={300} />);
+
+    expect(
+      await screen.findByText(/Gathering workflows from GitHub/),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("CI", undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("posts workflow dispatches through the native routed page", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
       (input, init) => {

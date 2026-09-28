@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -159,3 +160,37 @@ def test_degraded_result_is_not_persisted_as_last_known_good() -> None:
     assert payload["degraded"] is True
     # Degraded zeros must never overwrite/populate the last-known-good snapshot.
     assert "stats:stale" not in cache
+
+
+def test_independent_sources_are_fetched_concurrently() -> None:
+    """A cold summary costs the slowest source, not their sum (#1718 live sweep: ~14 s)."""
+    delay = 0.3
+
+    async def slow_run_cmd(args, timeout: int = 15):  # type: ignore[no-untyped-def]
+        await asyncio.sleep(delay)
+        return await _default_run_cmd(args, timeout)
+
+    async def slow_admin(path: str):  # type: ignore[no-untyped-def]
+        await asyncio.sleep(delay)
+        return await _default_gh_admin(path)
+
+    async def slow_queue():  # type: ignore[no-untyped-def]
+        await asyncio.sleep(delay)
+        return await _default_queue()
+
+    async def slow_fleet():  # type: ignore[no-untyped-def]
+        await asyncio.sleep(delay)
+        return await _default_fleet()
+
+    _wire({}, run_cmd=slow_run_cmd, gh_api_admin=slow_admin, queue_impl=slow_queue, fleet=slow_fleet)
+
+    from routers import repos_stats
+
+    started = time.monotonic()
+    payload = asyncio.run(repos_stats.get_stats(_request()))
+    elapsed = time.monotonic() - started
+
+    assert payload["degraded"] is False
+    assert payload["queue_total"] == 3 and payload["machines_total"] == 4
+    # Serially: runners + runs + queue + two searches + fleet = 6 x delay.
+    assert elapsed < 3 * delay, f"stats sources ran serially ({elapsed:.2f}s)"

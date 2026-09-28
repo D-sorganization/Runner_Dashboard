@@ -1,0 +1,392 @@
+/**
+ * context.css — Modern, calm, dense, precise styles for Staff Console Context Pane.
+ * Workstream C (Issue #1721, Epic #1718).
+ */
+
+/* ── Container ─────────────────────────────────────────────────────────────── */
+.staff-context-pane {
+  width: 320px;
+  min-width: 280px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  font-size: 13.5px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* ── Tabbed Header (Role / Thread) ────────────────────────────────────────── */
+.context-tablist {
+  display: flex;
+  padding: 3px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm, 6px);
+  margin: 12px 14px 4px 14px;
+  gap: 2px;
+  border: 1px solid var(--border);
+}
+
+.context-tab {
+  flex: 1;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+.context-tab:hover {
+  color: var(--text-secondary);
+}
+
+.context-tab--active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-soft);
+}
+
+.context-tab:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+/* ── Content Area ─────────────────────────────────────────────────────────── */
+.context-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.context-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Alert / Error Banner ─────────────────────────────────────────────────── */
+.context-error-alert {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--badge-danger-bg);
+  color: var(--badge-danger-fg);
+  border: 1px solid var(--badge-danger-fg);
+  font-size: 12px;
+}
+
+/* ── Section Typography ───────────────────────────────────────────────────── */
+.context-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.context-role-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-role-title {
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.context-role-handle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Mandate Prose ────────────────────────────────────────────────────────── */
+.context-mandate-prose {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* ── Schedule Card ────────────────────────────────────────────────────────── */
+.context-schedule-card {
+  background: var(--bg-card);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-schedule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.context-schedule-cron {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-schedule-window {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.context-schedule-status {
+  font-size: 11.5px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.context-schedule-status--active {
+  color: var(--accent-green);
+}
+
+.context-schedule-status--paused {
+  color: var(--accent-red);
+}
+
+.context-switch-btn {
+  width: 34px;
+  height: 18px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--border-light);
+  position: relative;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 140ms ease-out;
+}
+
+.context-switch-btn--checked {
+  background: var(--accent-blue);
+}
+
+.context-switch-btn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.context-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--text-on-accent, #ffffff);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: left 140ms ease-out;
+}
+
+.context-switch-btn--checked .context-switch-knob {
+  left: 18px;
+}
+
+/* ── Providers ────────────────────────────────────────────────────────────── */
+.context-providers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.context-provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.context-provider-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill, 9999px);
+  flex-shrink: 0;
+}
+
+.context-provider-dot--signed-in {
+  background-color: var(--accent-green, #3fb950);
+}
+
+.context-provider-dot--signed-out {
+  background-color: var(--accent-yellow, #d29922);
+}
+
+/* ── Budget & Spend ───────────────────────────────────────────────────────── */
+.context-budget-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-budget-numbers {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.context-budget-label {
+  color: var(--text-muted);
+}
+
+.context-budget-val {
+  font-weight: 600;
+}
+
+.context-budget-bar-track {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-pill, 9999px);
+  overflow: hidden;
+}
+
+.context-budget-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--accent-blue);
+  transition: width 140ms ease-out;
+}
+
+.context-budget-bar-fill--warning {
+  background: var(--accent-yellow);
+}
+
+.context-budget-bar-fill--danger {
+  background: var(--accent-red);
+}
+
+/* ── Active Runs & Work Items ─────────────────────────────────────────────── */
+.context-runs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-run-row {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.context-run-id {
+  font-family: monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.context-run-status {
+  font-size: 11.5px;
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+/* ── Thread Tab Elements ──────────────────────────────────────────────────── */
+.context-export-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.context-export-link {
+  padding: 4px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--accent-blue);
+  font-size: 12px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+}
+
+.context-export-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+}
+
+.context-export-link:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.context-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.context-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-work-item {
+  font-size: 12.5px;
+  padding: 4px 0;
+  color: var(--text-primary);
+}
+
+.context-work-item-id {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-empty-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ── Skeletons Layout ─────────────────────────────────────────────────────── */
+.context-skeleton-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-tab,
+  .context-switch-btn,
+  .context-switch-knob,
+  .context-budget-bar-fill,
+  .context-export-link {
+    transition: none !important;
+  }
+}

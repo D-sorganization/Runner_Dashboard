@@ -36,13 +36,11 @@ import {
 import { NotFoundPanel } from "./NotFoundPanel";
 import { useToast } from "../primitives/Toaster";
 import { IntroHeader } from "../primitives/IntroHeader";
-import { ConnectionIndicator } from "../primitives/ConnectionIndicator";
 import { useSession } from "../hooks/useSession";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { useBreakpoint } from "../hooks/useBreakpoint";
-import { useThemeContext } from "../design/ThemeContext";
-import { ThemeSelector } from "../components/ThemeSelector";
-import { DensityToggle } from "../components/DensityToggle";
+import { ShellDensityControl } from "./ShellDensityControl";
+import { ShellThemeControl } from "./ShellThemeControl";
 import { QueueMobile } from "../pages/Queue";
 import { QueueTab } from "../pages/Queue";
 import { MaxwellMobile } from "../pages/Maxwell";
@@ -103,16 +101,6 @@ function ShellActiveProvider({
       onRequestLogin={onRequestLogin}
     />
   );
-}
-
-/**
- * Persistent theme picker for the desktop shell header (#820). Reads the shared
- * theme context (single source of truth via ThemeProvider/useTheme) so all 13
- * fleet themes are reachable from the always-visible topbar.
- */
-function ShellThemeSelector() {
-  const { mode, setMode } = useThemeContext();
-  return <ThemeSelector currentMode={mode} onThemeChange={setMode} />;
 }
 
 function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
@@ -317,10 +305,22 @@ export function AppShell({
       ),
       reports: <ReportsMobile />,
       insights: <ReportsMobile />,
-      staff: <LazyStaffMobile />,
-      "fleet-command": <LazyFleetCommandPage />,
+      staff: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyStaffMobile />
+        </React.Suspense>
+      ),
+      "fleet-command": (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyFleetCommandPage />
+        </React.Suspense>
+      ),
       // The legacy App has no projects case, so falling back rendered blank (#1345).
-      projects: <LazyProjectsPage />,
+      projects: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyProjectsPage />
+        </React.Suspense>
+      ),
     } as Partial<Record<TabId, React.ReactNode>>;
     // Tabs without a dedicated mobile page render their (responsive) desktop page.
     const mobileFallback = mobileTabContent[mobileTab] ? null : (
@@ -394,9 +394,8 @@ export function AppShell({
       intro={introNode}
       headerExtra={
         <>
-          <ConnectionIndicator />
-          <DensityToggle />
-          <ShellThemeSelector />
+          <ShellDensityControl />
+          <ShellThemeControl />
           <ShellActiveProvider
             onRequestLogin={() => onSelectTab("credentials")}
           />

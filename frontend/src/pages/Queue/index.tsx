@@ -19,6 +19,7 @@ import { formatDuration } from "../../components/formatters";
 
 import { DiagnosePanel } from "./DiagnosePanel";
 import { StaleCleanupPanel } from "./StaleCleanupPanel";
+import { SearchGlyph } from "../decompIcons";
 import {
   sortRows,
   type CancelMap,
@@ -166,6 +167,8 @@ export function QueueTab(p: QueueTabProps) {
     dir: "desc",
   });
 
+  const [localError, setLocalError] = useState<string | null>(null);
+
   function fetchLocalQueue(): void {
     setLocalLoading(true);
     fetch("/api/queue")
@@ -175,11 +178,13 @@ export function QueueTab(p: QueueTabProps) {
       })
       .then((data: QueuePayload) => {
         setLocalQueue(data);
+        setLocalError(null);
         setLocalLoading(false);
       })
       .catch((err) => {
         // eslint-disable-next-line no-console
         console.error(err);
+        setLocalError(err instanceof Error ? err.message : String(err));
         setLocalLoading(false);
       });
   }
@@ -196,6 +201,10 @@ export function QueueTab(p: QueueTabProps) {
 
   const ip = q.in_progress ?? [];
   const qu = q.queued ?? [];
+  // Until a payload arrives (still loading, or the load failed), zero counts
+  // are unknown, not idle (#1742).
+  const noPayload = q.in_progress === undefined && q.queued === undefined;
+  const firstLoadPending = noPayload && (loading || localError !== null);
 
   const sortedIp = sortRows(ip, ipSort, RUN_ACCESSORS);
   const sortedQu = sortRows(qu, queueSort, RUN_ACCESSORS);
@@ -327,20 +336,26 @@ export function QueueTab(p: QueueTabProps) {
         </div>
       ) : null}
 
+      {noPayload && localError ? (
+        <div className="alert alert-warning" role="alert" style={{ marginBottom: 12 }}>
+          Could not load the queue ({localError}). Counts are unknown until a refresh succeeds.
+        </div>
+      ) : null}
+
       <div className="stat-row">
         <Stat
           label="In Progress"
-          value={ip.length}
+          value={firstLoadPending ? "—" : ip.length}
           color={ip.length > 0 ? "var(--accent-yellow)" : "inherit"}
-          sub={ip.length > 0 ? "actively running" : "idle"}
+          sub={firstLoadPending ? (localError ? "unknown" : "loading") : ip.length > 0 ? "actively running" : "idle"}
         />
         <Stat
           label="Queued"
-          value={qu.length}
+          value={firstLoadPending ? "—" : qu.length}
           color={qu.length > 0 ? "var(--accent-blue)" : "inherit"}
-          sub={qu.length > 0 ? "waiting for runner" : "empty"}
+          sub={firstLoadPending ? (localError ? "unknown" : "loading") : qu.length > 0 ? "waiting for runner" : "empty"}
         />
-        <Stat label="Total Active" value={q.total ?? 0} sub="across all repos" />
+        <Stat label="Total Active" value={firstLoadPending ? "—" : (q.total ?? 0)} sub="across all repos" />
         <Stat label="Auto-refresh" value="15s" sub="updates automatically" />
       </div>
 
@@ -376,7 +391,7 @@ export function QueueTab(p: QueueTabProps) {
             disabled={diagLoading}
             style={{ marginRight: 8 }}
           >
-            {diagLoading ? <span className="spinner" /> : "🔍"} Why are jobs
+            {diagLoading ? <span className="spinner" /> : <SearchGlyph size={12} />} Why are jobs
             waiting?
           </button>
           {diag && <DiagnosePanel diag={diag} />}
@@ -492,7 +507,7 @@ export function QueueTab(p: QueueTabProps) {
               </tbody>
             </table>
           </div>
-        ) : (
+        ) : firstLoadPending ? null : (
           <div
             style={{
               color: "var(--text-muted)",
@@ -721,7 +736,7 @@ export function QueueTab(p: QueueTabProps) {
               })}
             </div>
           </div>
-        ) : (
+        ) : firstLoadPending ? null : (
           <div
             style={{
               color: "var(--text-muted)",

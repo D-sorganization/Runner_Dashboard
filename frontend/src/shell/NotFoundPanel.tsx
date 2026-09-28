@@ -100,8 +100,11 @@ export function NotFoundPanel({
           marginBottom: "28px",
         }}
       >
-        Use the sidebar to navigate the four areas (Staff, Work, Fleet, Settings)
-        or press <kbd style={{ padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border, #30363d)" }}>Ctrl+K</kbd> to search.
+        Use the navigation to reach the four areas (Staff, Work, Fleet, Settings)
+        <span className="not-found__shortcut">
+          {" "}or press <kbd style={{ padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border, #30363d)" }}>Ctrl+K</kbd> to search
+        </span>
+        .
       </p>
 
       <button

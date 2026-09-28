@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
+import { OwnerMarkdown } from "../../primitives/OwnerMarkdown";
 import { TouchButton } from "../../primitives/TouchButton";
 import {
   fetchMeeting,
@@ -58,17 +59,19 @@ function ConsensusView({
                     <td className="fleet-cmd__rank">{p.rank}</td>
                     <td>
                       <strong>{p.item}</strong>
-                      {p.scope ? <div className="staff-muted">{p.scope}</div> : null}
+                      {p.scope ? <div className="staff-muted"><OwnerMarkdown text={p.scope} as="span" /></div> : null}
                     </td>
                     <td>{p.project || "—"}</td>
-                    <td>{p.assigned_to || "—"}</td>
+                    <td>{p.assigned_to ? <OwnerMarkdown text={p.assigned_to} as="span" /> : "—"}</td>
                     <td>
                       {url ? (
                         <a href={url} target="_blank" rel="noreferrer noopener">
-                          {p.tracking}
+                          <OwnerMarkdown text={p.tracking} as="span" />
                         </a>
+                      ) : p.tracking ? (
+                        <OwnerMarkdown text={p.tracking} as="span" />
                       ) : (
-                        p.tracking || "—"
+                        "—"
                       )}
                     </td>
                   </tr>
@@ -86,7 +89,7 @@ function ConsensusView({
               <li key={`${d.item}-${d.project}`}>
                 <strong>{d.item}</strong>
                 {d.project ? ` · ${d.project}` : ""}
-                {d.reason ? <span className="staff-muted"> — {d.reason}</span> : null}
+                {d.reason ? <span className="staff-muted"> — <OwnerMarkdown text={d.reason} as="span" /></span> : null}
                 {d.reassess ? <span className="staff-muted"> (reassess {d.reassess})</span> : null}
               </li>
             ))}
@@ -100,7 +103,7 @@ function ConsensusView({
           </Badge>
           <ul className="fleet-cmd__list">
             {consensus.disagreements.map((flag) => (
-              <li key={flag}>{flag}</li>
+              <li key={flag}><OwnerMarkdown text={flag} as="span" /></li>
             ))}
           </ul>
         </div>

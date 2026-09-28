@@ -21,13 +21,15 @@ import os
 import secrets
 import tempfile
 from pathlib import Path
+from typing import Any
 
+import proxy_utils
 import scheduled_workflows as scheduled_workflow_inventory
-from cache_utils import cache_get, cache_set
+from cache_utils import cache_get, cache_get_swr, cache_set
 from dashboard_config import ORG, REPO_ROOT, RUN_JOB_ENRICHMENT_LIMIT
 from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Request
-from gh_utils import gh_api, gh_api_raw
+from gh_utils import gh_api
 from identity import Principal, require_fleet_peer, require_scope
 from input_validation import validate_workflow_inputs
 from models.github_payloads import GhJob, GhWorkflowRun
@@ -77,6 +79,38 @@ async def _fetch_repo_runs(repo_name: str, per_page: int = 10, status: str | Non
         return []
 
 
+_SLIM_REPO_FIELDS = ("id", "name", "full_name", "html_url", "private")
+_SLIM_ACTOR_FIELDS = ("login", "id", "avatar_url")
+_SLIM_COMMIT_FIELDS = ("id", "message", "timestamp")
+
+
+def _pick(value: object, fields: tuple[str, ...]) -> dict | None:
+    """Return only ``fields`` of a nested GitHub object (``None`` when absent)."""
+    if not isinstance(value, dict):
+        return None
+    return {key: value[key] for key in fields if key in value}
+
+
+def _slim_run(run: dict) -> dict:
+    """Drop the parts of a GitHub run payload the dashboard never reads.
+
+    GitHub embeds two full repository objects and a dozen REST ``*_url``
+    links in every run (~15 KB each); the dashboard reads the run's own
+    fields, ``repository.name``/``html_url`` and the actors' logins.
+    """
+    slim = {key: value for key, value in run.items() if key == "html_url" or not key.endswith("_url")}
+    slim.pop("head_repository", None)
+    for key, fields in (
+        ("repository", _SLIM_REPO_FIELDS),
+        ("actor", _SLIM_ACTOR_FIELDS),
+        ("triggering_actor", _SLIM_ACTOR_FIELDS),
+        ("head_commit", _SLIM_COMMIT_FIELDS),
+    ):
+        if key in slim:
+            slim[key] = _pick(slim[key], fields)
+    return slim
+
+
 async def _enrich_run_with_job_placement(run: dict) -> dict:
     """Add job-level runner placement data to a workflow run.
 
@@ -123,34 +157,35 @@ async def _scheduled_workflows_impl(
     include_archived: bool = False,
     repo_limit: int = 100,
 ) -> dict:
-    """Collect the read-only scheduled workflow inventory."""
-    cache_key = f"scheduled-workflows:{include_archived}:{repo_limit}"
-    cached = cache_get(cache_key, 300.0)
-    if cached is not None:
-        return cached
+    """Collect the read-only scheduled workflow inventory.
 
-    raw_timeout = os.environ.get("SCHEDULED_WORKFLOWS_TIMEOUT", "20")
+    A walk slower than the wait budget answers ``degraded`` but keeps running,
+    so the next request is served from cache (stale up to an hour). The wait is
+    clamped below ``proxy_utils.HUB_PROXY_TIMEOUT_S`` so a node proxying this
+    endpoint to the hub always receives the degraded answer instead of its own
+    httpx timeout (#1745).
+    """
+    cache_key = f"scheduled-workflows:{include_archived}:{repo_limit}"
+    raw_timeout = os.environ.get("SCHEDULED_WORKFLOWS_TIMEOUT", "10")
     try:
         timeout = float(raw_timeout)
     except (TypeError, ValueError):
-        timeout = 20.0
+        timeout = 10.0
+    timeout = min(timeout, proxy_utils.HUB_PROXY_TIMEOUT_S - 3)
 
-    try:
-        report = await asyncio.wait_for(
-            scheduled_workflow_inventory.collect_inventory(
-                ORG,
-                gh_api,
-                gh_api_raw,
-                repo_limit=repo_limit,
-                include_archived=include_archived,
-            ),
-            timeout=timeout,
+    async def collect() -> dict:
+        report = await scheduled_workflow_inventory.collect_inventory(
+            ORG,
+            gh_api,
+            repo_limit=repo_limit,
+            include_archived=include_archived,
         )
         payload = report.to_dict()
         payload["status"] = "ok"
-        cache_set(cache_key, payload)
-    except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        payload = {
+        return payload
+
+    def degraded() -> dict:
+        return {
             "status": "degraded",
             "organization": ORG,
             "generated_at": datetime.now(UTC).isoformat(),
@@ -164,9 +199,12 @@ async def _scheduled_workflows_impl(
                 "audit_required": True,
                 "steps": [],
             },
-            "error": "Scheduled workflow inventory timed out.",
+            "error": "Scheduled workflow inventory is still being collected; retry shortly.",
         }
-    return payload
+
+    return await cache_get_swr(
+        cache_key, collect, fresh_ttl=300.0, stale_ttl=3600.0, wait_timeout=timeout, on_timeout=degraded
+    )
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -198,7 +236,7 @@ async def get_runs(request: Request, per_page: int = 30) -> dict:
     all_runs: list[dict] = [run for sublist in all_runs_nested for run in sublist]
 
     all_runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-    top_runs = all_runs[:per_page]
+    top_runs = [_slim_run(run) for run in all_runs[:per_page]]
 
     result = {"workflow_runs": top_runs, "total_count": len(top_runs)}
     cache_set(f"runs:{per_page}", result)
@@ -221,7 +259,8 @@ async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     enrichable = runs[:RUN_JOB_ENRICHMENT_LIMIT]
     enriched = list(await asyncio.gather(*[_enrich_run_with_job_placement(run) for run in enrichable]))
     enriched.extend(dict(run) for run in runs[RUN_JOB_ENRICHMENT_LIMIT:])
-    result = {"workflow_runs": enriched, "total_count": len(enriched)}
+    slim = [_slim_run(run) for run in enriched]
+    result = {"workflow_runs": slim, "total_count": len(slim)}
     cache_set(cache_key, result)
     return result
 
@@ -267,107 +306,125 @@ async def get_scheduled_workflows(
     )
 
 
+_WORKFLOWS_LIST_KEY = "workflows_list"
+_WORKFLOWS_LIST_FRESH_S = 120.0
+_WORKFLOWS_LIST_STALE_S = 3600.0
+_WORKFLOWS_LIST_WAIT_S = 20.0
+_WORKFLOWS_LIST_REPOS = 20
+_RECENT_RUNS_PER_WORKFLOW = 3
+# Workflow-file triggers keyed by git blob sha: a file's content never changes
+# under a sha, so each file is read once per edit instead of once per refresh.
+_WORKFLOW_TRIGGER_CACHE: dict[str, list[str]] = {}
+
+
+def _triggers_from_workflow_yaml(content: str) -> list[str]:
+    """Return the trigger capabilities named in a workflow file."""
+    triggers: list[str] = []
+    if "workflow_dispatch" in content:
+        triggers.append("manual")
+    if "schedule" in content:
+        triggers.append("schedule")
+    if "push" in content or "pull_request" in content:
+        triggers.append("push_pr")
+    if "workflow_run" in content:
+        triggers.append("workflow_run")
+    return triggers
+
+
+async def _workflow_triggers_by_path(repo_name: str) -> dict[str, list[str]]:
+    """Map each ``.github/workflows`` path to its triggers, reading new blobs only."""
+    try:
+        listing = await gh_api(f"/repos/{ORG}/{repo_name}/contents/.github/workflows")
+    except HTTPException:
+        return {}
+    triggers: dict[str, list[str]] = {}
+    entries: list[dict[str, Any]] = listing if isinstance(listing, list) else []
+    for entry in entries:
+        sha, path = entry.get("sha"), entry.get("path")
+        if not sha or not path:
+            continue
+        if sha not in _WORKFLOW_TRIGGER_CACHE:
+            try:
+                blob = await gh_api(f"/repos/{ORG}/{repo_name}/git/blobs/{sha}")
+                content = base64.b64decode(blob.get("content", "")).decode("utf-8", errors="replace")
+            except (HTTPException, ValueError):
+                continue
+            _WORKFLOW_TRIGGER_CACHE[sha] = _triggers_from_workflow_yaml(content)
+        triggers[path] = _WORKFLOW_TRIGGER_CACHE[sha]
+    return triggers
+
+
+def _run_summary(run: dict) -> dict:
+    return {
+        "id": run.get("id"),
+        "status": run.get("status"),
+        "conclusion": run.get("conclusion"),
+        "created_at": run.get("created_at"),
+        "html_url": run.get("html_url"),
+    }
+
+
+async def _repo_workflows(repo_name: str) -> list[dict]:
+    """Workflows of one repo in a fixed number of GitHub calls (plus new blobs)."""
+    try:
+        workflows_data, runs_data = await asyncio.gather(
+            gh_api(f"/repos/{ORG}/{repo_name}/actions/workflows?per_page=100"),
+            gh_api(f"/repos/{ORG}/{repo_name}/actions/runs?per_page=100"),
+        )
+    except HTTPException:
+        return []
+    triggers_by_path = await _workflow_triggers_by_path(repo_name)
+
+    runs_by_workflow: dict[Any, list[dict]] = {}
+    for run in sorted(runs_data.get("workflow_runs", []), key=lambda r: r.get("created_at") or "", reverse=True):
+        runs_by_workflow.setdefault(run.get("workflow_id"), []).append(run)
+
+    result = []
+    for wf in workflows_data.get("workflows", []):
+        wf_runs = runs_by_workflow.get(wf.get("id"), [])[:_RECENT_RUNS_PER_WORKFLOW]
+        latest_run = None
+        if wf_runs:
+            latest_run = {**_run_summary(wf_runs[0]), "head_branch": wf_runs[0].get("head_branch")}
+        result.append(
+            {
+                "id": wf.get("id"),
+                "name": wf.get("name", ""),
+                "path": wf.get("path", ""),
+                "state": wf.get("state", ""),
+                "html_url": wf.get("html_url", ""),
+                "triggers": triggers_by_path.get(wf.get("path", ""), []),
+                "latest_run": latest_run,
+                "recent_runs": [_run_summary(r) for r in wf_runs],
+                "repository": repo_name,
+            }
+        )
+    return result
+
+
+async def _compute_workflows_list() -> dict:
+    """Build the workflow catalogue for the most recently active repositories."""
+    repos = await _get_recent_org_repos(limit=30)
+    results = await asyncio.gather(*[_repo_workflows(r["name"]) for r in repos[:_WORKFLOWS_LIST_REPOS]])
+    all_workflows = [wf for wf_list in results for wf in wf_list]
+    return {"workflows": all_workflows, "total": len(all_workflows)}
+
+
 @router.get("/api/workflows/list")
 async def list_workflows() -> dict:
-    """List all workflows per repository with trigger capabilities and latest run."""
-    cached = cache_get("workflows_list", 120.0)
-    if cached is not None:
-        return cached
+    """List all workflows per repository with trigger capabilities and latest run.
 
-    repos = await _get_recent_org_repos(limit=30)
-
-    async def get_repo_workflows(repo_name: str) -> list[dict]:
-        code, out, _ = await run_cmd(
-            ["gh", "api", f"/repos/{ORG}/{repo_name}/actions/workflows", "--paginate"],
-            timeout=20,
-            cwd=REPO_ROOT,
-        )
-        if code != 0:
-            return []
-        try:
-            data = json.loads(out)
-            workflows = data.get("workflows", [])
-        except json.JSONDecodeError:
-            return []
-        result = []
-        for wf in workflows:
-            wf_id = wf.get("id")
-            triggers = []
-            if wf.get("path"):
-                code2, out2, _ = await run_cmd(
-                    ["gh", "api", f"/repos/{ORG}/{repo_name}/contents/{wf['path']}"],
-                    timeout=10,
-                    cwd=REPO_ROOT,
-                )
-                if code2 == 0:
-                    try:
-                        content_data = json.loads(out2)
-                        content = base64.b64decode(content_data.get("content", "")).decode("utf-8", errors="replace")
-                        if "workflow_dispatch" in content:
-                            triggers.append("manual")
-                        if "schedule" in content:
-                            triggers.append("schedule")
-                        if "push" in content or "pull_request" in content:
-                            triggers.append("push_pr")
-                        if "workflow_run" in content:
-                            triggers.append("workflow_run")
-                    except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
-                        pass
-            code3, out3, _ = await run_cmd(
-                ["gh", "api", f"/repos/{ORG}/{repo_name}/actions/workflows/{wf_id}/runs?per_page=3"],
-                timeout=10,
-                cwd=REPO_ROOT,
-            )
-            latest_run = None
-            recent_runs = []
-            if code3 == 0:
-                try:
-                    runs_data = json.loads(out3)
-                    all_runs = runs_data.get("workflow_runs", [])
-                    if all_runs:
-                        latest_run = {
-                            "id": all_runs[0].get("id"),
-                            "status": all_runs[0].get("status"),
-                            "conclusion": all_runs[0].get("conclusion"),
-                            "created_at": all_runs[0].get("created_at"),
-                            "html_url": all_runs[0].get("html_url"),
-                            "head_branch": all_runs[0].get("head_branch"),
-                        }
-                        recent_runs = [
-                            {
-                                "id": r.get("id"),
-                                "status": r.get("status"),
-                                "conclusion": r.get("conclusion"),
-                                "created_at": r.get("created_at"),
-                                "html_url": r.get("html_url"),
-                            }
-                            for r in all_runs[:3]
-                        ]
-                except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
-                    pass
-            result.append(
-                {
-                    "id": wf_id,
-                    "name": wf.get("name", ""),
-                    "path": wf.get("path", ""),
-                    "state": wf.get("state", ""),
-                    "html_url": wf.get("html_url", ""),
-                    "triggers": triggers,
-                    "latest_run": latest_run,
-                    "recent_runs": recent_runs,
-                    "repository": repo_name,
-                }
-            )
-        return result
-
-    results = await asyncio.gather(*[get_repo_workflows(r["name"]) for r in repos[:20]])
-    all_workflows: list[dict] = []
-    for wf_list in results:
-        all_workflows.extend(wf_list)
-
-    result = {"workflows": all_workflows, "total": len(all_workflows)}
-    cache_set("workflows_list", result)
-    return result
+    Serves a catalogue up to an hour old while one background refresh runs; a
+    cold cache answers ``status: "warming"`` after ``_WORKFLOWS_LIST_WAIT_S``
+    instead of holding the browser connection for minutes.
+    """
+    return await cache_get_swr(
+        _WORKFLOWS_LIST_KEY,
+        _compute_workflows_list,
+        fresh_ttl=_WORKFLOWS_LIST_FRESH_S,
+        stale_ttl=_WORKFLOWS_LIST_STALE_S,
+        wait_timeout=_WORKFLOWS_LIST_WAIT_S,
+        on_timeout=lambda: {"workflows": [], "total": 0, "status": "warming"},
+    )
 
 
 @router.post("/api/workflows/dispatch")

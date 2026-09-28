@@ -151,10 +151,13 @@ async def post_deployment_update_signal(
 @router.get("/api/deployment/git-drift")
 async def get_git_drift() -> dict:
     """Return git-commit-based drift: compares HEAD against origin/main."""
+    # Artifact installs have no `.git` checkout, so one or both commits may come
+    # back empty. In that case we cannot claim the deployment is "up to date" —
+    # we report an unknown drift state instead (issue #1748).
     repo_root = Path(__file__).parent.parent.parent
     result: dict[str, object] = {}
 
-    source = "unknown"
+    source = ""
     try:
         out = await asyncio.to_thread(
             subprocess.run,
@@ -165,12 +168,14 @@ async def get_git_drift() -> dict:
             cwd=repo_root,
         )
         source = out.stdout.strip()
-        result["source_commit"] = source[:12]
+        result["source_commit"] = source[:12] if source else "unknown"
     except Exception as e:  # noqa: BLE001
         if isinstance(e, (KeyboardInterrupt, SystemExit)):
             raise
+        source = ""
         result["source_commit"] = "unknown"
 
+    remote = ""
     try:
         out = await asyncio.to_thread(
             subprocess.run,
@@ -181,18 +186,22 @@ async def get_git_drift() -> dict:
             cwd=repo_root,
         )
         remote = out.stdout.strip()
-        result["remote_commit"] = remote[:12]
-        result["is_drifted"] = bool(source and remote and source != remote)
+        result["remote_commit"] = remote[:12] if remote else "unknown"
+    except Exception as e:  # noqa: BLE001
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
+        remote = ""
+        result["remote_commit"] = "unknown"
+
+    if not source or not remote:
+        result["is_drifted"] = None
+        result["drift_details"] = "unknown (no git checkout; see /api/deployment/drift)"
+    else:
+        result["is_drifted"] = source != remote
         if result["is_drifted"]:
             result["drift_details"] = "deployed version differs from origin/main"
         else:
             result["drift_details"] = "up to date"
-    except Exception as e:  # noqa: BLE001
-        if isinstance(e, (KeyboardInterrupt, SystemExit)):
-            raise
-        result["is_drifted"] = False
-        result["remote_commit"] = "unknown"
-        result["drift_details"] = "could not reach origin/main"
 
     result["process_pid"] = os.getpid()
     return result

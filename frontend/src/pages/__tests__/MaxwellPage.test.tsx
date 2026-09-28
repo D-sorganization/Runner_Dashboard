@@ -129,6 +129,39 @@ describe("MaxwellTab", () => {
     );
   });
 
+  it("words a failed start without the raw Error prefix (#1718)", async () => {
+    stubMaxwellFetch();
+    const onControl = vi.fn(() =>
+      Promise.reject(new Error("systemctl denied")),
+    );
+    render(
+      <MaxwellTab status={STOPPED} loading={false} onControl={onControl} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Maxwell daemon" }),
+    );
+    expect(
+      await screen.findByText("Could not start Maxwell: systemctl denied"),
+    ).toBeInTheDocument();
+  });
+
+  it("says the daemon is not listening instead of the raw socket error (#1718)", () => {
+    stubMaxwellFetch();
+    render(
+      <MaxwellTab
+        status={{
+          ...STOPPED,
+          http_reachable: false,
+          http_detail: "All connection attempts failed",
+        }}
+        loading={false}
+        onControl={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("All connection attempts failed")).toBeNull();
+    expect(screen.getByText("not listening")).toBeInTheDocument();
+  });
+
   it("Refresh invokes onRefresh", () => {
     stubMaxwellFetch();
     const onRefresh = vi.fn();
@@ -228,10 +261,14 @@ describe("MaxwellTab", () => {
     expect(screen.queryByText("Maxwell Chat")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /chat with maxwell in the staff console/i }),
+      screen.getByRole("link", {
+        name: /chat with maxwell in the staff console/i,
+      }),
     ).toHaveAttribute("href", "/");
     expect(
-      fetchSpy.mock.calls.some(([url]) => String(url).includes("/api/maxwell/chat")),
+      fetchSpy.mock.calls.some(([url]) =>
+        String(url).includes("/api/maxwell/chat"),
+      ),
     ).toBe(false);
   });
 
@@ -247,7 +284,6 @@ describe("MaxwellTab", () => {
     );
     expect(screen.getByText("daemon exploded")).toBeInTheDocument();
   });
-
 });
 
 describe("MaxwellPage", () => {

@@ -60,41 +60,11 @@ function apiFetch<T>(url: string): Promise<T> {
 // Each corresponds to one or more setInterval calls removed from App.tsx.
 // ---------------------------------------------------------------------------
 
-/** Fleet runner status — was t1 = setInterval(fetchFleet, 30000) */
-export function useFleet() {
-  return useQuery<unknown>({
-    queryKey: ["fleet"],
-    queryFn: () => apiFetch("/api/fleet"),
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-  })
-}
-
 /** Org repos — was t2 = setInterval(fetchRepos, 120000) */
 export function useRepos() {
   return useQuery<unknown>({
     queryKey: ["repos"],
     queryFn: () => apiFetch("/api/repos"),
-    refetchInterval: 120_000,
-    refetchIntervalInBackground: false,
-  })
-}
-
-/** CI test results — was t3 = setInterval(fetchTests, 120000) */
-export function useTests() {
-  return useQuery<unknown>({
-    queryKey: ["tests"],
-    queryFn: () => apiFetch("/api/ci/tests"),
-    refetchInterval: 120_000,
-    refetchIntervalInBackground: false,
-  })
-}
-
-/** CI results — was t3b = setInterval(fetchCiResults, 120000) */
-export function useCiResults() {
-  return useQuery<unknown>({
-    queryKey: ["ciResults"],
-    queryFn: () => apiFetch("/api/ci/results"),
     refetchInterval: 120_000,
     refetchIntervalInBackground: false,
   })
@@ -120,16 +90,6 @@ export function useQueue() {
   })
 }
 
-/** Machines / multi-node fleet — was t6 = setInterval(fetchMachines, 60000) */
-export function useMachines() {
-  return useQuery<unknown>({
-    queryKey: ["machines"],
-    queryFn: () => apiFetch("/api/machines"),
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
-  })
-}
-
 /** Enriched workflow runs — was t7 = setInterval(fetchEnrichedRuns, 60000) */
 export function useEnrichedRuns() {
   return useQuery<unknown>({
@@ -150,32 +110,12 @@ export function useWatchdog() {
   })
 }
 
-/** Scheduled jobs — was t9 = setInterval(fetchScheduledJobs, 300000) */
-export function useScheduledJobs() {
-  return useQuery<unknown>({
-    queryKey: ["scheduledJobs"],
-    queryFn: () => apiFetch("/api/scheduled-jobs"),
-    refetchInterval: 300_000,
-    refetchIntervalInBackground: false,
-  })
-}
-
 /** Local apps — was t10 = setInterval(fetchLocalApps, 90000) */
 export function useLocalApps() {
   return useQuery<unknown>({
     queryKey: ["localApps"],
     queryFn: () => apiFetch("/api/local-apps"),
     refetchInterval: 90_000,
-    refetchIntervalInBackground: false,
-  })
-}
-
-/** Runner capacity — was t11 = setInterval(fetchRunnerCapacity, 60000) */
-export function useRunnerCapacity() {
-  return useQuery<unknown>({
-    queryKey: ["runnerCapacity"],
-    queryFn: () => apiFetch("/api/runner-capacity"),
-    refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   })
 }
@@ -195,16 +135,6 @@ export function useDeploymentState() {
   return useQuery<unknown>({
     queryKey: ["deploymentState"],
     queryFn: () => apiFetch("/api/deployment/state"),
-    refetchInterval: 300_000,
-    refetchIntervalInBackground: false,
-  })
-}
-
-/** Runner audit log — was t14 = setInterval(fetchRunnerAudit, 300000) */
-export function useRunnerAudit() {
-  return useQuery<unknown>({
-    queryKey: ["runnerAudit"],
-    queryFn: () => apiFetch("/api/runner-audit"),
     refetchInterval: 300_000,
     refetchIntervalInBackground: false,
   })

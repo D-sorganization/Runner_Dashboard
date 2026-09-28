@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import type { RunAnswerHandler, RunCancelHandler, RunCardData, RunStatus } from "./cardTypes";
+import "./cards.css";
 
 export interface RunCardProps {
   run: RunCardData;
@@ -24,25 +25,49 @@ const RunQuestion: React.FC<{ run: RunCardData; onAnswer?: RunAnswerHandler }> =
   };
 
   return (
-    <div className="staff-run-card__question" style={{ margin: "6px 0 8px", fontSize: 13 }}>
-      <div style={{ color: "var(--text-primary, #c9d1d9)", marginBottom: 6 }}>{run.question}</div>
+    <div className="staff-run-card__question" style={{ margin: "8px 0", fontSize: 13 }}>
+      <div style={{ color: "var(--text-primary)", marginBottom: 8, fontWeight: 500 }}>{run.question}</div>
       {answered ? (
-        <div style={{ fontSize: 12, color: "var(--text-muted, #8b949e)" }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
           Answered by {run.answered_by || "an operator"}; continued in run {run.continued_by}.
         </div>
       ) : sent ? (
-        <div style={{ fontSize: 12, color: "var(--text-muted, #8b949e)" }}>Answer sent.</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Answer sent.</div>
       ) : onAnswer ? (
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <textarea
             aria-label="Answer"
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
             rows={2}
             disabled={sending}
-            style={{ flex: 1, fontSize: 12 }}
+            style={{
+              flex: 1,
+              fontSize: 12,
+              background: "var(--bg-tertiary)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm, 6px)",
+              color: "var(--text-primary)",
+              padding: "6px 10px",
+              fontFamily: "inherit",
+              resize: "vertical",
+            }}
           />
-          <button type="button" onClick={submit} disabled={sending || !answer.trim()}>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={sending || !answer.trim()}
+            style={{
+              background: "var(--accent-blue)",
+              color: "var(--text-on-accent)",
+              border: "none",
+              borderRadius: "var(--radius-sm, 6px)",
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: sending || !answer.trim() ? "not-allowed" : "pointer",
+            }}
+          >
             Send answer
           </button>
         </div>
@@ -54,16 +79,16 @@ const RunQuestion: React.FC<{ run: RunCardData; onAnswer?: RunAnswerHandler }> =
 function getStatusBadgeStyle(status: RunStatus): { bg: string; text: string; border: string } {
   switch (status) {
     case "running":
-      return { bg: "rgba(31, 111, 235, 0.15)", text: "var(--accent-blue, #58a6ff)", border: "var(--border-blue, #1f6feb)" };
+      return { bg: "var(--badge-info-bg)", text: "var(--accent-blue, #58a6ff)", border: "var(--accent-blue, #1f6feb)" };
     case "completed":
-      return { bg: "rgba(46, 160, 67, 0.15)", text: "var(--accent-green, #3fb950)", border: "var(--border-green, #2ea043)" };
+      return { bg: "var(--badge-success-bg)", text: "var(--accent-green, #3fb950)", border: "var(--accent-green, #2ea043)" };
     case "failed":
-      return { bg: "rgba(248, 81, 73, 0.15)", text: "var(--accent-red, #f85149)", border: "var(--border-red, #da3633)" };
+      return { bg: "var(--badge-danger-bg)", text: "var(--accent-red, #f85149)", border: "var(--accent-red, #da3633)" };
     case "cancelled":
-      return { bg: "rgba(110, 118, 129, 0.15)", text: "var(--text-muted, #8b949e)", border: "var(--border-muted, #6e7681)" };
+      return { bg: "var(--badge-neutral-bg)", text: "var(--text-muted, #8b949e)", border: "var(--border, #6e7681)" };
     case "queued":
     default:
-      return { bg: "rgba(210, 153, 34, 0.15)", text: "var(--accent-yellow, #d29922)", border: "var(--border-yellow, #bb8009)" };
+      return { bg: "var(--badge-warning-bg)", text: "var(--accent-yellow, #d29922)", border: "var(--accent-yellow, #bb8009)" };
   }
 }
 
@@ -90,7 +115,6 @@ export const RunCard: React.FC<RunCardProps> = ({
     if (!onCancel) return;
     setCancelling(true);
     const ok = await onCancel(run.id);
-    // A refused cancel re-enables the button; an accepted one waits for the card update.
     if (ok === false) setCancelling(false);
   };
 
@@ -98,20 +122,19 @@ export const RunCard: React.FC<RunCardProps> = ({
     <div
       className={`staff-run-card ${className}`}
       data-run-id={run.id}
-      style={{
-        border: "1px solid var(--border, #30363d)",
-        borderRadius: 8,
-        padding: "12px 16px",
-        background: "var(--bg-secondary, #161b22)",
-        maxWidth: 500,
-        margin: "6px 0",
-      }}
     >
       {/* Header: Title and Status */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-primary, #c9d1d9)" }}>
-          Run {run.run_number ? `#${run.run_number}` : run.id}
-        </span>
+      <div className="staff-card-header">
+        <div className="staff-card-header-left">
+          <span className="staff-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+          </span>
+          <span className="staff-card-title">
+            Run {run.run_number ? `#${run.run_number}` : run.id}
+          </span>
+        </div>
         <span
           style={{
             fontSize: 10,
@@ -122,37 +145,45 @@ export const RunCard: React.FC<RunCardProps> = ({
             background: statusStyle.bg,
             color: statusStyle.text,
             border: `1px solid ${statusStyle.border}`,
+            flexShrink: 0,
           }}
         >
           {run.status}
         </span>
       </div>
 
-      {/* Metadata: Node, Provider, Elapsed */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 12, color: "var(--text-muted, #8b949e)", marginBottom: 8 }}>
-        {run.node && (
-          <div>
-            Node: <strong style={{ color: "var(--text-secondary, #c9d1d9)" }}>{run.node}</strong>
-          </div>
-        )}
-        {run.provider && (
-          <div>
-            Model: <strong style={{ color: "var(--text-secondary, #c9d1d9)" }}>{run.provider}</strong>
-          </div>
-        )}
-        {run.elapsed_seconds !== undefined && (
-          <div>
-            Elapsed: <strong style={{ color: "var(--text-secondary, #c9d1d9)" }}>{formatDuration(run.elapsed_seconds)}</strong>
-          </div>
-        )}
-      </div>
+      {/* Metadata Key/Value Grid */}
+      {(run.node || run.provider || run.elapsed_seconds !== undefined) && (
+        <div className="staff-card-grid">
+          {run.node && (
+            <div className="staff-card-kv">
+              <span className="staff-card-k">Node</span>
+              <span className="staff-card-v">{run.node}</span>
+            </div>
+          )}
+          {run.provider && (
+            <div className="staff-card-kv">
+              <span className="staff-card-k">Model</span>
+              <span className="staff-card-v">{run.provider}</span>
+            </div>
+          )}
+          {run.elapsed_seconds !== undefined && (
+            <div className="staff-card-kv">
+              <span className="staff-card-k">Elapsed</span>
+              <span className="staff-card-v">{formatDuration(run.elapsed_seconds)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {run.status === "needs_input" && run.question && <RunQuestion run={run} onAnswer={onAnswer} />}
       {run.status === "completed" && run.summary && (
-        <div style={{ fontSize: 12, color: "var(--text-secondary, #c9d1d9)", marginBottom: 8 }}>{run.summary}</div>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8, lineHeight: 1.5 }}>
+          {run.summary}
+        </div>
       )}
       {run.status === "failed" && run.error && (
-        <div role="alert" style={{ fontSize: 12, color: "var(--accent-red, #f85149)", marginBottom: 8 }}>
+        <div role="alert" style={{ fontSize: 12, color: "var(--accent-red)", marginBottom: 8 }}>
           {run.error}
         </div>
       )}
@@ -179,16 +210,16 @@ export const RunCard: React.FC<RunCardProps> = ({
             <pre
               style={{
                 fontSize: 11,
-                fontFamily: "monospace",
-                background: "var(--bg-primary, #0d1117)",
-                color: "var(--text-primary, #c9d1d9)",
+                fontFamily: "var(--font-mono, monospace)",
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
                 padding: "8px 10px",
                 borderRadius: 4,
                 marginTop: 6,
                 maxHeight: 140,
                 overflowY: "auto",
                 whiteSpace: "pre-wrap",
-                border: "1px solid var(--border, #30363d)",
+                border: "1px solid var(--border)",
               }}
             >
               {run.logs_tail.join("\n")}
@@ -198,7 +229,7 @@ export const RunCard: React.FC<RunCardProps> = ({
       )}
 
       {/* Footer links and Cancel action */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
         <div style={{ display: "flex", gap: 8, fontSize: 12 }}>
           {run.run_url && (
             <a
@@ -225,16 +256,8 @@ export const RunCard: React.FC<RunCardProps> = ({
             type="button"
             onClick={cancel}
             disabled={cancelling}
-            style={{
-              background: "transparent",
-              color: "var(--accent-red, #f85149)",
-              border: "1px solid var(--border-red, #da3633)",
-              borderRadius: 6,
-              padding: "2px 8px",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            className="staff-action-card__btn staff-action-card__btn--deny"
+            style={{ padding: "3px 10px", fontSize: 11 }}
           >
             Cancel run
           </button>

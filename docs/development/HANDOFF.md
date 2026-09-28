@@ -1,16 +1,13 @@
 # Current handoff — Staff threads API tests stop leaking chat turns and staff-run threads (DL-#1728)
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Identity
 
 - Repository: `D-sorganization/Runner_Dashboard`
-- Working directory: `Runner_Dashboard-worktrees/staff-threads-thread-leak`
 - Branch: `fix/staff-threads-test-thread-leak`
-- Baseline commit: `add4f7da`
-- Implementation commit: `SELF`
-- Pull request: not created (opened as draft right after this commit)
-- Governing issue/epic: #1728; DL-#1728.
+- Governing issue: #1728; DL-#1728.
+- Pull request: #1729
 
 ## Objective and status
 
@@ -31,40 +28,275 @@ Last updated: 2026-09-27
 
 ## Next steps
 
-1. Confirm the draft PR's CI is green, mark it ready and arm auto-merge via automerge_guard.
-
-## Change log
-
-- 2026-09-27: Stubbed the background chat turn in the staff threads API fixture and added no-leak tripwires.
-- 2026-09-27: Scoped the thread tripwire to threads each test starts (the pre-push run hit workers leaked by other files).
+1. Merge PR #1729 once all CI checks are green.
 
 ---
 
-# Current handoff — Staff live-test fixes, consolidated (DL-#1708, DL-#1712, DL-#1711, DL-#1713)
+# Prior handoff — Staff runner retry nudge for missing STAFF_RESULT line, #1709 (DL-#1709)
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Identity
 
 - Repository: `D-sorganization/Runner_Dashboard`
-- Working directory: `Runner_Dashboard-worktrees/claude-consol`
-- Branch: `fix/staff-live-test-consolidated-2026-09-27`
-- Baseline commit: `add4f7da`
-- Implementation commit: `SELF`
-- Pull request: #1727 (open)
-- Governing issues: #1708, #1712, #1711, #1713.
+- Branch: `fix/staff-runner-result-nudge-1709`
+- Baseline commit: `d5df68b5` (main after #1731 merged)
+- Governing issue: #1709
 
 ## Objective and status
 
-- One PR for three of my open PRs: #1710 (Barb live-test findings), #1714 (approvals from the desktop console, inbox styling and speed) and #1715 (top-bar overflow). Main is strict and all three conflicted in the docs with #1707, so one CI cycle replaces three rebases.
-- Each original PR's own handoff section follows below unchanged. Only documentation overlapped; no code conflicts.
+- Keep strict contract: a run with no STAFF_RESULT: line is not a success.
+- Bounded retry nudge: when an unattended CLI exits 0 with no STAFF_RESULT: line, resume the same session once with a fixed prompt (`RESULT_NUDGE_PROMPT`) asking only for the result line. Accept it only on an exact prefix match (`stripped.startswith("STAFF_RESULT:")`), and allow at most one nudge per run.
+- Record runs that ended on a question or blocked state as their own failure class, separate from NO_RESULT_ERROR:
+  - Question runs: `failure_class="needs_input"`, `error=f"agent paused asking: {last_line}"`.
+  - Blocked runs: `status="blocked"`, `failure_class="lease_blocked"` (recorded during lease ritual).
+  - Missing result without question: `failure_class="no_result"`, `error=NO_RESULT_ERROR` ("agent exited 0 without a STAFF_RESULT line").
+- All touched files remain under 500 LOC (`runner.py` at 493 LOC, `runner_ops.py` at 291 LOC, `adapters.py` at 489 LOC, `classifier.py` at 444 LOC).
+- All unit, API, and lint/type checks pass.
 
-- `frontend/src/lib/openapi.json` and `api-types.ts` regenerated (`npm run generate-api`): the v1 summary route gained a docstring, which the `generate-api:check` CI step caught.
+## Validation
+
+- `pytest tests/api/test_staff_runner.py tests/unit/test_staff_classifier.py tests/unit/test_staff_redaction_everywhere.py` (59 passed).
+- `ruff check backend/ tests/` (clean).
+- `ruff format --check backend/staff/ tests/api/test_staff_runner.py tests/unit/test_staff_classifier.py` (clean).
+- `mypy backend/staff/` (clean, 92 files).
+
+## Cross-module type checking, #1734 (DL-#1734)
+
+- Branch `fix/mypy-resolved-imports` (worktree `claude-mypy`), rebased on main `1c0904ae`. PR #1736.
+- Cause: `backend/__init__.py` made mypy name modules `backend.x`, while the backend imports them as `staff.x` / `routers.y` (backend/ on `sys.path`). Those imports never resolved, so every cross-module call was `Any` and CI passed calls to attributes and keyword arguments that do not exist.
+- Fix: `[tool.mypy]` sets `mypy_path = "backend"`, `explicit_package_bases = true` and excludes `backend/__init__.py`; the relaxed overrides use the bare module names. The CI command and the pre-push hook are unchanged and now resolve imports.
+- Runtime bugs this exposed, each with a failing test first:
+  - `GET /api/v1/staff/runs/{id}/stream` passed `request=` to the legacy handler (500); `GET /api/v1/staff/audit` called a non-existent `store.query` (500).
+  - The follow-up watchdog and escalations called async `send_push(title=, body=)` without awaiting it, so no alert reached a phone. `push.notify(topic, title, body)` sends from sync code.
+  - Waiting work items read `WorkItemRecord.run_id` (does not exist), so the inbox's needs-input source failed whenever one existed.
+  - Work-request dispatch (remediation, issue, PR) imported `_normalize_repository_input` from `server`, which lost it in #941 (ImportError on every approval).
+  - `PUT /api/agent-remediation/config` used private helpers the package does not export (500); remediation plan/dispatch imported `_fetch_failed_log_excerpt` from `server`.
+  - Runner troubleshoot and fleet schedule-scale logged `principal.user_id` (502 on every authorised call).
+- Typing-only fixes: `ReadOnlyKwargs` / `LaunchPaths` TypedDicts for `build_command`, `functools.partial` for maintenance executors, `Final` event kinds, narrowed optionals.
+- Validation: new tests in `tests/api/test_staff_v1_audit.py`, `test_remediation_config_put.py`, `test_runner_troubleshoot_principal.py`, `tests/staff/test_inbox_needs_input.py`, `test_work_request_dispatch_repo.py`, plus stream and watchdog cases (all red before, green after). Rebased on main after #1733 merged: `mypy backend/` clean (317 files); WSL full suite 5298 passed (the WSL-only `test_no_stale_vite_config_is_tracked` deselected).
+- Next: mark #1736 ready and arm via `automerge_guard`; then redeploy the three hubs.
+
+## Frontend calls to routes that do not exist, #1735 (DL-#1735)
+
+- Branch `fix/frontend-route-contract` (worktree `claude-routes`), from main `1c0904ae`. PR #1737. Implemented by a Sonnet subagent under review; the guard's prefix rule was tightened in review.
+- Insights → Stats called `/api/stats/workflows`, `/timeseries` and `POST /collect`; `workflow_stats.py` has served none of them since the repo was extracted, so the tab was always empty. New `routers/workflow_stats.py` wires them (GETs `require_fleet_peer`, collect `workflows.control`). The database fills only from "Collect now"; no background collector was added (GitHub API budget).
+- `POST /api/auth/refresh` exists: 200 with a live session, 401 without. The session cookie already slides (Starlette re-issues it, 7 days), so the frontend's refresh-before-dialog attempt now works instead of 404ing.
+- Operations → Diagnostics links `/api/fleet/status` (was `/api/fleet/health`). Dead hooks removed: seven in `usePollingQueries.ts`, three in `useStaffQueries.ts`.
+- Guard: `tests/frontend/test_frontend_api_routes_exist.py` fails when an `/api/` literal in `frontend/src` has no route. Prefix matching applies only to bases (ending `/`, followed by `+`, or assigned to a `*BASE` name); a probe `fetch("/api/fleet")` fails it.
+- Validation: route tests 11 + 2, guard 3; WSL `tests/api tests/frontend` 1425 passed (the WSL-only vite-config test fails as usual); ruff, mypy, tsc, eslint, vitest (114) clean; OpenAPI snapshot regenerated (additions only).
+- Next: mark #1737 ready and arm via `automerge_guard`.
+
+## Service worker build id, #1740 (DL-#1740)
+
+- Branch `fix/sw-build-id` (worktree `claude-sw-1740`), from main `157232e6`. PR #1741 (draft).
+- Nothing set `VITE_BUILD_ID`, so every build registered `/sw.js?build=dev`. The worker never updated after a deploy, the "update ready" toast never fired, and the worker cache (`runner-dashboard-dev`) never rotated.
+- `frontend/src/lib/buildId.ts` `resolveBuildId` (pure): explicit `VITE_BUILD_ID`, else `git rev-parse --short HEAD`, else `t<epoch ms>`. `vite.config.ts` injects it through `define`. `tsconfig.node.json` is unchanged (adding the file there breaks `tsc -p .` with TS6305).
+- Validation: `npx vitest run frontend/src/lib/__tests__/buildId.test.ts` 3 passed (red before the module existed); `npm run typecheck` clean; eslint clean; `npx vite build` bundle contains `sw.js?build=${encodeURIComponent("157232e6")}`, and `VITE_BUILD_ID=rel-test` yields `"rel-test"`.
+- Next: mark #1741 ready and arm via `automerge_guard` once CI is green.
+
+## Queue page first-load state, #1742 (DL-#1742)
+
+- Branch `fix/queue-loading-state` (worktree `claude-queue-load`), from main `157232e6`. PR #1743 (draft).
+- Work → Queue showed `0` / `idle`, `0` / `empty` and "Queue is empty — all runners idle" while the first `/api/queue` load was pending (several seconds on a cold cache), and again when that load failed. The live fleet had 3 running and 4 queued.
+- `frontend/src/pages/Queue/index.tsx`: with no payload yet, the stats show `—` with `loading` (or `unknown` after a failure) and the empty-state messages are not rendered; a failed first load shows an alert naming the HTTP status. The existing "handles missing queue gracefully" test asserted the bug and now expects the loading state. `Queue/Mobile.tsx` already had a skeleton and a failure state.
+- Validation: `npx vitest run frontend/src/pages/Queue` 63 passed (new `QueueLoadingState.test.tsx` red before the fix); `npm run typecheck` and eslint clean.
+- Next: mark #1743 ready and arm via `automerge_guard` once CI is green.
+
+## Fleet page runner binding, #1738 (DL-#1738)
+
+- Branch `fix/fleet-machine-binding` (worktree `claude-fleet-1738`), from `origin/main`. PR: not created.
+- Objective: fix three bugs found in the 2026-09-28 live sweep of the deployed dashboard (157232e, part of epic #1718).
+  - Every machine showed `Runners 0 / 21`: `FleetMachinesSection` grouped runners by `name.split("-")[2]`, which is always `local` for `d-sorg-local-<Host>-<n>` names, and the count fell back to `health.runners_registered` — the org-wide total on every node.
+  - Busy runners showed Current Task `idle`: `FleetRunnersSection` looked the task up by `run.runner_name`, but `/api/runs` returns workflow runs, which never carry that field.
+  - Ready credential providers still rendered their `setup_hint` (e.g. `Run: gh auth login`).
+- Fix:
+  - `backend/routers/runners.py::_runner_response` now stamps `"machine": infer_machine_from_runner_name(r.get("name"))` on every runner dict, reusing the canonical parser in `backend/workflow_analysis.py` (no new parsing logic). Copies each runner dict rather than mutating it.
+  - `frontend/src/pages/Fleet/FleetMachinesSection.tsx` groups by `runner.machine` and the Runners cell is `{online} / {total}` with no `health.runners_registered` fallback.
+  - `frontend/src/pages/Fleet/FleetRunnersSection.tsx` Current Task cell: `-` when the runner is offline, `busy` when `r.busy` with no known run, else `idle`.
+  - `frontend/src/pages/CredentialsPage.tsx` only renders `setup_hint` when `!probe.usable`.
+- Files changed: `backend/routers/runners.py`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/CredentialsPage.tsx`, plus tests (`tests/api/test_runners_machine_field.py`, `frontend/src/pages/Fleet/__tests__/FleetMachinesSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetRunnersSection.test.tsx`, `frontend/src/pages/__tests__/CredentialsPage.test.tsx`).
+- Validation:
+  - `pytest tests/api/test_runners_machine_field.py` (2 passed), `pytest tests/api/test_routers_runners.py` (all passed) — both run under WSL Ubuntu-22.04 with the repo's pinned `rd-test-venv`.
+  - `ruff check backend/routers/runners.py tests/api/test_runners_machine_field.py` and `ruff format` (clean).
+  - `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/CredentialsPage.test.tsx` (72 passed).
+  - `npx eslint` on the four changed source/test pairs above (clean).
+  - `npx tsc --noEmit -p .` shows only pre-existing, unrelated errors (Node type shims, StaffConsole/Operations/shell test fixtures) — none in the files this change touched.
+- Next: open the PR, and follow up separately on attaching the actual job to a busy runner (needs per-run jobs API calls; called out as out of scope in #1738).
+
+## Staff role details, #1744 (DL-#1744)
+
+- Branch `fix/staff-role-details` (worktree `claude-role-1744`), from `origin/main`. PR: not created.
+- `GET /api/v1/staff/roster` sends `window` as `null` or `{start, end}` (HH:MM) and no per-role spend, but the frontend stringified `window` (`Staff/Roster.tsx` rendered `[object Object]`) and `StaffConsole/useStaffConsole.ts` `toRoleDetail` read a nonexistent `budget.daily_limit ?? 50` / `budget.spend_today ?? 0`, so the Console role pane always showed a made-up "Daily Cap: $50.00" / "Today: $0.00" and never mapped `schedule` at all.
+- New `formatRoleWindow` in `StaffConsole/rosterUtils.ts`: null/undefined → `""`, `{start,end}` → `22:00–06:00` (en dash), a plain string passes through. Used by both `Staff/Roster.tsx`'s Schedule cell and `useStaffConsole.ts`'s `toRoleDetail`.
+- `StaffConsole/types.ts` `StaffRoleBudget` now matches the API (`usd_per_run?`, `usd_per_day?`, `max_minutes?`, `idle_minutes?`) plus `spend_today?: number` documented as not yet served; `daily_limit` removed. `StaffRoleItem` gained `schedule?`, `window?`, `retired?`.
+- `toRoleDetail` maps `budget.usd_per_day` (no invented 50) and passes `spend_today` through unknown rather than 0; `schedule` maps to `{cron, window, enabled: !retired, next_fire: null}` when `role.schedule` is set.
+- `StaffConsole/contextTypes.ts` `RoleBudgetInfo.usd_today` is now optional; `ContextPane.tsx` renders "Today: —" with no progress-bar fill when it is undefined, unchanged behaviour when it is a number.
+- `rosterUtils.ts`'s over-budget check now reads `usd_per_day` instead of `daily_limit` (still requires `spend_today` to be a number, which the live API does not yet send).
+- Validation: `npx vitest run frontend/src/pages/Staff frontend/src/pages/StaffConsole` (257 passed); `npm run typecheck` (clean); `npx eslint` on the changed files (clean).
+- Next: open the PR as draft.
+
+## Fleet page honest panels, #1747 (DL-#1747)
+
+- Branch `fix/fleet-honest-panels` (worktree `claude-leases`), from main `4688db93`. PR not created yet.
+- `frontend/src/pages/OverviewLeases.tsx` was a hard-coded design preview ("Fair Sharing & Active Leases — Wave 3": a fake 45m/2h lease on `ubuntu-latest-4xlarge`, a `jules-bot` row, dead "Relinquish Runner" / "View Logs" buttons) rendered live on the Fleet page. Removed from `OverviewPage.tsx`; the component and its test are deleted. No lease/fair-share backend exists to feed it.
+- `frontend/src/pages/Fleet/FleetAlertsSection.tsx` said "All systems nominal" while the first load was in flight; it now shows "Checking alerts and hosted-runner usage…" until loading ends.
+- Validation: `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/OverviewPage.test.tsx` 54 passed (the two new assertions red first); `npm run typecheck` and eslint clean.
+- Next: open the PR as draft, then mark ready and arm via `automerge_guard`.
+
+## Scheduled workflows inventory, #1745 (DL-#1745)
+
+- Branch `fix/scheduled-workflows-walk` (worktree `claude-sched-1745`), from `origin/main`. PR: not created.
+- `backend/scheduled_workflows.py` `collect_inventory` walked repos serially and raw-fetched every workflow YAML file (over 1,200 requests for 41 repos), and never finished inside the hub's 20 s answer budget — meanwhile `backend/proxy_utils.py` `proxy_to_hub` timed out at 15 s, so a proxied node always got a 504 instead of the designed "still collecting" degraded answer.
+- `collect_inventory` now reads the `.github/workflows` contents listing per repo (one call, carries blob SHAs) instead of raw-fetching every workflow file, and caches extracted cron expressions by blob SHA in module-level `_CRON_BY_BLOB_SHA` (mirrors `_WORKFLOW_TRIGGER_CACHE` in `routers/runs_workflows.py`); a steady-state walk is workflows-list + contents-listing + one runs call per scheduled workflow, per repo. `schedule_source` is `"blob"` on success (was `"raw_yaml"`), `"unavailable"` when the listing call fails or a path has no matching blob SHA. Repos are walked concurrently behind a bounded `asyncio.Semaphore(_REPO_CONCURRENCY=6)` while `asyncio.gather` preserves output order. The now-unused `gh_raw` parameter was removed from `collect_inventory`; its only caller (`_scheduled_workflows_impl` in `backend/routers/runs_workflows.py`) was updated to match.
+- `backend/proxy_utils.py` extracts the `AsyncClient(timeout=15.0)` literal into module constant `HUB_PROXY_TIMEOUT_S = 15.0`. `_scheduled_workflows_impl` defaults `SCHEDULED_WORKFLOWS_TIMEOUT` to `"10"` (was `"20"`) and clamps the effective SWR wait to `min(timeout, proxy_utils.HUB_PROXY_TIMEOUT_S - 3)`, so a proxying node always receives the degraded answer before its own httpx timeout fires.
+- Validation (WSL, `rd-test-venv`): `pytest tests -q -k "scheduled or proxy"` — 110 passed. `ruff check backend tests` — all checks passed. `ruff format --check` on changed files — clean. `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` — clean.
+- Next: open the PR as draft.
+
+## Diagnostics on artifact installs, #1748 (DL-#1748)
+
+- Branch `fix/diagnostics-artifact-commit` (worktree `claude-gitdiag`), from main `ae93a03c`.
+  PR: not created.
+- Every hub is installed from a build artifact with no `.git` directory. `GET /api/diagnostics/summary`
+  ran `git rev-parse --short HEAD`, got nothing, and reported `git_commit: "unknown"` even though
+  `server.py`'s `_deployment_info` (written by `deploy/update-deployed.sh`) already knows the deployed
+  `git_sha`. `GET /api/deployment/git-drift` had the matching problem: empty `source`/`remote` commits
+  still reported `is_drifted: false, drift_details: "up to date"` — a claim it cannot make without
+  either commit.
+- `backend/routers/diagnostics.py`: new `set_deployment_info_getter(getter)` (mirrors
+  `routers/runners.py`'s `set_system_metrics_getter` idiom) registers a `Callable[[], dict[str, Any]]`
+  without importing `server` (circular). When `git rev-parse --short HEAD` yields empty output or
+  raises, `git_commit` falls back to the registered getter's `git_sha` (first 8 chars) when present
+  and not `"unknown"`; otherwise `"unknown"`. `backend/server.py` (~line 2504, next to the deployment
+  router's `set_dependencies` call) registers it with `_deployment_info`.
+- `backend/routers/deployment.py` `get_git_drift`: when either the source or remote commit is empty or
+  `"unknown"`, returns `is_drifted: None` and
+  `drift_details: "unknown (no git checkout; see /api/deployment/drift)"` instead of `False` /
+  `"up to date"`. Behavior is unchanged when both commits are present.
+- Frontend consumers (`Diagnostics.tsx`, `OperationsDiagnosticsSection.tsx`, `FleetStatusBanner.tsx`,
+  `FleetTab.tsx`, `OverviewPage.tsx`) all gate on `data.is_drifted` / `driftInfo.is_drifted` truthiness,
+  so `null` renders the same as `false` (not drifted) — no frontend changes were needed.
+- Validation: WSL `pytest tests -q -k "diagnostic or drift"` 114 passed (7 new, red before the fix,
+  green after); `ruff check` and `ruff format --check` clean on changed files; `mypy backend/
+--ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` clean (318 files).
+- Next: open the PR as draft.
+
+---
+
+# Historical handoffs
+
+## UI/UX overhaul, epic #1718 (DL-#1718, DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723, DL-#1724, DL-#1725)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-ux`
+- Branch: `feat/ux-overhaul`
+- Baseline commit: `19e4f920` (main after #1727 merged)
+- Implementation commit: `SELF`
+- Pull request: not opened yet (branch pushed to `08f95aa3`; GitHub secondary rate limit blocked `gh` at 06:37 UTC)
+- Governing issues: #1718 and children #1719–#1725.
+
+## Objective and status
+
+- Professional-grade UI polish from the owner's live review: the grey centre on hover, the document-like Staff page, sign-in and approval noise, phone access over the private tailnet. agy (Gemini 3.8) drafted each workstream from a spec; Claude reviews, fixes and integrates each one here.
+- #1719 Workstream A design tokens and global type: integrated.
+- #1720 Workstream B thread and composer: integrated.
+- #1721 Workstream C roster and context pane: integrated.
+- #1722 Workstream D Staff page and attention drawer: integrated.
+- #1723 Workstream E app shell and primitives: integrated.
+- #1724 Workstream F phone access and Web Push: integrated.
+- #1725 Workstream G inbox noise: integrated.
+- Review fixes found by clicking through the live preview after integration:
+  - The theme runtime writes CSS vars inline on `<html>`; the standard Dark/Light fleet themes carried a stale palette (`--text-muted #71717a`) that undid the 4.5:1 fix. They now emit `tokens.ts` neutrals (`fleetThemeTokenParity.test.ts`).
+  - PushSettings: agy's inline styles and phantom `--status-*` tokens moved to `.push-settings__*` rules (the #834 primitives contract).
+  - Principals shows "Admin access required" on 403; Local Tools shows `artifact <sha>` for artifact installs instead of git probe errors.
+  - `test_color_literal_budget` counts `rgba()` usages outside custom-property definitions; budget tightened 84 -> 61.
+  - The mobile token contract test and `docs/mobile-design-system.md` pin the new palette.
+- Live-sweep fixes (DL-#1718), from a page-by-page browser pass against the DeskComputer hub:
+  - Slow GitHub aggregates held the browser's six connections per host, so unrelated panels (Fleet, Operations) sat on "Loading" and whole pages rendered blank. New `cache_utils.cache_get_swr` serves stale data while one refresh runs and bounds a cold wait; a timed-out request no longer cancels the refresh.
+  - `/api/workflows/list` used two `gh` subprocesses per workflow across 20 repos (>90 s, hundreds of calls). It now makes a fixed four REST calls per repo plus one blob per changed workflow file (blob-sha cache), and answers `status: "warming"` after 20 s; the Workflows page explains and retries.
+  - `/api/scheduled-workflows` (504 after 14.5 s every visit) uses the same helper, so the walk finishes in the background and later visits are cached.
+  - Queue waits read "40d 2h" instead of "57741m 27s": one `formatDuration` (components/formatters) rolls up to hours and days; the two copies re-export it.
+  - Page intro banner: SVG info icon instead of the emoji, styles in `.intro-header*`.
+  - Maxwell: the HTTP card says "not listening" instead of the raw socket error; a failed control reads "Could not start Maxwell: ..."; the intro points at Start Maxwell on the page.
+  - Projects: a 401/403 on `project_priorities.yaml` names the missing GitHub App permission instead of dumping the API JSON; decision text renders its Markdown links through the sanitised `OwnerMarkdown` shared with feature notes.
+  - Insights: "Highest Attention Workflows" names each row's repository (two "Quality Gate" rows were indistinguishable).
+- Mobile and second-pass sweep (DL-#1718), at 375x812 against the same hub:
+  - Fleet (phone) read `/api/fleet/status`, which has no status or CPU fields, so every machine showed Offline at 0%. It now reads `/api/fleet/nodes` through the shared `machineTelemetry` helper (also used by `machineTelemetryForRunner`).
+  - Remediation (phone) called `/api/agent-remediation/providers` and `/api/pulls`, which never existed, so the page always showed "Not found". It now reads the desktop tab's sources (`/api/agent-remediation/config`, `/api/runs/enriched`, `/api/prs`, `/api/issues`) and adapts the flat inventory rows.
+  - `/api/issues` returned 500 on every call: `lease_synchronizer` indexed `label["name"]`, but the issue inventory flattens labels to strings. Both shapes are accepted now.
+  - Work (phone): stale runs showed "57790m" and slugs such as "stale-feature-branch"; they read "40d 3h" and "stale feature branch" (`formatAgeMinutes`, `formatReason`), on the desktop stale panel too.
+  - The Ask button sat on top of the bottom bar's More tab; it now clears `--bottom-nav-height`. The More drawer rows gained icon spacing and a current-page highlight.
+  - Operations refetched every panel about ten times per load: its summary callbacks were new functions each render and every section's loader depends on its callback. They are `useCallback`s now, and the deploy section picks its default machine without depending on it.
+  - `/api/stats` fetched its six independent sources one after another (~14 s cold); they run concurrently.
+  - Insights (phone) listed 0 reports: the default reports path used the WSL login (`dieterolson`) as the Windows profile name. `windows_repositories_root()` finds the profile that holds `Repositories` (also used by heavy tests).
+  - Fleet Command: the minutes parser read one line per field, so wrapped priorities lost text ("link Barb to the Runner Dashboard"), and it stripped outer backticks from multi-span values. It joins wrapped lines and keeps spans balanced; the panel renders them through `OwnerMarkdown` (moved to `primitives/`).
+- Emoji-to-SVG sweep (DL-#1718): pictographic emoji across 25 pages, the composer mic and the proposal card's routed/dry-run labels are SVG glyphs from `decompIcons`; `tests/frontend/test_no_pictographic_emoji.py` guards it.
+- `/api/runs/enriched` sent GitHub's raw run objects (two repository objects and a dozen REST `*_url` links per run): 755 KB for 50 runs. `_slim_run` keeps the run's own fields, `repository` id/name/full_name/html_url/private, actor logins and the commit message: 147 KB. `/api/runs` (Overview, Remediation) is slimmed the same way.
+- Staff checkout discovery guessed the Windows profile from `$USERNAME` (`/mnt/c/Users/<login>`); it now uses `windows_repositories_root()` like the reports path.
+- The 404 page said "Use the sidebar" on phones; it says "navigation" and hides the Ctrl+K hint under 768px. Mobile Fleet no longer puts a single ControlTower machine under a "ControlTower Pools" heading.
+- CI after #1730 (non-required checks): the OpenAPI snapshot missed a docstring change (regenerated with `scripts/gen-api-client.sh`); neutral badges used the muted label colour and failed axe on Queue (now body text on a faint tint, contrast-tested for every theme); system-authored run cards rendered as a raw one-line notice (the chat redesign returned early for system messages), and paragraphs mentioning `#123`/`run-…` lost bold and code formatting. Run Playwright locally with `CI=1 DASHBOARD_URL=http://localhost:5173`; without `DASHBOARD_URL` it tests the deployed hub on 8321.
+- 1280px sweep: at 1280 or narrower, the Staff Console role context wrapped under the roster and scrolled the page sideways; it is now an overlay over the conversation's right edge, closed by default, with its own close button because it covers the header toggle. `.staff` had `margin: 16px` plus `width: 100%` (32px of sideways scroll). Project card headers wrap so "Run steward now" stays inside the card. Card errors from a GitHub 401/403 name the missing permission (Contents or Issues read) instead of the raw JSON body. The Operations tables used `overflow: hidden`, which clipped their right-hand columns on phones; they share `TABLE_FRAME_STYLE`, which scrolls.
+- Live probe of every `/api/v1` GET on the hub: `/holds` and `/schedule` were 500 (`HoldsList.list()`, `StaffScheduler.replace_holds` and `schedule_view` never existed; the Staff page Holds tab showed "Failed to load holds"). The v1 and legacy routes now share `current_holds`, `replace_holds` and `schedule_snapshot` in `routers/staff_schedule.py`. `/routing/eval` was 500 because it imported `tests.staff.routing_eval`, which is not deployed; the engine, dataset and models moved to `backend/staff/routing_eval/`, and `tests/unit/test_backend_never_imports_tests.py` guards the class.
+
+## Validation
+
+- `npx vitest run --maxWorkers=3`: 191/191 files, 1603 tests (after the mobile sweep).
+- WSL pytest for the mobile sweep: `tests/test_stats_summary_resilience.py`, `tests/test_lease_synchronizer.py`, `tests/api/test_wsl_paths.py`, `tests/api/test_priorities*.py` passed.
+- WSL pytest for the live-sweep fixes: `tests/test_cache_swr.py` 6, `tests/api/test_workflows_list.py` 3, `tests/api/test_scheduled_workflows_route.py` 1, `tests/api/test_projects_tracking.py` 22 passed (`test_vite_config` fails under WSL only: `git ls-files` exits 128 there).
+- WSL pytest `tests/staff tests/api tests/unit tests/test_frontend_integrity.py`: 2290 passed (the palette contract failure is fixed in this branch).
+- `tsc --noEmit`, `npm run lint`, ruff and mypy: clean.
+- Pre-push `pytest-unit` reports "files were modified by this hook" if the worktree is edited while it runs; do not edit during a push.
 
 ## Next steps
 
-1. Arm auto-merge through `automerge_guard` once CI is green, then close #1710, #1714 and #1715 as superseded.
-2. Redeploy DeskComputer, ControlTower and OGLaptop, then re-run Barb's dispatch test (approve `prop_166a825b0f32` from the inbox Review link).
+1. Open one draft PR from `feat/ux-overhaul` (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
+2. Deploy the slim `/api/runs/enriched` payload (`fix/runs-enriched-slim`, stacked on this branch) and re-check Remediation and the Runs views live.
+3. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, the holds decision in #1726, and GitHub App Contents/Issues read on Repository_Management.
+
+---
+
+<!-- ux-overhaul-handoff -->
+
+# Current handoff — Grok relay proposal deduplication and chat contract hardening (DL-#1716)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `fix/grok-relay-proposal-dedup-1716`
+- Baseline commit: `19e4f920`
+- Implementation commit: `SELF`
+- Pull request: (pending)
+- Governing issue: #1716; DL-#1716.
+
+## Objective and status
+
+- In the Grok relay path, when an owner replies "yes" in chat to Barb's proposal, Barb cannot execute proposals or dispatch runs from chat (chat turns are read-only and lack `staff.approve`/`staff.dispatch`).
+- Previously, repeated proposals generated duplicate proposal cards in the thread and duplicate DB rows, and Barb's prompt instructions and replay omitted pending proposal context, leading models to mistakenly say "dispatching" or re-propose cards. Furthermore, `docs/agents/grok.md` claimed Barb dispatches after Dieter says yes in chat.
+- Fix:
+  1. `backend/staff/conversation_proposals.py`: `create_proposal` checks `find_pending_proposal` to deduplicate pending proposals with identical action, params, and decision SLA within the same thread.
+  2. `backend/staff/proposal_cards.py`: `post_proposal` checks for existing pending proposals and avoids creating or publishing duplicate action card messages.
+  3. `backend/staff/chat_history.py` & `backend/staff/chat.py`: Action proposal messages are included in history replay and context blocks (`build_pending_proposals_block`) so assistants see pending proposal IDs and know they are awaiting Staff Console approval.
+  4. `backend/staff/reply_contract.py`: Strengthened instructions stating that chat turns are read-only and cannot execute proposals; instructed to refer users to the Staff Console.
+  5. `docs/agents/grok.md`: Corrected §2 "Allow with confirm" flow to document that proposals require owner approval in the Staff Console.
+  6. Unit and API tests added in `tests/unit/test_staff_proposal_dedup.py` and `tests/api/test_staff_proposals_api.py`.
+
+## Validation
+
+- `pytest tests/unit/test_staff_proposal_dedup.py tests/api/test_staff_proposals_api.py tests/unit/test_staff_proposal_cards.py tests/api/test_staff_proposal_hardening.py tests/unit/test_staff_chat.py` (all passed).
+- `ruff check .` clean.
+- All touched files $\le 500$ LOC.
+
+## Next steps
+
+1. Push branch `fix/grok-relay-proposal-dedup-1716` and open PR referencing `Fixes #1716`.
+2. Enable auto-merge and verify CI passes.
+3. Release RM agent lease.
 
 ---
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { legacyFetch } from "../lib/api";
 import {
   WorkflowsTab,
@@ -8,7 +8,20 @@ import {
 
 interface WorkflowsPayload {
   workflows?: Workflow[];
+  status?: string;
 }
+
+/** The hub answers `status: "warming"` while its first GitHub sweep runs. */
+function isWarming(payload: unknown): boolean {
+  return (
+    Boolean(payload) &&
+    typeof payload === "object" &&
+    (payload as WorkflowsPayload).status === "warming"
+  );
+}
+
+const WARMING_MESSAGE =
+  "Gathering workflows from GitHub. This first load can take a minute; retrying automatically…";
 
 function normalizeWorkflowsPayload(payload: unknown): Workflow[] {
   if (Array.isArray(payload)) return payload as Workflow[];
@@ -19,12 +32,20 @@ function normalizeWorkflowsPayload(payload: unknown): Workflow[] {
   return [];
 }
 
-export function WorkflowsPage(): React.ReactElement {
+export function WorkflowsPage({
+  warmingRetryMs = 10_000,
+}: {
+  /** Delay before re-asking while the hub's catalogue is warming. */
+  warmingRetryMs?: number;
+} = {}): React.ReactElement {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [warming, setWarming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const refresh = useCallback((signal?: AbortSignal) => {
+    clearTimeout(retryTimer.current);
     setLoading(true);
     legacyFetch("/api/workflows/list", { signal })
       .then((r) => {
@@ -32,6 +53,11 @@ export function WorkflowsPage(): React.ReactElement {
         return r.json();
       })
       .then((payload) => {
+        const stillWarming = isWarming(payload);
+        setWarming(stillWarming);
+        if (stillWarming && !signal?.aborted) {
+          retryTimer.current = setTimeout(() => refresh(signal), warmingRetryMs);
+        }
         setWorkflows(normalizeWorkflowsPayload(payload));
         setError(null);
       })
@@ -44,7 +70,7 @@ export function WorkflowsPage(): React.ReactElement {
       .finally(() => {
         if (!signal?.aborted) setLoading(false);
       });
-  }, []);
+  }, [warmingRetryMs]);
 
   const dispatchWorkflow = useCallback((payload: WorkflowDispatch) => {
     return legacyFetch("/api/workflows/dispatch", {
@@ -71,13 +97,17 @@ export function WorkflowsPage(): React.ReactElement {
   useEffect(() => {
     const controller = new AbortController();
     refresh(controller.signal);
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      clearTimeout(retryTimer.current);
+    };
   }, [refresh]);
 
   return (
     <WorkflowsTab
       workflows={workflows}
-      loading={loading}
+      loading={loading || warming}
+      loadingMessage={warming ? WARMING_MESSAGE : undefined}
       error={error}
       onDispatch={dispatchWorkflow}
       onRefresh={() => refresh()}

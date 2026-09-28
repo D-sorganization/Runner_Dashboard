@@ -15,7 +15,9 @@ afterEach(cleanup);
 describe("IntroHeader", () => {
   it("renders the body and an accessible region named after the tab", () => {
     render(<IntroHeader title="Queue" body="Queued and in-progress runs." />);
-    expect(screen.getByText("Queued and in-progress runs.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Queued and in-progress runs."),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("complementary", { name: /about queue/i }),
     ).toBeInTheDocument();
@@ -29,7 +31,19 @@ describe("IntroHeader", () => {
   it("fires onDismiss when the dismiss button is clicked", () => {
     const onDismiss = vi.fn();
     render(<IntroHeader title="Queue" body="x" onDismiss={onDismiss} />);
-    fireEvent.click(screen.getByRole("button", { name: /dismiss queue intro/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /dismiss queue intro/i }),
+    );
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a themed SVG icon, not an emoji, and no inline styles (#1718)", () => {
+    const { container } = render(
+      <IntroHeader title="Queue" body="x" onDismiss={() => {}} />,
+    );
+    const aside = screen.getByRole("complementary");
+    expect(aside.textContent).not.toMatch(/ℹ/);
+    expect(aside.querySelector("svg.intro-header__icon")).not.toBeNull();
+    expect(container.querySelectorAll("[style]")).toHaveLength(0);
   });
 });

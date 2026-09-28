@@ -33,19 +33,21 @@ export function computeRoleStatus(
   // 2. Unavailable operational blocks
   // 2a. Operational holds active
   if (role.holds && role.holds.length > 0) {
+    // TODO(#1726): distinguish guardrails from scheduling holds
+    const count = role.holds.length;
     return {
       status: "unavailable",
-      reason: `held: ${role.holds.join(", ")}`,
+      reason: `${count} standing rule${count === 1 ? "" : "s"}`,
     };
   }
 
   // 2b. Budget limit reached
   if (
     role.budget &&
-    typeof role.budget.daily_limit === "number" &&
+    typeof role.budget.usd_per_day === "number" &&
     typeof role.budget.spend_today === "number" &&
-    role.budget.daily_limit > 0 &&
-    role.budget.spend_today >= role.budget.daily_limit
+    role.budget.usd_per_day > 0 &&
+    role.budget.spend_today >= role.budget.usd_per_day
   ) {
     return {
       status: "unavailable",
@@ -173,4 +175,45 @@ export function formatRelativeTime(isoString?: string | null): string {
 
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays}d ago`;
+}
+
+/**
+ * Returns full tooltip text describing the role's status.
+ * For roles with holds, lists every hold reason in full.
+ */
+export function getRoleTooltipText(
+  role: StaffRoleItem,
+  availableProviders?: Record<string, boolean>
+): string {
+  if (role.holds && role.holds.length > 0) {
+    return role.holds.join(", ");
+  }
+  const { reason, status } = computeRoleStatus(role, availableProviders);
+  return reason || status;
+}
+
+/**
+ * Formats a role's schedule window for display. `GET /api/v1/staff/roster`
+ * sends `window` as null, `{start, end}` (HH:MM), or a plain string; this is
+ * the single place that turns it into text so it never renders as
+ * `[object Object]` (#1744).
+ */
+export function formatRoleWindow(
+  window: { start: string; end: string } | Record<string, string> | string | null | undefined
+): string {
+  if (window == null) return "";
+  if (typeof window === "string") return window;
+  return `${window.start ?? ""}–${window.end ?? ""}`;
+}
+
+/**
+ * Computes a deterministic hue (0-359) from the role name for avatar tinting.
+ */
+export function getRoleHue(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 360;
 }

@@ -1,26 +1,8 @@
 /** Owner-authored feature details; notes are untrusted Markdown, never raw HTML. */
 import React from "react";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
 import { Badge } from "../../primitives/Badge";
+import { OwnerMarkdown } from "../../primitives/OwnerMarkdown";
 import type { ProjectFeature } from "./types";
-
-function FeatureNotes({ notes }: { notes: string }): React.ReactElement {
-  return (
-    <div
-      dangerouslySetInnerHTML={{
-        __html: DOMPurify.sanitize(
-          marked.parseInline(notes, { async: false }),
-          {
-            ALLOWED_TAGS: ["a", "strong", "em", "code", "br"],
-            ALLOWED_ATTR: ["href", "title"],
-            ALLOWED_URI_REGEXP: /^https?:\/\//i,
-          },
-        ),
-      }}
-    />
-  );
-}
 
 export function FeatureDetails({
   features,
@@ -41,7 +23,7 @@ export function FeatureDetails({
             {feature.tracking !== "-" && (
               <div>Tracking: {feature.tracking}</div>
             )}
-            {feature.notes && <FeatureNotes notes={feature.notes} />}
+            {feature.notes && <OwnerMarkdown text={feature.notes} />}
           </li>
         ))}
       </ul>

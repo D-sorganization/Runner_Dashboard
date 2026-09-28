@@ -9,6 +9,7 @@ import type {
   OrchestrationMachine,
 } from "./deployTypes";
 import { OperationsDeployAuditLog } from "./OperationsDeployAuditLog";
+import { TABLE_FRAME_STYLE } from "./tableFrame";
 
 export type {
   DeploymentMachine,
@@ -55,8 +56,9 @@ export function OperationsDeploySection({
       .then(([dep, orch]) => {
         setDeployData(dep);
         setOrchData(orch);
-        if (dep?.machines && dep.machines.length > 0 && !deployMachine) {
-          setDeployMachine(dep.machines[0].name);
+        if (dep?.machines && dep.machines.length > 0) {
+          const first = dep.machines[0].name;
+          setDeployMachine((current) => current || first);
         }
         onDeployDataChange?.(dep);
         onOrchDataChange?.(orch);
@@ -67,7 +69,7 @@ export function OperationsDeploySection({
       .finally(() => {
         setLoading(false);
       });
-  }, [deployMachine, onDeployDataChange, onOrchDataChange]);
+  }, [onDeployDataChange, onOrchDataChange]);
 
   useEffect(() => {
     if (initialDeployData === undefined) {
@@ -265,15 +267,7 @@ export function OperationsDeploySection({
       )}
 
       {/* Machines deployment table */}
-      <div
-        style={{
-          border: "1px solid var(--border-color, #30363d)",
-          borderRadius: "6px",
-          overflow: "hidden",
-          background: "var(--bg-tertiary, #21262d)",
-          marginBottom: "1rem",
-        }}
-      >
+      <div style={TABLE_FRAME_STYLE}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border-color, #30363d)", textAlign: "left" }}>

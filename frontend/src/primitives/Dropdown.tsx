@@ -22,6 +22,7 @@ import React, {
   useState,
   type ReactElement,
 } from "react";
+import { Tooltip } from "./Tooltip";
 
 export interface DropdownItem {
   /** Stable identifier. */
@@ -50,15 +51,30 @@ export interface DropdownProps {
    * the current selection lives inside this menu. Purely presentational.
    */
   triggerActive?: boolean;
+  /** Optional tooltip text for the trigger button. */
+  tooltip?: string;
+  /** When true, hide the text label on the trigger button (renders icon-only with accessible name). */
+  hideLabel?: boolean;
+  /** Optional id for the trigger button. */
+  id?: string;
+  /** Optional data-testid. */
+  "data-testid"?: string;
+  /** Optional menu horizontal alignment. Defaults to 'left'. */
+  align?: "left" | "right";
 }
 
-export function Dropdown({
-  label,
-  items,
-  Icon,
-  triggerClassName,
-  triggerActive,
-}: DropdownProps): ReactElement {
+export function Dropdown(props: DropdownProps): ReactElement {
+  const {
+    label,
+    items,
+    Icon,
+    triggerClassName,
+    triggerActive,
+    tooltip,
+    hideLabel,
+    id,
+    align = "left",
+  } = props;
   const menuId = useId();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -156,26 +172,31 @@ export function Dropdown({
     [items, activeIndex, close, activate],
   );
 
-  return (
-    <span style={{ position: "relative", display: "inline-flex" }}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={triggerClassName}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-current={triggerActive ? "page" : undefined}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => (open ? close(false) : openMenu())}
-        onKeyDown={handleTriggerKeyDown}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {Icon ? <Icon /> : null}
-        <span>{label}</span>
+  const triggerBtn = (
+    <button
+      ref={triggerRef}
+      id={id}
+      data-testid={props["data-testid"]}
+      type="button"
+      className={triggerClassName}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      aria-current={triggerActive ? "page" : undefined}
+      aria-controls={open ? menuId : undefined}
+      aria-label={hideLabel ? label : undefined}
+      title={!tooltip && hideLabel ? label : undefined}
+      onClick={() => (open ? close(false) : openMenu())}
+      onKeyDown={handleTriggerKeyDown}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+      }}
+    >
+      {Icon ? <Icon /> : null}
+      {!hideLabel && <span>{label}</span>}
+      {!hideLabel && (
         <svg
           aria-hidden="true"
           viewBox="0 0 24 24"
@@ -186,11 +207,26 @@ export function Dropdown({
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform 120ms" }}
+          style={{
+            transform: open ? "rotate(180deg)" : undefined,
+            transition: "transform 120ms",
+          }}
         >
           <polyline points="6 9 12 15 18 9" />
         </svg>
-      </button>
+      )}
+    </button>
+  );
+
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      {tooltip ? (
+        <Tooltip content={tooltip} placement="bottom">
+          {triggerBtn}
+        </Tooltip>
+      ) : (
+        triggerBtn
+      )}
       {open && (
         <div
           ref={menuRef}
@@ -201,14 +237,15 @@ export function Dropdown({
           style={{
             position: "absolute",
             top: "calc(100% + 4px)",
-            left: 0,
+            ...(align === "right" ? { right: 0 } : { left: 0 }),
             zIndex: 10000,
-            minWidth: 200,
-            background: "var(--bg-secondary, #161b22)",
-            border: "1px solid var(--border, #30363d)",
-            borderRadius: 8,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-            padding: 4,
+            minWidth: 180,
+            background: "var(--bg-card)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-md, 10px)",
+            boxShadow: "var(--shadow-card)",
+            padding: "6px",
+            boxSizing: "border-box",
           }}
         >
           {items.map((item, idx) => {
@@ -231,22 +268,28 @@ export function Dropdown({
                   gap: 8,
                   width: "100%",
                   textAlign: "left",
-                  padding: "6px 10px",
-                  borderRadius: 6,
+                  height: "30px",
+                  minHeight: "30px",
+                  boxSizing: "border-box",
+                  padding: "0 10px",
+                  borderRadius: "var(--radius-sm, 6px)",
                   border: "none",
                   background:
                     idx === activeIndex
-                      ? "var(--bg-hover, #252d3a)"
+                      ? "var(--bg-hover)"
                       : "transparent",
                   color: item.active
-                    ? "var(--accent-blue, #58a6ff)"
-                    : "var(--text-primary, #e6edf3)",
+                    ? "var(--accent-blue)"
+                    : "var(--text-primary)",
                   fontSize: 13,
                   cursor: "pointer",
+                  transition: "background 120ms ease",
                 }}
               >
                 {ItemIcon ? <ItemIcon /> : null}
-                <span>{item.label}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {item.label}
+                </span>
               </button>
             );
           })}

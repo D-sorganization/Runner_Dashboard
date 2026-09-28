@@ -22,6 +22,7 @@ import { SubTabs } from "../components/SubTabs";
 import { legacyFetch } from "../lib/api";
 import { isAnalysisTabKey } from "../lib/analysisTabs";
 import { HistoryTab } from "./History";
+import { ChartGlyph } from "./decompIcons";
 
 // ── Shared helper ────────────────────────────────────────────────────────────
 
@@ -601,7 +602,10 @@ export function AnalysisOutcomesTab(): React.ReactElement {
               <tbody>
                 {weakest.map((row) => (
                   <tr key={row.key}>
-                    <td title={row.repo + " / " + row.workflow_name}>{row.workflow_name}</td>
+                    <td title={row.repo + " / " + row.workflow_name}>
+                      {row.workflow_name}
+                      <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{row.repo}</div>
+                    </td>
                     <td>{row.count}</td>
                     <td>{row.failure || 0}</td>
                     <td>{fmtDur(row.avg_duration_seconds)}</td>
@@ -766,7 +770,14 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
                     <div className="report-date">{r.date}</div>
                     <div className="report-meta">
                       {r.size_kb + " KB"}
-                      {r.has_chart ? " · 📈" : ""}
+                      {r.has_chart ? (
+                        <>
+                          {" · "}
+                          <ChartGlyph size={12} />
+                        </>
+                      ) : (
+                        ""
+                      )}
                     </div>
                   </div>
                 </li>

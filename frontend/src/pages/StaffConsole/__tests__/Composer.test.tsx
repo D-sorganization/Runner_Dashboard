@@ -32,6 +32,47 @@ describe("Composer Component", () => {
     expect(screen.getByRole("button", { name: /voice/i })).toBeInTheDocument();
   });
 
+  it("disables send button when input is empty or whitespace only", () => {
+    render(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+    const sendBtn = screen.getByRole("button", { name: /send/i });
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+
+    // Initially empty -> disabled
+    expect(sendBtn).toBeDisabled();
+
+    // Whitespace only -> disabled
+    fireEvent.change(textarea, { target: { value: "    \n   " } });
+    expect(sendBtn).toBeDisabled();
+
+    // Non-empty text -> enabled
+    fireEvent.change(textarea, { target: { value: "Hello Barb" } });
+    expect(sendBtn).toBeEnabled();
+  });
+
+  it("auto-grows textarea rows from 1 up to 10 lines and caps at 10", () => {
+    render(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+    const textarea = screen.getByPlaceholderText(/message barb/i) as HTMLTextAreaElement;
+
+    // 1 line
+    fireEvent.change(textarea, { target: { value: "Line 1" } });
+    expect(textarea.rows).toBe(1);
+
+    // 4 lines
+    fireEvent.change(textarea, { target: { value: "Line 1\nLine 2\nLine 3\nLine 4" } });
+    expect(textarea.rows).toBe(4);
+
+    // 12 lines -> capped at 10
+    const twelveLines = Array.from({ length: 12 }, (_, i) => `Line ${i + 1}`).join("\n");
+    fireEvent.change(textarea, { target: { value: twelveLines } });
+    expect(textarea.rows).toBe(10);
+  });
+
+  it("renders a muted hint line underneath the composer", () => {
+    render(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+    expect(screen.getByText(/enter to send, shift\+enter for a new line, @ to mention/i)).toBeInTheDocument();
+  });
+
+
   it("submits message on Enter and creates newline on Shift+Enter", () => {
     const onSend = vi.fn().mockResolvedValue({ ok: true });
     render(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={onSend} />);

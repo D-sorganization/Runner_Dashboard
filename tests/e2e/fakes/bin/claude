@@ -77,7 +77,9 @@ def chat_body(scenario: str, prompt: str) -> list[str]:
     if scenario == "slow":
         return [f"Chunk {n}. " for n in range(1, 11)]
     if scenario in RUN_DIRECTIVE:
-        run_prompt = "Summarise the queue" + RUN_DIRECTIVE[scenario]
+        prompt_tag = last_line(prompt)
+        run_prompt = f"Summarise the queue ({prompt_tag})" if prompt_tag else "Summarise the queue"
+        run_prompt += RUN_DIRECTIVE[scenario]
         action = {
             "action": "staff.dispatch",
             "params": {"role": "e2e-analyst", "prompt": run_prompt},

@@ -109,6 +109,33 @@ def _candidate_wslconfig_paths() -> list[Path]:
     return result
 
 
+_SYSTEM_PROFILES = {"all users", "default", "default user", "public"}
+
+
+def windows_repositories_root(users_root: Path = Path("/mnt/c/Users")) -> Path:
+    """Return the Windows ``Repositories`` folder as seen from WSL.
+
+    The WSL login (``$USER``) often differs from the Windows profile name, so
+    ``/mnt/c/Users/$USER`` can silently point at nothing. Prefer a named user's
+    folder when it exists, then any real profile that has ``Repositories``.
+
+    Post-condition: returns ``<users_root>/<profile>/Repositories``; never raises.
+    """
+    names = [n for n in (os.environ.get("USER"), os.environ.get("USERNAME")) if n]
+    for name in names:
+        candidate = users_root / name / "Repositories"
+        if candidate.is_dir():
+            return candidate
+    try:
+        profiles = sorted(p for p in users_root.iterdir() if p.is_dir() and p.name.lower() not in _SYSTEM_PROFILES)
+    except OSError:
+        profiles = []
+    for profile in profiles:
+        if (profile / "Repositories").is_dir():
+            return profile / "Repositories"
+    return users_root / (names[0] if names else "diete") / "Repositories"
+
+
 def _resolve_powershell_executable() -> str | None:
     """Find a PowerShell executable from WSL service environments.
 

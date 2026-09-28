@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { StopGlyph, MicGlyph } from '../pages/decompIcons';
 
 interface VoiceInputButtonProps {
   /** Callback fired when a final transcription result is received */
@@ -127,7 +128,9 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
           opacity: disabled ? 0.5 : 1,
         }}
       >
-        <span style={{ fontSize: '18px' }}>{isListening ? '⏹' : '🎤'}</span>
+        <span style={{ fontSize: '18px' }}>
+          {isListening ? <StopGlyph size={18} /> : <MicGlyph size={18} />}
+        </span>
         {isListening && (
           <span
             style={{

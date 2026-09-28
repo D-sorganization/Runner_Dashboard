@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import type { ActionProposalData, ActionRiskLevel, ProposalApproveHandler, ProposalDenyHandler } from "./cardTypes";
+import "./cards.css";
+import { RefreshGlyph, SearchGlyph } from "../../decompIcons";
 
 export interface ActionCardProps {
   proposal: ActionProposalData;
@@ -12,15 +14,15 @@ function getRiskBadgeColor(risk: ActionRiskLevel): { bg: string; text: string; b
   switch (risk) {
     case "read":
     case "low":
-      return { bg: "rgba(46, 160, 67, 0.15)", text: "var(--accent-green, #3fb950)", border: "var(--border-green, #2ea043)" };
+      return { bg: "var(--badge-success-bg)", text: "var(--accent-green, #3fb950)", border: "var(--accent-green, #3fb950)" };
     case "medium":
-      return { bg: "rgba(210, 153, 34, 0.15)", text: "var(--accent-yellow, #d29922)", border: "var(--border-yellow, #bb8009)" };
+      return { bg: "var(--badge-warning-bg)", text: "var(--accent-yellow, #d29922)", border: "var(--accent-yellow, #d29922)" };
     case "high":
     case "critical":
     case "owner-only":
-      return { bg: "rgba(248, 81, 73, 0.15)", text: "var(--accent-red, #f85149)", border: "var(--border-red, #da3633)" };
+      return { bg: "var(--badge-danger-bg)", text: "var(--accent-red, #f85149)", border: "var(--accent-red, #f85149)" };
     default:
-      return { bg: "rgba(110, 118, 129, 0.15)", text: "var(--text-muted, #8b949e)", border: "var(--border-muted, #6e7681)" };
+      return { bg: "var(--badge-neutral-bg)", text: "var(--text-muted, #8b949e)", border: "var(--border, #30363d)" };
   }
 }
 
@@ -66,20 +68,17 @@ export const ActionCard: React.FC<ActionCardProps> = ({
     <div
       className={`staff-action-card ${className}`}
       data-proposal-id={proposal.id}
-      style={{
-        border: "1px solid var(--border, #30363d)",
-        borderRadius: 8,
-        padding: "12px 16px",
-        background: "var(--bg-secondary, #161b22)",
-        maxWidth: 500,
-        margin: "6px 0",
-      }}
     >
-      {/* Header with Action Name and Risk Badge */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-primary, #c9d1d9)" }}>
-          {proposal.action_name}
-        </span>
+      {/* Header with Icon, Action Name and Risk Badge */}
+      <div className="staff-card-header">
+        <div className="staff-card-header-left">
+          <span className="staff-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+          </span>
+          <span className="staff-card-title">{proposal.action_name}</span>
+        </div>
         <span
           style={{
             fontSize: 10,
@@ -90,6 +89,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             background: riskColors.bg,
             color: riskColors.text,
             border: `1px solid ${riskColors.border}`,
+            flexShrink: 0,
           }}
         >
           {proposal.risk_level}
@@ -99,19 +99,30 @@ export const ActionCard: React.FC<ActionCardProps> = ({
       {/* Routed By / Barb Handoff Notice */}
       {proposal.routed_role && (
         <div style={{ fontSize: 11, color: "var(--accent-purple, #bc8cff)", marginBottom: 6 }}>
-          🔄 Routed via {proposal.routed_role} to Maintenance
+          <RefreshGlyph size={11} /> Routed via {proposal.routed_role} to Maintenance
         </div>
       )}
 
-      {/* Target and Description */}
-      {proposal.target && (
-        <div style={{ fontSize: 12, color: "var(--text-muted, #8b949e)", marginBottom: 4 }}>
-          Target: <strong style={{ color: "var(--text-secondary, #c9d1d9)" }}>{proposal.target}</strong>
+      {/* Key/Value Grid */}
+      {(proposal.target || proposal.proposed_by) && (
+        <div className="staff-card-grid">
+          {proposal.target && (
+            <div className="staff-card-kv">
+              <span className="staff-card-k">Target</span>
+              <span className="staff-card-v">{proposal.target}</span>
+            </div>
+          )}
+          {proposal.proposed_by && (
+            <div className="staff-card-kv">
+              <span className="staff-card-k">Proposed by</span>
+              <span className="staff-card-v">{proposal.proposed_by}</span>
+            </div>
+          )}
         </div>
       )}
 
       {proposal.description && (
-        <div style={{ fontSize: 12, color: "var(--text-secondary, #c9d1d9)", marginBottom: 8, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8, lineHeight: 1.5 }}>
           {proposal.description}
         </div>
       )}
@@ -121,21 +132,23 @@ export const ActionCard: React.FC<ActionCardProps> = ({
         <div
           data-testid="dry-run-preview"
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: "var(--accent-blue, #58a6ff)",
-            background: "rgba(56, 139, 253, 0.1)",
-            border: "1px solid var(--border-blue, #1f6feb)",
-            padding: "6px 10px",
+            background: "var(--badge-info-bg)",
+            border: "1px solid var(--accent-blue, #1f6feb)",
+            padding: "8px 12px",
             borderRadius: 6,
             marginBottom: 8,
           }}
         >
           <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <span>🔍 Dry-run preview</span>
+            <span>
+              <SearchGlyph size={12} /> Dry-run preview
+            </span>
             {typeof proposal.dry_run === "object" &&
               Array.isArray(proposal.dry_run.planned_steps) &&
               proposal.dry_run.planned_steps.length > 0 && (
-                <span style={{ opacity: 0.8, fontSize: 10 }}>
+                <span style={{ opacity: 0.8, fontSize: 11 }}>
                   ({proposal.dry_run.planned_steps.length} steps)
                 </span>
               )}
@@ -143,9 +156,9 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           {typeof proposal.dry_run === "object" &&
             Array.isArray(proposal.dry_run.planned_steps) &&
             proposal.dry_run.planned_steps.length > 0 && (
-              <ol style={{ margin: "4px 0 0 16px", padding: 0 }}>
+              <ol style={{ margin: "4px 0 0 18px", padding: 0 }}>
                 {proposal.dry_run.planned_steps.map((step, idx) => (
-                  <li key={idx} style={{ color: "var(--text-secondary, #c9d1d9)", margin: "2px 0" }}>
+                  <li key={idx} style={{ color: "var(--text-secondary)", margin: "2px 0" }}>
                     {step}
                   </li>
                 ))}
@@ -158,26 +171,28 @@ export const ActionCard: React.FC<ActionCardProps> = ({
       {isExpired && (
         <div
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: "var(--accent-red, #f85149)",
-            background: "rgba(248, 81, 73, 0.1)",
-            padding: "4px 8px",
-            borderRadius: 4,
+            background: "var(--badge-danger-bg)",
+            border: "1px solid var(--accent-red, #f85149)",
+            padding: "6px 10px",
+            borderRadius: 6,
             marginBottom: 8,
           }}
         >
-          ⚠ Proposal expired (24h limit). Actions disabled.
+          Proposal expired (24h limit). Actions disabled.
         </div>
       )}
 
       {isDecided && (
         <div
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: proposal.status === "denied" ? "var(--accent-red, #f85149)" : "var(--accent-green, #3fb950)",
-            background: "rgba(255, 255, 255, 0.05)",
-            padding: "4px 8px",
-            borderRadius: 4,
+            background: proposal.status === "denied" ? "var(--badge-danger-bg)" : "var(--badge-success-bg)",
+            border: `1px solid ${proposal.status === "denied" ? "var(--accent-red)" : "var(--accent-green)"}`,
+            padding: "6px 10px",
+            borderRadius: 6,
             marginBottom: 8,
           }}
         >
@@ -192,7 +207,6 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           )}
         </div>
       )}
-
 
       {/* Params toggle and inspection */}
       {proposal.params && Object.keys(proposal.params).length > 0 && (
@@ -216,10 +230,13 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             <pre
               style={{
                 fontSize: 11,
-                background: "rgba(0, 0, 0, 0.3)",
-                padding: "6px 8px",
-                borderRadius: 4,
-                marginTop: 4,
+                fontFamily: "var(--font-mono, monospace)",
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border)",
+                color: "var(--text-primary)",
+                padding: "8px 10px",
+                borderRadius: 6,
+                marginTop: 6,
                 overflowX: "auto",
               }}
             >
@@ -231,23 +248,12 @@ export const ActionCard: React.FC<ActionCardProps> = ({
 
       {/* Actions (Approve / Deny) */}
       {!isDecided && !isExpired && (
-        <div className="staff-action-card__actions" style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <div className="staff-action-card__actions">
           <button
             type="button"
             className="staff-action-card__btn staff-action-card__btn--approve"
             onClick={handleApproveClick}
             disabled={hasSubmitted}
-            style={{
-              background: "var(--accent-green, #238636)",
-              color: "var(--color-fg-on-emphasis, #ffffff)",
-              border: "1px solid rgba(240, 246, 252, 0.1)",
-              borderRadius: 6,
-              padding: "4px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: hasSubmitted ? "not-allowed" : "pointer",
-              opacity: hasSubmitted ? 0.6 : 1,
-            }}
           >
             {hasSubmitted ? "Executing…" : "Approve"}
           </button>
@@ -256,17 +262,6 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             className="staff-action-card__btn staff-action-card__btn--deny"
             onClick={handleDenyClick}
             disabled={hasSubmitted}
-            style={{
-              background: "transparent",
-              color: "var(--accent-red, #f85149)",
-              border: "1px solid var(--border-red, #da3633)",
-              borderRadius: 6,
-              padding: "4px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: hasSubmitted ? "not-allowed" : "pointer",
-              opacity: hasSubmitted ? 0.6 : 1,
-            }}
           >
             Deny
           </button>

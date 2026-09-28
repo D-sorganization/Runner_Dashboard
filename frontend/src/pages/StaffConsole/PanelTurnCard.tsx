@@ -37,10 +37,10 @@ export function PanelTurnCard({ message, meta }: PanelTurnCardProps) {
       className="panel-turn-card"
       data-testid={`panel-turn-${message.id}`}
       style={{
-        background: "var(--bg-tertiary, #161b22)",
-        border: "1px solid var(--border, #30363d)",
-        borderRadius: "8px",
-        padding: "12px 14px",
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-md, 10px)",
+        padding: "12px 16px",
         maxWidth: "85%",
         wordBreak: "break-word",
         fontSize: 13,

@@ -43,6 +43,7 @@ from staff.chat_fleet_context import build_fleet_context_block
 from staff.chat_handoff import post_reply_handoff
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
+    build_pending_proposals_block,
     extract_session_id,
     format_history_replay,
 )
@@ -152,7 +153,8 @@ class ChatTurnRunner:
         raw_prompt = user_msg.body_md if user_msg else ""
         knowledge_block = build_knowledge_turn_block(role, raw_prompt)
         fleet_block = await build_fleet_context_block(role)
-        context_blocks = (fleet_block, knowledge_block)
+        pending_block = build_pending_proposals_block(self.conv_store, thread_id)
+        context_blocks = (fleet_block, knowledge_block, pending_block)
         prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)

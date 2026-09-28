@@ -15,6 +15,7 @@ import {
   type FleetThemeId,
 } from '../design/fleetThemes';
 import type { ThemeMode } from '../hooks/useTheme';
+import { GearGlyph, MoonGlyph, SunGlyph } from '../pages/decompIcons';
 
 interface ThemeSelectorProps {
   currentMode: ThemeMode;
@@ -86,10 +87,14 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
     [onThemeChange],
   );
 
-  const currentLabel =
-    currentMode === 'system'
-      ? '⚙ System'
-      : getFleetThemeDisplayName(currentMode);
+  const currentLabel: React.ReactNode =
+    currentMode === 'system' ? (
+      <>
+        <GearGlyph size={12} /> System
+      </>
+    ) : (
+      getFleetThemeDisplayName(currentMode)
+    );
 
   return (
     <div
@@ -145,7 +150,9 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
               fontWeight: currentMode === 'system' ? 600 : 400,
             }}
           >
-            <span>⚙ System</span>
+            <span>
+              <GearGlyph size={12} /> System
+            </span>
           </button>
 
           {/* Fleet themes by category */}
@@ -184,7 +191,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
                       gap: '6px',
                     }}
                   >
-                    {isFleetThemeDark(id) ? '🌙' : '☀️'}
+                    {isFleetThemeDark(id) ? <MoonGlyph size={12} /> : <SunGlyph size={12} />}
                     {getFleetThemeDisplayName(id)}
                   </span>
                   <ThemeSwatch themeId={id} />

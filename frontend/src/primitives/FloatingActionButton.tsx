@@ -51,7 +51,8 @@ export function FloatingActionButton({
       onKeyDown={handleKeyDown}
       style={{
         position: 'fixed',
-        bottom: `calc(${spacingTokens[8]} + env(safe-area-inset-bottom, 0px))`,
+        // Sit above the bottom navigation bar, not on top of its last tab.
+        bottom: `calc(var(--bottom-nav-height, 64px) + ${spacingTokens[8]} + env(safe-area-inset-bottom, 0px))`,
         right: `calc(${spacingTokens[8]} + env(safe-area-inset-right, 0px))`,
         width: '56px',
         height: '56px',

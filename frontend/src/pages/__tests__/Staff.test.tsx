@@ -237,6 +237,14 @@ describe("StaffPage", () => {
     expect(screen.getByTestId("board-machine-ControlTower")).toHaveTextContent("1 queued");
   });
 
+  it("board is a compact strip: totals in the header, details collapsed (#1722)", async () => {
+    stubFetch();
+    render(<StaffPage />);
+    await waitFor(() => expect(screen.getByTestId("board-summary")).toHaveTextContent("1 running"));
+    expect(screen.getByTestId("board-summary")).toHaveTextContent("1 queued");
+    expect(screen.getByTestId("board-details")).not.toHaveAttribute("open");
+  });
+
   it("board renders with real dict spend fixture from live node without crashing (#1289)", async () => {
     const liveSpend = { claude: 0.28, codex: 0.32, total: 0.60 };
     stubFetch((url) =>

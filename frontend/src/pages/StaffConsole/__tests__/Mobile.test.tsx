@@ -12,6 +12,8 @@
  * 7. Tab switching to Waiting on You inbox.
  */
 import "@testing-library/jest-dom/vitest";
+import fs from "fs";
+import path from "path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -20,6 +22,7 @@ const threadApi = vi.hoisted(() => ({
   fetchThreads: vi.fn(),
   fetchThreadMessages: vi.fn(),
   fetchRoster: vi.fn(),
+  fetchRuns: vi.fn(),
 }));
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
@@ -132,6 +135,20 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     threadApi.fetchThreads.mockResolvedValue({ threads: [MOCK_BARB_THREAD] });
     threadApi.fetchThreadMessages.mockResolvedValue({ messages: [] });
     threadApi.fetchRoster.mockResolvedValue({ roles: MOCK_ROLES });
+    threadApi.fetchRuns.mockResolvedValue({
+      runs: [
+        {
+          id: "run-test-1",
+          role: "barb",
+          provider: "claude",
+          status: "running",
+          repo: "D-sorganization/Runner_Dashboard",
+          created_at: "2026-09-25T12:00:00Z",
+          cost_usd: 0.42,
+        },
+      ],
+      total: 1,
+    });
   });
 
   afterEach(() => {
@@ -146,6 +163,17 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(screen.getByTestId("staff-mobile-ask-barb")).toBeInTheDocument();
     expect(screen.getByText("Chief Architect")).toBeInTheDocument();
     expect(screen.getByText("Fleet Maintenance")).toBeInTheDocument();
+  });
+
+  it("lists roles whose API group is free-form or missing (desktop tiering)", () => {
+    const liveShaped: StaffRoleItem[] = [
+      { ...MOCK_ROLES[1], name: "librarian", title: "Librarian", group: "Specialist" },
+      { ...MOCK_ROLES[1], name: "project-steward", title: "Project Steward", group: undefined },
+    ];
+    render(<StaffConsoleMobile roles={liveShaped} />);
+
+    expect(screen.getByText("Librarian")).toBeInTheDocument();
+    expect(screen.getByText("Project Steward")).toBeInTheDocument();
   });
 
   it("filters roles in the mobile roster via search input", () => {
@@ -292,6 +320,23 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(screen.getByText("Conversation with Barb")).toBeInTheDocument();
   });
 
+  it("shows an empty-thread hint instead of a blank pane when there are no messages", () => {
+    window.location.search = "?thread=thread-barb-auto";
+    render(<StaffConsoleMobile roles={MOCK_ROLES} initialThread={MOCK_BARB_THREAD} initialMessages={[]} />);
+
+    const empty = screen.getByTestId("staff-mobile-thread-empty");
+    expect(empty).toHaveTextContent(/No messages yet/i);
+  });
+
+  it("hides the empty-thread hint once the thread has messages", () => {
+    window.location.search = "?thread=thread-barb-auto";
+    render(
+      <StaffConsoleMobile roles={MOCK_ROLES} initialThread={MOCK_BARB_THREAD} initialMessages={MOCK_MESSAGES} />,
+    );
+
+    expect(screen.queryByTestId("staff-mobile-thread-empty")).not.toBeInTheDocument();
+  });
+
   it("opens role thread directly when ?role=<role> is present in the URL", () => {
     window.location.search = "?role=architect";
 
@@ -346,5 +391,41 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("staff-mobile-inbox-view")).toBeInTheDocument();
     });
+  });
+
+  it("switches to Runs view via tab toggle and displays runs", async () => {
+    render(<StaffConsoleMobile roles={MOCK_ROLES} />);
+
+    const runsTab = screen.getByTestId("staff-mobile-tab-runs");
+    fireEvent.click(runsTab);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("staff-mobile-runs-view")).toBeInTheDocument();
+      expect(screen.getByTestId("staff-mobile-run-run-test-1")).toBeInTheDocument();
+    });
+  });
+
+  it("renders Ask Barb without emoji in UI chrome", () => {
+    render(<StaffConsoleMobile roles={MOCK_ROLES} />);
+    const askBarb = screen.getByTestId("staff-mobile-ask-barb");
+    expect(askBarb.textContent).not.toContain("🤖");
+    expect(askBarb.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("opens runs view directly when ?tab=runs is present in URL", async () => {
+    window.location.search = "?tab=runs";
+    render(<StaffConsoleMobile roles={MOCK_ROLES} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("staff-mobile-runs-view")).toBeInTheDocument();
+    });
+  });
+
+  it("enforces 44px+ touch targets in mobile.css contract", () => {
+    const css = fs.readFileSync(path.join(__dirname, "../mobile.css"), "utf8");
+
+    expect(css).toMatch(/\.staff-mobile__tab\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.staff-action-card__btn\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/env\(safe-area-inset-bottom/);
   });
 });

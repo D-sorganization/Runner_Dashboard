@@ -51,6 +51,16 @@ describe("formatDuration", () => {
     expect(formatDuration(90)).toBe("1m 30s")
     expect(formatDuration(120)).toBe("2m 0s")
   })
+
+  it("rolls long durations up to hours and days (queue waits of 40 days read 40d, not 57741m)", () => {
+    expect(formatDuration(3600)).toBe("1h 0m")
+    expect(formatDuration(3 * 3600 + 25 * 60 + 9)).toBe("3h 25m")
+    expect(formatDuration(57741 * 60 + 27)).toBe("40d 2h")
+  })
+
+  it("drops sub-second fractions", () => {
+    expect(formatDuration(90.7)).toBe("1m 30s")
+  })
 })
 
 describe("formatBytes", () => {

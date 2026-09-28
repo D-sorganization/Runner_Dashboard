@@ -185,6 +185,9 @@ def runner_health_check(runner: dict | GhRunner, system_metrics: dict | None = N
     """
     health_status = "healthy"
     issues = []
+    runner_id: int | None
+    runner_name: str | None
+    status: str | None
 
     if isinstance(runner, GhRunner):
         runner_id = runner.id

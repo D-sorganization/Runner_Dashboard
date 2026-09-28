@@ -238,7 +238,7 @@ export function extractIssueOrRunLinks(text: string): React.ReactNode[] {
               margin: "0 2px",
             },
           },
-          `⚙ ${runId}`
+          `run:${runId}`
         )
       );
     } else {

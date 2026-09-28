@@ -17,6 +17,7 @@ import React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
 import { ServerGlyph } from "./decompIcons";
+import { EmptyState } from "../primitives/EmptyState";
 
 interface Quotas {
   max_runners: number | string;
@@ -50,24 +51,34 @@ export function PrincipalsTab(): React.ReactElement {
   const [editingQuota, setEditingQuota] = useState<EditingQuota | null>(null);
   const [mintingToken, setMintingToken] = useState<string | null>(null);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
+  // 403 from the admin API means "not an admin", not a failure (#1718 review).
+  const [forbidden, setForbidden] = useState(false);
 
   const loadData = useCallback(() => {
     legacyFetch("/api/admin/principals")
       .then((r) => {
+        if (r.status === 403) {
+          setForbidden(true);
+          return null;
+        }
         if (!r.ok) throw new Error("Failed to load principals");
         return r.json() as Promise<{ principals: Principal[] }>;
       })
-      .then((data) => setPrincipals(data.principals))
+      .then((data) => data && setPrincipals(data.principals))
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : String(e)),
       );
 
     legacyFetch("/api/admin/tokens")
       .then((r) => {
+        if (r.status === 403) {
+          setForbidden(true);
+          return null;
+        }
         if (!r.ok) throw new Error("Failed to load tokens");
         return r.json() as Promise<{ tokens: ServiceToken[] }>;
       })
-      .then((data) => setTokens(data.tokens))
+      .then((data) => data && setTokens(data.tokens))
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : String(e)),
       );
@@ -178,6 +189,17 @@ export function PrincipalsTab(): React.ReactElement {
     color: "white",
     borderRadius: "4px",
   };
+
+  if (forbidden) {
+    return (
+      <div className="section" style={{ marginTop: "16px" }}>
+        <EmptyState
+          title="Admin access required"
+          description="Principals and service tokens are visible to admin principals only. Sign in with an admin principal to manage quotas and tokens."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="section" style={{ marginTop: "16px" }}>

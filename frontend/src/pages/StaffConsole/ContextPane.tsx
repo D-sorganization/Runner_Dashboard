@@ -1,11 +1,19 @@
+/**
+ * ContextPane.tsx — Context inspection sidebar for selected Staff role / thread.
+ *
+ * Implements Workstream C (Issue #1721, Epic #1718).
+ */
 import React, { useState, useEffect } from "react";
 import type { ContextPaneProps } from "./contextTypes";
+import { Skeleton, SkeletonLine } from "../../primitives/Skeleton";
+import "./context.css";
 
 export const ContextPane: React.FC<ContextPaneProps> = ({
   role,
   threadContext,
   onToggleSchedule,
   className = "",
+  isLoading = false,
 }) => {
   const [activeTab, setActiveTab] = useState<"role" | "thread">("role");
   const [scheduleEnabled, setScheduleEnabled] = useState<boolean>(role?.schedule?.enabled ?? true);
@@ -40,46 +48,30 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
     }
   };
 
+  const spendToday = role?.budget?.usd_today;
+  const spendKnown = typeof spendToday === "number";
+  const dailyCap = role?.budget?.usd_per_day ?? 0;
+  const budgetPct = spendKnown && dailyCap > 0 ? Math.min(100, Math.round((spendToday / dailyCap) * 100)) : 0;
+  const budgetDanger = spendKnown && dailyCap > 0 && spendToday >= dailyCap;
+  const budgetWarning = spendKnown && dailyCap > 0 && spendToday >= dailyCap * 0.8 && !budgetDanger;
+
   return (
     <aside
       className={`staff-context-pane ${className}`.trim()}
       aria-label="Context pane"
-      style={{
-        width: "320px",
-        minWidth: "280px",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        background: "var(--bg-secondary, #161b22)",
-        borderLeft: "1px solid var(--border, #30363d)",
-        fontSize: "0.875rem",
-      }}
     >
-      {/* Tab Header */}
+      {/* Tabbed Header (Role / Thread) */}
       <div
         role="tablist"
         aria-label="Context views"
-        style={{
-          display: "flex",
-          borderBottom: "1px solid var(--border, #30363d)",
-          background: "var(--bg-tertiary, #1c2333)",
-        }}
+        className="context-tablist"
       >
         <button
           role="tab"
           type="button"
           aria-selected={activeTab === "role"}
           onClick={() => setActiveTab("role")}
-          style={{
-            flex: 1,
-            padding: "10px 12px",
-            border: "none",
-            borderBottom: activeTab === "role" ? "2px solid var(--accent-blue, #58a6ff)" : "2px solid transparent",
-            background: activeTab === "role" ? "var(--bg-secondary, #161b22)" : "transparent",
-            fontWeight: activeTab === "role" ? 600 : 500,
-            color: activeTab === "role" ? "var(--accent-blue, #58a6ff)" : "var(--text-secondary, #8b949e)",
-            cursor: "pointer",
-          }}
+          className={`context-tab ${activeTab === "role" ? "context-tab--active" : ""}`}
         >
           Role
         </button>
@@ -88,86 +80,89 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
           type="button"
           aria-selected={activeTab === "thread"}
           onClick={() => setActiveTab("thread")}
-          style={{
-            flex: 1,
-            padding: "10px 12px",
-            border: "none",
-            borderBottom: activeTab === "thread" ? "2px solid var(--accent-blue, #58a6ff)" : "2px solid transparent",
-            background: activeTab === "thread" ? "var(--bg-secondary, #161b22)" : "transparent",
-            fontWeight: activeTab === "thread" ? 600 : 500,
-            color: activeTab === "thread" ? "var(--accent-blue, #58a6ff)" : "var(--text-secondary, #8b949e)",
-            cursor: "pointer",
-          }}
+          className={`context-tab ${activeTab === "thread" ? "context-tab--active" : ""}`}
         >
           Thread
         </button>
       </div>
 
-      {/* Tab Panels */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "14px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-        }}
-      >
+      {/* Content Area */}
+      <div className="context-content">
         {toggleError && (
           <div
             role="alert"
-            style={{
-              padding: "8px 10px",
-              borderRadius: "6px",
-              background: "var(--badge-danger-bg, rgba(248, 81, 73, 0.15))",
-              color: "var(--badge-danger-fg, #f85149)",
-              border: "1px solid rgba(248, 81, 73, 0.3)",
-              fontSize: "0.75rem",
-            }}
+            className="context-error-alert"
           >
             {toggleError}
           </div>
         )}
 
-        {/* ROLE TAB */}
-        {activeTab === "role" && role && (
-          <div role="tabpanel" aria-label="Role details" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            {/* Header */}
-            <div>
-              <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-primary, #e6edf3)" }}>
-                {role.title}
+        {/* Loading Skeletons */}
+        {isLoading && (
+          <div className="context-skeleton-wrap" aria-label="Loading context details" role="status">
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <SkeletonLine height={16} width="55%" />
+              <SkeletonLine height={12} width="30%" />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <SkeletonLine height={10} width="25%" />
+              <SkeletonLine height={12} width="100%" />
+              <SkeletonLine height={12} width="90%" />
+              <SkeletonLine height={12} width="70%" />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <SkeletonLine height={10} width="30%" />
+              <div style={{ display: "flex", gap: "6px" }}>
+                <Skeleton height={22} width={65} radius={9999} />
+                <Skeleton height={22} width={75} radius={9999} />
               </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-secondary, #8b949e)" }}>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <SkeletonLine height={10} width="35%" />
+              <Skeleton height={4} width="100%" radius={9999} />
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <SkeletonLine height={11} width="28%" />
+                <SkeletonLine height={11} width="28%" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ROLE TAB */}
+        {!isLoading && activeTab === "role" && role && (
+          <div
+            role="tabpanel"
+            aria-label="Role details"
+            className="context-tabpanel"
+          >
+            {/* Header */}
+            <div className="context-role-header">
+              <h3 className="context-role-title">
+                {role.title}
+              </h3>
+              <div className="context-role-handle">
                 @{role.name}
               </div>
             </div>
 
-            {/* Mandate */}
+            {/* Mandate in prose style */}
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase" }}>
+              <div className="context-section-label">
                 Mandate
               </div>
-              <p style={{ margin: "4px 0 0 0", color: "var(--text-primary, #e6edf3)", lineHeight: 1.4 }}>
+              <p className="context-mandate-prose">
                 {role.mandate}
               </p>
             </div>
 
             {/* Schedule Section */}
             {role.schedule && (
-              <div
-                style={{
-                  background: "var(--bg-tertiary, #1c2333)",
-                  padding: "10px",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border, #30363d)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase" }}>
+              <div className="context-schedule-card">
+                <div className="context-schedule-header">
+                  <span className="context-section-label" style={{ marginBottom: 0 }}>
                     Schedule
                   </span>
-                  {/* Toggle Switch */}
+                  {/* Accessible Toggle Switch */}
                   <button
                     type="button"
                     role="switch"
@@ -175,93 +170,84 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                     aria-label="Toggle schedule"
                     onClick={handleToggle}
                     disabled={isToggling}
-                    style={{
-                      width: "36px",
-                      height: "20px",
-                      borderRadius: "10px",
-                      background: scheduleEnabled ? "var(--accent-blue, #58a6ff)" : "var(--border-light, #3d444d)",
-                      position: "relative",
-                      border: "none",
-                      cursor: isToggling ? "wait" : "pointer",
-                      padding: 0,
-                      transition: "background 0.2s",
-                    }}
+                    className={`context-switch-btn ${
+                      scheduleEnabled ? "context-switch-btn--checked" : ""
+                    }`}
                   >
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: "2px",
-                        left: scheduleEnabled ? "18px" : "2px",
-                        width: "16px",
-                        height: "16px",
-                        borderRadius: "50%",
-                        background: "var(--text-on-accent, white)",
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-                        transition: "left 0.2s",
-                      }}
-                    />
+                    <span className="context-switch-knob" />
                   </button>
                 </div>
-                <div style={{ fontSize: "0.8125rem", fontFamily: "monospace" }}>{role.schedule.cron}</div>
+                <div className="context-schedule-cron">{role.schedule.cron}</div>
                 {role.schedule.window && (
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-secondary, #8b949e)" }}>
+                  <div className="context-schedule-window">
                     Window: {role.schedule.window}
                   </div>
                 )}
-                <div style={{ fontSize: "0.75rem", color: scheduleEnabled ? "var(--accent-green, #3fb950)" : "var(--accent-red, #f85149)", marginTop: "4px" }}>
+                <div
+                  className={`context-schedule-status ${
+                    scheduleEnabled
+                      ? "context-schedule-status--active"
+                      : "context-schedule-status--paused"
+                  }`}
+                >
                   {scheduleEnabled ? "Active" : "Schedule Paused"}
                 </div>
               </div>
             )}
 
-            {/* Providers Section */}
+            {/* Providers Section: Chips with status dots */}
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div className="context-section-label">
                 Providers
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              <div className="context-providers-list">
                 {role.providers?.map((p) => (
                   <span
                     key={p.name}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "5px",
-                      padding: "3px 8px",
-                      borderRadius: "12px",
-                      fontSize: "0.75rem",
-                      background: "var(--bg-card, #1c2128)",
-                      border: "1px solid var(--border, #30363d)",
-                      color: "var(--text-primary, #e6edf3)",
-                    }}
+                    className="context-provider-chip"
                   >
                     <span
-                      style={{
-                        width: "6px",
-                        height: "6px",
-                        borderRadius: "50%",
-                        background: p.signed_in ? "var(--accent-green, green)" : "var(--accent-yellow, orange)",
-                      }}
+                      className={`context-provider-dot ${
+                        p.signed_in
+                          ? "context-provider-dot--signed-in"
+                          : "context-provider-dot--signed-out"
+                      }`}
+                      aria-hidden="true"
                     />
-                    {p.name}
+                    <span>{p.name}</span>
                   </span>
                 ))}
               </div>
             </div>
 
-            {/* Budget & Spend */}
+            {/* Budget & Spend: Thin progress bar + numbers */}
             {role.budget && (
-              <div>
-                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "4px" }}>
+              <div className="context-budget-block">
+                <div className="context-section-label">
                   Budget & Spend
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", color: "var(--text-primary, #e6edf3)" }}>
-                  <span style={{ color: "var(--text-secondary, #8b949e)" }}>Today:</span>
-                  <span style={{ fontWeight: 600 }}>${role.budget.usd_today.toFixed(2)}</span>
+                <div className="context-budget-bar-track">
+                  <div
+                    className={`context-budget-bar-fill ${
+                      budgetDanger
+                        ? "context-budget-bar-fill--danger"
+                        : budgetWarning
+                        ? "context-budget-bar-fill--warning"
+                        : ""
+                    }`}
+                    style={{ width: `${budgetPct}%` }}
+                  />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", color: "var(--text-primary, #e6edf3)" }}>
-                  <span style={{ color: "var(--text-secondary, #8b949e)" }}>Daily Cap:</span>
-                  <span style={{ fontWeight: 600 }}>${role.budget.usd_per_day.toFixed(2)}</span>
+                <div className="context-budget-numbers">
+                  <span className="context-budget-label">
+                    Today:{" "}
+                    <span className="context-budget-val">
+                      {spendKnown ? `$${spendToday.toFixed(2)}` : "—"}
+                    </span>
+                  </span>
+                  <span className="context-budget-label">
+                    Daily Cap: <span className="context-budget-val">${role.budget.usd_per_day.toFixed(2)}</span>
+                  </span>
                 </div>
               </div>
             )}
@@ -269,25 +255,17 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             {/* Active Runs */}
             {role.active_runs && role.active_runs.length > 0 && (
               <div>
-                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
+                <div className="context-section-label">
                   Active Runs
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div className="context-runs-list">
                   {role.active_runs.map((r) => (
                     <div
                       key={r.id}
-                      style={{
-                        padding: "6px 8px",
-                        borderRadius: "4px",
-                        background: "var(--bg-card, #1c2128)",
-                        border: "1px solid var(--border, #30363d)",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
+                      className="context-run-row"
                     >
-                      <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "var(--text-primary, #e6edf3)" }}>{r.id}</span>
-                      <span style={{ fontSize: "0.75rem", color: "var(--accent-blue, #58a6ff)", fontWeight: 500 }}>
+                      <span className="context-run-id">{r.id}</span>
+                      <span className="context-run-status">
                         {r.status}
                       </span>
                     </div>
@@ -298,44 +276,37 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
           </div>
         )}
 
+        {/* Empty state when no role is selected */}
+        {!isLoading && activeTab === "role" && !role && (
+          <div className="context-empty-text">
+            No role selected. Choose a staff role from the roster to view details.
+          </div>
+        )}
+
         {/* THREAD TAB */}
-        {activeTab === "thread" && (
-          <div role="tabpanel" aria-label="Thread linked items" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        {!isLoading && activeTab === "thread" && (
+          <div
+            role="tabpanel"
+            aria-label="Thread linked items"
+            className="context-tabpanel"
+          >
             {threadContext?.thread_id && (
               <div>
-                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
+                <div className="context-section-label">
                   Export Thread
                 </div>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <div className="context-export-links">
                   <a
                     href={`/api/v1/staff/threads/${threadContext.thread_id}/export?format=markdown`}
                     download={`thread-${threadContext.thread_id}.md`}
-                    style={{
-                      padding: "4px 8px",
-                      background: "var(--bg-card, #1c2128)",
-                      border: "1px solid var(--border, #30363d)",
-                      borderRadius: "4px",
-                      color: "var(--accent-blue, #58a6ff)",
-                      fontSize: "0.75rem",
-                      textDecoration: "none",
-                      fontWeight: 500,
-                    }}
+                    className="context-export-link"
                   >
                     Export Markdown
                   </a>
                   <a
                     href={`/api/v1/staff/threads/${threadContext.thread_id}/export?format=json`}
                     download={`thread-${threadContext.thread_id}.json`}
-                    style={{
-                      padding: "4px 8px",
-                      background: "var(--bg-card, #1c2128)",
-                      border: "1px solid var(--border, #30363d)",
-                      borderRadius: "4px",
-                      color: "var(--accent-blue, #58a6ff)",
-                      fontSize: "0.75rem",
-                      textDecoration: "none",
-                      fontWeight: 500,
-                    }}
+                    className="context-export-link"
                   >
                     Export JSON
                   </a>
@@ -344,48 +315,54 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             )}
 
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div className="context-section-label">
                 Linked Work Items
               </div>
               {threadContext?.linked_work_items?.length ? (
                 threadContext.linked_work_items.map((wi) => (
-                  <div key={wi.id} style={{ fontSize: "0.8125rem", padding: "4px 0", color: "var(--text-primary, #e6edf3)" }}>
-                    <span style={{ fontWeight: 600 }}>{wi.id}</span>: <span>{wi.title}</span>
+                  <div key={wi.id} className="context-work-item">
+                    <span className="context-work-item-id">{wi.id}</span>: <span>{wi.title}</span>
                   </div>
                 ))
               ) : (
-                <div style={{ color: "var(--text-secondary, #8b949e)", fontSize: "0.75rem" }}>None</div>
+                <div className="context-empty-text">None</div>
               )}
             </div>
 
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div className="context-section-label">
                 Linked Issues & PRs
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              <div className="context-chips-wrap">
                 {threadContext?.linked_issues?.map((iss) => (
-                  <span key={iss} style={{ background: "var(--bg-card, #1c2128)", border: "1px solid var(--border, #30363d)", color: "var(--text-primary, #e6edf3)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
+                  <span key={iss} className="context-chip">
                     {iss}
                   </span>
                 ))}
                 {threadContext?.linked_prs?.map((pr) => (
-                  <span key={pr} style={{ background: "var(--bg-card, #1c2128)", border: "1px solid var(--border, #30363d)", color: "var(--text-primary, #e6edf3)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
+                  <span key={pr} className="context-chip">
                     {pr}
                   </span>
                 ))}
+                {!threadContext?.linked_issues?.length && !threadContext?.linked_prs?.length && (
+                  <div className="context-empty-text">None</div>
+                )}
               </div>
             </div>
 
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary, #8b949e)", textTransform: "uppercase", marginBottom: "6px" }}>
+              <div className="context-section-label">
                 Linked Code Requests
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              <div className="context-chips-wrap">
                 {threadContext?.linked_code_requests?.map((cr) => (
-                  <span key={cr} style={{ background: "var(--bg-card, #1c2128)", border: "1px solid var(--border, #30363d)", color: "var(--text-primary, #e6edf3)", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem" }}>
+                  <span key={cr} className="context-chip">
                     {cr}
                   </span>
                 ))}
+                {!threadContext?.linked_code_requests?.length && (
+                  <div className="context-empty-text">None</div>
+                )}
               </div>
             </div>
           </div>
@@ -394,3 +371,4 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
     </aside>
   );
 };
+

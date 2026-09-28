@@ -65,6 +65,18 @@
   user-select: none;
 }
 
+/* Chevron + label on one line; the header is a 52px bar, not a stack (#1724). */
+.staff-mobile__back-btn {
+  border-color: transparent;
+  gap: 2px;
+  padding: 8px 10px 8px 4px;
+  white-space: nowrap;
+}
+
+.staff-mobile__back-icon {
+  flex: none;
+}
+
 .staff-mobile__back-btn:active,
 .staff-mobile__details-btn:active {
   background-color: var(--bg-tertiary, #21262d);
@@ -91,20 +103,40 @@
   margin-left: 6px;
 }
 
-/* ── Tab Switch Strip (Roster vs Waiting on You) ─────────────────────────── */
+/* ── Tab Switch Strip (Console vs Inbox vs Runs) ─────────────────────────── */
+
+.staff-mobile__view-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.staff-mobile__main-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 .staff-mobile__tabs {
   display: flex;
-  padding: 6px 12px;
+  padding: 8px 12px;
   gap: 8px;
   background-color: var(--bg-secondary, #161b22);
-  border-bottom: 1px solid var(--border, #30363d);
+  border-top: 1px solid var(--border, #30363d);
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   flex-shrink: 0;
+  z-index: 10;
 }
 
 .staff-mobile__tab {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
+  min-width: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -112,11 +144,26 @@
   background: transparent;
   color: var(--text-secondary, #8b949e);
   border: 1px solid transparent;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
+  user-select: none;
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    border-color 140ms ease-out;
+}
+
+.staff-mobile__tab:hover {
+  color: var(--text-primary, #ffffff);
+  background-color: var(--bg-hover, rgba(255, 255, 255, 0.04));
+}
+
+.staff-mobile__tab:focus-visible {
+  outline: 2px solid var(--accent-blue, #58a6ff);
+  outline-offset: -2px;
 }
 
 .staff-mobile__tab--active {
@@ -145,7 +192,7 @@
 
 .staff-mobile__search-input {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 12px;
   background-color: var(--bg-secondary, #161b22);
   border: 1px solid var(--border, #30363d);
@@ -265,6 +312,31 @@
   margin-left: 8px;
 }
 
+/* Empty thread: a centred hint instead of a blank pane (#1724). */
+.staff-mobile__thread-empty {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.staff-mobile__thread-empty-title {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.staff-mobile__thread-empty-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
 /* ── Safe-Area Aware Bottom Composer ─────────────────────────────────────── */
 
 .staff-mobile__composer-container {
@@ -278,6 +350,13 @@
   padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
   z-index: 20;
   flex-shrink: 0;
+}
+
+/* Inside the mobile shell the fixed bottom nav covers the scrollport's last
+   --bottom-nav-height px, so the sticky composer must stop above it (#1724). */
+.mobile-shell__content .staff-mobile__composer-container {
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 12px;
 }
 
 /* ── Thumb-zone Floating Action Bar ──────────────────────────────────────── */
@@ -317,6 +396,150 @@
   background-color: transparent;
   color: var(--accent-red, #f85149);
   border-color: var(--border-red, #da3633);
+}
+
+/* ── Action Proposal Cards in Mobile Thread ──────────────────────────────── */
+
+.staff-mobile .staff-action-card__actions {
+  display: flex !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+  width: 100% !important;
+}
+
+.staff-mobile .staff-action-card__btn {
+  flex: 1 !important;
+  min-height: 44px !important;
+  min-width: 44px !important;
+  padding: 10px 16px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-sm, 6px) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  touch-action: manipulation !important;
+}
+
+.staff-mobile .staff-action-card__btn:focus-visible {
+  outline: 2px solid var(--accent-blue, #58a6ff) !important;
+  outline-offset: 2px !important;
+}
+
+/* ── Mobile Runs View ────────────────────────────────────────────────────── */
+
+.staff-mobile__runs-container {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.staff-mobile__runs-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.staff-mobile__runs-select {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  background-color: var(--bg-secondary, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-primary, #c9d1d9);
+  font-size: 13px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.staff-mobile__runs-select:focus {
+  outline: none;
+  border-color: var(--accent-blue, #58a6ff);
+}
+
+.staff-mobile__run-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  min-height: 48px;
+  background-color: var(--bg-secondary, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: background-color 140ms ease-out;
+}
+
+.staff-mobile__run-card:active {
+  background-color: var(--bg-tertiary, #21262d);
+}
+
+.staff-mobile__run-card:focus-visible {
+  outline: 2px solid var(--accent-blue, #58a6ff);
+  outline-offset: -1px;
+}
+
+.staff-mobile__run-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.staff-mobile__run-role {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+}
+
+.staff-mobile__run-target {
+  font-size: 12px;
+  color: var(--text-secondary, #8b949e);
+  font-family: var(--font-mono, monospace);
+}
+
+.staff-mobile__run-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted, #8b949e);
+}
+
+.staff-mobile__skeleton {
+  min-height: 64px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary, #161b22) 25%,
+    var(--bg-tertiary, #21262d) 50%,
+    var(--bg-secondary, #161b22) 75%
+  );
+  background-size: 200% 100%;
+  animation: staff-skeleton-pulse 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, #30363d);
+}
+
+.staff-mobile__bot-glyph {
+  width: 24px;
+  height: 24px;
+  color: var(--accent-blue, #58a6ff);
+  display: block;
+}
+
+@keyframes staff-skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* ── Bottom Sheet Drawer (Role Context) ──────────────────────────────────── */

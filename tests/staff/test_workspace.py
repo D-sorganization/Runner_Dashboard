@@ -66,3 +66,17 @@ def test_remove_worktree_outside_root_leaves_project_folders_untouched(
 
     assert not outside_worktree.exists()
     assert project_folder.exists()
+
+
+def test_default_repos_roots_use_the_windows_profile_that_holds_repositories(monkeypatch, tmp_path):
+    """The WSL login is not the Windows profile name; don't guess from $USERNAME (#1718)."""
+    from staff import workspace as ws
+
+    profile_root = tmp_path / "Users" / "winprofile" / "Repositories"
+    monkeypatch.setenv("USERNAME", "wsl-login")
+    monkeypatch.setattr(ws, "windows_repositories_root", lambda: profile_root)
+
+    roots = ws._default_repos_roots(tmp_path / "home")
+
+    assert profile_root in roots
+    assert all("wsl-login" not in str(r) for r in roots)

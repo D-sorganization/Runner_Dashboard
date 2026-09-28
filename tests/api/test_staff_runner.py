@@ -28,7 +28,10 @@ _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _FAKE_CLI = """
 import json, sys, time
 prompt = sys.argv[1]
-print(json.dumps({"type": "system", "message": "booting"}))
+if "--emit-session" in sys.argv:
+    print(json.dumps({"type": "system", "message": "booting", "session_id": "fake-sess-123"}))
+else:
+    print(json.dumps({"type": "system", "message": "booting"}))
 content = [{"type": "text", "text": "working on: " + prompt[:30]}]
 print(json.dumps({"type": "assistant", "message": {"content": content}}))
 if "--slow" in sys.argv:
@@ -37,6 +40,17 @@ if "--fail" in sys.argv:
     sys.exit(3)
 if "--ask" in sys.argv:
     print(json.dumps({"type": "result", "result": "Should I proceed with git commit?"}))
+    sys.exit(0)
+if "--no-result" in sys.argv and "--resume" not in sys.argv:
+    print(json.dumps({"type": "result", "result": "Finished without result line"}))
+    sys.exit(0)
+if "--resume" in sys.argv:
+    if "--reject-nudge" in sys.argv:
+        print(json.dumps({"type": "result", "result": "Sure! STAFF_RESULT: rejected prefix"}))
+    else:
+        usage = {"input_tokens": 10, "output_tokens": 5}
+        res = {"type": "result", "result": "STAFF_RESULT: ok after nudge", "usage": usage, "total_cost_usd": 0.001}
+        print(json.dumps(res))
     sys.exit(0)
 usage = {"input_tokens": 120, "output_tokens": 30}
 print(json.dumps({"type": "result", "result": "STAFF_RESULT: done", "usage": usage, "total_cost_usd": 0.0123}))
@@ -149,12 +163,36 @@ def staff(
         argv=(str(fake_cli), "{prompt}", "--ask"),
         json_lines=True,
     )
+    no_res = adapters_mod.ProviderAdapter(
+        provider_id="fake-no-result",
+        label="No Result",
+        executable=sys.executable,
+        argv=(str(fake_cli), "{prompt}", "--no-result"),
+        json_lines=True,
+    )
+    nudge_ok = adapters_mod.ProviderAdapter(
+        provider_id="fake-nudge-ok",
+        label="Nudge OK",
+        executable=sys.executable,
+        argv=(str(fake_cli), "{prompt}", "--no-result", "--emit-session"),
+        json_lines=True,
+    )
+    nudge_reject = adapters_mod.ProviderAdapter(
+        provider_id="fake-nudge-reject",
+        label="Nudge Reject",
+        executable=sys.executable,
+        argv=(str(fake_cli), "{prompt}", "--no-result", "--emit-session", "--reject-nudge"),
+        json_lines=True,
+    )
     adapters = {
         **adapters_mod.ADAPTERS,
         "fake": fake,
         "fake-slow": slow,
         "fake-fail": failing,
         "fake-ask": asking,
+        "fake-no-result": no_res,
+        "fake-nudge-ok": nudge_ok,
+        "fake-nudge-reject": nudge_reject,
     }
     monkeypatch.setattr(adapters_mod, "ADAPTERS", adapters)
     store_mod.reset_store()
@@ -527,12 +565,48 @@ def test_cancel_route(client: TestClient, staff: runner_mod.StaffRunner) -> None
 
 
 @pytest.mark.integration
-def test_exit_zero_without_staff_result_is_failed(
+def test_exit_zero_ending_in_question_classified_as_needs_input(
     staff: runner_mod.StaffRunner,
 ) -> None:
     rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-ask", prompt="sweep"))
     done = _wait(staff.store, rec.id, ("succeeded", "failed"))
     assert done.status == "failed" and done.exit_code == 0
+    assert done.failure_class == "needs_input"
+    assert done.error == "agent paused asking: Should I proceed with git commit?"
+
+
+@pytest.mark.integration
+def test_exit_zero_without_staff_result_or_question_is_no_result(
+    staff: runner_mod.StaffRunner,
+) -> None:
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-no-result", prompt="sweep"))
+    done = _wait(staff.store, rec.id, ("succeeded", "failed"))
+    assert done.status == "failed" and done.exit_code == 0
+    assert done.failure_class == "no_result"
+    assert done.error == runner_mod.NO_RESULT_ERROR
+
+
+@pytest.mark.integration
+def test_retry_nudge_recovers_missing_staff_result(
+    staff: runner_mod.StaffRunner,
+) -> None:
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-nudge-ok", prompt="sweep"))
+    done = _wait(staff.store, rec.id, ("succeeded", "failed"))
+    assert done.status == "succeeded" and done.exit_code == 0
+    events = staff.store.events_after(rec.id)
+    nudge_events = [e for e in events if e["kind"] == "nudge_reply"]
+    assert any(e["text"] == "STAFF_RESULT: ok after nudge" for e in nudge_events)
+    assert any(e["kind"] == "nudge" for e in events)
+
+
+@pytest.mark.integration
+def test_retry_nudge_rejects_non_prefix_match(
+    staff: runner_mod.StaffRunner,
+) -> None:
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-nudge-reject", prompt="sweep"))
+    done = _wait(staff.store, rec.id, ("succeeded", "failed"))
+    assert done.status == "failed" and done.exit_code == 0
+    assert done.failure_class == "no_result"
     assert done.error == runner_mod.NO_RESULT_ERROR
 
 

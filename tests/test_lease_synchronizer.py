@@ -60,3 +60,19 @@ def test_sync_github_leases_expired_claim_skipped() -> None:
         }
     ]
     asyncio.run(ls.sync_github_leases(issues))
+
+
+def test_sync_github_leases_accepts_inventory_string_labels(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The issue inventory flattens labels to strings; that 500'd /api/issues (#1718 live sweep)."""
+    looked_up: list[str] = []
+
+    def get_principal(principal_id: str) -> None:
+        looked_up.append(principal_id)
+
+    monkeypatch.setattr(ls.identity_manager, "get_principal", get_principal)
+    issues = [
+        {"number": 3, "labels": ["bug"], "body": ""},
+        {"number": 4, "labels": ["claim:claude"], "body": "lease: claude expires 2999-01-01T00:00:00Z"},
+    ]
+    asyncio.run(ls.sync_github_leases(issues))
+    assert looked_up == ["agent:claude"]

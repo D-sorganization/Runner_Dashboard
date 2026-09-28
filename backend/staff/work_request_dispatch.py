@@ -57,7 +57,7 @@ async def _dispatch_remediation_workflow(
     ref: str = "main",
 ) -> dict[str, Any]:
     """Dispatch central CI remediation workflow."""
-    from server import _normalize_repository_input
+    from routers.remediation import _normalize_repository_input
 
     _, full_repo = _normalize_repository_input(repo)
     chosen_provider = (provider or "claude").strip()
@@ -93,7 +93,7 @@ async def _dispatch_issue_or_pr_action(
     machine: str = "local",
 ) -> dict[str, Any]:
     """Dispatch workflow action for an issue or pull request."""
-    from server import _normalize_repository_input
+    from routers.remediation import _normalize_repository_input
 
     _, full_repo = _normalize_repository_input(repo)
     envelope_id = uuid4().hex

@@ -26,7 +26,8 @@ async def sync_github_leases(issues: list[dict[str, Any]]):
     """Scan issues for claims and update internal leases."""
     now = time.time()
     for issue in issues:
-        labels = [lbl["name"] for lbl in issue.get("labels", [])]
+        # GitHub REST gives label objects; the issue inventory flattens them to names.
+        labels = [lbl["name"] if isinstance(lbl, dict) else str(lbl) for lbl in issue.get("labels", [])]
         agent, label = _parse_agent_claim(labels)
         if not agent:
             continue

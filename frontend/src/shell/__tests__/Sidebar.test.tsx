@@ -157,3 +157,45 @@ describe("Sidebar — keyboard navigation", () => {
     expect(items[0]).toHaveFocus();
   });
 });
+
+describe("Sidebar — UI overhaul (Workstream E)", () => {
+  it("renders product mark and name ('Runner Dashboard', font-weight 600) at top", () => {
+    renderSidebar();
+    const brand = screen.getByText("Runner Dashboard");
+    expect(brand).toBeInTheDocument();
+    expect(brand.style.fontWeight).toBe("600");
+  });
+
+  it("sets width to 240px when expanded, 56px when railCollapsed", () => {
+    renderSidebar();
+    const nav = screen.getByRole("navigation", { name: /sections/i });
+    expect(nav.style.width).toBe("240px");
+
+    const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
+    fireEvent.click(toggle);
+    expect(nav.style.width).toBe("56px");
+  });
+
+  it("shows tooltips on hover for nav items when rail is collapsed", async () => {
+    window.localStorage.setItem("dashboard.sidebar.railCollapsed", "true");
+    renderSidebar();
+    const nav = screen.getByRole("navigation", { name: /sections/i });
+    const navButtons = within(nav)
+      .getAllByRole("button")
+      .filter((b) => b.getAttribute("data-nav-item") === "true");
+    expect(navButtons.length).toBeGreaterThan(0);
+
+    // Hover first button
+    fireEvent.mouseEnter(navButtons[0]);
+    const tip = await screen.findByRole("tooltip");
+    expect(tip).toBeInTheDocument();
+  });
+
+  it("renders a footer containing node hostname and ConnectionIndicator", () => {
+    renderSidebar();
+    const footer = screen.getByTestId("sidebar-footer");
+    expect(footer).toBeInTheDocument();
+    expect(footer.textContent).toMatch(/localhost|window\.location\.hostname/i);
+  });
+});
+

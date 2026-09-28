@@ -1,9 +1,11 @@
 /**
- * MessageItem.tsx — Renders individual thread messages: user bubbles,
- * staff markdown with code copying and link previews, streaming deltas with stop button,
- * and embedded interactive cards: Action, Run, Handoff, Review, and Error (SC-D4, SC-D5, Issues #1318, #1319).
+ * MessageItem.tsx — Renders individual thread messages: Claude-grade user bubbles,
+ * full-width staff markdown prose with header grouping, avatar tint, copy action,
+ * thinking indicator, and embedded cards.
+ *
+ * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Workstream B (#1720).
  */
-import React from "react";
+import React, { useState } from "react";
 import type { ThreadMessage } from "./threadTypes";
 import { ThreadMarkdown } from "./threadMarkdown";
 import { formatMessageTime } from "./threadUtils";
@@ -31,9 +33,13 @@ import {
   type RunStatus,
 } from "./cards";
 
+/** Message kinds rendered as cards even when the system authored them. */
+const CARD_KINDS = new Set(["run", "run_card", "proposal", "action_proposal", "handoff", "error"]);
+
 export interface MessageItemProps {
   message: ThreadMessage;
   isStreaming?: boolean;
+  showHeader?: boolean;
   onStopStreaming?: (messageId: string) => void;
   onRetry?: (message: ThreadMessage) => void;
   onApproveProposal?: ProposalApproveHandler;
@@ -45,9 +51,25 @@ export interface MessageItemProps {
   onFollowHandoff?: (targetRole: string) => void;
 }
 
+function getRoleTint(role: string): { bg: string; fg: string } {
+  const tints = [
+    { bg: "rgba(88, 166, 255, 0.15)", fg: "var(--accent-blue, #58a6ff)" },
+    { bg: "rgba(188, 140, 255, 0.15)", fg: "var(--accent-purple, #bc8cff)" },
+    { bg: "rgba(63, 185, 80, 0.15)", fg: "var(--accent-green, #3fb950)" },
+    { bg: "rgba(240, 136, 62, 0.15)", fg: "var(--accent-orange, #f0883e)" },
+    { bg: "rgba(210, 153, 34, 0.15)", fg: "var(--accent-yellow, #d29922)" },
+  ];
+  let hash = 0;
+  for (let i = 0; i < role.length; i++) {
+    hash = (hash << 5) - hash + role.charCodeAt(i);
+  }
+  return tints[Math.abs(hash) % tints.length];
+}
+
 export const MessageItem: React.FC<MessageItemProps> = ({
   message,
   isStreaming = false,
+  showHeader = true,
   onStopStreaming,
   onRetry,
   onApproveProposal,
@@ -57,14 +79,42 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onRerouteHandoff,
   onFollowHandoff,
 }) => {
+  const [copied, setCopied] = useState(false);
   const isUser = message.author_kind === "user" || message.author === "user";
+  // System-authored cards (runs, proposals, handoffs) keep their card; only plain notices are pills.
+  const isSystem =
+    (message.author_kind === "system" || message.kind === "system") && !CARD_KINDS.has(message.kind ?? "");
   const isFailed = message.delivery === "failed" || message.kind === "error";
   const isActivelyStreaming = isStreaming || message.streaming;
   const timeStr = formatMessageTime(message.created_at);
+  const absoluteTime = message.created_at ? new Date(message.created_at).toLocaleString() : "";
+  const roleName = message.author || "staff";
+  const roleDisplayName = isUser ? "You" : roleName.charAt(0).toUpperCase() + roleName.slice(1);
+  const roleInitial = roleName.charAt(0).toUpperCase();
+  const roleTint = getRoleTint(roleName);
+
+  const handleCopy = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(message.body_md);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
+  if (isSystem) {
+    return (
+      <div className="thread-message-item thread-message-item--system" data-testid={`message-${message.id}`}>
+        <ThreadMarkdown content={message.body_md} className="thread-message-item__notice" />
+      </div>
+    );
+  }
 
   const renderContent = () => {
-    // 0. Expert panel turn or synthesis (#1635). Before the error card: a timed-out
-    // expert is stored as failed, but panels cannot be retried by posting (409).
+    // 0. Expert panel turn or synthesis (#1635)
     if (message.meta?.is_panel_synthesis) {
       return <PanelConsensusCard message={message} />;
     }
@@ -171,82 +221,76 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           findings: message.meta?.findings as string[] | undefined,
         };
 
-      return (
-        <ReviewCard
-          review={review}
-        />
-      );
+      return <ReviewCard review={review} />;
     }
 
-    // 6. Board group turn (SC-D7, #1342); the pending placeholder falls through to the bubble.
+    // 6. Board group turn (SC-D7, #1342)
     const groupTurn = parseGroupTurn(message);
     if (groupTurn) {
       return <GroupDeliberationCard message={message} turn={groupTurn} />;
     }
 
-    // Default: Chat Bubble with Markdown or Plain Text
-    return (
-      <div
-        className={`thread-bubble ${isUser ? "thread-bubble--user" : "thread-bubble--agent"}`}
-        style={{
-          background: isUser ? "var(--accent-blue, #1f6feb)" : "var(--bg-tertiary, #161b22)",
-          color: isUser ? "#fff" : "var(--text-primary, #c9d1d9)",
-          border: isUser ? "none" : "1px solid var(--border, #30363d)",
-          borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-          padding: "10px 14px",
-          maxWidth: "85%",
-          wordBreak: "break-word",
-          fontSize: 13,
-          lineHeight: 1.5,
-        }}
-      >
-        {isUser ? (
-          <div style={{ whiteSpace: "pre-wrap" }}>{message.body_md}</div>
-        ) : (
-          <ThreadMarkdown content={message.body_md} />
-        )}
+    // User Message: rounded bubble
+    if (isUser) {
+      return (
+        <div className="thread-bubble thread-bubble--user">
+          {message.body_md}
+        </div>
+      );
+    }
 
-        {/* Streaming Indicator & Stop Button */}
-        {isActivelyStreaming && (
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              marginTop: 6,
-            }}
-          >
-            <span
-              aria-hidden="true"
-              className="thread-streaming-cursor"
-              style={{
-                color: isUser ? "rgba(255, 255, 255, 0.7)" : "var(--accent-blue, #58a6ff)",
-                animation: "pulse 1s infinite",
-                fontWeight: 900,
-              }}
-            >
-              ▌
+    // Staff/Assistant Message: full-width plain prose
+    const isThinking = isActivelyStreaming && !message.body_md?.trim();
+
+    return (
+      <div className="thread-prose thread-prose--agent">
+        {isThinking ? (
+          <div className="thread-thinking-indicator" data-testid="thinking-indicator">
+            <span>{roleDisplayName} is thinking…</span>
+            <span className="thread-thinking-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
             </span>
-            {onStopStreaming && (
-              <button
-                type="button"
-                aria-label="Stop generating"
-                onClick={() => onStopStreaming(message.id)}
-                style={{
-                  background: "rgba(248, 81, 73, 0.15)",
-                  border: "1px solid rgba(248, 81, 73, 0.4)",
-                  borderRadius: 4,
-                  color: "var(--accent-red, #f85149)",
-                  cursor: "pointer",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "2px 8px",
-                }}
-              >
-                ■ Stop
-              </button>
-            )}
           </div>
+        ) : (
+          <>
+            <ThreadMarkdown content={message.body_md} />
+            {isActivelyStreaming && (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                <span
+                  aria-hidden="true"
+                  className="thread-streaming-cursor"
+                  style={{
+                    color: "var(--accent-blue, #58a6ff)",
+                    animation: "pulse 1s infinite",
+                    fontWeight: 900,
+                  }}
+                >
+                  ▌
+                </span>
+                {onStopStreaming && (
+                  <button
+                    type="button"
+                    aria-label="Stop generating"
+                    onClick={() => onStopStreaming(message.id)}
+                    style={{
+                      background: "var(--badge-danger-bg)",
+                      border: "1px solid var(--accent-red)",
+                      borderRadius: 4,
+                      color: "var(--accent-red)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                    }}
+                  >
+                    ■ Stop
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     );
@@ -256,33 +300,63 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     <div
       className={`thread-message-item ${isUser ? "thread-message-item--user" : "thread-message-item--agent"}`}
       data-testid={`message-${message.id}`}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: isUser ? "flex-end" : "flex-start",
-        margin: "8px 0",
-        maxWidth: "100%",
-      }}
     >
-      {/* Header with Author and Time */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 4,
-          fontSize: 11,
-          color: "var(--text-muted, #8b949e)",
-        }}
-      >
-        <span style={{ fontWeight: 600, color: isUser ? "var(--text-secondary, #c9d1d9)" : "var(--accent-blue, #58a6ff)" }}>
-          {isUser ? "You" : message.author.charAt(0).toUpperCase() + message.author.slice(1)}
-        </span>
-        {timeStr && <span>{timeStr}</span>}
-        {message.delivery === "pending" && !isActivelyStreaming && (
-          <span style={{ fontStyle: "italic" }}>sending…</span>
-        )}
-      </div>
+      {/* Header with Avatar, Author and Time (collapsible) */}
+      {showHeader && !isUser && (
+        <div className="thread-message-header">
+          <div
+            className="thread-avatar"
+            style={{
+              background: roleTint.bg,
+              color: roleTint.fg,
+            }}
+            aria-hidden="true"
+          >
+            {roleInitial}
+          </div>
+          <span className="thread-author-name">{roleDisplayName}</span>
+          {timeStr && (
+            <span className="thread-message-time" title={absoluteTime}>
+              {timeStr}
+            </span>
+          )}
+          {message.delivery === "pending" && !isActivelyStreaming && (
+            <span style={{ fontStyle: "italic", fontSize: 11, color: "var(--text-muted)" }}>
+              sending…
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Message action buttons (visible on hover / focus-within) */}
+      {Boolean(message.body_md?.trim()) && (
+        <div className="thread-message-actions">
+          <button
+            type="button"
+            onClick={handleCopy}
+            aria-label={copied ? "Copied" : "Copy message"}
+            title="Copy message"
+            className="thread-action-btn"
+          >
+            {copied ? (
+              <>
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>Copied</span>
+              </>
+            ) : (
+              <>
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {renderContent()}
     </div>

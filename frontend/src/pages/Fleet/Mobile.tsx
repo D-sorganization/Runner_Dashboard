@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { useHaptic } from "../../hooks/useHaptic";
+import { machineTelemetry } from "../../lib/fleetTelemetry";
 import { KpiHeader } from "./KpiHeader";
 import { RunnerCard } from "./RunnerCard";
 import { StatusPill } from "./StatusPill";
@@ -17,6 +18,34 @@ interface FleetNode {
 
 type FilterStatus = "all" | "online" | "busy" | "offline";
 
+/** The subset of a `/api/fleet/nodes` entry this view reads. */
+interface FleetNodesEntry {
+  name?: string;
+  online?: boolean;
+  last_seen?: string;
+  system?: { hostname?: string; uptime_seconds?: number };
+}
+
+/** The RunnerCard status for a node: running counts as busy, anything unknown as offline. */
+function cardStatus(node: FleetNode): "online" | "busy" | "offline" {
+  const s = node.status?.toLowerCase() || "offline";
+  if (s === "online") return "online";
+  return s === "busy" || s === "running" ? "busy" : "offline";
+}
+
+/** Map one `/api/fleet/nodes` entry onto the card's flat view model. */
+function toFleetNode(node: FleetNodesEntry): FleetNode {
+  const telemetry = machineTelemetry(node);
+  return {
+    status: node.online ? "online" : "offline",
+    hostname: node.system?.hostname || node.name,
+    cpu_percent: telemetry.cpu,
+    memory_percent: telemetry.memory,
+    uptime_seconds: node.system?.uptime_seconds ?? 0,
+    current_job: null,
+  };
+}
+
 export function FleetMobile() {
   const [data, setData] = useState<Record<string, FleetNode>>({});
   const [loading, setLoading] = useState(true);
@@ -26,10 +55,16 @@ export function FleetMobile() {
 
   const fetchFleet = useCallback(async () => {
     try {
-      const resp = await fetch("/api/fleet/status");
+      // /api/fleet/nodes is the per-machine contract (online flag plus
+      // system telemetry); /api/fleet/status is raw telemetry with no status.
+      const resp = await fetch("/api/fleet/nodes");
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
-      setData(json);
+      const byName: Record<string, FleetNode> = {};
+      for (const node of Array.isArray(json?.nodes) ? json.nodes : []) {
+        if (node?.name) byName[node.name] = toFleetNode(node);
+      }
+      setData(byName);
       setError(null);
     } catch (e) {
       setError((e instanceof Error ? e.message : String(e)) || "Failed to load fleet data");
@@ -77,6 +112,8 @@ export function FleetMobile() {
         others.push([name, node]);
       }
     }
+    // One ControlTower entry is just a machine; the pool heading only helps with several.
+    if (ctPools.length < 2) return { controlTowerPools: [], otherNodes: [...ctPools, ...others] };
     return { controlTowerPools: ctPools, otherNodes: others };
   }, [filtered]);
 
@@ -151,8 +188,7 @@ export function FleetMobile() {
                   </h4>
                   <div style={{ display: "flex", gap: "8px", flexDirection: "row", flexWrap: "wrap" }}>
                     {controlTowerPools.map(([name, node]) => {
-                      const s = node.status?.toLowerCase() || "offline";
-                      const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
+                      const status = cardStatus(node);
                       return (
                         <div key={name} style={{ flex: "1 1 calc(50% - 4px)", minWidth: "140px" }}>
                           <RunnerCard
@@ -171,8 +207,7 @@ export function FleetMobile() {
                 </div>
               )}
               {otherNodes.map(([name, node]) => {
-                const s = node.status?.toLowerCase() || "offline";
-                const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
+                const status = cardStatus(node);
                 return (
                   <RunnerCard
                     key={name}

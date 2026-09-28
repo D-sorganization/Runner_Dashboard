@@ -1,11 +1,12 @@
 /**
  * RosterGroup.tsx — Grouped section of staff roles in Roster sidebar.
  *
- * Implements SC-D3 (Issue #1317) under Epic SC-D (#1350).
+ * Implements Workstream C (Issue #1721, Epic #1718).
  */
 import React from "react";
 import type { RosterGroupProps } from "./types";
 import { RosterRow } from "./RosterRow";
+import "./roster.css";
 
 export const RosterGroup: React.FC<RosterGroupProps> = ({
   groupKey,
@@ -38,9 +39,7 @@ export const RosterGroup: React.FC<RosterGroupProps> = ({
   return (
     <div
       data-testid={`roster-group-${groupKey}`}
-      style={{
-        marginBottom: "12px",
-      }}
+      className="roster-group"
     >
       {/* Group Header */}
       <button
@@ -50,48 +49,32 @@ export const RosterGroup: React.FC<RosterGroupProps> = ({
         aria-controls={`group-content-${groupKey}`}
         onClick={handleHeaderClick}
         onKeyDown={handleKeyDown}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "6px 8px",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "var(--text-secondary, #8b949e)",
-          fontSize: "11px",
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-          borderRadius: "4px",
-          textAlign: "left",
-        }}
+        className="roster-group__header"
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div className="roster-group__title">
           <span
-            style={{
-              fontSize: "10px",
-              display: "inline-block",
-              transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-              transition: "transform 0.15s ease",
-            }}
+            className={`roster-group__chevron ${
+              isCollapsed ? "roster-group__chevron--collapsed" : ""
+            }`}
           >
-            ▼
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
           </span>
           <span>{label}</span>
         </div>
 
-        <span
-          style={{
-            fontSize: "10px",
-            backgroundColor: "var(--bg-tertiary, #1c2333)",
-            color: "var(--text-muted, #868e98)",
-            padding: "1px 6px",
-            borderRadius: "10px",
-            fontWeight: 600,
-          }}
-        >
+        <span className="roster-group__count">
           {roles.length}
         </span>
       </button>
@@ -102,10 +85,7 @@ export const RosterGroup: React.FC<RosterGroupProps> = ({
           id={`group-content-${groupKey}`}
           role="region"
           aria-labelledby={`group-header-${groupKey}`}
-          style={{
-            paddingLeft: "4px",
-            marginTop: "2px",
-          }}
+          className="roster-group__content"
         >
           {roles.map((role) => (
             <RosterRow
@@ -125,3 +105,4 @@ export const RosterGroup: React.FC<RosterGroupProps> = ({
     </div>
   );
 };
+

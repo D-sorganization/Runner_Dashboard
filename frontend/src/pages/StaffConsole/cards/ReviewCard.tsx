@@ -1,5 +1,6 @@
 import React from "react";
 import type { ReviewCardData, ReviewVerdict } from "./cardTypes";
+import "./cards.css";
 
 export interface ReviewCardProps {
   review: ReviewCardData;
@@ -9,12 +10,12 @@ export interface ReviewCardProps {
 function getVerdictBadgeStyle(verdict: ReviewVerdict): { bg: string; text: string; border: string } {
   switch (verdict) {
     case "approved":
-      return { bg: "rgba(46, 160, 67, 0.15)", text: "var(--accent-green, #3fb950)", border: "var(--border-green, #2ea043)" };
+      return { bg: "var(--badge-success-bg)", text: "var(--accent-green, #3fb950)", border: "var(--accent-green, #2ea043)" };
     case "changes_requested":
-      return { bg: "rgba(248, 81, 73, 0.15)", text: "var(--accent-red, #f85149)", border: "var(--border-red, #da3633)" };
+      return { bg: "var(--badge-danger-bg)", text: "var(--accent-red, #f85149)", border: "var(--accent-red, #da3633)" };
     case "commented":
     default:
-      return { bg: "rgba(210, 153, 34, 0.15)", text: "var(--accent-yellow, #d29922)", border: "var(--border-yellow, #bb8009)" };
+      return { bg: "var(--badge-warning-bg)", text: "var(--accent-yellow, #d29922)", border: "var(--accent-yellow, #bb8009)" };
   }
 }
 
@@ -25,22 +26,22 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
   const verdictStyle = getVerdictBadgeStyle(review.verdict);
 
   return (
-    <div
-      className={`staff-review-card ${className}`}
-      style={{
-        border: "1px solid var(--border, #30363d)",
-        borderRadius: 8,
-        padding: "12px 16px",
-        background: "var(--bg-secondary, #161b22)",
-        maxWidth: 500,
-        margin: "6px 0",
-      }}
-    >
+    <div className={`staff-review-card ${className}`}>
       {/* Header: PR and Verdict Badge */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-primary, #c9d1d9)" }}>
-          PR #{review.pr_number} {review.pr_title ? `· ${review.pr_title}` : ""}
-        </span>
+      <div className="staff-card-header">
+        <div className="staff-card-header-left">
+          <span className="staff-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="18" r="3" />
+              <circle cx="6" cy="6" r="3" />
+              <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+              <line x1="6" y1="9" x2="6" y2="21" />
+            </svg>
+          </span>
+          <span className="staff-card-title">
+            PR #{review.pr_number} {review.pr_title ? `· ${review.pr_title}` : ""}
+          </span>
+        </div>
         <span
           style={{
             fontSize: 10,
@@ -51,6 +52,7 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
             background: verdictStyle.bg,
             color: verdictStyle.text,
             border: `1px solid ${verdictStyle.border}`,
+            flexShrink: 0,
           }}
         >
           {review.verdict.replace("_", " ")}
@@ -59,18 +61,18 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
 
       {/* Summary */}
       {review.summary && (
-        <div style={{ fontSize: 12, color: "var(--text-secondary, #c9d1d9)", marginBottom: 8, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", margin: "8px 0", lineHeight: 1.5 }}>
           {review.summary}
         </div>
       )}
 
       {/* Key Findings List */}
       {review.findings && review.findings.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted, #8b949e)", marginBottom: 4 }}>
+        <div style={{ marginBottom: 8, padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: "var(--radius-sm, 6px)", border: "1px solid var(--border)" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4 }}>
             Key Findings:
           </div>
-          <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: "var(--text-secondary, #c9d1d9)", lineHeight: 1.5 }}>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
             {review.findings.map((finding, idx) => (
               <li key={idx}>{finding}</li>
             ))}
@@ -80,7 +82,7 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
 
       {/* PR Link */}
       {review.pr_url && (
-        <div style={{ marginTop: 4 }}>
+        <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
           <a
             href={review.pr_url}
             target="_blank"

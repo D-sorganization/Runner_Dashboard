@@ -32,39 +32,29 @@ export function IntroHeader({
       aria-label={`About ${title}`}
       data-testid={testId}
       className="intro-header"
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 10,
-        margin: "12px 16px 0",
-        padding: "10px 12px",
-        borderRadius: 8,
-        border: "1px solid var(--border, #30363d)",
-        background: "var(--bg-secondary, #161b22)",
-        color: "var(--text-secondary, #8b949e)",
-        fontSize: 13,
-        lineHeight: 1.45,
-      }}
     >
-      <span aria-hidden="true" style={{ flex: "0 0 auto", marginTop: 1 }}>
-        ℹ️
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>{body}</span>
+      <svg
+        className="intro-header__icon"
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      >
+        <circle cx="8" cy="8" r="6.25" />
+        <path d="M8 7.25v3.5" />
+        <path d="M8 5.1v.01" />
+      </svg>
+      <span className="intro-header__body">{body}</span>
       {onDismiss ? (
         <button
           type="button"
+          className="intro-header__dismiss"
           aria-label={`Dismiss ${title} intro`}
           onClick={onDismiss}
-          style={{
-            flex: "0 0 auto",
-            background: "none",
-            border: 0,
-            color: "var(--text-muted, #6e7681)",
-            cursor: "pointer",
-            fontSize: 16,
-            lineHeight: 1,
-            padding: 2,
-          }}
         >
           ×
         </button>

@@ -137,17 +137,26 @@ def test_label_guide_has_no_phantom_tokens() -> None:
 # 2026-06-02 (#826, token migration): lowered 86 -> 84. The --status-{healthy,
 # warning,critical,info}-bg tints were de-duplicated to alias the matching
 # --badge-*-bg tokens (removing 4 rgba() literals); --badge-purple-bg added 1.
-RGBA_BUDGET = 84
+# 2026-09-27 (#1719, neutral palette): the guard now counts rgba() *usages*
+# only. Custom-property definitions (`--name: rgba(...)`) are the sanctioned
+# way to introduce a colour, so counting them penalised exactly the pattern
+# this guard promotes (the light/dark neutral palette added 18 definitions and
+# zero usages). Usage count on main was 61, so the budget is tightened 84 -> 61.
+RGBA_BUDGET = 61
+
+# A CSS custom-property definition line, e.g. `  --badge-info-bg: rgba(...);`.
+_CUSTOM_PROPERTY_DEFINITION = re.compile(r"^\s*--[\w-]+\s*:.*$", re.MULTILINE)
 
 
 def test_rgba_budget() -> None:
     """Ensure rgba() literal count in index.css does not exceed the approved budget.
 
     Precondition: CSS_PATH exists and is readable.
-    Postcondition: the count of rgba( in the file is at most RGBA_BUDGET.
+    Postcondition: the count of rgba( outside custom-property definitions is
+    at most RGBA_BUDGET.
     """
     assert CSS_PATH.exists(), f"CSS file not found: {CSS_PATH}"
-    css = CSS_PATH.read_text(encoding="utf-8")
+    css = _CUSTOM_PROPERTY_DEFINITION.sub("", CSS_PATH.read_text(encoding="utf-8"))
     count = len(re.findall(r"rgba\(", css))
     assert count <= RGBA_BUDGET, (
         f"Too many hardcoded rgba() literals in {CSS_PATH}: {count} > {RGBA_BUDGET}. "

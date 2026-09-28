@@ -177,7 +177,10 @@ export function MaxwellTab({
         if (onRefresh) setTimeout(onRefresh, 1000);
       })
       .catch((err: Error) => {
-        setControlStatus({ ok: false, msg: String(err) });
+        setControlStatus({
+          ok: false,
+          msg: "Could not " + action + " Maxwell: " + err.message,
+        });
       })
       .finally(() => {
         setControlling(false);
@@ -196,7 +199,7 @@ export function MaxwellTab({
         <Stat
           label="HTTP"
           value={st.http_reachable ? "reachable" : "offline"}
-          sub={st.http_detail || ""}
+          sub={st.http_reachable ? st.http_detail || "" : "not listening"}
         />
         <Stat
           label="Binary"

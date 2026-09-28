@@ -1,5 +1,6 @@
 import React from "react";
 import type { ErrorCardData } from "./cardTypes";
+import "./cards.css";
 
 export interface ErrorCardProps {
   error: ErrorCardData;
@@ -43,20 +44,24 @@ export const ErrorCard: React.FC<ErrorCardProps> = ({
       role="alert"
       className={`staff-error-card ${className}`}
       style={{
-        border: "1px solid rgba(248, 81, 73, 0.4)",
-        borderRadius: 8,
-        padding: "12px 16px",
-        background: "rgba(248, 81, 73, 0.1)",
-        maxWidth: 500,
-        margin: "6px 0",
-        color: "var(--text-primary, #c9d1d9)",
+        border: "1px solid var(--accent-red)",
+        background: "var(--badge-danger-bg)",
       }}
     >
       {/* Header: Title and optional node badge */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontWeight: 700, fontSize: 13, color: "var(--accent-red, #f85149)" }}>
-          ✖ {title}
-        </span>
+      <div className="staff-card-header">
+        <div className="staff-card-header-left">
+          <span className="staff-card-icon" style={{ color: "var(--accent-red)" }} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+          </span>
+          <span className="staff-card-title" style={{ color: "var(--accent-red)" }}>
+            {title}
+          </span>
+        </div>
         {error.node && (
           <span
             style={{
@@ -64,8 +69,9 @@ export const ErrorCard: React.FC<ErrorCardProps> = ({
               fontWeight: 600,
               padding: "2px 6px",
               borderRadius: 4,
-              background: "rgba(255, 255, 255, 0.1)",
-              color: "var(--text-secondary, #c9d1d9)",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              color: "var(--text-secondary)",
             }}
           >
             {error.node}
@@ -75,7 +81,7 @@ export const ErrorCard: React.FC<ErrorCardProps> = ({
 
       {/* Cause / Detail */}
       {error.cause && (
-        <div style={{ fontSize: 12, marginBottom: 8, color: "var(--text-secondary, #c9d1d9)", lineHeight: 1.4 }}>
+        <div style={{ fontSize: 13, marginBottom: 8, color: "var(--text-primary)", lineHeight: 1.5 }}>
           {error.cause}
         </div>
       )}
@@ -85,33 +91,31 @@ export const ErrorCard: React.FC<ErrorCardProps> = ({
         <div
           style={{
             fontSize: 12,
-            background: "rgba(0, 0, 0, 0.25)",
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+            borderLeft: "3px solid var(--accent-red)",
             padding: "8px 10px",
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm, 6px)",
             marginBottom: 8,
-            borderLeft: "3px solid var(--accent-red, #f85149)",
-            lineHeight: 1.4,
+            lineHeight: 1.45,
           }}
         >
-          <strong style={{ color: "var(--text-primary, #c9d1d9)" }}>Remediation:</strong> {error.remediation}
+          <strong style={{ color: "var(--text-primary)" }}>Remediation:</strong> {error.remediation}
         </div>
       )}
 
       {/* Retry CTA */}
       {isRetryable && onRetry && (
-        <div style={{ marginTop: 4 }}>
+        <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
           <button
             type="button"
             onClick={onRetry}
+            className="staff-action-card__btn"
             style={{
-              background: "var(--accent-red, #f85149)",
-              color: "var(--color-fg-on-emphasis, #ffffff)",
+              background: "var(--accent-red)",
+              color: "var(--text-on-accent)",
               border: "none",
-              borderRadius: 6,
               padding: "4px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
             }}
           >
             ↻ Retry Turn

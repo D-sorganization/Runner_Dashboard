@@ -147,3 +147,34 @@ def test_candidate_wslconfig_paths_userprofile_wsl_path(monkeypatch: pytest.Monk
     result = _candidate_wslconfig_paths()
     expected = Path("/mnt/c/Users/TestUser/.wslconfig")
     assert expected in result
+
+
+# ---------------------------------------------------------------------------
+# windows_repositories_root (#1718 live sweep: WSL $USER != Windows profile)
+# ---------------------------------------------------------------------------
+
+
+def test_repositories_root_finds_the_windows_profile_not_the_wsl_user(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from platform_utils.wsl_paths import windows_repositories_root
+
+    (tmp_path / "Public" / "Repositories").mkdir(parents=True)
+    (tmp_path / "winuser" / "Repositories").mkdir(parents=True)
+    monkeypatch.setenv("USER", "wslonly")
+    monkeypatch.delenv("USERNAME", raising=False)
+    assert windows_repositories_root(tmp_path) == tmp_path / "winuser" / "Repositories"
+
+
+def test_repositories_root_prefers_the_named_user_when_it_exists(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from platform_utils.wsl_paths import windows_repositories_root
+
+    (tmp_path / "alice" / "Repositories").mkdir(parents=True)
+    (tmp_path / "bob" / "Repositories").mkdir(parents=True)
+    monkeypatch.setenv("USER", "bob")
+    assert windows_repositories_root(tmp_path) == tmp_path / "bob" / "Repositories"
+
+
+def test_repositories_root_falls_back_to_the_user_path_when_nothing_exists(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from platform_utils.wsl_paths import windows_repositories_root
+
+    monkeypatch.setenv("USER", "carol")
+    assert windows_repositories_root(tmp_path / "missing") == tmp_path / "missing" / "carol" / "Repositories"

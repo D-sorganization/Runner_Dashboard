@@ -303,7 +303,7 @@ async def schedule_fleet_scale(
             "schedule_fleet_scale: util=%d%%, scheduled=%d actions (principal=%s)",
             utilization_percent,
             len(scheduled_actions),
-            principal.user_id,
+            principal.id,
         )
         return {
             "utilization_percent": utilization_percent,
@@ -345,7 +345,7 @@ async def troubleshoot_runner(
         runner = next((r for r in runners if r.get("id") == runner_id), None)
 
         if runner is None:
-            log.warning("troubleshoot_runner: runner_id=%d not found (principal=%s)", runner_id, principal.user_id)
+            log.warning("troubleshoot_runner: runner_id=%d not found (principal=%s)", runner_id, principal.id)
             raise HTTPException(status_code=404, detail=f"Runner ID {runner_id} not found")
 
         num = runner_num_from_id(runner_id, runners)
@@ -380,7 +380,7 @@ async def troubleshoot_runner(
             "troubleshoot_runner: runner_id=%d (runner_num=%s, principal=%s)",
             runner_id,
             num,
-            principal.user_id,
+            principal.id,
         )
         return {
             "runner_id": runner_id,

@@ -91,7 +91,7 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
   it("renders aggregated items across sources with severity badges", async () => {
     vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(mockInboxData);
 
-    render(<InboxPanel />);
+    render(<InboxPanel defaultOpen />);
 
     await waitFor(() => {
       expect(screen.getByText("Waiting on You")).not.toBeNull();
@@ -102,9 +102,10 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
     expect(screen.getByText("Question from issue-remediator")).not.toBeNull();
     expect(screen.getByText("Escalated: CI deadlock in Tools")).not.toBeNull();
 
-    expect(screen.getByText("CRITICAL")).not.toBeNull();
-    expect(screen.getByText("HIGH")).not.toBeNull();
-    expect(screen.getByText("MEDIUM")).not.toBeNull();
+    // Only urgent severities are labelled; medium/low rows stay quiet (#1722 drawer redesign).
+    expect(screen.getByText("Critical")).not.toBeNull();
+    expect(screen.getByText("High")).not.toBeNull();
+    expect(screen.queryByText("Medium")).toBeNull();
   });
 
   it("renders empty state when there are no waiting items", async () => {
@@ -124,7 +125,7 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
       items: [],
     });
 
-    render(<InboxPanel />);
+    render(<InboxPanel defaultOpen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("inbox-empty")).not.toBeNull();
@@ -135,7 +136,7 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
   it("shows degraded sources banner when a source is unavailable while rendering healthy items", async () => {
     vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(mockDegradedInboxData);
 
-    render(<InboxPanel />);
+    render(<InboxPanel defaultOpen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("inbox-degraded-banner")).not.toBeNull();
@@ -148,7 +149,7 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
   it("filters items when clicking filter pills", async () => {
     vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(mockInboxData);
 
-    render(<InboxPanel />);
+    render(<InboxPanel defaultOpen />);
 
     await waitFor(() => {
       expect(screen.getByText("Approve runner restart")).not.toBeNull();
@@ -203,7 +204,7 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
     vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(mockInboxData);
     const onOpenRun = vi.fn();
 
-    render(<InboxPanel onOpenRun={onOpenRun} />);
+    render(<InboxPanel onOpenRun={onOpenRun} defaultOpen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("inbox-action-needs_input_1")).not.toBeNull();
@@ -219,7 +220,7 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
     vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(mockInboxData);
     const onOpenThread = vi.fn();
 
-    render(<InboxPanel onOpenThread={onOpenThread} />);
+    render(<InboxPanel onOpenThread={onOpenThread} defaultOpen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("inbox-action-approval_1")).not.toBeNull();

@@ -7,17 +7,25 @@ or a later real VAPID implementation.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+import httpx
+import webpush_crypto
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import APIRouter, Depends, HTTPException, Request
-from identity import Principal, require_principal, require_scope
+from identity import Principal, require_principal
 from pydantic import BaseModel, Field, field_validator
 from time_utils import utc_now_iso
+
+log = logging.getLogger(__name__)
 
 PUSH_TOPICS = frozenset(
     {
@@ -86,8 +94,9 @@ class PushTestRequest(BaseModel):
     @field_validator("deep_link")
     @classmethod
     def _validate_deep_link(cls, value: str) -> str:
-        if not value.startswith("/m/"):
-            raise ValueError("deep_link must be an internal /m/ route")
+        valid_prefixes = ("/m/", "/staff", "/settings", "/t/")
+        if not any(value.startswith(p) for p in valid_prefixes):
+            raise ValueError("deep_link must be an internal route")
         return value
 
 
@@ -111,6 +120,64 @@ class UnconfiguredPushTransport:
         raise RuntimeError("Web Push transport is not configured")
 
 
+class WebPushTransport:
+    """Production Web Push transport delivering encrypted payloads via RFC 8291/8292."""
+
+    def __init__(
+        self,
+        *,
+        public_key: ec.EllipticCurvePublicKey,
+        private_key: ec.EllipticCurvePrivateKey,
+        subject: str,
+        client: httpx.AsyncClient | None = None,
+        ttl: int = 86400,
+        urgency: str = "normal",
+    ) -> None:
+        self.public_key = public_key
+        self.private_key = private_key
+        self.subject = subject
+        self._client = client
+        self.ttl = ttl
+        self.urgency = urgency
+
+    async def send(self, subscription: PushSubscription, payload: dict[str, Any]) -> int:
+        json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        body_bytes, enc_headers = webpush_crypto.encrypt_webpush_payload(
+            plaintext=json_bytes,
+            p256dh=subscription.keys["p256dh"],
+            auth=subscription.keys["auth"],
+        )
+        vapid_headers = webpush_crypto.create_vapid_auth_header(
+            endpoint=subscription.endpoint,
+            subject=self.subject,
+            private_key=self.private_key,
+            public_key=self.public_key,
+            ttl=self.ttl,
+            urgency=self.urgency,
+        )
+        headers = {
+            "Content-Type": "application/octet-stream",
+            **enc_headers,
+            **vapid_headers,
+        }
+        if self._client is not None:
+            resp = await self._client.post(
+                subscription.endpoint,
+                content=body_bytes,
+                headers=headers,
+                timeout=10.0,
+            )
+            return resp.status_code
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                subscription.endpoint,
+                content=body_bytes,
+                headers=headers,
+            )
+            return resp.status_code
+
+
 _transport: PushTransport = UnconfiguredPushTransport()
 
 
@@ -118,6 +185,47 @@ def set_push_transport(transport: PushTransport) -> None:
     """Set the process-wide push transport used by routes and tests."""
     global _transport
     _transport = transport
+
+
+def init_push_transport() -> None:
+    """Initialize the process-wide push transport from environment variables.
+
+    Requires VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT.
+    Logs one line either way, never logging key material.
+    """
+    pub_b64 = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
+    priv_raw = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+    subject = os.environ.get("VAPID_SUBJECT", "").strip()
+
+    if not (pub_b64 and priv_raw and subject):
+        set_push_transport(UnconfiguredPushTransport())
+        log.info("Web Push transport unconfigured (missing VAPID env vars)")
+        return
+
+    try:
+        pub_key = webpush_crypto.load_vapid_public_key(pub_b64)
+        priv_key = webpush_crypto.load_vapid_private_key(priv_raw)
+        set_push_transport(
+            WebPushTransport(
+                public_key=pub_key,
+                private_key=priv_key,
+                subject=subject,
+            )
+        )
+        log.info("Web Push transport initialized with VAPID")
+    except Exception as exc:  # noqa: BLE001
+        set_push_transport(UnconfiguredPushTransport())
+        log.warning("Failed to initialize Web Push transport: %s", exc)
+
+
+def generate_keygen_env_lines() -> list[str]:
+    """Generate VAPID keypair formatted as environment variable lines."""
+    priv_b64, pub_b64 = webpush_crypto.generate_vapid_keypair()
+    return [
+        f"VAPID_PUBLIC_KEY={pub_b64}",
+        f"VAPID_PRIVATE_KEY={priv_b64}",
+        "VAPID_SUBJECT=mailto:admin@example.com",
+    ]
 
 
 def _db_path() -> Path:
@@ -302,6 +410,37 @@ async def send_push(
     return {"sent": sent, "failed": failed, "purged": purged}
 
 
+_pending_notifications: set[asyncio.Task[dict[str, int]]] = set()
+
+
+def _log_notify_failure(task: asyncio.Task[dict[str, int]]) -> None:
+    _pending_notifications.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        log.warning("push notify failed: %s", task.exception())
+
+
+def notify(topic: str, title: str, body: str) -> None:
+    """Send a push from synchronous code, never raising into the caller.
+
+    Inside a running loop the send is scheduled and its failure logged; with no
+    loop it runs to completion here. ``send_push`` is looked up at call time so
+    tests can replace it.
+    """
+    assert topic in PUSH_TOPICS, f"unsupported topic: {topic}"
+    payload = {"title": title, "body": body}
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            asyncio.run(send_push(topic, payload))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("push notify failed: %s", exc)
+        return
+    task = loop.create_task(send_push(topic, payload))
+    _pending_notifications.add(task)
+    task.add_done_callback(_log_notify_failure)
+
+
 @router.post("/subscribe")
 async def subscribe_push(
     request: Request,
@@ -340,12 +479,13 @@ async def unsubscribe_push(
 @router.post("/test")
 async def test_push(
     body: PushTestRequest,
-    principal: Principal = Depends(require_scope("admin")),  # noqa: B008
+    principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
     payload = {
         "topic": body.topic,
         "title": "Runner Dashboard test notification",
         "body": "Push transport and subscription routing are configured.",
+        "url": body.deep_link,
         "deep_link": body.deep_link,
     }
     try:
@@ -367,3 +507,13 @@ async def get_vapid_public_key() -> dict[str, str]:
     if not public_key:
         raise HTTPException(status_code=503, detail="Push not configured")
     return {"publicKey": public_key}
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "keygen":
+        for env_line in generate_keygen_env_lines():
+            sys.stdout.write(f"{env_line}\n")
+        sys.exit(0)
+    else:
+        sys.stderr.write("Usage: python -m push keygen\n")
+        sys.exit(1)

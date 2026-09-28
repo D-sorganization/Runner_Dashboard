@@ -10,13 +10,13 @@ names and values.
 
 ## Breakpoints
 
-| Name | Width | Purpose |
-| --- | ---: | --- |
-| `xs` | 360 | Small Android fallback |
-| `sm` | 390 | iPhone compact contract |
-| `md` | 768 | Mobile/tablet split and current CSS breakpoint |
-| `lg` | 1024 | Desktop shell entry |
-| `xl` | 1280 | Dense operations layouts |
+| Name | Width | Purpose                                        |
+| ---- | ----: | ---------------------------------------------- |
+| `xs` |   360 | Small Android fallback                         |
+| `sm` |   390 | iPhone compact contract                        |
+| `md` |   768 | Mobile/tablet split and current CSS breakpoint |
+| `lg` |  1024 | Desktop shell entry                            |
+| `xl` |  1280 | Dense operations layouts                       |
 
 The epic acceptance viewports are 375x812 and 412x915. Runtime layouts must
 stay usable at both sizes, and `tests/frontend/mobile/viewport_profiles.json`
@@ -35,23 +35,23 @@ The HTML viewport metadata must keep user scaling enabled; do not add
 `frontend/src/primitives/` contains the shared touch primitive entrypoint for
 mobile pages.
 
-| Primitive | Use this when... | Do not use this when... |
-| --- | --- | --- |
-| `TouchButton` | A tappable command must guarantee the shared hit-target size and visible press/focus feedback. | A native link or read-only badge is the correct semantic element. |
-| `SegmentedControl` | A compact mobile filter needs one selected option from a short list. | The options are long, multi-select, or require explanatory copy. |
+| Primitive          | Use this when...                                                                               | Do not use this when...                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `TouchButton`      | A tappable command must guarantee the shared hit-target size and visible press/focus feedback. | A native link or read-only badge is the correct semantic element. |
+| `SegmentedControl` | A compact mobile filter needs one selected option from a short list.                           | The options are long, multi-select, or require explanatory copy.  |
 
 `SwipeRow`, `PullToRefresh`, and `BottomSheet` remain tracked by M04 and should
 land as focused follow-up primitives with gesture and focus-management tests.
 
 ## Type Scale
 
-| Token | Size | Use |
-| --- | ---: | --- |
-| `title` | 20px | Mobile page title |
+| Token          | Size | Use                                      |
+| -------------- | ---: | ---------------------------------------- |
+| `title`        | 20px | Mobile page title                        |
 | `sectionTitle` | 16px | Section headings and bottom-sheet titles |
-| `body` | 14px | Default UI text |
-| `meta` | 12px | Secondary labels and timestamps |
-| `micro` | 11px | Dense badges and chips |
+| `body`         | 14px | Default UI text                          |
+| `meta`         | 12px | Secondary labels and timestamps          |
+| `micro`        | 11px | Dense badges and chips                   |
 
 Do not scale type with viewport width. Long labels should wrap or truncate
 inside stable containers.
@@ -65,16 +65,16 @@ frontend tests enforce the reduced-motion CSS and helper contract.
 ## Color
 
 The mobile token map mirrors the existing dark dashboard palette in
-`frontend/index.html`:
+`frontend/src/index.css` (neutral palette, #1719):
 
-- `--bg-primary`: `#0f1117`
-- `--bg-secondary`: `#161b22`
-- `--bg-tertiary`: `#1c2333`
-- `--bg-card`: `#1c2128`
-- `--bg-hover`: `#252d3a`
-- `--text-primary`: `#e6edf3`
-- `--text-secondary`: `#8b949e`
-- `--text-muted`: `#6e7681`
+- `--bg-primary`: `#111113`
+- `--bg-secondary`: `#18181b`
+- `--bg-tertiary`: `#1f1f23`
+- `--bg-card`: `#18181b`
+- `--bg-hover`: `#26262b`
+- `--text-primary`: `#ececef`
+- `--text-secondary`: `#a1a1aa`
+- `--text-muted`: `#8a8a93`
 - `--accent-blue`: `#58a6ff`
 - `--accent-green`: `#3fb950`
 - `--accent-red`: `#f85149`

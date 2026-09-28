@@ -91,6 +91,7 @@ from cache_utils import cache_delete as _cache_delete  # noqa: E402
 from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
 from dashboard_config import FLEET_NODES  # noqa: E402
+from dashboard_config import runner_limit as _runner_limit  # noqa: E402
 from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
 from dashboard_config.timeouts import (  # noqa: E402
     HttpTimeout,
@@ -123,6 +124,7 @@ from middleware import (  # noqa: E402
     max_body_size_check,
 )
 from models.requests import HelpChatRequest  # noqa: E402
+from platform_utils.wsl_paths import windows_repositories_root  # noqa: E402
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
 from routers import agent_profiles as _agent_profiles_router  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
@@ -164,9 +166,9 @@ from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
 from routers import usage_metrics as _usage_metrics_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
+from routers import workflow_stats as _workflow_stats_router  # noqa: E402  # issue #1735
 from routers.queue import _queue_impl  # noqa: E402
 from runners.service_control import (  # noqa: E402
-    _runner_limit,
     run_runner_svc,
     runner_num_from_id,
     runner_svc_path,
@@ -377,15 +379,7 @@ except (OSError, subprocess.SubprocessError, TimeoutError, ValueError):
 
 
 # Path to daily progress reports (on Windows mount from WSL2)
-_default_reports_dir = (
-    Path("/mnt/c")
-    / "Users"
-    / os.environ.get("USER", "diete")
-    / "Repositories"
-    / "Repository_Management"
-    / "docs"
-    / "progress-tracking"
-)
+_default_reports_dir = windows_repositories_root() / "Repository_Management" / "docs" / "progress-tracking"
 REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", str(_default_reports_dir)))
 
 # Repos with heavy-test workflows (workflow_dispatch capable)
@@ -690,6 +684,7 @@ app.include_router(_runners_router.router)
 app.include_router(_runner_groups_router.router)
 app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
+app.include_router(_workflow_stats_router.router)  # issue #1735
 app.include_router(_assistant_router.router)
 app.include_router(_code_requests_router.router)
 app.include_router(_code_requests_board_router.router)
@@ -1570,8 +1565,10 @@ def _fleet_node_schema_status(system: dict) -> str:
     """Classify remote telemetry shape so stale deployments are visible."""
     if not system:
         return "missing"
-    memory = system.get("memory") if isinstance(system.get("memory"), dict) else {}
-    disk = system.get("disk") if isinstance(system.get("disk"), dict) else {}
+    memory = system.get("memory")
+    disk = system.get("disk")
+    if not isinstance(memory, dict) or not isinstance(disk, dict):
+        return "legacy"
     if isinstance(memory.get("host"), dict) and isinstance(disk.get("storage_devices"), list):
         return "current"
     return "legacy"
@@ -1698,11 +1695,13 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await _system_router.get_system_metrics()
-    local_health = await _health_router._health_impl()
-    local_resource_reason = _resource_offline_reason(local_sys)
-    nodes: list[dict] = [
-        {
+    async def collect_local() -> dict:
+        local_sys, local_health = await asyncio.gather(
+            _system_router.get_system_metrics(),
+            _health_router._health_impl(),
+        )
+        local_resource_reason = _resource_offline_reason(local_sys)
+        return {
             "name": HOSTNAME,
             "url": f"http://localhost:{PORT}",
             "online": True,
@@ -1721,17 +1720,14 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
             "offline_detail": (local_resource_reason["offline_detail"] if local_resource_reason else None),
         }
-    ]
 
-    if FLEET_NODES:
-        # Each node probe already has its own httpx timeout. Avoid a shorter
-        # global gather timeout here: one slow machine should not make every
-        # remote node look offline or suppress metrics from a slow-but-live
-        # dashboard.
-        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
-        nodes.extend(remote)
-
-    return nodes
+    gathered = await asyncio.gather(
+        collect_local(),
+        *[fetch_node(name, url) for name, url in FLEET_NODES.items()],
+    )
+    local_node = gathered[0]
+    remote_nodes = list(gathered[1:])
+    return [local_node, *remote_nodes]
 
 
 # Deployment routes extracted to routers/deployment.py and registered via app.include_router (issue #357).
@@ -1896,17 +1892,18 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
 # _get_fleet_nodes_impl kept here and injected via set_dependencies().
 
 
-async def _get_fleet_nodes_impl() -> dict:
-    """Aggregate system metrics + health from all fleet nodes.
+_fleet_nodes_flight_task: asyncio.Task[dict] | None = None
+_fleet_nodes_flight_lock: asyncio.Lock | None = None
 
-    Always includes this machine (no HTTP round-trip).  Remote nodes are
-    queried concurrently over Tailscale using FLEET_NODES config.
-    Offline nodes are included with online=False so the UI can show them.
-    """
-    cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
-    if cached is not None:
-        return cached
 
+def _get_fleet_nodes_flight_lock() -> asyncio.Lock:
+    global _fleet_nodes_flight_lock  # noqa: PLW0603
+    if _fleet_nodes_flight_lock is None:
+        _fleet_nodes_flight_lock = asyncio.Lock()
+    return _fleet_nodes_flight_lock
+
+
+async def _execute_get_fleet_nodes() -> dict:
     partial = False
     fleet_probe_error = None
     try:
@@ -1967,6 +1964,40 @@ async def _get_fleet_nodes_impl() -> dict:
     }
     _cache_set("fleet_nodes", result)
     return result
+
+
+async def _get_fleet_nodes_impl() -> dict:
+    """Aggregate system metrics + health from all fleet nodes.
+
+    Always includes this machine (no HTTP round-trip).  Remote nodes are
+    queried concurrently over Tailscale using FLEET_NODES config.
+    Offline nodes are included with online=False so the UI can show them.
+    Single-flight coalescing ensures concurrent callers await one collection.
+    """
+    cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
+    if cached is not None:
+        return cached
+
+    flight_lock = _get_fleet_nodes_flight_lock()
+    async with flight_lock:
+        cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
+        if cached is not None:
+            return cached
+
+        global _fleet_nodes_flight_task  # noqa: PLW0603
+        task = _fleet_nodes_flight_task
+        if task is None or task.done():
+            task = asyncio.create_task(_execute_get_fleet_nodes())
+            _fleet_nodes_flight_task = task
+
+            def _on_done(t: asyncio.Task) -> None:
+                global _fleet_nodes_flight_task  # noqa: PLW0603
+                if _fleet_nodes_flight_task is t:
+                    _fleet_nodes_flight_task = None
+
+            task.add_done_callback(_on_done)
+
+    return await asyncio.shield(task)
 
 
 # /api/fleet/nodes/{node_name}/system extracted to routers/orchestration.py (issue #359).
@@ -2512,6 +2543,12 @@ _deployment_router.set_dependencies(
     build_deployment_state=_build_deployment_state,
 )
 
+# Give diagnostics its own access to deployment metadata (issue #1748) so it can
+# fall back to the deployed commit when there is no `.git` checkout to inspect
+# (artifact installs). Registered here, next to the deployment router wiring,
+# rather than importing `server` from diagnostics.py (circular import).
+_diagnostics_router.set_deployment_info_getter(_deployment_info)
+
 # Inject dependencies into reports/heavy_tests/assessments routers
 _reports_router.set_reports_dir(REPORTS_DIR)
 _heavy_tests_router.set_dependencies(run_cmd=run_cmd, heavy_test_repos=HEAVY_TEST_REPOS)
@@ -2576,6 +2613,9 @@ async def _startup() -> None:
     # Initialize pooled HTTP clients
     initialize_http_clients()
     log.info("Initialized pooled HTTP clients with connection reuse")
+
+    # Initialize Web Push transport (issue #1724)
+    _push_router.init_push_transport()
 
     # Notify systemd that we are ready (issue #391 AC-3)
     if _sd_notify is not None:

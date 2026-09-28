@@ -32,7 +32,13 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
     res = run_module("check_agent_claim", "--repo", repo, "--issue", issue, root=root)
     store.append_event(run_id, "lease", f"check_agent_claim rc={res.rc}: {res.output[:300]}")
     if _claim_held(res.output):
-        store.update_run(run_id, status="blocked", ended_at=_now(), error="issue claim held by another agent")
+        store.update_run(
+            run_id,
+            status="blocked",
+            failure_class="lease_blocked",
+            ended_at=_now(),
+            error="issue claim held by another agent",
+        )
         store.append_event(run_id, "blocked", "issue claim held by another agent; not starting")
         return None
     res = run_module(

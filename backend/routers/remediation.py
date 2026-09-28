@@ -15,6 +15,7 @@ from pathlib import Path
 import agent_remediation
 import config_schema
 import quota_enforcement
+from agent_remediation.policy import _as_tuple_strings, _load_workflow_type_rules
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
@@ -109,9 +110,7 @@ async def update_agent_remediation_config(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     current = agent_remediation.load_policy()
-    workflow_type_rules = agent_remediation._load_workflow_type_rules(  # noqa: SLF001
-        payload.get("workflow_type_rules")
-    )
+    workflow_type_rules = _load_workflow_type_rules(payload.get("workflow_type_rules"))
     policy = agent_remediation.RemediationPolicy(
         auto_dispatch_on_failure=bool(payload.get("auto_dispatch_on_failure", current.auto_dispatch_on_failure)),
         require_failure_summary=bool(payload.get("require_failure_summary", current.require_failure_summary)),
@@ -123,12 +122,8 @@ async def update_agent_remediation_config(
         ),
         max_same_failure_attempts=int(payload.get("max_same_failure_attempts", current.max_same_failure_attempts)),
         attempt_window_hours=int(payload.get("attempt_window_hours", current.attempt_window_hours)),
-        provider_order=agent_remediation._as_tuple_strings(  # noqa: SLF001
-            payload.get("provider_order"), fallback=current.provider_order
-        ),
-        enabled_providers=agent_remediation._as_tuple_strings(  # noqa: SLF001
-            payload.get("enabled_providers"), fallback=current.enabled_providers
-        ),
+        provider_order=_as_tuple_strings(payload.get("provider_order"), fallback=current.provider_order),
+        enabled_providers=_as_tuple_strings(payload.get("enabled_providers"), fallback=current.enabled_providers),
         default_provider=str(payload.get("default_provider") or current.default_provider),
         workflow_type_rules=workflow_type_rules,
     )
@@ -182,7 +177,7 @@ async def plan_agent_remediation(
     )
 
     if context.run_id and not context.log_excerpt.strip():
-        from server import _fetch_failed_log_excerpt
+        from workflows.run_enrichment import _fetch_failed_log_excerpt
 
         log_excerpt = await _fetch_failed_log_excerpt(repo_name, context.run_id)
         if log_excerpt:
@@ -261,7 +256,7 @@ async def dispatch_agent_remediation(
     attempts = [agent_remediation.AttemptRecord.from_dict(item) for item in attempts_payload if isinstance(item, dict)]
 
     if context.run_id and not context.log_excerpt.strip():
-        from server import _fetch_failed_log_excerpt
+        from workflows.run_enrichment import _fetch_failed_log_excerpt
 
         log_excerpt = await _fetch_failed_log_excerpt(repo_name, context.run_id)
         if log_excerpt:

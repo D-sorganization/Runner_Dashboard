@@ -28,7 +28,9 @@ const mockMachines = [
     name: "DeskComputer",
     online: false,
     dashboard_reachable: false,
-    health: { runners_registered: 1 },
+    // Org-wide total, as returned by the real API on every node (see #1738).
+    // The Runners cell must never fall back to this value.
+    health: { runners_registered: 21 },
     offline_reason: "runner_service_offline",
     offline_detail: "No online runners or dashboard telemetry are visible.",
     system: {},
@@ -36,9 +38,9 @@ const mockMachines = [
 ];
 
 const mockRunners = [
-  { id: 1, name: "d-sorg-local-ControlTower-1", status: "online", busy: false, labels: ["self-hosted"] },
-  { id: 2, name: "d-sorg-local-ControlTower-2", status: "online", busy: true, labels: ["self-hosted"] },
-  { id: 3, name: "d-sorg-local-DeskComputer-1", status: "offline", busy: false, labels: [] },
+  { id: 1, name: "d-sorg-local-ControlTower-1", status: "online", busy: false, labels: ["self-hosted"], machine: "ControlTower" },
+  { id: 2, name: "d-sorg-local-ControlTower-2", status: "online", busy: true, labels: ["self-hosted"], machine: "ControlTower" },
+  { id: 3, name: "d-sorg-local-DeskComputer-1", status: "offline", busy: false, labels: [], machine: "DeskComputer" },
 ];
 
 describe("FleetMachinesSection", () => {
@@ -135,6 +137,28 @@ describe("FleetMachinesSection", () => {
     fireEvent.click(compactDiskItem);
 
     expect(onMaintenanceAction).toHaveBeenCalledWith("ControlTower", "compact_disk", true);
+  });
+
+  it("groups runners by machine and shows the machine's own count, not the org-wide total", () => {
+    render(
+      <FleetMachinesSection
+        machines={mockMachines}
+        runners={mockRunners}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+      />
+    );
+
+    const controlTowerRow = screen.getByText("ControlTower").closest("tr");
+    const deskComputerRow = screen.getByText("DeskComputer").closest("tr");
+    expect(controlTowerRow).not.toBeNull();
+    expect(deskComputerRow).not.toBeNull();
+
+    // ControlTower: 2 runners bound, both online -> "2 / 2"
+    expect(controlTowerRow!.querySelectorAll("td")[3].textContent).toBe("2 / 2");
+    // DeskComputer: 1 runner bound, 0 online -> "0 / 1" (never the org-wide 21)
+    expect(deskComputerRow!.querySelectorAll("td")[3].textContent).toBe("0 / 1");
   });
 });
 

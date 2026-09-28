@@ -380,19 +380,73 @@ def probe_health(app: LocalAppSpec) -> dict[str, Any]:
     return probe_health_command(build_health_command(app))
 
 
-def probe_local_app(app: LocalAppSpec) -> dict[str, Any]:
-    deployment = probe_deployment(app)
+def _is_artifact_install(app: LocalAppSpec, deployment: dict[str, Any]) -> bool:
+    """True when the install is an unpacked artifact, not a git checkout.
+
+    Artifact installs have no ``.git``, so git status/rev-list can only fail;
+    their provenance is the deployment record's ``git_sha`` instead.
+    """
+    return not (app.path / ".git").exists() and bool(deployment.get("git_sha"))
+
+
+def _probe_git_state(app: LocalAppSpec) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return ``(dirty_state, drift)`` for a git checkout."""
     dirty_result = run_command(build_dirty_command(app))
     dirty_available = dirty_result.returncode == 0
     dirty_entries = [line for line in dirty_result.stdout.splitlines() if line.strip()] if dirty_available else []
+    dirty_state: dict[str, Any] = {
+        "dirty": bool(dirty_entries) if dirty_available else None,
+        "dirty_available": dirty_available,
+        "dirty_files": dirty_entries,
+    }
+    if not dirty_available:
+        dirty_state["dirty_error"] = dirty_result.stderr.strip() or "dirty probe failed"
+
     drift_result = run_command(build_drift_command(app))
     drift_ahead = drift_behind = None
     if drift_result.returncode == 0:
         parts = drift_result.stdout.strip().split()
         if len(parts) == 2 and all(part.isdigit() for part in parts):
-            ahead, behind = (int(part) for part in parts)
-            drift_ahead = ahead
-            drift_behind = behind
+            drift_ahead, drift_behind = (int(part) for part in parts)
+    drift: dict[str, Any] = {
+        "ahead": drift_ahead,
+        "behind": drift_behind,
+        "ref": app.drift_ref,
+        "available": drift_result.returncode == 0,
+    }
+    if drift_result.returncode != 0:
+        drift["error"] = drift_result.stderr.strip() or "drift probe failed"
+    return dirty_state, drift
+
+
+def _artifact_git_state(app: LocalAppSpec, deployment: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return ``(dirty_state, drift)`` for an artifact install from its deployment record."""
+    git_dirty = deployment.get("git_dirty")
+    dirty_state: dict[str, Any] = {
+        "dirty": git_dirty if isinstance(git_dirty, bool) else None,
+        "dirty_available": isinstance(git_dirty, bool),
+        "dirty_files": [],
+        "dirty_source": "deployment",
+    }
+    if not isinstance(git_dirty, bool):
+        dirty_state["dirty_error"] = "deployment record has no git_dirty flag"
+    drift = {
+        "ahead": None,
+        "behind": None,
+        "ref": app.drift_ref,
+        "available": False,
+        "mode": "artifact",
+        "deployed_sha": deployment.get("git_sha"),
+    }
+    return dirty_state, drift
+
+
+def probe_local_app(app: LocalAppSpec) -> dict[str, Any]:
+    deployment = probe_deployment(app)
+    if _is_artifact_install(app, deployment):
+        dirty_state, drift = _artifact_git_state(app, deployment)
+    else:
+        dirty_state, drift = _probe_git_state(app)
 
     service_result = None
     service_command = None
@@ -411,15 +465,6 @@ def probe_local_app(app: LocalAppSpec) -> dict[str, Any]:
         service_status = "invalid"
 
     deployed_version = deployment.get("version")
-    dirty = bool(dirty_entries) if dirty_available else None
-    drift = {
-        "ahead": drift_ahead,
-        "behind": drift_behind,
-        "ref": app.drift_ref,
-        "available": drift_result.returncode == 0,
-    }
-    if drift_result.returncode != 0:
-        drift["error"] = drift_result.stderr.strip() or "drift probe failed"
 
     report = {
         "name": app.name,
@@ -434,16 +479,12 @@ def probe_local_app(app: LocalAppSpec) -> dict[str, Any]:
         "owner": app.owner,
         "deployment": deployment,
         "deployed_version": deployed_version,
-        "dirty": dirty,
-        "dirty_available": dirty_available,
-        "dirty_files": dirty_entries,
+        **dirty_state,
         "drift": drift,
         "service_status": service_status,
         "service_error": service_error,
         "health": probe_health(app),
     }
-    if not dirty_available:
-        report["dirty_error"] = dirty_result.stderr.strip() or "dirty probe failed"
     return report
 
 

@@ -17,7 +17,8 @@ export interface RoleScheduleInfo {
 
 export interface RoleBudgetInfo {
   usd_per_day: number;
-  usd_today: number;
+  /** Not yet served by GET /api/v1/staff/roster; unknown spend renders as "—" (#1744). */
+  usd_today?: number;
 }
 
 export interface ActiveRunSummary {
@@ -59,4 +60,5 @@ export interface ContextPaneProps {
   threadContext?: ThreadContextData | null;
   onToggleSchedule?: (roleName: string, enabled: boolean) => Promise<void> | void;
   className?: string;
+  isLoading?: boolean;
 }

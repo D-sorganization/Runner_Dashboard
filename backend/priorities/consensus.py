@@ -44,8 +44,15 @@ _BULLET_FIELDS = {
 
 
 def clean(cell: str) -> str:
-    """Strip whitespace, backticks and bold markers wrapping a markdown cell."""
-    return cell.strip().strip("`*").strip()
+    """Strip whitespace and bold markers, and the backticks of a cell that is one whole code span.
+
+    A value holding several spans (`` `a` then `b` ``) keeps its backticks so
+    they stay balanced for the markdown renderer.
+    """
+    value = cell.strip().strip("*").strip()
+    if len(value) >= 2 and value[0] == value[-1] == "`" and "`" not in value[1:-1]:
+        value = value[1:-1].strip()
+    return value
 
 
 def is_placeholder(value: str) -> bool:
@@ -133,18 +140,48 @@ def _head_fields(text: str) -> dict[str, str] | None:
 def _active(lines: list[str]) -> list[ActivePriority]:
     entries: list[dict[str, str]] = []
     current: dict[str, str] | None = None
+    # Prettier wraps the head and each sub-bullet across lines (sometimes
+    # unindented); join the raw text before cleaning so nothing is dropped.
+    raw: dict[str, str] = {}
+    open_key: str | None = None
+
+    def flush() -> None:
+        if current is not None:
+            for key, text in raw.items():
+                if key == "head":
+                    current[key] = text  # re-split below; clean() would eat its bold markers
+                elif not is_placeholder(text):
+                    current[key] = clean(text)
+
     for line in _section(lines, lambda t: t.startswith("active priorities")):
+        stripped = line.strip()
         numbered = _NUMBERED.match(line)
+        bullet = _SUB_BULLET.match(line)
         if numbered:
-            current = _head_fields(numbered.group(1))
+            flush()
+            head = numbered.group(1)
+            current = _head_fields(head)
+            raw = {}
+            open_key = None
             if current is not None:
                 entries.append(current)
-            continue
-        bullet = _SUB_BULLET.match(line)
-        if bullet and current is not None:
-            key = _BULLET_FIELDS.get(clean(bullet.group(1)).lower())
-            if key and not is_placeholder(bullet.group(2)):
-                current[key] = clean(bullet.group(2))
+                open_key = "head"
+                raw["head"] = head
+        elif bullet and current is not None:
+            open_key = _BULLET_FIELDS.get(clean(bullet.group(1)).lower())
+            if open_key:
+                raw[open_key] = bullet.group(2).strip()
+        elif not stripped or stripped.startswith(("|", "#", "---")):
+            open_key = None
+        elif open_key and current is not None:
+            raw[open_key] += " " + stripped
+    flush()
+    for entry in entries:
+        head_text = entry.pop("head", None)
+        if head_text is not None:
+            joined = _head_fields(head_text)
+            if joined is not None:
+                entry.update({k: v for k, v in joined.items() if k != "item"})
     return [ActivePriority(rank=i, **e) for i, e in enumerate(entries, start=1)]
 
 

@@ -53,6 +53,64 @@ export interface OpenIssue {
   updated_at: string;
 }
 
+/** One row of the `/api/prs` / `/api/issues` inventories: flat, labels as names. */
+export interface InventoryItem {
+  repository?: string;
+  number?: number;
+  title?: string;
+  url?: string;
+  draft?: boolean;
+  labels?: string[];
+  head_ref?: string;
+  updated_at?: string;
+}
+
+/** The inventory rows of a `/api/prs` or `/api/issues` payload (`{items}` or a bare list). */
+export function inventoryItems(payload: unknown): InventoryItem[] {
+  if (Array.isArray(payload)) return payload as InventoryItem[];
+  const items = (payload as { items?: unknown } | null)?.items;
+  return Array.isArray(items) ? (items as InventoryItem[]) : [];
+}
+
+/** Stable numeric id for an inventory row; list keys and in-flight tracking use numbers. */
+export function inventoryItemId(repository: string, number: number): number {
+  let hash = 0;
+  for (const ch of `${repository}#${number}`) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+  return Math.abs(hash);
+}
+
+/** Adapt an `/api/prs` row to the card's PR shape. */
+export function prFromInventory(item: InventoryItem): OpenPR {
+  const repository = item.repository || "";
+  const number = item.number ?? 0;
+  return {
+    id: inventoryItemId(repository, number),
+    number,
+    title: item.title || "",
+    html_url: item.url || "",
+    head: { ref: item.head_ref || "" },
+    base: { repo: { name: repository.split("/").pop() || repository, full_name: repository } },
+    draft: Boolean(item.draft),
+    labels: (item.labels || []).map((name) => ({ name })),
+    updated_at: item.updated_at || "",
+  };
+}
+
+/** Adapt an `/api/issues` row to the card's issue shape. */
+export function issueFromInventory(item: InventoryItem): OpenIssue {
+  const repository = item.repository || "";
+  const number = item.number ?? 0;
+  return {
+    id: inventoryItemId(repository, number),
+    number,
+    title: item.title || "",
+    html_url: item.url || "",
+    repository_url: `https://api.github.com/repos/${repository}`,
+    labels: (item.labels || []).map((name) => ({ name })),
+    updated_at: item.updated_at || "",
+  };
+}
+
 export type RemediationSubtab = "automations" | "prs" | "issues";
 
 export interface InFlightDispatch {

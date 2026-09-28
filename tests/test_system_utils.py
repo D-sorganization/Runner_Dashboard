@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import httpx
+import pytest
 
 _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
@@ -1079,3 +1080,109 @@ def test_get_host_disk_for_pool_host_drive_overrides_vhdx() -> None:
     }
     result = system_utils.get_host_disk_for_pool(pool)
     assert result == "/mnt/c"
+
+
+# ---------------------------------------------------------------------------
+# Slow probe caching (Issue #1750)
+# ---------------------------------------------------------------------------
+
+
+def test_get_gpu_info_caches_within_ttl(monkeypatch) -> None:
+    system_utils.clear_system_utils_probe_caches()
+    calls = 0
+
+    def fake_uncached() -> dict:
+        nonlocal calls
+        calls += 1
+        return {"gpus": [{"name": "RTX 4090", "vram_total_mb": 24576.0}], "count": 1}
+
+    monkeypatch.setattr(system_utils, "_get_gpu_info_uncached", fake_uncached)
+
+    first = system_utils.get_gpu_info()
+    second = system_utils.get_gpu_info()
+
+    assert calls == 1
+    assert first == second
+    assert first["count"] == 1
+
+
+def test_get_storage_pools_caches_within_ttl(monkeypatch) -> None:
+    system_utils.clear_system_utils_probe_caches()
+    calls = 0
+
+    def fake_uncached() -> list[dict]:
+        nonlocal calls
+        calls += 1
+        return [{"backing_disk_path": "C:", "total_gb": 1000.0, "free_gb": 500.0, "percent": 50.0}]
+
+    monkeypatch.setattr(system_utils, "_get_storage_pools_uncached", fake_uncached)
+
+    first = system_utils.get_storage_pools()
+    second = system_utils.get_storage_pools()
+
+    assert calls == 1
+    assert first == second
+
+
+def test_get_host_volume_metrics_caches_within_ttl(monkeypatch) -> None:
+    system_utils.clear_system_utils_probe_caches()
+    calls = 0
+
+    def fake_raw(**_kw) -> dict:
+        nonlocal calls
+        calls += 1
+        return {"drive": "C:", "total_gb": 1000.0, "free_gb": 500.0, "percent": 50.0, "status": "ok"}
+
+    monkeypatch.setattr(system_utils, "_raw_get_host_volume_metrics", fake_raw)
+
+    first = system_utils.get_host_volume_metrics()
+    second = system_utils.get_host_volume_metrics()
+
+    assert calls == 1
+    assert first == second
+
+
+@pytest.mark.asyncio
+async def test_get_system_metrics_snapshot_probe_caching(monkeypatch) -> None:
+    """A second get_system_metrics_snapshot within the TTL does not re-invoke probes."""
+    system_utils.clear_system_utils_probe_caches()
+    gpu_calls = 0
+    storage_calls = 0
+    host_vol_calls = 0
+
+    def fake_gpu_uncached() -> dict:
+        nonlocal gpu_calls
+        gpu_calls += 1
+        return {"gpus": [], "count": 0}
+
+    def fake_storage_uncached() -> list[dict]:
+        nonlocal storage_calls
+        storage_calls += 1
+        return [
+            {
+                "backing_disk_path": "C:",
+                "vhdx_path": None,
+                "total_gb": 1000.0,
+                "used_gb": 500.0,
+                "free_gb": 500.0,
+                "percent": 50.0,
+                "pressure": None,
+            }
+        ]
+
+    def fake_host_vol_raw(**_kw) -> dict:
+        nonlocal host_vol_calls
+        host_vol_calls += 1
+        return {"drive": "C:", "total_gb": 1000.0, "free_gb": 500.0, "percent": 50.0, "status": "ok"}
+
+    monkeypatch.setattr(system_utils, "_get_gpu_info_uncached", fake_gpu_uncached)
+    monkeypatch.setattr(system_utils, "_get_storage_pools_uncached", fake_storage_uncached)
+    monkeypatch.setattr(system_utils, "_raw_get_host_volume_metrics", fake_host_vol_raw)
+
+    first = await system_utils.get_system_metrics_snapshot()
+    second = await system_utils.get_system_metrics_snapshot()
+
+    assert gpu_calls == 1
+    assert storage_calls == 1
+    assert host_vol_calls == 1
+    assert first["hostname"] == second["hostname"]

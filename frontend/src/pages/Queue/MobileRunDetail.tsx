@@ -1,7 +1,8 @@
 import { BottomSheet } from "../../primitives/BottomSheet";
 import { TouchButton } from "../../primitives/TouchButton";
 import type { RunDetail } from "./mobileTypes";
-import { runnerName, statusLabel, timingLabel, triggeredBy } from "./mobileTypes";
+import { formatAgeMinutes, runnerName, statusLabel, timingLabel, triggeredBy } from "./mobileTypes";
+import { formatReason } from "./types";
 
 interface MobileRunDetailProps {
   selectedRun: RunDetail | null;
@@ -48,8 +49,8 @@ export function MobileRunDetail({
                   { label: "Repo", value: selectedRun.repo || "-" },
                   { label: "Branch", value: selectedRun.run.head_branch || "-" },
                   { label: "PR Number", value: String(selectedRun.run.pr_number ?? "-") },
-                  { label: "Age", value: selectedRun.run.age_minutes ? `${selectedRun.run.age_minutes}m` : "-" },
-                  { label: "Reason", value: selectedRun.run.stale_reason || "-" },
+                  { label: "Age", value: formatAgeMinutes(selectedRun.run.age_minutes) },
+                  { label: "Reason", value: selectedRun.run.stale_reason ? formatReason(selectedRun.run.stale_reason) : "-" },
                   { label: "Safe to Cancel", value: selectedRun.run.safe_to_cancel ? "Yes" : "No" },
                   { label: "Current Head SHA", value: selectedRun.run.current_head_sha || "-" },
                   { label: "Run Head SHA", value: selectedRun.run.run_head_sha || "-" },

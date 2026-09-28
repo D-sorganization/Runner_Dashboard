@@ -253,3 +253,89 @@ def test_dispatch_approval_names_role_repo_and_proposal(client: TestClient) -> N
     assert "Runner_Dashboard" in item["title"]
     assert prop.id in item["summary"]
     assert "Map the repo read-only." in item["summary"]
+
+
+@pytest.mark.unit
+def test_inbox_collapses_duplicate_proposals_in_api(client: TestClient) -> None:
+    """Duplicate proposals collapse into one item with '(and N identical requests)' and details."""
+    c_store = get_conversation_store()
+    th = c_store.create_thread(title="Dupes", kind="direct", participants=["barb", "user"])
+    p1 = c_store.create_proposal(
+        message_id="msg_1",
+        thread_id=th.id,
+        action="runner.restart",
+        params={"runner": "box1"},
+        risk="high",
+    )
+    p2 = c_store.create_proposal(
+        message_id="msg_2",
+        thread_id=th.id,
+        action="runner.restart",
+        params={"runner": "box1"},
+        risk="high",
+    )
+
+    with patch("projects.service.configured_repos", return_value=[]):
+        data = client.get("/api/v1/staff/inbox").json()
+
+    approval_items = [i for i in data["items"] if i["source"] == "approval"]
+    assert len(approval_items) == 1
+    item = approval_items[0]
+    assert "(and 1 identical requests)" in item["summary"]
+    assert set(item["details"]) == {p1.id, p2.id}
+
+
+@pytest.mark.unit
+def test_inbox_api_reports_project_decision_repos_and_counts(client: TestClient) -> None:
+    """Project decisions collapse to one item per repo, with project_decision_repos in counts."""
+    with (
+        patch("projects.service.configured_repos", return_value=["RepoA", "RepoB"]),
+        patch(
+            "projects.service.project_overview",
+            new=AsyncMock(
+                side_effect=[
+                    {"repo": "RepoA", "decisions_needed": ["Dec 1", "Dec 2"]},
+                    {"repo": "RepoB", "decisions_needed": ["Dec 3"]},
+                ]
+            ),
+        ),
+    ):
+        data = client.get("/api/v1/staff/inbox").json()
+
+    assert data["counts"]["project_decisions"] == 3
+    assert data["counts"]["project_decision_repos"] == 2
+    pd_items = [i for i in data["items"] if i["source"] == "project_decision"]
+    assert len(pd_items) == 2
+    repo_a = next(i for i in pd_items if i["metadata"]["repo"] == "RepoA")
+    assert repo_a["title"] == "RepoA: 2 decisions needed"
+    assert repo_a["details"] == ["Dec 1", "Dec 2"]
+    assert repo_a["severity"] == "low"
+
+
+@pytest.mark.unit
+def test_inbox_api_single_auth_sign_in_item(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """All unauthenticated providers aggregate into a single auth_sign_in item."""
+    from dataclasses import replace
+
+    from agent_remediation.provider_registry import PROVIDER_REGISTRY
+
+    codex = replace(next(e for e in PROVIDER_REGISTRY if e.dashboard_id == "codex_cli"), enabled=True)
+    claude = replace(next(e for e in PROVIDER_REGISTRY if e.dashboard_id == "claude_code_cli"), enabled=True)
+    monkeypatch.setattr("agent_remediation.PROVIDER_REGISTRY", (codex, claude))
+
+    unauth = {"installed": True, "authenticated": False, "detail": "not signed in"}
+    monkeypatch.setattr(
+        "agent_remediation.provider_probe.probe_provider_availability",
+        lambda: {"codex_cli": unauth, "claude_code_cli": unauth},
+    )
+
+    with patch("projects.service.configured_repos", return_value=[]):
+        data = client.get("/api/v1/staff/inbox").json()
+
+    auth_items = [i for i in data["items"] if i["source"] == "auth_sign_in"]
+    assert len(auth_items) == 1
+    assert auth_items[0]["id"] == "auth_sign_in"
+    assert auth_items[0]["title"] == "2 providers need sign-in"
+    assert "Codex CLI" in auth_items[0]["summary"]
+    assert "Claude Code CLI" in auth_items[0]["summary"]
+    assert len(auth_items[0]["details"]) == 2

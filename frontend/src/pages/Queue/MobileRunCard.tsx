@@ -1,6 +1,7 @@
 import { Badge } from "../../primitives/Badge";
 import type { FilterValue, WorkflowRun } from "./mobileTypes";
 import { statusLabel, statusTone } from "./mobileTypes";
+import { formatReason } from "./types";
 
 interface RunCardProps {
   elapsed: string;
@@ -57,7 +58,7 @@ export function MobileRunCard({
           {run.name ?? "Workflow run"}
         </span>
         <Badge tone={status === "stale" ? (run.safe_to_cancel ? "success" : "danger") : statusTone(status)} size="sm">
-          {status === "stale" ? (run.stale_reason || "stale") : statusLabel(status)}
+          {status === "stale" ? formatReason(run.stale_reason || "stale") : statusLabel(status)}
         </Badge>
       </div>
       <div

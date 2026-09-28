@@ -72,7 +72,7 @@ const MOCK_ROLES: StaffRoleItem[] = [
     group: "operations",
     valid: true,
     budget: {
-      daily_limit: 10,
+      usd_per_day: 10,
       spend_today: 10,
     },
   },
@@ -151,7 +151,7 @@ describe("Staff Console Roster Sidebar (SC-D3)", () => {
     // Unavailable: held
     const heldDot = screen.getByTestId("status-dot-held-specialist");
     expect(heldDot).toHaveAttribute("data-status", "unavailable");
-    expect(screen.getByTestId("status-reason-held-specialist")).toHaveTextContent("held: quarantine");
+    expect(screen.getByTestId("status-reason-held-specialist")).toHaveTextContent("1 standing rule");
 
     // Unavailable: budget reached
     const budgetDot = screen.getByTestId("status-dot-budget-exhausted-role");
@@ -355,4 +355,85 @@ describe("Staff Console Roster Sidebar (SC-D3)", () => {
     expect(screen.getByText(/2h ago/)).toBeInTheDocument();
     expect(screen.getByText(/3d ago/)).toBeInTheDocument();
   });
+
+  it("applies row states: selected styling, focus data attributes, and pin controls", () => {
+    const onSelectRole = vi.fn();
+    const onTogglePin = vi.fn();
+    render(
+      <Roster
+        roles={MOCK_ROLES}
+        selectedRoleId="librarian"
+        onSelectRole={onSelectRole}
+        onTogglePin={onTogglePin}
+      />
+    );
+
+    const librarianRow = screen.getByTestId("roster-row-librarian");
+    expect(librarianRow).toHaveAttribute("data-selected", "true");
+    expect(librarianRow).toHaveClass("staff-roster-row--selected");
+
+    const pinBtn = screen.getByTestId("pin-button-librarian");
+    expect(pinBtn).toHaveAttribute("aria-label", "Pin Librarian");
+    fireEvent.click(pinBtn);
+    expect(onTogglePin).toHaveBeenCalledWith("librarian");
+  });
+
+  it("persists group-collapse state across mounts via localStorage", () => {
+    localStorage.setItem(
+      "staff-console:collapsed-groups",
+      JSON.stringify({ operations: true })
+    );
+
+    const { rerender } = render(<Roster roles={MOCK_ROLES} />);
+    expect(screen.queryByText("Fleet Maintenance")).not.toBeInTheDocument();
+
+    const operationsHeader = screen.getByTestId("group-header-operations");
+    fireEvent.click(operationsHeader);
+    expect(screen.getByText("Fleet Maintenance")).toBeInTheDocument();
+
+    const stored = JSON.parse(localStorage.getItem("staff-console:collapsed-groups") || "{}");
+    expect(stored.operations).toBe(false);
+
+    rerender(<Roster roles={MOCK_ROLES} />);
+    expect(screen.getByText("Fleet Maintenance")).toBeInTheDocument();
+  });
+
+  it("focuses search input on global '/' key and clears on Escape", () => {
+    render(<Roster roles={MOCK_ROLES} />);
+    const searchInput = screen.getByTestId("roster-search-input");
+
+    // Global '/' focuses input when not in editable field
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(document.activeElement).toBe(searchInput);
+
+    // Typing query and pressing Escape clears it
+    fireEvent.change(searchInput, { target: { value: "librarian" } });
+    expect(searchInput).toHaveValue("librarian");
+    fireEvent.keyDown(searchInput, { key: "Escape" });
+    expect(searchInput).toHaveValue("");
+  });
+
+  it("displays hold reasons in full in the status dot tooltip and keeps accessible name", () => {
+    const rolesWithHolds: StaffRoleItem[] = [
+      {
+        name: "policy-held",
+        title: "Policy Held Role",
+        summary: "Specialist held by multiple policies",
+        group: "specialists",
+        valid: true,
+        holds: ["quarantine", "C3 HOLD"],
+      },
+    ];
+
+    render(<Roster roles={rolesWithHolds} />);
+
+    const rowBtn = screen.getByTestId("roster-row-btn-policy-held");
+    expect(rowBtn).toHaveAttribute("aria-label");
+    expect(rowBtn.getAttribute("aria-label")).toMatch(/quarantine, C3 HOLD/);
+
+    const dot = screen.getByTestId("status-dot-policy-held");
+    expect(dot).toHaveAttribute("data-status", "unavailable");
+    expect(dot.getAttribute("aria-label")).toContain("quarantine, C3 HOLD");
+  });
 });
+

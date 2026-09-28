@@ -19,6 +19,7 @@ import { legacyFetch } from "../lib/api";
 import { prefersReducedMotion } from "../design";
 import { VoiceInputButton } from "../components/VoiceInputButton";
 import { renderMarkdown } from "./assistantMarkdown";
+import { ChatGlyph, GearGlyph } from "./decompIcons";
 import {
   ASST_LS,
   type AssistantMessage,
@@ -432,7 +433,7 @@ export function AssistantSidebar(props: AssistantSidebarProps) {
     open ? h("div", { style: dragHandleStyle, onMouseDown: startDrag }) : null,
     open ? h(React.Fragment, null,
       h("div", { style: headerStyle },
-        h("span", { style: { fontWeight: 600, fontSize: 13 } }, "💬 Chat"),
+        h("span", { style: { fontWeight: 600, fontSize: 13 } }, h(ChatGlyph, { size: 13 }), " Chat"),
         h("div", { style: { display: "flex", gap: 6 } },
           h("label", {
             title: "Save chat history",
@@ -460,7 +461,7 @@ export function AssistantSidebar(props: AssistantSidebarProps) {
             "aria-label": "Assistant settings",
             "aria-expanded": showSettings ? "true" : "false",
             style: { background: "none", border: "none", color: showSettings ? "var(--accent-blue)" : "var(--text-muted)", cursor: "pointer", fontSize: 15, lineHeight: 1 },
-          }, "⚙️"),
+          }, h(GearGlyph, { size: 15 })),
           h("button", {
             onClick: toggle,
             title: "Close",

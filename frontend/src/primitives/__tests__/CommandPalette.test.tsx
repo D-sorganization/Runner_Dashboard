@@ -90,4 +90,37 @@ describe('CommandPalette', () => {
     expect(action).toHaveBeenCalledOnce();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  it('renders centred modal with --shadow-modal, --radius-lg, and 560px width', () => {
+    render(<CommandPalette commands={defaultCommands} />);
+    fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.style.width).toBe('560px');
+    expect(dialog.style.borderRadius).toBe('var(--radius-lg, 14px)');
+    expect(dialog.style.boxShadow).toBe('var(--shadow-modal)');
+  });
+
+  it('renders command icons and updates keyboard highlight', () => {
+    const DummyIcon = () => <span data-testid="cmd-icon" />;
+    const commandsWithIcon = [
+      { id: 'fleet', label: 'Go to Fleet', group: 'Tabs', action: vi.fn(), Icon: DummyIcon },
+      { id: 'queue', label: 'Go to Queue', group: 'Tabs', action: vi.fn() },
+    ];
+    render(<CommandPalette commands={commandsWithIcon} />);
+    fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    expect(screen.getByTestId('cmd-icon')).toBeInTheDocument();
+
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveAttribute('aria-selected', 'true');
+    expect(options[1]).toHaveAttribute('aria-selected', 'false');
+
+    // ArrowDown moves highlight
+    fireEvent.keyDown(dialogEl(screen.getByRole('dialog')), { key: 'ArrowDown' });
+    expect(options[1]).toHaveAttribute('aria-selected', 'true');
+  });
 });
+
+function dialogEl(el: HTMLElement) {
+  return el;
+}
+

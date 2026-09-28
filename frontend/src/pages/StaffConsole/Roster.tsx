@@ -2,9 +2,9 @@
  * Roster.tsx — Staff Roster sidebar with grouped roles, Ask Barb entry,
  * live operational statuses, search filter, and pinning.
  *
- * Implements SC-D3 (Issue #1317) under Epic SC-D (#1350).
+ * Implements Workstream C (Issue #1721, Epic #1718).
  */
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
   RosterGroupKey,
   RosterProps,
@@ -15,6 +15,7 @@ import { categorizeRole, filterRoles } from "./rosterUtils";
 import { RosterRow } from "./RosterRow";
 import { RosterGroup } from "./RosterGroup";
 import { NewPanelForm } from "./NewPanelForm";
+import "./roster.css";
 
 const PINNED_STORAGE_KEY = "staff-console:pinned-roles";
 const COLLAPSED_STORAGE_KEY = "staff-console:collapsed-groups";
@@ -41,6 +42,37 @@ export const Roster: React.FC<RosterProps> = ({
   // ── Search State ────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Global '/' shortcut to focus search input
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement | null;
+        const tagName = target?.tagName?.toLowerCase();
+        const isEditable =
+          target?.isContentEditable ||
+          tagName === "input" ||
+          tagName === "textarea" ||
+          tagName === "select";
+        if (!isEditable) {
+          e.preventDefault();
+          searchInputRef.current?.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setSearchQuery("");
+    } else if (e.key === "ArrowDown" && visibleNavRoles.length > 0) {
+      e.preventDefault();
+      setFocusedIndex(0);
+    }
+  };
 
   // ── Pinned Roles Persistence ────────────────────────────────────────────────
   const [localPinned, setLocalPinned] = useState<string[]>(() => {
@@ -186,10 +218,6 @@ export const Roster: React.FC<RosterProps> = ({
 
   const handleContainerKeyDown = (e: React.KeyboardEvent) => {
     if (e.target === searchInputRef.current) {
-      if (e.key === "ArrowDown" && visibleNavRoles.length > 0) {
-        e.preventDefault();
-        setFocusedIndex(0);
-      }
       return;
     }
 
@@ -219,87 +247,47 @@ export const Roster: React.FC<RosterProps> = ({
       data-testid="staff-roster-sidebar"
       tabIndex={0}
       onKeyDown={handleContainerKeyDown}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        maxWidth: "320px",
-        height: "100%",
-        minHeight: "400px",
-        backgroundColor: "var(--bg-secondary, #161b22)",
-        borderRight: "1px solid var(--border, #30363d)",
-        padding: "12px",
-        boxSizing: "border-box",
-        overflowY: "auto",
-      }}
     >
       {/* Sidebar Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: "12px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "var(--text-primary, #e6edf3)",
-              letterSpacing: "0.02em",
-            }}
-          >
-            Staff Roster
+      <div className="roster-header">
+        <div className="roster-header__title-wrap">
+          <h2 className="roster-header__title">
+            Staff
           </h2>
           {showStaleBadge && (
             <span
               data-testid="roster-stale-badge"
               title="Showing cached roster; network update failed"
-              style={{
-                fontSize: "10px",
-                fontWeight: 600,
-                padding: "2px 6px",
-                borderRadius: "10px",
-                backgroundColor: "var(--badge-warning-bg, rgba(210, 153, 34, 0.15))",
-                color: "var(--badge-warning-fg, #d29922)",
-                border: "1px solid rgba(210, 153, 34, 0.3)",
-              }}
+              className="roster-stale-badge"
             >
               Stale Data
             </span>
           )}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div className="roster-header__actions">
           <button
             type="button"
             className="roster-new-panel-btn"
             data-testid="roster-new-panel-button"
             aria-label="New panel"
             onClick={() => setShowPanelForm(true)}
-            style={{
-              padding: "2px 8px",
-              fontSize: "11px",
-              fontWeight: 600,
-              borderRadius: "4px",
-              border: "1px solid var(--border, #30363d)",
-              background: "var(--bg-tertiary, #21262d)",
-              color: "var(--text-primary, #c9d1d9)",
-              cursor: "pointer",
-            }}
           >
-            + New panel
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z" />
+            </svg>
+            <span>New panel</span>
           </button>
           {isLoading && (
             <span
               data-testid="roster-loading-indicator"
-              style={{
-                fontSize: "11px",
-                color: "var(--text-secondary, #8b949e)",
-              }}
+              className="roster-syncing-indicator"
             >
               Syncing...
             </span>
@@ -307,31 +295,28 @@ export const Roster: React.FC<RosterProps> = ({
         </div>
       </div>
 
-      {/* Search Input */}
-      <div style={{ position: "relative", marginBottom: "12px" }}>
+      {/* Search Input with search icon and shortcuts */}
+      <div className="roster-search-container">
+        <span className="roster-search-icon" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
+          </svg>
+        </span>
         <input
           ref={searchInputRef}
           type="text"
           data-testid="roster-search-input"
+          className="roster-search-input"
           placeholder="Filter roles or mandate..."
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
             setFocusedIndex(-1);
           }}
+          onKeyDown={handleSearchKeyDown}
           aria-label="Filter staff roles"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "6px 28px 6px 10px",
-            fontSize: "12px",
-            backgroundColor: "var(--bg-card, #1c2128)",
-            border: "1px solid var(--border, #30363d)",
-            borderRadius: "6px",
-            color: "var(--text-primary, #e6edf3)",
-          }}
         />
-        {searchQuery && (
+        {searchQuery ? (
           <button
             type="button"
             data-testid="roster-search-clear"
@@ -340,21 +325,14 @@ export const Roster: React.FC<RosterProps> = ({
               setSearchQuery("");
               searchInputRef.current?.focus();
             }}
-            style={{
-              position: "absolute",
-              right: "6px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              background: "none",
-              border: "none",
-              color: "var(--text-muted, #868e98)",
-              cursor: "pointer",
-              fontSize: "12px",
-              padding: "2px",
-            }}
+            className="roster-search-clear"
           >
-            ×
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z" />
+            </svg>
           </button>
+        ) : (
+          <kbd className="roster-search-shortcut" aria-hidden="true">/</kbd>
         )}
       </div>
 
@@ -376,7 +354,7 @@ export const Roster: React.FC<RosterProps> = ({
       )}
 
       {/* Top Entry: Ask Barb (auto-route) */}
-      <div style={{ marginBottom: "10px" }}>
+      <div style={{ marginBottom: "6px" }}>
         <RosterRow
           role={barbRole}
           isSelected={selectedRoleId === barbRole.name || selectedRoleId === "auto"}
@@ -390,24 +368,13 @@ export const Roster: React.FC<RosterProps> = ({
       </div>
 
       {/* Divider */}
-      <div
-        style={{
-          height: "1px",
-          backgroundColor: "var(--border, #30363d)",
-          margin: "4px 0 10px 0",
-        }}
-      />
+      <div className="roster-divider" />
 
       {/* Empty Search Result */}
       {searchQuery && filteredRoles.length === 0 && (
         <div
           data-testid="roster-empty-search"
-          style={{
-            padding: "16px 8px",
-            textAlign: "center",
-            color: "var(--text-secondary, #8b949e)",
-            fontSize: "12px",
-          }}
+          className="roster-empty-search"
         >
           No roles match &quot;{searchQuery}&quot;
         </div>
@@ -470,3 +437,4 @@ export const Roster: React.FC<RosterProps> = ({
     </aside>
   );
 };
+

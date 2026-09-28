@@ -2,7 +2,7 @@
  * Thread.tsx — Staff Console conversation thread view with sanitized markdown,
  * streaming token deltas, stop button, date separators, jump to unread, and composer.
  *
- * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350).
+ * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Workstream B (#1720).
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadMessage, ThreadProps } from "./threadTypes";
@@ -11,6 +11,7 @@ import { Composer } from "./Composer";
 import { formatSeparatorDate, getDateKey } from "./threadUtils";
 import { prefersReducedMotion } from "../../design/motion";
 import { groupByRound, isPanelThread } from "./panelTurn";
+import "./thread.css";
 
 /** Scroll instantly when the user asks for reduced motion (SC-D9). */
 const scrollBehavior = (): ScrollBehavior => (prefersReducedMotion() ? "auto" : "smooth");
@@ -21,20 +22,10 @@ export const RoundHeader: React.FC<{ round: number }> = ({ round }) => {
       role="separator"
       className="panel-round-header"
       aria-label={`Round ${round}`}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        margin: "16px 0 8px 0",
-        color: "var(--accent-blue, #58a6ff)",
-        fontSize: 12,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-      }}
     >
-      <div style={{ flex: 1, height: 1, background: "var(--border, #30363d)" }} />
-      <span style={{ padding: "0 12px" }}>Round {round}</span>
-      <div style={{ flex: 1, height: 1, background: "var(--border, #30363d)" }} />
+      <div className="thread-separator-line" />
+      <span className="thread-separator-label" style={{ color: "var(--accent-blue, #58a6ff)" }}>Round {round}</span>
+      <div className="thread-separator-line" />
     </div>
   );
 };
@@ -44,20 +35,10 @@ export const DateSeparator: React.FC<{ label: string }> = ({ label }) => {
     <div
       role="separator"
       className="thread-date-separator"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        margin: "16px 0 8px 0",
-        color: "var(--text-muted, #8b949e)",
-        fontSize: 11,
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-      }}
     >
-      <div style={{ flex: 1, height: 1, background: "var(--border, #30363d)" }} />
-      <span style={{ padding: "0 12px" }}>{label}</span>
-      <div style={{ flex: 1, height: 1, background: "var(--border, #30363d)" }} />
+      <div className="thread-separator-line" />
+      <span className="thread-separator-label">{label}</span>
+      <div className="thread-separator-line" />
     </div>
   );
 };
@@ -219,15 +200,6 @@ export const Thread: React.FC<ThreadProps> = ({
       className={`staff-thread-view ${className}`}
       role="region"
       aria-label={`Conversation thread with ${thread.title || thread.id}`}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        minHeight: 0,
-        background: "var(--bg-primary, #0d1117)",
-        color: "var(--text-primary, #c9d1d9)",
-        position: "relative",
-      }}
     >
       {/* Sticky Reconnecting Banner */}
       {isReconnecting && (
@@ -240,9 +212,9 @@ export const Thread: React.FC<ThreadProps> = ({
             left: 0,
             right: 0,
             zIndex: 10,
-            background: "rgba(210, 153, 34, 0.2)",
-            borderBottom: "1px solid rgba(210, 153, 34, 0.5)",
-            color: "var(--accent-yellow, #e3b341)",
+            background: "var(--badge-warning-bg)",
+            borderBottom: "1px solid var(--accent-yellow)",
+            color: "var(--accent-yellow)",
             padding: "6px 16px",
             fontSize: 12,
             fontWeight: 600,
@@ -269,51 +241,55 @@ export const Thread: React.FC<ThreadProps> = ({
         onScroll={handleScroll}
         onKeyDown={handleLogKeyDown}
         className="thread-messages-scroll"
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "16px 20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          minHeight: 0,
-        }}
       >
-        {groupedItems.map((item) => {
-          if (item.type === "round_header" && item.round != null) {
-            return <RoundHeader key={item.key} round={item.round} />;
-          }
+        <div className="thread-messages-container">
+          {groupedItems.map((item) => {
+            if (item.type === "round_header" && item.round != null) {
+              return <RoundHeader key={item.key} round={item.round} />;
+            }
 
-          if (item.type === "separator") {
-            return <DateSeparator key={item.key} label={item.label || ""} />;
-          }
+            if (item.type === "separator") {
+              return <DateSeparator key={item.key} label={item.label || ""} />;
+            }
 
-          if (item.message) {
-            const isUnreadTarget = firstUnread && item.message.id === firstUnread.id;
-            return (
-              <div
-                key={item.key}
-                ref={isUnreadTarget ? unreadTargetRef : undefined}
-                className={isUnreadTarget ? "thread-unread-target" : undefined}
-              >
-                <MessageItem
-                  message={item.message}
-                  isStreaming={item.message.streaming}
-                  onStopStreaming={onStopStreaming}
-                  onRetry={onRetryMessage}
-                  onApproveProposal={onApproveProposal}
-                  onDenyProposal={onDenyProposal}
-                  onCancelRun={onCancelRun}
-                  onAnswerRun={onAnswerRun}
-                  onRerouteHandoff={onRerouteHandoff}
-                  onFollowHandoff={onFollowHandoff}
-                />
-              </div>
-            );
-          }
+            if (item.message) {
+              const isUnreadTarget = firstUnread && item.message.id === firstUnread.id;
+              const msgIndex = messages.findIndex((m) => m.id === item.message?.id);
+              const prevMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
+              const isSameAuthor = prevMsg && prevMsg.author === item.message.author;
+              const timeDiffMs =
+                prevMsg && item.message.created_at && prevMsg.created_at
+                  ? Math.abs(new Date(item.message.created_at).getTime() - new Date(prevMsg.created_at).getTime())
+                  : Infinity;
+              const showHeader = !(isSameAuthor && timeDiffMs < 5 * 60 * 1000);
 
-          return null;
-        })}
+              return (
+                <div
+                  key={item.key}
+                  ref={isUnreadTarget ? unreadTargetRef : undefined}
+                  className={isUnreadTarget ? "thread-unread-target" : undefined}
+                  style={{ width: "100%" }}
+                >
+                  <MessageItem
+                    message={item.message}
+                    isStreaming={item.message.streaming}
+                    showHeader={showHeader}
+                    onStopStreaming={onStopStreaming}
+                    onRetry={onRetryMessage}
+                    onApproveProposal={onApproveProposal}
+                    onDenyProposal={onDenyProposal}
+                    onCancelRun={onCancelRun}
+                    onAnswerRun={onAnswerRun}
+                    onRerouteHandoff={onRerouteHandoff}
+                    onFollowHandoff={onFollowHandoff}
+                  />
+                </div>
+              );
+            }
+
+            return null;
+          })}
+        </div>
       </div>
 
       {/* Floating Jump to Unread Button */}
@@ -327,11 +303,11 @@ export const Thread: React.FC<ThreadProps> = ({
             bottom: 84,
             left: "50%",
             transform: "translateX(-50%)",
-            background: "var(--accent-blue, #1f6feb)",
-            color: "#fff",
+            background: "var(--accent-blue)",
+            color: "var(--text-on-accent)",
             border: "none",
             borderRadius: 20,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            boxShadow: "var(--shadow-card)",
             padding: "6px 16px",
             fontSize: 12,
             fontWeight: 600,

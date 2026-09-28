@@ -1,22 +1,30 @@
 /**
  * desktop.css — three-pane desktop Staff Console (#1446).
- * Colours come from design tokens only.
+ * Colours and tokens come from design tokens only.
  */
 
 .staff-console {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 320px);
   gap: 12px;
-  min-height: 70vh;
+  height: calc(100dvh - var(--shell-topbar-h, 56px) - 32px);
+  min-height: 520px;
   margin-bottom: 16px;
+  box-sizing: border-box;
+  position: relative;
 }
 
 .staff-console--no-context {
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
 }
 
-/* Medium windows: the role context drops under the conversation so the
-   conversation keeps a readable width (#1712). */
+.staff-console__roster {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Medium windows: the conversation keeps a readable width (#1712) and the role
+   context opens over its right edge on demand instead of taking a grid row (#1718). */
 @media (max-width: 1280px) {
   .staff-console,
   .staff-console--no-context {
@@ -24,9 +32,52 @@
   }
 
   .staff-console__context {
-    grid-column: 1 / -1;
-    max-height: 360px;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(340px, 90%);
+    min-height: 0;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-modal);
+    display: flex;
+    flex-direction: column;
   }
+
+  /* The overlay covers the header toggle, so it carries its own close button. */
+  .staff-console__context .staff-console__context-close {
+    display: inline-flex;
+  }
+}
+
+.staff-console__context-close {
+  display: none;
+  flex-shrink: 0;
+  align-self: flex-end;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 8px 8px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.staff-console__context-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.staff-console__context-close:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
 }
 
 /* Narrow windows: one column; the roster scrolls in a short band above the thread. */
@@ -34,10 +85,13 @@
   .staff-console,
   .staff-console--no-context {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
   }
 
   .staff-console__roster {
     max-height: 40vh;
+    min-height: 0;
+    overflow-y: auto;
   }
 }
 
@@ -45,8 +99,11 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md, 10px);
   background: var(--bg-secondary);
 }
 
@@ -54,24 +111,77 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 12px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.staff-console__header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .staff-console__title {
   margin: 0;
   font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-console__participants {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.staff-console__header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .staff-console__context-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 6px);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
-  padding: 2px 8px;
+  padding: 4px 8px;
+  height: 28px;
+  box-sizing: border-box;
+  transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.staff-console__context-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.staff-console__context-toggle:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
 }
 
 .staff-console__thread {
@@ -83,13 +193,63 @@
 }
 
 .staff-console__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   margin: auto;
-  padding: 24px;
+  padding: 32px 24px;
+  max-width: 580px;
+}
+
+.staff-console__empty-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0 0 6px 0;
+}
+
+.staff-console__empty-subtitle {
+  font-size: 13px;
   color: var(--text-muted);
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+}
+
+.staff-console__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.staff-console__suggestion-chip {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 9999px);
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 140ms ease-out, color 140ms ease-out, background 140ms ease-out;
+}
+
+.staff-console__suggestion-chip:hover {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.staff-console__suggestion-chip:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
 }
 
 .staff-console__context {
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -100,7 +260,7 @@
   gap: 8px;
   margin: 8px 12px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 6px);
   background: var(--badge-danger-bg);
   color: var(--badge-danger-fg);
   font-size: 12px;
@@ -122,12 +282,13 @@
 .staff-console__export-btn {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 6px);
   color: var(--text-secondary);
   font-size: 12px;
   padding: 2px 8px;
   text-decoration: none;
   cursor: pointer;
+  transition: border-color 140ms ease-out, color 140ms ease-out;
 }
 
 .staff-console__export-btn:hover {

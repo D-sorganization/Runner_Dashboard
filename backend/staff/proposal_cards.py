@@ -68,6 +68,15 @@ async def post_proposal(
     ``author`` (so role permission checks see the proposer) holding the card; the risk is the
     registry's, never the proposer's.
     """
+    from staff.redaction import redact_value
+
+    param_dict = redact_value(dict(params or {}))
+    pending = store.list_proposals(thread_id=thread_id, state="proposed")
+    for p in pending:
+        if p.action == action and p.params == param_dict:
+            log.info("Proposal %s is already pending in thread %s; skipping duplicate card (#1716)", p.id, thread_id)
+            return p
+
     msg = store.add_message(thread_id=thread_id, author_kind="role", author=author, kind=CARD_KIND, body_md=reason)
     prop = store.create_proposal(
         message_id=msg.id,

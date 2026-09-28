@@ -21,6 +21,17 @@ export interface InboxItem {
   created_at: string;
   link: string;
   metadata?: Record<string, unknown>;
+  /** Grouped sub-entries (#1725): decision texts, duplicate proposal ids, or per-provider sign-in reasons. */
+  details?: InboxDetail[];
+}
+
+export type InboxDetail = string | { provider?: string; label?: string; reason?: string };
+
+/** One display line for a grouped inbox detail. */
+export function inboxDetailText(detail: InboxDetail): string {
+  if (typeof detail === "string") return detail;
+  const name = detail.label || detail.provider || "";
+  return detail.reason ? `${name}: ${detail.reason}` : name;
 }
 
 export interface SourceStatus {

@@ -5,8 +5,9 @@
  * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350).
  */
 import React, { useMemo, useState } from "react";
-import { marked, type Token } from "marked";
+import { marked, type Token, type Tokens } from "marked";
 import { extractIssueOrRunLinks, sanitizeMarkdown } from "./threadUtils";
+import "./threadMarkdown.css";
 
 interface CodeBlockProps {
   code: string;
@@ -29,62 +30,49 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
   };
 
   return (
-    <div
-      className="thread-code-block"
-      style={{
-        position: "relative",
-        background: "var(--bg-tertiary, #161b22)",
-        border: "1px solid var(--border, #30363d)",
-        borderRadius: 8,
-        margin: "8px 0",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "4px 10px",
-          fontSize: 11,
-          color: "var(--text-muted, #8b949e)",
-          borderBottom: "1px solid var(--border, #30363d)",
-          background: "rgba(255, 255, 255, 0.02)",
-        }}
-      >
+    <div className="thread-code-block">
+      <div className="thread-code-block__header">
         <span>{language || "code"}</span>
         <button
           type="button"
           onClick={handleCopy}
           aria-label={copied ? "Copied" : "Copy code"}
-          style={{
-            background: "transparent",
-            border: "1px solid var(--border, #30363d)",
-            borderRadius: 4,
-            color: copied ? "var(--accent-green, #3fb950)" : "var(--text-secondary, #c9d1d9)",
-            cursor: "pointer",
-            fontSize: 11,
-            padding: "2px 8px",
-          }}
+          className={`thread-code-block__copy ${copied ? "thread-code-block__copy--copied" : ""}`}
         >
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <pre
-        style={{
-          margin: 0,
-          padding: "10px 12px",
-          overflowX: "auto",
-          fontSize: 12,
-          lineHeight: 1.45,
-          fontFamily: "var(--font-mono, monospace)",
-        }}
-      >
+      <pre className="thread-code-block__pre">
         <code>{code}</code>
       </pre>
     </div>
   );
 };
+
+const HTML_ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
+
+/** marked hands nested text back HTML-escaped; React escapes again, so undo it first. */
+function unescapeHtml(text: string): string {
+  return text.replace(/&(?:amp|lt|gt|quot|#39);/g, (entity) => HTML_ENTITIES[entity]);
+}
+
+/**
+ * Inline tokens of a paragraph that carries issue/PR/run references: plain text
+ * gets preview badges, bold/italic keep their element, everything else (code,
+ * links, line breaks) renders through the sanitized HTML path (#1718).
+ */
+function renderInline(tokens: Token[] = []): React.ReactNode[] {
+  return tokens.map((t, i) => {
+    if (t.type === "text" && !("tokens" in t && t.tokens?.length)) {
+      return <React.Fragment key={i}>{extractIssueOrRunLinks(unescapeHtml(t.text))}</React.Fragment>;
+    }
+    if (t.type === "text") return <React.Fragment key={i}>{renderInline((t as Tokens.Text).tokens)}</React.Fragment>;
+    if (t.type === "strong") return <strong key={i}>{renderInline((t as Tokens.Strong).tokens)}</strong>;
+    if (t.type === "em") return <em key={i}>{renderInline((t as Tokens.Em).tokens)}</em>;
+    // safe: sanitized via DOMPurify.sanitize in sanitizeMarkdown
+    return <span key={i} dangerouslySetInnerHTML={{ __html: sanitizeMarkdown(marked.parseInline(t.raw) as string) }} />;
+  });
+}
 
 export interface ThreadMarkdownProps {
   content: string;
@@ -121,8 +109,8 @@ export const ThreadMarkdown: React.FC<ThreadMarkdownProps> = ({ content, classNa
       if (hasBadges && token.type === "paragraph") {
         // Render rich badges for plain paragraphs with references
         return (
-          <p key={`p-badge-${idx}`} style={{ margin: "6px 0", lineHeight: 1.5 }}>
-            {extractIssueOrRunLinks(token.text)}
+          <p key={`p-badge-${idx}`} style={{ margin: "6px 0", lineHeight: 1.6 }}>
+            {renderInline((token as Tokens.Paragraph).tokens)}
           </p>
         );
       }
@@ -134,7 +122,6 @@ export const ThreadMarkdown: React.FC<ThreadMarkdownProps> = ({ content, classNa
           className="thread-md-chunk"
           // safe: cleanHtml is sanitized via DOMPurify.sanitize in lexMarkdownTokens
           dangerouslySetInnerHTML={{ __html: cleanHtml }}
-          style={{ lineHeight: 1.5 }}
         />
       );
     });
