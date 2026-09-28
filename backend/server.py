@@ -60,6 +60,7 @@ from routers import admin as admin_router
 from routers import auth as auth_router
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from tailnet_identity import build_asgi_app
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
@@ -2793,6 +2794,12 @@ async def serve_spa_fallback(full_path: str):
     return FileResponse(index_path, media_type="text/html")
 
 
+# ASGI entrypoint used for the "server:asgi_app" import string below (issue
+# #1755): records the raw transport peer before uvicorn's proxy-header
+# middleware rewrites scope["client"], so tailnet phone sign-in can tell a
+# request relayed by the local tailscaled from a direct tailnet caller.
+asgi_app = build_asgi_app(app)
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -2815,7 +2822,14 @@ if __name__ == "__main__":
     # `app` directly with `workers > 1` either silently runs a single worker or
     # fails at startup. Use the import string when WORKERS > 1; keep the
     # in-memory object for single-worker dev runs (faster, no re-import).
-    _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
+    # Issue #1755: run the app wrapped in TransportPeerMiddleware +
+    # ProxyHeadersMiddleware ourselves (via asgi_app / "server:asgi_app") and
+    # tell uvicorn not to install its own proxy-header handling
+    # (proxy_headers=False), so the resolved client address is computed
+    # exactly once, by our wrapper, with the raw transport peer recorded
+    # first. This keeps loopback-stays-loopback and XFF-from-127.0.0.1
+    # behavior identical to before.
+    _uvicorn_target: object = "server:asgi_app" if _uvicorn_cfg["workers"] > 1 else asgi_app
     uvicorn.run(
         _uvicorn_target,  # type: ignore[arg-type]
         # Issue #921: honor the operator-resolved bind host (DASHBOARD_HOST) instead
@@ -2827,5 +2841,6 @@ if __name__ == "__main__":
         workers=_uvicorn_cfg["workers"],
         limit_concurrency=_uvicorn_cfg["limit_concurrency"],
         timeout_keep_alive=_uvicorn_cfg["timeout_keep_alive"],
+        proxy_headers=False,
     )
 # ci-trigger

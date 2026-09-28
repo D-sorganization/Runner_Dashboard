@@ -323,7 +323,16 @@ def require_principal(
                 raise HTTPException(status_code=401, detail="Session revoked or expired")
             prin = identity_manager.principals[principal_id]
 
-    # 3. Optional local development bypass. Disabled by default and only grants
+    # 3. Optional phone sign-in over the tailnet via Tailscale identity headers
+    # (issue #1755). Only admitted when the raw transport peer is loopback
+    # (i.e. the request came in through the local tailscaled), so a direct
+    # tailnet caller cannot forge the identity headers.
+    if not prin:
+        from tailnet_identity import tailnet_principal  # noqa: PLC0415
+
+        prin = tailnet_principal(request)
+
+    # 4. Optional local development bypass. Disabled by default and only grants
     # access to the transport peer address, never forwarded headers.
     if not prin and _loopback_auth_enabled() and _is_loopback_request(request):
         prin = _loopback_principal()
@@ -416,7 +425,8 @@ def principal_has_scope(principal: Principal, required_scope: str) -> bool:
 
 
 def _resolve_principal_optional(request: Request, header_token: str | None) -> Principal | None:
-    """Resolve a principal from a Bearer token or session WITHOUT raising.
+    """Resolve a principal from a Bearer token, session, or Tailscale identity
+    headers (#1755) WITHOUT raising.
 
     Mirrors the credential resolution in ``require_principal`` but returns
     ``None`` instead of a 401 when no valid credential is present. Used by
@@ -436,7 +446,11 @@ def _resolve_principal_optional(request: Request, header_token: str | None) -> P
             if session_id and not sm.touch_session(session_id):
                 return None
             return identity_manager.principals[principal_id]
-    return None
+
+    # Phone sign-in over the tailnet via Tailscale identity headers (#1755).
+    from tailnet_identity import tailnet_principal  # noqa: PLC0415
+
+    return tailnet_principal(request)
 
 
 @functools.cache
@@ -471,7 +485,7 @@ def require_scope(required_scope: str):
         if require_fleet_peer in overrides:
             return Principal(id="test-peer", type="bot", name="Test Peer", roles=["fleet-peer"])
 
-        # 1. Bearer token or session principal
+        # 1. Bearer token, session, or Tailscale identity headers (#1755)
         prin = _resolve_principal_optional(request, header_token)
         hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
         if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
@@ -586,7 +600,10 @@ def resolve_perimeter_principal(request: Request) -> Principal | None:
     Resolution order matches ``require_principal``:
       1. ``Authorization: Bearer <service-token>``.
       2. Session cookie (requires SessionMiddleware to have run first).
-      3. Loopback development admin, only when ``DASHBOARD_LOOPBACK_AUTH=1`` and
+      3. Tailscale identity headers, only when ``DASHBOARD_TAILSCALE_AUTH=1``
+         and the admission conditions in ``tailnet_identity.tailnet_principal``
+         hold (delegated to via ``_resolve_principal_optional``).
+      4. Loopback development admin, only when ``DASHBOARD_LOOPBACK_AUTH=1`` and
          the transport peer is a loopback address.
     """
     header_token = request.headers.get("Authorization")

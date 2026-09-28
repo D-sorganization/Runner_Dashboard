@@ -24,14 +24,14 @@ over a private Tailscale network.
 
 ## 2. Fixed Topology & Contract
 
-| Component          | Target / Value                                                  | Notes                                              |
-| :----------------- | :-------------------------------------------------------------- | :------------------------------------------------- |
-| **Tailnet Origin** | `https://<node-name>.<tailnet>.ts.net`                          | Canonical HTTPS URL assigned by Tailscale MagicDNS |
-| **Local Listener** | `127.0.0.1:8321`                                                | Loopback bind on host                              |
-| **Serve Bridge**   | `tailscale serve --bg https+insecure://localhost:8321`          | Tailscale handles TLS termination                  |
-| **OAuth Callback** | `https://<node-name>.<tailnet>.ts.net/api/auth/github/callback` | Configured in GitHub OAuth App                     |
-| **Push Protocol**  | RFC 8291 + RFC 8292                                             | Encrypted with subscriber P-256 key and auth token |
-| **Service Worker** | `/sw.js`                                                        | Handles `push` and `notificationclick` events      |
+| Component          | Target / Value                                                  | Notes                                                                         |
+| :----------------- | :-------------------------------------------------------------- | :---------------------------------------------------------------------------- |
+| **Tailnet Origin** | `https://<node-name>.<tailnet>.ts.net`                          | Canonical HTTPS URL assigned by Tailscale MagicDNS                            |
+| **Local Listener** | `127.0.0.1:8321`                                                | Loopback bind on host                                                         |
+| **Serve Bridge**   | `tailscale serve --bg http://localhost:8321`                    | Backend serves plain HTTP on 8321 (no TLS); Tailscale handles TLS termination |
+| **OAuth Callback** | `https://<node-name>.<tailnet>.ts.net/api/auth/github/callback` | Configured in GitHub OAuth App                                                |
+| **Push Protocol**  | RFC 8291 + RFC 8292                                             | Encrypted with subscriber P-256 key and auth token                            |
+| **Service Worker** | `/sw.js`                                                        | Handles `push` and `notificationclick` events                                 |
 
 ---
 
@@ -45,10 +45,12 @@ over a private Tailscale network.
    tailscale status
    ```
 
-2. Start Tailscale Serve for the dashboard backend port (default 8321):
+2. Start Tailscale Serve for the dashboard backend port (default 8321). The
+   backend serves plain HTTP on 8321 (no TLS); Tailscale terminates TLS at
+   the tailnet edge:
 
    ```bash
-   tailscale serve --bg https+insecure://localhost:8321
+   tailscale serve --bg http://localhost:8321
    ```
 
 3. **Verify Tailscale Funnel is OFF** (mandatory per ADR-0007):
@@ -100,6 +102,41 @@ VAPID_SUBJECT=mailto:operator@example.com
    Web Push configured (subject=mailto:operator@example.com)
    ```
    _(Note: Key material is never logged)._
+
+### Step 3.3a: Sign In via Tailscale Identity (issue #1755)
+
+With `tailscale serve` bridging the phone's tailnet connection to the local
+dashboard, the resolved client address becomes the phone's tailnet address —
+so the loopback-admin bypass no longer applies, and a phone with no GitHub
+OAuth app configured has no way to sign in. Owner decision 2026-09-28: phone
+sign-in uses Tailscale's own identity headers instead, making GitHub OAuth
+optional for tailnet-only deployments.
+
+1. Set the two environment variables in the same host environment file used
+   in Step 3.3:
+
+   ```dotenv
+   DASHBOARD_TAILSCALE_AUTH=1
+   DASHBOARD_TAILSCALE_LOGINS=<your tailscale login>
+   ```
+
+   `DASHBOARD_TAILSCALE_LOGINS` accepts a comma-separated allow-list of
+   Tailscale logins (the value Tailscale sends in the `Tailscale-User-Login`
+   header, matched case-insensitively). Only logins on this list are
+   admitted.
+
+2. Restart the dashboard service so the new environment takes effect.
+
+3. A request is only admitted when it is genuinely relayed by the local
+   `tailscaled` process: the raw transport peer (recorded before any
+   proxy-header rewriting) must be loopback, and the resolved client address
+   must fall in a Tailscale range. A caller who reaches the dashboard
+   directly over the tailnet — bypassing `tailscale serve` — cannot forge the
+   `Tailscale-User-Login` header to gain access, because their raw transport
+   peer is never loopback.
+
+4. The admitted principal has exactly the same power as the local loopback
+   development admin (`roles: ["loopback"]`) — no more, no less.
 
 ### Step 3.4: Install PWA on Phone (iOS / Android)
 
