@@ -81,8 +81,9 @@ Last updated: 2026-09-28
   - Insights (phone) listed 0 reports: the default reports path used the WSL login (`dieterolson`) as the Windows profile name. `windows_repositories_root()` finds the profile that holds `Repositories` (also used by heavy tests).
   - Fleet Command: the minutes parser read one line per field, so wrapped priorities lost text ("link Barb to the Runner Dashboard"), and it stripped outer backticks from multi-span values. It joins wrapped lines and keeps spans balanced; the panel renders them through `OwnerMarkdown` (moved to `primitives/`).
 - Emoji-to-SVG sweep (DL-#1718): pictographic emoji across 25 pages, the composer mic and the proposal card's routed/dry-run labels are SVG glyphs from `decompIcons`; `tests/frontend/test_no_pictographic_emoji.py` guards it.
-- `/api/runs/enriched` sent GitHub's raw run objects (two repository objects and a dozen REST `*_url` links per run): 755 KB for 50 runs. `_slim_run` keeps the run's own fields, `repository` id/name/full_name/html_url/private, actor logins and the commit message: 147 KB.
+- `/api/runs/enriched` sent GitHub's raw run objects (two repository objects and a dozen REST `*_url` links per run): 755 KB for 50 runs. `_slim_run` keeps the run's own fields, `repository` id/name/full_name/html_url/private, actor logins and the commit message: 147 KB. `/api/runs` (Overview, Remediation) is slimmed the same way.
 - Staff checkout discovery guessed the Windows profile from `$USERNAME` (`/mnt/c/Users/<login>`); it now uses `windows_repositories_root()` like the reports path.
+- The 404 page said "Use the sidebar" on phones; it says "navigation" and hides the Ctrl+K hint under 768px. Mobile Fleet no longer puts a single ControlTower machine under a "ControlTower Pools" heading.
 
 ## Validation
 

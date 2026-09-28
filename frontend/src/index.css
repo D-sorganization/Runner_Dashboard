@@ -3404,6 +3404,9 @@ th.sortable.active .sort-indicator {
   .header-right .hide-mobile {
     display: none;
   }
+  .not-found__shortcut {
+    display: none;
+  }
   .tab-bar {
     flex: 1 1 auto;
     min-width: 0;

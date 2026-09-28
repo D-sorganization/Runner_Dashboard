@@ -108,3 +108,25 @@ async def test_enriched_runs_payload_is_slim(monkeypatch: pytest.MonkeyPatch) ->
     assert "jobs_url" not in run and "head_repository" not in run
     assert run["repository"]["name"] == "Runner_Dashboard"
     assert run["jobs"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_runs_payload_is_slim(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_repos(limit: int = 20) -> list[dict]:
+        return [{"name": "Runner_Dashboard"}]
+
+    async def fake_repo_runs(repo_name: str, per_page: int = 10, status: str | None = None) -> list[dict]:
+        return [_raw_github_run()]
+
+    monkeypatch.setattr(runs_workflows, "_get_recent_org_repos", fake_repos)
+    monkeypatch.setattr(runs_workflows, "_fetch_repo_runs", fake_repo_runs)
+    monkeypatch.setattr(runs_workflows, "should_proxy_fleet_to_hub", lambda request: False)
+    monkeypatch.setattr(runs_workflows, "cache_get", lambda key, ttl: None)
+    monkeypatch.setattr(runs_workflows, "cache_set", lambda key, value: None)
+
+    data = await runs_workflows.get_runs(object(), per_page=1)
+
+    (run,) = data["workflow_runs"]
+    assert "logs_url" not in run and "head_repository" not in run
+    assert run["repository"]["name"] == "Runner_Dashboard"

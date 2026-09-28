@@ -29,6 +29,15 @@ describe("NotFoundPanel", () => {
     expect(screen.getByText("/some/missing/page")).toBeInTheDocument();
   });
 
+  it("gives recovery hints that also make sense on a phone (#1718)", () => {
+    render(<NotFoundPanel path="/bad-link" onNavigateHome={vi.fn()} />);
+    const region = screen.getByRole("region", { name: /route not found/i });
+    expect(region.textContent).not.toMatch(/sidebar/i);
+    expect(region.textContent).toMatch(/navigation/i);
+    // The keyboard shortcut hint is desktop-only; CSS hides it on narrow screens.
+    expect(screen.getByText(/Ctrl\+K/).closest(".not-found__shortcut")).not.toBeNull();
+  });
+
   it("calls onNavigateHome when clicking the home action", () => {
     const onHome = vi.fn();
     render(<NotFoundPanel path="/bad-link" onNavigateHome={onHome} />);

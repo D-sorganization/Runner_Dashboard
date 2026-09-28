@@ -232,7 +232,7 @@ async def get_runs(request: Request, per_page: int = 30) -> dict:
     all_runs: list[dict] = [run for sublist in all_runs_nested for run in sublist]
 
     all_runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-    top_runs = all_runs[:per_page]
+    top_runs = [_slim_run(run) for run in all_runs[:per_page]]
 
     result = {"workflow_runs": top_runs, "total_count": len(top_runs)}
     cache_set(f"runs:{per_page}", result)
