@@ -42,8 +42,10 @@ The first live contract is the `/api/v1/staff` threads API with the `agent-grok`
 
 - **Reads:** briefing, threads, work items, staff summary and priorities.
 - **Dispatch: open, with owner confirmation** (2026-09-27, "Allow with confirm"). Every dispatch goes through Barb:
-  she proposes the run in chat and posts it (`POST /api/v1/staff/{role}/run`) only after Dieter explicitly says
-  yes. The cost guard still applies; a cost-guard overrun needs its own yes.
+  she proposes an action card in the thread, which must be approved by the owner in the Staff Console (or via
+  `/api/v1/staff/proposals/{id}/decide`). Chat turns (including Barb) operate in read-only mode and cannot
+  dispatch runs directly or accept chat confirmations. Saying "yes" in chat does not dispatch; the owner must
+  accept the proposal card in the Staff Console. The cost guard still applies; a cost-guard overrun needs its own approval.
   - The supervised dry run gate is met. The first dry run (2026-09-27, DeskComputer) showed that Barb's run plan
     carried write tools and push/PR rules. That was fixed by the opt-in `permissions.code_read_only` (#1659,
     Repository_Management#1822) and by removing Barb's directive-write recipe (Repository_Management#1818).

@@ -172,6 +172,7 @@ async def create_proposal(
             principal=format_caller(caller),
             decide_by=body.decide_by,
             default_if_silent=body.default_if_silent,
+            deduplicate=True,
         )
         return prop.to_dict()
     except ValueError as exc:

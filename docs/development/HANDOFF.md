@@ -68,31 +68,42 @@ Last updated: 2026-09-28
 
 <!-- ux-overhaul-handoff -->
 
-# Current handoff — Staff live-test fixes, consolidated (DL-#1708, DL-#1712, DL-#1711, DL-#1713)
+# Current handoff — Grok relay proposal deduplication and chat contract hardening (DL-#1716)
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Identity
 
 - Repository: `D-sorganization/Runner_Dashboard`
-- Working directory: `Runner_Dashboard-worktrees/claude-consol`
-- Branch: `fix/staff-live-test-consolidated-2026-09-27`
-- Baseline commit: `add4f7da`
+- Branch: `fix/grok-relay-proposal-dedup-1716`
+- Baseline commit: `19e4f920`
 - Implementation commit: `SELF`
-- Pull request: #1727 (open)
-- Governing issues: #1708, #1712, #1711, #1713.
+- Pull request: (pending)
+- Governing issue: #1716; DL-#1716.
 
 ## Objective and status
 
-- One PR for three of my open PRs: #1710 (Barb live-test findings), #1714 (approvals from the desktop console, inbox styling and speed) and #1715 (top-bar overflow). Main is strict and all three conflicted in the docs with #1707, so one CI cycle replaces three rebases.
-- Each original PR's own handoff section follows below unchanged. Only documentation overlapped; no code conflicts.
+- In the Grok relay path, when an owner replies "yes" in chat to Barb's proposal, Barb cannot execute proposals or dispatch runs from chat (chat turns are read-only and lack `staff.approve`/`staff.dispatch`).
+- Previously, repeated proposals generated duplicate proposal cards in the thread and duplicate DB rows, and Barb's prompt instructions and replay omitted pending proposal context, leading models to mistakenly say "dispatching" or re-propose cards. Furthermore, `docs/agents/grok.md` claimed Barb dispatches after Dieter says yes in chat.
+- Fix:
+  1. `backend/staff/conversation_proposals.py`: `create_proposal` checks `find_pending_proposal` to deduplicate pending proposals with identical action, params, and decision SLA within the same thread.
+  2. `backend/staff/proposal_cards.py`: `post_proposal` checks for existing pending proposals and avoids creating or publishing duplicate action card messages.
+  3. `backend/staff/chat_history.py` & `backend/staff/chat.py`: Action proposal messages are included in history replay and context blocks (`build_pending_proposals_block`) so assistants see pending proposal IDs and know they are awaiting Staff Console approval.
+  4. `backend/staff/reply_contract.py`: Strengthened instructions stating that chat turns are read-only and cannot execute proposals; instructed to refer users to the Staff Console.
+  5. `docs/agents/grok.md`: Corrected §2 "Allow with confirm" flow to document that proposals require owner approval in the Staff Console.
+  6. Unit and API tests added in `tests/unit/test_staff_proposal_dedup.py` and `tests/api/test_staff_proposals_api.py`.
 
-- `frontend/src/lib/openapi.json` and `api-types.ts` regenerated (`npm run generate-api`): the v1 summary route gained a docstring, which the `generate-api:check` CI step caught.
+## Validation
+
+- `pytest tests/unit/test_staff_proposal_dedup.py tests/api/test_staff_proposals_api.py tests/unit/test_staff_proposal_cards.py tests/api/test_staff_proposal_hardening.py tests/unit/test_staff_chat.py` (all passed).
+- `ruff check .` clean.
+- All touched files $\le 500$ LOC.
 
 ## Next steps
 
-1. Arm auto-merge through `automerge_guard` once CI is green, then close #1710, #1714 and #1715 as superseded.
-2. Redeploy DeskComputer, ControlTower and OGLaptop, then re-run Barb's dispatch test (approve `prop_166a825b0f32` from the inbox Review link).
+1. Push branch `fix/grok-relay-proposal-dedup-1716` and open PR referencing `Fixes #1716`.
+2. Enable auto-merge and verify CI passes.
+3. Release RM agent lease.
 
 ---
 

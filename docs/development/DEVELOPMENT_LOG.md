@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1716 — Grok relay proposal deduplication and chat contract hardening
+
+- **State:** in_progress
+- **Owner:** local
+- **Issue:** #1716
+- **Branch:** `fix/grok-relay-proposal-dedup-1716`
+- **PR:** (pending)
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_history.py`, `backend/staff/conversation_proposals.py`, `backend/staff/proposal_cards.py`, `backend/staff/reply_contract.py`, `docs/agents/grok.md`, `tests/api/test_staff_proposals_api.py`, `tests/unit/test_staff_proposal_dedup.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (pytest unit & api pass, ruff clean, LOC <= 500 per file)
+- **Summary:** Deduplicates pending proposals within the same thread so identical action proposals return the existing record and do not create duplicate action card messages; includes action proposals in chat history replay and context blocks so models are aware of pending proposals and their IDs; instructs models that chat turns are read-only and cannot execute proposals; clarifies the "Allow with confirm" flow in docs/agents/grok.md to reflect that owner approval happens in the Staff Console.
+- **Next step:** Open PR and enable auto-merge.
+
 ### DL-#1718 — Live-sweep fixes for the UX overhaul
 
 - **State:** in_review
