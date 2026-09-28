@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1708 — Staff Console fixes from Barb's live test
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1708
+- **Branch:** `fix/barb-live-test-findings`
+- **PR:** see branch
+- **Paths:** `backend/routers/staff_v1.py`, `backend/staff/workspace.py`, `backend/staff/roles.py`, `backend/staff/verification.py`, `backend/routers/credentials.py`, `frontend/src/pages/StaffConsole/consoleThreads.ts`, `tests/api/test_staff_v1_summary.py`, `tests/api/test_staff_fleet_rules.py`, `tests/staff/test_verification_no_repo.py`, `tests/test_credentials_router.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted pytest and StaffConsole vitest green)
+- **Summary:** v1 staff summary no longer 500s; run prompts name the local dashboard API and state the STAFF_RESULT contract; ad-hoc runs without a repo verify as not_applicable; the console de-dupes concurrent thread opens; CLI login files count as signed in for codex and claude.
+- **Next step:** Arm auto-merge on the PR once its CI is green.
+
 ### DL-#1338-settings — SC-G6: one Settings area with sections
 
 - **State:** in_review

@@ -1,3 +1,45 @@
+# Current handoff — Staff Console fixes from Barb's live test (DL-#1708)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-barb`
+- Branch: `fix/barb-live-test-findings`
+- Baseline commit: `246c0d58`
+- Implementation commit: `SELF`
+- Pull request: see DL-#1708
+- Governing issue: #1708; DL-#1708. Related: #1221 (result contract), #1516 (verification), #1195 (summary).
+
+## Objective and status
+
+- `GET /api/v1/staff/summary` was a 500 (it called a missing `scheduler.schedule_view`). It now returns `summary_view.build_staff_summary()`, the same body as the legacy route.
+- Unattended run prompts (write and read-only) now carry `dashboard_api_note()`, which names the local dashboard API (`/staff/summary`, `/staff/board`, `/staff/runs`, port from `DASHBOARD_PORT`) as the source of live fleet facts. Chat turns do not get it.
+- Both rule sets end with `RESULT_CONTRACT`: the last line must start with `STAFF_RESULT:`, or the run is recorded as failed (#1221).
+- `roles.AD_HOC_ROLE`; verification returns `not_applicable` for an ad-hoc run with no repository, without asking GitHub. Other roles without a repo keep the old verdict.
+- Staff Console: concurrent `resolveRoleThread` calls for one role share one in-flight request, so a double open no longer creates two threads.
+- Credentials inbox: the codex probe also accepts `$CODEX_HOME/auth.json` (default `~/.codex`) and the claude probe accepts `$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude`). Only existence is checked; contents are never read.
+
+## Validation
+
+- WSL rd-test-venv pytest: `tests/api/test_staff_v1_summary.py tests/api/test_staff_fleet_rules.py tests/staff/test_verification_no_repo.py tests/test_credentials_router.py` and the staff/prompt/summary/workspace selection.
+- Vitest: `frontend/src/pages/StaffConsole` suite.
+
+## Blockers and risks
+
+- None known. Follow-up (separate issue): a bounded host-level retry nudge when `STAFF_RESULT:` is missing, from Barb's expert panel.
+
+## Next steps
+
+1. Arm auto-merge via automerge_guard once CI is green, then redeploy the three nodes.
+
+## Change log
+
+- 2026-09-27: Fixes for six findings from Barb's live Staff Console test.
+
+---
+
 # Current handoff — SC-G6: one Settings area with sections (DL-#1338-settings)
 
 Last updated: 2026-09-27
@@ -74,7 +116,7 @@ Last updated: 2026-09-27
 
 - `update-deployed.sh` does not re-render the unit, so the same allowances ship as `deploy/systemd-dropins/40-cursor-sandbox.conf`. `update-deployed.sh` installs it with `install_cursor_sandbox_dropin` before it restarts the service. The function is idempotent (`cmp`), needs passwordless sudo, and otherwise warns with the exact command.
 - `staff-node-acceptance.sh` section 4 reads `systemctl show runner-dashboard -p RestrictNamespaces` and fails "Unit blocks cursor-agent sandbox namespaces" unless `user mnt net ipc uts` are all allowed. `no` means unrestricted and passes.
-- Installed by hand on 2026-09-27 on DeskComputer, ControlTower and OGLaptop, all on main `350f4ea`. Acceptance: cursor-agent ad-hoc runs pass on ControlTower and OGLaptop, each 43/45. The two remaining failures are the C3 board hold and antigravity (#1697, PR #1701).
+- Installed by hand on 2026-09-27 on DeskComputer, ControlTower and OGLaptop, all on main `350f4ea`. Acceptance: cursor-agent ad-hoc runs pass on ControlTower and OGLaptop, each 43/45. The two remaining failures are the C3 board hold and antigravity (#1697, PR #1702).
 
 ## Validation
 
