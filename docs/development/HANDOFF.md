@@ -1,3 +1,43 @@
+# Current handoff — Restore green main on ci-health-check (Staff.test.tsx line cap) (DL-#1705)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard`
+- Branch: `fix/1705-staff-test-line-cap`
+- Baseline commit: `246c0d58`
+- Implementation commit: `SELF`
+- Pull request: pending
+- Governing issue/epic: #1705; DL-#1705. Related: #1680.
+
+## Objective and status
+
+- Problem: CI Standard on `main` failed at `246c0d58` on `ci-health-check` with:
+  `Files exceeding 500-line soft cap found: 512 frontend/src/pages/__tests__/Staff.test.tsx`.
+- Solution:
+  - Condense verbose mock object definitions (`BASE_ROLE`, `ROSTER`, `RUN`) in `frontend/src/pages/__tests__/Staff.test.tsx`.
+  - Zero test cases or assertions were removed.
+  - Reduced `Staff.test.tsx` from 512 lines to 473 lines, satisfying the <= 500 LOC limit and restoring green main.
+
+## Files and decisions
+
+- `frontend/src/pages/__tests__/Staff.test.tsx`: 473 lines (<= 500 LOC).
+
+## Validation
+
+- Line count verified: 473 lines.
+- `SPEC.md`, `DEVELOPMENT_LOG.md`, and `HANDOFF.md` updated.
+
+## Next steps
+
+1. Create pull request with `agent:local` label.
+2. Enable auto-merge (`--auto --squash`).
+3. Release coordination lease upon merge.
+
+---
+
 # Current handoff — SC-G6: one Settings area with sections (DL-#1338-settings)
 
 Last updated: 2026-09-27
