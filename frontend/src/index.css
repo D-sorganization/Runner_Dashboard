@@ -4107,11 +4107,14 @@ th.sortable.active .sort-indicator {
 
 /* ── Push Settings ── */
 .push-settings {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
   gap: 12px;
   margin: 16px;
-  padding: 16px;
+  padding: 20px;
 }
 
 .push-settings__title {
@@ -4126,10 +4129,99 @@ th.sortable.active .sort-indicator {
 }
 
 .push-settings__topic {
-  align-items: center;
+  align-items: flex-start;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
   display: flex;
   font-size: 14px;
-  gap: 8px;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.push-settings__topic:hover {
+  background: var(--bg-hover);
+}
+
+.push-settings__topic--locked {
+  cursor: default;
+}
+
+.push-settings__topic--locked:hover {
+  background: transparent;
+}
+
+.push-settings__checkbox {
+  accent-color: var(--accent-blue);
+  flex: none;
+  height: 16px;
+  margin: 2px 0 0;
+  width: 16px;
+}
+
+.push-settings__topic-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.push-settings__topic-label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.push-settings__topic-desc {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.push-settings__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.push-settings__status {
+  background: var(--badge-neutral-bg);
+  border-radius: var(--radius-pill);
+  color: var(--badge-neutral-fg);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+}
+
+.push-settings__status--active {
+  background: var(--badge-success-bg);
+  color: var(--badge-success-fg);
+}
+
+.push-settings__note {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
+.push-settings__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.push-settings__result {
+  background: var(--badge-info-bg);
+  border-radius: var(--radius-sm);
+  color: var(--badge-info-fg);
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.push-settings__result--error {
+  background: var(--badge-danger-bg);
+  color: var(--badge-danger-fg);
 }
 
 /* ── Agent Dispatch Page (issue #196) ── */

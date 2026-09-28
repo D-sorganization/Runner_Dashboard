@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1724 — Phone access and push notifications
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1724
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** backend/push.py, backend/webpush_crypto.py, frontend/public/sw.js, frontend/src/pages/PushSettings.tsx, frontend/src/index.css (.push-settings\*), frontend/src/pages/StaffConsole/Mobile.tsx, frontend/src/pages/StaffConsole/mobile.css, docs/runbooks/phone-access-tailnet.md, tests/frontend/test_color_literal_budget.py
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (2026-09-27: push pytest 22 passed; tests/frontend guards 37 passed on Windows; StaffConsole vitest 221 passed; tsc + eslint clean)
+- **Summary:** Self-hosted Web Push (RFC 8291/8292, VAPID JWT 12h); tailnet phone runbook; PushSettings uses scoped .push-settings\_\_\* classes and badge tokens (no inline styles); mobile roster honours desktop tiering; composer clears shell nav; chevron back button; empty-thread hint. rgba budget guard counts usages only (84 -> 61).
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1719 — Neutral design tokens, type scale and flat cards
 
 - **State:** in_review
@@ -29,19 +42,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (2026-09-27 after rebase on 19e4f920: vitest 187/188 files (CodeRequests load flake, 19/19 alone); pytest staff+api+unit+integrity 2290 passed; tsc + eslint clean)
 - **Summary:** Neutral zinc palette (#111113 base), 4.5:1 muted text on every surface, flat .glass-card with opt-in hover; the mobile token contract test and design-system doc now pin the new palette.
-- **Next step:** Ship in the consolidated UX PR for epic #1718.
-
-### DL-#1724 — Phone access and push notifications
-
-- **State:** in_review
-- **Owner:** claude
-- **Issue:** #1724
-- **Branch:** `feat/ux-overhaul`
-- **PR:** see branch
-- **Paths:** backend/push.py, backend/webpush_crypto.py, frontend/public/sw.js, frontend/src/pages/PushSettings.tsx, frontend/src/pages/StaffConsole/Mobile.tsx, frontend/src/pages/StaffConsole/mobile.css, docs/runbooks/phone-access-tailnet.md
-- **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (2026-09-27: push pytest 22 passed (incl. RFC 8291 vector); StaffConsole vitest 221 passed; tsc + eslint clean; 375x812 layout checked)
-- **Summary:** Self-hosted Web Push (RFC 8291/8292, VAPID JWT 12h) replaces third-party paths; tailnet phone runbook; mobile roster honours desktop tiering (categorizeRole); thread composer clears the shell nav; inline chevron back button; empty-thread hint.
 - **Next step:** Ship in the consolidated UX PR for epic #1718.
 
 ### DL-#1722 — Console-first Staff page with an Attention drawer

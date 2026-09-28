@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "../primitives/EmptyState";
 import { TouchButton } from "../primitives/TouchButton";
 
@@ -121,143 +121,64 @@ export default function PushSettings() {
 
   if (notConfigured) {
     return (
-      <div
-        className="push-settings"
-        style={{
-          backgroundColor: "var(--bg-secondary, #161b22)",
-          border: "1px solid var(--border, #30363d)",
-          borderRadius: "var(--radius-md, 8px)",
-          padding: "20px",
-        }}
-      >
-        <h2 className="push-settings__title" style={{ color: "var(--text-primary, #ffffff)" }}>
-          Push Notifications
-        </h2>
+      <div className="push-settings">
+        <h2 className="push-settings__title">Push Notifications</h2>
         <EmptyState
           title="Push notifications not configured by operator"
           description="Configure VAPID credentials before enabling browser subscriptions. Refer to docs/runbooks/phone-access-tailnet.md for setup instructions."
         />
-        <div
-          style={{
-            fontSize: "13px",
-            lineHeight: "1.5",
-            color: "var(--text-secondary, #8b949e)",
-            backgroundColor: "var(--bg-tertiary, #21262d)",
-            border: "1px solid var(--border, #30363d)",
-            borderRadius: "6px",
-            padding: "12px 14px",
-            marginTop: "12px",
-          }}
-        >
-          Run <code>python -m push keygen</code> on the hub host to generate keys, add them to your environment, and restart the service.
+        <div className="push-settings__note">
+          Run <code>python -m push keygen</code> on the hub host to generate keys, add them to your
+          environment, and restart the service.
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className="push-settings"
-      style={{
-        backgroundColor: "var(--bg-secondary, #161b22)",
-        border: "1px solid var(--border, #30363d)",
-        borderRadius: "var(--radius-md, 8px)",
-        padding: "20px",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-        <h2 className="push-settings__title" style={{ color: "var(--text-primary, #ffffff)" }}>
-          Push Notifications
-        </h2>
-        <span
-          style={{
-            fontSize: "12px",
-            fontWeight: 500,
-            padding: "2px 8px",
-            borderRadius: "12px",
-            backgroundColor: subscribed ? "rgba(35, 134, 54, 0.2)" : "var(--bg-tertiary, #21262d)",
-            color: subscribed ? "var(--status-success, #3fb950)" : "var(--text-muted, #8b949e)",
-            border: `1px solid ${subscribed ? "var(--status-success, #3fb950)" : "var(--border, #30363d)"}`,
-          }}
-        >
+    <div className="push-settings">
+      <div className="push-settings__header">
+        <h2 className="push-settings__title">Push Notifications</h2>
+        <span className={`push-settings__status${subscribed ? " push-settings__status--active" : ""}`}>
           {subscribed ? "Active" : "Not subscribed"}
         </span>
       </div>
 
-      <div
-        style={{
-          fontSize: "13px",
-          lineHeight: "1.5",
-          color: "var(--text-secondary, #8b949e)",
-          backgroundColor: "var(--bg-tertiary, #21262d)",
-          border: "1px solid var(--border, #30363d)",
-          borderRadius: "6px",
-          padding: "10px 12px",
-          marginBottom: "12px",
-        }}
-      >
-        <strong>iPhone setup:</strong> On iPhone: Share → Add to Home Screen, then open from the icon to enable notifications (iOS 16.4+).
+      <div className="push-settings__note">
+        <strong>iPhone setup:</strong> On iPhone: Share → Add to Home Screen, then open from the icon to
+        enable notifications (iOS 16.4+).
       </div>
 
-      {error && (
-        <EmptyState
-          variant="error"
-          title="Push notification setup failed"
-          description={error}
-        />
-      )}
+      {error && <EmptyState variant="error" title="Push notification setup failed" description={error} />}
 
-      <div className="push-settings__topics" style={{ margin: "8px 0 16px 0" }}>
+      <div className="push-settings__topics">
         {PUSH_TOPICS.map((t) => (
           <label
             key={t.id}
-            className="push-settings__topic"
-            style={{
-              cursor: subscribed ? "default" : "pointer",
-              padding: "6px 8px",
-              borderRadius: "6px",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-            }}
+            className={`push-settings__topic${subscribed ? " push-settings__topic--locked" : ""}`}
           >
             <input
+              className="push-settings__checkbox"
               checked={!!topics[t.id]}
               disabled={subscribed}
               onChange={() => toggleTopic(t.id)}
               type="checkbox"
-              style={{
-                width: "16px",
-                height: "16px",
-                accentColor: "var(--accent-blue, #58a6ff)",
-                cursor: subscribed ? "default" : "pointer",
-              }}
             />
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-primary, #ffffff)" }}>
-                {t.label}
-              </span>
-              {"desc" in t && (
-                <span style={{ fontSize: "12px", color: "var(--text-muted, #8b949e)" }}>
-                  {t.desc}
-                </span>
-              )}
-            </div>
+            <span className="push-settings__topic-text">
+              <span className="push-settings__topic-label">{t.label}</span>
+              <span className="push-settings__topic-desc">{t.desc}</span>
+            </span>
           </label>
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+      <div className="push-settings__actions">
         {subscribed ? (
           <>
             <TouchButton onClick={unsubscribe} variant="danger">
               Unsubscribe
             </TouchButton>
-            <TouchButton
-              disabled={testStatus === "sending"}
-              onClick={sendTestNotification}
-              variant="default"
-            >
+            <TouchButton disabled={testStatus === "sending"} onClick={sendTestNotification} variant="default">
               {testStatus === "sending" ? "Sending…" : "Send test notification"}
             </TouchButton>
           </>
@@ -270,15 +191,8 @@ export default function PushSettings() {
 
       {testMessage && (
         <div
-          style={{
-            marginTop: "12px",
-            padding: "8px 12px",
-            borderRadius: "6px",
-            fontSize: "13px",
-            backgroundColor: testStatus === "error" ? "rgba(248, 81, 73, 0.15)" : "rgba(56, 139, 253, 0.15)",
-            color: testStatus === "error" ? "var(--status-danger, #f85149)" : "var(--accent-blue, #58a6ff)",
-            border: `1px solid ${testStatus === "error" ? "var(--status-danger, #da3633)" : "var(--accent-blue, #388bfd)"}`,
-          }}
+          className={`push-settings__result${testStatus === "error" ? " push-settings__result--error" : ""}`}
+          role={testStatus === "error" ? "alert" : "status"}
         >
           {testMessage}
         </div>
