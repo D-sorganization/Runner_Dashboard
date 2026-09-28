@@ -25,6 +25,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import quote
 
+from staff.roles import AD_HOC_ROLE
 from staff.workspace import ORG
 
 if TYPE_CHECKING:
@@ -116,8 +117,11 @@ def _age(rec: RunRecord, now: datetime) -> timedelta:
 def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -> Verdict:
     """Look up the run's PR (only when one is expected) and decide.
 
-    Post: a GitHub error yields ``unverified``; CI still pending after PENDING_LIMIT yields ``failed``.
+    Post: a GitHub error yields ``unverified``; CI still pending after PENDING_LIMIT yields ``failed``;
+    an ad-hoc run with no repository is ``not_applicable`` and GitHub is not asked.
     """
+    if rec.role == AD_HOC_ROLE and not rec.repo:
+        return Verdict("not_applicable", "ad-hoc run had no repository, so no pull request was expected")
     pr: PullRequest | None = None
     if rec.status == "succeeded" and opens_pr and rec.branch:
         try:

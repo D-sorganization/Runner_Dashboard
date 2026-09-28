@@ -36,6 +36,11 @@ export function pickRoleThread(threads: readonly ThreadInfo[], role: string): Th
   return candidates.reduce((best, t) => (activityOf(t) > activityOf(best) ? t : best));
 }
 
+// Concurrent resolutions for the same role (e.g. a double-fired click) share
+// one in-flight lookup/create instead of each racing to see "no existing
+// thread" and creating a duplicate (issue: double POST /threads per click).
+const inFlightByRole = new Map<string, Promise<ThreadInfo>>();
+
 /**
  * Precondition: `role` is a non-empty role name.
  * Postcondition: the returned thread includes `role` as a participant.
@@ -45,16 +50,28 @@ export async function resolveRoleThread(role: string, roleTitle: string, api: Th
   const name = role.trim();
   if (!name) throw new Error("resolveRoleThread: role name must be non-empty");
 
-  const existing = pickRoleThread(await api.listThreads(name), name);
-  if (existing) return existing;
+  const existingInFlight = inFlightByRole.get(name);
+  if (existingInFlight) return existingInFlight;
 
-  const created = await api.createThread({
-    role: name,
-    kind: threadKindForRole(name),
-    title: `Conversation with ${roleTitle || name}`,
-  });
-  if (!created?.participants?.includes(name)) {
-    throw new Error(`resolveRoleThread: created thread ${created?.id ?? "?"} does not include role '${name}'`);
+  const resolution = (async () => {
+    const existing = pickRoleThread(await api.listThreads(name), name);
+    if (existing) return existing;
+
+    const created = await api.createThread({
+      role: name,
+      kind: threadKindForRole(name),
+      title: `Conversation with ${roleTitle || name}`,
+    });
+    if (!created?.participants?.includes(name)) {
+      throw new Error(`resolveRoleThread: created thread ${created?.id ?? "?"} does not include role '${name}'`);
+    }
+    return created;
+  })();
+
+  inFlightByRole.set(name, resolution);
+  try {
+    return await resolution;
+  } finally {
+    inFlightByRole.delete(name);
   }
-  return created;
 }

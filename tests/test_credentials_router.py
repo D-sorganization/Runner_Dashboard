@@ -159,8 +159,9 @@ def test_probe_jules_api(monkeypatch: pytest.MonkeyPatch) -> None:
     assert probe_ok["status"] == "ready"
 
 
-def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(credentials, "_find_binary", lambda name: "/usr/bin/codex" if name == "codex" else None)
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no-login"))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     probe = _probe_codex_cli()
     assert probe["id"] == "codex_cli"
@@ -168,6 +169,7 @@ def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     assert probe["authenticated"] is True
     assert probe["usable"] is True
     assert probe["status"] == "ready"
+    assert probe["detail"] == "Ready (OPENAI_API_KEY)"
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     probe_no_key = _probe_codex_cli()
@@ -175,6 +177,7 @@ def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     assert probe_no_key["authenticated"] is False
     assert probe_no_key["usable"] is False
     assert probe_no_key["status"] == "missing_key"
+    assert probe_no_key["detail"] == "not signed in: run `codex login` or set OPENAI_API_KEY"
 
     monkeypatch.setattr(credentials, "_find_binary", lambda name: None)
     probe_not_installed = _probe_codex_cli()
@@ -183,15 +186,64 @@ def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     assert probe_not_installed["status"] == "not_installed"
 
 
-def test_probe_claude_code_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_codex_cli_login_file_counts_as_authenticated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(credentials, "_find_binary", lambda name: "/usr/bin/codex" if name == "codex" else None)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    (codex_home / "auth.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    probe = _probe_codex_cli()
+    assert probe["authenticated"] is True
+    assert probe["usable"] is True
+    assert probe["status"] == "ready"
+    assert probe["detail"] == "Ready (codex login)"
+    # key_status reflects the API key only, never the login file.
+    assert probe["key_status"] == "missing"
+
+
+def test_probe_claude_code_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
     monkeypatch.setattr(credentials, "_env_present_anywhere", lambda key: key == "ANTHROPIC_API_KEY")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-login"))
     probe = _probe_claude_code_cli()
     assert probe["id"] == "claude_code_cli"
     assert probe["installed"] is True
     assert probe["authenticated"] is True
     assert probe["usable"] is True
     assert probe["status"] == "ready"
+    assert probe["detail"] == "Ready (ANTHROPIC_API_KEY)"
+
+
+def test_probe_claude_code_cli_no_auth(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
+    monkeypatch.setattr(credentials, "_env_present_anywhere", lambda key: False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-login"))
+    probe = _probe_claude_code_cli()
+    assert probe["authenticated"] is False
+    assert probe["usable"] is False
+    assert probe["status"] == "missing_key"
+    assert probe["detail"] == "not signed in: run `claude login` or set ANTHROPIC_API_KEY"
+
+
+def test_probe_claude_code_cli_login_file_counts_as_authenticated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
+    monkeypatch.setattr(credentials, "_env_present_anywhere", lambda key: False)
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_dir))
+
+    probe = _probe_claude_code_cli()
+    assert probe["authenticated"] is True
+    assert probe["usable"] is True
+    assert probe["status"] == "ready"
+    assert probe["detail"] == "Ready (claude login)"
+    # key_status reflects the API key only, never the login file.
+    assert probe["key_status"] == "missing"
 
 
 @pytest.mark.asyncio

@@ -100,4 +100,38 @@ describe("resolveRoleThread", () => {
       "conversations unavailable",
     );
   });
+
+  it("de-duplicates concurrent calls for the same role into a single create (bug: double POST /threads on one click)", async () => {
+    const created = thread({ id: "fresh", participants: ["user:me", "maintenance"] });
+    let resolveList: (threads: ThreadInfo[]) => void;
+    const deps: ThreadApi = {
+      // listThreads is slow, like a real network round trip: both concurrent
+      // callers must observe the same in-flight resolution rather than each
+      // racing to find "no existing thread" and creating their own.
+      listThreads: vi.fn(() => new Promise<ThreadInfo[]>((resolve) => (resolveList = resolve))),
+      createThread: vi.fn().mockResolvedValue(created),
+    };
+
+    const first = resolveRoleThread("maintenance", "Fleet Maintenance", deps);
+    const second = resolveRoleThread("maintenance", "Fleet Maintenance", deps);
+
+    resolveList!([]);
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(deps.listThreads).toHaveBeenCalledTimes(1);
+    expect(deps.createThread).toHaveBeenCalledTimes(1);
+    expect(firstResult).toBe(created);
+    expect(secondResult).toBe(created);
+  });
+
+  it("allows a fresh resolution for the same role once the prior one has settled", async () => {
+    const created = thread({ id: "fresh", participants: ["user:me", "maintenance"] });
+    const deps = api([], created);
+
+    await resolveRoleThread("maintenance", "Fleet Maintenance", deps);
+    await resolveRoleThread("maintenance", "Fleet Maintenance", deps);
+
+    expect(deps.listThreads).toHaveBeenCalledTimes(2);
+    expect(deps.createThread).toHaveBeenCalledTimes(2);
+  });
 });
