@@ -1695,11 +1695,13 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await _system_router.get_system_metrics()
-    local_health = await _health_router._health_impl()
-    local_resource_reason = _resource_offline_reason(local_sys)
-    nodes: list[dict] = [
-        {
+    async def collect_local() -> dict:
+        local_sys, local_health = await asyncio.gather(
+            _system_router.get_system_metrics(),
+            _health_router._health_impl(),
+        )
+        local_resource_reason = _resource_offline_reason(local_sys)
+        return {
             "name": HOSTNAME,
             "url": f"http://localhost:{PORT}",
             "online": True,
@@ -1718,17 +1720,14 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
             "offline_detail": (local_resource_reason["offline_detail"] if local_resource_reason else None),
         }
-    ]
 
-    if FLEET_NODES:
-        # Each node probe already has its own httpx timeout. Avoid a shorter
-        # global gather timeout here: one slow machine should not make every
-        # remote node look offline or suppress metrics from a slow-but-live
-        # dashboard.
-        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
-        nodes.extend(remote)
-
-    return nodes
+    gathered = await asyncio.gather(
+        collect_local(),
+        *[fetch_node(name, url) for name, url in FLEET_NODES.items()],
+    )
+    local_node = gathered[0]
+    remote_nodes = list(gathered[1:])
+    return [local_node, *remote_nodes]
 
 
 # Deployment routes extracted to routers/deployment.py and registered via app.include_router (issue #357).
@@ -1893,17 +1892,18 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
 # _get_fleet_nodes_impl kept here and injected via set_dependencies().
 
 
-async def _get_fleet_nodes_impl() -> dict:
-    """Aggregate system metrics + health from all fleet nodes.
+_fleet_nodes_flight_task: asyncio.Task[dict] | None = None
+_fleet_nodes_flight_lock: asyncio.Lock | None = None
 
-    Always includes this machine (no HTTP round-trip).  Remote nodes are
-    queried concurrently over Tailscale using FLEET_NODES config.
-    Offline nodes are included with online=False so the UI can show them.
-    """
-    cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
-    if cached is not None:
-        return cached
 
+def _get_fleet_nodes_flight_lock() -> asyncio.Lock:
+    global _fleet_nodes_flight_lock  # noqa: PLW0603
+    if _fleet_nodes_flight_lock is None:
+        _fleet_nodes_flight_lock = asyncio.Lock()
+    return _fleet_nodes_flight_lock
+
+
+async def _execute_get_fleet_nodes() -> dict:
     partial = False
     fleet_probe_error = None
     try:
@@ -1964,6 +1964,40 @@ async def _get_fleet_nodes_impl() -> dict:
     }
     _cache_set("fleet_nodes", result)
     return result
+
+
+async def _get_fleet_nodes_impl() -> dict:
+    """Aggregate system metrics + health from all fleet nodes.
+
+    Always includes this machine (no HTTP round-trip).  Remote nodes are
+    queried concurrently over Tailscale using FLEET_NODES config.
+    Offline nodes are included with online=False so the UI can show them.
+    Single-flight coalescing ensures concurrent callers await one collection.
+    """
+    cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
+    if cached is not None:
+        return cached
+
+    flight_lock = _get_fleet_nodes_flight_lock()
+    async with flight_lock:
+        cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
+        if cached is not None:
+            return cached
+
+        global _fleet_nodes_flight_task  # noqa: PLW0603
+        task = _fleet_nodes_flight_task
+        if task is None or task.done():
+            task = asyncio.create_task(_execute_get_fleet_nodes())
+            _fleet_nodes_flight_task = task
+
+            def _on_done(t: asyncio.Task) -> None:
+                global _fleet_nodes_flight_task  # noqa: PLW0603
+                if _fleet_nodes_flight_task is t:
+                    _fleet_nodes_flight_task = None
+
+            task.add_done_callback(_on_done)
+
+    return await asyncio.shield(task)
 
 
 # /api/fleet/nodes/{node_name}/system extracted to routers/orchestration.py (issue #359).
