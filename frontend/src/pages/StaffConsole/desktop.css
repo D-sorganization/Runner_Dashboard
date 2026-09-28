@@ -11,6 +11,7 @@
   min-height: 520px;
   margin-bottom: 16px;
   box-sizing: border-box;
+  position: relative;
 }
 
 .staff-console--no-context {
@@ -22,8 +23,8 @@
   overflow-y: auto;
 }
 
-/* Medium windows: the role context drops under the conversation so the
-   conversation keeps a readable width (#1712). */
+/* Medium windows: the conversation keeps a readable width (#1712) and the role
+   context opens over its right edge on demand instead of taking a grid row (#1718). */
 @media (max-width: 1280px) {
   .staff-console,
   .staff-console--no-context {
@@ -31,11 +32,52 @@
   }
 
   .staff-console__context {
-    grid-column: 1 / -1;
-    max-height: 360px;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(340px, 90%);
     min-height: 0;
     overflow-y: auto;
+    background: var(--bg-primary);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-modal);
+    display: flex;
+    flex-direction: column;
   }
+
+  /* The overlay covers the header toggle, so it carries its own close button. */
+  .staff-console__context .staff-console__context-close {
+    display: inline-flex;
+  }
+}
+
+.staff-console__context-close {
+  display: none;
+  flex-shrink: 0;
+  align-self: flex-end;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 8px 8px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.staff-console__context-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.staff-console__context-close:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
 }
 
 /* Narrow windows: one column; the roster scrolls in a short band above the thread. */

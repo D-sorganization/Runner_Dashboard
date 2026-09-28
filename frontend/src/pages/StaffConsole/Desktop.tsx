@@ -27,6 +27,11 @@ export interface StaffConsoleDesktopProps {
   initialThreadId?: string | null;
 }
 
+/** True when the console is below the three-column width (see desktop.css). */
+function isMediumWindow(): boolean {
+  return typeof window !== "undefined" && Boolean(window.matchMedia?.("(max-width: 1280px)").matches);
+}
+
 const EMPTY_SUGGESTIONS = [
   "What's waiting on me?",
   "Summarise today's fleet status",
@@ -36,7 +41,8 @@ const EMPTY_SUGGESTIONS = [
 
 export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThreadId }: StaffConsoleDesktopProps) {
   const sc = useStaffConsole({ roles: seedRoles, threadApi, initialThreadId });
-  const [showContext, setShowContext] = useState(true);
+  // Below 1280px the context pane overlays the conversation, so it starts closed there.
+  const [showContext, setShowContext] = useState(() => !isMediumWindow());
   const [composerPrefill, setComposerPrefill] = useState("");
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
@@ -236,6 +242,27 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
 
       {showContext && (
         <aside className="staff-console__context" aria-label="Role context">
+          <button
+            type="button"
+            className="staff-console__context-close"
+            aria-label="Close role context"
+            title="Close role context"
+            onClick={() => setShowContext(false)}
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+            </svg>
+          </button>
           <ContextPane
             role={sc.roleDetail}
             threadContext={activeThread ? { thread_id: activeThread.id } : null}

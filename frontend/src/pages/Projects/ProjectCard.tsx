@@ -115,16 +115,19 @@ export function ProjectCard({
         className="section-header"
         style={{
           display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
           justifyContent: "space-between",
           alignItems: "center",
         }}
       >
-        <h3 style={{ margin: 0 }}>
+        <h3 style={{ margin: 0, minWidth: 0, overflowWrap: "anywhere" }}>
           {repo} <PriorityBadge priority={priority} /> <CiStatusBadge ci={ci} />
         </h3>
         <button
           type="button"
           className="btn btn-blue"
+          style={{ flexShrink: 0 }}
           disabled={running}
           onClick={() => onRunSteward(repo)}
           aria-label={`Run steward now for ${repo}`}

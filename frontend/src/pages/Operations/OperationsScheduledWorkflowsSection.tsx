@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { legacyFetch } from "../../lib/api";
+import { TABLE_FRAME_STYLE } from "./tableFrame";
 
 interface LatestRun {
   status?: string | null;
@@ -349,15 +350,7 @@ export function OperationsScheduledWorkflowsSection({
       </div>
 
       {/* Workflows table */}
-      <div
-        style={{
-          border: "1px solid var(--border-color, #30363d)",
-          borderRadius: "6px",
-          overflow: "hidden",
-          background: "var(--bg-tertiary, #21262d)",
-          marginBottom: "1rem",
-        }}
-      >
+      <div style={TABLE_FRAME_STYLE}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border-color, #30363d)", textAlign: "left" }}>

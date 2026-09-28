@@ -9,6 +9,7 @@ import type {
   OrchestrationMachine,
 } from "./deployTypes";
 import { OperationsDeployAuditLog } from "./OperationsDeployAuditLog";
+import { TABLE_FRAME_STYLE } from "./tableFrame";
 
 export type {
   DeploymentMachine,
@@ -266,15 +267,7 @@ export function OperationsDeploySection({
       )}
 
       {/* Machines deployment table */}
-      <div
-        style={{
-          border: "1px solid var(--border-color, #30363d)",
-          borderRadius: "6px",
-          overflow: "hidden",
-          background: "var(--bg-tertiary, #21262d)",
-          marginBottom: "1rem",
-        }}
-      >
+      <div style={TABLE_FRAME_STYLE}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border-color, #30363d)", textAlign: "left" }}>

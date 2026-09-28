@@ -3,7 +3,7 @@
  * Desktop.test.tsx — three-pane desktop Staff Console on /staff (#1446).
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadInfo } from "../threadTypes";
 import type { StaffRoleItem } from "../types";
@@ -195,5 +195,22 @@ describe("StaffConsoleDesktop", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /show role context/i }));
     expect(screen.getByRole("complementary", { name: "Role context" })).toBeInTheDocument();
+  });
+
+  it("starts with the context pane closed on medium windows (#1718)", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({ matches: query.includes("max-width: 1280px"), media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList) as typeof window.matchMedia;
+    try {
+      render(<StaffConsoleDesktop roles={ROLES} />);
+      expect(screen.queryByRole("complementary", { name: "Role context" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /show role context/i }));
+      const pane = screen.getByRole("complementary", { name: "Role context" });
+      // The overlay covers the header toggle, so it carries its own close button.
+      fireEvent.click(within(pane).getByRole("button", { name: /close role context/i }));
+      expect(screen.queryByRole("complementary", { name: "Role context" })).not.toBeInTheDocument();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

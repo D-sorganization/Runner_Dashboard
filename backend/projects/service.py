@@ -143,17 +143,26 @@ async def fetch_org_repos(fetch: Fetcher | None = None) -> list[dict[str, Any]]:
     return cached
 
 
-def _describe_priorities_failure(detail: str) -> str:
-    """One readable sentence for the Projects banner; never the raw API body.
+def _is_auth_failure(detail: str) -> bool:
+    """``gh_utils`` reports GitHub failures as ``GitHub API error (<status>): ...``."""
+    return "(401)" in detail or "(403)" in detail
 
-    ``gh_utils`` reports GitHub failures as ``GitHub API error (<status>): ...``.
-    """
-    if "(401)" in detail or "(403)" in detail:
+
+def _describe_priorities_failure(detail: str) -> str:
+    """One readable sentence for the Projects banner; never the raw API body."""
+    if _is_auth_failure(detail):
         return (
             f"the dashboard's GitHub App cannot read {PRIORITIES_REPO}/{PRIORITIES_PATH} "
             "(grant it Contents: read on that repository)"
         )
     return f"GitHub request failed ({detail.split(':', 1)[0]})"
+
+
+def _describe_repo_failure(repo: str, detail: str, permission: str) -> str:
+    """A card's GitHub error: one sentence for auth failures, else the detail as reported."""
+    if _is_auth_failure(detail):
+        return f"github: the dashboard's GitHub App cannot read {repo} (grant it {permission}: read)"
+    return f"github: {detail}"
 
 
 async def load_priorities(fetch: Fetcher | None = None) -> tuple[dict[str, ProjectPriority], str | None]:
@@ -241,14 +250,14 @@ async def build_project(repo: str, fetch: Fetcher | None = None, store: RunStore
     except CharterError as exc:
         result["error"] = f"charter invalid: {exc}"
     except HTTPException as exc:
-        result["error"] = f"github: {exc.detail}"
+        result["error"] = _describe_repo_failure(repo, str(exc.detail), "Contents")
     except Exception as exc:  # noqa: BLE001 — one bad repo must not fail the page
         log.warning("projects: %s overview failed: %s", repo, exc)
         result["error"] = f"{type(exc).__name__}: {exc}"
     try:
         result["coverage"] = classify(repo, features, await fetch_open_items(repo, fetch))
     except HTTPException as exc:
-        result["coverage_error"] = f"github: {exc.detail}"
+        result["coverage_error"] = _describe_repo_failure(repo, str(exc.detail), "Issues")
     try:
         result["last_steward_run"] = last_steward_run(repo, store)
     except Exception as exc:  # noqa: BLE001 — store trouble is reported, not fatal
