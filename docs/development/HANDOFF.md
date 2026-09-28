@@ -61,6 +61,14 @@ Last updated: 2026-09-28
 - Validation: `npx vitest run frontend/src/lib/__tests__/buildId.test.ts` 3 passed (red before the module existed); `npm run typecheck` clean; eslint clean; `npx vite build` bundle contains `sw.js?build=${encodeURIComponent("157232e6")}`, and `VITE_BUILD_ID=rel-test` yields `"rel-test"`.
 - Next: mark #1741 ready and arm via `automerge_guard` once CI is green.
 
+## Queue page first-load state, #1742 (DL-#1742)
+
+- Branch `fix/queue-loading-state` (worktree `claude-queue-load`), from main `157232e6`. PR #1743 (draft).
+- Work → Queue showed `0` / `idle`, `0` / `empty` and "Queue is empty — all runners idle" while the first `/api/queue` load was pending (several seconds on a cold cache), and again when that load failed. The live fleet had 3 running and 4 queued.
+- `frontend/src/pages/Queue/index.tsx`: with no payload yet, the stats show `—` with `loading` (or `unknown` after a failure) and the empty-state messages are not rendered; a failed first load shows an alert naming the HTTP status. The existing "handles missing queue gracefully" test asserted the bug and now expects the loading state. `Queue/Mobile.tsx` already had a skeleton and a failure state.
+- Validation: `npx vitest run frontend/src/pages/Queue` 63 passed (new `QueueLoadingState.test.tsx` red before the fix); `npm run typecheck` and eslint clean.
+- Next: mark #1743 ready and arm via `automerge_guard` once CI is green.
+
 ---
 
 # Historical handoffs

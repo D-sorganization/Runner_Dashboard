@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1742 — Queue page does not claim idle before its data arrives
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1742
+- **Branch:** `fix/queue-loading-state`
+- **PR:** #1743
+- **Paths:** `frontend/src/pages/Queue/index.tsx`, `frontend/src/pages/Queue/__tests__/QueueLoadingState.test.tsx`, `frontend/src/pages/Queue/__tests__/QueueTab.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (Queue vitest 63 passed; `npm run typecheck` and eslint clean)
+- **Summary:** Work → Queue reported an idle fleet and an empty queue while the first load was pending or had failed. Counts now read `—` (loading or unknown) until a payload arrives, and a failed load says so.
+- **Next step:** Mark #1743 ready and arm auto-merge via `automerge_guard` once CI is green.
+
 ### DL-#1740 — Service worker gets a distinct build id per build
 
 - **State:** in_review
