@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import errno
 import json
 import logging
@@ -29,11 +30,39 @@ from dashboard_config import (
     HOSTNAME,
     RUNNER_BASE_DIR,
 )
-from host_volume import get_host_volume_metrics, resolve_runner_backing_drive
+from host_volume import (
+    get_host_volume_metrics as _raw_get_host_volume_metrics,
+)
+from host_volume import (
+    resolve_runner_backing_drive,
+)
 from security import safe_subprocess_env
 
 UTC = timezone.utc  # noqa: UP017
 log = logging.getLogger("dashboard.system")
+
+# Slow probe caching (Issue #1750)
+_PROBE_CACHE_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_PROBE_CACHE_TTL_S", "30.0"))
+_gpu_info_cache: tuple[dict, float] | None = None
+_gpu_info_lock = threading.Lock()
+_storage_pools_cache: tuple[list[dict[str, Any]], float] | None = None
+_storage_pools_lock = threading.Lock()
+_host_volume_cache: dict[tuple[Any, ...], tuple[dict[str, Any], float]] = {}
+_host_volume_lock = threading.Lock()
+
+
+def clear_system_utils_probe_caches() -> None:
+    """Clear in-memory probe caches for GPU, storage pools, host volume, and Windows host snapshot."""
+    global _gpu_info_cache, _storage_pools_cache, _host_volume_cache, _host_snapshot_cache  # noqa: PLW0603
+    with _gpu_info_lock:
+        _gpu_info_cache = None
+    with _storage_pools_lock:
+        _storage_pools_cache = None
+    with _host_volume_lock:
+        _host_volume_cache.clear()
+    with _host_snapshot_lock:
+        _host_snapshot_cache = None
+
 
 # CPU history ring-buffer: bounded by CPU_HISTORY_MAXLEN (default 60 ≈ 1 min at 1 Hz)
 _cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
@@ -466,7 +495,7 @@ def get_deployment_info(version: str, deployment_file: Path) -> dict:
     return fallback
 
 
-def get_gpu_info() -> dict:
+def _get_gpu_info_uncached() -> dict:
     """Query nvidia-smi for GPU metrics. Returns empty dict if no NVIDIA GPU."""
     try:
         result = subprocess.run(
@@ -506,6 +535,24 @@ def get_gpu_info() -> dict:
         return {"gpus": gpus, "count": len(gpus)}
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return {}
+
+
+def get_gpu_info() -> dict:
+    """Return GPU metrics with a short TTL cache (30s default)."""
+    global _gpu_info_cache  # noqa: PLW0603
+    now = time.monotonic()
+    cached = _gpu_info_cache
+    if cached is not None and (now - cached[1]) < _PROBE_CACHE_TTL_S:
+        return copy.deepcopy(cached[0])
+
+    with _gpu_info_lock:
+        cached = _gpu_info_cache
+        now = time.monotonic()
+        if cached is not None and (now - cached[1]) < _PROBE_CACHE_TTL_S:
+            return copy.deepcopy(cached[0])
+        data = _get_gpu_info_uncached()
+        _gpu_info_cache = (data, time.monotonic())
+        return copy.deepcopy(data)
 
 
 def get_local_hardware_specs(gpu: dict | None = None) -> dict:
@@ -678,8 +725,8 @@ def get_io_pressure_snapshot() -> dict[str, Any] | None:
         return None
 
 
-def get_storage_pools() -> list[dict[str, Any]]:
-    """Get system storage pools (WSL virtual disk + host disk, or native drive)."""
+def _get_storage_pools_uncached() -> list[dict[str, Any]]:
+    """Get system storage pools (WSL virtual disk + host disk, or native drive) without caching."""
     pools = []
     disk_path = str(RUNNER_BASE_DIR) if RUNNER_BASE_DIR.exists() else "/"
     try:
@@ -786,6 +833,60 @@ def get_storage_pools() -> list[dict[str, Any]]:
         pools.append(local_pool)
 
     return pools
+
+
+def get_storage_pools() -> list[dict[str, Any]]:
+    """Return system storage pools with a short TTL cache (30s default)."""
+    global _storage_pools_cache  # noqa: PLW0603
+    now = time.monotonic()
+    cached = _storage_pools_cache
+    if cached is not None and (now - cached[1]) < _PROBE_CACHE_TTL_S:
+        return copy.deepcopy(cached[0])
+
+    with _storage_pools_lock:
+        cached = _storage_pools_cache
+        now = time.monotonic()
+        if cached is not None and (now - cached[1]) < _PROBE_CACHE_TTL_S:
+            return copy.deepcopy(cached[0])
+        data = _get_storage_pools_uncached()
+        _storage_pools_cache = (data, time.monotonic())
+        return copy.deepcopy(data)
+
+
+def get_host_volume_metrics(
+    drive: str | None = None,
+    disk_usage_fn: Callable[[str], Any] = shutil.disk_usage,
+    min_free_percent: float | None = None,
+    min_free_gb: float | None = None,
+) -> dict[str, Any]:
+    """Return host volume metrics with a short TTL cache (30s default)."""
+    if disk_usage_fn is not shutil.disk_usage:
+        return _raw_get_host_volume_metrics(
+            drive=drive,
+            disk_usage_fn=disk_usage_fn,
+            min_free_percent=min_free_percent,
+            min_free_gb=min_free_gb,
+        )
+
+    cache_key = (drive, min_free_percent, min_free_gb)
+    now = time.monotonic()
+    cached = _host_volume_cache.get(cache_key)
+    if cached is not None and (now - cached[1]) < _PROBE_CACHE_TTL_S:
+        return copy.deepcopy(cached[0])
+
+    with _host_volume_lock:
+        cached = _host_volume_cache.get(cache_key)
+        now = time.monotonic()
+        if cached is not None and (now - cached[1]) < _PROBE_CACHE_TTL_S:
+            return copy.deepcopy(cached[0])
+        data = _raw_get_host_volume_metrics(
+            drive=drive,
+            disk_usage_fn=disk_usage_fn,
+            min_free_percent=min_free_percent,
+            min_free_gb=min_free_gb,
+        )
+        _host_volume_cache[cache_key] = (data, time.monotonic())
+        return copy.deepcopy(data)
 
 
 def get_host_disk_for_pool(pool: dict[str, Any]) -> str:
