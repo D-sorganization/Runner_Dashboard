@@ -69,6 +69,84 @@ Last updated: 2026-09-28
 - Validation: `npx vitest run frontend/src/pages/Queue` 63 passed (new `QueueLoadingState.test.tsx` red before the fix); `npm run typecheck` and eslint clean.
 - Next: mark #1743 ready and arm via `automerge_guard` once CI is green.
 
+## Fleet page runner binding, #1738 (DL-#1738)
+
+- Branch `fix/fleet-machine-binding` (worktree `claude-fleet-1738`), from `origin/main`. PR: not created.
+- Objective: fix three bugs found in the 2026-09-28 live sweep of the deployed dashboard (157232e, part of epic #1718).
+  - Every machine showed `Runners 0 / 21`: `FleetMachinesSection` grouped runners by `name.split("-")[2]`, which is always `local` for `d-sorg-local-<Host>-<n>` names, and the count fell back to `health.runners_registered` — the org-wide total on every node.
+  - Busy runners showed Current Task `idle`: `FleetRunnersSection` looked the task up by `run.runner_name`, but `/api/runs` returns workflow runs, which never carry that field.
+  - Ready credential providers still rendered their `setup_hint` (e.g. `Run: gh auth login`).
+- Fix:
+  - `backend/routers/runners.py::_runner_response` now stamps `"machine": infer_machine_from_runner_name(r.get("name"))` on every runner dict, reusing the canonical parser in `backend/workflow_analysis.py` (no new parsing logic). Copies each runner dict rather than mutating it.
+  - `frontend/src/pages/Fleet/FleetMachinesSection.tsx` groups by `runner.machine` and the Runners cell is `{online} / {total}` with no `health.runners_registered` fallback.
+  - `frontend/src/pages/Fleet/FleetRunnersSection.tsx` Current Task cell: `-` when the runner is offline, `busy` when `r.busy` with no known run, else `idle`.
+  - `frontend/src/pages/CredentialsPage.tsx` only renders `setup_hint` when `!probe.usable`.
+- Files changed: `backend/routers/runners.py`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/CredentialsPage.tsx`, plus tests (`tests/api/test_runners_machine_field.py`, `frontend/src/pages/Fleet/__tests__/FleetMachinesSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetRunnersSection.test.tsx`, `frontend/src/pages/__tests__/CredentialsPage.test.tsx`).
+- Validation:
+  - `pytest tests/api/test_runners_machine_field.py` (2 passed), `pytest tests/api/test_routers_runners.py` (all passed) — both run under WSL Ubuntu-22.04 with the repo's pinned `rd-test-venv`.
+  - `ruff check backend/routers/runners.py tests/api/test_runners_machine_field.py` and `ruff format` (clean).
+  - `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/CredentialsPage.test.tsx` (72 passed).
+  - `npx eslint` on the four changed source/test pairs above (clean).
+  - `npx tsc --noEmit -p .` shows only pre-existing, unrelated errors (Node type shims, StaffConsole/Operations/shell test fixtures) — none in the files this change touched.
+- Next: open the PR, and follow up separately on attaching the actual job to a busy runner (needs per-run jobs API calls; called out as out of scope in #1738).
+
+## Staff role details, #1744 (DL-#1744)
+
+- Branch `fix/staff-role-details` (worktree `claude-role-1744`), from `origin/main`. PR: not created.
+- `GET /api/v1/staff/roster` sends `window` as `null` or `{start, end}` (HH:MM) and no per-role spend, but the frontend stringified `window` (`Staff/Roster.tsx` rendered `[object Object]`) and `StaffConsole/useStaffConsole.ts` `toRoleDetail` read a nonexistent `budget.daily_limit ?? 50` / `budget.spend_today ?? 0`, so the Console role pane always showed a made-up "Daily Cap: $50.00" / "Today: $0.00" and never mapped `schedule` at all.
+- New `formatRoleWindow` in `StaffConsole/rosterUtils.ts`: null/undefined → `""`, `{start,end}` → `22:00–06:00` (en dash), a plain string passes through. Used by both `Staff/Roster.tsx`'s Schedule cell and `useStaffConsole.ts`'s `toRoleDetail`.
+- `StaffConsole/types.ts` `StaffRoleBudget` now matches the API (`usd_per_run?`, `usd_per_day?`, `max_minutes?`, `idle_minutes?`) plus `spend_today?: number` documented as not yet served; `daily_limit` removed. `StaffRoleItem` gained `schedule?`, `window?`, `retired?`.
+- `toRoleDetail` maps `budget.usd_per_day` (no invented 50) and passes `spend_today` through unknown rather than 0; `schedule` maps to `{cron, window, enabled: !retired, next_fire: null}` when `role.schedule` is set.
+- `StaffConsole/contextTypes.ts` `RoleBudgetInfo.usd_today` is now optional; `ContextPane.tsx` renders "Today: —" with no progress-bar fill when it is undefined, unchanged behaviour when it is a number.
+- `rosterUtils.ts`'s over-budget check now reads `usd_per_day` instead of `daily_limit` (still requires `spend_today` to be a number, which the live API does not yet send).
+- Validation: `npx vitest run frontend/src/pages/Staff frontend/src/pages/StaffConsole` (257 passed); `npm run typecheck` (clean); `npx eslint` on the changed files (clean).
+- Next: open the PR as draft.
+
+## Fleet page honest panels, #1747 (DL-#1747)
+
+- Branch `fix/fleet-honest-panels` (worktree `claude-leases`), from main `4688db93`. PR not created yet.
+- `frontend/src/pages/OverviewLeases.tsx` was a hard-coded design preview ("Fair Sharing & Active Leases — Wave 3": a fake 45m/2h lease on `ubuntu-latest-4xlarge`, a `jules-bot` row, dead "Relinquish Runner" / "View Logs" buttons) rendered live on the Fleet page. Removed from `OverviewPage.tsx`; the component and its test are deleted. No lease/fair-share backend exists to feed it.
+- `frontend/src/pages/Fleet/FleetAlertsSection.tsx` said "All systems nominal" while the first load was in flight; it now shows "Checking alerts and hosted-runner usage…" until loading ends.
+- Validation: `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/OverviewPage.test.tsx` 54 passed (the two new assertions red first); `npm run typecheck` and eslint clean.
+- Next: open the PR as draft, then mark ready and arm via `automerge_guard`.
+
+## Scheduled workflows inventory, #1745 (DL-#1745)
+
+- Branch `fix/scheduled-workflows-walk` (worktree `claude-sched-1745`), from `origin/main`. PR: not created.
+- `backend/scheduled_workflows.py` `collect_inventory` walked repos serially and raw-fetched every workflow YAML file (over 1,200 requests for 41 repos), and never finished inside the hub's 20 s answer budget — meanwhile `backend/proxy_utils.py` `proxy_to_hub` timed out at 15 s, so a proxied node always got a 504 instead of the designed "still collecting" degraded answer.
+- `collect_inventory` now reads the `.github/workflows` contents listing per repo (one call, carries blob SHAs) instead of raw-fetching every workflow file, and caches extracted cron expressions by blob SHA in module-level `_CRON_BY_BLOB_SHA` (mirrors `_WORKFLOW_TRIGGER_CACHE` in `routers/runs_workflows.py`); a steady-state walk is workflows-list + contents-listing + one runs call per scheduled workflow, per repo. `schedule_source` is `"blob"` on success (was `"raw_yaml"`), `"unavailable"` when the listing call fails or a path has no matching blob SHA. Repos are walked concurrently behind a bounded `asyncio.Semaphore(_REPO_CONCURRENCY=6)` while `asyncio.gather` preserves output order. The now-unused `gh_raw` parameter was removed from `collect_inventory`; its only caller (`_scheduled_workflows_impl` in `backend/routers/runs_workflows.py`) was updated to match.
+- `backend/proxy_utils.py` extracts the `AsyncClient(timeout=15.0)` literal into module constant `HUB_PROXY_TIMEOUT_S = 15.0`. `_scheduled_workflows_impl` defaults `SCHEDULED_WORKFLOWS_TIMEOUT` to `"10"` (was `"20"`) and clamps the effective SWR wait to `min(timeout, proxy_utils.HUB_PROXY_TIMEOUT_S - 3)`, so a proxying node always receives the degraded answer before its own httpx timeout fires.
+- Validation (WSL, `rd-test-venv`): `pytest tests -q -k "scheduled or proxy"` — 110 passed. `ruff check backend tests` — all checks passed. `ruff format --check` on changed files — clean. `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` — clean.
+- Next: open the PR as draft.
+
+## Diagnostics on artifact installs, #1748 (DL-#1748)
+
+- Branch `fix/diagnostics-artifact-commit` (worktree `claude-gitdiag`), from main `ae93a03c`.
+  PR: not created.
+- Every hub is installed from a build artifact with no `.git` directory. `GET /api/diagnostics/summary`
+  ran `git rev-parse --short HEAD`, got nothing, and reported `git_commit: "unknown"` even though
+  `server.py`'s `_deployment_info` (written by `deploy/update-deployed.sh`) already knows the deployed
+  `git_sha`. `GET /api/deployment/git-drift` had the matching problem: empty `source`/`remote` commits
+  still reported `is_drifted: false, drift_details: "up to date"` — a claim it cannot make without
+  either commit.
+- `backend/routers/diagnostics.py`: new `set_deployment_info_getter(getter)` (mirrors
+  `routers/runners.py`'s `set_system_metrics_getter` idiom) registers a `Callable[[], dict[str, Any]]`
+  without importing `server` (circular). When `git rev-parse --short HEAD` yields empty output or
+  raises, `git_commit` falls back to the registered getter's `git_sha` (first 8 chars) when present
+  and not `"unknown"`; otherwise `"unknown"`. `backend/server.py` (~line 2504, next to the deployment
+  router's `set_dependencies` call) registers it with `_deployment_info`.
+- `backend/routers/deployment.py` `get_git_drift`: when either the source or remote commit is empty or
+  `"unknown"`, returns `is_drifted: None` and
+  `drift_details: "unknown (no git checkout; see /api/deployment/drift)"` instead of `False` /
+  `"up to date"`. Behavior is unchanged when both commits are present.
+- Frontend consumers (`Diagnostics.tsx`, `OperationsDiagnosticsSection.tsx`, `FleetStatusBanner.tsx`,
+  `FleetTab.tsx`, `OverviewPage.tsx`) all gate on `data.is_drifted` / `driftInfo.is_drifted` truthiness,
+  so `null` renders the same as `false` (not drifted) — no frontend changes were needed.
+- Validation: WSL `pytest tests -q -k "diagnostic or drift"` 114 passed (7 new, red before the fix,
+  green after); `ruff check` and `ruff format --check` clean on changed files; `mypy backend/
+--ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` clean (318 files).
+- Next: open the PR as draft.
+
 ---
 
 # Historical handoffs

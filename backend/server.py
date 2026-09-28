@@ -2509,6 +2509,12 @@ _deployment_router.set_dependencies(
     build_deployment_state=_build_deployment_state,
 )
 
+# Give diagnostics its own access to deployment metadata (issue #1748) so it can
+# fall back to the deployed commit when there is no `.git` checkout to inspect
+# (artifact installs). Registered here, next to the deployment router wiring,
+# rather than importing `server` from diagnostics.py (circular import).
+_diagnostics_router.set_deployment_info_getter(_deployment_info)
+
 # Inject dependencies into reports/heavy_tests/assessments routers
 _reports_router.set_reports_dir(REPORTS_DIR)
 _heavy_tests_router.set_dependencies(run_cmd=run_cmd, heavy_test_repos=HEAVY_TEST_REPOS)

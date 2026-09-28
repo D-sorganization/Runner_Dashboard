@@ -10,6 +10,7 @@
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
+import { formatRoleWindow } from "../StaffConsole/rosterUtils";
 import { formatUsd, strategyLabel, type RoleSpec, type RosterResponse } from "./staffApi";
 
 export interface RosterProps {
@@ -117,7 +118,7 @@ export function RoleCard({
         <dt>Schedule</dt>
         <dd>
           {role.schedule ?? <span className="staff-muted">manual</span>}
-          {role.window ? ` (${role.window})` : ""}
+          {role.window ? ` (${formatRoleWindow(role.window)})` : ""}
         </dd>
         <dt>Active runs</dt>
         <dd data-testid={`role-active-${role.name}`}>{role.active_runs}</dd>

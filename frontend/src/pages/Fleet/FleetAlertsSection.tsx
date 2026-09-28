@@ -146,7 +146,21 @@ export function FleetAlertsSection({
         </div>
       ) : null}
 
-      {!error && !hasAlerts && !hasViolations ? (
+      {loading && !error && !hasAlerts && !hasViolations ? (
+        <div
+          role="status"
+          style={{
+            padding: "1.5rem",
+            textAlign: "center",
+            color: "var(--text-muted, #8b949e)",
+            fontSize: "0.9rem",
+          }}
+        >
+          Checking alerts and hosted-runner usage…
+        </div>
+      ) : null}
+
+      {!loading && !error && !hasAlerts && !hasViolations ? (
         <div
           style={{
             padding: "1.5rem",

@@ -72,7 +72,7 @@ const MOCK_ROLES: StaffRoleItem[] = [
     group: "operations",
     valid: true,
     budget: {
-      daily_limit: 10,
+      usd_per_day: 10,
       spend_today: 10,
     },
   },

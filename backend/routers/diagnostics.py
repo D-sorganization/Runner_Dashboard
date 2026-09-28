@@ -25,13 +25,16 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import wsl_disk_status
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from identity import require_scope
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 log = logging.getLogger("dashboard.diagnostics")
 router = APIRouter(tags=["diagnostics"])
@@ -359,6 +362,16 @@ _runner_audit_cache: dict[str, Any] = {
 _runner_audit_lock = asyncio.Lock()
 _run_runner_audit_fn: Any = None
 
+# Lazy-loaded deployment-info getter (set by server.py; issue #1748). Avoids
+# importing `server` directly, which would create a circular import.
+_get_deployment_info: Callable[[], dict[str, Any]] | None = None
+
+
+def set_deployment_info_getter(getter: Callable[[], dict[str, Any]] | None) -> None:
+    """Register the deployment-info getter (called from server.py)."""
+    global _get_deployment_info
+    _get_deployment_info = getter
+
 
 def set_dependencies(  # type: ignore[no-untyped-def]
     *,
@@ -432,6 +445,7 @@ async def get_diagnostics_summary() -> dict:
     summary["dashboard_port"] = PORT
 
     # Git commit
+    commit = ""
     try:
         out = await asyncio.to_thread(
             subprocess.run,
@@ -441,9 +455,25 @@ async def get_diagnostics_summary() -> dict:
             timeout=5,
             cwd=Path(__file__).parent.parent.parent,
         )
-        summary["git_commit"] = out.stdout.strip() or "unknown"
+        commit = out.stdout.strip()
     except (OSError, subprocess.SubprocessError, TimeoutError):  # noqa: BLE001
+        commit = ""
+
+    if commit:
+        summary["git_commit"] = commit
+    else:
+        # Artifact installs have no `.git` directory, so `git rev-parse` yields
+        # nothing here. Fall back to the deployed commit recorded in deployment
+        # metadata (issue #1748).
         summary["git_commit"] = "unknown"
+        if _get_deployment_info is not None:
+            try:
+                deployment_info = _get_deployment_info()
+                git_sha = deployment_info.get("git_sha") if isinstance(deployment_info, dict) else None
+                if git_sha and git_sha != "unknown":
+                    summary["git_commit"] = git_sha[:8]
+            except Exception:  # noqa: BLE001
+                summary["git_commit"] = "unknown"
 
     # Drift info
     try:

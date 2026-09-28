@@ -30,6 +30,13 @@ const mockRunners = [
     busy: false,
     labels: [],
   },
+  {
+    id: 4,
+    name: "d-sorg-local-ControlTower-3",
+    status: "online",
+    busy: true,
+    labels: [],
+  },
 ];
 
 const mockRuns = [
@@ -151,6 +158,30 @@ describe("FleetRunnersSection", () => {
       "take_offline",
       false
     );
+  });
+
+  it("shows busy for a busy runner with no known run, and - for offline runners", () => {
+    render(
+      <FleetRunnersSection
+        runners={mockRunners}
+        runs={mockRuns}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+        onFleet={vi.fn()}
+        onRunner={vi.fn()}
+      />
+    );
+
+    const busyRow = screen.getByText("d-sorg-local-ControlTower-3").closest("tr");
+    expect(busyRow).not.toBeNull();
+    expect(busyRow!.textContent).toContain("busy");
+
+    const offlineRow = screen.getByText("d-sorg-local-DeskComputer-1").closest("tr");
+    expect(offlineRow).not.toBeNull();
+    const cells = offlineRow!.querySelectorAll("td");
+    // Current Task is the 4th column (Runner, Status, Labels, Current Task, Actions)
+    expect(cells[3].textContent).toBe("-");
   });
 });
 

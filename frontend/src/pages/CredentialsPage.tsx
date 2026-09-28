@@ -391,12 +391,12 @@ export function CredentialsTab({
             {probe.detail ? (
               <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>{probe.detail}</div>
             ) : null}
-            {probe.setup_hint ? (
+            {probe.setup_hint && !probe.usable ? (
               <div
                 style={{
                   marginTop: 8,
                   fontSize: 12,
-                  color: probe.usable ? "var(--text-secondary)" : "var(--accent-yellow)",
+                  color: "var(--accent-yellow)",
                 }}
               >
                 {probe.setup_hint}
