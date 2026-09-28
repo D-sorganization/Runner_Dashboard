@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1759 | SPA shell (`/`, client routes, `/sw.js`) serves `Cache-Control: no-cache` so a deploy is not masked by a cached stale bundle; Staff Console roster shows a retired role as "Retired" instead of "Idle". |
 | 2026-09-28 | #1755 | Phone sign-in over the tailnet via Tailscale identity headers (`DASHBOARD_TAILSCALE_AUTH`, `DASHBOARD_TAILSCALE_LOGINS`), gated on the raw transport peer being loopback so a direct tailnet caller cannot forge the identity headers. |
 | 2026-09-28 | #1726 | Seeded role-file holds are now guardrails (kept in the role prompt, shown as standing rules, never block scheduling); only holds created via the Holds tab, the holds API, or `staff.hold` are schedule holds that block. |
 | 2026-09-28 | #1739 | Development log passes its validator again: the duplicate DL-#1325 and DL-#1424 are merged into their originals; 117 entries whose PR merged (each checked on GitHub) are marked shipped with the merge SHA; all shipped entries move to `docs/development/DEVELOPMENT_LOG_ARCHIVE_2026.md`, so the log drops from 281 kB to 13 kB. |

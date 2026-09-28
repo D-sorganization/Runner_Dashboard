@@ -54,6 +54,45 @@ describe("computeRoleStatus and standing rules (guardrail holds, #1726)", () => 
   });
 });
 
+describe("computeRoleStatus and retired roles (#1759)", () => {
+  it("a clean retired role (no retired_reason) reports status retired, not idle", () => {
+    const retiredRole: StaffRoleItem = {
+      ...role("retired-1"),
+      retired: true,
+    };
+    expect(computeRoleStatus(retiredRole).status).toBe("retired");
+  });
+
+  it("a retired role with a retired_reason reports unavailable with the reason prefixed", () => {
+    const retiredRole: StaffRoleItem = {
+      ...role("retired-2"),
+      retired: true,
+      retired_reason: "role retired, replaced by orchestrator",
+    };
+    const res = computeRoleStatus(retiredRole);
+    expect(res.status).toBe("unavailable");
+    expect(res.reason).toBe("retired: role retired, replaced by orchestrator");
+  });
+
+  it("retired is evaluated before budget/provider blocks, so a clean retired role is not shown as budget-unavailable", () => {
+    const retiredAndBudgeted: StaffRoleItem = {
+      ...role("retired-3"),
+      retired: true,
+      budget: { usd_per_day: 10, spend_today: 10 },
+    };
+    expect(computeRoleStatus(retiredAndBudgeted).status).toBe("retired");
+  });
+
+  it("invalid still takes priority over retired", () => {
+    const invalidAndRetired: StaffRoleItem = {
+      ...role("retired-4"),
+      valid: false,
+      retired: true,
+    };
+    expect(computeRoleStatus(invalidAndRetired).status).toBe("invalid");
+  });
+});
+
 describe("getRoleTooltipText (Workstream C / #1721, relabeled #1726)", () => {
   it("labels declared holds as standing rules, not a blocking hold", () => {
     const heldRole: StaffRoleItem = {

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1759 — SPA shell no-cache + retired-role roster status
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1759
+- **Branch:** `fix/spa-cache-retired-status`
+- **PR:** not created
+- **Paths:** `backend/server.py`, `tests/test_spa_fallback.py`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/test_spa_fallback.py tests/test_static_serving.py -q` 14 passed; `npx vitest run frontend/src/pages/StaffConsole` 239 passed; `npm run typecheck` and `eslint` clean; `ruff check`/`ruff format --check` clean; mypy clean)
+- **Summary:** After a deploy the browser kept running the stale bundle because the SPA shell (`/`, `/t/:tabId`, `/settings/push`) and `/sw.js` were served with no `Cache-Control`, so a cached `index.html` could keep pointing at a superseded hashed `/assets/*` chunk. `serve_index`, `serve_spa_fallback` and `serve_service_worker` now set `Cache-Control: no-cache`; the hashed `/assets/*` `StaticFiles` mount is unchanged. Separately, `computeRoleStatus` never considered `role.retired`, so a retired role showed as "Idle"; it now checks `retired` right after the invalid check and returns a new `"retired"` status (clean) or `"unavailable"` with reason `"retired: <retired_reason>"` (has a reason), with `RosterRow.tsx` labeling it "Retired".
+- **Next step:** Open the PR.
+
 ### DL-#1755 — Phone sign-in via Tailscale identity headers
 
 - **State:** in_review

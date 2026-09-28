@@ -76,6 +76,34 @@ def test_client_route_serves_spa_shell(client: TestClient, route: str) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("fake_frontend_dir")
+@pytest.mark.parametrize("route", ["/", "/t/queue", "/settings/push"])
+def test_shell_route_is_not_cached(client: TestClient, route: str) -> None:
+    """The SPA shell (index.html) must be served with Cache-Control: no-cache
+    so a browser always revalidates after a deploy instead of running a stale
+    bundle (#1759): a hash mismatch between the cached shell's script tag and
+    the newly-deployed /assets/* bundle silently serves old JS until a manual
+    reload. Hashed /assets/* files are unaffected — those stay immutable/
+    long-lived and are served by the separate StaticFiles mount, not this
+    route."""
+    resp = client.get(route)
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-cache"
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("fake_frontend_dir")
+def test_service_worker_is_not_cached(client: TestClient, fake_frontend_dir: Path) -> None:
+    """/sw.js is not a hashed asset — it must also be Cache-Control: no-cache
+    so a stale service worker script is not pinned by an intermediate cache
+    across a deploy (#1759)."""
+    (fake_frontend_dir / "sw.js").write_text("// sw", encoding="utf-8")
+    resp = client.get("/sw.js")
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-cache"
+
+
+@pytest.mark.unit
 def test_api_health_still_returns_json(client: TestClient) -> None:
     """The catch-all must not shadow real /api/* routes: /api/health still
     answers with JSON, not the HTML shell."""

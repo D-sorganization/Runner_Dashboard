@@ -1,4 +1,35 @@
-# Current handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
+# Current handoff — SPA shell no-cache + retired-role status (DL-#1759)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `fix/spa-cache-retired-status`
+- Worktree: `Runner_Dashboard-worktrees/claude-1759`
+- Base: `origin/main`
+- Governing issue: #1759
+- Pull request: not created
+
+## Objective and status
+
+- Found in the 2026-09-28 live Board-review test: after deploying ceb29039, the browser kept running the previous bundle because the SPA shell (`/`, client routes like `/t/queue`, `/settings/push`) had no `Cache-Control` header, so a browser could cache `index.html` and its stale `<script>` hash across a redeploy until a manual reload. Separately, the Staff Console roster showed a retired role ("Orchestrator - Portfolio COO (Retired)") as "Idle" because `computeRoleStatus` never looked at `role.retired`.
+- Backend fix (`backend/server.py`): `serve_index` (`/`), `serve_spa_fallback` (catch-all client routes) and `serve_service_worker` (`/sw.js`) now return `FileResponse(..., headers={"Cache-Control": "no-cache"})`. The `/assets/*` `StaticFiles` mount (hashed, long-lived) is untouched.
+- Frontend fix (`frontend/src/pages/StaffConsole/rosterUtils.ts`): `computeRoleStatus` now checks `role.retired` immediately after the invalid check (priority 2, before budget/provider blocks). A clean retired role (no `retired_reason`) returns a new `"retired"` status; one with a `retired_reason` returns `"unavailable"` with reason `"retired: <retired_reason>"`. Added `"retired"` to the `RosterStatus` union (`types.ts`) and `retired_reason?: string` to `StaffRoleItem`; `RosterRow.tsx` labels it "Retired" (reuses the existing muted `unavailable` status-dot style) and surfaces its reason via the same hidden `status-reason-*` element used for `unavailable`/`invalid`.
+- Files changed: `backend/server.py`, `tests/test_spa_fallback.py`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`.
+- Validation:
+  - RED first — `tests/test_spa_fallback.py::test_shell_route_is_not_cached[/, /t/queue, /settings/push]` and `test_service_worker_is_not_cached` failed (`assert None == 'no-cache'`); vitest's 3 new `computeRoleStatus` retired tests failed (`expected 'idle' to be 'retired'`, etc.).
+  - GREEN after fix — WSL `pytest tests/test_spa_fallback.py tests/test_static_serving.py -q`: 14 passed.
+  - `npx vitest run frontend/src/pages/StaffConsole`: 28 files / 239 tests passed.
+  - `npm run typecheck`: clean.
+  - `npx eslint` on changed frontend files: clean.
+  - `ruff check backend tests` / `ruff format --check backend/server.py tests/test_spa_fallback.py`: clean.
+  - `mypy --ignore-missing-imports backend/server.py` (from worktree root, mypy cache cleared to dodge the `backend.server`/`server` dual-module trap): `Success: no issues found in 1 source file`.
+- Next step: Open the PR.
+
+---
+
+# Prior handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
 
 Last updated: 2026-09-28
 
