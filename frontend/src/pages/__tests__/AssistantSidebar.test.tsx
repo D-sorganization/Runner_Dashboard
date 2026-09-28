@@ -65,13 +65,13 @@ describe("AssistantSidebar", () => {
     );
     const region = screen.getByRole("complementary", { hidden: true });
     expect(region).toHaveAttribute("aria-hidden", "true");
-    expect(screen.queryByText("💬 Chat")).toBeNull();
+    expect(screen.queryByText("Chat")).toBeNull();
   });
 
   it("renders the chat header and empty placeholder when open", () => {
     mockChat();
     render(<AssistantSidebar currentTab="fleet" open onToggle={() => {}} />);
-    expect(screen.getByText("💬 Chat")).toBeInTheDocument();
+    expect(screen.getByText("Chat")).toBeInTheDocument();
     expect(
       screen.getByText("Ask anything about the dashboard…"),
     ).toBeInTheDocument();

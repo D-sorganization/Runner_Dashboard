@@ -19,6 +19,7 @@ import { formatDuration } from "../../components/formatters";
 
 import { DiagnosePanel } from "./DiagnosePanel";
 import { StaleCleanupPanel } from "./StaleCleanupPanel";
+import { SearchGlyph } from "../decompIcons";
 import {
   sortRows,
   type CancelMap,
@@ -376,7 +377,7 @@ export function QueueTab(p: QueueTabProps) {
             disabled={diagLoading}
             style={{ marginRight: 8 }}
           >
-            {diagLoading ? <span className="spinner" /> : "🔍"} Why are jobs
+            {diagLoading ? <span className="spinner" /> : <SearchGlyph size={12} />} Why are jobs
             waiting?
           </button>
           {diag && <DiagnosePanel diag={diag} />}

@@ -26,6 +26,7 @@ import type {
   LockState,
 } from "./mobileTypes";
 import { INACTIVITY_TIMEOUT_MS, base64urlToBuffer } from "./mobileTypes";
+import { LockGlyph, KeyGlyph } from "../decompIcons";
 
 export function CredentialsMobile() {
   // Lock state
@@ -295,7 +296,7 @@ export function CredentialsMobile() {
           }}
           type="button"
         >
-          🔒 Lock
+          <LockGlyph size={12} /> Lock
         </button>
       </div>
 
@@ -353,7 +354,7 @@ export function CredentialsMobile() {
                   }}
                 >
                   <div style={{ fontSize: "36px", marginBottom: "12px" }}>
-                    🔑
+                    <KeyGlyph size={36} />
                   </div>
                   <div style={{ fontSize: "15px", fontWeight: 600 }}>
                     No credentials found

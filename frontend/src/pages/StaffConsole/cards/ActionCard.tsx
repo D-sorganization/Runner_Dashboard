@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import type { ActionProposalData, ActionRiskLevel, ProposalApproveHandler, ProposalDenyHandler } from "./cardTypes";
 import "./cards.css";
+import { RefreshGlyph, SearchGlyph } from "../../decompIcons";
 
 export interface ActionCardProps {
   proposal: ActionProposalData;
@@ -98,7 +99,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
       {/* Routed By / Barb Handoff Notice */}
       {proposal.routed_role && (
         <div style={{ fontSize: 11, color: "var(--accent-purple, #bc8cff)", marginBottom: 6 }}>
-          🔄 Routed via {proposal.routed_role} to Maintenance
+          <RefreshGlyph size={11} /> Routed via {proposal.routed_role} to Maintenance
         </div>
       )}
 
@@ -141,7 +142,9 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           }}
         >
           <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <span>🔍 Dry-run preview</span>
+            <span>
+              <SearchGlyph size={12} /> Dry-run preview
+            </span>
             {typeof proposal.dry_run === "object" &&
               Array.isArray(proposal.dry_run.planned_steps) &&
               proposal.dry_run.planned_steps.length > 0 && (

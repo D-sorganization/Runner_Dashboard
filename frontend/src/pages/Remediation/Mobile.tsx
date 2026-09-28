@@ -9,6 +9,7 @@ import { ActionSheet } from "./ActionSheet";
 import { AutomationsList, IssuesList, PRsList } from "./RemediationLists";
 import { buildPrefilledRemediationRequest } from "./remediationPrefill";
 import { errorMessage, submitStaffRequest } from "../Staff/staffApi";
+import { AlertGlyph } from "../decompIcons";
 import type {
   ActionSheetItem,
   AgentProvider,
@@ -190,7 +191,7 @@ export function RemediationMobile({
     return (
       <EmptyState
         variant="error"
-        icon="⚠️"
+        icon={<AlertGlyph size={24} />}
         title={guidance.title}
         description={guidance.action}
         onRetry={fetchData}

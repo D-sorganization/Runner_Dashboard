@@ -4,6 +4,7 @@ import { useVoiceInput } from "../../hooks/useVoiceInput";
 import { ChatBubble } from "./ChatBubble";
 import type { ChatMessage, MaxwellStatus } from "./mobileTypes";
 import { QUICK_CHIPS } from "./mobileTypes";
+import { MicGlyph } from "../decompIcons";
 
 interface MaxwellChatProps {
   status: MaxwellStatus;
@@ -243,7 +244,7 @@ export function MaxwellChat({
                 : undefined,
             }}
           >
-            {voice.recording ? "[REC]" : "🎙"}
+            {voice.recording ? "[REC]" : <MicGlyph size={16} />}
           </TouchButton>
         )}
         <TouchButton

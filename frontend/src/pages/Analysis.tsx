@@ -22,6 +22,7 @@ import { SubTabs } from "../components/SubTabs";
 import { legacyFetch } from "../lib/api";
 import { isAnalysisTabKey } from "../lib/analysisTabs";
 import { HistoryTab } from "./History";
+import { ChartGlyph } from "./decompIcons";
 
 // ── Shared helper ────────────────────────────────────────────────────────────
 
@@ -769,7 +770,14 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
                     <div className="report-date">{r.date}</div>
                     <div className="report-meta">
                       {r.size_kb + " KB"}
-                      {r.has_chart ? " · 📈" : ""}
+                      {r.has_chart ? (
+                        <>
+                          {" · "}
+                          <ChartGlyph size={12} />
+                        </>
+                      ) : (
+                        ""
+                      )}
                     </div>
                   </div>
                 </li>

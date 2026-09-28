@@ -1,5 +1,5 @@
 import React from "react";
-import { ServerGlyph } from "../decompIcons";
+import { ServerGlyph, AlertGlyph } from "../decompIcons";
 
 export interface FleetStatusBannerProps {
   loading: boolean;
@@ -109,7 +109,7 @@ export const FleetStatusBanner: React.FC<FleetStatusBannerProps> = ({
               className="btn btn--warning"
               style={{ fontSize: 12, padding: "4px 8px" }}
             >
-              ⚠ Deployment drift detected
+              <AlertGlyph size={12} /> Deployment drift detected
             </button>
           )}
           {onOpenDeployment && (

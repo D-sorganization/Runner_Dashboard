@@ -23,6 +23,7 @@ import {
 } from "../components/formatters";
 import { sortRows, type SortState } from "./decompSort";
 import { SortTh } from "./decompSortTh";
+import { CpuGlyph } from "./decompIcons";
 import {
   canonicalMachineName,
   collectStorageDevices,
@@ -383,7 +384,7 @@ export function SystemResourcesPanel(p: any): React.ReactElement {
           return h(
             "div",
             { className: "gpu-card", key: i },
-            h("div", { className: "gpu-name" }, "🎮 ", g.name),
+            h("div", { className: "gpu-name" }, h(CpuGlyph, { size: 12 }), " ", g.name),
             h(
               "div",
               { className: "metric-row" },

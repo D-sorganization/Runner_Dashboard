@@ -19,7 +19,7 @@
 import React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
-import { RefreshGlyph } from "./decompIcons";
+import { RefreshGlyph, AlertGlyph } from "./decompIcons";
 import { PerformanceTab } from "./Analysis";
 
 interface DiagnosticsSummary {
@@ -217,8 +217,8 @@ export function DiagnosticsTab(): React.ReactElement {
 
       {isDrifted ? (
         <div style={warnBannerStyle}>
-          ⚠️ Deployed version is behind origin/main. Run update-deployed.sh to
-          update.
+          <AlertGlyph size={12} /> Deployed version is behind origin/main. Run
+          update-deployed.sh to update.
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
             Local:{" "}
             {(driftData && driftData.source_commit) ||

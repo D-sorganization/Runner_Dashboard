@@ -98,11 +98,12 @@ export function statusPillStyle(status: string): CSSProperties {
   };
 }
 
-export function statusEmoji(status: string): string {
+/** CSS color for the small status dot rendered next to the daemon status text. */
+export function statusDotColor(status: string): string {
   const s = status.toLowerCase();
-  if (s === "running") return "🟢";
-  if (s === "error") return "🔴";
-  return "🟡";
+  if (s === "running") return "var(--accent-green)";
+  if (s === "error") return "var(--accent-red)";
+  return "var(--accent-yellow)";
 }
 
 export function loadChatHistory(): ChatMessage[] {

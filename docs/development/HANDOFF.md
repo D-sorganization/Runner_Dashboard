@@ -47,6 +47,7 @@ Last updated: 2026-09-28
   - `/api/stats` fetched its six independent sources one after another (~14 s cold); they run concurrently.
   - Insights (phone) listed 0 reports: the default reports path used the WSL login (`dieterolson`) as the Windows profile name. `windows_repositories_root()` finds the profile that holds `Repositories` (also used by heavy tests).
   - Fleet Command: the minutes parser read one line per field, so wrapped priorities lost text ("link Barb to the Runner Dashboard"), and it stripped outer backticks from multi-span values. It joins wrapped lines and keeps spans balanced; the panel renders them through `OwnerMarkdown` (moved to `primitives/`).
+- Emoji-to-SVG sweep (DL-#1718): pictographic emoji across 25 pages, the composer mic and the proposal card's routed/dry-run labels are SVG glyphs from `decompIcons`; `tests/frontend/test_no_pictographic_emoji.py` guards it.
 
 ## Validation
 
@@ -60,7 +61,7 @@ Last updated: 2026-09-28
 ## Next steps
 
 1. Open one draft PR from `feat/ux-overhaul` (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
-2. Integrate the emoji-to-SVG sweep (agent commit `79d2664f` on `worktree-agent-a5fc69f0fef4fe2c7`); `/api/runs/enriched` still returns ~760 KB.
+2. `/api/runs/enriched` still returns ~760 KB; trim fields or paginate.
 3. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, the holds decision in #1726, and GitHub App Contents/Issues read on Repository_Management.
 
 ---

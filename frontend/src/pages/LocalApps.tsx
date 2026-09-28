@@ -18,7 +18,7 @@
  */
 import React from "react";
 import { legacyFetch } from "../lib/api";
-import { RefreshGlyph } from "./decompIcons";
+import { RefreshGlyph, AlertGlyph } from "./decompIcons";
 import {
   localAppHasUpdateAvailable,
   localAppUnhealthy,
@@ -137,7 +137,7 @@ function DriftBadge({ app }: { app: LocalApp }): React.ReactElement {
         }}
         title={d.error || "unavailable"}
       >
-        {"⚠ error"}
+        <AlertGlyph size={11} /> error
       </span>
     );
   }
@@ -251,7 +251,7 @@ function DirtyBadge({ app }: { app: LocalApp }): React.ReactElement {
           color: "var(--accent-red)",
         }}
       >
-        {"⚠ probe error"}
+        <AlertGlyph size={11} /> probe error
       </span>
     );
   }
@@ -399,7 +399,7 @@ function LocalAppsBody({
                           (app.dirty_files || []).join("\n")
                         }
                       >
-                        {"⚠ dirty"}
+                        <AlertGlyph size={11} /> dirty
                       </span>
                     ) : null}
                   </td>

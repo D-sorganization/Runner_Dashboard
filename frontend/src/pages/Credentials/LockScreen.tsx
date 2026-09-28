@@ -1,4 +1,5 @@
 import type { LockState } from "./mobileTypes";
+import { LockGlyph } from "../decompIcons";
 
 interface LockScreenProps {
   lockState: LockState;
@@ -22,7 +23,9 @@ export function LockScreen({ lockState, lockError, onUnlock }: LockScreenProps) 
         textAlign: "center",
       }}
     >
-      <div style={{ fontSize: "56px" }}>🔒</div>
+      <div style={{ fontSize: "56px" }}>
+        <LockGlyph size={56} />
+      </div>
       <div>
         <h2
           style={{

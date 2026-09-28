@@ -21,6 +21,7 @@ import {
   saveDraft,
 } from "./composerUtils";
 import "./composer.css";
+import { MicGlyph } from "../decompIcons";
 
 interface ComposerComponentProps extends BaseComposerProps {
   prefilledText?: string;
@@ -399,7 +400,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
               opacity: voice.available && !isPanel ? 1 : 0.4,
             }}
           >
-            {voice.recording ? "■" : "🎙"}
+            {voice.recording ? "■" : <MicGlyph size={16} />}
           </button>
 
           {/* Circular Accent Send Button */}

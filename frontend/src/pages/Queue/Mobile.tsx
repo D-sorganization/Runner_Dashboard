@@ -8,6 +8,7 @@ import { useHaptic } from "../../hooks/useHaptic";
 import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
 
 import { MobileRunCard } from "./MobileRunCard";
+import { AlertGlyph } from "../decompIcons";
 import { MobileRunDetail } from "./MobileRunDetail";
 import type {
   FilterValue,
@@ -254,7 +255,7 @@ export function QueueMobile() {
     return (
       <EmptyState
         variant="error"
-        icon="⚠️"
+        icon={<AlertGlyph size={24} />}
         title={guidance.title}
         description={guidance.action}
         onRetry={fetchQueue}
