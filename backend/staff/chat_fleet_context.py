@@ -4,8 +4,9 @@ Builds the ``## Fleet now`` block injected into chat prompts for roles declaring
 target-free read tools: ``read_staff_summary``, ``read_priorities``, ``read_briefing``,
 and ``read_sessions``.
 
-Targeted read tools (``read_run``, ``read_issue``, ``read_repo``) require a specific
-target identifier and are NOT handled here.
+Targeted read tools require a specific target identifier and are NOT handled here.
+``read_issue`` is handled by :mod:`staff.chat_issue_context`; ``read_run`` and
+``read_repo`` remain unimplemented (Runner_Dashboard#1762).
 """
 
 from __future__ import annotations

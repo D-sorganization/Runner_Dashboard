@@ -1,4 +1,74 @@
-# Current handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
+# Current handoff — read_issue chat context and board.convene (DL-#1762)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `feat/barb-read-issue-board-convene`
+- Worktree: `Runner_Dashboard-worktrees/claude-1762`
+- Base: `origin/main`
+- Governing issue: #1762; DL-#1762.
+- Pull request: not created.
+
+## Objective and status
+
+- Barb's role declares chat tools `read_issue`, `read_run`, `read_repo`, but only the target-free
+  fleet tools were implemented; `read_issue` was a no-op, so Barb could not discuss an issue/PR the
+  owner named in chat, and nothing let Barb take a question to the Board.
+- New `backend/staff/chat_issue_context.py`: `parse_issue_refs` recognises `owner/repo#N`, GitHub
+  issue/PR URLs, and `PR #N`/`issue #N`/bare `#N` when a known repo name appears in the message
+  (role `repos` list, else `DEFAULT_KNOWN_REPO_NAMES`); deduped, capped at 3. `build_issue_context_block`
+  runs only when the role declares `read_issue`; fetches title/state/labels/body via `gh_utils.gh_api`,
+  and for a PR the changed-file list plus the raw contents of changed `.md` files at the PR head SHA
+  via `gh_utils.gh_api_raw`. Bounded (body 4000 chars, each md file 12000 chars, block 30000 chars);
+  every fetch is under a 5s timeout and renders `unavailable (<ExcName>)` on failure — never raises.
+- Wired into `backend/staff/chat.py` next to `build_fleet_context_block(role)`, appended to the same
+  `context_blocks` tuple using the caller's raw message text. Updated the
+  `chat_fleet_context.py` module docstring line that said targeted tools are "NOT handled anywhere".
+- New `board.convene` action in `backend/staff/action_executors.py` (params `{question, title?}`,
+  risk MEDIUM — never auto-executed per `can_auto_execute`, required scope `staff.chat`). The executor
+  runs in the proposals worker thread and schedules the async Board convene on the event loop via
+  `staff.loop_bridge.run_on_loop` (same pattern as `execute_staff_dispatch`).
+- Factored `create_group_thread(group, title, caller_id, store=None)` into `backend/staff/groups.py`
+  (the thread-shape logic that `routers/staff_groups.py::create_group_thread_endpoint` used to build
+  inline) and added `convene_board_thread(question, title, caller_id)`, which creates the Board group
+  thread, posts `question` as the first group turn with cost pre-confirmed (the owner's approval of
+  `board.convene` stands as the cost confirmation), and starts the background fan-out via
+  `run_group_turn_in_background` exactly like `dispatch_group_message` does. Returns
+  `{"thread_id", "title"}`; the generic proposal-result post already links the new thread back into
+  the proposing thread.
+
+## Validation
+
+- New: `tests/unit/test_staff_chat_issue_context.py` (parse_issue_refs forms, dedupe/cap-at-3, role
+  gating, bounded block with a fake `IssueFetcher`, PR files + markdown rendering, failure ->
+  `unavailable`, truncation caps) — 16 tests, all pass.
+- New: `tests/unit/test_staff_chat_issue_prompt.py` (chat wiring: issue block appears before the
+  `MESSAGE_HEADER` and the user's text in the composed prompt) — 1 test, passes.
+- New: `tests/api/test_staff_board_convene_api.py` (MEDIUM risk / not auto-executable; execute without
+  a decision refused 409; approve+execute creates a Board thread and starts one group turn with a stub
+  seat runner, completing with `### Board Deliberation`; missing `question` -> `invalid_params`) — 4
+  tests, pass.
+- Extended `tests/unit/test_staff_groups.py` with `create_group_thread` (custom + default title) and
+  `convene_board_thread` (thread created, exactly one group turn, one call per seat) — 3 new tests.
+- `MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-22.04 -- bash -c 'cd .../claude-1762 && .../rd-test-venv/bin/python -m pytest tests/unit -k "staff_chat or staff_groups or staff_proposals or staff_action_executors" tests/api/test_staff_groups_api.py tests/api/test_staff_proposals_api.py tests/api/test_staff_board_convene_api.py -p no:cacheprovider -o addopts="" -q'` — **151 passed**.
+- `ruff check` / `ruff format --check` on all changed backend + test files — clean.
+- `mypy --ignore-missing-imports` (run from repo root, `mypy_path = "backend"` per `pyproject.toml`)
+  on `backend/staff/chat_issue_context.py backend/staff/chat.py backend/staff/chat_fleet_context.py
+backend/staff/groups.py backend/staff/action_executors.py backend/routers/staff_groups.py` — clean.
+
+## Blockers and risks
+
+- None known. Not pushed or opened as a PR (isolated worktree per task instructions).
+
+## Next steps
+
+1. Push the branch and open a PR referencing #1762.
+
+---
+
+# Prior handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
 
 Last updated: 2026-09-28
 

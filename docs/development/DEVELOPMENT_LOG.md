@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1762 — read_issue chat context and board.convene
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1762
+- **Branch:** `feat/barb-read-issue-board-convene`
+- **PR:** not created
+- **Paths:** `backend/staff/chat_issue_context.py`, `backend/staff/chat.py`, `backend/staff/chat_fleet_context.py`, `backend/staff/groups.py`, `backend/staff/action_executors.py`, `backend/routers/staff_groups.py`, `tests/unit/test_staff_chat_issue_context.py`, `tests/unit/test_staff_chat_issue_prompt.py`, `tests/unit/test_staff_groups.py`, `tests/api/test_staff_board_convene_api.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/unit -k "staff_chat or staff_groups or staff_proposals or staff_action_executors" tests/api/test_staff_groups_api.py tests/api/test_staff_proposals_api.py tests/api/test_staff_board_convene_api.py -q` — 151 passed; `ruff check`/`ruff format --check` clean; `mypy --ignore-missing-imports` clean)
+- **Summary:** Barb's role declared the `read_issue` chat tool but it was a documented no-op, so she could not discuss an issue/PR the owner named in chat, and no action took a question to the Board. New `chat_issue_context.py` recognises `owner/repo#N`/GitHub URLs/`PR #N`/bare `#N` (max 3, deduped) and injects bounded title/state/labels/body plus PR changed-files and changed-markdown text, wired into `chat.py` next to the fleet context block. New `board.convene` action (MEDIUM risk, `staff.chat` scope) creates a Board group thread and starts one group turn via a shared `create_group_thread` helper (factored out of the `/groups/{id}/threads` router endpoint, DRY) and a new `convene_board_thread`, scheduled off the proposals worker thread with `loop_bridge.run_on_loop`.
+- **Next step:** Open the PR referencing #1762.
+
 ### DL-#1755 — Phone sign-in via Tailscale identity headers
 
 - **State:** in_review
