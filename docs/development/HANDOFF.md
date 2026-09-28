@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `feat/1338-maxwell-provider-status`
 - Baseline commit: `add4f7da`
 - Implementation commit: `SELF`
-- Pull request: not created
+- Pull request: #1717 (draft → ready once PR CI is green)
 - Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Maxwell"); DL-#1338-maxwell.
 
 ## Objective and status
@@ -36,7 +36,7 @@ Last updated: 2026-09-27
 
 ## Next steps
 
-1. Open the PR, add its SPEC row, confirm PR CI green, arm auto-merge via automerge_guard.
+1. Confirm #1717's CI is green (quality-gate, tests, Vitest, ci-health-check), mark it ready and arm auto-merge via automerge_guard.
 
 ## Change log
 
