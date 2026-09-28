@@ -1,24 +1,7 @@
 """Provider adapters: how each coding CLI is launched and how its output is read.
-
-One adapter per CLI. An adapter is pure data + two pure functions:
-
-* ``build_command(prompt, workdir, model)`` → argv list (never a shell string).
-* ``parse_line(line)`` → a flat event dict ``{"kind", "text", "usage"?}``.
-
-Adapters never spawn anything themselves; ``runner.py`` owns the subprocess.
-Unattended runs never bypass CLI permissions (#1586). Each CLI gets a declared
-allow-list rendered from one shared table; the flags were verified against the
-installed CLIs on 2026-09-26:
-
-  claude  -p --output-format stream-json --verbose --permission-mode dontAsk --permission-prompts none
-          --allowedTools <tools> --disallowedTools <tools> (default model sonnet; claude >= 2.1.259, cli_version.py)
-  codex   exec --sandbox workspace-write --add-dir <git common dir> -c sandbox_workspace_write.network_access=true
-          --skip-git-repo-check --json (0.156; --full-auto removed)
-  gemini  -p --approval-mode auto_edit --policy <generated policy> --output-format stream-json
-  cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt> (2026.09.18; Grok via Cursor)
-  ollama         codex exec --oss --local-provider ollama (Ollama models inside the Codex agent, #1252)
-  claude-ollama  claude on Ollama's Anthropic-compatible API (own CLAUDE_CONFIG_DIR, #1252)
-  agy     chat only: 1.2.11 refuses every shell command headlessly unless --dangerously-skip-permissions is set
+One adapter per CLI: pure data + build_command / parse_line.
+Adapters never spawn anything themselves; runner.py owns the subprocess.
+Unattended runs never bypass CLI permissions (#1586).
 """
 
 from __future__ import annotations
@@ -129,6 +112,7 @@ class ProviderAdapter:
         gitdir: str | None = None,
         policy: str | None = None,
         read_only: bool = False,
+        session_id: str | None = None,
     ) -> list[str]:
         """Return argv for one unattended run.
 
@@ -179,6 +163,15 @@ class ProviderAdapter:
                 assert not any(tool in allowed_entries for tool in CLAUDE_WRITE_TOOLS), (  # noqa: S101
                     "allowed tools must not contain write tools in read-only mode"
                 )
+        if session_id:
+            if self.provider_id in ("codex", "ollama") and prompt in out:
+                p_idx = out.index(prompt)
+                out.insert(p_idx, "--session")
+                out.insert(p_idx + 1, session_id)
+            elif self.provider_id in ("codex", "ollama"):
+                out.extend(["--session", session_id])
+            else:
+                out.extend(["--resume", session_id])
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
         assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
         return out

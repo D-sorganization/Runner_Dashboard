@@ -18,18 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1716 — Grok relay proposal deduplication and chat contract hardening
+### DL-#1709 — Staff runner retry nudge for missing STAFF_RESULT line
 
 - **State:** in_progress
 - **Owner:** local
-- **Issue:** #1716
-- **Branch:** `fix/grok-relay-proposal-dedup-1716`
+- **Issue:** #1709
+- **Branch:** `fix/staff-runner-result-nudge-1709`
 - **PR:** (pending)
-- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_history.py`, `backend/staff/conversation_proposals.py`, `backend/staff/proposal_cards.py`, `backend/staff/reply_contract.py`, `docs/agents/grok.md`, `tests/api/test_staff_proposals_api.py`, `tests/unit/test_staff_proposal_dedup.py`
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/classifier.py`, `backend/staff/lease.py`, `backend/staff/retry.py`, `backend/staff/runner.py`, `backend/staff/runner_ops.py`, `tests/api/test_staff_runner.py`, `tests/unit/test_staff_classifier.py`
 - **Started:** 2026-09-28
-- **Last verified:** 2026-09-28 (pytest unit & api pass, ruff clean, LOC <= 500 per file)
-- **Summary:** Deduplicates pending proposals within the same thread so identical action proposals return the existing record and do not create duplicate action card messages; includes action proposals in chat history replay and context blocks so models are aware of pending proposals and their IDs; instructs models that chat turns are read-only and cannot execute proposals; clarifies the "Allow with confirm" flow in docs/agents/grok.md to reflect that owner approval happens in the Staff Console.
+- **Last verified:** 2026-09-28 (pytest staff+classifier+runner 59 passed, ruff clean, mypy clean, all files <= 500 LOC)
+- **Summary:** Enforces that unattended runs exiting 0 without a STAFF_RESULT line receive one bounded host-level retry nudge resuming the same session; accepts the nudge result line only on an exact prefix match (`STAFF_RESULT:`); records runs that pause on a question as failure_class="needs_input" with `error="agent paused asking: {last_line}"`, lease-blocked runs as failure_class="lease_blocked", and non-question missing result runs as failure_class="no_result" with `error="agent exited 0 without a STAFF_RESULT line"`.
 - **Next step:** Open PR and enable auto-merge.
+
 
 ### DL-#1718 — Live-sweep fixes for the UX overhaul
 
@@ -2993,6 +2994,20 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1716 — Grok relay proposal deduplication and chat contract hardening
+
+- **State:** shipped
+- **Owner:** local
+- **Issue:** #1716
+- **Branch:** `fix/grok-relay-proposal-dedup-1716`
+- **PR:** #1731
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_history.py`, `backend/staff/conversation_proposals.py`, `backend/staff/proposal_cards.py`, `backend/staff/reply_contract.py`, `docs/agents/grok.md`, `tests/api/test_staff_proposals_api.py`, `tests/unit/test_staff_proposal_dedup.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (pytest unit & api pass, ruff clean, LOC <= 500 per file)
+- **Summary:** Deduplicates pending proposals within the same thread so identical action proposals return the existing record and do not create duplicate action card messages; includes action proposals in chat history replay and context blocks so models are aware of pending proposals and their IDs; instructs models that chat turns are read-only and cannot execute proposals; clarifies the "Allow with confirm" flow in docs/agents/grok.md to reflect that owner approval happens in the Staff Console.
+- **Shipped:** 2026-09-28
+- **Next step:** Shipped in PR #1731.
 
 ### DL-#1665 — Code Requests owned by product-owner; executor profile relabelled
 

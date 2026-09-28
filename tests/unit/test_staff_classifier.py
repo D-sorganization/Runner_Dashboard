@@ -27,6 +27,7 @@ def test_allowed_failure_classes_complete() -> None:
         "workspace_error",
         "unkillable",
         "unknown",
+        "no_result",
     }
     assert ALLOWED_FAILURE_CLASSES == expected
 
@@ -211,10 +212,11 @@ def test_classify_needs_input_when_exit_zero_ends_in_question() -> None:
     assert classification.retryable is False
     assert classification.question == "Should I proceed with creating the pull request on main?"
     assert "Should I proceed with creating the pull request on main?" in classification.remediation
+    assert classification.error == "agent paused asking: Should I proceed with creating the pull request on main?"
 
 
 def test_classify_exit_zero_without_staff_result_not_a_question() -> None:
-    """Exit 0 without STAFF_RESULT and without a question is classified as unknown."""
+    """Exit 0 without STAFF_RESULT and without a question is classified as no_result."""
     last_output = "I finished inspecting the code and wrote everything to disk."
     classification = classify_run_failure(
         provider="claude",
@@ -223,8 +225,9 @@ def test_classify_exit_zero_without_staff_result_not_a_question() -> None:
         output_text=last_output,
         machine="OGLaptop",
     )
-    assert classification.failure_class == "unknown"
+    assert classification.failure_class == "no_result"
     assert classification.retryable is False
+    assert classification.error == "agent exited 0 without a STAFF_RESULT line"
 
 
 def test_classify_unknown_pattern_attaches_last_lines() -> None:

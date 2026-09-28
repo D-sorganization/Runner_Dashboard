@@ -1,16 +1,6 @@
 """Staff runner: turns a run request into a CLI subprocess and records it.
-
-Lifecycle of one run (all state lives in ``store.RunStore``):
-
-  queued ─▶ preparing ─▶ running ─▶ succeeded | failed | cancelled
-                 └────────────────▶ blocked   (someone else holds the issue claim)
-
-``preparing`` = resolve the repository checkout, create an isolated git
-worktree, run the Repository_Management lease ritual as subprocesses.
-``running``   = the provider CLI is alive; stdout lines become events.
-
-Concurrency is bounded by ``STAFF_MAX_CONCURRENT_RUNS`` (default 3) with one
-daemon thread per run; the semaphore is held only while the CLI runs.
+Lifecycle: queued -> preparing -> running -> succeeded | failed | cancelled | blocked.
+Concurrency is bounded by STAFF_MAX_CONCURRENT_RUNS with one daemon thread per run.
 """
 
 from __future__ import annotations
@@ -40,6 +30,8 @@ from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
 from staff.runner_ops import (
+    execute_retry_nudge,
+    extract_transcript_question,
     fail_if_cli_outdated,
     pump_output,
     read_only_kwargs,
@@ -53,7 +45,7 @@ from staff.watchdog import StaffWatchdog, terminate_process_group
 log = logging.getLogger("dashboard.staff.runner")
 
 MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
-NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line (it stopped before finishing, e.g. to ask a question)"
+NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
@@ -184,15 +176,12 @@ class StaffRunner:
         return provider
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
-        """First installed, unattended provider whose plan is under ``ceiling`` percent (#1586, #1588)."""
         return select_first_available_provider(self._adapters, providers, ceiling)
 
     @staticmethod
     def _launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, str]:
-        """``gitdir``/``policy`` keyword arguments for ``adapter.build_command`` (#1586)."""
         return resolve_launch_paths(adapter, workdir)
 
-    # ── submission ───────────────────────────────────────────────────────
     def submit(self, req: RunRequest) -> RunRecord:
         """Validate, persist as ``queued`` and start the worker thread."""
         plan = self.plan(req)
@@ -220,8 +209,7 @@ class StaffRunner:
         self.store.create_run(rec)
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
         handle_run_status_change(rec, "queued")
-        thread = threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True)
-        thread.start()
+        threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True).start()
         return rec
 
     def cancel(self, run_id: str) -> bool:
@@ -326,26 +314,21 @@ class StaffRunner:
         idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
 
         try:
-            token = mint_run_token(
-                role=plan.role,
-                run_id=rec.id,
-                fleet_actions=role.fleet_actions,
-                ttl_seconds=wall_clock_timeout,
-            )
+            token = mint_run_token(plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout)
         except Exception as exc:  # noqa: BLE001
             log.exception("Failed to mint staff run token for %s", rec.id)
+            err = f"token minting failed: {exc}"
             store.update_run(
                 rec.id,
                 status="failed",
                 failure_class="workspace_error",
                 retryable=False,
                 remediation="Token minting failed; verify node identity configuration.",
-                error=f"token minting failed: {exc}",
+                error=err,
                 ended_at=_now(),
             )
-            store.append_event(rec.id, "error", f"token minting failed: {exc}")
+            store.append_event(rec.id, "error", err)
             return
-
         try:
             env = {
                 **os.environ,
@@ -370,13 +353,7 @@ class StaffRunner:
             with self._lock:
                 self._procs[rec.id] = proc
                 cancelled = rec.id in self._cancel_flags
-            store.update_run(
-                rec.id,
-                status="running",
-                transcript_path=str(transcript),
-                prompt=prompt,
-                pid=proc.pid,
-            )
+            store.update_run(rec.id, status="running", transcript_path=str(transcript), prompt=prompt, pid=proc.pid)
             store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
             handle_run_status_change(rec, "running")
             if cancelled:
@@ -394,7 +371,9 @@ class StaffRunner:
             )
             watchdog.start()
             try:
-                usage, result_line = self._pump_output(rec, adapter, proc, transcript, watchdog)
+                pump_res = self._pump_output(rec, adapter, proc, transcript, watchdog)
+                usage, result_line = pump_res
+                session_id = getattr(pump_res, "session_id", None)
                 try:
                     rc = proc.wait(timeout=5.0)
                 except subprocess.TimeoutExpired:
@@ -405,6 +384,33 @@ class StaffRunner:
             with self._lock:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
+            question = extract_transcript_question(transcript)
+
+            if not cancelled and rc == 0 and not result_line and not question:
+                n_line, n_usage, n_rc = execute_retry_nudge(
+                    rec=rec,
+                    adapter=adapter,
+                    plan=plan,
+                    role=role,
+                    workdir=workdir,
+                    env=env,
+                    session_id=session_id,
+                    transcript=transcript,
+                    store=store,
+                    wall_clock_timeout=wall_clock_timeout,
+                    idle_timeout=idle_timeout,
+                    lock=self._lock,
+                    procs=self._procs,
+                    cancel_flags=self._cancel_flags,
+                )
+                if n_line:
+                    result_line = n_line
+                elif n_rc != 0:
+                    rc = n_rc
+                if n_usage:
+                    for k in ("input_tokens", "output_tokens"):
+                        usage[k] = int(usage.get(k, 0)) + int(n_usage.get(k, 0))
+                    usage["cost_usd"] = float(usage.get("cost_usd", 0.0)) + float(n_usage.get("cost_usd", 0.0))
             status, failure_class, retryable, remediation, error = classify_execution_result(
                 cancelled=cancelled,
                 rc=rc,
@@ -421,12 +427,10 @@ class StaffRunner:
             if rec.role == "code-reviewer" and rc == 0:
                 review_verdict = review.parse_review_verdict(result_line, same_provider=same_provider)
                 if review_verdict.status == "needs_input":
-                    status = "needs_input"
-                    failure_class = "needs_input"
+                    status = failure_class = "needs_input"
                     remediation = "Review completed without emitting a STAFF_RESULT verdict line."
                 elif review_verdict.status == "failed":
-                    status = "failed"
-                    failure_class = "invalid_output"
+                    status, failure_class = "failed", "invalid_output"
                     error = review_verdict.error or "Malformed review verdict line"
                     remediation = "Review completed with a malformed STAFF_RESULT line."
 
@@ -451,20 +455,11 @@ class StaffRunner:
             verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
-                status = updated_rec.status  # enforce mode may have failed an unverified success (#1516)
-                question = None
-                if status == "needs_input":
-                    from staff.classifier import _extract_last_line_text  # noqa: PLC0415
-
-                    try:
-                        t_text = transcript.read_text(encoding="utf-8", errors="replace")
-                        question = _extract_last_line_text(t_text)
-                    except Exception:  # noqa: BLE001
-                        pass
+                q = question if status == "needs_input" else None
                 handle_run_status_change(
                     updated_rec,
                     status=status,
-                    question=question,
+                    question=q,
                     summary=updated_rec.outcome or result_summary(result_line),
                 )
         finally:
@@ -477,8 +472,7 @@ class StaffRunner:
         proc: subprocess.Popen[str],
         transcript: Path,
         watchdog: StaffWatchdog | None = None,
-    ) -> tuple[dict[str, Any], str]:
-        """Stream stdout lines into the transcript file and the event store (#1587, #1593)."""
+    ) -> Any:
         return pump_output(rec, adapter, proc, transcript, self.store, watchdog)
 
 

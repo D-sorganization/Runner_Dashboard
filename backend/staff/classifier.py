@@ -17,7 +17,7 @@ from staff.adapters import _extract_text
 if TYPE_CHECKING:
     from staff.store import RunRecord
 
-NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line (it stopped before finishing, e.g. to ask a question)"
+NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line"
 
 ALLOWED_FAILURE_CLASSES = frozenset(
     {
@@ -34,6 +34,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "workspace_error",
         "unkillable",
         "unknown",
+        "no_result",
     }
 )
 
@@ -184,12 +185,12 @@ def classify_run_failure(
                 failure_class="needs_input",
                 retryable=False,
                 remediation=f"Agent paused asking: {last_line}",
-                error=NO_RESULT_ERROR,
+                error=f"agent paused asking: {last_line}",
                 question=last_line,
             )
         # Exited 0 without result and not asking a question
         return FailureClassification(
-            failure_class="unknown",
+            failure_class="no_result",
             retryable=False,
             remediation="Process exited 0 without emitting STAFF_RESULT or question.",
             error=NO_RESULT_ERROR,
