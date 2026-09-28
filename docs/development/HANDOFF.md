@@ -40,6 +40,7 @@ Last updated: 2026-09-27
 ## Change log
 
 - 2026-09-27: Assessments split into Projects cards; the tab retires and redirects to Projects.
+- 2026-09-28: ProjectsAssessments test awaits the card before querying it (PR CI Vitest raced the projects fetch).
 
 ---
 

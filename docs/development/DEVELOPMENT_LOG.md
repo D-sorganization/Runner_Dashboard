@@ -27,7 +27,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** #1707
 - **Paths:** `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/Projects/`, `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/navIcons.tsx`, `frontend/src/index.css`, `tests/test_frontend_integrity.py`, `tests/frontend/mobile/viewport_profiles.json`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (WSL vitest shell + Projects 154/154, typecheck, eslint, integrity/mobile-harness pytest pass)
+- **Last verified:** 2026-09-28 (Projects tests 5/5 after the card-await fix; earlier WSL vitest shell + Projects, typecheck, eslint, integrity/mobile-harness pytest pass)
 - **Summary:** Each Projects card shows the repo's assessment score history and a "Request assessment" action that submits the existing `assessment.run` Staff request (Jules-Assess-Repo.yml, no role). The Assessments tab is removed and its old addresses redirect to Projects. Backend routes are unchanged.
 - **Next step:** Arm auto-merge on #1707 once its CI is green.
 

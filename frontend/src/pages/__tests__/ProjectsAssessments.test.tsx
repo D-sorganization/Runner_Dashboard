@@ -99,7 +99,8 @@ describe("Projects assessments (#1338)", () => {
     mockFetch();
     render(<ProjectsPage />);
 
-    const button = await card("Beta").findByRole("button", { name: "Request assessment for Beta" });
+    await screen.findByTestId("project-card-Beta");
+    const button = card("Beta").getByRole("button", { name: "Request assessment for Beta" });
     fireEvent.click(button);
 
     await waitFor(() => expect(card("Beta").getByText(/Assessment requested/i)).toBeInTheDocument());
@@ -119,6 +120,6 @@ describe("Projects assessments (#1338)", () => {
     await waitFor(() =>
       expect(screen.getByText(/Assessment scores unavailable/i)).toHaveTextContent("503"),
     );
-    expect(screen.getByTestId("project-card-Alpha")).toBeInTheDocument();
+    expect(await screen.findByTestId("project-card-Alpha")).toBeInTheDocument();
   });
 });
