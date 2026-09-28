@@ -84,6 +84,7 @@ Last updated: 2026-09-28
 - `/api/runs/enriched` sent GitHub's raw run objects (two repository objects and a dozen REST `*_url` links per run): 755 KB for 50 runs. `_slim_run` keeps the run's own fields, `repository` id/name/full_name/html_url/private, actor logins and the commit message: 147 KB. `/api/runs` (Overview, Remediation) is slimmed the same way.
 - Staff checkout discovery guessed the Windows profile from `$USERNAME` (`/mnt/c/Users/<login>`); it now uses `windows_repositories_root()` like the reports path.
 - The 404 page said "Use the sidebar" on phones; it says "navigation" and hides the Ctrl+K hint under 768px. Mobile Fleet no longer puts a single ControlTower machine under a "ControlTower Pools" heading.
+- CI after #1730 (non-required checks): the OpenAPI snapshot missed a docstring change (regenerated with `scripts/gen-api-client.sh`); neutral badges used the muted label colour and failed axe on Queue (now body text on a faint tint, contrast-tested for every theme); system-authored run cards rendered as a raw one-line notice (the chat redesign returned early for system messages), and paragraphs mentioning `#123`/`run-…` lost bold and code formatting. Run Playwright locally with `CI=1 DASHBOARD_URL=http://localhost:5173`; without `DASHBOARD_URL` it tests the deployed hub on 8321.
 
 ## Validation
 

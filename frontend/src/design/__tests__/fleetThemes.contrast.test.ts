@@ -129,3 +129,28 @@ describe('fleet theme WCAG AA contrast', () => {
     ).toBeGreaterThanOrEqual(AA_NORMAL)
   })
 })
+
+/** `fg` at `alpha` over opaque `bg` (both #rrggbb), as the browser composites a tinted badge. */
+function blendOver(fg: string, alpha: number, bg: string): string {
+  const f = fg.replace('#', '')
+  const b = bg.replace('#', '')
+  const mix = (i: number) =>
+    Math.round(parseInt(b.slice(i, i + 2), 16) * (1 - alpha) + parseInt(f.slice(i, i + 2), 16) * alpha)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${mix(0)}${mix(2)}${mix(4)}`
+}
+
+describe('neutral badge contrast (#1718: Queue "0 running" badges failed axe)', () => {
+  it.each(getFleetThemeIds())('theme "%s" neutral badge text clears AA on bg and group_bg', (id) => {
+    const theme = FLEET_THEMES[id]
+    const vars = fleetThemeToCssVars(theme)
+    const fg = vars['--badge-neutral-fg']
+    const tint = vars['--badge-neutral-bg']
+    const alpha = tint.length === 9 ? parseInt(tint.slice(7), 16) / 255 : 1
+    for (const surface of [theme.colors.bg, theme.colors.group_bg]) {
+      const bg = blendOver(tint.slice(0, 7), alpha, surface)
+      expect(contrastRatio(fg, bg), `${id}: ${fg} on ${bg}`).toBeGreaterThanOrEqual(AA_NORMAL)
+    }
+  })
+})

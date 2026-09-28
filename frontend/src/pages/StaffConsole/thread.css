@@ -86,6 +86,10 @@
   max-width: 80%;
 }
 
+.thread-message-item__notice p {
+  margin: 0;
+}
+
 /* ── Assistant Header: Avatar + Role Display Name + Time ── */
 
 .thread-message-header {

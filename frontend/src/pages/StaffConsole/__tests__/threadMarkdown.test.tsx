@@ -87,4 +87,12 @@ describe("sanitizeMarkdown & ThreadMarkdown", () => {
       "https://github.com/D-sorganization/Runner_Dashboard/pull/1410"
     );
   });
+
+  it("keeps inline formatting in paragraphs that also carry issue/run badges (#1718)", () => {
+    const { container } = render(<ThreadMarkdown content={"**PR #123** merged; see `run-9876` for logs"} />);
+    expect(container.textContent).not.toContain("**");
+    expect(container.querySelector("strong")?.textContent).toMatch(/PR/);
+    expect(container.querySelector("code")?.textContent).toBe("run-9876");
+    expect(container.querySelector(".badge-link")).not.toBeNull();
+  });
 });

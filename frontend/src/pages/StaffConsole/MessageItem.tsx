@@ -33,6 +33,9 @@ import {
   type RunStatus,
 } from "./cards";
 
+/** Message kinds rendered as cards even when the system authored them. */
+const CARD_KINDS = new Set(["run", "run_card", "proposal", "action_proposal", "handoff", "error"]);
+
 export interface MessageItemProps {
   message: ThreadMessage;
   isStreaming?: boolean;
@@ -78,7 +81,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const isUser = message.author_kind === "user" || message.author === "user";
-  const isSystem = message.author_kind === "system" || message.kind === "system";
+  // System-authored cards (runs, proposals, handoffs) keep their card; only plain notices are pills.
+  const isSystem =
+    (message.author_kind === "system" || message.kind === "system") && !CARD_KINDS.has(message.kind ?? "");
   const isFailed = message.delivery === "failed" || message.kind === "error";
   const isActivelyStreaming = isStreaming || message.streaming;
   const timeStr = formatMessageTime(message.created_at);
@@ -103,7 +108,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   if (isSystem) {
     return (
       <div className="thread-message-item thread-message-item--system" data-testid={`message-${message.id}`}>
-        <span>{message.body_md}</span>
+        <ThreadMarkdown content={message.body_md} className="thread-message-item__notice" />
       </div>
     );
   }
