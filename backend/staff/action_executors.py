@@ -256,6 +256,33 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
     return ActionResult(success=True, result={"proposal_id": wi.id, "title": title, "proposal": wi.description})
 
 
+def execute_board_convene(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    """Convene the Board of Directors to deliberate ``question`` (Runner_Dashboard#1762).
+
+    Pre: runs in an anyio worker thread, same as ``execute_staff_dispatch``.
+    Post: creates a Board group thread and starts one group turn on the event loop via
+    ``run_on_loop``; the owner's approval of this MEDIUM-risk action stands as the cost
+    confirmation, so no separate cost guard is applied here.
+    """
+    from staff.actions import ActionResult
+    from staff.groups import convene_board_thread
+    from staff.loop_bridge import BridgeUnavailableError, run_on_loop
+
+    question = str(params.get("question") or "").strip()
+    if not question:
+        return ActionResult(success=False, error="Missing 'question'", failure_class="invalid_params")
+    raw_title = params.get("title")
+    title = str(raw_title).strip() or None if raw_title else None
+    caller_id = format_caller(ctx.caller) if ctx.caller else "staff_action"
+
+    try:
+        out = run_on_loop(convene_board_thread, question, title, caller_id)
+    except BridgeUnavailableError as exc:
+        return ActionResult(success=False, error=f"board.convene {exc}", failure_class="bridge_unavailable")
+
+    return ActionResult(success=True, result={"thread_id": out["thread_id"], "title": out["title"]})
+
+
 def execute_notify_user(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     from staff.actions import ActionResult
 
@@ -410,6 +437,14 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             required_scope="board.proposals.write",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_board_propose,
+        ),
+        ActionDefinition(
+            name="board.convene",
+            description="Convene the Board of Directors to deliberate a question.",
+            params_schema={"question": "string", "title": "string?"},
+            required_scope="staff.chat",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_board_convene,
         ),
         ActionDefinition(
             name="notify_user",
