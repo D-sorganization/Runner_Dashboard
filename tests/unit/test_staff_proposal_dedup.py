@@ -108,6 +108,7 @@ def test_create_proposal_deduplicates_pending_in_thread(
         thread_id="th_1",
         action="staff.dispatch",
         params={"role": "cartographer"},
+        deduplicate=True,
     )
 
     # Calling create_proposal again with identical action and params returns p1
@@ -118,6 +119,7 @@ def test_create_proposal_deduplicates_pending_in_thread(
         thread_id="th_1",
         action="staff.dispatch",
         params={"role": "cartographer"},
+        deduplicate=True,
     )
     assert p2.id == p1.id
 
@@ -137,6 +139,7 @@ def test_create_proposal_does_not_deduplicate_decided_proposal(
         thread_id="th_1",
         action="staff.dispatch",
         params={"role": "cartographer"},
+        deduplicate=True,
     )
     decide_proposal(conn, lock, p1.id, "approved", decided_by="human:dieter")
 
@@ -148,6 +151,7 @@ def test_create_proposal_does_not_deduplicate_decided_proposal(
         thread_id="th_1",
         action="staff.dispatch",
         params={"role": "cartographer"},
+        deduplicate=True,
     )
     assert p2.id != p1.id
     rows = conn.execute("SELECT COUNT(*) as cnt FROM action_proposals WHERE thread_id = 'th_1'").fetchone()

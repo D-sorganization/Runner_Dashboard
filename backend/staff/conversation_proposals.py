@@ -99,6 +99,7 @@ def create_proposal(
     audit_store: StaffAuditStore | None = None,
     decide_by: str | None = None,
     default_if_silent: str = "",
+    deduplicate: bool = False,
 ) -> ActionProposalRecord:
     assert risk in PROPOSAL_RISKS, f"Invalid risk: {risk}"  # noqa: S101
     import uuid
@@ -108,8 +109,8 @@ def create_proposal(
 
     param_dict = redact_value(dict(params or {}))
 
-    # De-duplicate identical pending proposals within the same thread (#1716)
-    if proposal_id is None and thread_id and action:
+    # De-duplicate identical pending proposals within the same thread when requested (#1716)
+    if deduplicate and proposal_id is None and thread_id and action:
         existing = find_pending_proposal(
             conn,
             lock,

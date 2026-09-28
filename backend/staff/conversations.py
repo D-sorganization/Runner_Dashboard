@@ -1,9 +1,6 @@
 """Node-local SQLite store for staff conversations, threads, messages, and action proposals.
-
 Persists threads, sequential messages, and action proposal state machines in
-staff_runs.sqlite3 (SQLite WAL, threading.RLock()), with forward-only schema migrations,
-automatic pre-migration backups and fail-safe degraded mode banners (SC-B2, Issue #1305).
-"""
+staff_runs.sqlite3 (SQLite WAL, threading.RLock(), SC-B2, Issue #1305)."""
 
 from __future__ import annotations
 
@@ -386,6 +383,7 @@ class ConversationStore:
         principal: str = "",
         decide_by: str | None = None,
         default_if_silent: str = "",
+        deduplicate: bool = False,
     ) -> ActionProposalRecord:
         self._ensure_available()
         return _proposals.create_proposal(
@@ -401,6 +399,7 @@ class ConversationStore:
             audit_store=self._audit_store,
             decide_by=decide_by,
             default_if_silent=default_if_silent,
+            deduplicate=deduplicate,
         )
 
     def get_proposal(self, proposal_id: str) -> ActionProposalRecord | None:
