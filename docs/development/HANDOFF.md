@@ -55,11 +55,11 @@ Last updated: 2026-09-28
 
 ## Service worker build id, #1740 (DL-#1740)
 
-- Branch `fix/sw-build-id` (worktree `claude-sw-1740`), from main `157232e6`. PR not created yet.
+- Branch `fix/sw-build-id` (worktree `claude-sw-1740`), from main `157232e6`. PR #1741 (draft).
 - Nothing set `VITE_BUILD_ID`, so every build registered `/sw.js?build=dev`. The worker never updated after a deploy, the "update ready" toast never fired, and the worker cache (`runner-dashboard-dev`) never rotated.
 - `frontend/src/lib/buildId.ts` `resolveBuildId` (pure): explicit `VITE_BUILD_ID`, else `git rev-parse --short HEAD`, else `t<epoch ms>`. `vite.config.ts` injects it through `define`. `tsconfig.node.json` is unchanged (adding the file there breaks `tsc -p .` with TS6305).
 - Validation: `npx vitest run frontend/src/lib/__tests__/buildId.test.ts` 3 passed (red before the module existed); `npm run typecheck` clean; eslint clean; `npx vite build` bundle contains `sw.js?build=${encodeURIComponent("157232e6")}`, and `VITE_BUILD_ID=rel-test` yields `"rel-test"`.
-- Next: open the PR as draft, then mark ready and arm via `automerge_guard`.
+- Next: mark #1741 ready and arm via `automerge_guard` once CI is green.
 
 ---
 

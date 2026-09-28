@@ -24,12 +24,12 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1740
 - **Branch:** `fix/sw-build-id`
-- **PR:** not created
+- **PR:** #1741
 - **Paths:** `frontend/src/lib/buildId.ts`, `frontend/src/lib/__tests__/buildId.test.ts`, `vite.config.ts`
 - **Started:** 2026-09-28
 - **Last verified:** 2026-09-28 (vitest 3 passed; `npm run typecheck` and eslint clean; built bundle registers `sw.js?build=157232e6`)
 - **Summary:** The service worker was always registered as `build=dev`, so it never updated after a deploy and its cache never rotated. The build now stamps the git short SHA (or an explicit `VITE_BUILD_ID`, or the build time).
-- **Next step:** Open the PR as draft, then mark it ready and arm auto-merge via `automerge_guard`.
+- **Next step:** Mark #1741 ready and arm auto-merge via `automerge_guard` once CI is green.
 
 ### DL-#1735 — Frontend calls only routes that exist
 
