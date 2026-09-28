@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1728 — Staff threads API tests stop leaking chat turns and staff-run threads
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1728
+- **Branch:** `fix/staff-threads-test-thread-leak`
+- **PR:** pending (draft)
+- **Paths:** `tests/api/test_staff_threads_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 @ SELF on add4f7da (file 14 passed with thread-exception warnings as errors; RED without the stub = 2 errors)
+- **Summary:** The autouse fixture stubs the background chat turn. Tripwires fail any test that runs a real chat turn, creates a real worktree, or leaves a `staff-run-*` thread alive after teardown.
+- **Next step:** Mark the draft PR ready once its CI is green.
+
 ### DL-#1338-assessments — SC-G6: Assessments split into Projects
 
 - **State:** in_review

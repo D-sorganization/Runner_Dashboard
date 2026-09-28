@@ -1,3 +1,43 @@
+# Current handoff — Staff threads API tests stop leaking chat turns and staff-run threads (DL-#1728)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/staff-threads-thread-leak`
+- Branch: `fix/staff-threads-test-thread-leak`
+- Baseline commit: `add4f7da`
+- Implementation commit: `SELF`
+- Pull request: not created (opened as draft right after this commit)
+- Governing issue/epic: #1728; DL-#1728.
+
+## Objective and status
+
+- `tests/api/test_staff_threads_api.py` was flaky on Windows under load. Posting a message ran the real background chat turn: the provider version gate ran `claude --version`, and the turn then ran the provider CLI. Its `to_thread` work outlived the test, could dispatch a staff run, and the run's `staff-run-*` worker wrote to a closed store and ran `git worktree add`.
+- The autouse `clean_conversations` fixture now stubs `routers.staff_threads.run_chat_turn_in_background`, which the ack-order test used to do by itself.
+- Tripwires in the same fixture fail a test that calls `ChatTurnRunner.execute_turn`, calls `workspace.add_worktree`, or leaves a `staff-run-*` thread alive. Live workers are joined before the store is reset.
+- Test-only change; no backend code changed.
+
+## Validation
+
+- RED: guard only, no stub → 2 errors (`test_post_message_success_and_idempotent_replay`, `test_thread_stream_sse_and_resume`: "test ran a real chat turn").
+- GREEN: `pytest tests/api/test_staff_threads_api.py -p no:pytest-qt -W error::pytest.PytestUnhandledThreadExceptionWarning` → 14 passed; `ruff check` + `ruff format --check` clean.
+
+## Blockers and risks
+
+- None. Other staff test files that post messages without this stub may have the same leak. They are out of scope here.
+
+## Next steps
+
+1. Confirm the draft PR's CI is green, mark it ready and arm auto-merge via automerge_guard.
+
+## Change log
+
+- 2026-09-27: Stubbed the background chat turn in the staff threads API fixture and added no-leak tripwires.
+
+---
+
 # Current handoff — SC-G6: Assessments split into Projects (DL-#1338-assessments)
 
 Last updated: 2026-09-27

@@ -14,6 +14,7 @@ Covers:
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,10 @@ TEST_PRINCIPAL = Principal(
 )
 
 
+def _live_staff_run_threads() -> list[threading.Thread]:
+    return [t for t in threading.enumerate() if t.name.startswith("staff-run-") and t.is_alive()]
+
+
 @pytest.fixture(autouse=True)
 def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_file = tmp_path / "staff_runs.sqlite3"
@@ -43,15 +48,36 @@ def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     reset_conversation_store()
     reset_thread_bus()
 
+    # Tripwires: a real chat turn runs a provider CLI whose worker threads outlive
+    # the test and can dispatch a staff run into a real git worktree.
+    real_turns: list[dict] = []
+    worktrees: list[tuple] = []
+
+    async def _record_turn(_self, **kwargs):
+        real_turns.append(kwargs)
+
+    async def _no_turn(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("routers.staff_threads.run_chat_turn_in_background", _no_turn)
+    monkeypatch.setattr("staff.chat.ChatTurnRunner.execute_turn", _record_turn)
+    monkeypatch.setattr("staff.workspace.add_worktree", lambda *args: worktrees.append(args))
+
     app.dependency_overrides[require_principal] = lambda: TEST_PRINCIPAL
     app.dependency_overrides[require_scope("staff.chat")] = lambda: TEST_PRINCIPAL
     app.dependency_overrides[require_scope("staff.read")] = lambda: TEST_PRINCIPAL
 
     store = get_conversation_store()
     yield store
+    # Join staff-run workers before the store they write to is reset.
+    for thread in _live_staff_run_threads():
+        thread.join(timeout=5)
     app.dependency_overrides.clear()
     reset_conversation_store()
     reset_thread_bus()
+    assert not _live_staff_run_threads(), "staff-run worker thread outlived the test"
+    assert not real_turns, "test ran a real chat turn; stub run_chat_turn_in_background"
+    assert not worktrees, "test created a real git worktree"
 
 
 @pytest.fixture
@@ -356,13 +382,8 @@ def test_post_message_rejects_unknown_fields(client: TestClient):
     assert "content" in resp.text
 
 
-def test_ack_is_stored_before_the_reply_slot(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_ack_is_stored_before_the_reply_slot(client: TestClient):
     """The 'On it' ack reads before the role's reply in seq order (#1630)."""
-
-    async def _no_turn(*_args, **_kwargs):
-        return None
-
-    monkeypatch.setattr("routers.staff_threads.run_chat_turn_in_background", _no_turn)
     tid = client.post("/api/v1/staff/threads", json={"title": "T", "role": "barb"}).json()["id"]
     resp = client.post(
         f"/api/v1/staff/threads/{tid}/messages",
