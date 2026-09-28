@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1719 — Neutral design tokens, type scale and flat cards
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1719
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `frontend/src/design/tokens.ts`, `frontend/src/design/fleetThemes.ts`, `frontend/src/index.css` (tokens, globals, `.glass-card`, `.button`, `.filter-pill`)
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (design/shell/primitives vitest 424 tests pass (one RoutedShell lazy-route flake under load, 3/3 green alone); tsc and eslint clean)
+- **Summary:** Neutral charcoal and white palettes with a 12–24px type scale; `.glass-card` is flat and no longer repaints on hover (the grey centre the owner saw), with an opt-in `.glass-card--interactive`; muted text kept at WCAG AA 4.5:1 on every surface (agy had loosened the guard to 3:1).
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1721 — Staff Console roster and context pane restyled
 
 - **State:** in_review
