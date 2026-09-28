@@ -286,6 +286,7 @@ def extract_transcript_question(transcript: Path) -> str | None:
     from staff.classifier import _extract_last_line_text  # noqa: PLC0415
 
     try:
-        return _extract_last_line_text(transcript.read_text(encoding="utf-8", errors="replace")) or None
+        last = _extract_last_line_text(transcript.read_text(encoding="utf-8", errors="replace"))
+        return last if last.endswith("?") else None
     except Exception:  # noqa: BLE001
         return None

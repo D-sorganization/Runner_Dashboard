@@ -383,8 +383,9 @@ class StaffRunner:
             with self._lock:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
+            question = extract_transcript_question(transcript)
 
-            if not cancelled and rc == 0 and not result_line:
+            if not cancelled and rc == 0 and not result_line and not question:
                 n_line, n_usage, n_rc = execute_retry_nudge(
                     rec=rec,
                     adapter=adapter,
@@ -453,12 +454,11 @@ class StaffRunner:
             verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
-                status = updated_rec.status  # enforce mode may have failed an unverified success (#1516)
-                question = extract_transcript_question(transcript) if status == "needs_input" else None
+                q = question if status == "needs_input" else None
                 handle_run_status_change(
                     updated_rec,
                     status=status,
-                    question=question,
+                    question=q,
                     summary=updated_rec.outcome or result_summary(result_line),
                 )
         finally:
