@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** local
 - **Issue:** #1698
 - **Branch:** `fix/1698-cursor-agent-restrict-namespaces`
-- **PR:** pending
+- **PR:** #1704
 - **Paths:** `deploy/runner-dashboard.service`, `tests/test_deploy_hardening.py`, `tests/api/test_staff_adapter_cli_contracts.py`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 90f336da; hardening tests 58 passed; adapter contracts 4 passed; line counts strictly <= 500)

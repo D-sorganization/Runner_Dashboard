@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `fix/1698-cursor-agent-restrict-namespaces`
 - Baseline commit: `90f336da`
 - Implementation commit: `SELF`
-- Pull request: pending
+- Pull request: #1704 (open)
 - Governing issue/epic: #1698; DL-#1698. Related: #1586.
 
 ## Objective and status
