@@ -72,7 +72,8 @@ export function Holds({ roles }: HoldsProps) {
   const add = () => {
     setHolds((prev) => [
       ...(prev ?? []),
-      { id: newHoldId(), text: "", set_on: todayIso(), lifted_when: "", applies_to: [], active: true },
+      // Created from the Holds tab, so it is a schedule hold (blocks scheduling) — #1726.
+      { id: newHoldId(), text: "", set_on: todayIso(), lifted_when: "", applies_to: [], active: true, kind: "schedule" },
     ]);
     setDirty(true);
   };
@@ -154,6 +155,18 @@ export function Holds({ roles }: HoldsProps) {
                     {hold.active ? "active" : "lifted"}
                   </Badge>
                 </label>
+                <Badge
+                  tone={hold.kind === "guardrail" ? "info" : "neutral"}
+                  size="sm"
+                  data-testid={`hold-kind-${hold.id}`}
+                  title={
+                    hold.kind === "guardrail"
+                      ? "Standing rule from a role file — stays in the role prompt, does not block scheduling"
+                      : "Schedule hold — blocks the scheduler for the roles it applies to"
+                  }
+                >
+                  {hold.kind === "guardrail" ? "Standing rule" : "Hold"}
+                </Badge>
                 <input
                   className="form-input staff-hold__text"
                   aria-label={`Hold ${hold.id} text`}

@@ -1482,6 +1482,18 @@
             ],
             "title": "Id"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": ["guardrail", "schedule"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
           "lifted_when": {
             "default": "",
             "maxLength": 500,
@@ -3749,7 +3761,7 @@
       },
       "StaffHold": {
         "additionalProperties": true,
-        "description": "One policy hold.",
+        "description": "One policy hold.\n\n``kind``: ``\"guardrail\"`` (seeded from a role's YAML ``holds:`` list;\nstays in the role prompt, shown in the UI as a standing rule, never\nblocks scheduling) or ``\"schedule\"`` (created via the Holds tab, the\nholds API, or a ``staff.hold`` action; blocks scheduling). Owner\ndecision, issue #1726.",
         "properties": {
           "active": {
             "title": "Active",
@@ -3764,6 +3776,12 @@
           },
           "id": {
             "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "schedule",
+            "enum": ["guardrail", "schedule"],
+            "title": "Kind",
             "type": "string"
           },
           "lifted_when": {

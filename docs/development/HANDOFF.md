@@ -1,4 +1,76 @@
-# Current handoff — Staff threads API tests stop leaking chat turns and staff-run threads (DL-#1728)
+# Current handoff — Seeded role holds are guardrails, not scheduling holds (DL-#1726)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Worktree: `Runner_Dashboard-worktrees/claude-holds-1726`
+- Branch: `fix/hold-guardrail-kind-1726`
+- Governing issue: #1726; DL-#1726.
+- Pull request: not created.
+
+## Objective and status
+
+- Owner decision (2026-09-28, issue #1726): a hold seeded from a role's YAML `holds:` list is a
+  _guardrail_ — it stays in the role prompt and shows in the UI as a standing rule, but it never
+  blocks the scheduler. Only a hold created via the Holds tab, the holds API, or a `staff.hold`
+  action is a _schedule_ hold and blocks.
+- `backend/staff/holds.py`: `Hold` gained `kind: Literal["guardrail", "schedule"]`.
+  `seed_from_roles` marks every seeded hold `"guardrail"`. `Hold.from_dict` takes a
+  `default_kind` (defaults to `"schedule"`) used only when the payload carries no `kind` at all;
+  an explicit `kind` always wins, and an invalid one raises `ValueError` (DbC boundary,
+  `assert hold.kind in HOLD_KINDS`).
+- `HoldsList.load()` migrates a legacy persisted hold (no `kind` field) to `"guardrail"` when its
+  normalised text matches a hold `seed_from_roles` would produce today, else to `"schedule"`
+  (the pre-#1726 behavior — every hold blocked back then). The migrated list is written back
+  once so the lookup runs only on the first load of an old file. Matching is by text only, not
+  `applies_to`: the five live holds (2026-09-22) name `[barb, orchestrator]`, but the retired
+  orchestrator's role YAML no longer lists them, so a text + `applies_to` match would have left
+  Barb blocked (review fix, test `test_legacy_seeded_hold_still_migrates_after_a_role_drops_it`).
+- `HoldsList.blocking()` only matches `kind == "schedule"`; `seed_from_roles` output is otherwise
+  unchanged, so `HoldsList.load()` (used by the Holds tab, the holds API, and
+  `coordination/briefing.py`'s pre-work briefing) still returns guardrails for display / the role
+  prompt.
+- `backend/staff/scheduler.py`: no code change beyond the docstring — `evaluate()`/`status()`
+  already read `holds.blocking()`, so a role's `hold` field (used to compute "dispatchable") is
+  now `None` when only guardrails apply.
+- `backend/staff/hold_actions.py`: `execute_staff_hold` sets `kind="schedule"` on a newly created
+  hold (an existing hold's kind is left untouched on renewal).
+- `backend/staff/models.py` `StaffHold` and `backend/routers/staff_schedule.py` `HoldBody` gained
+  `kind` (nullable on the request body: `None` means "not seeded here, default to schedule").
+  `frontend/src/lib/openapi.json` / `api-types.ts` regenerated (`npm run generate-api`).
+- Frontend: `pages/Staff/Holds.tsx` shows a "Standing rule" vs "Hold" badge per hold and defaults
+  a newly added hold to `kind: "schedule"`. `pages/StaffConsole/rosterUtils.ts` /
+  `RosterRow.tsx` stop treating a role's declared `holds:` (always guardrails) as an "unavailable"
+  operational block — that was the exact bug the `TODO(#1726)` in `computeRoleStatus` flagged;
+  `getRoleTooltipText` now labels them `"Standing rule: ..."` instead of implying a block.
+
+## Validation
+
+- Backend: `tests/api/test_staff_schedule.py tests/api/test_staff_v1_holds_schedule.py
+tests/unit/test_staff_actions.py tests/unit/test_staff_reconcile.py` — all pass (WSL venv).
+  Also ran the full `-k "hold or staff"` filter across `tests/` — no new failures.
+- `ruff check` / `ruff format --check` on every touched Python file — clean.
+- Frontend: `npx vitest run` on `pages/Staff/__tests__/Holds.test.tsx`,
+  `pages/StaffConsole/__tests__/rosterUtils.test.ts`, `pages/StaffConsole/__tests__/Roster.test.tsx`,
+  `pages/__tests__/Staff.test.tsx`, plus the full `pages/Staff` and `pages/StaffConsole` suites
+  (260 tests) — all pass.
+- `npm run typecheck` — clean.
+
+## Blockers and risks
+
+- None known. `coordination/briefing.py`'s `_holds()` and `staff/summary_view.py`'s
+  `holds_snapshot()` were not touched; both already surface every active hold (including
+  guardrails) unfiltered, which is the desired behavior.
+
+## Next steps
+
+1. Open the PR (not done from this worktree per task instructions) and let CI + Spec Check run.
+
+---
+
+# Prior handoff — Staff threads API tests stop leaking chat turns and staff-run threads (DL-#1728)
 
 Last updated: 2026-09-28
 

@@ -6,7 +6,7 @@ Postcondition: Exported schemas define the canonical OpenAPI contract for fronte
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -281,7 +281,14 @@ class StaffBoardResponse(BaseModel):
 
 
 class StaffHold(BaseModel):
-    """One policy hold."""
+    """One policy hold.
+
+    ``kind``: ``"guardrail"`` (seeded from a role's YAML ``holds:`` list;
+    stays in the role prompt, shown in the UI as a standing rule, never
+    blocks scheduling) or ``"schedule"`` (created via the Holds tab, the
+    holds API, or a ``staff.hold`` action; blocks scheduling). Owner
+    decision, issue #1726.
+    """
 
     id: str
     text: str
@@ -289,6 +296,7 @@ class StaffHold(BaseModel):
     lifted_when: str
     applies_to: list[str]
     active: bool
+    kind: Literal["guardrail", "schedule"] = "schedule"
 
     model_config = ConfigDict(extra="allow")
 

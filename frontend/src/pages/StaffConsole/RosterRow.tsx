@@ -35,10 +35,12 @@ export const RosterRow: React.FC<RosterRowProps> = ({
   const totalUnread = (role.caller_unread_count ?? 0) + (role.pending_proposals_count ?? 0);
   const relativeAge = formatRelativeTime(role.last_message_at);
 
+  // role.holds (declared `holds:` guardrails, #1726) is informational only — it never
+  // drives the status dot; only computeRoleStatus's status does.
   let statusDotType = "unavailable";
   if (status === "invalid") {
     statusDotType = "invalid";
-  } else if ((role.holds && role.holds.length > 0) || status === "working" || status === "needs_you") {
+  } else if (status === "working" || status === "needs_you") {
     statusDotType = "busy";
   } else if (status === "idle") {
     statusDotType = "available";

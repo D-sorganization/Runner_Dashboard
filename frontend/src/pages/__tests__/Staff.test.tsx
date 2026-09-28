@@ -457,6 +457,7 @@ describe("StaffPage", () => {
       lifted_when: "after 4.10",
       applies_to: ["night-watch"],
       active: true,
+      kind: "schedule",
     };
     const fetchMock = stubFetch((url, opts) => {
       if ((url === "/api/staff/holds" || url === "/api/v1/staff/holds") && (opts?.method ?? "GET") === "GET") return { status: 200, body: { holds: [HOLD] } };

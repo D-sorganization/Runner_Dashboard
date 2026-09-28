@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from identity import Principal, format_caller, require_scope
@@ -46,6 +46,9 @@ class HoldBody(BaseModel):
     lifted_when: str = Field(default="", max_length=500)
     applies_to: list[str] = Field(default_factory=lambda: ["*"], max_length=50)
     active: bool = True
+    # None (unset) defaults to "schedule" in Hold.from_dict — a hold saved without a
+    # kind was created through this API, not seeded from a role file (#1726).
+    kind: Literal["guardrail", "schedule"] | None = None
 
 
 class HoldsBody(BaseModel):

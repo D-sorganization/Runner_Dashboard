@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1726 — Seeded role holds are guardrails, not scheduling holds
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1726
+- **Branch:** `fix/hold-guardrail-kind-1726`
+- **PR:** not created
+- **Paths:** `backend/staff/holds.py`, `backend/staff/hold_actions.py`, `backend/staff/scheduler.py`, `backend/staff/models.py`, `backend/routers/staff_schedule.py`, `frontend/src/pages/Staff/Holds.tsx`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/RosterRow.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (backend `tests/api/test_staff_schedule.py tests/api/test_staff_v1_holds_schedule.py tests/unit/test_staff_actions.py tests/unit/test_staff_reconcile.py` pass; frontend `pages/Staff` + `pages/StaffConsole` vitest suites, 260 tests, pass; `npm run typecheck` clean; ruff clean)
+- **Summary:** `Hold` gained `kind: "guardrail" | "schedule"`. Holds seeded from a role's YAML `holds:` list are guardrails (kept in the role prompt, shown as a standing rule, never block); a hold created via the Holds tab, the holds API, or `staff.hold` is a schedule hold and blocks. `HoldsList.blocking()` (read by the scheduler) only matches schedule holds. A legacy persisted hold with no `kind` migrates to guardrail when its text matches a current seed (text only, so holds naming the retired orchestrator still migrate), else to schedule.
+- **Next step:** Open the PR.
+
 ### DL-#1728 — Staff threads API tests stop leaking chat turns and staff-run threads
 
 - **State:** in_review

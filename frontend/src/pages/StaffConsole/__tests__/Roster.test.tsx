@@ -148,10 +148,10 @@ describe("Staff Console Roster Sidebar (SC-D3)", () => {
     const stewardDot = screen.getByTestId("status-dot-project-steward");
     expect(stewardDot).toHaveAttribute("data-status", "needs_you");
 
-    // Unavailable: held
+    // Standing rule (guardrail hold, #1726): informational, role stays dispatchable
     const heldDot = screen.getByTestId("status-dot-held-specialist");
-    expect(heldDot).toHaveAttribute("data-status", "unavailable");
-    expect(screen.getByTestId("status-reason-held-specialist")).toHaveTextContent("1 standing rule");
+    expect(heldDot).toHaveAttribute("data-status", "idle");
+    expect(screen.queryByTestId("status-reason-held-specialist")).not.toBeInTheDocument();
 
     // Unavailable: budget reached
     const budgetDot = screen.getByTestId("status-dot-budget-exhausted-role");
@@ -413,7 +413,7 @@ describe("Staff Console Roster Sidebar (SC-D3)", () => {
     expect(searchInput).toHaveValue("");
   });
 
-  it("displays hold reasons in full in the status dot tooltip and keeps accessible name", () => {
+  it("displays standing-rule (guardrail hold) reasons in full in the tooltip, without blocking the role (#1726)", () => {
     const rolesWithHolds: StaffRoleItem[] = [
       {
         name: "policy-held",
@@ -432,7 +432,7 @@ describe("Staff Console Roster Sidebar (SC-D3)", () => {
     expect(rowBtn.getAttribute("aria-label")).toMatch(/quarantine, C3 HOLD/);
 
     const dot = screen.getByTestId("status-dot-policy-held");
-    expect(dot).toHaveAttribute("data-status", "unavailable");
+    expect(dot).toHaveAttribute("data-status", "idle");
     expect(dot.getAttribute("aria-label")).toContain("quarantine, C3 HOLD");
   });
 });
