@@ -2,34 +2,25 @@
  * MaxwellPage.tsx — the "Maxwell" tab, extracted (behaviour-wise 1:1) from the
  * legacy `App.tsx` monolith as part of the decomposition epic (#836, pass 6).
  *
- * Surfaces the Maxwell-Daemon control plane: a status stat row (service status,
- * HTTP reachability, binary discovery, contract version), start/stop/restart
- * controls, a streaming chat console (SSE-style chunked reader with retry +
- * sessionStorage-persisted history and quick-action chips), and a recent-tasks
- * table. The daemon is reached over HTTP; the dashboard never imports from the
- * Maxwell-Daemon repo (see CLAUDE.md cross-repo rule).
+ * Maxwell-Daemon is a staff provider, and this page is its provider-status view
+ * (#1338, SC-G6 owner decision): a status stat row (service status, HTTP
+ * reachability, binary discovery, contract version), start/stop/restart
+ * controls, and a recent-tasks table. Chat with Maxwell lives in the Staff
+ * Console (#1330), which the page links to. The daemon is reached over HTTP; the
+ * dashboard never imports from the Maxwell-Daemon repo (see CLAUDE.md
+ * cross-repo rule).
  *
  * Presentational shell: the daemon `status` (and its poll) is owned by the
  * legacy App, so this page receives the already-fetched `status`, a `loading`
  * flag, an `error` string, and `onRefresh` / `onControl` callbacks. Tasks,
- * version, chat, and control-status are local state fetched directly from the
- * `/api/maxwell/*` endpoints. a11y semantics and the chat stream/retry flow
- * mirror the original legacy render exactly.
- *
- * Note: the legacy section-title icons for "Maxwell Chat" and "Recent Tasks"
- * referenced `I.messageSquare` / `I.list`, which were never defined on the
- * legacy icon map and therefore rendered nothing — that no-icon behaviour is
- * preserved here.
+ * version and control-status are local state fetched directly from the
+ * `/api/maxwell/*` endpoints.
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Stat } from "../components/Stat";
 import { legacyFetch } from "../lib/api";
 import { RefreshGlyph, ServerGlyph } from "./decompIcons";
-import {
-  MaxwellChatPanel,
-  MaxwellTasksPanel,
-  type ChatMessage,
-} from "./MaxwellPanels";
+import { MaxwellTasksPanel } from "./MaxwellPanels";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,8 +58,6 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
   "X-Requested-With": "XMLHttpRequest",
 };
-
-const CHAT_STORE_KEY = "maxwellMobileChatHistory";
 
 export function MaxwellPage(): React.ReactElement {
   const [status, setStatus] = useState<MaxwellStatus>({});
@@ -145,17 +134,6 @@ export function MaxwellTab({
   const [tasks, setTasks] = useState<MaxwellTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [daemonVersion, setDaemonVersion] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem(CHAT_STORE_KEY) || "[]");
-    } catch (e) {
-      return [];
-    }
-  });
-  const [chatInput, setChatInput] = useState("");
-  const [chatSending, setChatSending] = useState(false);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const chatListRef = useRef<HTMLDivElement | null>(null);
   const isRunning = st.status === "running";
 
   function fetchTasks(): void {
@@ -188,104 +166,6 @@ export function MaxwellTab({
     fetchTasks();
     fetchVersion();
   }, []);
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(
-        CHAT_STORE_KEY,
-        JSON.stringify(chatMessages.slice(-40)),
-      );
-    } catch (e) {
-      /* ignore */
-    }
-  }, [chatMessages]);
-
-  useEffect(() => {
-    if (!chatListRef.current || showScrollButton) return;
-    chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
-  }, [chatMessages, showScrollButton]);
-
-  function isNearChatBottom(): boolean {
-    if (!chatListRef.current) return true;
-    const node = chatListRef.current;
-    return node.scrollHeight - node.scrollTop - node.clientHeight < 48;
-  }
-
-  function onChatScroll(): void {
-    setShowScrollButton(!isNearChatBottom());
-  }
-
-  function updateChatMessage(id: number, patch: Partial<ChatMessage>): void {
-    setChatMessages((prev) =>
-      prev.map((m) => (m.id === id ? Object.assign({}, m, patch) : m)),
-    );
-  }
-
-  function sendMaxwellChat(text?: string): void {
-    const msg = (text || chatInput).trim();
-    if (!msg || chatSending) return;
-    setChatInput("");
-    setShowScrollButton(false);
-    const now = Date.now();
-    const userMsg: ChatMessage = { id: now, role: "operator", content: msg };
-    const assistantId = now + 1;
-    setChatMessages((prev) =>
-      prev.concat([
-        userMsg,
-        { id: assistantId, role: "maxwell", content: "", streaming: true },
-      ]),
-    );
-    setChatSending(true);
-    legacyFetch("/api/maxwell/chat", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ message: msg, history: chatMessages.slice(-12) }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        if (!r.body || !window.TextDecoder) return r.text();
-        const reader = r.body.getReader();
-        const decoder = new TextDecoder();
-        let acc = "";
-        function pump(): Promise<string> {
-          return reader.read().then((result) => {
-            if (result.done) return acc;
-            acc += decoder.decode(result.value, { stream: true });
-            updateChatMessage(assistantId, {
-              content: acc || "Receiving...",
-              streaming: true,
-            });
-            return pump();
-          });
-        }
-        return pump();
-      })
-      .then((streamed) => {
-        updateChatMessage(assistantId, {
-          content: streamed || "Maxwell returned an empty response.",
-          streaming: false,
-        });
-      })
-      .catch((err: Error) => {
-        updateChatMessage(assistantId, {
-          content:
-            "Maxwell-Daemon is unreachable. Check daemon status above, then retry.",
-          detail: String(err),
-          streaming: false,
-          error: true,
-        });
-      })
-      .finally(() => {
-        setChatSending(false);
-      });
-  }
-
-  function onChatKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMaxwellChat();
-    }
-  }
 
   function doControl(action: string): void {
     setPendingAction(action);
@@ -446,28 +326,11 @@ export function MaxwellTab({
           ) : null}
         </div>
       </div>
-      <MaxwellChatPanel
-        status={st}
-        chatMessages={chatMessages}
-        chatInput={chatInput}
-        chatSending={chatSending}
-        showScrollButton={showScrollButton}
-        chatListRef={chatListRef}
-        onChatScroll={onChatScroll}
-        onChatInputChange={setChatInput}
-        onChatKeyDown={onChatKeyDown}
-        onSendChat={sendMaxwellChat}
-        onShowLatest={() => {
-          setShowScrollButton(false);
-          if (chatListRef.current)
-            chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
-        }}
-        onRetry={() => {
-          if (onRefresh) onRefresh();
-          fetchTasks();
-          fetchVersion();
-        }}
-      />
+      <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+        <a href="/" style={{ color: "var(--accent-blue)" }}>
+          Chat with Maxwell in the Staff Console
+        </a>
+      </p>
       <MaxwellTasksPanel
         status={st}
         tasks={tasks}

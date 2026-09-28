@@ -12,6 +12,7 @@
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
 | 2026-09-27 | #1728 | Staff threads API tests stub the background chat turn and fail if a test runs a real chat turn, creates a real git worktree or leaves a `staff-run-*` worker thread alive (Windows flake: leaked worker hit a closed store). |
+| 2026-09-28 | #1717 | SC-G6 (#1338): the desktop Maxwell page is a provider-status view (status, daemon controls, recent tasks) and links to the Staff Console for chat; its chat console is removed. Mobile Maxwell and `/api/maxwell/*` are unchanged. |
 | 2026-09-27 | #1707 | SC-G6 (#1338): Assessments is split into Projects. Each Projects card shows the repo's assessment score history from `/api/assessments/scores` and a "Request assessment" action that submits the existing `assessment.run` Staff request (no role); `/fleet/assessments`, `/t/assessments` and `/assessments` redirect to `/work/projects`. |
 | 2026-09-27 | #1705 | Restore green main on ci-health-check (#1705): condense mock object definitions in frontend/src/pages/__tests__/Staff.test.tsx from 512 lines to 473 lines, satisfying the <= 500 lines soft cap. |
 | 2026-09-27 | #1700 | SC-G6 (#1338): Settings is one page with sections (Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools). The separate nav entries retire; `/settings/push`, `/settings/<id>`, `/t/<id>` and `/<id>` for credentials, linear-setup, push-settings and principals redirect to the matching `/settings#<section>`. |

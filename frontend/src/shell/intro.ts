@@ -31,7 +31,7 @@ export const INTRO_OVERRIDES: Readonly<Record<string, string>> = {
   operations:
     "Fleet operations: deployment rollouts, Conductor admission gate, runner hours, scheduled workflows, and diagnostics.",
   maxwell:
-    "Maxwell-Daemon is the autonomous local AI control plane. Watch its status, review tasks, and chat with it (it must be running — start it from Settings → Local Tools).",
+    "Maxwell-Daemon is a staff provider: the autonomous local AI control plane. Watch its status, control it and review its tasks here; chat with it in the Staff Console (it must be running — start it from Settings → Local Tools).",
 };
 
 /**
