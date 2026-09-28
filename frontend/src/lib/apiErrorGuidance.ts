@@ -87,7 +87,7 @@ export function guidanceForFailure(failure: ApiFailure): OperatorGuidance {
     case 401:
       return {
         title: "Session expired",
-        action: "Your token expired — refresh it in the Credentials tab, then retry.",
+        action: "Your token expired — refresh it in Settings → Credentials, then retry.",
         kind: "auth",
       };
     case 403:

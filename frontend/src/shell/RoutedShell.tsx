@@ -47,7 +47,6 @@ import { QueueMobile } from "../pages/Queue";
 import { QueueTab } from "../pages/Queue";
 import { MaxwellMobile } from "../pages/Maxwell";
 import { ReportsMobile } from "../pages/Reports";
-import { CredentialsMobile } from "../pages/Credentials";
 import { FleetMobile } from "../pages/Fleet";
 import {
   RemediationMobile,
@@ -55,17 +54,13 @@ import {
 } from "../pages/Remediation/Mobile";
 import { AnalysisTab } from "../pages/Analysis";
 import { AssessmentsPage } from "../pages/AssessmentsPage";
-import { CredentialsPage } from "../pages/CredentialsPage";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
-import { LinearSetup } from "../pages/LinearSetup";
 import { MachinesPage } from "../pages/Machines";
 import { MaxwellPage } from "../pages/MaxwellPage";
-import { PrincipalsTab } from "../pages/Principals";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
 import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { WorkflowsPage } from "../pages/WorkflowsPage";
-import PushSettings from "../pages/PushSettings";
 import { SettingsPage } from "../pages/Settings/SettingsPage";
 import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
@@ -94,7 +89,7 @@ const LazyFleetOrchestrationPage = React.lazy(
  * Persistent/global provider control for the shell topbar (#811). Fetches the
  * unified registry once and renders the always-visible ActiveProviderControl;
  * renders nothing until the registry is available so the topbar never flashes a
- * broken control. Clicking "Fix login" jumps to the Credentials tab.
+ * broken control. Clicking "Fix login" jumps to the Credentials section of Settings.
  */
 function ShellActiveProvider({
   onRequestLogin,
@@ -141,8 +136,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LazyFleetOrchestrationPage />;
     case "runner-schedule":
       return <RunnerSchedulePage />;
-    case "credentials":
-      return <CredentialsPage />;
     case "events":
       return <EventsTab />;
     case "code-requests":
@@ -150,18 +143,12 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <CodeRequestsPage />;
     case "fleet-command":
       return <LazyFleetCommandPage />;
-    case "linear-setup":
-      return <LinearSetup />;
     case "machines":
       return <MachinesPage />;
     case "maxwell":
       return <MaxwellPage />;
-    case "principals":
-      return <PrincipalsTab />;
     case "projects":
       return <LazyProjectsPage />;
-    case "push-settings":
-      return <PushSettings />;
     case "queue":
       return <QueueTab />;
     case "remediation":
@@ -333,7 +320,6 @@ export function AppShell({
       ),
       reports: <ReportsMobile />,
       insights: <ReportsMobile />,
-      credentials: <CredentialsMobile />,
       staff: <LazyStaffMobile />,
       "fleet-command": <LazyFleetCommandPage />,
       // The legacy App has no projects case, so falling back rendered blank (#1345).

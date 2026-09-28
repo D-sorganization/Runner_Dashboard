@@ -533,18 +533,16 @@ def test_router_is_the_single_nav_source_of_truth() -> None:
     """main.tsx mounts React Router as the one nav source (issues #835, #831).
 
     The previous hand-rolled `window.location.pathname` + AppWithMobileShell nav
-    has been retired: tabs are now real, deep-linkable routes. The push-settings
-    deep link is preserved as an explicit Route, and the URL<->tab mapping lives
-    in shell/routing.ts.
+    has been retired: tabs are now real, deep-linkable routes. The old
+    push-settings deep link redirects to the Notifications section of Settings
+    (#1338), and the URL<->tab mapping lives in shell/routing.ts.
     """
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
 
     assert _PUSH_SETTINGS.exists()
     for marker in [
-        "PushSettings",
         "BrowserRouter",
         "<Routes>",
-        '<Route path="/settings/push"',
         '<Route path="/t/:tabId"',
         "RoutedShell",
     ]:
@@ -559,7 +557,7 @@ def test_router_is_the_single_nav_source_of_truth() -> None:
 
     # The URL<->tab mapping is the single source of truth for routing.
     routing_ts = (_FRONTEND_DIR / "src" / "shell" / "routing.ts").read_text(encoding="utf-8")
-    for marker in ["pathnameToTabId", "tabIdToPath", "isPushSettingsRoute"]:
+    for marker in ["pathnameToTabId", "tabIdToPath"]:
         assert marker in routing_ts, f"missing routing helper: {marker!r}"
 
 
@@ -681,15 +679,20 @@ def test_assessments_desktop_route_bypasses_legacy_app() -> None:
     assert "export function AssessmentsPage" in assessments_page
 
 
-def test_credentials_desktop_route_bypasses_legacy_app() -> None:
-    """The Credentials desktop tab owns probe/set-key data outside legacy/App.tsx (#949)."""
+def test_credentials_settings_section_bypasses_legacy_app() -> None:
+    """Credentials is a Settings section that owns probe/set-key data outside legacy/App.tsx (#949, #1338)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    settings_page = (_FRONTEND_DIR / "src" / "pages" / "Settings" / "SettingsPage.tsx").read_text(
         encoding="utf-8",
     )
     credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
 
-    assert 'case "credentials":' in routed_shell
-    assert "return <CredentialsPage />;" in routed_shell
+    assert 'case "settings":' in routed_shell
+    assert "return <SettingsPage />;" in routed_shell
+    assert "<CredentialsPage />" in settings_page
+    assert "<CredentialsMobile />" in settings_page
     assert 'legacyFetch("/api/credentials"' in credentials_page
     assert 'legacyFetch("/api/credentials/set-key"' in credentials_page
     assert "export function CredentialsPage" in credentials_page
@@ -791,7 +794,6 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
         "remediation: (",
         "<RemediationMobile",
         "reports: <ReportsMobile />",
-        "credentials: <CredentialsMobile />",
         "const mobileFallback = mobileTabContent[mobileTab] ? null :",
         "nativeDesktopTabContent(mobileTab)",
     ]:

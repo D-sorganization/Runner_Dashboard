@@ -107,8 +107,7 @@ _win.triggerInstallPrompt = triggerInstallPrompt
  * AppRoutes — the single navigation source of truth (issue #835).
  *
  * React Router owns the URL, so every navRegistry tab is a real, deep-linkable
- * route: "/" lands on Fleet, "/t/:tabId" opens any tab, and "/settings/push"
- * keeps its dedicated deep link. Selecting a tab pushes a URL (see
+ * route: "/" lands on Fleet and "/t/:tabId" opens any tab. Selecting a tab pushes a URL (see
  * RoutedShell), so bookmarks, sharing and browser back/forward all work. This
  * replaces the previous hand-rolled `window.location.pathname` navigation; the
  * old unmounted `router.tsx` has been retired in favour of this single source.
@@ -119,8 +118,6 @@ _win.triggerInstallPrompt = triggerInstallPrompt
 export function AppRoutes() {
   return (
     <Routes>
-      {/* PushSettings is routed through RoutedShell (SC-D2 #1309) */}
-      <Route path="/settings/push" element={<RoutedShell />} />
       <Route path="/t/:tabId" element={<RoutedShell />} />
       <Route path="/staff/:tabId" element={<RoutedShell />} />
       <Route path="/staff" element={<RoutedShell />} />

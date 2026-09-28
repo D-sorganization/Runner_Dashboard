@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338-settings — SC-G6: one Settings area with sections
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Settings consolidation", recorded 2026-09-25)
+- **Branch:** `feat/1338-settings-consolidation`
+- **PR:** #1700
+- **Paths:** `frontend/src/pages/Settings/SettingsPage.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/main.tsx`, `frontend/src/lib/apiErrorGuidance.ts`, `frontend/src/shell/__tests__/`, `frontend/src/pages/Settings/__tests__/SettingsPage.test.tsx`, `tests/test_frontend_integrity.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (targeted vitest green except 2 pre-existing WSL mobile timeouts; tsc and lint clean)
+- **Summary:** Credentials, Linear Setup, Notifications and Principals are sections of the Settings page alongside Theme and Local Tools, not nav tabs. Their old routes and `/settings/push` redirect to `/settings#<section>`; links to those tab ids go straight to the section.
+- **Next step:** Arm auto-merge on #1700 once its CI is green.
+
 ### DL-#1698 — Dashboard unit allows cursor-agent's command sandbox
 
 - **State:** in_review

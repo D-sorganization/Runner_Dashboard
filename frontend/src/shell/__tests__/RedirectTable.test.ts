@@ -48,11 +48,6 @@ describe("SC-D2: Four areas canonical routes", () => {
     expect(tabIdToPath("overview")).toBe("/fleet");
     expect(tabIdToPath("settings")).toBe("/settings");
   });
-
-  it("preserves dedicated push settings path", () => {
-    expect(tabIdToPath("push-settings")).toBe("/settings/push");
-    expect(pathnameToTabId("/settings/push")).toBe("push-settings");
-  });
 });
 
 describe("SC-D2: Redirect table covers every nav item", () => {
@@ -107,13 +102,6 @@ describe("SC-D2: Secondary pages live under their area prefix", () => {
     expect(pathnameToTabId("/staff/fleet-command")).toBe("fleet-command");
     expect(tabIdToPath("maxwell")).toBe("/staff/maxwell");
     expect(pathnameToTabId("/staff/maxwell")).toBe("maxwell");
-  });
-
-  it("maps secondary settings pages under /settings/*", () => {
-    expect(tabIdToPath("credentials")).toBe("/settings/credentials");
-    expect(pathnameToTabId("/settings/credentials")).toBe("credentials");
-    expect(tabIdToPath("linear-setup")).toBe("/settings/linear-setup");
-    expect(pathnameToTabId("/settings/linear-setup")).toBe("linear-setup");
   });
 });
 

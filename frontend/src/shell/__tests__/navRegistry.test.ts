@@ -100,12 +100,6 @@ describe("nav registry — DbC invariants", () => {
     expect(drawerTabIds).not.toContain("agent-dispatch");
   });
 
-  it("un-orphans LinearSetup and PushSettings via settings nav entries (issue #825)", () => {
-    const byTab = (t: string) => NAV_ITEMS.find((i) => i.tabId === t);
-    expect(byTab("linear-setup")?.group).toBe("settings");
-    expect(byTab("push-settings")?.group).toBe("settings");
-  });
-
   it("exposes an Insights item under the fleet group (SC-G4 / issue #1326)", () => {
     const insights = NAV_ITEMS.find((i) => i.tabId === "insights");
     expect(insights).toBeDefined();

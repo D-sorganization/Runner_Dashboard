@@ -17,8 +17,6 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_TAB_ID,
-  PUSH_SETTINGS_PATH,
-  isPushSettingsRoute,
   normalizeTabId,
   pathnameToTabId,
   tabIdToPath,
@@ -41,14 +39,8 @@ describe("routing — pathnameToTabId", () => {
 
   it("maps /t/<tabId> to that tab for every registry tab (back-compat)", () => {
     for (const item of NAV_ITEMS) {
-      if (item.tabId === "push-settings") continue;
       expect(pathnameToTabId(`/t/${item.tabId}`)).toBe(item.tabId);
     }
-  });
-
-  it("maps the push-settings deep link to the push-settings tab", () => {
-    expect(pathnameToTabId(PUSH_SETTINGS_PATH)).toBe("push-settings");
-    expect(pathnameToTabId("/settings/push/")).toBe("push-settings");
   });
 
   it("returns undefined for unknown routes to trigger not-found panel", () => {
@@ -64,7 +56,7 @@ describe("routing — pathnameToTabId", () => {
   });
 
   it("returns a valid registry tabId for known canonical routes", () => {
-    for (const p of ["/", "/work", "/fleet", "/settings", "/settings/push"]) {
+    for (const p of ["/", "/work", "/fleet", "/settings"]) {
       const tabId = pathnameToTabId(p);
       expect(tabId).toBeDefined();
       expect(navItemById(tabId!)).toBeDefined();
@@ -77,10 +69,6 @@ describe("routing — tabIdToPath", () => {
     expect(tabIdToPath("staff")).toBe("/");
   });
 
-  it("maps push-settings to its dedicated deep link", () => {
-    expect(tabIdToPath("push-settings")).toBe(PUSH_SETTINGS_PATH);
-  });
-
   it("maps area roots and secondary pages to canonical paths", () => {
     expect(tabIdToPath("queue")).toBe("/work");
     expect(tabIdToPath("overview")).toBe("/fleet");
@@ -88,7 +76,6 @@ describe("routing — tabIdToPath", () => {
     expect(tabIdToPath("insights")).toBe("/fleet/insights");
     expect(tabIdToPath("maxwell")).toBe("/staff/maxwell");
     expect(tabIdToPath("remediation")).toBe("/work/remediation");
-    expect(tabIdToPath("credentials")).toBe("/settings/credentials");
   });
 });
 
@@ -112,12 +99,5 @@ describe("routing — aliases and push detection", () => {
     expect(normalizeTabId("fleet")).toBe("overview");
     expect(normalizeTabId("health")).toBe("queue");
     expect(normalizeTabId("work")).toBe("queue");
-  });
-
-  it("detects the push-settings route (with/without trailing slash)", () => {
-    expect(isPushSettingsRoute("/settings/push")).toBe(true);
-    expect(isPushSettingsRoute("/settings/push/")).toBe(true);
-    expect(isPushSettingsRoute("/")).toBe(false);
-    expect(isPushSettingsRoute("/t/queue")).toBe(false);
   });
 });

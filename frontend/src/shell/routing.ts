@@ -19,12 +19,6 @@ import { NAV_ITEMS, navItemById } from "./navRegistry";
 /** The default landing tab when the URL carries no explicit tab (SC-D2). */
 export const DEFAULT_TAB_ID = "staff";
 
-/** Canonical pathname for the dedicated push-settings deep link. */
-export const PUSH_SETTINGS_PATH = "/settings/push";
-
-/** The legacy tabId for push settings within the nav registry. */
-export const PUSH_SETTINGS_TAB_ID = "push-settings";
-
 /**
  * Legacy tabId aliases normalized to their canonical registry tabId. These
  * mirror historical query-string / mobile aliases so old bookmarks resolve.
@@ -48,11 +42,6 @@ function stripTrailingSlash(pathname: string): string {
   return pathname.replace(/\/+$/, "") || "/";
 }
 
-/** True when the pathname is the dedicated push-settings route. */
-export function isPushSettingsRoute(pathname: string): boolean {
-  return stripTrailingSlash(pathname) === PUSH_SETTINGS_PATH;
-}
-
 /**
  * Map a nav tabId to its canonical, bookmarkable pathname.
  *
@@ -61,7 +50,7 @@ export function isPushSettingsRoute(pathname: string): boolean {
  *  - "queue" -> "/work"
  *  - "overview" -> "/fleet"
  *  - "settings" -> "/settings"
- *  - "push-settings" -> "/settings/push"
+ *  - Settings sections (e.g. "credentials") -> "/settings#<section>"
  *  - Secondary pages -> "/<group>/<tabId>"
  */
 export function tabIdToPath(tabId: string): string {
@@ -70,7 +59,8 @@ export function tabIdToPath(tabId: string): string {
   if (canonical === "queue") return "/work";
   if (canonical === "overview") return "/fleet";
   if (canonical === "settings") return "/settings";
-  if (canonical === PUSH_SETTINGS_TAB_ID) return PUSH_SETTINGS_PATH;
+  const section = SETTINGS_SECTION_TABS[canonical];
+  if (section) return section.to;
 
   const item = navItemById(canonical);
   if (item) {
@@ -83,6 +73,30 @@ export interface RedirectTarget {
   to: string;
   label: string;
 }
+
+/**
+ * Former Settings nav tabs that are now sections of the one Settings page
+ * (#1338, owner decision), keyed by their old tabId.
+ */
+const SETTINGS_SECTION_TABS: Record<string, RedirectTarget> = {
+  credentials: { to: "/settings#credentials", label: "Credentials (Settings)" },
+  "linear-setup": { to: "/settings#linear-setup", label: "Linear Setup (Settings)" },
+  "push-settings": { to: "/settings#notifications", label: "Notifications (Settings)" },
+  principals: { to: "/settings#principals", label: "Principals (Settings)" },
+};
+
+/** Old addresses of those tabs: /settings/<id>, /t/<id>, /<id>, and the push deep link. */
+const RETIRED_SETTINGS_PATHS: Record<string, RedirectTarget> = (() => {
+  const paths: Record<string, RedirectTarget> = {
+    "/settings/push": SETTINGS_SECTION_TABS["push-settings"],
+  };
+  for (const [tabId, target] of Object.entries(SETTINGS_SECTION_TABS)) {
+    paths[`/settings/${tabId}`] = target;
+    paths[`/t/${tabId}`] = target;
+    paths[`/${tabId}`] = target;
+  }
+  return paths;
+})();
 
 /** Tests moved under Operations → Diagnostics (#1338, owner decision). */
 const TESTS_REDIRECT: RedirectTarget = {
@@ -129,7 +143,6 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["health"] = { to: "/work", label: "Queue" };
   table["feature-requests"] = { to: tabIdToPath("code-requests"), label: "Code Requests" };
   table["work"] = { to: "/work", label: "Work" };
-  table["push-settings"] = { to: PUSH_SETTINGS_PATH, label: "Notifications" };
   table["reports"] = { to: "/fleet/insights", label: "Insights" };
   table["analysis"] = { to: "/fleet/insights", label: "Insights" };
   table["machines"] = { to: "/fleet#machines", label: "Machines" };
@@ -146,6 +159,7 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["org"] = PROJECTS_REDIRECT;
   table["tests"] = TESTS_REDIRECT;
   table["local-apps"] = LOCAL_TOOLS_REDIRECT;
+  Object.assign(table, SETTINGS_SECTION_TABS);
   return table;
 })();
 
@@ -217,6 +231,9 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
   if (RETIRED_ORG_PATHS.has(normalized)) {
     return PROJECTS_REDIRECT;
   }
+  if (normalized in RETIRED_SETTINGS_PATHS) {
+    return RETIRED_SETTINGS_PATHS[normalized];
+  }
   if (RETIRED_TO_STAFF_CONSOLE.has(normalized)) {
     return { to: "/", label: "Staff Console" };
   }
@@ -252,7 +269,7 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
  *  - "/work"              -> "queue"
  *  - "/fleet"             -> "overview"
  *  - "/settings"          -> "settings"
- *  - "/settings/push"     -> "push-settings"
+ *  - old Settings tabs    -> "settings" (they redirect to its sections)
  *  - "/fleet/:tabId"      -> tabId (if in fleet group)
  *  - "/work/:tabId"       -> tabId (if in work group)
  *  - "/staff/:tabId"      -> tabId (if in staff group)
@@ -269,9 +286,9 @@ export function pathnameToTabId(pathname: string): string | undefined {
   if (normalized === "/work") return "queue";
   if (normalized === "/fleet") return "overview";
   if (normalized === "/settings") return "settings";
-  if (normalized === PUSH_SETTINGS_PATH) return PUSH_SETTINGS_TAB_ID;
   if (RETIRED_LOCAL_TOOLS_PATHS.has(normalized)) return "settings";
   if (RETIRED_ORG_PATHS.has(normalized)) return "projects";
+  if (normalized in RETIRED_SETTINGS_PATHS) return "settings";
 
   if (normalized === "/fleet/reports" || normalized === "/fleet/analysis") {
     return "insights";

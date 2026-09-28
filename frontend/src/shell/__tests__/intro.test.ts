@@ -21,12 +21,6 @@ describe("introForTab", () => {
     expect(introForTab("does-not-exist")).toBeUndefined();
     expect(introForTab(undefined)).toBeUndefined();
   });
-
-  it("expands the 'principals' admin tab into operator English", () => {
-    const intro = introForTab("principals");
-    expect(intro!.body).toMatch(/identities/i);
-    expect(intro!.body).toMatch(/acting on behalf/i);
-  });
 });
 
 describe("INTRO_OVERRIDES (DbC)", () => {
