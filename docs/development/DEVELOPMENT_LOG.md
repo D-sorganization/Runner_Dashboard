@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1718 — Live-sweep fixes for the UX overhaul
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1718
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `backend/cache_utils.py`, `backend/routers/runs_workflows.py`, `backend/projects/service.py`, `frontend/src/pages/WorkflowsPage.tsx`, `frontend/src/pages/Workflows.tsx`, `frontend/src/components/formatters.ts`, `frontend/src/primitives/IntroHeader.tsx`, `frontend/src/pages/MaxwellPage.tsx`, `frontend/src/pages/Projects/*`, `frontend/src/pages/Analysis.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (vitest 189/189 files, 1594 tests; WSL pytest cache_swr 6, workflows_list 3, scheduled_workflows_route 1, projects_tracking 22 passed; tsc, eslint, ruff, mypy clean)
+- **Summary:** Stale-while-revalidate for slow GitHub aggregates (workflows list, scheduled workflows) so they stop starving the browser's connections; bounded REST calls for the workflows catalogue; durations roll up to hours/days; SVG intro icon; readable Maxwell and Projects errors; decision links render; attention rows name their repo.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1723 — App shell, primitives and settings polish
 
 - **State:** in_review
@@ -25,7 +38,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1723
 - **Branch:** `feat/ux-overhaul`
 - **PR:** see branch
-- **Paths:** frontend/src/shell/_, frontend/src/primitives/_, frontend/src/design/fleetThemes.ts, frontend/src/pages/Principals.tsx, frontend/src/pages/LocalApps.tsx, backend/local_app_monitoring.py, local_apps.json
+- **Paths:** `frontend/src/shell/*`, `frontend/src/primitives/*`, `frontend/src/design/fleetThemes.ts`, `frontend/src/pages/Principals.tsx`, `frontend/src/pages/LocalApps.tsx`, `backend/local_app_monitoring.py`, `local_apps.json`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (2026-09-27: design vitest 51 passed (new theme/token parity test); Principals 7, LocalApps 12 passed; test_local_app_monitoring 12 passed; tsc + eslint + ruff + mypy clean; runtime --text-muted #8a8a93 verified in preview)
 - **Summary:** Linear-style sidebar and compact top bar; standard Dark/Light themes emit tokens.ts neutrals (inline <html> vars had undone the 4.5:1 muted text); Principals shows 'Admin access required' on 403; artifact installs report deployed sha instead of git probe errors; local_apps.json points at Runner_Dashboard.
@@ -38,7 +51,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1724
 - **Branch:** `feat/ux-overhaul`
 - **PR:** see branch
-- **Paths:** backend/push.py, backend/webpush_crypto.py, frontend/public/sw.js, frontend/src/pages/PushSettings.tsx, frontend/src/index.css (.push-settings\*), frontend/src/pages/StaffConsole/Mobile.tsx, frontend/src/pages/StaffConsole/mobile.css, docs/runbooks/phone-access-tailnet.md, tests/frontend/test_color_literal_budget.py
+- **Paths:** `backend/push.py`, `backend/webpush_crypto.py`, `frontend/public/sw.js`, `frontend/src/pages/PushSettings.tsx`, `frontend/src/index.css` (`.push-settings*`), `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/mobile.css`, `docs/runbooks/phone-access-tailnet.md`, `tests/frontend/test_color_literal_budget.py`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (2026-09-27: push pytest 22 passed; tests/frontend guards 37 passed on Windows; StaffConsole vitest 221 passed; tsc + eslint clean)
 - **Summary:** Self-hosted Web Push (RFC 8291/8292, VAPID JWT 12h); tailnet phone runbook; PushSettings uses scoped .push-settings\_\_\* classes and badge tokens (no inline styles); mobile roster honours desktop tiering; composer clears shell nav; chevron back button; empty-thread hint. rgba budget guard counts usages only (84 -> 61).
@@ -51,7 +64,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1719
 - **Branch:** `feat/ux-overhaul`
 - **PR:** see branch
-- **Paths:** frontend/src/design/tokens.ts, frontend/src/design/fleetThemes.ts, frontend/src/index.css (tokens, globals, .glass-card, .button, .filter-pill), tests/test_frontend_integrity.py (palette contract), docs/mobile-design-system.md
+- **Paths:** `frontend/src/design/tokens.ts`, `frontend/src/design/fleetThemes.ts`, `frontend/src/index.css` (tokens, globals, `.glass-card`, `.button`, `.filter-pill`), `tests/test_frontend_integrity.py` (palette contract), `docs/mobile-design-system.md`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (2026-09-27 after rebase on 19e4f920: vitest 187/188 files (CodeRequests load flake, 19/19 alone); pytest staff+api+unit+integrity 2290 passed; tsc + eslint clean)
 - **Summary:** Neutral zinc palette (#111113 base), 4.5:1 muted text on every surface, flat .glass-card with opt-in hover; the mobile token contract test and design-system doc now pin the new palette.

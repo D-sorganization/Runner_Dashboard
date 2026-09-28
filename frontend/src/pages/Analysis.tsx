@@ -601,7 +601,10 @@ export function AnalysisOutcomesTab(): React.ReactElement {
               <tbody>
                 {weakest.map((row) => (
                   <tr key={row.key}>
-                    <td title={row.repo + " / " + row.workflow_name}>{row.workflow_name}</td>
+                    <td title={row.repo + " / " + row.workflow_name}>
+                      {row.workflow_name}
+                      <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{row.repo}</div>
+                    </td>
                     <td>{row.count}</td>
                     <td>{row.failure || 0}</td>
                     <td>{fmtDur(row.avg_duration_seconds)}</td>

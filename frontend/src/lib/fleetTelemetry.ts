@@ -8,6 +8,7 @@
  * lib/** is measured) without changing any observable behaviour.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- 1:1 port of dynamically-typed legacy runner/node telemetry payloads; the backend response shapes lack complete TypeScript definitions. */
+import { formatDuration } from "../components/formatters";
 import { parseRunnerName } from "./fleetMachines";
 
 /** Relative "x ago" label for an ISO timestamp (matches legacy `timeAgo`). */
@@ -20,12 +21,8 @@ export function timeAgo(d: unknown): string {
   return Math.floor(s / 86400) + "d ago";
 }
 
-/** Human-friendly duration from seconds (matches legacy `formatDuration`). */
-export function formatDuration(s: number): string {
-  if (!s || s < 0) return "-";
-  if (s < 60) return s + "s";
-  return Math.floor(s / 60) + "m " + (s % 60) + "s";
-}
+/** Human-friendly duration from seconds; one implementation in `components/formatters`. */
+export { formatDuration };
 
 /** Clamp a numeric percent into the integer range [0, 100]. */
 export function boundedPercent(value: unknown): number {

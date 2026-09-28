@@ -19,8 +19,11 @@ export function timeAgo(d: string | Date | null | undefined): string {
 /** Formats a duration in seconds as "Xm Ys" or "Xs". */
 export function formatDuration(s: number | null | undefined): string {
   if (!s || s < 0) return "-"
-  if (s < 60) return s + "s"
-  return Math.floor(s / 60) + "m " + (s % 60) + "s"
+  const total = Math.floor(s)
+  if (total < 60) return total + "s"
+  if (total < 3600) return Math.floor(total / 60) + "m " + (total % 60) + "s"
+  if (total < 86400) return Math.floor(total / 3600) + "h " + Math.floor((total % 3600) / 60) + "m"
+  return Math.floor(total / 86400) + "d " + Math.floor((total % 86400) / 3600) + "h"
 }
 
 /** Formats a byte count as a human-readable size string. */

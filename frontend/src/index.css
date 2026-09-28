@@ -5899,3 +5899,46 @@ th.sortable.active .sort-indicator {
   outline: 2px solid var(--accent-blue);
   outline-offset: 1px;
 }
+
+/* Page orientation banner (IntroHeader, #822; restyled #1718). */
+.intro-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 16px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.intro-header__icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.intro-header__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.intro-header__dismiss {
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.intro-header__dismiss:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}

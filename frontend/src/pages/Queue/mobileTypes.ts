@@ -1,6 +1,8 @@
 // Shared types and helpers for the Queue mobile view.
 // Extracted from Mobile.tsx to keep that file under the 500-line cap.
 
+import { formatDuration } from "../../components/formatters";
+
 /**
  * Per-run queue-wait vs execution-time breakdown.
  * Populated by GET /api/queue/status (see backend/routers/queue.py).
@@ -73,11 +75,7 @@ export const FILTER_OPTIONS = [
 
 export const POLL_INTERVAL_MS = 15_000;
 
-export function formatDuration(seconds: number): string {
-  if (!seconds || seconds < 0) return "-";
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-}
+export { formatDuration };
 
 export function elapsedSeconds(run: WorkflowRun): number {
   const start = run.run_started_at ?? run.created_at;

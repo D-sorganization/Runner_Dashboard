@@ -14,6 +14,7 @@ Module-level (backwards-compatible, uses the singleton ``_main_cache``):
     ``cache_delete(key)``    → None
     ``cache_clear()``        → None
     ``cache_size()``         → dict[str, int]
+    ``await cache_get_swr(key, compute, ...)`` → stale-while-revalidate read
 
 Class-level (new, per-instance isolation and stampede protection):
     ``Cache(name, max_size, deepcopy_on_set)``
@@ -261,6 +262,61 @@ def cache_size() -> dict[str, int]:
     return {"main": _main_cache.size()}
 
 
+# ---------------------------------------------------------------------------
+# Stale-while-revalidate for slow GitHub aggregates (#1718 review)
+# ---------------------------------------------------------------------------
+
+_swr_refreshes: dict[str, asyncio.Task[Any]] = {}
+
+
+async def _swr_refresh(key: str, compute: Callable[[], Awaitable[Any]]) -> Any:
+    value = await compute()
+    cache_set(key, value)
+    return value
+
+
+def _log_swr_failure(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        log.warning("swr refresh failed: %s", task.exception())
+
+
+async def cache_get_swr(
+    key: str,
+    compute: Callable[[], Awaitable[Any]],
+    *,
+    fresh_ttl: float,
+    stale_ttl: float,
+    wait_timeout: float,
+    on_timeout: Callable[[], Any],
+) -> Any:
+    """Serve ``key`` fresh, else stale while one background refresh runs.
+
+    Preconditions: ``0 < fresh_ttl <= stale_ttl`` and ``wait_timeout > 0``.
+    Postconditions: at most one ``compute`` runs per key at a time; a stale
+    value is returned without waiting; a cold miss waits at most
+    ``wait_timeout`` seconds and then returns ``on_timeout()`` while the
+    refresh keeps running, so the next request is served from cache. A
+    ``compute`` failure propagates to a cold waiter and is logged otherwise.
+    """
+    assert 0 < fresh_ttl <= stale_ttl, "fresh_ttl must be positive and <= stale_ttl"
+    assert wait_timeout > 0, "wait_timeout must be positive"
+    fresh = cache_get(key, fresh_ttl)
+    if fresh is not None:
+        return fresh
+    task = _swr_refreshes.get(key)
+    if task is None or task.done():
+        task = asyncio.ensure_future(_swr_refresh(key, compute))
+        task.add_done_callback(_log_swr_failure)
+        _swr_refreshes[key] = task
+    stale = cache_get(key, stale_ttl)
+    if stale is not None:
+        return stale
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=wait_timeout)
+    except TimeoutError:
+        return on_timeout()
+
+
 # Re-export for callers that want the configured default TTL.
 __all__ = [
     "Cache",
@@ -268,6 +324,7 @@ __all__ = [
     "MAX_CACHE_SIZE",
     "cache_clear",
     "cache_delete",
+    "cache_get_swr",
     "cache_get",
     "cache_set",
     "cache_size",

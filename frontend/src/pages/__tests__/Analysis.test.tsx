@@ -191,6 +191,27 @@ describe("AnalysisOutcomesTab", () => {
     expect(screen.getByText("Workflow x Machine Runtime")).toBeInTheDocument();
   });
 
+  it("names the repository of each attention workflow so same-named ones differ (#1718)", async () => {
+    const qualityGate = (repo: string) => ({
+      key: repo + "/qg",
+      repo,
+      workflow_name: "Quality Gate",
+      count: 10,
+      failure: 3,
+      avg_duration_seconds: 500,
+    });
+    routeFetch([
+      [
+        "/api/analysis/workflow-machines",
+        { workflows: [qualityGate("half-ton-controls"), qualityGate("REE-Recovery")] },
+      ],
+    ]);
+    render(<AnalysisOutcomesTab />);
+    await waitFor(() => expect(screen.getAllByText("Quality Gate")).toHaveLength(2));
+    expect(screen.getByText("half-ton-controls")).toBeInTheDocument();
+    expect(screen.getByText("REE-Recovery")).toBeInTheDocument();
+  });
+
   it("shows empty states when no outcome data is returned", async () => {
     routeFetch([["/api/analysis/workflow-machines", {}]]);
     render(<AnalysisOutcomesTab />);

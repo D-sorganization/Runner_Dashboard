@@ -143,6 +143,19 @@ async def fetch_org_repos(fetch: Fetcher | None = None) -> list[dict[str, Any]]:
     return cached
 
 
+def _describe_priorities_failure(detail: str) -> str:
+    """One readable sentence for the Projects banner; never the raw API body.
+
+    ``gh_utils`` reports GitHub failures as ``GitHub API error (<status>): ...``.
+    """
+    if "(401)" in detail or "(403)" in detail:
+        return (
+            f"the dashboard's GitHub App cannot read {PRIORITIES_REPO}/{PRIORITIES_PATH} "
+            "(grant it Contents: read on that repository)"
+        )
+    return f"GitHub request failed ({detail.split(':', 1)[0]})"
+
+
 async def load_priorities(fetch: Fetcher | None = None) -> tuple[dict[str, ProjectPriority], str | None]:
     """``(priorities, error)``; never raises. The parsed result is cached like the overviews."""
     cached = cache_get("projects:priorities", CACHE_TTL_SECONDS)
@@ -155,7 +168,7 @@ async def load_priorities(fetch: Fetcher | None = None) -> tuple[dict[str, Proje
     except PriorityError as exc:
         result = ({}, f"priorities invalid: {exc}")
     except HTTPException as exc:
-        result = ({}, f"github: {exc.detail}")
+        result = ({}, _describe_priorities_failure(str(exc.detail)))
     cache_set("projects:priorities", result)
     return result
 

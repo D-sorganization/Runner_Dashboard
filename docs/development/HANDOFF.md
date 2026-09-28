@@ -1,6 +1,6 @@
-# Current handoff — UI/UX overhaul, epic #1718 (DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723, DL-#1724, DL-#1725)
+# Current handoff — UI/UX overhaul, epic #1718 (DL-#1718, DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723, DL-#1724, DL-#1725)
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Identity
 
@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `feat/ux-overhaul`
 - Baseline commit: `19e4f920` (main after #1727 merged)
 - Implementation commit: `SELF`
-- Pull request: not opened yet
+- Pull request: not opened yet (branch pushed; GitHub secondary rate limit blocked `gh` at 06:37 UTC)
 - Governing issues: #1718 and children #1719–#1725.
 
 ## Objective and status
@@ -28,18 +28,28 @@ Last updated: 2026-09-27
   - Principals shows "Admin access required" on 403; Local Tools shows `artifact <sha>` for artifact installs instead of git probe errors.
   - `test_color_literal_budget` counts `rgba()` usages outside custom-property definitions; budget tightened 84 -> 61.
   - The mobile token contract test and `docs/mobile-design-system.md` pin the new palette.
+- Live-sweep fixes (DL-#1718), from a page-by-page browser pass against the DeskComputer hub:
+  - Slow GitHub aggregates held the browser's six connections per host, so unrelated panels (Fleet, Operations) sat on "Loading" and whole pages rendered blank. New `cache_utils.cache_get_swr` serves stale data while one refresh runs and bounds a cold wait; a timed-out request no longer cancels the refresh.
+  - `/api/workflows/list` used two `gh` subprocesses per workflow across 20 repos (>90 s, hundreds of calls). It now makes a fixed four REST calls per repo plus one blob per changed workflow file (blob-sha cache), and answers `status: "warming"` after 20 s; the Workflows page explains and retries.
+  - `/api/scheduled-workflows` (504 after 14.5 s every visit) uses the same helper, so the walk finishes in the background and later visits are cached.
+  - Queue waits read "40d 2h" instead of "57741m 27s": one `formatDuration` (components/formatters) rolls up to hours and days; the two copies re-export it.
+  - Page intro banner: SVG info icon instead of the emoji, styles in `.intro-header*`.
+  - Maxwell: the HTTP card says "not listening" instead of the raw socket error; a failed control reads "Could not start Maxwell: ..."; the intro points at Start Maxwell on the page.
+  - Projects: a 401/403 on `project_priorities.yaml` names the missing GitHub App permission instead of dumping the API JSON; decision text renders its Markdown links through the sanitised `OwnerMarkdown` shared with feature notes.
+  - Insights: "Highest Attention Workflows" names each row's repository (two "Quality Gate" rows were indistinguishable).
 
 ## Validation
 
-- `npx vitest run --maxWorkers=3`: 187/188 files; the one failure is a CodeRequests timing flake under load (19/19 alone, file untouched here).
+- `npx vitest run --maxWorkers=3`: 189/189 files, 1594 tests (after the live-sweep fixes).
+- WSL pytest for the live-sweep fixes: `tests/test_cache_swr.py` 6, `tests/api/test_workflows_list.py` 3, `tests/api/test_scheduled_workflows_route.py` 1, `tests/api/test_projects_tracking.py` 22 passed (`test_vite_config` fails under WSL only: `git ls-files` exits 128 there).
 - WSL pytest `tests/staff tests/api tests/unit tests/test_frontend_integrity.py`: 2290 passed (the palette contract failure is fixed in this branch).
 - `tsc --noEmit`, `npm run lint`, ruff and mypy: clean.
 - Pre-push `pytest-unit` reports "files were modified by this hook" if the worktree is edited while it runs; do not edit during a push.
 
 ## Next steps
 
-1. Push `feat/ux-overhaul`, open one draft PR (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
-2. Follow-ups from the live sweep: `/api/workflows/list` times out (>120 s) on DeskComputer; Projects shows a raw GitHub 403 JSON blob for `project_priorities.yaml`.
+1. Open one draft PR from `feat/ux-overhaul` (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
+2. Remaining live-sweep follow-ups: `/api/stats` takes ~14 s on a cold cache and `/api/runs/enriched` returns ~760 KB (both candidates for `cache_get_swr` / trimming); the Operations page re-polls every panel including the slow ones.
 3. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, the holds decision in #1726, and GitHub App Contents/Issues read on Repository_Management.
 
 ---

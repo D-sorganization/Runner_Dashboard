@@ -14,7 +14,13 @@ import { CoverageDetails } from "./CoverageDetails";
 import { PriorityBadge } from "./PriorityBadge";
 import { CiStatusBadge } from "./CiStatusBadge";
 import { AssessmentHistory } from "./AssessmentHistory";
-import type { AssessmentScore, ProjectOverview, RepoCiStatus, StewardRun } from "./types";
+import { OwnerMarkdown } from "./OwnerMarkdown";
+import type {
+  AssessmentScore,
+  ProjectOverview,
+  RepoCiStatus,
+  StewardRun,
+} from "./types";
 
 export interface ProjectCardProps {
   project: ProjectOverview;
@@ -148,7 +154,9 @@ export function ProjectCard({
         ) : (
           <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
             {decisions_needed.map((d) => (
-              <li key={d}>{d}</li>
+              <li key={d}>
+                <OwnerMarkdown text={d} as="span" />
+              </li>
             ))}
           </ul>
         )}
