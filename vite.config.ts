@@ -1,5 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { execSync } from 'node:child_process'
+import { resolveBuildId } from './frontend/src/lib/buildId'
+
+function gitShortSha(): string | null {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString()
+  } catch {
+    return null
+  }
+}
+
+// Distinct per build so the service worker updates after each deploy (#1740).
+const buildId = resolveBuildId({ explicit: process.env.VITE_BUILD_ID, gitSha: gitShortSha(), now: Date.now() })
 
 const backendProxyTarget =
   process.env.VITE_BACKEND_URL ?? `http://127.0.0.1:${process.env.DASHBOARD_PORT ?? '5001'}`
@@ -7,6 +20,9 @@ const backendProxyTarget =
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
+  },
   root: 'frontend',
   build: {
     outDir: '../dist',
