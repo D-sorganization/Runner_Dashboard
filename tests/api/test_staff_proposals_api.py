@@ -321,3 +321,36 @@ def test_execute_route_rewrites_the_card(client: TestClient) -> None:
 
     assert res.status_code == 200, res.text
     assert _card(message_id)["status"] == "executed"
+
+
+def test_create_proposal_deduplicates_pending(client: TestClient) -> None:
+    store = get_conversation_store()
+    th = store.create_thread(title="Dedup Test", kind="direct", participants=["barb", "user"])
+    msg = store.add_message(
+        thread_id=th.id,
+        author_kind="role",
+        author="barb",
+        body_md="Proposing a run",
+    )
+    headers = {"X-Requested-With": "XMLHttpRequest"}
+    payload = {
+        "message_id": msg.id,
+        "thread_id": th.id,
+        "action": "staff.dispatch",
+        "params": {"role": "cartographer", "repo": "UpstreamDrift"},
+    }
+
+    # First POST creates the proposal
+    res1 = client.post("/api/v1/staff/proposals", json=payload, headers=headers)
+    assert res1.status_code == 200, res1.text
+    data1 = res1.json()
+
+    # Second identical POST returns the same proposal without creating a new record
+    res2 = client.post("/api/v1/staff/proposals", json=payload, headers=headers)
+    assert res2.status_code == 200, res2.text
+    data2 = res2.json()
+
+    assert data2["id"] == data1["id"]
+    # Total proposals in thread should be 1
+    props = store.list_proposals(thread_id=th.id)
+    assert len(props) == 1

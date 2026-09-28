@@ -16,6 +16,27 @@ from staff.roles import RoleSpec
 
 DEFAULT_TOKEN_BUDGET = 4000
 
+__all__ = [
+    "DEFAULT_TOKEN_BUDGET",
+    "build_pending_proposals_block",
+    "extract_session_id",
+    "format_history_replay",
+]
+
+
+def build_pending_proposals_block(conv_store: ConversationStore, thread_id: str) -> str | None:
+    """Format pending proposals awaiting owner decision for turn context (#1716)."""
+    pending = conv_store.list_proposals(thread_id=thread_id, state="proposed")
+    if not pending:
+        return None
+    items = [f"- {p.id}: {p.action} (params: {p.params})" for p in pending]
+    return (
+        "Pending action proposals awaiting owner decision in Staff Console:\n"
+        + "\n".join(items)
+        + "\nProposals cannot be executed directly from chat. Remind the user to approve them in the Staff Console."
+    )
+
+
 _CODEX_SESSION_RE = re.compile(r"Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)", re.IGNORECASE)
 
 
@@ -99,6 +120,14 @@ def format_history_replay(
             role_title = getattr(role, "title", None) or (role.name.title() if role else "Assistant")
             prefix = "User" if m.author_kind == "user" else role_title
             turns.append(f"{prefix}: {m.body_md.strip()}")
+            last_collected = m
+        elif m.kind == "action_proposal":
+            prop_data = m.meta.get("proposal") or {}
+            prop_id = prop_data.get("id") or m.id
+            action_name = prop_data.get("action_name", "")
+            status = prop_data.get("status", "pending")
+            desc = prop_data.get("description") or m.body_md.strip()
+            turns.append(f"System: [Action Proposal {prop_id}: {action_name} ({status})] {desc}")
             last_collected = m
 
     # Drop current user message if already persisted as the last turn (#1631).

@@ -56,6 +56,36 @@ def validate_decision_sla(decide_by: str | None, default_if_silent: str, risk: s
         raise ValueError(f"approve by silence is only allowed for a low-risk action, not risk {risk!r}")
 
 
+def find_pending_proposal(
+    conn: sqlite3.Connection,
+    lock: threading.RLock,
+    thread_id: str,
+    action: str,
+    params: dict[str, Any] | None = None,
+    decide_by: str | None = None,
+    default_if_silent: str = "",
+) -> ActionProposalRecord | None:
+    """Find an existing pending proposal in ``thread_id`` with identical ``action`` and ``params`` (#1716).
+
+    Returns the pending proposal if found, or None.
+    """
+    param_dict = redact_value(dict(params or {}))
+    with lock:
+        rows = conn.execute(
+            "SELECT * FROM action_proposals WHERE thread_id = ? AND action = ? AND state = 'proposed'",
+            (thread_id, action),
+        ).fetchall()
+        for r in rows:
+            rec = ActionProposalRecord.from_row(r)
+            if (
+                rec.params == param_dict
+                and rec.decide_by == decide_by
+                and (rec.default_if_silent or "") == (default_if_silent or "")
+            ):
+                return rec
+    return None
+
+
 def create_proposal(
     conn: sqlite3.Connection,
     lock: threading.RLock,
@@ -73,10 +103,32 @@ def create_proposal(
     assert risk in PROPOSAL_RISKS, f"Invalid risk: {risk}"  # noqa: S101
     import uuid
 
-    pid = proposal_id or f"prop_{uuid.uuid4().hex[:12]}"
     now = _now()
     validate_decision_sla(decide_by, default_if_silent, risk, now)
+
     param_dict = redact_value(dict(params or {}))
+
+    # De-duplicate identical pending proposals within the same thread (#1716)
+    if proposal_id is None and thread_id and action:
+        existing = find_pending_proposal(
+            conn,
+            lock,
+            thread_id=thread_id,
+            action=action,
+            params=params,
+            decide_by=decide_by,
+            default_if_silent=default_if_silent,
+        )
+        if existing is not None:
+            log.info(
+                "Reusing existing pending proposal %s for action %s in thread %s (#1716)",
+                existing.id,
+                action,
+                thread_id,
+            )
+            return existing
+
+    pid = proposal_id or f"prop_{uuid.uuid4().hex[:12]}"
 
     rec = ActionProposalRecord(
         id=pid,

@@ -10,7 +10,7 @@
 <!-- prettier-ignore-start -->
 
 | Date | PR / Issue | Summary |
-| --- | --- | --- |
+| 2026-09-28 | #1716 | Grok relay proposal deduplication and chat contract hardening (#1716): pending proposals with identical action, params and decision SLA within the same thread are deduplicated in conversation_proposals and proposal_cards; action proposals are included in history replay and context blocks; Barb instructions clarify that chat turns cannot execute proposals; grok.md documents that owner approval happens in the Staff Console. |
 | 2026-09-27 | #1718 | UI/UX overhaul (#1719–#1725 as integrated): design tokens and global type; thread and composer; roster and context pane; Staff page and attention drawer; app shell and primitives; phone access and Web Push; inbox noise. |
 | 2026-09-27 | #1713 | Desktop top-bar actions shrink and wrap, so narrow windows (800px) no longer scroll sideways. |
 | 2026-09-27 | #1712 | Staff approvals reachable from desktop: `/staff?thread=` opens that thread in the console and inbox thread links open in place (Approve/Deny card was unreachable); approval inbox items name role, repo and proposal id; the desktop console reflows at 1280px/900px; no sign-in alerts for `future` providers (Cline); the inbox fetches project overviews concurrently (cold load was 17-26 s); the "Waiting on You" panel gets its missing stylesheet (#1711). |
