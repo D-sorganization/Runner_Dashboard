@@ -28,6 +28,7 @@ from gh_utils import RateLimitedError, gh_api_admin
 from identity import Principal, require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
+from workflow_analysis import infer_machine_from_runner_name
 
 from .runner_helpers import (
     is_matlab_runner,
@@ -79,6 +80,7 @@ def _runner_response(
     error: str | None = None,
 ) -> dict[str, Any]:
     runners = sorted(data.get("runners", []) or [], key=runner_sort_key)
+    runners = [{**runner, "machine": infer_machine_from_runner_name(runner.get("name"))} for runner in runners]
     total_count = data.get("total_count", len(runners))
     is_partial = len(runners) < total_count
     return {

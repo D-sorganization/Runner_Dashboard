@@ -191,44 +191,9 @@ def _workload_capacity_from_specs(specs: dict) -> dict:
 
 def get_gpu_info() -> dict:
     """Query nvidia-smi for GPU metrics. Returns empty dict if no NVIDIA GPU."""
-    try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu,power.draw,power.limit",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env=safe_subprocess_env(),
-        )
-        if result.returncode != 0:
-            return {}
+    from system_utils import get_gpu_info as _system_get_gpu_info
 
-        gpus = []
-        for line in result.stdout.strip().split("\n"):
-            parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 8:
-                total = float(parts[1])
-                used = float(parts[2])
-                vram_pct = round(used / total * 100, 1) if total > 0 else 0
-                gpus.append(
-                    {
-                        "name": parts[0],
-                        "vram_total_mb": total,
-                        "vram_used_mb": used,
-                        "vram_free_mb": float(parts[3]),
-                        "vram_percent": vram_pct,
-                        "gpu_util_percent": float(parts[4]),
-                        "temp_c": float(parts[5]),
-                        "power_draw_w": (float(parts[6]) if parts[6] != "[N/A]" else None),
-                        "power_limit_w": (float(parts[7]) if parts[7] != "[N/A]" else None),
-                    }
-                )
-        return {"gpus": gpus, "count": len(gpus)}
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return {}
+    return _system_get_gpu_info()
 
 
 def get_per_runner_resources() -> list[dict]:

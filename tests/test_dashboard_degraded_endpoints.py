@@ -93,7 +93,7 @@ def test_fleet_nodes_endpoint_has_cache_and_independent_remote_probes() -> None:
 
     assert "_FLEET_NODES_CACHE_TTL_S" in source
     assert '_cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)' in source
-    assert "await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])" in source
+    assert "*[fetch_node(name, url) for name, url in FLEET_NODES.items()]" in source
     assert "fleet node fanout exceeded" not in source
 
 

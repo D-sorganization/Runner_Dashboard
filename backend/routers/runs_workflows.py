@@ -23,12 +23,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import proxy_utils
 import scheduled_workflows as scheduled_workflow_inventory
 from cache_utils import cache_get, cache_get_swr, cache_set
 from dashboard_config import ORG, REPO_ROOT, RUN_JOB_ENRICHMENT_LIMIT
 from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Request
-from gh_utils import gh_api, gh_api_raw
+from gh_utils import gh_api
 from identity import Principal, require_fleet_peer, require_scope
 from input_validation import validate_workflow_inputs
 from models.github_payloads import GhJob, GhWorkflowRun
@@ -158,21 +159,24 @@ async def _scheduled_workflows_impl(
 ) -> dict:
     """Collect the read-only scheduled workflow inventory.
 
-    A walk slower than ``SCHEDULED_WORKFLOWS_TIMEOUT`` answers ``degraded`` but
-    keeps running, so the next request is served from cache (stale up to an hour).
+    A walk slower than the wait budget answers ``degraded`` but keeps running,
+    so the next request is served from cache (stale up to an hour). The wait is
+    clamped below ``proxy_utils.HUB_PROXY_TIMEOUT_S`` so a node proxying this
+    endpoint to the hub always receives the degraded answer instead of its own
+    httpx timeout (#1745).
     """
     cache_key = f"scheduled-workflows:{include_archived}:{repo_limit}"
-    raw_timeout = os.environ.get("SCHEDULED_WORKFLOWS_TIMEOUT", "20")
+    raw_timeout = os.environ.get("SCHEDULED_WORKFLOWS_TIMEOUT", "10")
     try:
         timeout = float(raw_timeout)
     except (TypeError, ValueError):
-        timeout = 20.0
+        timeout = 10.0
+    timeout = min(timeout, proxy_utils.HUB_PROXY_TIMEOUT_S - 3)
 
     async def collect() -> dict:
         report = await scheduled_workflow_inventory.collect_inventory(
             ORG,
             gh_api,
-            gh_api_raw,
             repo_limit=repo_limit,
             include_archived=include_archived,
         )

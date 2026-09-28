@@ -48,11 +48,12 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
     }
   };
 
-  const spendToday = role?.budget?.usd_today ?? 0;
+  const spendToday = role?.budget?.usd_today;
+  const spendKnown = typeof spendToday === "number";
   const dailyCap = role?.budget?.usd_per_day ?? 0;
-  const budgetPct = dailyCap > 0 ? Math.min(100, Math.round((spendToday / dailyCap) * 100)) : 0;
-  const budgetDanger = dailyCap > 0 && spendToday >= dailyCap;
-  const budgetWarning = dailyCap > 0 && spendToday >= dailyCap * 0.8 && !budgetDanger;
+  const budgetPct = spendKnown && dailyCap > 0 ? Math.min(100, Math.round((spendToday / dailyCap) * 100)) : 0;
+  const budgetDanger = spendKnown && dailyCap > 0 && spendToday >= dailyCap;
+  const budgetWarning = spendKnown && dailyCap > 0 && spendToday >= dailyCap * 0.8 && !budgetDanger;
 
   return (
     <aside
@@ -239,7 +240,10 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                 </div>
                 <div className="context-budget-numbers">
                   <span className="context-budget-label">
-                    Today: <span className="context-budget-val">${role.budget.usd_today.toFixed(2)}</span>
+                    Today:{" "}
+                    <span className="context-budget-val">
+                      {spendKnown ? `$${spendToday.toFixed(2)}` : "—"}
+                    </span>
                   </span>
                   <span className="context-budget-label">
                     Daily Cap: <span className="context-budget-val">${role.budget.usd_per_day.toFixed(2)}</span>

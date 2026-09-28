@@ -18,6 +18,155 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1728 — Staff threads API tests stop leaking chat turns and staff-run threads
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1728
+- **Branch:** `fix/staff-threads-test-thread-leak`
+- **PR:** #1729
+- **Paths:** `tests/api/test_staff_threads_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-28 (file 14 passed with thread-exception warnings as errors; RED without the stub = 2 errors)
+- **Summary:** The autouse fixture stubs the background chat turn. Tripwires fail any test that runs a real chat turn, creates a real worktree, or leaves a `staff-run-*` thread alive after teardown.
+- **Next step:** Merge PR #1729 once its CI is green.
+
+### DL-#1748 — Diagnostics report the deployed commit on artifact installs
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1748
+- **Branch:** `fix/diagnostics-artifact-commit`
+- **PR:** not created
+- **Paths:** `backend/routers/diagnostics.py`, `backend/routers/deployment.py`, `backend/server.py`,
+  `tests/api/test_diagnostics_deployed_commit.py`, `tests/api/test_deployment_git_drift.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests -q -k "diagnostic or drift"` 114 passed;
+  `ruff check`/`ruff format --check` clean; `mypy backend/` clean, 318 files)
+- **Summary:** Artifact-installed hubs have no `.git` directory, so `/api/diagnostics/summary` always
+  reported `git_commit: "unknown"` and `/api/deployment/git-drift` claimed "up to date" with no
+  commits to compare. Diagnostics now falls back to the deployed `git_sha` from deployment metadata
+  (via a new `set_deployment_info_getter`, no `server` import); git-drift reports `is_drifted: null`
+  and an explicit unknown-state message when either commit is missing.
+- **Next step:** Open the PR as draft.
+
+### DL-#1745 — Scheduled workflows inventory loads within the proxy timeout
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1745
+- **Branch:** `fix/scheduled-workflows-walk`
+- **PR:** not created
+- **Paths:** `backend/scheduled_workflows.py`, `backend/proxy_utils.py`, `backend/routers/runs_workflows.py`, `tests/test_scheduled_workflows.py`, `tests/api/test_scheduled_workflows_route.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests -q -k "scheduled or proxy"` 110 passed; `ruff check`/`ruff format --check` clean; `mypy backend/` clean)
+- **Summary:** `collect_inventory` walked repos serially and raw-fetched every workflow YAML (1,200+ requests for 41 repos), never finishing inside the hub's answer budget; the hub's 20 s wait also exceeded the proxy's 15 s timeout, so every non-hub node got a 504 instead of the designed degraded answer. The walk now reads the `.github/workflows` contents listing per repo and caches cron expressions by blob SHA, walks repos concurrently behind a bounded semaphore (6), and the hub's wait is clamped below the new `proxy_utils.HUB_PROXY_TIMEOUT_S` constant.
+- **Next step:** Open the PR as draft.
+
+### DL-#1747 — Fleet page shows only real data and honest loading states
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1747
+- **Branch:** `fix/fleet-honest-panels`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/OverviewPage.tsx`, `frontend/src/pages/OverviewLeases.tsx` (deleted), `frontend/src/pages/Fleet/FleetAlertsSection.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (Fleet + Overview vitest 54 passed; typecheck and eslint clean)
+- **Summary:** The Fleet page rendered a hard-coded fake "Active Leases" preview and claimed "All systems nominal" before alerts had loaded. The preview is removed and the alerts section shows a checking state while loading.
+- **Next step:** Open the PR as draft, then mark it ready and arm auto-merge via `automerge_guard`.
+
+### DL-#1744 — Staff role details show the real schedule window and budget
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1744
+- **Branch:** `fix/staff-role-details`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/contextTypes.ts`, `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/Staff/Roster.tsx`, `frontend/src/pages/Staff/__tests__/Roster.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`, `frontend/src/pages/StaffConsole/__tests__/useStaffConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/ContextPane.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (`npx vitest run frontend/src/pages/Staff frontend/src/pages/StaffConsole` 257 passed; `npm run typecheck` clean; eslint clean on changed files)
+- **Summary:** The Roster's Schedule cell stringified the API's `{start,end}` window object (`[object Object]`), and the Console's role pane read a nonexistent `budget.daily_limit ?? 50` / `spend_today ?? 0`, always showing a fabricated $50/day cap and $0 spend, and never mapped `schedule` at all. A shared `formatRoleWindow` helper formats the window consistently; `toRoleDetail` now maps the real `usd_per_day` and leaves unknown spend as `undefined` (rendered "—"), and maps `schedule` to cron + formatted window + `enabled: !retired`.
+- **Next step:** Open the PR as draft.
+
+### DL-#1738 — Fleet page binds runners to machines
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1738
+- **Branch:** `fix/fleet-machine-binding`
+- **PR:** (pending)
+- **Paths:** `backend/routers/runners.py`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/CredentialsPage.tsx`, `tests/api/test_runners_machine_field.py`, `frontend/src/pages/Fleet/__tests__/FleetMachinesSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetRunnersSection.test.tsx`, `frontend/src/pages/__tests__/CredentialsPage.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/api/test_runners_machine_field.py tests/api/test_routers_runners.py` all passed; `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/CredentialsPage.test.tsx` 72 passed; ruff and eslint clean)
+- **Summary:** The 2026-09-28 live sweep found every Fleet machine showing `Runners 0 / 21` (grouped by `name.split("-")[2]`, always `local`, falling back to the org-wide `health.runners_registered`), busy runners showing Current Task `idle` (looked up by a `runner_name` field `/api/runs` never returns), and ready credential providers still showing their `setup_hint`. Backend now stamps a canonical `machine` field via the existing `infer_machine_from_runner_name` parser; the Fleet Machines table groups by it with no org-wide fallback; the Runners table shows `busy`/`-`/`idle` from the runner's own state when no run is known; CredentialsPage hides `setup_hint` once a probe is `usable`.
+- **Next step:** Open PR and enable auto-merge.
+
+### DL-#1742 — Queue page does not claim idle before its data arrives
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1742
+- **Branch:** `fix/queue-loading-state`
+- **PR:** #1743
+- **Paths:** `frontend/src/pages/Queue/index.tsx`, `frontend/src/pages/Queue/__tests__/QueueLoadingState.test.tsx`, `frontend/src/pages/Queue/__tests__/QueueTab.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (Queue vitest 63 passed; `npm run typecheck` and eslint clean)
+- **Summary:** Work → Queue reported an idle fleet and an empty queue while the first load was pending or had failed. Counts now read `—` (loading or unknown) until a payload arrives, and a failed load says so.
+- **Next step:** Mark #1743 ready and arm auto-merge via `automerge_guard` once CI is green.
+
+### DL-#1740 — Service worker gets a distinct build id per build
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1740
+- **Branch:** `fix/sw-build-id`
+- **PR:** #1741
+- **Paths:** `frontend/src/lib/buildId.ts`, `frontend/src/lib/__tests__/buildId.test.ts`, `vite.config.ts`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (vitest 3 passed; `npm run typecheck` and eslint clean; built bundle registers `sw.js?build=157232e6`)
+- **Summary:** The service worker was always registered as `build=dev`, so it never updated after a deploy and its cache never rotated. The build now stamps the git short SHA (or an explicit `VITE_BUILD_ID`, or the build time).
+- **Next step:** Mark #1741 ready and arm auto-merge via `automerge_guard` once CI is green.
+
+### DL-#1735 — Frontend calls only routes that exist
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1735
+- **Branch:** `fix/frontend-route-contract`
+- **PR:** #1737
+- **Paths:** `backend/routers/workflow_stats.py`, `backend/routers/auth.py`, `backend/server.py`, `frontend/src/hooks/usePollingQueries.ts`, `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/pages/Operations/OperationsDiagnosticsSection.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/frontend/test_frontend_api_routes_exist.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `tests/api tests/frontend` 1425 passed; guard catches a dead `/api/fleet`; tsc, eslint, vitest, ruff, mypy clean)
+- **Summary:** An audit of frontend `/api/` literals against backend routes found the Insights workflow-stats routes never wired, a missing `POST /api/auth/refresh`, a dead Diagnostics link and ten dead hooks. Routes wired, link fixed, hooks removed, and a guard test keeps the frontend to routes that exist.
+- **Next step:** Mark #1737 ready and arm auto-merge via `automerge_guard`.
+
+### DL-#1734 — Type-check cross-module imports in the backend
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1734
+- **Branch:** `fix/mypy-resolved-imports`
+- **PR:** #1736
+- **Paths:** `pyproject.toml`, `.pre-commit-config.yaml`, `backend/push.py`, `backend/staff/followup.py`, `backend/staff/inbox.py`, `backend/staff/work_request_dispatch.py`, `backend/staff/runner_ops.py`, `backend/staff/runner.py`, `backend/staff/maintenance.py`, `backend/routers/staff_v1.py`, `backend/routers/remediation.py`, `backend/routers/runner_diagnostics.py`, `backend/server.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL full suite 5298 passed; resolved `mypy backend/` clean on main after #1733)
+- **Summary:** mypy named backend modules `backend.x` while the code imports `staff.x`, so cross-module calls were unchecked. Resolving them found 55 errors, including 500s on the v1 run stream, v1 audit and the remediation config save, ImportErrors on work-request dispatch, 502s on runner troubleshoot and schedule-scale, silently dropped watchdog pushes and a broken inbox needs-input source. All fixed; the pyproject config makes CI and pre-push check resolved imports.
+- **Next step:** Mark #1736 ready and arm auto-merge via `automerge_guard`.
+
+### DL-#1709 — Staff runner retry nudge for missing STAFF_RESULT line
+
+- **State:** in_progress
+- **Owner:** local
+- **Issue:** #1709
+- **Branch:** `fix/staff-runner-result-nudge-1709`
+- **PR:** (pending)
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/classifier.py`, `backend/staff/lease.py`, `backend/staff/retry.py`, `backend/staff/runner.py`, `backend/staff/runner_ops.py`, `tests/api/test_staff_runner.py`, `tests/unit/test_staff_classifier.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (pytest staff+classifier+runner 59 passed, ruff clean, mypy clean, all files <= 500 LOC)
+- **Summary:** Enforces that unattended runs exiting 0 without a STAFF_RESULT line receive one bounded host-level retry nudge resuming the same session; accepts the nudge result line only on an exact prefix match (`STAFF_RESULT:`); records runs that pause on a question as failure_class="needs_input" with `error="agent paused asking: {last_line}"`, lease-blocked runs as failure_class="lease_blocked", and non-question missing result runs as failure_class="no_result" with `error="agent exited 0 without a STAFF_RESULT line"`.
+- **Next step:** Open PR and enable auto-merge.
+
 ### DL-#1718 — Live-sweep fixes for the UX overhaul
 
 - **State:** in_review
