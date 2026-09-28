@@ -1,3 +1,45 @@
+# Current handoff — Proposals approvable from the desktop console; styled inbox (DL-#1712, DL-#1711)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1712`
+- Branch: `fix/1712-approval-deep-link`
+- Baseline commit: `8b207661`
+- Implementation commit: `SELF`
+- Pull request: see DL-#1712
+- Governing issues: #1712 (approval unreachable), #1711 (unstyled inbox); DL-#1712, DL-#1711.
+
+## Objective and status
+
+- Barb's live test 4: the owner could not approve `prop_166a825b0f32`. Approval inbox items link to `/staff?thread=<id>`, but only the mobile console read `?thread=`, so the desktop console opened with no thread and the ActionCard (Approve/Deny) never rendered.
+- `StaffPage` now seeds `selectedThread` from `?thread=`. `InboxPanel` takes `onOpenThread` and opens `/staff?thread=` links in place (console section), as it already did for `?run=`.
+- `staff/inbox.py` `_approval_text`: a dispatch approval's title names the role and repo; every summary shows the rationale or a prompt excerpt (160 chars) and ends with `(proposal <id>)`, so near-duplicates can be told apart.
+- `StaffConsole/desktop.css`: breakpoints at 1280px (context pane drops under the conversation) and 900px (one column). At 800px the conversation column was about 90px wide, one word per line.
+- `InboxPanel.css` (new): the panel's classes had no stylesheet. Items are cards, filters are pills, the degraded-source warning is clamped to 3 lines with the full text in `title`, and the list scrolls at 420px.
+
+## Validation
+
+- Vitest `frontend/src/pages/StaffConsole frontend/src/pages/Staff frontend/src/pages/__tests__/Staff*`: 31 files, 210 passed before the stylesheet; the two #1712 tests fail without the fix. The styles test is included in the final run.
+- `npx tsc --noEmit -p tsconfig.app.json` clean; eslint clean on touched files.
+- WSL pytest `tests/api/test_staff_inbox.py`: 5 passed.
+
+## Blockers and risks
+
+- None known.
+
+## Next steps
+
+1. Arm auto-merge via automerge_guard once CI is green, then redeploy and let the owner approve `prop_166a825b0f32` from the inbox.
+
+## Change log
+
+- 2026-09-27: Desktop console opens `?thread=` links; approval items identify the proposal; inbox styled.
+
+---
+
 # Current handoff — Restore green main on ci-health-check (Staff.test.tsx line cap) (DL-#1705)
 
 Last updated: 2026-09-27

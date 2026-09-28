@@ -18,6 +18,32 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1712 — Action proposals approvable from the desktop console
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1712
+- **Branch:** `fix/1712-approval-deep-link`
+- **PR:** see branch
+- **Paths:** `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/InboxPanel.tsx`, `backend/staff/inbox.py`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/__tests__/StaffPageConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`, `tests/api/test_staff_inbox.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Staff vitest 210 passed; test_staff_inbox 5 passed)
+- **Summary:** `/staff?thread=` opens that thread in the desktop console, and inbox thread links open in place, so a proposal's Approve/Deny card is reachable. Approval items name the role, repo and proposal id. The desktop console reflows at 1280px and 900px so the conversation keeps a readable width.
+- **Next step:** Arm auto-merge on the PR once its CI is green.
+
+### DL-#1711 — Style the Staff inbox panel
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1711
+- **Branch:** `fix/1712-approval-deep-link`
+- **PR:** see DL-#1712
+- **Paths:** `frontend/src/pages/Staff/InboxPanel.css`, `frontend/src/pages/Staff/InboxPanel.tsx`, `frontend/src/pages/Staff/__tests__/InboxPanelStyles.test.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Staff vitest green; tsc and eslint clean)
+- **Summary:** The "Waiting on You" panel's classes had no stylesheet. `InboxPanel.css` gives compact cards, pill filters, a clamped degraded-source warning with full text in `title`, and a list that scrolls at 420px.
+- **Next step:** Ships with DL-#1712's PR.
+
 ### DL-#1705 — Restore green main on ci-health-check (Staff.test.tsx line cap)
 
 - **State:** in_progress
@@ -28,7 +54,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `frontend/src/pages/__tests__/Staff.test.tsx`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 246c0d58; Staff.test.tsx reduced from 512 to 473 lines, <= 500 lines soft cap satisfied)
-- **Summary:** CI Standard on main failed on ci-health-check because frontend/src/pages/__tests__/Staff.test.tsx reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
+- **Summary:** CI Standard on main failed on ci-health-check because frontend/src/pages/**tests**/Staff.test.tsx reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
 - **Next step:** Open PR and enable auto-merge.
 
 ### DL-#1338-settings — SC-G6: one Settings area with sections

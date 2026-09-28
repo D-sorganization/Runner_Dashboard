@@ -104,6 +104,25 @@ class InboxAggregate:
         }
 
 
+APPROVAL_PROMPT_EXCERPT = 160
+
+
+def _approval_text(prop_id: str, action: str, thread_id: str, params: Any) -> tuple[str, str]:
+    """Title and summary that tell one proposal from another (#1712).
+
+    A dispatch names its role and repo in the title; every summary ends with the proposal id.
+    """
+    p = params if isinstance(params, dict) else {}
+    role, repo = str(p.get("role") or ""), str(p.get("repo") or "")
+    title = f"Approval needed: {action}"
+    if role:
+        title += f" · {role}" + (f" on {repo}" if repo else "")
+    detail = str(p.get("rationale") or p.get("prompt") or "") or f"Action {action} proposed for thread {thread_id}"
+    if len(detail) > APPROVAL_PROMPT_EXCERPT:
+        detail = detail[: APPROVAL_PROMPT_EXCERPT - 1].rstrip() + "…"
+    return title, f"{detail} (proposal {prop_id})"
+
+
 def _collect_approvals(c_store: ConversationStore) -> list[InboxItem]:
     """Collect pending proposals awaiting approval."""
     proposals = c_store.list_proposals(state="proposed", limit=100)
@@ -114,14 +133,12 @@ def _collect_approvals(c_store: ConversationStore) -> list[InboxItem]:
             sev = "high"
         elif prop.risk == "low":
             sev = "low"
-        summary = (
-            prop.params.get("rationale") if isinstance(prop.params, dict) else ""
-        ) or f"Action {prop.action} proposed for thread {prop.thread_id}"
+        title, summary = _approval_text(prop.id, prop.action, prop.thread_id, prop.params)
         items.append(
             InboxItem(
                 id=f"approval_{prop.id}",
                 source="approval",
-                title=f"Approval needed: {prop.action}",
+                title=title,
                 summary=summary,
                 severity=sev,
                 created_at=prop.created_at,

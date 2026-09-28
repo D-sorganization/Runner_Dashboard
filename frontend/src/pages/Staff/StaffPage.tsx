@@ -49,6 +49,12 @@ function runFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get("run") || null;
 }
 
+/** `?thread=` from an inbox or push link: the console opens that thread (#1712). */
+function threadFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("thread") || null;
+}
+
 function prefillFromUrl(): Partial<WorkRequest> | null {
   if (typeof window === "undefined") return null;
   const p = new URLSearchParams(window.location.search);
@@ -106,7 +112,7 @@ export function StaffPage() {
   const rosterError = rosterErr ? errorMessage(rosterErr) : null;
   const [initialPrefill] = useState<Partial<WorkRequest> | null>(prefillFromUrl);
   const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
-  const [selectedThread, setSelectedThread] = useState<string | null>(null);
+  const [selectedThread, setSelectedThread] = useState<string | null>(threadFromUrl);
   const [section, setSection] = useState<StaffSection>(
     () => sectionFromUrl() || (selectedRun ? "runs" : "console"),
   );
@@ -134,6 +140,11 @@ export function StaffPage() {
     [client, openRun],
   );
 
+  const openThread = useCallback((id: string) => {
+    setSelectedThread(id);
+    setSection("console");
+  }, []);
+
   const onAssign = useCallback((role: string) => {
     setAssignRole(role);
     setSection("assign");
@@ -143,7 +154,7 @@ export function StaffPage() {
 
   return (
     <div className="staff">
-      <InboxPanel onOpenRun={openRun} />
+      <InboxPanel onOpenRun={openRun} onOpenThread={openThread} />
       <Board onOpenRun={openRun} />
       <SubTabs
         tabs={SECTION_TABS}
