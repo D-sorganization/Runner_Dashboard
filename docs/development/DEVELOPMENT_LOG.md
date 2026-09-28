@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** local
 - **Issue:** #1705
 - **Branch:** `fix/1705-staff-test-line-cap`
-- **PR:** pending
+- **PR:** #1706
 - **Paths:** `frontend/src/pages/__tests__/Staff.test.tsx`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 246c0d58; Staff.test.tsx reduced from 512 to 473 lines, <= 500 lines soft cap satisfied)

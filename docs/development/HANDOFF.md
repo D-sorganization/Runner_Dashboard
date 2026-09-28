@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `fix/1705-staff-test-line-cap`
 - Baseline commit: `246c0d58`
 - Implementation commit: `SELF`
-- Pull request: pending
+- Pull request: #1706 (open)
 - Governing issue/epic: #1705; DL-#1705. Related: #1680.
 
 ## Objective and status
