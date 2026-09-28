@@ -1,3 +1,33 @@
+# Current handoff — Desktop top bar no longer widens the page (DL-#1713)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1713`
+- Branch: `fix/1713-topbar-overflow`
+- Baseline commit: `8b207661`
+- Implementation commit: `SELF`
+- Pull request: see DL-#1713
+- Governing issue: #1713; DL-#1713.
+
+## Objective and status
+
+- Problem: at an 800px window the top-bar actions (`.desktop-shell__actions`, `flex: 0 0 auto`) made the page 70px wider than the viewport, so every page scrolled sideways.
+- Fix: in `frontend/src/index.css` the actions are `flex: 0 1 auto`, `flex-wrap: wrap`, `min-width: 0` and right-aligned; the top bar gets `min-width: 0`. At 800px the actions wrap onto a second row.
+
+## Validation
+
+- `npx vitest run frontend/src/shell/__tests__/topbarOverflow.test.ts frontend/src/shell/__tests__/DesktopShell.test.tsx`: 13 passed (the new test failed first).
+- Browser pane at 800x900 with the rule applied: `scrollWidth` 800 = `clientWidth` 800 (was 855 vs 785).
+
+## Next steps
+
+1. Merge the PR, then redeploy the nodes with the other Staff fixes.
+
+---
+
 # Current handoff — Restore green main on ci-health-check (Staff.test.tsx line cap) (DL-#1705)
 
 Last updated: 2026-09-27

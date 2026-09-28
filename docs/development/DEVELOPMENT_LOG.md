@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1713 — Desktop top bar no longer widens the page
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1713
+- **Branch:** `fix/1713-topbar-overflow`
+- **PR:** see branch
+- **Paths:** `frontend/src/index.css`, `frontend/src/shell/__tests__/topbarOverflow.test.ts`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (shell vitest 13 passed; 800px browser check, no sideways scroll)
+- **Summary:** The desktop top-bar actions shrink and wrap instead of pushing the page wider than narrow windows.
+- **Next step:** Arm auto-merge on the PR once its CI is green.
+
 ### DL-#1705 — Restore green main on ci-health-check (Staff.test.tsx line cap)
 
 - **State:** in_progress
@@ -28,7 +41,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `frontend/src/pages/__tests__/Staff.test.tsx`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 246c0d58; Staff.test.tsx reduced from 512 to 473 lines, <= 500 lines soft cap satisfied)
-- **Summary:** CI Standard on main failed on ci-health-check because frontend/src/pages/__tests__/Staff.test.tsx reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
+- **Summary:** CI Standard on main failed on ci-health-check because frontend/src/pages/**tests**/Staff.test.tsx reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
 - **Next step:** Open PR and enable auto-merge.
 
 ### DL-#1338-settings — SC-G6: one Settings area with sections
