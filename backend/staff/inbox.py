@@ -12,6 +12,7 @@ Fault-tolerant: Any failing source reports 'unavailable' with error detail
 while surviving sources continue to aggregate cleanly.
 """
 
+import asyncio
 import logging
 import os
 from dataclasses import asdict, dataclass, field
@@ -104,6 +105,25 @@ class InboxAggregate:
         }
 
 
+APPROVAL_PROMPT_EXCERPT = 160
+
+
+def _approval_text(prop_id: str, action: str, thread_id: str, params: Any) -> tuple[str, str]:
+    """Title and summary that tell one proposal from another (#1712).
+
+    A dispatch names its role and repo in the title; every summary ends with the proposal id.
+    """
+    p = params if isinstance(params, dict) else {}
+    role, repo = str(p.get("role") or ""), str(p.get("repo") or "")
+    title = f"Approval needed: {action}"
+    if role:
+        title += f" · {role}" + (f" on {repo}" if repo else "")
+    detail = str(p.get("rationale") or p.get("prompt") or "") or f"Action {action} proposed for thread {thread_id}"
+    if len(detail) > APPROVAL_PROMPT_EXCERPT:
+        detail = detail[: APPROVAL_PROMPT_EXCERPT - 1].rstrip() + "…"
+    return title, f"{detail} (proposal {prop_id})"
+
+
 def _collect_approvals(c_store: ConversationStore) -> list[InboxItem]:
     """Collect pending proposals awaiting approval."""
     proposals = c_store.list_proposals(state="proposed", limit=100)
@@ -114,14 +134,12 @@ def _collect_approvals(c_store: ConversationStore) -> list[InboxItem]:
             sev = "high"
         elif prop.risk == "low":
             sev = "low"
-        summary = (
-            prop.params.get("rationale") if isinstance(prop.params, dict) else ""
-        ) or f"Action {prop.action} proposed for thread {prop.thread_id}"
+        title, summary = _approval_text(prop.id, prop.action, prop.thread_id, prop.params)
         items.append(
             InboxItem(
                 id=f"approval_{prop.id}",
                 source="approval",
-                title=f"Approval needed: {prop.action}",
+                title=title,
                 summary=summary,
                 severity=sev,
                 created_at=prop.created_at,
@@ -253,8 +271,9 @@ async def _collect_project_decisions() -> list[InboxItem]:
     from projects import service as proj_service
 
     repos = proj_service.configured_repos()
-    for repo in repos:
-        overview = await proj_service.project_overview(repo)
+    # Concurrent, as in fleet_overview: awaiting ~40 repos in turn took 17-26 s cold.
+    overviews = await asyncio.gather(*(proj_service.project_overview(repo) for repo in repos))
+    for repo, overview in zip(repos, overviews, strict=True):
         decisions = overview.get("decisions_needed", [])
         for idx, dec in enumerate(decisions):
             items.append(
@@ -342,7 +361,8 @@ def _collect_auth_sign_ins() -> list[InboxItem]:
 
         probes = probe_provider_availability()
         for entry in PROVIDER_REGISTRY:
-            if not entry.enabled:
+            # A "future" provider is never dispatched to, so its sign-in is nobody's action.
+            if not entry.enabled or entry.dispatch_mode == "future":
                 continue
             avail = probes.get(entry.dashboard_id)
             if avail and avail.get("installed") and not avail.get("authenticated"):

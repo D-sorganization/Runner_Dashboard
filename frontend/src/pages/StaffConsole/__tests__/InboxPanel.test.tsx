@@ -214,4 +214,18 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
 
     expect(onOpenRun).toHaveBeenCalledWith("run_10931");
   });
+
+  it("calls onOpenThread when clicking an item link with thread query parameter (#1712)", async () => {
+    vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(mockInboxData);
+    const onOpenThread = vi.fn();
+
+    render(<InboxPanel onOpenThread={onOpenThread} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("inbox-action-approval_1")).not.toBeNull();
+    });
+    fireEvent.click(screen.getByTestId("inbox-action-approval_1"));
+
+    expect(onOpenThread).toHaveBeenCalledWith("th_restart");
+  });
 });

@@ -230,3 +230,26 @@ def test_escalation_triggers_web_push(monkeypatch: pytest.MonkeyPatch) -> None:
     assert payload["topic"] == "staff.escalation"
     assert "Flaky network partition" in payload["title"]
     assert payload["deep_link"] == "/staff?thread=th_123"
+
+
+@pytest.mark.unit
+def test_dispatch_approval_names_role_repo_and_proposal(client: TestClient) -> None:
+    """Two near-duplicate dispatch proposals must be told apart in the inbox (#1712)."""
+    c_store = get_conversation_store()
+    th = c_store.create_thread(title="Barb test 4", kind="direct", participants=["barb", "user"])
+    prop = c_store.create_proposal(
+        message_id="msg_d1",
+        thread_id=th.id,
+        action="staff.dispatch",
+        params={"role": "cartographer", "repo": "Runner_Dashboard", "prompt": "Map the repo read-only."},
+        risk="medium",
+    )
+
+    with patch("projects.service.configured_repos", return_value=[]):
+        data = client.get("/api/v1/staff/inbox").json()
+
+    item = next(i for i in data["items"] if i["id"] == f"approval_{prop.id}")
+    assert "cartographer" in item["title"]
+    assert "Runner_Dashboard" in item["title"]
+    assert prop.id in item["summary"]
+    assert "Map the repo read-only." in item["summary"]

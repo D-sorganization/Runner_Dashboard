@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -28,13 +27,12 @@ from routers.staff import (
 from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_schedule import HoldsBody
 from staff import fleet as staff_fleet
-from staff import usage
+from staff import summary_view, usage
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
     get_audit_store,
     record_audit,
 )
-from staff.classifier import format_attention_items
 from staff.cli_version import provider_versions
 from staff.idempotency import (
     IdempotencyStoreError,
@@ -197,42 +195,12 @@ async def board_v1(
 async def summary_v1(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    runner = get_runner()
-    board_view = await staff_fleet.aggregate_board(staff_fleet.local_board(runner))
-    since = (datetime.now(UTC) - timedelta(hours=24)).isoformat().replace("+00:00", "Z")
-    recent = runner.store.list_runs(limit=200, since=since)
-    counts: dict[str, int] = {}
-    for run in recent:
-        counts[run.status] = counts.get(run.status, 0) + 1
-    attention = format_attention_items(recent)
-    keep = (
-        "id",
-        "role",
-        "machine",
-        "status",
-        "target_kind",
-        "target_ref",
-        "created_at",
-        "started_at",
-        "ended_at",
-        "error",
-    )
-    recent_runs = [{k: getattr(r, k) for k in keep} for r in recent[:20]]
-    scheduler = get_scheduler()
-    sched_view = scheduler.schedule_view(runner.roles())
-    return {
-        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "machine": runner.machine,
-        "in_flight": board_view.get("running_runs", 0),
-        "queued": board_view.get("queued_runs", 0),
-        "counts_24h": counts,
-        "spend_today_usd": board_view.get("spend_today_usd", 0.0),
-        "recent_runs": recent_runs,
-        "attention": attention,
-        "holds": sched_view.get("holds", []),
-        "schedule": sched_view.get("schedule", []),
-        "liveness_alerts": board_view.get("liveness_alerts", []),
-    }
+    """The one-call staff brief, identical to ``GET /api/staff/summary`` (#1195).
+
+    One builder serves both routes, so the versioned API cannot drift from the
+    payload Barb and the staff runs read.
+    """
+    return await summary_view.build_staff_summary()
 
 
 # ── Runs & Pagination ──────────────────────────────────────────────────────────

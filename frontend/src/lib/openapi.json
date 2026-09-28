@@ -17622,6 +17622,7 @@
     },
     "/api/v1/staff/summary": {
       "get": {
+        "description": "The one-call staff brief, identical to ``GET /api/staff/summary`` (#1195).\n\nOne builder serves both routes, so the versioned API cannot drift from the\npayload Barb and the staff runs read.",
         "operationId": "summary_v1_api_v1_staff_summary_get",
         "responses": {
           "200": {

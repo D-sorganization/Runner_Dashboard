@@ -46,4 +46,25 @@ describe("StaffPage console", () => {
       expect(screen.getByRole("tab", { name: tab })).toBeInTheDocument();
     }
   });
+
+  it("opens the thread named by ?thread= so its proposal can be decided (#1712)", async () => {
+    window.history.pushState({}, "", "/staff?thread=th_barb_prop");
+    const thread = { id: "th_barb_prop", title: "Barb proposal thread", kind: "direct", participants: ["barb"], status: "active" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (/\/staff\/roster$/.test(url)) return jsonResponse(200, ROSTER);
+        if (/\/staff\/threads\/th_barb_prop$/.test(url)) return jsonResponse(200, { thread, messages: [] });
+        return jsonResponse(404, { detail: "Not Found" });
+      }),
+    );
+    try {
+      render(<StaffPage />);
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { name: "Barb proposal thread" })).toBeInTheDocument(),
+      );
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
 });

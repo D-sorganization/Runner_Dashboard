@@ -341,9 +341,12 @@ def parse_role(
     )
 
 
+# The built-in free-form role; with no repository it has nothing to open a PR against.
+AD_HOC_ROLE = "ad-hoc"
+
 _FALLBACK_ROLES: tuple[dict[str, Any], ...] = (
     {
-        "name": "ad-hoc",
+        "name": AD_HOC_ROLE,
         "title": "Ad-hoc task",
         "summary": "Free-form coding task dispatched by an operator.",
         "providers": ["claude", "codex", "antigravity"],

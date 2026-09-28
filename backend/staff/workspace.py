@@ -19,6 +19,13 @@ log = logging.getLogger("dashboard.staff.workspace")
 
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
 
+# The runner marks a run that exits without this line as failed (#1221), so it is the
+# last sentence of both rule sets rather than a clause mid-paragraph (Barb's live test, 2026-09-27).
+RESULT_CONTRACT = (
+    "Output contract: the very last line of your final message must start with 'STAFF_RESULT:' followed by a "
+    "one-sentence summary. A run that ends without that line is recorded as failed, even when the work is done."
+)
+
 FLEET_RULES = (
     "Fleet rules: work only inside this worktree; TDD, DbC, LoD, DRY; commit with a Conventional Commits "
     "subject; if docs/development/HANDOFF.md exists update it in the same commit; push the branch and open a "
@@ -27,19 +34,34 @@ FLEET_RULES = (
     "issue, skip it if an open pull request already references it (gh pr list --state open --search '<number>'); "
     "never file bulk "
     "remediation issues (report findings in one issue or the PR instead); "
-    "when done, print a final line starting with 'STAFF_RESULT:' followed by a one-sentence summary and the "
-    "PR URL if any."
+    "include the PR URL, if you opened one, in your STAFF_RESULT summary. " + RESULT_CONTRACT
 )
 
 READ_ONLY_FLEET_RULES = (
     "Fleet rules (code-read-only run, #1659): read and report only; do not edit, create or delete files, "
     "do not commit, push branches or open, comment on or merge pull requests or issues; use the local "
     "dashboard API and read-only gh/git commands; never take an issue or PR labelled claim:local or under "
-    "another agent's live lease; when done, print a final line starting with 'STAFF_RESULT:' followed by a "
-    "one-sentence summary."
+    "another agent's live lease. " + RESULT_CONTRACT
 )
 
 PLAYBOOK_MAX_CHARS = 16000
+
+
+def dashboard_api_note() -> str:
+    """Where an unattended run reads live fleet facts (Barb's live test, 2026-09-27).
+
+    Runs start in a fresh worktree, often with no repository at all, so without
+    this line an agent asked for "machines online" has no source and either
+    guesses or gives up. GETs from loopback need no token; fleet actions send the
+    run's ``FLEET_API_TOKEN`` (minted per run in ``staff.runner``).
+    """
+    base = f"http://127.0.0.1:{os.environ.get('DASHBOARD_PORT', '8321')}/api"
+    return (
+        "Live fleet facts (machines online, runs in flight, holds, schedules, spend) come from the local "
+        f"Runner Dashboard API, never from memory: `curl -s {base}/staff/summary` is the one-call brief; "
+        f"`{base}/staff/board` and `{base}/staff/runs` have detail. Fleet actions send "
+        '`-H "Authorization: Bearer $FLEET_API_TOKEN"`.'
+    )
 
 
 def repos_roots() -> list[Path]:
@@ -309,6 +331,7 @@ def compose_prompt(
         )
         parts.append(get_chat_contract_text(contract_rel))
     else:
+        parts.append(dashboard_api_note())
         parts.append(READ_ONLY_FLEET_RULES if role.code_read_only else FLEET_RULES)
 
     return "\n\n".join(parts)

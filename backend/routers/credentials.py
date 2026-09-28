@@ -151,6 +151,19 @@ def _env_present_anywhere(key: str) -> bool:
     return False
 
 
+def _cli_login_file_present(env_var: str, default_home_subdir: str, filename: str) -> bool:
+    """Return whether the CLI's own subscription-login file exists.
+
+    Codex CLI (``codex login``) writes ``auth.json`` under ``$CODEX_HOME``
+    (default ``~/.codex``); Claude Code CLI (``claude login``) writes
+    ``.credentials.json`` under ``$CLAUDE_CONFIG_DIR`` (default ``~/.claude``).
+    Only existence is checked -- the file is never opened, read, or logged.
+    """
+    base = os.environ.get(env_var, "").strip()
+    login_dir = Path(base) if base else Path.home() / default_home_subdir
+    return (login_dir / filename).exists()
+
+
 def _find_binary(name: str) -> str | None:
     """Search for a binary on PATH and in common installation locations."""
     # First: PATH lookup
@@ -404,25 +417,36 @@ def _probe_jules_api() -> dict[str, Any]:
 
 
 def _probe_codex_cli() -> dict[str, Any]:
-    """Probe OpenAI Codex CLI presence and key configuration."""
+    """Probe OpenAI Codex CLI presence and authentication.
+
+    Authentication is satisfied either by ``OPENAI_API_KEY`` or by a
+    ``codex login`` subscription session (``auth.json`` under ``$CODEX_HOME``,
+    default ``~/.codex``).
+    """
     codex_binary = _find_binary("codex")
     openai_key = _env_present("OPENAI_API_KEY")
+    codex_login = _cli_login_file_present("CODEX_HOME", ".codex", "auth.json")
+    authenticated = openai_key or codex_login
+    if openai_key:
+        auth_detail = "Ready (OPENAI_API_KEY)"
+    elif codex_login:
+        auth_detail = "Ready (codex login)"
+    else:
+        auth_detail = "not signed in: run `codex login` or set OPENAI_API_KEY"
     return {
         "id": "codex_cli",
         "label": "Codex CLI",
         "icon": "openai",
         "installed": codex_binary is not None,
-        "authenticated": openai_key,
-        "reachable": codex_binary is not None and openai_key,
-        "usable": codex_binary is not None and openai_key,
+        "authenticated": authenticated,
+        "reachable": codex_binary is not None and authenticated,
+        "usable": codex_binary is not None and authenticated,
         "binary_found": codex_binary is not None,
         "key_status": "set" if openai_key else "missing",
-        "status": ("ready" if (codex_binary and openai_key) else ("missing_key" if codex_binary else "not_installed")),
-        "detail": (
-            "Ready"
-            if (codex_binary and openai_key)
-            else ("OPENAI_API_KEY not set" if codex_binary else "codex not on PATH or npm-global")
+        "status": (
+            "ready" if (codex_binary and authenticated) else ("missing_key" if codex_binary else "not_installed")
         ),
+        "detail": (auth_detail if codex_binary else "codex not on PATH or npm-global"),
         "config_source": (
             _env_source("OPENAI_API_KEY") if openai_key else ("system" if codex_binary else "unavailable")
         ),
@@ -433,27 +457,36 @@ def _probe_codex_cli() -> dict[str, Any]:
 
 
 def _probe_claude_code_cli() -> dict[str, Any]:
-    """Probe Anthropic Claude Code CLI presence and key configuration."""
+    """Probe Anthropic Claude Code CLI presence and authentication.
+
+    Authentication is satisfied either by ``ANTHROPIC_API_KEY`` or by a
+    ``claude login`` subscription session (``.credentials.json`` under
+    ``$CLAUDE_CONFIG_DIR``, default ``~/.claude``).
+    """
     claude_binary = shutil.which("claude")
     anthropic_key = _env_present_anywhere("ANTHROPIC_API_KEY")
+    claude_login = _cli_login_file_present("CLAUDE_CONFIG_DIR", ".claude", ".credentials.json")
+    authenticated = anthropic_key or claude_login
+    if anthropic_key:
+        auth_detail = "Ready (ANTHROPIC_API_KEY)"
+    elif claude_login:
+        auth_detail = "Ready (claude login)"
+    else:
+        auth_detail = "not signed in: run `claude login` or set ANTHROPIC_API_KEY"
     return {
         "id": "claude_code_cli",
         "label": "Claude Code CLI",
         "icon": "anthropic",
         "installed": claude_binary is not None,
-        "authenticated": anthropic_key,
-        "reachable": claude_binary is not None and anthropic_key,
-        "usable": claude_binary is not None and anthropic_key,
+        "authenticated": authenticated,
+        "reachable": claude_binary is not None and authenticated,
+        "usable": claude_binary is not None and authenticated,
         "binary_found": claude_binary is not None,
         "key_status": "set" if anthropic_key else "missing",
         "status": (
-            "ready" if (claude_binary and anthropic_key) else ("missing_key" if claude_binary else "not_installed")
+            "ready" if (claude_binary and authenticated) else ("missing_key" if claude_binary else "not_installed")
         ),
-        "detail": (
-            "Ready"
-            if (claude_binary and anthropic_key)
-            else ("ANTHROPIC_API_KEY not set" if claude_binary else "claude not found on PATH")
-        ),
+        "detail": (auth_detail if claude_binary else "claude not found on PATH"),
         "config_source": (
             _env_source("ANTHROPIC_API_KEY") if anthropic_key else ("system" if claude_binary else "unavailable")
         ),
