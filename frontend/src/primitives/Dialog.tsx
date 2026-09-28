@@ -19,19 +19,7 @@ import React, {
   useRef,
 } from "react";
 
-// ── Focusable element selector ────────────────────────────────────────────────
-const FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
-function getFocusable(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-}
+import { getFocusable } from "./focusable";
 
 function prefersReducedMotion(): boolean {
   return (
@@ -220,7 +208,7 @@ export function Dialog({
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15,17,23,0.7)",
+          background: "rgba(0, 0, 0, 0.5)",
           zIndex: 9998,
           animation: reduced ? undefined : "dialogOverlayIn 150ms ease",
         }}
@@ -249,10 +237,10 @@ export function Dialog({
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
-            background: "var(--bg-secondary)",
+            background: "var(--bg-card)",
             border: "1px solid var(--border)",
-            borderRadius: 12,
-            boxShadow: "0 16px 48px rgba(0,0,0,0.35)",
+            borderRadius: "var(--radius-lg, 14px)",
+            boxShadow: "var(--shadow-modal)",
             maxWidth: 520,
             width: "100%",
             maxHeight: "85vh",
@@ -346,13 +334,15 @@ export function DialogClose({
         onClick?.(e);
       }}
       style={{
-        padding: "8px 14px",
+        padding: "7px 14px",
         fontSize: 13,
-        borderRadius: 6,
+        fontWeight: 500,
+        borderRadius: "var(--radius-sm, 6px)",
         border: "1px solid var(--border)",
-        background: "var(--bg-primary)",
+        background: "var(--bg-secondary)",
         color: "var(--text-primary)",
         cursor: "pointer",
+        transition: "background-color 140ms ease-out",
       }}
       {...rest}
     >

@@ -28,6 +28,24 @@ import {
   itemsByGroup,
   type NavItem,
 } from "./navRegistry";
+import { Tooltip } from "../primitives/Tooltip";
+import { ConnectionIndicator } from "../primitives/ConnectionIndicator";
+
+function ProductMark({ size = 20 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 512 512"
+      width={size}
+      height={size}
+      style={{ flexShrink: 0, borderRadius: "var(--radius-sm, 6px)" }}
+    >
+      <rect width="512" height="512" rx="96" fill="var(--bg-tertiary, #1c2333)" />
+      <path d="M292 78 146 304h104l-24 130 140-222H258z" fill="var(--accent-blue, #58a6ff)" />
+      <path d="M292 78 258 212h108L226 434l24-130H146z" fill="var(--accent-green, #3fb950)" opacity=".72" />
+    </svg>
+  );
+}
 
 const COLLAPSED_GROUPS_KEY = "dashboard.sidebar.collapsedGroups";
 const RAIL_COLLAPSED_KEY = "dashboard.sidebar.railCollapsed";
@@ -117,15 +135,20 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
     [],
   );
 
+  const nodeName =
+    typeof window !== "undefined" && window.location.hostname
+      ? window.location.hostname
+      : "localhost";
+
   const renderItem = (item: NavItem) => {
     const isActive = item.tabId === activeTabId;
     const Icon = item.Icon;
-    return (
+    const itemBtn = (
       <button
         key={item.id}
         type="button"
         data-nav-item="true"
-        title={item.tooltip}
+        title={railCollapsed ? undefined : item.tooltip}
         aria-label={railCollapsed ? item.label : undefined}
         aria-current={isActive ? "page" : undefined}
         onClick={() => onSelect(item.tabId)}
@@ -136,27 +159,52 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
           gap: 10,
           width: "100%",
           textAlign: "left",
-          padding: railCollapsed ? "8px 0" : "6px 10px",
+          height: 32,
+          minHeight: 32,
+          boxSizing: "border-box",
+          padding: railCollapsed ? 0 : "0 10px",
           justifyContent: railCollapsed ? "center" : "flex-start",
           margin: "1px 0",
-          borderRadius: 6,
+          borderRadius: "var(--radius-sm, 6px)",
           border: "none",
           borderLeft: isActive
             ? "2px solid var(--accent-blue, #58a6ff)"
             : "2px solid transparent",
-          background: isActive ? "var(--bg-hover, #252d3a)" : "transparent",
+          background: isActive
+            ? "var(--badge-info-bg, rgba(88, 166, 255, 0.15))"
+            : "transparent",
           color: isActive
             ? "var(--text-primary, #e6edf3)"
             : "var(--text-secondary, #8b949e)",
-          fontSize: 13,
+          fontSize: "13.5px",
           fontWeight: isActive ? 600 : 400,
           cursor: "pointer",
+          transition: "background 120ms ease, color 120ms ease",
         }}
       >
         <Icon />
-        {!railCollapsed && <span>{item.label}</span>}
+        {!railCollapsed && (
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}
+          </span>
+        )}
       </button>
     );
+
+    if (railCollapsed) {
+      return (
+        <Tooltip key={item.id} content={item.label} placement="right">
+          {itemBtn}
+        </Tooltip>
+      );
+    }
+    return itemBtn;
   };
 
   return (
@@ -164,24 +212,59 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
       ref={navRef}
       aria-label="Dashboard sections"
       style={{
-        width: railCollapsed ? 56 : 232,
+        width: railCollapsed ? 56 : 240,
         flex: "0 0 auto",
         height: "100%",
         boxSizing: "border-box",
-        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
         background: "var(--bg-secondary, #161b22)",
         borderRight: "1px solid var(--border, #30363d)",
-        padding: "8px 8px 16px",
         transition: "width 140ms ease",
+        overflow: "hidden",
       }}
     >
+      {/* Top Header: product mark, name, collapse button */}
       <div
         style={{
+          flex: "0 0 auto",
           display: "flex",
-          justifyContent: railCollapsed ? "center" : "flex-end",
-          marginBottom: 8,
+          alignItems: "center",
+          justifyContent: railCollapsed ? "center" : "space-between",
+          padding: railCollapsed ? "10px 0 8px" : "12px 12px 10px",
+          borderBottom: "1px solid var(--border, #30363d)",
+          gap: 8,
+          minHeight: 48,
+          boxSizing: "border-box",
         }}
       >
+        {!railCollapsed ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              minWidth: 0,
+            }}
+          >
+            <ProductMark size={22} />
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: 14,
+                color: "var(--text-primary, #e6edf3)",
+                letterSpacing: "-0.01em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              Runner Dashboard
+            </span>
+          </div>
+        ) : (
+          <ProductMark size={22} />
+        )}
         <button
           type="button"
           aria-label={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -194,11 +277,12 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
             justifyContent: "center",
             width: 28,
             height: 28,
-            borderRadius: 6,
+            borderRadius: "var(--radius-sm, 6px)",
             border: "1px solid var(--border, #30363d)",
             background: "var(--bg-primary, #0f1117)",
             color: "var(--text-secondary, #8b949e)",
             cursor: "pointer",
+            flexShrink: 0,
           }}
         >
           <svg
@@ -218,63 +302,142 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
         </button>
       </div>
 
-      {NAV_GROUPS.map((group) => {
-        const items = grouped[group.id] ?? [];
-        const isCollapsed = collapsedGroups.has(group.id);
-        return (
-          <div key={group.id} style={{ marginBottom: railCollapsed ? 4 : 10 }}>
-            {!railCollapsed && (
-              <button
-                type="button"
-                aria-expanded={!isCollapsed}
-                title={group.label}
-                onClick={() => toggleGroup(group.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  width: "100%",
-                  padding: "4px 8px",
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--text-muted, #7a838e)",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                }}
-              >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  width="12"
-                  height="12"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+      {/* Middle: Scrollable nav groups */}
+      <div
+        style={{
+          flex: "1 1 auto",
+          overflowY: "auto",
+          overflowX: "hidden",
+          padding: "8px 8px 16px",
+        }}
+      >
+        {NAV_GROUPS.map((group) => {
+          const items = grouped[group.id] ?? [];
+          const isCollapsed = collapsedGroups.has(group.id);
+          return (
+            <div key={group.id} style={{ marginBottom: railCollapsed ? 4 : 10 }}>
+              {!railCollapsed && (
+                <button
+                  type="button"
+                  aria-expanded={!isCollapsed}
+                  title={group.label}
+                  onClick={() => toggleGroup(group.id)}
                   style={{
-                    transform: isCollapsed ? "rotate(-90deg)" : undefined,
-                    transition: "transform 120ms",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    width: "100%",
+                    padding: "4px 8px",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text-muted, #868e98)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    cursor: "pointer",
                   }}
                 >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-                <span>{group.label}</span>
-              </button>
-            )}
-            {/* In rail mode groups are always shown (icons only). When expanded,
-                a collapsed group hides its items. */}
-            {(railCollapsed || !isCollapsed) && (
-              <div role="list" style={{ marginTop: 2 }}>
-                {items.map(renderItem)}
-              </div>
-            )}
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{
+                      transform: isCollapsed ? "rotate(-90deg)" : undefined,
+                      transition: "transform 120ms",
+                    }}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                  <span>{group.label}</span>
+                </button>
+              )}
+              {/* In rail mode groups are always shown (icons only). When expanded,
+                  a collapsed group hides its items. */}
+              {(railCollapsed || !isCollapsed) && (
+                <div role="list" style={{ marginTop: 2 }}>
+                  {items.map(renderItem)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer: Node hostname + ConnectionIndicator */}
+      <div
+        data-testid="sidebar-footer"
+        style={{
+          flex: "0 0 auto",
+          borderTop: "1px solid var(--border, #30363d)",
+          padding: railCollapsed ? "8px 4px" : "8px 12px",
+          display: "flex",
+          flexDirection: railCollapsed ? "column" : "row",
+          alignItems: "center",
+          justifyContent: railCollapsed ? "center" : "space-between",
+          gap: 6,
+          background: "var(--bg-secondary, #161b22)",
+          minHeight: 40,
+          boxSizing: "border-box",
+        }}
+      >
+        {!railCollapsed ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "var(--radius-pill, 9999px)",
+                background: "var(--accent-green, #3fb950)",
+                flexShrink: 0,
+              }}
+              aria-hidden="true"
+            />
+            <span
+              style={{
+                fontSize: 12,
+                color: "var(--text-muted, #868e98)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontVariantNumeric: "tabular-nums",
+              }}
+              title={nodeName}
+            >
+              {nodeName}
+            </span>
           </div>
-        );
-      })}
+        ) : (
+          <Tooltip content={`Node: ${nodeName}`} placement="right">
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "var(--radius-pill, 9999px)",
+                background: "var(--accent-green, #3fb950)",
+                display: "inline-block",
+                cursor: "pointer",
+              }}
+              aria-label={`Node: ${nodeName}`}
+            />
+          </Tooltip>
+        )}
+        <ConnectionIndicator />
+      </div>
     </nav>
   );
 }

@@ -43,6 +43,7 @@ import { Stat } from "../components/Stat";
 import { SortTh } from "./decompSortTh";
 import { sortRows, type SortState } from "./decompSort";
 import {
+  AlertGlyph,
   ArrowDownGlyph,
   ArrowUpGlyph,
   PlayGlyph,
@@ -521,7 +522,8 @@ export function FleetTab(p: any): React.ReactElement {
               gap: 8,
             },
           },
-          "⚠️ Deployed version is behind origin/main. Run update-deployed.sh to update.",
+          h(AlertGlyph, { size: 12 }),
+          " Deployed version is behind origin/main. Run update-deployed.sh to update.",
           h(
             "span",
             { style: { opacity: 0.8, marginLeft: 4 } },

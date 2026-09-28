@@ -1,38 +1,20 @@
 /**
  * RosterRow.tsx — Individual role entry in the Staff Console Roster sidebar.
  *
- * Implements SC-D3 (Issue #1317) under Epic SC-D (#1350).
+ * Implements Workstream C (Issue #1721, Epic #1718).
  */
 import React from "react";
 import type { RosterRowProps, RosterStatus } from "./types";
-import { computeRoleStatus, formatRelativeTime } from "./rosterUtils";
+import { computeRoleStatus, formatRelativeTime, getRoleHue, getRoleTooltipText } from "./rosterUtils";
+import { Tooltip } from "../../primitives/Tooltip";
+import "./roster.css";
 
-const STATUS_COLORS: Record<RosterStatus, { bg: string; border: string; label: string }> = {
-  idle: {
-    bg: "var(--accent-teal, #3fb950)",
-    border: "rgba(63, 185, 80, 0.4)",
-    label: "Idle",
-  },
-  working: {
-    bg: "var(--accent-blue, #58a6ff)",
-    border: "rgba(88, 166, 255, 0.4)",
-    label: "Working",
-  },
-  needs_you: {
-    bg: "var(--accent-yellow, #d29922)",
-    border: "rgba(210, 153, 34, 0.4)",
-    label: "Needs Attention",
-  },
-  unavailable: {
-    bg: "var(--text-muted, #868e98)",
-    border: "rgba(134, 142, 152, 0.4)",
-    label: "Unavailable",
-  },
-  invalid: {
-    bg: "var(--accent-red, #f85149)",
-    border: "rgba(248, 81, 73, 0.4)",
-    label: "Invalid",
-  },
+const STATUS_LABELS: Record<RosterStatus, string> = {
+  idle: "Idle",
+  working: "Working",
+  needs_you: "Needs Attention",
+  unavailable: "Unavailable",
+  invalid: "Invalid",
 };
 
 export const RosterRow: React.FC<RosterRowProps> = ({
@@ -46,11 +28,23 @@ export const RosterRow: React.FC<RosterRowProps> = ({
   isAutoRoute = false,
 }) => {
   const { status, reason } = computeRoleStatus(role, availableProviders);
-  const statusMeta = STATUS_COLORS[status];
-  const statusTooltip = reason ? `Status: ${statusMeta.label} (${reason})` : `Status: ${statusMeta.label}`;
+  const statusLabel = STATUS_LABELS[status];
+  const tooltipDetail = getRoleTooltipText(role, availableProviders);
+  const statusTooltip = reason ? `Status: ${statusLabel} (${tooltipDetail})` : `Status: ${statusLabel}`;
 
   const totalUnread = (role.caller_unread_count ?? 0) + (role.pending_proposals_count ?? 0);
   const relativeAge = formatRelativeTime(role.last_message_at);
+
+  let statusDotType = "unavailable";
+  if (status === "invalid") {
+    statusDotType = "invalid";
+  } else if ((role.holds && role.holds.length > 0) || status === "working" || status === "needs_you") {
+    statusDotType = "busy";
+  } else if (status === "idle") {
+    statusDotType = "available";
+  } else {
+    statusDotType = "unavailable";
+  }
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -76,6 +70,15 @@ export const RosterRow: React.FC<RosterRowProps> = ({
     ? "★"
     : (role.avatar || role.title.charAt(0) || role.name.charAt(0)).toUpperCase();
 
+  const hue = getRoleHue(role.name);
+  const avatarStyle: React.CSSProperties = isAutoRoute
+    ? {}
+    : {
+        backgroundColor: `hsl(${hue}, 42%, 30%)`,
+        color: "var(--text-on-accent)",
+        borderColor: `hsl(${hue}, 48%, 42%)`,
+      };
+
   return (
     <div
       data-testid={`roster-row-${role.name}`}
@@ -84,125 +87,49 @@ export const RosterRow: React.FC<RosterRowProps> = ({
       data-status={status}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      className={`staff-roster-row ${isSelected ? "staff-roster-row--selected" : ""}`}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "8px 12px",
-        margin: "2px 0",
-        borderRadius: "6px",
-        cursor: "pointer",
-        backgroundColor: isSelected
-          ? "var(--bg-hover, #252d3a)"
-          : isFocused
-          ? "var(--bg-tertiary, #1c2333)"
-          : "transparent",
-        border: isSelected
-          ? "1px solid var(--accent-blue, #58a6ff)"
-          : isFocused
-          ? "1px solid var(--border-light, #3d444d)"
-          : "1px solid transparent",
-        transition: "background-color 0.15s ease, border-color 0.15s ease",
-        userSelect: "none",
-        outline: isFocused ? "2px solid var(--accent-blue, #58a6ff)" : undefined,
-        outlineOffset: isFocused ? "2px" : undefined,
-      }}
+      className={`staff-roster-row ${isSelected ? "staff-roster-row--selected" : ""} ${
+        isFocused ? "staff-roster-row--focused" : ""
+      } ${isAutoRoute ? "staff-roster-row--barb" : ""}`}
     >
-      {/* Left section: Avatar + Role Info (Clickable button) */}
+      {/* Accessible button for keyboard navigation & clicking */}
       <button
         type="button"
         data-testid={`roster-row-btn-${role.name}`}
         aria-label={`${role.title}, ${statusTooltip}`}
         onClick={handleClick}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          minWidth: 0,
-          flex: 1,
-          gap: "10px",
-          background: "none",
-          border: "none",
-          padding: 0,
-          margin: 0,
-          cursor: "pointer",
-          textAlign: "left",
-          color: "inherit",
-          font: "inherit",
-        }}
+        className="roster-row-btn"
       >
         {/* Avatar with status indicator */}
-        <div style={{ position: "relative", flexShrink: 0 }}>
-          <div
-            style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "50%",
-              backgroundColor: isAutoRoute
-                ? "var(--accent-purple, #bc8cff)"
-                : "var(--bg-card, #1c2128)",
-              border: "1px solid var(--border, #30363d)",
-              color: isAutoRoute ? "#ffffff" : "var(--text-primary, #e6edf3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 600,
-              fontSize: isAutoRoute ? "16px" : "13px",
-            }}
-          >
+        <div className="roster-avatar-wrap">
+          <div className="roster-avatar" style={avatarStyle}>
             {avatarInitial}
           </div>
 
-          {/* Status Dot */}
-          <span
-            data-testid={`status-dot-${role.name}`}
-            data-status={status}
-            title={statusTooltip}
-            aria-label={statusTooltip}
-            style={{
-              position: "absolute",
-              bottom: "-1px",
-              right: "-1px",
-              width: "10px",
-              height: "10px",
-              borderRadius: "50%",
-              backgroundColor: statusMeta.bg,
-              border: `2px solid var(--bg-primary, #0f1117)`,
-              boxShadow: `0 0 0 1px ${statusMeta.border}`,
-            }}
-          />
+          {/* Status dot with tooltip. The anchor pins it to the avatar corner;
+              Tooltip's own relative wrapper would otherwise flow below. */}
+          <span className="roster-status-dot-anchor">
+            <Tooltip content={statusTooltip} placement="right" delayMs={150}>
+              <span
+                data-testid={`status-dot-${role.name}`}
+                data-status={status}
+                title={statusTooltip}
+                aria-label={statusTooltip}
+                className={`roster-status-dot roster-status-dot--${statusDotType}`}
+              />
+            </Tooltip>
+          </span>
         </div>
 
         {/* Text Details */}
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span
-              style={{
-                fontWeight: isSelected ? 600 : 500,
-                fontSize: "13px",
-                color: isSelected
-                  ? "var(--accent-blue, #58a6ff)"
-                  : "var(--text-primary, #e6edf3)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
+        <div className="roster-row-details">
+          <div className="roster-row-name-wrap">
+            <span className="roster-row-name">
               {role.title}
             </span>
           </div>
 
-          {/* Subtitle / Last Message Preview */}
-          <div
-            style={{
-              fontSize: "11px",
-              color: "var(--text-secondary, #8b949e)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              marginTop: "1px",
-            }}
-          >
+          {/* Subtitle / Mandate / Last Message Preview */}
+          <div className="roster-row-mandate">
             {role.last_message_preview ? (
               <span>
                 {role.last_message_preview}
@@ -215,30 +142,14 @@ export const RosterRow: React.FC<RosterRowProps> = ({
         </div>
       </button>
 
-      {/* Right section: Unread badge + Pin toggle */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-        {/* Tooltip trigger or reason indicator if unavailable/invalid */}
+      {/* Right controls: unread badge + pin toggle */}
+      <div className="roster-row-controls">
+        {/* Hidden reason element preserving data-testid for assertions */}
         {(status === "unavailable" || status === "invalid") && reason && (
           <span
             data-testid={`status-reason-${role.name}`}
-            title={statusTooltip}
-            style={{
-              fontSize: "10px",
-              padding: "2px 5px",
-              borderRadius: "4px",
-              backgroundColor:
-                status === "invalid"
-                  ? "var(--badge-danger-bg, rgba(248, 81, 73, 0.15))"
-                  : "var(--badge-neutral-bg, rgba(110, 118, 129, 0.15))",
-              color:
-                status === "invalid"
-                  ? "var(--badge-danger-fg, #f85149)"
-                  : "var(--badge-neutral-fg, #8b949e)",
-              maxWidth: "85px",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
+            className="sr-only"
+            aria-hidden="true"
           >
             {reason}
           </span>
@@ -249,22 +160,13 @@ export const RosterRow: React.FC<RosterRowProps> = ({
           <span
             data-testid={`unread-badge-${role.name}`}
             aria-label={`${totalUnread} unread messages`}
-            style={{
-              backgroundColor: "var(--accent-blue, #58a6ff)",
-              color: "var(--text-on-accent, #ffffff)",
-              fontSize: "11px",
-              fontWeight: 700,
-              padding: "1px 6px",
-              borderRadius: "10px",
-              minWidth: "18px",
-              textAlign: "center",
-            }}
+            className="roster-unread-badge"
           >
             {totalUnread}
           </span>
         )}
 
-        {/* Pin toggle button */}
+        {/* Pin toggle button with neutral SVG icon */}
         {onTogglePin && (
           <button
             type="button"
@@ -272,25 +174,26 @@ export const RosterRow: React.FC<RosterRowProps> = ({
             aria-label={isPinned ? `Unpin ${role.title}` : `Pin ${role.title}`}
             title={isPinned ? "Unpin role" : "Pin role"}
             onClick={handlePinClick}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "4px",
-              color: isPinned
-                ? "var(--accent-yellow, #d29922)"
-                : "var(--text-muted, #868e98)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "14px",
-              borderRadius: "4px",
-            }}
+            className={`roster-pin-button ${isPinned ? "roster-pin-button--pinned" : ""}`}
           >
-            {isPinned ? "📌" : "📍"}
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill={isPinned ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="12" y1="17" x2="12" y2="22" />
+              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+            </svg>
           </button>
         )}
       </div>
     </div>
   );
 };
+

@@ -324,6 +324,30 @@ def test_list_route_with_malformed_priority_file_reports_error(
     assert {p["priority"]["tier"] for p in body["projects"]} == {"unranked"}
 
 
+def test_list_route_forbidden_priority_file_reports_a_readable_cause(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A GitHub 403 names the missing App permission, not the raw API JSON (#1718 review)."""
+    _wire(monkeypatch)
+    inner = service.gh_api
+    prio_endpoint = f"/repos/{service.ORG}/{priorities.PRIORITIES_REPO}/contents/{priorities.PRIORITIES_PATH}"
+
+    async def forbidden(endpoint: str) -> Any:
+        if endpoint == prio_endpoint:
+            raise HTTPException(
+                status_code=502,
+                detail=f"GitHub API error (403): GitHub 403: {endpoint} — "
+                '{"message":"Resource not accessible by integration"}',
+            )
+        return await inner(endpoint)
+
+    monkeypatch.setattr(service, "gh_api", forbidden)
+    body = client.get("/api/projects").json()
+    error = body["priorities_error"]
+    assert "Contents: read" in error and priorities.PRIORITIES_REPO in error
+    assert "{" not in error and "403" not in error
+
+
 def test_untracked_route(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     _wire(monkeypatch)
     resp = client.get("/api/projects/untracked")

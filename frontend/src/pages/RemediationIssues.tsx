@@ -15,7 +15,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
 import { Badge, type BadgeTone } from "../primitives/Badge";
 import { EmptyState } from "../primitives/EmptyState";
-import { RefreshGlyph } from "./decompIcons";
+import { RefreshGlyph, ShieldStopGlyph } from "./decompIcons";
 import {
   issueKey,
   issueMatchesFilters,
@@ -623,7 +623,13 @@ export function RemediationIssuesSubTab({
                             size="sm"
                             tone={judgementTone(taxonomy.judgement)}
                           >
-                            {isDangerous ? "🛑 " : ""}
+                            {isDangerous ? (
+                              <>
+                                <ShieldStopGlyph size={11} />{" "}
+                              </>
+                            ) : (
+                              ""
+                            )}
                             {taxonomy.judgement}
                           </Badge>
                         ) : (
@@ -786,7 +792,7 @@ export function RemediationIssuesSubTab({
                   fontWeight: 600,
                 }}
               >
-                🛑 Warning: one or more selected issues have judgement:design or
+                <ShieldStopGlyph size={12} /> Warning: one or more selected issues have judgement:design or
                 judgement:contested. These require panel review and should not be
                 auto-dispatched.
               </div>

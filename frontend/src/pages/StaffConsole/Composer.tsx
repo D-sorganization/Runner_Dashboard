@@ -1,12 +1,13 @@
 /**
  * Composer.tsx — Staff Console message input, supporting markdown, keyboard-first
- * @mentions and slash commands, voice input, persistent drafts, and reliable send with deduplication.
+ * @mentions and slash commands, voice input, persistent drafts, auto-growing input,
+ * and reliable send with deduplication.
  *
- * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350).
+ * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Workstream B (#1720).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVoiceInput } from "../../hooks/useVoiceInput";
-import type { ComposerProps, SlashCommand } from "./threadTypes";
+import type { ComposerProps as BaseComposerProps, SlashCommand } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
 import { ComposerAutocompletes } from "./ComposerAutocompletes";
 import {
@@ -19,8 +20,14 @@ import {
   getSlashCommandQuery,
   saveDraft,
 } from "./composerUtils";
+import "./composer.css";
+import { MicGlyph } from "../decompIcons";
 
-export const Composer: React.FC<ComposerProps> = ({
+interface ComposerComponentProps extends BaseComposerProps {
+  prefilledText?: string;
+}
+
+export const Composer: React.FC<ComposerComponentProps> = ({
   threadId,
   roles = [],
   selectedRole,
@@ -30,6 +37,7 @@ export const Composer: React.FC<ComposerProps> = ({
   className = "",
   focusOnThreadChange = false,
   isPanel = false,
+  prefilledText,
 }) => {
   const [text, setText] = useState<string>(() => getDraft(threadId));
   const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
@@ -54,8 +62,16 @@ export const Composer: React.FC<ComposerProps> = ({
     setActiveMenu(null);
   }, [threadId]);
 
+  // Handle external prefill (e.g. empty-state suggestion chips)
+  useEffect(() => {
+    if (prefilledText) {
+      setText(prefilledText);
+      saveDraft(threadId, prefilledText);
+      textareaRef.current?.focus();
+    }
+  }, [prefilledText, threadId]);
+
   // SC-D9: after a thread switch, keyboard focus follows the conversation.
-  // The first render is skipped so opening the page never steals focus.
   const focusedThreadRef = useRef(threadId);
   useEffect(() => {
     if (!focusOnThreadChange || focusedThreadRef.current === threadId) return;
@@ -79,7 +95,6 @@ export const Composer: React.FC<ComposerProps> = ({
   const getCaretPos = useCallback(() => {
     if (!textareaRef.current) return text.length;
     const pos = textareaRef.current.selectionStart;
-    // In test runners or before focus, selectionStart can be 0 while text has content
     if (pos === 0 && text.length > 0 && !textareaRef.current.matches(":focus")) {
       return text.length;
     }
@@ -106,7 +121,6 @@ export const Composer: React.FC<ComposerProps> = ({
     return filterSlashCommands(slashQuery.query);
   }, [slashQuery]);
 
-  // Update active menu based on queries
   useEffect(() => {
     if (mentionQuery && matchedRoles.length > 0) {
       setActiveMenu("mention");
@@ -130,7 +144,6 @@ export const Composer: React.FC<ComposerProps> = ({
     saveDraft(threadId, nextText);
     setActiveMenu(null);
 
-    // Set caret after the inserted mention synchronously
     if (textareaRef.current) {
       const newPos = before.length + role.name.length + 2;
       textareaRef.current.value = nextText;
@@ -175,19 +188,16 @@ export const Composer: React.FC<ComposerProps> = ({
         idempotencyKey: key,
         role: selectedRole,
       });
-      // useStaffConsole reports failure as { ok: false } rather than throwing.
       if (result && result.ok === false) {
         throw new Error(typeof result.error === "string" ? result.error : "Failed to send message");
       }
 
-      // Successful send: clear draft and reset input
       clearDraft(threadId);
       setText("");
       setIdempotencyKey(null);
       setSendState("sent");
       setTimeout(() => setSendState("idle"), 1000);
     } catch (err: unknown) {
-      // Failed send: preserve draft & keep idempotency key for retry
       setSendState("failed");
       const msg = err instanceof Error ? err.message : "Failed to send message";
       setErrorMessage(msg);
@@ -251,20 +261,19 @@ export const Composer: React.FC<ComposerProps> = ({
   };
 
   const panelDisabledMessage = "Panels run on their own; start a new panel to ask again.";
+  const roleItem = roles.find((r) => r.name === selectedRole);
+  const roleDisplayName = roleItem?.title || (selectedRole ? selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1) : "");
   const defaultPlaceholder = isPanel
     ? panelDisabledMessage
-    : placeholder || (selectedRole ? `Message ${selectedRole}…` : "Message Barb or type /dispatch…");
+    : placeholder || (roleDisplayName ? `Message ${roleDisplayName}…` : "Message Barb or type /dispatch…");
+
+  // Auto-grow rows from 1 to 10
+  const lineCount = (text.match(/\n/g) || []).length + 1;
+  const rows = Math.min(10, Math.max(1, lineCount));
+  const isSendDisabled = disabled || isPanel || sendState === "sending" || !text.trim();
 
   return (
-    <div
-      className={`staff-composer ${className}`}
-      style={{
-        position: "relative",
-        borderTop: "1px solid var(--border, #30363d)",
-        background: "var(--bg-secondary, #0d1117)",
-        padding: "12px 16px",
-      }}
-    >
+    <div className={`staff-composer ${className}`} role="region" aria-label="Message composer">
       {/* Autocomplete Popup */}
       <ComposerAutocompletes
         activeMenu={activeMenu}
@@ -283,13 +292,13 @@ export const Composer: React.FC<ComposerProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            background: "rgba(248, 81, 73, 0.12)",
-            border: "1px solid rgba(248, 81, 73, 0.4)",
+            background: "var(--badge-danger-bg)",
+            border: "1px solid var(--accent-red)",
             borderRadius: 6,
             padding: "6px 12px",
             marginBottom: 8,
             fontSize: 12,
-            color: "var(--accent-red, #f85149)",
+            color: "var(--accent-red)",
           }}
         >
           <span>Failed to send message: {errorMessage}</span>
@@ -297,8 +306,8 @@ export const Composer: React.FC<ComposerProps> = ({
             type="button"
             onClick={() => executeSend(idempotencyKey || undefined)}
             style={{
-              background: "var(--accent-red, #f85149)",
-              color: "#fff",
+              background: "var(--accent-red)",
+              color: "var(--text-on-accent)",
               border: "none",
               borderRadius: 4,
               padding: "2px 10px",
@@ -317,13 +326,13 @@ export const Composer: React.FC<ComposerProps> = ({
         <div
           role="alert"
           style={{
-            background: "rgba(248, 81, 73, 0.12)",
-            border: "1px solid rgba(248, 81, 73, 0.4)",
+            background: "var(--badge-danger-bg)",
+            border: "1px solid var(--accent-red)",
             borderRadius: 6,
             padding: "4px 8px",
             marginBottom: 6,
             fontSize: 11,
-            color: "var(--accent-red, #f85149)",
+            color: "var(--accent-red)",
           }}
         >
           Voice error: {voiceError}
@@ -336,21 +345,21 @@ export const Composer: React.FC<ComposerProps> = ({
           role="status"
           className="composer-panel-notice"
           style={{
-            background: "rgba(56, 139, 253, 0.1)",
-            border: "1px solid rgba(56, 139, 253, 0.3)",
+            background: "var(--badge-info-bg)",
+            border: "1px solid var(--accent-blue)",
             borderRadius: 6,
             padding: "6px 12px",
             marginBottom: 8,
             fontSize: 12,
-            color: "var(--text-secondary, #8b949e)",
+            color: "var(--text-secondary)",
           }}
         >
           {panelDisabledMessage}
         </div>
       )}
 
-      {/* Input Row */}
-      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+      {/* Claude-grade Rounded Bordered Box */}
+      <div className="staff-composer__box">
         <textarea
           ref={textareaRef}
           value={text}
@@ -361,85 +370,72 @@ export const Composer: React.FC<ComposerProps> = ({
           }}
           onKeyDown={handleKeyDown}
           placeholder={defaultPlaceholder}
-          rows={2}
+          rows={rows}
           aria-label="Staff conversation input"
+          className="staff-composer__textarea"
           style={{
-            flex: 1,
-            background: "var(--bg-tertiary, #161b22)",
-            border: "1px solid var(--border, #30363d)",
-            borderRadius: 8,
-            color: "var(--text-primary, #c9d1d9)",
-            fontFamily: "inherit",
-            fontSize: 13,
-            lineHeight: 1.45,
-            padding: "8px 12px",
-            resize: "vertical",
-            minHeight: 52,
-            boxSizing: "border-box",
-            outline: "none",
+            overflowY: rows >= 10 ? "auto" : "hidden",
+            maxHeight: "220px",
           }}
         />
 
-        {/* Voice Input Button */}
-        <button
-          type="button"
-          aria-label={
-            !voice.available
-              ? "Voice input not supported"
-              : voice.recording
-                ? "Stop voice input"
-                : "Voice input"
-          }
-          aria-pressed={voice.recording}
-          onClick={voice.available ? voice.toggle : undefined}
-          disabled={disabled || isPanel || sendState === "sending" || !voice.available}
-          title={!voice.available ? "Voice input is not supported in this browser" : undefined}
-          style={{
-            height: 40,
-            width: 40,
-            borderRadius: 8,
-            border: "1px solid var(--border, #30363d)",
-            background: voice.recording
-              ? "var(--accent-red, #f85149)"
-              : "var(--bg-tertiary, #161b22)",
-            color: voice.recording ? "#fff" : "var(--text-secondary, #c9d1d9)",
-            cursor: voice.available && !isPanel ? "pointer" : "not-allowed",
-            opacity: voice.available && !isPanel ? 1 : 0.5,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 16,
-            flexShrink: 0,
-          }}
-        >
-          {voice.recording ? "■" : "🎙"}
-        </button>
+        <div className="staff-composer__footer">
+          {/* Voice Input Button */}
+          <button
+            type="button"
+            aria-label={
+              !voice.available
+                ? "Voice input not supported"
+                : voice.recording
+                  ? "Stop voice input"
+                  : "Voice input"
+            }
+            aria-pressed={voice.recording}
+            onClick={voice.available ? voice.toggle : undefined}
+            disabled={disabled || isPanel || sendState === "sending" || !voice.available}
+            title={!voice.available ? "Voice input is not supported in this browser" : undefined}
+            className={`staff-composer__voice-btn ${voice.recording ? "staff-composer__voice-btn--recording" : ""}`}
+            style={{
+              cursor: voice.available && !isPanel ? "pointer" : "not-allowed",
+              opacity: voice.available && !isPanel ? 1 : 0.4,
+            }}
+          >
+            {voice.recording ? "■" : <MicGlyph size={16} />}
+          </button>
 
-        {/* Send Button */}
-        <button
-          type="button"
-          aria-label="Send message"
-          onClick={() => executeSend()}
-          disabled={disabled || isPanel || sendState === "sending" || !text.trim()}
-          style={{
-            height: 40,
-            padding: "0 16px",
-            borderRadius: 8,
-            border: "none",
-            background: "var(--accent-blue, #1f6feb)",
-            color: "#fff",
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: !text.trim() || sendState === "sending" || isPanel ? "not-allowed" : "pointer",
-            opacity: !text.trim() || sendState === "sending" || isPanel ? 0.6 : 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          {sendState === "sending" ? "…" : "Send ⮐"}
-        </button>
+          {/* Circular Accent Send Button */}
+          <button
+            type="button"
+            aria-label="Send message"
+            onClick={() => executeSend()}
+            disabled={isSendDisabled}
+            className="staff-composer__send-btn"
+          >
+            {sendState === "sending" ? (
+              <span style={{ fontSize: 13, lineHeight: 1 }}>…</span>
+            ) : (
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Muted Hint Line */}
+      <div className="staff-composer__hint">
+        Enter to send, Shift+Enter for a new line, @ to mention
       </div>
     </div>
   );

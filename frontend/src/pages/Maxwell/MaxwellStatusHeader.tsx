@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { TouchButton } from "../../primitives/TouchButton";
-import { statusEmoji, statusPillStyle } from "./mobileTypes";
+import { statusDotColor, statusPillStyle } from "./mobileTypes";
+import { GearGlyph } from "../decompIcons";
 
 interface MaxwellStatusHeaderProps {
   daemonStatus: string;
@@ -55,7 +56,16 @@ export function MaxwellStatusHeader({
           aria-label={`Maxwell daemon status: ${daemonStatus}`}
           style={pillStyle}
         >
-          <span aria-hidden="true">{statusEmoji(daemonStatus)}</span>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: statusDotColor(daemonStatus),
+            }}
+          />
           {daemonStatus}
         </span>
         {daemonVersion && (
@@ -90,7 +100,7 @@ export function MaxwellStatusHeader({
           variant="default"
           style={{ fontSize: 12, minHeight: 34, padding: "4px 10px" }}
         >
-          ⚙ Controls
+          <GearGlyph size={12} /> Controls
         </TouchButton>
       </div>
     </div>

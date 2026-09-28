@@ -20,7 +20,7 @@ import { Badge } from "../primitives/Badge";
 import { EmptyState } from "../primitives/EmptyState";
 import { TouchButton } from "../primitives/TouchButton";
 import { legacyFetch } from "../lib/api";
-import { RefreshGlyph } from "./decompIcons";
+import { RefreshGlyph, AlertGlyph } from "./decompIcons";
 
 /** A single hosted-runner routing violation row. */
 export interface RunnerAuditViolation {
@@ -126,7 +126,7 @@ export default function RunnerAudit({
       <div className="section-header runner-audit__header">
         <div className="section-title">
           <span aria-hidden="true" className="runner-audit__title-icon">
-            ⚠️
+            <AlertGlyph size={14} />
           </span>
           Hosted-Runner Billing Audit
         </div>

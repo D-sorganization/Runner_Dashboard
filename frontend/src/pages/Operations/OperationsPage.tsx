@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   OperationsStatusBanner,
   type OperationsDeploySummary,
@@ -45,47 +45,49 @@ export function OperationsPage(): React.ReactElement {
     }
   };
 
-  const handleDeployDataChange = (data: DeploymentStateData | null) => {
+  // Stable handlers: each section's loader depends on its callback, so a new
+  // function per render refetched every section on every summary update.
+  const handleDeployDataChange = useCallback((data: DeploymentStateData | null) => {
     if (!data) return;
     setDeploySummary({
       expectedVersion: data.expected_version,
       rolloutStatus: data.rollout_state?.status,
       driftCount: data.rollout_state?.machines_attention,
     });
-  };
+  }, []);
 
-  const handleAdmissionStatusChange = (status: QueueStatus | null) => {
+  const handleAdmissionStatusChange = useCallback((status: QueueStatus | null) => {
     if (!status) return;
     setAdmissionSummary({
       mode: status.mode,
       activeLeases: status.active_leases,
       workPlanned: status.work?.planned,
     });
-  };
+  }, []);
 
-  const handleRunnerHoursChange = (data: RunnerScheduleData) => {
+  const handleRunnerHoursChange = useCallback((data: RunnerScheduleData) => {
     setRunnerHoursSummary({
       desiredRunners: data.state?.desired ?? 0,
       onlineRunners: data.state?.online ?? 0,
     });
-  };
+  }, []);
 
-  const handleScheduledWorkflowsChange = (data: ScheduledWorkflowsData) => {
+  const handleScheduledWorkflowsChange = useCallback((data: ScheduledWorkflowsData) => {
     setScheduledWorkflowsSummary({
       totalCount: data.scheduled_workflow_count ?? data.repositories?.reduce(
         (acc, r) => acc + (r.scheduled_workflow_count || r.workflows?.length || 0),
         0,
       ) ?? 0,
     });
-  };
+  }, []);
 
-  const handleDiagnosticsChange = (data: DiagnosticsSummary | null) => {
+  const handleDiagnosticsChange = useCallback((data: DiagnosticsSummary | null) => {
     if (!data) return;
     setDiagnosticsSummary({
       gitDrift: data.is_drifted,
       memoryMb: data.dashboard_memory_mb,
     });
-  };
+  }, []);
 
   return (
     <div

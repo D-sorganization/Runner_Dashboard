@@ -378,6 +378,32 @@ describe("ProjectsPage", () => {
     );
   });
 
+  it("renders decision links as links, never raw Markdown (#1718)", async () => {
+    const url =
+      "https://github.com/D-sorganization/Alpha/blob/main/docs/development/planning/DV-9.md";
+    const project: ProjectOverview = {
+      ...ALPHA,
+      decisions_needed: [
+        `DV-9: Board decision pending on the [Owner Plan](${url})`,
+        "DV-10: [Run](javascript:alert%281%29) now",
+      ],
+    };
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({ ...RESPONSE, projects: [project], count: 1 }),
+      ),
+    ) as unknown as typeof fetch;
+    render(<ProjectsPage />);
+    const cardElement = await screen.findByTestId("project-card-Alpha");
+    const card = within(cardElement);
+    expect(card.getByRole("link", { name: "Owner Plan" })).toHaveAttribute(
+      "href",
+      url,
+    );
+    expect(cardElement.textContent).not.toContain("](");
+    expect(card.queryByRole("link", { name: "Run" })).toBeNull();
+  });
+
   it("renders untrusted feature notes without executable links or HTML", async () => {
     const project: ProjectOverview = {
       ...ALPHA,

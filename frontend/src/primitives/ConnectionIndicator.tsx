@@ -22,30 +22,73 @@ export interface ConnectionIndicatorProps {
   isReconnecting?: boolean;
 }
 
+function OfflineIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="1" y1="1" x2="23" y2="23" />
+      <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+      <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+      <path d="M10.71 5.05A16 16 0 0 1 22.58 9" />
+      <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+      <line x1="12" y1="20" x2="12.01" y2="20" />
+    </svg>
+  );
+}
+
+function SyncIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </svg>
+  );
+}
+
 const offlineStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  padding: "2px 10px",
-  borderRadius: 12,
-  fontSize: 12,
+  padding: "2px 8px",
+  borderRadius: "var(--radius-pill, 9999px)",
+  fontSize: 11.5,
   fontWeight: 600,
-  background: "rgba(248,81,73,0.15)",
-  color: "var(--accent-red, #f85149)",
-  border: "1px solid var(--accent-red, #f85149)",
+  background: "var(--badge-danger-bg)",
+  color: "var(--accent-red)",
+  border: "1px solid var(--accent-red)",
 };
 
 const warningStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  padding: "2px 10px",
-  borderRadius: 12,
-  fontSize: 12,
+  padding: "2px 8px",
+  borderRadius: "var(--radius-pill, 9999px)",
+  fontSize: 11.5,
   fontWeight: 600,
-  background: "rgba(210,153,34,0.15)",
-  color: "var(--accent-yellow, #d2992a)",
-  border: "1px solid var(--accent-yellow, #d2992a)",
+  background: "var(--badge-warning-bg)",
+  color: "var(--accent-yellow)",
+  border: "1px solid var(--accent-yellow)",
 };
 
 export function ConnectionIndicator({
@@ -65,7 +108,7 @@ export function ConnectionIndicator({
   if (!online) {
     return (
       <span style={offlineStyle} role="status" aria-live="polite" data-testid="connection-offline">
-        <span aria-hidden="true">⚡</span>
+        <OfflineIcon />
         Offline
         {count > 0 && (
           <span>
@@ -80,7 +123,7 @@ export function ConnectionIndicator({
   if (isReconnecting) {
     return (
       <span style={warningStyle} role="status" aria-live="polite" data-testid="connection-reconnecting">
-        <span aria-hidden="true">↻</span>
+        <SyncIcon />
         Reconnecting…
       </span>
     );
@@ -89,7 +132,7 @@ export function ConnectionIndicator({
   // Online but queued items being replayed
   return (
     <span style={warningStyle} role="status" aria-live="polite" data-testid="connection-replaying">
-      <span aria-hidden="true">↻</span>
+      <SyncIcon />
       Replaying {count} queued action{count === 1 ? "" : "s"}…
     </span>
   );

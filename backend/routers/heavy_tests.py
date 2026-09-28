@@ -17,6 +17,7 @@ from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope  # noqa: B008
 from models.github_payloads import GhWorkflowRun
+from platform_utils.wsl_paths import windows_repositories_root
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -183,7 +184,7 @@ async def run_docker_heavy_test(
         )
 
     config = heavy_test_repos[repo_name]
-    _default_repos_base = str(Path("/mnt/c") / "Users" / os.environ.get("USER", "diete") / "Repositories")
+    _default_repos_base = str(windows_repositories_root())
     _repos_base = Path(os.environ.get("HEAVY_TEST_REPOS_BASE", _default_repos_base))
     repo_path = _repos_base / repo_name
 

@@ -21,6 +21,7 @@ export interface Command {
   group: string;
   action: () => void;
   keywords?: string[];
+  Icon?: (props: { className?: string }) => React.ReactElement;
 }
 
 export interface CommandPaletteProps {
@@ -168,9 +169,9 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
         inset: 0,
         zIndex: 9999,
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: '15vh',
+        padding: '16px',
         background: 'rgba(0,0,0,0.5)',
       }}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
@@ -182,11 +183,14 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
         style={{
           width: '560px',
           maxWidth: '90vw',
-          background: 'var(--bg-secondary, #161b22)',
-          border: '1px solid var(--border, #30363d)',
-          borderRadius: '12px',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg, 14px)',
+          boxShadow: 'var(--shadow-modal)',
           overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '80vh',
         }}
         onKeyDown={handleKeyDown}
       >
@@ -196,7 +200,7 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
           aria-expanded={filtered.length > 0}
           aria-autocomplete="list"
           aria-label="Search commands"
-          placeholder="Search commands…"
+          placeholder="Search commands, pages…"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -204,12 +208,12 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
           }}
           style={{
             width: '100%',
-            padding: '14px 16px',
+            padding: '16px 20px',
             background: 'transparent',
             border: 'none',
-            borderBottom: '1px solid var(--border, #30363d)',
-            color: 'var(--text-primary, #e6edf3)',
-            fontSize: '1rem',
+            borderBottom: '1px solid var(--border)',
+            color: 'var(--text-primary)',
+            fontSize: '16px',
             outline: 'none',
             boxSizing: 'border-box',
           }}
@@ -220,7 +224,7 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
           style={{
             listStyle: 'none',
             margin: 0,
-            padding: '4px 0',
+            padding: '6px 0',
             maxHeight: '360px',
             overflowY: 'auto',
           }}
@@ -228,9 +232,9 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
           {filtered.length === 0 ? (
             <li
               style={{
-                padding: '12px 16px',
-                color: 'var(--text-muted, #8b949e)',
-                fontSize: '0.875rem',
+                padding: '16px 20px',
+                color: 'var(--text-muted)',
+                fontSize: '13.5px',
                 textAlign: 'center',
               }}
             >
@@ -242,21 +246,22 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
                 <li
                   aria-hidden="true"
                   style={{
-                    padding: '6px 16px 2px',
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.08em',
+                    padding: '8px 16px 4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    letterSpacing: '0.06em',
                     textTransform: 'uppercase',
-                    color: 'var(--text-muted, #8b949e)',
+                    color: 'var(--text-muted)',
                   }}
                 >
                   {group}
                 </li>
                 {filtered
                   .filter((c) => c.group === group)
-                  .map((cmd, _i) => {
+                  .map((cmd) => {
                     const globalIdx = filtered.indexOf(cmd);
                     const isActive = globalIdx === activeIdx;
+                    const ItemIcon = cmd.Icon;
                     return (
                       <li
                         key={cmd.id}
@@ -265,19 +270,27 @@ export function CommandPalette({ commands, isOpen, onOpenChange }: CommandPalett
                         onClick={() => execute(cmd)}
                         onMouseEnter={() => setActiveIdx(globalIdx)}
                         style={{
-                          padding: '8px 16px',
+                          padding: '8px 12px',
+                          margin: '2px 8px',
+                          borderRadius: 'var(--radius-sm, 6px)',
                           cursor: 'pointer',
-                          fontSize: '0.9rem',
-                          color: 'var(--text-primary, #e6edf3)',
+                          fontSize: '13.5px',
+                          color: isActive
+                            ? 'var(--text-primary)'
+                            : 'var(--text-secondary)',
                           background: isActive
-                            ? 'var(--bg-hover, #252d3a)'
+                            ? 'var(--bg-hover)'
                             : 'transparent',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '10px',
+                          transition: 'background 120ms ease, color 120ms ease',
                         }}
                       >
-                        {cmd.label}
+                        {ItemIcon && <ItemIcon />}
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {cmd.label}
+                        </span>
                       </li>
                     );
                   })}

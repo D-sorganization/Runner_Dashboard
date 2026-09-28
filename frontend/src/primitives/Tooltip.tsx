@@ -152,22 +152,25 @@ export function Tooltip({
         <span
           role="tooltip"
           id={id}
+          className="tooltip"
           style={{
             position: "absolute",
             zIndex: 10000,
             ...placementStyle(placement),
-            background: "var(--bg-tertiary, #1c2333)",
-            color: "var(--text-primary, #e6edf3)",
-            border: "1px solid var(--border, #30363d)",
-            borderRadius: 6,
+            background: "var(--bg-tertiary)",
+            color: "var(--text-primary)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-sm, 6px)",
             padding: "4px 8px",
             fontSize: 12,
             lineHeight: 1.4,
             whiteSpace: "normal",
             maxWidth: 240,
             width: "max-content",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            boxShadow: "var(--shadow-card)",
             pointerEvents: "none",
+            animation: "tooltip-fade 120ms ease-out",
+            transition: "opacity 120ms ease-out",
           }}
         >
           {content}

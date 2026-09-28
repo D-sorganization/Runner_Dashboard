@@ -1,3 +1,73 @@
+# Current handoff — UI/UX overhaul, epic #1718 (DL-#1718, DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723, DL-#1724, DL-#1725)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-ux`
+- Branch: `feat/ux-overhaul`
+- Baseline commit: `19e4f920` (main after #1727 merged)
+- Implementation commit: `SELF`
+- Pull request: not opened yet (branch pushed to `08f95aa3`; GitHub secondary rate limit blocked `gh` at 06:37 UTC)
+- Governing issues: #1718 and children #1719–#1725.
+
+## Objective and status
+
+- Professional-grade UI polish from the owner's live review: the grey centre on hover, the document-like Staff page, sign-in and approval noise, phone access over the private tailnet. agy (Gemini 3.8) drafted each workstream from a spec; Claude reviews, fixes and integrates each one here.
+- #1719 Workstream A design tokens and global type: integrated.
+- #1720 Workstream B thread and composer: integrated.
+- #1721 Workstream C roster and context pane: integrated.
+- #1722 Workstream D Staff page and attention drawer: integrated.
+- #1723 Workstream E app shell and primitives: integrated.
+- #1724 Workstream F phone access and Web Push: integrated.
+- #1725 Workstream G inbox noise: integrated.
+- Review fixes found by clicking through the live preview after integration:
+  - The theme runtime writes CSS vars inline on `<html>`; the standard Dark/Light fleet themes carried a stale palette (`--text-muted #71717a`) that undid the 4.5:1 fix. They now emit `tokens.ts` neutrals (`fleetThemeTokenParity.test.ts`).
+  - PushSettings: agy's inline styles and phantom `--status-*` tokens moved to `.push-settings__*` rules (the #834 primitives contract).
+  - Principals shows "Admin access required" on 403; Local Tools shows `artifact <sha>` for artifact installs instead of git probe errors.
+  - `test_color_literal_budget` counts `rgba()` usages outside custom-property definitions; budget tightened 84 -> 61.
+  - The mobile token contract test and `docs/mobile-design-system.md` pin the new palette.
+- Live-sweep fixes (DL-#1718), from a page-by-page browser pass against the DeskComputer hub:
+  - Slow GitHub aggregates held the browser's six connections per host, so unrelated panels (Fleet, Operations) sat on "Loading" and whole pages rendered blank. New `cache_utils.cache_get_swr` serves stale data while one refresh runs and bounds a cold wait; a timed-out request no longer cancels the refresh.
+  - `/api/workflows/list` used two `gh` subprocesses per workflow across 20 repos (>90 s, hundreds of calls). It now makes a fixed four REST calls per repo plus one blob per changed workflow file (blob-sha cache), and answers `status: "warming"` after 20 s; the Workflows page explains and retries.
+  - `/api/scheduled-workflows` (504 after 14.5 s every visit) uses the same helper, so the walk finishes in the background and later visits are cached.
+  - Queue waits read "40d 2h" instead of "57741m 27s": one `formatDuration` (components/formatters) rolls up to hours and days; the two copies re-export it.
+  - Page intro banner: SVG info icon instead of the emoji, styles in `.intro-header*`.
+  - Maxwell: the HTTP card says "not listening" instead of the raw socket error; a failed control reads "Could not start Maxwell: ..."; the intro points at Start Maxwell on the page.
+  - Projects: a 401/403 on `project_priorities.yaml` names the missing GitHub App permission instead of dumping the API JSON; decision text renders its Markdown links through the sanitised `OwnerMarkdown` shared with feature notes.
+  - Insights: "Highest Attention Workflows" names each row's repository (two "Quality Gate" rows were indistinguishable).
+- Mobile and second-pass sweep (DL-#1718), at 375x812 against the same hub:
+  - Fleet (phone) read `/api/fleet/status`, which has no status or CPU fields, so every machine showed Offline at 0%. It now reads `/api/fleet/nodes` through the shared `machineTelemetry` helper (also used by `machineTelemetryForRunner`).
+  - Remediation (phone) called `/api/agent-remediation/providers` and `/api/pulls`, which never existed, so the page always showed "Not found". It now reads the desktop tab's sources (`/api/agent-remediation/config`, `/api/runs/enriched`, `/api/prs`, `/api/issues`) and adapts the flat inventory rows.
+  - `/api/issues` returned 500 on every call: `lease_synchronizer` indexed `label["name"]`, but the issue inventory flattens labels to strings. Both shapes are accepted now.
+  - Work (phone): stale runs showed "57790m" and slugs such as "stale-feature-branch"; they read "40d 3h" and "stale feature branch" (`formatAgeMinutes`, `formatReason`), on the desktop stale panel too.
+  - The Ask button sat on top of the bottom bar's More tab; it now clears `--bottom-nav-height`. The More drawer rows gained icon spacing and a current-page highlight.
+  - Operations refetched every panel about ten times per load: its summary callbacks were new functions each render and every section's loader depends on its callback. They are `useCallback`s now, and the deploy section picks its default machine without depending on it.
+  - `/api/stats` fetched its six independent sources one after another (~14 s cold); they run concurrently.
+  - Insights (phone) listed 0 reports: the default reports path used the WSL login (`dieterolson`) as the Windows profile name. `windows_repositories_root()` finds the profile that holds `Repositories` (also used by heavy tests).
+  - Fleet Command: the minutes parser read one line per field, so wrapped priorities lost text ("link Barb to the Runner Dashboard"), and it stripped outer backticks from multi-span values. It joins wrapped lines and keeps spans balanced; the panel renders them through `OwnerMarkdown` (moved to `primitives/`).
+- Emoji-to-SVG sweep (DL-#1718): pictographic emoji across 25 pages, the composer mic and the proposal card's routed/dry-run labels are SVG glyphs from `decompIcons`; `tests/frontend/test_no_pictographic_emoji.py` guards it.
+
+## Validation
+
+- `npx vitest run --maxWorkers=3`: 191/191 files, 1603 tests (after the mobile sweep).
+- WSL pytest for the mobile sweep: `tests/test_stats_summary_resilience.py`, `tests/test_lease_synchronizer.py`, `tests/api/test_wsl_paths.py`, `tests/api/test_priorities*.py` passed.
+- WSL pytest for the live-sweep fixes: `tests/test_cache_swr.py` 6, `tests/api/test_workflows_list.py` 3, `tests/api/test_scheduled_workflows_route.py` 1, `tests/api/test_projects_tracking.py` 22 passed (`test_vite_config` fails under WSL only: `git ls-files` exits 128 there).
+- WSL pytest `tests/staff tests/api tests/unit tests/test_frontend_integrity.py`: 2290 passed (the palette contract failure is fixed in this branch).
+- `tsc --noEmit`, `npm run lint`, ruff and mypy: clean.
+- Pre-push `pytest-unit` reports "files were modified by this hook" if the worktree is edited while it runs; do not edit during a push.
+
+## Next steps
+
+1. Open one draft PR from `feat/ux-overhaul` (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
+2. `/api/runs/enriched` still returns ~760 KB; trim fields or paginate.
+3. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, the holds decision in #1726, and GitHub App Contents/Issues read on Repository_Management.
+
+---
+
+<!-- ux-overhaul-handoff -->
+
 # Current handoff — Staff live-test fixes, consolidated (DL-#1708, DL-#1712, DL-#1711, DL-#1713)
 
 Last updated: 2026-09-27

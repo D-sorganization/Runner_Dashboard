@@ -64,7 +64,7 @@ describe("InboxPanel styling (Issue #1711)", () => {
   it("renders the item list with the class the stylesheet targets, with no bullets", async () => {
     vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(degradedInboxData);
 
-    render(<InboxPanel />);
+    render(<InboxPanel defaultOpen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("inbox-item-list")).not.toBeNull();

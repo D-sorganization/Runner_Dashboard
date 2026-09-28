@@ -157,3 +157,146 @@ export function ArrowDownGlyph({ size }: GlyphProps): React.ReactElement {
     </Svg>
   );
 }
+
+/** Warning-triangle glyph, replacing a pictographic warning symbol (epic #1718). */
+export function AlertGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M12 3 1 21h22L12 3z" />
+      <path d="M12 9v5" />
+      <circle cx={12} cy={17} r={0.5} fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Magnifying-glass glyph, replacing a pictographic search symbol (epic #1718). */
+export function SearchGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={11} cy={11} r={7} />
+      <path d="M21 21l-4.35-4.35" />
+    </Svg>
+  );
+}
+
+/** Padlock glyph, replacing a pictographic lock symbol (epic #1718). */
+export function LockGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <rect x={3} y={11} width={18} height={10} rx={2} />
+      <path d="M7 11V7a5 5 0 0110 0v4" />
+    </Svg>
+  );
+}
+
+/** Key glyph, replacing a pictographic key symbol (epic #1718). */
+export function KeyGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={7.5} cy={15.5} r={4.5} />
+      <path d="M10.6 12.4L21 2M18 5l3 3M15 8l3 3" />
+    </Svg>
+  );
+}
+
+/** Microphone glyph, replacing a pictographic microphone symbol (epic #1718). */
+export function MicGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <rect x={9} y={2} width={6} height={12} rx={3} />
+      <path d="M5 10v1a7 7 0 0014 0v-1M12 19v3M8 22h8" />
+    </Svg>
+  );
+}
+
+/** Bar-chart glyph, replacing pictographic chart symbols (epic #1718). */
+export function ChartGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M3 3v18h18" />
+      <path d="M7 15l4-5 3 3 5-7" />
+    </Svg>
+  );
+}
+
+/** Speech-bubble glyph, replacing a pictographic speech-bubble symbol (epic #1718). */
+export function ChatGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+    </Svg>
+  );
+}
+
+/** Crescent-moon glyph, replacing a pictographic moon symbol (epic #1718). */
+export function MoonGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" />
+    </Svg>
+  );
+}
+
+/** Sun glyph, replacing a pictographic sun symbol (epic #1718). */
+export function SunGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={12} cy={12} r={5} />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </Svg>
+  );
+}
+
+/** Chip/CPU glyph, replacing pictographic hardware symbols (epic #1718). */
+export function CpuGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <rect x={6} y={6} width={12} height={12} rx={2} />
+      <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+    </Svg>
+  );
+}
+
+/** Clipboard glyph, replacing a pictographic clipboard symbol (epic #1718). */
+export function ClipboardGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <rect x={6} y={4} width={12} height={17} rx={2} />
+      <path d="M9 4V3a1 1 0 011-1h4a1 1 0 011 1v1" />
+      <path d="M9 11h6M9 15h6" />
+    </Svg>
+  );
+}
+
+/** Octagon "stop" glyph, replacing a pictographic no-entry symbol (epic #1718). */
+export function ShieldStopGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86L7.86 2z" />
+      <path d="M9 9l6 6M15 9l-6 6" />
+    </Svg>
+  );
+}
+
+/** Gear/settings glyph, replacing a pictographic gear symbol (epic #1718). */
+export function GearGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={12} cy={12} r={3} />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </Svg>
+  );
+}
+
+/** Pin glyph, replacing pictographic pin symbols (epic #1718). */
+export function PinGlyph({ size, filled }: GlyphProps & { filled?: boolean }): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path
+        d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7z"
+        fill={filled ? 'currentColor' : 'none'}
+      />
+      <circle cx={12} cy={9} r={2} fill={filled ? 'none' : 'currentColor'} stroke="none" />
+    </Svg>
+  );
+}

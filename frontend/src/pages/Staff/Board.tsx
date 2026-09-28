@@ -21,6 +21,7 @@ import {
   livenessAlerts,
   statusTone,
 } from "./staffApi";
+import "./Board.css";
 
 export interface BoardProps {
   onOpenRun?: (id: string) => void;
@@ -49,16 +50,40 @@ export function Board({ onOpenRun }: BoardProps) {
   );
 
   const spendSummary = board ? formatSpendSummary(board.spend_today_usd) : null;
+  const alerts = board ? livenessAlerts(board) : [];
+  const machines = board ? groupByMachine(board) : [];
+  const runningCount = machines.reduce((n, m) => n + m.running.length, 0);
+  const queuedCount = machines.reduce((n, m) => n + m.queued.length, 0);
 
   return (
-    <section className="glass-card staff-board" aria-label="Staff board">
+    <section className="staff-board" aria-label="Staff board">
       <div className="staff-board__header">
-        <h3 className="staff-board__title">Board</h3>
-        {board ? (
-          <span style={{ marginLeft: "auto", marginRight: 8 }}>
+        <div className="staff-board__title-wrap">
+          <span
+            className={`staff-board__live-dot ${error || staleness.state === "error" ? "staff-board__live-dot--danger" : staleness.state === "stale" ? "staff-board__live-dot--warning" : "staff-board__live-dot--live"}`}
+            data-testid="board-live-dot"
+            aria-hidden="true"
+          />
+          <h3 className="staff-board__title">Board</h3>
+          {board ? (
+            <span className="staff-board__summary" data-testid="board-summary">
+              <Badge tone={runningCount > 0 ? "info" : "neutral"} size="sm">
+                {runningCount} running
+              </Badge>
+              <Badge tone={queuedCount > 0 ? "warning" : "neutral"} size="sm">
+                {queuedCount} queued
+              </Badge>
+              {alerts.length > 0 ? (
+                <Badge tone={alerts.some((a) => a.status === "dead") ? "danger" : "warning"} size="sm">
+                  {alerts.length} late
+                </Badge>
+              ) : null}
+            </span>
+          ) : null}
+          {board ? (
             <RefreshBadge staleness={staleness} onRetry={() => refetch()} />
-          </span>
-        ) : null}
+          ) : null}
+        </div>
         {board && spendSummary ? (
           <span className="staff-board__meta">
             spend today{" "}
@@ -84,52 +109,57 @@ export function Board({ onOpenRun }: BoardProps) {
         ) : null}
       </div>
       {error ? <p className="staff-muted">Board unavailable: {error}</p> : null}
-      <PlanQuota />
       {!board && !error ? <p className="staff-muted">Loading board...</p> : null}
-      {board && livenessAlerts(board).length > 0 ? (
-        <ul className="staff-board__alerts" data-testid="board-liveness-alerts" aria-label="Liveness alerts">
-          {livenessAlerts(board).map((row) => (
-            <li key={`${row.machine ?? board.machine}:${row.role}`}>
-              <Badge tone={row.status === "dead" ? "danger" : "warning"} size="sm">
-                {row.status}
-              </Badge>{" "}
-              {row.role} on {row.machine ?? board.machine} · last success{" "}
-              {row.last_success ? <TimeAgo iso={row.last_success} /> : "never"}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {board ? (
-        <div className="staff-board__machines">
-          {groupByMachine(board).map((row) => (
-            <div key={row.machine} className="staff-board__machine" data-testid={`board-machine-${row.machine}`}>
-              <div className="staff-board__machine-name">
-                {row.machine}
-                <Badge tone={row.running.length > 0 ? "info" : "neutral"} size="sm">
-                  {row.running.length} running
-                </Badge>
-                <Badge tone={row.queued.length > 0 ? "warning" : "neutral"} size="sm">
-                  {row.queued.length} queued
-                </Badge>
+      {/* Compact by default so the console stays above the fold (#1722);
+          quotas, late roles and per-machine runs sit behind one disclosure. */}
+      <details className="staff-board__details" data-testid="board-details">
+        <summary className="staff-board__details-summary">Quotas, schedules and machines</summary>
+        <PlanQuota />
+        {board && alerts.length > 0 ? (
+          <ul className="staff-board__alerts" data-testid="board-liveness-alerts" aria-label="Liveness alerts">
+            {alerts.map((row) => (
+              <li key={`${row.machine ?? board.machine}:${row.role}`}>
+                <Badge tone={row.status === "dead" ? "danger" : "warning"} size="sm">
+                  {row.status}
+                </Badge>{" "}
+                {row.role} on {row.machine ?? board.machine} · last success{" "}
+                {row.last_success ? <TimeAgo iso={row.last_success} /> : "never"}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {board ? (
+          <div className="staff-board__machines">
+            {machines.map((row) => (
+              <div key={row.machine} className="staff-board__machine" data-testid={`board-machine-${row.machine}`}>
+                <div className="staff-board__machine-name">
+                  {row.machine}
+                  <Badge tone={row.running.length > 0 ? "info" : "neutral"} size="sm">
+                    {row.running.length} running
+                  </Badge>
+                  <Badge tone={row.queued.length > 0 ? "warning" : "neutral"} size="sm">
+                    {row.queued.length} queued
+                  </Badge>
+                </div>
+                <ul className="staff-board__runs">
+                  {[...row.running, ...row.queued].map((run) => (
+                    <li key={run.id}>
+                      <button type="button" className="staff-link" onClick={() => onOpenRun?.(run.id)}>
+                        <Badge tone={statusTone(run.status)} size="sm">
+                          {run.status}
+                        </Badge>{" "}
+                        {run.role} · {run.provider}
+                        {run.repo ? ` · ${run.repo}` : ""}
+                        {run.target_ref ? ` ${run.target_ref}` : ""}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <ul className="staff-board__runs">
-                {[...row.running, ...row.queued].map((run) => (
-                  <li key={run.id}>
-                    <button type="button" className="staff-link" onClick={() => onOpenRun?.(run.id)}>
-                      <Badge tone={statusTone(run.status)} size="sm">
-                        {run.status}
-                      </Badge>{" "}
-                      {run.role} · {run.provider}
-                      {run.repo ? ` · ${run.repo}` : ""}
-                      {run.target_ref ? ` ${run.target_ref}` : ""}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      ) : null}
+            ))}
+          </div>
+        ) : null}
+      </details>
     </section>
   );
 }

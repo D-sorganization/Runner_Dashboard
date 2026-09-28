@@ -171,9 +171,9 @@ export function sortRows(
     .map((entry) => entry.row);
 }
 
-/** Humanises a stale-reason slug, e.g. `superseded_pr_head` → `superseded pr head`. */
+/** Humanises a stale-reason slug, e.g. `superseded_pr_head` / `unroutable-label` → words. */
 export function formatReason(reason: string): string {
-  return String(reason || "unknown").replace(/_/g, " ");
+  return String(reason || "unknown").replace(/[_-]+/g, " ");
 }
 
 interface RawStaleRun {

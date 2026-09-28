@@ -1,0 +1,190 @@
+/**
+ * Board.css — compact status strip styling for Staff Board (Workstream D).
+ * No glassmorphism, no container hover background, token-based.
+ */
+
+.staff-board {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+}
+
+.staff-board__header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.staff-board__title-wrap {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.staff-board__live-dot {
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  height: 8px;
+  width: 8px;
+}
+
+.staff-board__live-dot--live {
+  background: var(--accent-green);
+  box-shadow: 0 0 0 3px var(--badge-success-bg);
+}
+
+.staff-board__live-dot--warning {
+  background: var(--accent-yellow);
+}
+
+.staff-board__live-dot--danger {
+  background: var(--accent-red);
+}
+
+.staff-board__title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.staff-board__meta {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.staff-board__alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.staff-board__machines {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.staff-board__machine {
+  align-items: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 3px 8px;
+}
+
+.staff-board__machine-name {
+  align-items: center;
+  color: var(--text-primary);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.staff-board__runs {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.staff-link {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 11px;
+  gap: 4px;
+  padding: 2px 6px;
+  text-decoration: none;
+  transition: background 140ms ease-out, color 140ms ease-out;
+}
+
+.staff-link:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.staff-board__summary {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.staff-board__details-summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+  user-select: none;
+  width: fit-content;
+}
+
+.staff-board__details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.staff-board__details-summary::before {
+  border-color: transparent transparent transparent currentColor;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  content: "";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform var(--motion-fast, 120ms) ease;
+  vertical-align: middle;
+}
+
+.staff-board__details[open] > .staff-board__details-summary::before {
+  transform: rotate(90deg);
+}
+
+.staff-board__details-summary:hover {
+  color: var(--text-primary);
+}
+
+.staff-board__details-summary:focus-visible {
+  border-radius: var(--radius-sm, 4px);
+  outline: 2px solid var(--focus-ring, var(--accent-blue));
+  outline-offset: 2px;
+}
+
+.staff-board__details[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-board__details-summary::before {
+    transition: none;
+  }
+}

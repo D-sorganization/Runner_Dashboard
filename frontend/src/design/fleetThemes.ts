@@ -11,6 +11,8 @@
  * Addresses: Runner_Dashboard#618 (Color Theme Management)
  */
 
+import { darkColorTokens, lightColorTokens } from './tokens';
+
 /* ── Fleet Theme Types ──────────────────────────────────────────────── */
 
 export interface FleetThemeColors {
@@ -101,13 +103,13 @@ export type FleetThemeId =
 export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
   light: {
     name: 'Light', category: 'standard', isDark: false,
-    colors: { bg: '#ffffff', group_bg: '#f8f9fa', border: '#ced4da', text: '#212529', text_secondary: '#495057', label: '#60666d', focus: '#0969da', input_bg: '#ffffff', accent: '#5a8fc4', title_bg: '#e3f2fd', title_border: '#90caf9', table_header: '#e9ecef', table_alt: '#f8f9fa', button_hover: '#4a7ba7' },
-    semantic: { success: '#1b722f', warning: '#7f5f00', error: '#b81d2c', info: '#106e7d', link: '#0066cc', link_hover: '#004499', selection_bg: '#0078d4', selection_text: '#ffffff' },
+    colors: { bg: '#ffffff', group_bg: '#fafafa', border: '#e4e4e7', text: '#18181b', text_secondary: '#52525b', label: '#71717a', focus: '#0969da', input_bg: '#ffffff', accent: '#5a8fc4', title_bg: '#f4f4f5', title_border: '#ececef', table_header: '#f4f4f5', table_alt: '#fafafa', button_hover: '#f4f4f5' },
+    semantic: { success: '#1b722f', warning: '#7f5f00', error: '#b81d2c', info: '#106e7d', link: '#0969da', link_hover: '#004499', selection_bg: '#0969da', selection_text: '#ffffff' },
   },
   dark: {
     name: 'Dark', category: 'standard', isDark: true,
-    colors: { bg: '#1a1d23', group_bg: '#24272e', border: '#3a3f4a', text: '#e1e4e8', text_secondary: '#c9d1d9', label: '#a6adb5', focus: '#58a6ff', input_bg: '#0d1117', accent: '#4a7ba7', title_bg: '#2d3748', title_border: '#4a7ba7', table_header: '#2d3748', table_alt: '#24272e', button_hover: '#5a8fc4' },
-    semantic: { success: '#3fb950', warning: '#d29922', error: '#fa7973', info: '#58a6ff', link: '#58a6ff', link_hover: '#79b8ff', selection_bg: '#264f78', selection_text: '#ffffff' },
+    colors: { bg: '#111113', group_bg: '#18181b', border: '#2a2a30', text: '#ececef', text_secondary: '#a1a1aa', label: '#71717a', focus: '#58a6ff', input_bg: '#18181b', accent: '#bc8cff', title_bg: '#1f1f23', title_border: '#34343b', table_header: '#1f1f23', table_alt: '#18181b', button_hover: '#26262b' },
+    semantic: { success: '#42a85f', warning: '#e2b340', error: '#f87171', info: '#60a5fa', link: '#58a6ff', link_hover: '#79b8ff', selection_bg: '#264f78', selection_text: '#ffffff' },
   },
   'slate-gray': {
     name: 'Slate Gray', category: 'neutral', isDark: false,
@@ -232,7 +234,7 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--bg-secondary': c.group_bg,
     '--bg-tertiary': c.table_alt,
     '--bg-card': c.group_bg,
-    '--bg-hover': c.button_hover + '22', // 13% opacity hover
+    '--bg-hover': c.button_hover + '22',
     '--border': c.border,
     '--border-light': c.title_border,
     '--text-primary': c.text,
@@ -246,6 +248,9 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--accent-yellow': s.warning,
     '--accent-purple': c.accent,
     '--accent-orange': s.warning,
+    '--surface-raised': theme.isDark ? '#1f1f23' : '#ffffff',
+    '--focus-ring': s.link,
+    '--text-prose': '15px / 1.65',
     '--glass-bg': glassBg,
     '--glass-border': glassBorder,
     '--glass-border-light': glassBorderLight,
@@ -261,6 +266,30 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--badge-info-fg': s.info,
     '--badge-neutral-bg': `${c.label}26`,
     '--badge-neutral-fg': c.label,
+    ...standardThemeNeutrals(theme),
+  };
+}
+
+/**
+ * The standard Dark/Light themes are the design tokens themselves. These vars
+ * are written inline on <html> and beat index.css, so they must come from
+ * tokens.ts rather than a second copy of the palette (#1719).
+ */
+function standardThemeNeutrals(theme: FleetThemeDef): Record<string, string> {
+  const t =
+    theme === FLEET_THEMES.dark ? darkColorTokens : theme === FLEET_THEMES.light ? lightColorTokens : null;
+  if (!t) return {};
+  return {
+    '--bg-primary': t.bgPrimary,
+    '--bg-secondary': t.bgSecondary,
+    '--bg-tertiary': t.bgTertiary,
+    '--bg-card': t.bgCard,
+    '--bg-hover': t.bgHover,
+    '--border': t.border,
+    '--border-light': t.borderLight,
+    '--text-primary': t.textPrimary,
+    '--text-secondary': t.textSecondary,
+    '--text-muted': t.textMuted,
   };
 }
 

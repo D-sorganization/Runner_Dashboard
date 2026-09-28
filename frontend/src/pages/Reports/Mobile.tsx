@@ -17,6 +17,7 @@ import { TimeAgo } from "../../primitives/TimeAgo";
 import { EmptyState } from "../../primitives/EmptyState";
 import { useHaptic } from "../../hooks/useHaptic";
 import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
+import { AlertGlyph, ClipboardGlyph } from "../decompIcons";
 
 interface ReportFile {
   filename: string;
@@ -290,7 +291,7 @@ export function ReportsMobile() {
     return (
       <EmptyState
         variant="error"
-        icon="⚠️"
+        icon={<AlertGlyph size={24} />}
         title={guidance.title}
         description={guidance.action}
         onRetry={fetchReports}
@@ -327,7 +328,7 @@ export function ReportsMobile() {
         <div style={{ marginTop: "12px", touchAction: "pan-y" }}>
           {filtered.length === 0 ? (
             <EmptyState
-              icon="📋"
+              icon={<ClipboardGlyph size={24} />}
               title="No reports found"
               description={
                 filter !== "all"

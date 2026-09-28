@@ -66,6 +66,7 @@ function mockFetchByUrl(opts: {
   principals?: object;
   tokens?: object;
   failPrincipals?: boolean;
+  forbidden?: boolean;
 }) {
   vi.stubGlobal(
     "fetch",
@@ -76,6 +77,13 @@ function mockFetchByUrl(opts: {
           ok: true,
           status: 200,
           json: () => Promise.resolve({ token: "newly-minted-token" }),
+        } as Response);
+      }
+      if (opts.forbidden) {
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          json: () => Promise.resolve({ detail: "admin role required" }),
         } as Response);
       }
       if (url.includes("/api/admin/tokens")) {
@@ -164,6 +172,14 @@ describe("PrincipalsTab", () => {
       );
       expect(deleted).toBe(true);
     });
+  });
+
+  it("explains that admin access is required on 403 instead of a load error", async () => {
+    mockFetchByUrl({ forbidden: true });
+    render(<PrincipalsTab />);
+    await waitFor(() => expect(screen.getByText(/admin access required/i)).toBeInTheDocument());
+    expect(screen.queryByText(/failed to load/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/registered principals/i)).not.toBeInTheDocument();
   });
 
   it("shows an error banner when principals fail to load", async () => {

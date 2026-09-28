@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-27 | #1718 | UI/UX overhaul (#1719–#1725 as integrated): design tokens and global type; thread and composer; roster and context pane; Staff page and attention drawer; app shell and primitives; phone access and Web Push; inbox noise. |
 | 2026-09-27 | #1713 | Desktop top-bar actions shrink and wrap, so narrow windows (800px) no longer scroll sideways. |
 | 2026-09-27 | #1712 | Staff approvals reachable from desktop: `/staff?thread=` opens that thread in the console and inbox thread links open in place (Approve/Deny card was unreachable); approval inbox items name role, repo and proposal id; the desktop console reflows at 1280px/900px; no sign-in alerts for `future` providers (Cline); the inbox fetches project overviews concurrently (cold load was 17-26 s); the "Waiting on You" panel gets its missing stylesheet (#1711). |
 | 2026-09-27 | #1708 | Staff fixes from Barb's live test: `GET /api/v1/staff/summary` returns the staff brief (was 500); unattended run prompts name the local dashboard API and end with the `STAFF_RESULT:` contract; ad-hoc runs without a repo verify `not_applicable`; the Staff Console de-dupes concurrent thread opens; codex/claude credential probes accept CLI login files. |

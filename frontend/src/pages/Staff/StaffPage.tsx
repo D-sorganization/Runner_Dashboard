@@ -29,6 +29,7 @@ import { Roster } from "./Roster";
 import { RunDetail } from "./RunDetail";
 import { RunLog } from "./RunLog";
 import { errorMessage } from "./staffApi";
+import "./StaffPage.css";
 
 import type { WorkRequest } from "./staffApi";
 
@@ -154,8 +155,6 @@ export function StaffPage() {
 
   return (
     <div className="staff">
-      <InboxPanel onOpenRun={openRun} onOpenThread={openThread} />
-      <Board onOpenRun={openRun} />
       <SubTabs
         tabs={SECTION_TABS}
         activeKey={section}
@@ -163,32 +162,36 @@ export function StaffPage() {
         ariaLabel="Staff sections"
         className="staff__tabs"
       />
-      {section === "console" ? <StaffConsoleDesktop initialThreadId={selectedThread} /> : null}
-      {section === "roster" ? (
-        <Roster
-          roster={roster}
-          loading={rosterLoading}
-          error={rosterError}
-          onRetry={() => refetchRoster()}
-          onAssign={onAssign}
-        />
-      ) : null}
-      {section === "runs" && selectedRun ? (
-        <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />
-      ) : null}
-      {section === "runs" && !selectedRun ? (
-        <RunLog roles={roleNames} onOpenRun={openRun} refreshKey={runsRefresh} />
-      ) : null}
-      {section === "outcomes" ? <OutcomesTable /> : null}
-      {section === "assign" ? (
-        <AdvancedDispatchForm
-          roster={roster}
-          initialRole={assignRole}
-          initialValues={initialPrefill ?? undefined}
-          onDispatched={onDispatched}
-        />
-      ) : null}
-      {section === "holds" ? <Holds roles={roleNames} /> : null}
+      <InboxPanel onOpenRun={openRun} onOpenThread={openThread} />
+      <Board onOpenRun={openRun} />
+      <div className="staff__content">
+        {section === "console" ? <StaffConsoleDesktop initialThreadId={selectedThread} /> : null}
+        {section === "roster" ? (
+          <Roster
+            roster={roster}
+            loading={rosterLoading}
+            error={rosterError}
+            onRetry={() => refetchRoster()}
+            onAssign={onAssign}
+          />
+        ) : null}
+        {section === "runs" && selectedRun ? (
+          <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />
+        ) : null}
+        {section === "runs" && !selectedRun ? (
+          <RunLog roles={roleNames} onOpenRun={openRun} refreshKey={runsRefresh} />
+        ) : null}
+        {section === "outcomes" ? <OutcomesTable /> : null}
+        {section === "assign" ? (
+          <AdvancedDispatchForm
+            roster={roster}
+            initialRole={assignRole}
+            initialValues={initialPrefill ?? undefined}
+            onDispatched={onDispatched}
+          />
+        ) : null}
+        {section === "holds" ? <Holds roles={roleNames} /> : null}
+      </div>
     </div>
   );
 }

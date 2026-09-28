@@ -8,6 +8,7 @@ import { useHaptic } from "../../hooks/useHaptic";
 import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
 
 import { MobileRunCard } from "./MobileRunCard";
+import { AlertGlyph } from "../decompIcons";
 import { MobileRunDetail } from "./MobileRunDetail";
 import type {
   FilterValue,
@@ -20,6 +21,7 @@ import {
   FILTER_OPTIONS,
   POLL_INTERVAL_MS,
   elapsedLabel,
+  formatAgeMinutes,
   runRepo,
 } from "./mobileTypes";
 
@@ -164,7 +166,7 @@ export function QueueMobile() {
       } as WorkflowRun,
       status: "stale" as FilterValue,
       repo: run.repo,
-      elapsed: `${run.age_minutes}m`,
+      elapsed: formatAgeMinutes(run.age_minutes),
     }));
     return [...inProgress, ...queued, ...stale];
   }, [queueData, staleData]);
@@ -253,7 +255,7 @@ export function QueueMobile() {
     return (
       <EmptyState
         variant="error"
-        icon="⚠️"
+        icon={<AlertGlyph size={24} />}
         title={guidance.title}
         description={guidance.action}
         onRetry={fetchQueue}

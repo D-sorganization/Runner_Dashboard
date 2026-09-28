@@ -105,6 +105,25 @@ describe("LocalAppsTab", () => {
     expect(within(header).getByText("1 dirty")).toBeInTheDocument();
   });
 
+  it("shows an artifact install's deployed sha instead of a drift error", () => {
+    const artifact = {
+      manifest_path: "/x/local_apps.json",
+      tools: [
+        {
+          name: "runner-dashboard",
+          drift: { available: false, mode: "artifact", deployed_sha: "e302335eb04dbbbf", ref: "origin/main" },
+          dirty: false,
+          dirty_available: true,
+          dirty_files: [],
+          service_status: "active",
+        },
+      ],
+    };
+    render(<LocalAppsTab data={artifact} loading={false} onRefresh={() => {}} />);
+    expect(screen.getByText(/artifact e302335/i)).toBeInTheDocument();
+    expect(screen.queryByText(/error/i)).not.toBeInTheDocument();
+  });
+
   it("shows the no-tools state when a manifest exists but is empty", () => {
     render(
       <LocalAppsTab

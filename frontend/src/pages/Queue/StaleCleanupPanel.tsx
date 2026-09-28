@@ -8,6 +8,7 @@ import { useState, type CSSProperties } from "react";
 
 import { Badge } from "../../primitives/Badge";
 import { Collapse } from "../../components/Collapse";
+import { formatAgeMinutes } from "./mobileTypes";
 import {
   STALE_REASONS,
   formatReason,
@@ -227,7 +228,7 @@ export function StaleCleanupPanel({ onRefresh }: StaleCleanupPanelProps) {
             <div className="mobile-run-meta">
               <span>{run.repo}</span>
               <span>{run.branch}</span>
-              <span>{run.age_minutes != null ? run.age_minutes + "m" : "-"}</span>
+              <span>{formatAgeMinutes(run.age_minutes)}</span>
             </div>
             <div
               style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}
@@ -257,7 +258,7 @@ export function StaleCleanupPanel({ onRefresh }: StaleCleanupPanelProps) {
         <td>{run.workflow}</td>
         <td>{run.branch}</td>
         <td>{run.pr_number || "-"}</td>
-        <td>{run.age_minutes != null ? run.age_minutes + "m" : "-"}</td>
+        <td>{formatAgeMinutes(run.age_minutes)}</td>
         <td>{reasonBadge}</td>
         <td>
           <Badge tone={safe ? "success" : "danger"}>

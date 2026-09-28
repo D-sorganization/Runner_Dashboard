@@ -101,7 +101,7 @@ export function Holds({ roles }: HoldsProps) {
 
   if (unavailable) {
     return (
-      <div className="glass-card staff-panel" data-testid="holds-unavailable">
+      <div className="staff-panel" data-testid="holds-unavailable">
         <EmptyState
           title="Holds unavailable"
           description="This node's backend does not serve /api/staff/holds yet (scheduler, windows, holds and budgets land with #1196)."
@@ -112,21 +112,21 @@ export function Holds({ roles }: HoldsProps) {
   }
   if (error && !holds) {
     return (
-      <div className="glass-card staff-panel">
+      <div className="staff-panel">
         <EmptyState variant="error" title="Failed to load holds" description={error} onRetry={() => load()} />
       </div>
     );
   }
   if (!holds) {
     return (
-      <div className="glass-card staff-panel" aria-busy="true">
+      <div className="staff-panel" aria-busy="true">
         <p className="staff-muted">Loading holds...</p>
       </div>
     );
   }
 
   return (
-    <div className="glass-card staff-panel staff-holds">
+    <div className="staff-panel staff-holds">
       <div className="staff-panel__header">
         <h3 className="staff-panel__title">Holds</h3>
         <div className="staff-holds__actions">

@@ -47,6 +47,8 @@ export interface WorkflowDispatch {
 export interface WorkflowsProps {
   workflows: Workflow[];
   loading?: boolean;
+  /** Replaces the default "Loading workflows…" line (e.g. a warming hub). */
+  loadingMessage?: string;
   error?: string | null;
   onDispatch: (payload: WorkflowDispatch) => Promise<unknown>;
   onRefresh: () => void;
@@ -101,6 +103,7 @@ function conclusionColor(conclusion?: string | null): string {
 export function WorkflowsTab({
   workflows,
   loading,
+  loadingMessage,
   error,
   onDispatch,
   onRefresh,
@@ -262,7 +265,7 @@ export function WorkflowsTab({
             padding: 32,
           }}
         >
-          Loading workflows…
+          {loadingMessage ?? "Loading workflows…"}
         </div>
       ) : null}
       {error ? (

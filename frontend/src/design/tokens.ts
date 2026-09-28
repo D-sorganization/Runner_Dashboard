@@ -1,15 +1,15 @@
 // Design Tokens
 export const darkColorTokens = {
-  bgPrimary: "#0f1117",
-  bgSecondary: "#161b22",
-  bgTertiary: "#1c2333",
-  bgCard: "#1c2128",
-  bgHover: "#252d3a",
-  border: "#30363d",
-  borderLight: "#3d444d",
-  textPrimary: "#e6edf3",
-  textSecondary: "#8b949e",
-  textMuted: "#7a838e",
+  bgPrimary: "#111113",
+  bgSecondary: "#18181b",
+  bgTertiary: "#1f1f23",
+  bgCard: "#18181b",
+  bgHover: "#26262b",
+  border: "#2a2a30",
+  borderLight: "#34343b",
+  textPrimary: "#ececef",
+  textSecondary: "#a1a1aa",
+  textMuted: "#8a8a93",
   accentBlue: "#58a6ff",
   accentGreen: "#3fb950",
   accentRed: "#f85149",
@@ -20,15 +20,15 @@ export const darkColorTokens = {
 
 export const lightColorTokens = {
   bgPrimary: "#ffffff",
-  bgSecondary: "#f6f8fa",
-  bgTertiary: "#f0f2f5",
+  bgSecondary: "#fafafa",
+  bgTertiary: "#f4f4f5",
   bgCard: "#ffffff",
-  bgHover: "#f3f4f6",
-  border: "#d0d7de",
-  borderLight: "#e1e4e8",
-  textPrimary: "#1f2328",
-  textSecondary: "#656d76",
-  textMuted: "#5c6570",
+  bgHover: "#f4f4f5",
+  border: "#e4e4e7",
+  borderLight: "#ececef",
+  textPrimary: "#18181b",
+  textSecondary: "#52525b",
+  textMuted: "#6b6b74",
   accentBlue: "#0969da",
   accentGreen: "#1a7f37",
   accentRed: "#cf222e",
@@ -40,29 +40,29 @@ export const lightColorTokens = {
 export const colorTokens = darkColorTokens;
 
 export const darkBadgeTokens = {
-  successBg: "rgba(63, 185, 80, 0.15)",
-  successFg: "#3fb950",
-  warningBg: "rgba(210, 153, 34, 0.15)",
-  warningFg: "#d29922",
-  dangerBg: "rgba(248, 81, 73, 0.15)",
-  dangerFg: "#f85149",
-  infoBg: "rgba(88, 166, 255, 0.15)",
-  infoFg: "#58a6ff",
-  neutralBg: "rgba(110, 118, 129, 0.15)",
-  neutralFg: "#8b949e",
+  successBg: "rgba(66, 168, 95, 0.15)",
+  successFg: "#42a85f",
+  warningBg: "rgba(226, 179, 64, 0.15)",
+  warningFg: "#e2b340",
+  dangerBg: "rgba(248, 113, 113, 0.15)",
+  dangerFg: "#f87171",
+  infoBg: "rgba(96, 165, 250, 0.15)",
+  infoFg: "#60a5fa",
+  neutralBg: "rgba(161, 161, 170, 0.15)",
+  neutralFg: "#a1a1aa",
 } as const;
 
 export const lightBadgeTokens = {
-  successBg: "rgba(26, 127, 55, 0.12)",
-  successFg: "#1a7f37",
-  warningBg: "rgba(154, 103, 0, 0.12)",
-  warningFg: "#9a6700",
+  successBg: "rgba(27, 114, 47, 0.12)",
+  successFg: "#1b722f",
+  warningBg: "rgba(127, 95, 0, 0.12)",
+  warningFg: "#7f5f00",
   dangerBg: "rgba(184, 29, 44, 0.12)",
   dangerFg: "#b81d2c",
-  infoBg: "rgba(9, 105, 218, 0.12)",
-  infoFg: "#0969da",
-  neutralBg: "rgba(101, 109, 118, 0.12)",
-  neutralFg: "#656d76",
+  infoBg: "rgba(16, 110, 125, 0.12)",
+  infoFg: "#106e7d",
+  neutralBg: "rgba(82, 82, 91, 0.12)",
+  neutralFg: "#52525b",
 } as const;
 
 export const badgeTokens = darkBadgeTokens;
@@ -111,6 +111,30 @@ export const touchTokens = {
   safeAreaInsetBottom: "env(safe-area-inset-bottom)",
 } as const;
 
+export const fontSizeTokens = {
+  xs: "12px",
+  sm: "13px",
+  md: "14px",
+  base: "14px",
+  prose: "15px",
+  lg: "17px",
+  xl: "20px",
+  "2xl": "24px",
+} as const;
+
+export const semanticTokens = {
+  dark: {
+    surfaceRaised: "#1f1f23",
+    focusRing: "#58a6ff",
+    textProse: "15px / 1.65",
+  },
+  light: {
+    surfaceRaised: "#ffffff",
+    focusRing: "#0969da",
+    textProse: "15px / 1.65",
+  },
+} as const;
+
 export const darkCssVariableMap = {
   "--bg-primary": darkColorTokens.bgPrimary,
   "--bg-secondary": darkColorTokens.bgSecondary,
@@ -139,6 +163,19 @@ export const darkCssVariableMap = {
   "--badge-info-fg": darkBadgeTokens.infoFg,
   "--badge-neutral-bg": darkBadgeTokens.neutralBg,
   "--badge-neutral-fg": darkBadgeTokens.neutralFg,
+
+  "--surface-raised": semanticTokens.dark.surfaceRaised,
+  "--focus-ring": semanticTokens.dark.focusRing,
+  "--text-prose": semanticTokens.dark.textProse,
+
+  "--font-size-xs": fontSizeTokens.xs,
+  "--font-size-sm": fontSizeTokens.sm,
+  "--font-size-md": fontSizeTokens.md,
+  "--font-size-base": fontSizeTokens.base,
+  "--font-size-prose": fontSizeTokens.prose,
+  "--font-size-lg": fontSizeTokens.lg,
+  "--font-size-xl": fontSizeTokens.xl,
+  "--font-size-2xl": fontSizeTokens["2xl"],
 
   "--glass-bg": darkSurfaceTokens.glassBg,
   "--glass-border": darkSurfaceTokens.glassBorder,
@@ -197,6 +234,19 @@ export const lightCssVariableMap = {
   "--badge-neutral-bg": lightBadgeTokens.neutralBg,
   "--badge-neutral-fg": lightBadgeTokens.neutralFg,
 
+  "--surface-raised": semanticTokens.light.surfaceRaised,
+  "--focus-ring": semanticTokens.light.focusRing,
+  "--text-prose": semanticTokens.light.textProse,
+
+  "--font-size-xs": fontSizeTokens.xs,
+  "--font-size-sm": fontSizeTokens.sm,
+  "--font-size-md": fontSizeTokens.md,
+  "--font-size-base": fontSizeTokens.base,
+  "--font-size-prose": fontSizeTokens.prose,
+  "--font-size-lg": fontSizeTokens.lg,
+  "--font-size-xl": fontSizeTokens.xl,
+  "--font-size-2xl": fontSizeTokens["2xl"],
+
   "--glass-bg": lightSurfaceTokens.glassBg,
   "--glass-border": lightSurfaceTokens.glassBorder,
   "--glass-border-light": lightSurfaceTokens.glassBorderLight,
@@ -237,11 +287,11 @@ export function toCssVariables(theme: "dark" | "light" = "dark"): string {
 // ---- Semantic status tokens (D5 / issue #724) --------------------------------
 
 export const statusTokens = {
-  healthy:  { bg: "rgba(63,185,80,0.15)",   fg: "#3fb950" },
-  warning:  { bg: "rgba(210,153,34,0.15)",  fg: "#d29922" },
-  critical: { bg: "rgba(248,81,73,0.15)",   fg: "#f85149" },
-  unknown:  { bg: "rgba(139,148,158,0.15)", fg: "#8b949e" },
-  info:     { bg: "rgba(88,166,255,0.15)",  fg: "#58a6ff" },
+  healthy:  { bg: "rgba(66, 168, 95, 0.15)",   fg: "#42a85f" },
+  warning:  { bg: "rgba(226, 179, 64, 0.15)",  fg: "#e2b340" },
+  critical: { bg: "rgba(248, 113, 113, 0.15)", fg: "#f87171" },
+  unknown:  { bg: "rgba(161, 161, 170, 0.15)", fg: "#a1a1aa" },
+  info:     { bg: "rgba(96, 165, 250, 0.15)",  fg: "#60a5fa" },
 } as const;
 
 export type StatusVariant = keyof typeof statusTokens;

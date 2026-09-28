@@ -59,31 +59,32 @@ const MOCK_RUNS = {
   ],
 };
 
-const MOCK_PRS = [
-  {
-    id: 2001,
-    number: 42,
-    title: "Fix flaky test",
-    html_url: "https://github.com/org/repo/pull/42",
-    head: { ref: "fix/flaky-test" },
-    base: { repo: { name: "runner-dashboard" } },
-    draft: false,
-    labels: [],
-    updated_at: "2026-05-01T10:00:00Z",
-  },
-];
+// `/api/prs` and `/api/issues` return flat inventory rows under `items`.
+const MOCK_PRS = {
+  items: [
+    {
+      repository: "org/runner-dashboard",
+      number: 42,
+      title: "Fix flaky test",
+      url: "https://github.com/org/repo/pull/42",
+      head_ref: "fix/flaky-test",
+      draft: false,
+      labels: [],
+    },
+  ],
+};
 
-const MOCK_ISSUES = [
-  {
-    id: 3001,
-    number: 196,
-    title: "Mobile Remediation + 3-tap Agent Dispatch",
-    html_url: "https://github.com/org/repo/issues/196",
-    repository_url: "https://api.github.com/repos/org/runner-dashboard",
-    labels: [{ name: "enhancement" }],
-    updated_at: "2026-05-01T10:00:00Z",
-  },
-];
+const MOCK_ISSUES = {
+  items: [
+    {
+      repository: "org/runner-dashboard",
+      number: 196,
+      title: "Mobile Remediation + 3-tap Agent Dispatch",
+      url: "https://github.com/org/repo/issues/196",
+      labels: ["enhancement"],
+    },
+  ],
+};
 
 const MOCK_DISPATCH_RESPONSE = {
   status: "dispatched",
@@ -110,7 +111,7 @@ function setupFetch({
   dispatchOk?: boolean;
 } = {}) {
   const fetchMock = vi.fn((url: string, options?: RequestInit) => {
-    if (url.includes("/api/agent-remediation/providers")) {
+    if (url.includes("/api/agent-remediation/config")) {
       return Promise.resolve({
         ok: providersOk,
         status: providersOk ? 200 : 500,
@@ -128,7 +129,7 @@ function setupFetch({
         json: () => Promise.resolve(MOCK_RUNS),
       } as Response);
     }
-    if (url.includes("/api/pulls")) {
+    if (url.includes("/api/prs")) {
       return Promise.resolve({
         ok: prsOk,
         status: prsOk ? 200 : 500,
@@ -387,7 +388,7 @@ describe("RemediationMobile", () => {
 
   it("shows empty state when no failed runs", async () => {
     const fetchMock = vi.fn((url: string) => {
-      if (url.includes("/api/agent-remediation/providers")) {
+      if (url.includes("/api/agent-remediation/config")) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -459,5 +460,28 @@ describe("RemediationMobile", () => {
     // In-flight dispatches should persist across subtab switches
     expect(screen.getByRole("status", { name: /In-flight dispatch/i })).toBeInTheDocument();
     expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+  });
+
+  it("loads from the routes the backend serves and renders inventory rows (#1718)", async () => {
+    const fetchMock = setupFetch();
+    render(<Wrapper />);
+    await waitFor(() => {
+      expect(screen.getByText(/CI Build/i)).toBeInTheDocument();
+    });
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toEqual(
+      expect.arrayContaining([
+        "/api/agent-remediation/config",
+        "/api/runs/enriched?per_page=50",
+        "/api/prs?limit=20",
+        "/api/issues?limit=20",
+      ]),
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: /prs/i }));
+    expect(await screen.findByText("runner-dashboard · fix/flaky-test")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: /issues/i }));
+    expect(await screen.findByText("runner-dashboard enhancement")).toBeInTheDocument();
   });
 });

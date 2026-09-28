@@ -85,6 +85,18 @@ vi.mock("../../pages/Staff/StaffPage", () => ({
   default: () => <div data-testid="native-staff">Staff</div>,
 }));
 
+vi.mock("../../pages/StaffConsole/Mobile", () => ({
+  default: () => <div data-testid="mobile-staff">Mobile Staff</div>,
+  StaffConsoleMobile: () => <div data-testid="mobile-staff">Mobile Staff</div>,
+}));
+
+vi.mock("../../pages/FleetCommand/FleetCommandPage", () => ({
+  default: () => <div data-testid="native-fleet-command">Fleet Command</div>,
+  FleetCommandPage: () => (
+    <div data-testid="native-fleet-command">Fleet Command</div>
+  ),
+}));
+
 vi.mock("../../pages/Fleet", () => ({
   FleetMobile: () => <div data-testid="mobile-overview">Mobile Overview</div>,
 }));

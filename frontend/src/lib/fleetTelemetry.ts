@@ -8,6 +8,7 @@
  * lib/** is measured) without changing any observable behaviour.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- 1:1 port of dynamically-typed legacy runner/node telemetry payloads; the backend response shapes lack complete TypeScript definitions. */
+import { formatDuration } from "../components/formatters";
 import { parseRunnerName } from "./fleetMachines";
 
 /** Relative "x ago" label for an ISO timestamp (matches legacy `timeAgo`). */
@@ -20,12 +21,8 @@ export function timeAgo(d: unknown): string {
   return Math.floor(s / 86400) + "d ago";
 }
 
-/** Human-friendly duration from seconds (matches legacy `formatDuration`). */
-export function formatDuration(s: number): string {
-  if (!s || s < 0) return "-";
-  if (s < 60) return s + "s";
-  return Math.floor(s / 60) + "m " + (s % 60) + "s";
-}
+/** Human-friendly duration from seconds; one implementation in `components/formatters`. */
+export { formatDuration };
 
 /** Clamp a numeric percent into the integer range [0, 100]. */
 export function boundedPercent(value: unknown): number {
@@ -64,7 +61,14 @@ export function machineTelemetryForRunner(
 ): RunnerTelemetry {
   const machine = parseRunnerName(runner.name).machine;
   const node = nodesByName[machine.toLowerCase()] || {};
-  const sys = node.system || {};
+  return { machine: machine, node: node, ...machineTelemetry(node) };
+}
+
+/** CPU/memory percentages and uptime/last-seen labels for one fleet node. */
+export function machineTelemetry(
+  node: any,
+): Pick<RunnerTelemetry, "cpu" | "memory" | "uptime" | "seen"> {
+  const sys = (node && node.system) || {};
   const cpu = sys.cpu || {};
   const mem = sys.memory || {};
   const cpuPct = boundedPercent(cpu.percent_1m_avg || cpu.percent || 0);
@@ -72,12 +76,10 @@ export function machineTelemetryForRunner(
     ? boundedPercent((1 - mem.available_gb / mem.total_gb) * 100)
     : boundedPercent(mem.percent || 0);
   return {
-    machine: machine,
-    node: node,
     cpu: cpuPct,
     memory: memPct,
     uptime: sys.uptime_seconds ? formatDuration(sys.uptime_seconds) : "no uptime",
-    seen: node.last_seen ? timeAgo(node.last_seen) : "not seen",
+    seen: node && node.last_seen ? timeAgo(node.last_seen) : "not seen",
   };
 }
 

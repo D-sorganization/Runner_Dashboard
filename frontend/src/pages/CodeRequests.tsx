@@ -6,7 +6,7 @@
  * security, docs) and global prompt notes.
  */
 import React, { useEffect, useState } from "react";
-import { IssueGlyph } from "./decompIcons";
+import { IssueGlyph, AlertGlyph } from "./decompIcons";
 import {
   ALL_STANDARDS,
   buildCodeRequest,
@@ -274,7 +274,7 @@ export function CodeRequestsTab({
                     <option key={p.dashboardId} value={p.dashboardId}>
                       {p.label}
                       {p.loginStatus === "authenticated" ? " ✓" : ""}
-                      {p.loginStatus === "unauthenticated" ? " ⚠️ (login req.)" : ""}
+                      {p.loginStatus === "unauthenticated" ? " (login req.)" : ""}
                     </option>
                   ))
                 ) : (
@@ -306,7 +306,7 @@ export function CodeRequestsTab({
                     background: "rgba(217, 119, 6, 0.08)",
                   }}
                 >
-                  ⚠️ Warning: Provider &apos;{curP.label || selProvider}&apos; is currently unauthenticated or unavailable ({curP.loginDetail || "Credentials not configured"}). Dispatch may fail.
+                  <AlertGlyph size={12} /> Warning: Provider &apos;{curP.label || selProvider}&apos; is currently unauthenticated or unavailable ({curP.loginDetail || "Credentials not configured"}). Dispatch may fail.
                 </div>
               );
             }

@@ -15,7 +15,8 @@ export {
   lightCssVariableMap,
   cssVariableMap,
   toCssVariables,
-  // Elevation system (issue #827) + type scale (issue #828)
+  fontSizeTokens,
+  semanticTokens,
   radii,
   shadows,
   statusTokens,

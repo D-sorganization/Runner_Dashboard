@@ -5,8 +5,7 @@
       "name": "runner-dashboard",
       "artifact_source": {
         "type": "repo",
-        "repository": "D-sorganization/Repository_Management",
-        "subpath": "runner-dashboard",
+        "repository": "D-sorganization/Runner_Dashboard",
         "ref": "origin/main"
       },
       "install_path": "~/actions-runners/dashboard",
