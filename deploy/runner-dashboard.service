@@ -79,8 +79,9 @@ RemoveIPC=true
 # launching Windows binaries for host telemetry. RestrictAddressFamilies made
 # CPU/RAM probes silently fall back to WSL-only metrics, so leave it unset here.
 RestrictAddressFamilies=
-# Prevent kernel namespace creation.
-RestrictNamespaces=true
+# Allow user/mnt/pid/net namespaces for sandboxed child CLI processes (e.g. cursor-agent #1698),
+# while continuing to restrict cgroup, ipc, and uts namespaces.
+RestrictNamespaces=user mnt pid net
 # Drop all ambient/effective capabilities.
 CapabilityBoundingSet=
 # Syscall allow-list: system-service set covers all normal server operations.

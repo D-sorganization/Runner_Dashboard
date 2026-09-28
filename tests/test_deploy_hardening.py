@@ -26,7 +26,7 @@ _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u2"
 # These must appear in both the .service template files AND in the setup.sh
 # heredoc so that installed units stay in sync.
 _NEW_HARDENING_DIRECTIVES_391 = (
-    "RestrictNamespaces=true",
+    "RestrictNamespaces=user mnt pid net",
     "CapabilityBoundingSet=",
     "SystemCallFilter=@system-service",
     "LockPersonality=true",
@@ -182,7 +182,20 @@ def test_dashboard_service_allows_wsl_interop_address_families() -> None:
 
 def test_dashboard_service_has_restrict_namespaces() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
-    assert "RestrictNamespaces=true" in content
+    assert "RestrictNamespaces=user mnt pid net" in content
+    assert "RestrictNamespaces=true" not in content
+
+
+def test_dashboard_service_restrict_namespaces_supports_cursor_sandbox() -> None:
+    """Issue #1698: RestrictNamespaces must allow user mnt pid net for cursor-agent sandbox."""
+    content = _read(_DEPLOY / "runner-dashboard.service")
+    # Verify exact directive and that all 4 required namespaces are present
+    namespaces = set(
+        [line.split("=", 1)[1].strip() for line in content.splitlines() if line.startswith("RestrictNamespaces=")][
+            0
+        ].split()
+    )
+    assert {"user", "mnt", "pid", "net"}.issubset(namespaces)
 
 
 def test_dashboard_service_has_capability_bounding_set() -> None:

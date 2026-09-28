@@ -18,9 +18,22 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1698 — Support cursor-agent sandbox by allowing user namespaces in runner-dashboard.service
+
+- **State:** in_progress
+- **Owner:** local
+- **Issue:** #1698
+- **Branch:** `fix/1698-cursor-agent-restrict-namespaces`
+- **PR:** pending
+- **Paths:** `deploy/runner-dashboard.service`, `tests/test_deploy_hardening.py`, `tests/api/test_staff_adapter_cli_contracts.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (commit 90f336da; hardening tests 58 passed; adapter contracts 4 passed; line counts strictly <= 500)
+- **Summary:** cursor-agent staff runs failed with 'Sandbox mode is enabled but not available on this system' under runner-dashboard.service because RestrictNamespaces=true blocked user namespace creation required by cursor's sandbox. Narrowed RestrictNamespaces in runner-dashboard.service to 'user mnt pid net', allowing child sandboxing while keeping cgroup, ipc, and uts namespaces restricted.
+- **Next step:** Open PR and enable auto-merge.
+
 ### DL-#1697 — Skip chat-only providers in staff-node-acceptance ad-hoc loop
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** local
 - **Issue:** #1697
 - **Branch:** `fix/1697-acceptance-skip-chat-only-antigravity`
@@ -29,7 +42,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 350f4ea3; unit/api/deploy acceptance tests passed; mypy passed in 313 files; ruff clean; line counts strictly <= 500)
 - **Summary:** staff-node-acceptance.sh --run-ad-hoc previously failed on antigravity because the backend rejects unattended runs for chat-only providers. Sourced chat-only classification dynamically from provider adapter capabilities (not getattr(adapter, "unattended", True)), exposed chat_only_providers on roster/providers/board endpoints, and updated staff-node-acceptance.sh to skip ad-hoc dispatch for chat-only providers with SKIP while preserving board availability check.
-- **Next step:** Open PR and enable auto-merge.
+- **Next step:** Shipped in PR #1702.
 
 ### DL-#1680 — Minimum claude CLI version enforced before runs and chat
 

@@ -47,3 +47,13 @@ def test_agy_init_event_is_not_mistaken_for_text() -> None:
     agy = adapters_mod.ADAPTERS["antigravity"]
     ev = agy.parse_line(json.dumps({"event": "init", "init": {"cwd": "/w", "tools": ["ask_question"]}}))
     assert ev["kind"] == "init" and ev["text"] == ""
+
+
+@pytest.mark.unit
+def test_cursor_agent_uses_sandbox_enabled_flags() -> None:
+    """Cursor-agent uses --sandbox enabled --trust, supported by RestrictNamespaces (#1586, #1698)."""
+    argv = adapters_mod.ADAPTERS["cursor-agent"].build_command("test prompt", "/tmp/wt", model=None)
+    assert argv[:2] == ["cursor-agent", "-p"]
+    assert "--sandbox" in argv
+    assert argv[argv.index("--sandbox") + 1] == "enabled"
+    assert "--trust" in argv

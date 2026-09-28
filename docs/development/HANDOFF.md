@@ -1,3 +1,54 @@
+# Current handoff — Support cursor-agent sandbox by allowing user namespaces in runner-dashboard.service (DL-#1698)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard`
+- Branch: `fix/1698-cursor-agent-restrict-namespaces`
+- Baseline commit: `90f336da`
+- Implementation commit: `SELF`
+- Pull request: pending
+- Governing issue/epic: #1698; DL-#1698. Related: #1586.
+
+## Objective and status
+
+- Problem: Since #1586, the cursor-agent adapter runs `cursor-agent -p ... --sandbox enabled --trust`. The shipped `runner-dashboard.service` set `RestrictNamespaces=true`. Cursor's sandbox needs user namespaces, causing cursor-agent staff runs to fail with:
+  `Error: Sandbox mode is enabled but not available on this system. Sandbox failed to start, possibly due to AppArmor configuration.`
+- Solution (Option 1 selected by owner decision):
+  - Narrow `runner-dashboard.service` directive from `RestrictNamespaces=true` to `RestrictNamespaces=user mnt pid net`.
+  - This allows child processes to create user, mount, pid, and network namespaces for sandboxing, while continuing to restrict cgroup, ipc, and uts namespaces.
+  - Pin the contract in `tests/test_deploy_hardening.py` and `tests/api/test_staff_adapter_cli_contracts.py`.
+
+## Files and decisions
+
+- All modified files kept strictly <= 500 LOC:
+  - `deploy/runner-dashboard.service` (123 lines)
+  - `tests/test_deploy_hardening.py` (478 lines)
+  - `tests/api/test_staff_adapter_cli_contracts.py` (59 lines)
+- Preserved `RestrictNamespaces=true` in `runner-autoscaler.service` since autoscaler does not spawn sandboxed agent CLIs.
+
+## Validation
+
+- `pytest tests/test_deploy_hardening.py`: 58 passed in 0.91s
+- `pytest tests/api/test_staff_adapter_cli_contracts.py`: 4 passed
+- `pytest tests/test_setup_sh_idempotent.py`: 11 passed
+- `ruff check`: clean
+- `ruff format --check`: clean
+
+## Blockers and risks
+
+- None. Allows Cursor CLI sandboxing while preserving defense-in-depth restrictions on other namespace types.
+
+## Next steps
+
+1. Create pull request with `agent:local` label.
+2. Enable auto-merge (`--auto --squash`).
+3. Release coordination lease upon merge.
+
+---
+
 # Current handoff — Skip chat-only providers in staff-node-acceptance ad-hoc loop (DL-#1697)
 
 Last updated: 2026-09-27
