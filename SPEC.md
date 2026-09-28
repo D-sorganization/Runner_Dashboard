@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1752 | Restore one-line docstring on get_git_drift in deployment router to resolve OpenAPI schema drift against frontend openapi.json. |
 | 2026-09-28 | #1750 | Cache slow subprocess probes (GPU, storage pools, host volume) with 30s TTL in system_utils.py; run local and remote node probes concurrently in _collect_live_fleet_nodes; single-flight coalescing in _get_fleet_nodes_impl. |
 | 2026-09-28 | #1748 | Diagnostics fall back to the deployed commit from deployment metadata on artifact installs, and git-drift reports unknown instead of "up to date" when it has no commits. |
 | 2026-09-28 | #1745 | Scheduled-workflow inventory reads workflow files by blob SHA (cached) with bounded concurrency, and the hub answers degraded within the proxy timeout instead of a 504. |
