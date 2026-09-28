@@ -9,6 +9,9 @@ that role. The turn runs in the role's own thread rather than the auto thread
 because provider sessions are stored per thread: a specialist turn in the auto
 thread would resume Barb's session, and Barb's next turn would resume the
 specialist's. Ambiguous messages, and any failure here, leave the turn with Barb.
+Pre-routing is for a fresh request only: once Barb has replied in the auto
+thread, a caller follow-up stays with her unless it is an explicit
+``/role``/``@mention`` (#1760).
 """
 
 from __future__ import annotations
@@ -65,14 +68,50 @@ def thread_reply_role(thread: ThreadRecord, callers: Collection[str]) -> str:
     return next((p for p in thread.participants if p and p not in callers), AUTO_ROUTE_ROLE)
 
 
-def confident_route(text: str, known_roles: Collection[str]) -> RoutingDecision | None:
+def _strip_quoted_material(text: str) -> str:
+    """*text* with pasted markdown table rows, blockquotes, and fenced code removed.
+
+    Keyword pre-routing must judge the caller's own words, not material they
+    pasted in (#1760): a rule keyword landing inside a decision table, a
+    quoted reply, or a code sample is not the caller's request.
+    """
+    lines = text.splitlines()
+    kept: list[str] = []
+    in_fence = False
+    for line in lines:
+        trimmed = line.strip()
+        if trimmed.startswith("```") or trimmed.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if trimmed.startswith("|") or trimmed.startswith(">"):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def confident_route(text: str, known_roles: Collection[str], *, allow_keyword: bool = True) -> RoutingDecision | None:
     """The deterministic decision for *text* when it may skip Barb, else ``None``.
 
-    Pre: ``known_roles`` holds the loaded role names.
+    Pre: ``known_roles`` holds the loaded role names. ``allow_keyword`` is
+    ``False`` for a follow-up in a thread where Barb has already replied: only
+    an explicit ``/role``/``@mention`` decision may then pre-route (#1760).
     Post: a returned decision names a loaded role other than Barb, carries the rule
-    that matched, and has ``confidence >= PRE_ROUTE_CONFIDENCE_THRESHOLD``.
+    that matched, and has ``confidence >= PRE_ROUTE_CONFIDENCE_THRESHOLD``. An
+    explicit decision (``mode == "explicit"``) is always evaluated against the
+    original *text*. A keyword decision (``mode == "pre_router"``) is evaluated
+    against *text* with pasted markdown table rows, blockquotes, and fenced
+    code stripped, and is never returned when ``allow_keyword`` is ``False``.
     """
-    decision = route_deterministic(text)
+    explicit = route_deterministic(text)
+    decision: RoutingDecision | None
+    if explicit is not None and explicit.mode == "explicit":
+        decision = explicit
+    elif not allow_keyword:
+        return None
+    else:
+        decision = route_deterministic(_strip_quoted_material(text))
     if decision is None or decision.confidence < PRE_ROUTE_CONFIDENCE_THRESHOLD:
         return None
     role = decision.chosen_role
@@ -95,8 +134,11 @@ async def preroute_auto_message(
 
     Pre: *user_msg* is the caller's message, already stored in *thread*.
     Post: ``None`` for a thread that is not ``auto``, a message that is not confident,
-    a role that cannot chat (*can_chat*), or any error. Otherwise the auto thread holds
-    one new handoff card, published on *bus*. This function never raises.
+    a role that cannot chat (*can_chat*), or any error. ``None`` also for a follow-up
+    in a thread where Barb has already replied, unless the message is an explicit
+    ``/role``/``@mention`` (#1760): a caller reply to Barb stays with Barb rather than
+    being pre-routed by keyword. Otherwise the auto thread holds one new handoff card,
+    published on *bus*. This function never raises.
     """
     if thread.kind != "auto":
         return None
@@ -117,7 +159,11 @@ async def _preroute(
     known_roles: Collection[str] | None,
 ) -> PreRoutedTurn | None:
     roles = known_roles if known_roles is not None else load_roles().keys()
-    decision = confident_route(user_msg.body_md, roles)
+    barb_already_replied = any(
+        m.author_kind == "role" and m.author == AUTO_ROUTE_ROLE and m.seq < user_msg.seq
+        for m in store.list_messages(thread.id)
+    )
+    decision = confident_route(user_msg.body_md, roles, allow_keyword=not barb_already_replied)
     if decision is None or not decision.chosen_role:
         return None
     if can_chat is not None and not can_chat(decision.chosen_role)[0]:

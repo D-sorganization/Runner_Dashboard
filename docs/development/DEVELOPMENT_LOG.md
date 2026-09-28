@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1760 — Auto-route pre-router follow-up and handoff display-name fixes
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1760
+- **Branch:** `fix/chat-routing-followups`
+- **PR:** not created
+- **Paths:** `backend/staff/chat_preroute.py`, `backend/staff/reply_contract.py`, `tests/unit/test_staff_chat_preroute.py`, `tests/api/test_staff_chat_preroute_api.py`, `tests/unit/test_staff_reply_contract.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/api/test_staff_chat_preroute_api.py tests/api/test_staff_routing_api.py tests/unit/test_staff_reply_contract.py tests/unit/test_staff_chat_preroute.py tests/unit/test_staff_chat_handoff.py tests/code_requests/test_handoff_rules_drift.py -q`: 69 passed, 1 skipped; `ruff check`/`ruff format --check` clean; mypy clean)
+- **Summary:** A pasted decision table's stray keyword hit pre-routed a caller's reply to Barb away from her mid-conversation, and a role's `handoff: Board Secretary` display name was silently dropped by the single-token handoff regex. `chat_preroute._preroute` now only allows keyword pre-routing (not explicit `/role`/`@mention`) when the auto thread has no prior Barb reply before the caller's message, and strips pasted markdown table rows/blockquotes/fenced code before the keyword stage. `reply_contract._HANDOFF_RE` now accepts a display name and slugifies it (`Board Secretary` -> `board-secretary`); unknown-role rejection in `chat_handoff.py` is unchanged.
+- **Next step:** Open a PR referencing #1760.
+
 ### DL-#1755 — Phone sign-in via Tailscale identity headers
 
 - **State:** in_review

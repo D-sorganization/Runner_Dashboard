@@ -1,4 +1,41 @@
-# Current handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
+# Current handoff — Auto-route pre-router follow-up and handoff display-name fixes (DL-#1760)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `fix/chat-routing-followups`
+- Worktree: `Runner_Dashboard-worktrees/claude-1760`
+- Base: `origin/main`
+- Governing issue: #1760
+- Pull request: not created
+
+## Objective and status
+
+- Found in the 2026-09-28 live Board-review test (UpstreamDrift PR #11080 routed through Barb): two chat-routing defects.
+- **Fix 1 — `backend/staff/chat_preroute.py`:** pre-routing is for a fresh request only. `_preroute` now checks whether the auto thread already holds a message authored by Barb (`author_kind == "role"`, `author == AUTO_ROUTE_ROLE`) at a `seq` before the caller's message; if so it calls `confident_route(..., allow_keyword=False)`, which only accepts an explicit decision (`mode == "explicit"`, i.e. `/role x` or `@x`). `confident_route` also now strips pasted markdown table rows (`|...|`), blockquote lines (`>`), and fenced code blocks (via new `_strip_quoted_material`) before evaluating the keyword stage, so a keyword landing inside quoted/pasted material never pre-routes; explicit `/role`/`@mention` are still matched on the original text.
+- **Fix 2 — `backend/staff/reply_contract.py`:** `_HANDOFF_RE` widened to accept a display name (letters, digits, spaces, `_`, `-`, up to 60 chars) in addition to a single-token id, still anchored to a line that is just `handoff: <name>` so ordinary prose is not swallowed. New `_slugify_handoff_target` lowercases and collapses runs of spaces/underscores to a single hyphen (`Board Secretary` -> `board-secretary`); single-token ids behave identically. `backend/staff/chat_handoff.py`'s unknown-role rejection is unchanged.
+- Files changed: `backend/staff/chat_preroute.py`, `backend/staff/reply_contract.py`, `tests/unit/test_staff_chat_preroute.py`, `tests/api/test_staff_chat_preroute_api.py`, `tests/unit/test_staff_reply_contract.py`.
+
+## Validation
+
+- RED observed first (source files reverted to `origin/main`, new tests run): 9 failures — `test_a_keyword_follow_up_after_a_barb_reply_is_not_confident`, `test_confident_route_with_allow_keyword_false_only_accepts_explicit`, `test_confident_route_ignores_keywords_inside_a_pasted_table_row`, `test_confident_route_ignores_keywords_inside_a_blockquote`, `test_confident_route_ignores_keywords_inside_fenced_code`, `test_handoff_display_name_is_slugified`, `test_handoff_display_name_with_underscores_and_mixed_case`, `test_a_keyword_follow_up_after_barb_replies_stays_with_barb`, `test_a_keyword_inside_a_pasted_table_row_does_not_route_a_fresh_message`.
+- GREEN after the fix, WSL `pytest tests/api/test_staff_chat_preroute_api.py tests/api/test_staff_routing_api.py tests/unit/test_staff_reply_contract.py tests/unit/test_staff_chat_preroute.py tests/unit/test_staff_chat_handoff.py tests/code_requests/test_handoff_rules_drift.py -q`: 69 passed, 1 skipped (pre-existing skip).
+- `ruff check backend tests`: all checks passed. `ruff format --check` on the changed files: clean (one file reformatted before commit).
+- `mypy --ignore-missing-imports --no-implicit-optional backend/staff/chat_preroute.py backend/staff/reply_contract.py`: no issues.
+
+## Blockers and risks
+
+- None known. Not pushed; no PR opened (worked in an isolated worktree per task instructions).
+
+## Next steps
+
+1. Push the branch and open a PR referencing #1760.
+
+---
+
+# Prior handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
 
 Last updated: 2026-09-28
 
