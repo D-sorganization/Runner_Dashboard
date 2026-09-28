@@ -1,4 +1,81 @@
-# Current handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
+# Current handoff — Isolate fleet-context sources from event-loop blocking (DL-#1761)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `fix/chat-fleet-context-timeouts`
+- Worktree: `Runner_Dashboard-worktrees/claude-1761`
+- Governing issue: #1761
+- Pull request: not created
+
+## Objective and status
+
+- Symptom: in live chat turns, `backend/staff/chat_fleet_context.py`
+  `build_fleet_context_block` returned `unavailable (TimeoutError)` for
+  `read_staff_summary`, `read_briefing` and `read_sessions` all at the same
+  instant, even though the same endpoints answer in 3.8 s / 0.4 s / 0.4 s
+  over HTTP. First occurrence was ~1 minute after a restart.
+- Root cause: `_run_source` awaited each source's coroutine directly on the
+  shared event loop under `asyncio.wait_for(..., 5.0)`. A source performing
+  synchronous blocking work inside an `async def` (e.g. `staff.roles.load_roles()`'s
+  directory glob/stat/YAML parse reached through `build_staff_summary` →
+  `staff.fleet.local_board`, especially on a cold mtime-cache right after a
+  restart) freezes the whole single-threaded loop for its duration. While
+  frozen, every other concurrently `asyncio.gather`-ed source — and the
+  `wait_for` timeout timers checking them — is starved; when the blocking
+  call finally returns control, all the overdue timers fire together, so
+  fast sources (0.4 s over HTTP) time out in lockstep with the slow one.
+- Fix: `backend/staff/chat_fleet_context.py` now runs each source's
+  coroutine to completion on its own private event loop inside a worker
+  thread (`_run_source_isolated` + `_await_source`, via `asyncio.to_thread`),
+  so synchronous blocking work in one source can no longer starve its
+  siblings or the shared loop. Added a module-level per-tool last-good
+  snapshot cache (`_LAST_GOOD`): on timeout/error, a tool that succeeded
+  earlier this process renders `stale (age Ns): <body>` instead of
+  `unavailable`; a tool with no prior success still renders `unavailable`.
+  `HEADER_TEMPLATE` and the module docstring now explain the `stale (age Ns)`
+  wording to the model. `MAX_SECTION_CHARS` truncation and the "never raises"
+  postcondition are unchanged.
+- Files changed: `backend/staff/chat_fleet_context.py`,
+  `tests/unit/test_staff_chat_fleet_context.py`.
+
+## Validation
+
+- RED: added `test_synchronous_blocking_source_does_not_starve_fast_sibling`,
+  `test_build_fleet_context_block_serves_stale_snapshot_after_timeout`, and
+  `test_build_fleet_context_block_no_snapshot_yet_still_unavailable`; before
+  the fix all failed at fixture setup (`AttributeError: module
+'staff.chat_fleet_context' has no attribute '_LAST_GOOD'`), and the
+  isolation test specifically reproduces the original bug (a `time.sleep`
+  inside one source starves a fast sibling under the shared 0.2 s budget).
+- GREEN: `MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-22.04 -- bash -c 'cd
+/mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1761 &&
+/home/dieterolson/.cache/rd-test-venv/bin/python -m pytest
+tests/unit/test_staff_chat_fleet_context.py
+tests/unit/test_staff_chat_fleet_prompt.py tests/unit/test_staff_chat_memory.py
+-p no:cacheprovider -o addopts="" -q'` → 13 passed.
+- `ruff check backend/staff/chat_fleet_context.py
+tests/unit/test_staff_chat_fleet_context.py` and `ruff format --check` on
+  the same files — clean.
+- `~/.cache/pre-commit/repo57p6mwat/py_env-python3.11/Scripts/mypy.exe
+--ignore-missing-imports --explicit-package-bases staff/chat_fleet_context.py`
+  (run from `backend/`) — clean.
+
+## Blockers and risks
+
+- None identified. Each source now spins up a fresh event loop per chat turn
+  (minor per-call overhead, not a hot path). PR not yet opened; lead reviews
+  and pushes per this worktree's assigned rules.
+
+## Next step
+
+- Open the PR against `origin/main` from `fix/chat-fleet-context-timeouts`.
+
+---
+
+# Prior handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
 
 Last updated: 2026-09-28
 

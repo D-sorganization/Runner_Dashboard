@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -17,6 +18,14 @@ from staff.chat_fleet_context import (
     declared_fleet_tools,
 )
 from staff.roles import RoleSpec
+
+
+@pytest.fixture(autouse=True)
+def _clear_last_good_snapshot_cache() -> Any:
+    """Isolate the module-level last-good snapshot cache between tests (#1761)."""
+    cfc._LAST_GOOD.clear()
+    yield
+    cfc._LAST_GOOD.clear()
 
 
 @pytest.mark.unit
@@ -148,3 +157,93 @@ async def test_build_fleet_context_block_truncates_large_payload_and_caps_total(
     assert "…(truncated)" in block
     assert len(block) <= MAX_BLOCK_CHARS
     assert block.endswith(" …(truncated)")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_synchronous_blocking_source_does_not_starve_fast_sibling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source with sync blocking I/O must not make a fast sibling source time out too (#1761).
+
+    Reproduces the reported symptom: a live chat turn saw ``read_staff_summary``,
+    ``read_briefing`` and ``read_sessions`` all time out at the same instant even
+    though two of the three answer in well under a second over HTTP. A source
+    performing synchronous work inside an ``async def`` (sync sqlite/file/subprocess
+    calls) freezes the shared event loop for its duration; every other concurrently
+    gathered source (and the timeout timer checking them) is starved until it lets go,
+    so unrelated fast sources can be swept into the same timeout.
+    """
+    monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.2)
+
+    role = RoleSpec(
+        name="barb",
+        title="Barb",
+        chat={"tools": ["read_staff_summary", "read_priorities"]},
+    )
+
+    async def _blocks_the_event_loop() -> dict[str, Any]:
+        time.sleep(0.35)  # simulates sync sqlite/file/subprocess I/O inside an async source
+        return {"blocked": True}
+
+    async def _fast() -> dict[str, Any]:
+        await asyncio.sleep(0.01)
+        return {"ok": True}
+
+    fake_sources = {"read_staff_summary": _blocks_the_event_loop, "read_priorities": _fast}
+    block = await build_fleet_context_block(role, sources=fake_sources)
+
+    assert block is not None
+    assert '{"ok":true}' in block, "a fast sibling source must not be starved by a blocking source"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_fleet_context_block_serves_stale_snapshot_after_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tool that later times out renders its last-good payload as stale, not unavailable (#1761)."""
+    monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.05)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_sessions"]})
+    good_payload = {"sessions": ["a"]}
+    calls = {"n": 0}
+
+    async def _flaky() -> dict[str, Any]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return good_payload
+        await asyncio.sleep(0.3)
+        return {"sessions": ["should not appear"]}
+
+    fake_sources = {"read_sessions": _flaky}
+
+    t0 = datetime(2026, 9, 28, 12, 0, 0, tzinfo=UTC)
+    block1 = await build_fleet_context_block(role, sources=fake_sources, now=lambda: t0)
+    assert block1 is not None
+    assert '{"sessions":["a"]}' in block1
+
+    t1 = t0 + timedelta(seconds=42)
+    block2 = await build_fleet_context_block(role, sources=fake_sources, now=lambda: t1)
+    assert block2 is not None
+    section = block2[block2.index("### read_sessions") :]
+    assert section.startswith('### read_sessions\nstale (age 42s): {"sessions":["a"]}')
+    assert "unavailable" not in section
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_fleet_context_block_no_snapshot_yet_still_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tool with no prior success this process still renders unavailable, not a fabricated stale body."""
+    monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.05)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_briefing"]})
+
+    async def _slow_source() -> dict[str, Any]:
+        await asyncio.sleep(0.3)
+        return {"briefing": []}
+
+    block = await build_fleet_context_block(role, sources={"read_briefing": _slow_source})
+    assert block is not None
+    section = block[block.index("### read_briefing") :]
+    assert section == "### read_briefing\nunavailable (TimeoutError)"

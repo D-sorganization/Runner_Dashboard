@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1761 — Isolate fleet-context sources from event-loop blocking
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1761
+- **Branch:** `fix/chat-fleet-context-timeouts`
+- **PR:** not created
+- **Paths:** `backend/staff/chat_fleet_context.py`, `tests/unit/test_staff_chat_fleet_context.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_chat_fleet_context.py tests/unit/test_staff_chat_fleet_prompt.py tests/unit/test_staff_chat_memory.py -q` → 13 passed; `ruff check`/`ruff format --check` clean; mypy `--explicit-package-bases` clean)
+- **Summary:** `build_fleet_context_block`'s `_run_source` used to await each source's coroutine directly on the shared event loop under a 5 s `asyncio.wait_for`. A source with synchronous blocking work inside its `async def` (traced to `load_roles()`'s directory glob/stat/YAML parse on a cold mtime-cache, reached via `build_staff_summary` → `staff.fleet.local_board`) froze the whole loop, starving every other concurrently gathered source and their timeout timers, so fast sources (0.4 s over HTTP) timed out in lockstep with the slow one. Each source now runs on its own private event loop in a worker thread (`asyncio.to_thread`), isolating any sync blocking from its siblings; a module-level per-tool last-good snapshot cache renders `stale (age Ns): <body>` on a later timeout/error instead of `unavailable`, when the tool has succeeded earlier in the process.
+- **Next step:** Open the PR against `origin/main`.
+
 ### DL-#1755 — Phone sign-in via Tailscale identity headers
 
 - **State:** in_review
