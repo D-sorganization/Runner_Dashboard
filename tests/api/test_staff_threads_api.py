@@ -68,14 +68,16 @@ def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     app.dependency_overrides[require_scope("staff.read")] = lambda: TEST_PRINCIPAL
 
     store = get_conversation_store()
+    already_running = set(_live_staff_run_threads())
     yield store
-    # Join staff-run workers before the store they write to is reset.
-    for thread in _live_staff_run_threads():
+    # Join this test's staff-run workers before the store they write to is reset.
+    started_here = [t for t in _live_staff_run_threads() if t not in already_running]
+    for thread in started_here:
         thread.join(timeout=5)
     app.dependency_overrides.clear()
     reset_conversation_store()
     reset_thread_bus()
-    assert not _live_staff_run_threads(), "staff-run worker thread outlived the test"
+    assert not [t for t in started_here if t.is_alive()], "staff-run worker thread outlived the test"
     assert not real_turns, "test ran a real chat turn; stub run_chat_turn_in_background"
     assert not worktrees, "test created a real git worktree"
 
