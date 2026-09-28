@@ -2252,7 +2252,11 @@ async def serve_service_worker():
     sw = FRONTEND_DIR / "sw.js"
     if not sw.exists():
         raise HTTPException(status_code=404, detail="service worker not found")
-    return FileResponse(sw, media_type="application/javascript")
+    return FileResponse(
+        sw,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/offline.html")
@@ -2279,7 +2283,7 @@ async def serve_index():
     """Serve the dashboard HTML page."""
     index_path = FRONTEND_DIR / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return FileResponse(index_path, headers={"Cache-Control": "no-cache"})
     fallback = (
         "<html><body style='"
         "background:#0f1117;color:#e6edf3;"
@@ -2791,7 +2795,11 @@ async def serve_spa_fallback(full_path: str):
     index_path = FRONTEND_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="Frontend index.html not found")
-    return FileResponse(index_path, media_type="text/html")
+    return FileResponse(
+        index_path,
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # ASGI entrypoint used for the "server:asgi_app" import string below (issue
