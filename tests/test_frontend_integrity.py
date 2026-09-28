@@ -423,11 +423,12 @@ def test_mobile_design_tokens_mirror_runtime_css_contract() -> None:
     tokens = (_DESIGN_DIR / "tokens.ts").read_text(encoding="utf-8")
 
     for css_name, value in [
-        ("--bg-primary", "#0f1117"),
-        ("--bg-secondary", "#161b22"),
-        ("--bg-card", "#1c2128"),
-        ("--text-primary", "#e6edf3"),
-        ("--text-secondary", "#8b949e"),
+        # Neutral palette from the #1719 token overhaul.
+        ("--bg-primary", "#111113"),
+        ("--bg-secondary", "#18181b"),
+        ("--bg-card", "#18181b"),
+        ("--text-primary", "#ececef"),
+        ("--text-secondary", "#a1a1aa"),
         ("--accent-blue", "#58a6ff"),
         ("--accent-green", "#3fb950"),
         ("--accent-red", "#f85149"),
