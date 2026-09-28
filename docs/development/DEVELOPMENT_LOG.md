@@ -41,7 +41,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `frontend/src/pages/__tests__/Staff.test.tsx`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 246c0d58; Staff.test.tsx reduced from 512 to 473 lines, <= 500 lines soft cap satisfied)
-- **Summary:** CI Standard on main failed on ci-health-check because frontend/src/pages/__tests__/Staff.test.tsx reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
+- **Summary:** CI Standard on main failed on ci-health-check because `frontend/src/pages/__tests__/Staff.test.tsx` reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
 - **Next step:** Open PR and enable auto-merge.
 
 ### DL-#1338-settings — SC-G6: one Settings area with sections
