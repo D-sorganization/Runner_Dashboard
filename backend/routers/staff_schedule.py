@@ -78,22 +78,45 @@ def start_scheduler() -> None:
     get_scheduler().start()
 
 
+def current_holds() -> list[dict[str, Any]]:
+    """The holds list as plain dicts; shared by the legacy and v1 routes."""
+    return [h.to_dict() for h in get_scheduler().holds.load()]
+
+
+def replace_holds(body: HoldsBody) -> list[dict[str, Any]]:
+    """Replace the holds list. Raises 422 on invalid input (e.g. duplicate ids)."""
+    try:
+        saved = get_scheduler().holds.replace([h.model_dump() for h in body.holds])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return [h.to_dict() for h in saved]
+
+
+def schedule_snapshot() -> dict[str, Any]:
+    """Per role: next fire, window, blocking hold, budget, last fired; shared by both route versions."""
+    sched = get_scheduler()
+    now = datetime.now(UTC)
+    return {
+        "machine": sched.runner.machine,
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
+        "enabled": scheduler_enabled(),
+        "running": sched.running,
+        "tick_seconds": sched.tick_seconds,
+        "roles": sched.status(now),
+    }
+
+
 @router.get("/holds", response_model=StaffHoldsResponse, response_model_exclude_none=True)
 async def get_holds(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    holds = get_scheduler().holds
-    return {"holds": [h.to_dict() for h in holds.load()], "path": str(holds.path)}
+    return {"holds": current_holds(), "path": str(get_scheduler().holds.path)}
 
 
 @router.put("/holds", response_model=StaffHoldsResponse, response_model_exclude_none=True)
 async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("staff.holds.write"))) -> dict[str, Any]:
     """Replace the holds list. Postcondition: the file on disk equals the response."""
-    holds = get_scheduler().holds
-    try:
-        saved = holds.replace([h.model_dump() for h in body.holds])
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    saved = replace_holds(body)
     caller_str = format_caller(caller)
     action = "hold_clear" if not body.holds else "hold_set"
     record_audit(
@@ -106,7 +129,7 @@ async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("
         fail_closed=True,
     )
     log.info("staff: holds replaced by %s (%d holds)", caller_str, len(saved))
-    return {"holds": [h.to_dict() for h in saved], "path": str(holds.path)}
+    return {"holds": saved, "path": str(get_scheduler().holds.path)}
 
 
 class ScheduleToggleBody(BaseModel):
@@ -145,16 +168,7 @@ async def toggle_scheduler(
 async def get_schedule(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    sched = get_scheduler()
-    now = datetime.now(UTC)
-    return {
-        "machine": sched.runner.machine,
-        "generated_at": now.isoformat().replace("+00:00", "Z"),
-        "enabled": scheduler_enabled(),
-        "running": sched.running,
-        "tick_seconds": sched.tick_seconds,
-        "roles": sched.status(now),
-    }
+    return schedule_snapshot()
 
 
 v1_router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])

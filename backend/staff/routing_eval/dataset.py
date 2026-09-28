@@ -6,7 +6,7 @@ reviews, code requests, hygiene, Barb self-handling, and ambiguous requests.
 
 from __future__ import annotations
 
-from tests.staff.routing_eval.models import RoutingEvalCase
+from staff.routing_eval.models import RoutingEvalCase
 
 C = RoutingEvalCase
 
