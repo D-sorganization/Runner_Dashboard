@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+import threading
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -17,6 +18,14 @@ from staff.chat_fleet_context import (
     declared_fleet_tools,
 )
 from staff.roles import RoleSpec
+
+
+@pytest.fixture(autouse=True)
+def _clear_last_good_snapshot_cache() -> Any:
+    """Isolate the module-level last-good snapshot cache between tests (#1761)."""
+    cfc._LAST_GOOD.clear()
+    yield
+    cfc._LAST_GOOD.clear()
 
 
 @pytest.mark.unit
@@ -148,3 +157,111 @@ async def test_build_fleet_context_block_truncates_large_payload_and_caps_total(
     assert "…(truncated)" in block
     assert len(block) <= MAX_BLOCK_CHARS
     assert block.endswith(" …(truncated)")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_fleet_context_block_warms_role_cache_off_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The role YAML cache is refreshed via asyncio.to_thread, not on the caller's loop (#1761).
+
+    ``build_staff_summary`` (behind ``read_staff_summary``) calls
+    ``staff.roles.load_roles()`` synchronously; on a cold mtime-cache — most likely
+    shortly after a restart — that means a directory glob, a stat of every role file
+    and a full YAML parse, run directly on the event loop, which is what froze the
+    loop long enough to starve every concurrently gathered source at once. Warming
+    the cache off-loop first, before gathering, means that later in-loop call only
+    re-stats already-cached files. This asserts the warm-up call itself actually runs
+    on a worker thread, not the thread driving this test's event loop.
+    """
+    main_thread = threading.current_thread()
+    seen_threads: list[threading.Thread] = []
+
+    def _fake_load_roles() -> dict[str, Any]:
+        seen_threads.append(threading.current_thread())
+        return {}
+
+    monkeypatch.setattr(cfc, "load_roles", _fake_load_roles)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_priorities"]})
+    fake_sources = {"read_priorities": AsyncMock(return_value={"ok": True})}
+
+    block = await build_fleet_context_block(role, sources=fake_sources)
+
+    assert block is not None
+    assert len(seen_threads) == 1, "load_roles must be warmed exactly once per turn"
+    assert seen_threads[0] is not main_thread, "the warm-up must not run on the caller's event-loop thread"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_fleet_context_block_survives_role_cache_warm_up_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A role-cache warm-up failure is logged and swallowed; sources still run (#1761)."""
+
+    def _broken_load_roles() -> dict[str, Any]:
+        raise OSError("role directory unreadable")
+
+    monkeypatch.setattr(cfc, "load_roles", _broken_load_roles)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_priorities"]})
+    fake_sources = {"read_priorities": AsyncMock(return_value={"ok": True})}
+
+    block = await build_fleet_context_block(role, sources=fake_sources)
+
+    assert block is not None
+    assert '{"ok":true}' in block
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_fleet_context_block_serves_stale_snapshot_after_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tool that later times out renders its last-good payload as stale, not unavailable (#1761)."""
+    monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.05)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_sessions"]})
+    good_payload = {"sessions": ["a"]}
+    calls = {"n": 0}
+
+    async def _flaky() -> dict[str, Any]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return good_payload
+        await asyncio.sleep(0.3)
+        return {"sessions": ["should not appear"]}
+
+    fake_sources = {"read_sessions": _flaky}
+
+    t0 = datetime(2026, 9, 28, 12, 0, 0, tzinfo=UTC)
+    block1 = await build_fleet_context_block(role, sources=fake_sources, now=lambda: t0)
+    assert block1 is not None
+    assert '{"sessions":["a"]}' in block1
+
+    t1 = t0 + timedelta(seconds=42)
+    block2 = await build_fleet_context_block(role, sources=fake_sources, now=lambda: t1)
+    assert block2 is not None
+    section = block2[block2.index("### read_sessions") :]
+    assert section.startswith('### read_sessions\nstale (age 42s): {"sessions":["a"]}')
+    assert "unavailable" not in section
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_fleet_context_block_no_snapshot_yet_still_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tool with no prior success this process still renders unavailable, not a fabricated stale body."""
+    monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.05)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_briefing"]})
+
+    async def _slow_source() -> dict[str, Any]:
+        await asyncio.sleep(0.3)
+        return {"briefing": []}
+
+    block = await build_fleet_context_block(role, sources={"read_briefing": _slow_source})
+    assert block is not None
+    section = block[block.index("### read_briefing") :]
+    assert section == "### read_briefing\nunavailable (TimeoutError)"
