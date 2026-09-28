@@ -31,7 +31,7 @@ log = logging.getLogger("dashboard.quota_enforcement")
 try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows development/runtime path.
-    fcntl = None
+    fcntl = None  # type: ignore[assignment]
 
 
 @contextlib.contextmanager

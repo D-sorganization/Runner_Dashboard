@@ -54,9 +54,7 @@ TEST_PRINCIPAL = Principal(
 
 
 @pytest.fixture
-def test_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[dict[str, Any]]:
+def test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
     db_path = tmp_path / "staff_test.sqlite3"
     push_db = tmp_path / "push_test.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_path))
@@ -145,9 +143,7 @@ def test_simulated_stalled_run_retries_then_escalates(test_env: dict[str, Any]) 
     )
     r_store.create_run(run_1)
     w_store.add_link(item.id, "runs", run_1.id)
-    w_store.transition_state(
-        item.id, "in_progress", actor="barb", reason="Run dispatched"
-    )
+    w_store.transition_state(item.id, "in_progress", actor="barb", reason="Run dispatched")
 
     # First sweep at clock
     res1 = engine.sweep(now=clock)
@@ -179,9 +175,7 @@ def test_simulated_stalled_run_retries_then_escalates(test_env: dict[str, Any]) 
 
     # Verify escalation message posted to Barb's thread
     threads = c_store.list_threads()
-    barb_thread = next(
-        (t for t in threads if "barb" in [p.lower() for p in t.participants]), None
-    )
+    barb_thread = next((t for t in threads if "barb" in [p.lower() for p in t.participants]), None)
     assert barb_thread is not None
 
     messages = c_store.list_messages(barb_thread.id)
@@ -264,9 +258,7 @@ def test_property_no_item_stays_active_past_sla_without_followup(
         # If it passed SLA + interval
         if expected_dt + timedelta(seconds=interval) <= sweep_time:
             followup_records = engine.get_followup_records(it.id)
-            assert (
-                len(followup_records) >= 1
-            ), f"Item {it.id} past SLA + 1 interval had no follow-up record!"
+            assert len(followup_records) >= 1, f"Item {it.id} past SLA + 1 interval had no follow-up record!"
 
 
 @pytest.mark.unit
@@ -294,9 +286,7 @@ def test_debounce_and_idempotency(test_env: dict[str, Any]) -> None:
     # Sweep 2 immediately afterwards (same clock or +5s)
     engine.sweep(now=clock + timedelta(seconds=5))
     records2 = engine.get_followup_records(item.id)
-    assert (
-        len(records2) == 1
-    ), "Debounce failed: second sweep in same interval duplicated follow-up!"
+    assert len(records2) == 1, "Debounce failed: second sweep in same interval duplicated follow-up!"
 
     # Advance clock past interval and sweep 3
     clock_next = clock + timedelta(seconds=DEFAULT_SWEEP_INTERVAL_SECONDS + 10)
@@ -343,9 +333,7 @@ def test_auth_expired_playbook(test_env: dict[str, Any]) -> None:
 
     # Verify Barb's thread has auth notice
     threads = c_store.list_threads()
-    barb_thread = next(
-        (t for t in threads if "barb" in [p.lower() for p in t.participants]), None
-    )
+    barb_thread = next((t for t in threads if "barb" in [p.lower() for p in t.participants]), None)
     assert barb_thread is not None
     msgs = c_store.list_messages(barb_thread.id)
     assert any("auth" in m.body_md.lower() for m in msgs)
@@ -366,23 +354,16 @@ def test_needs_input_playbook(test_env: dict[str, Any]) -> None:
         owner_role="librarian",
     )
     w_store.transition_state(item.id, "in_progress", actor="barb", reason="Started")
-    w_store.transition_state(
-        item.id, "waiting_on_user", actor="librarian", reason="Confirmation needed"
-    )
+    w_store.transition_state(item.id, "waiting_on_user", actor="librarian", reason="Confirmation needed")
 
     res = engine.sweep(now=clock)
     assert res.actions_count.get("ask_owner", 0) == 1
 
     threads = c_store.list_threads()
-    barb_thread = next(
-        (t for t in threads if "barb" in [p.lower() for p in t.participants]), None
-    )
+    barb_thread = next((t for t in threads if "barb" in [p.lower() for p in t.participants]), None)
     assert barb_thread is not None
     msgs = c_store.list_messages(barb_thread.id)
-    assert any(
-        "input needed" in m.body_md.lower() or "confirm" in m.body_md.lower()
-        for m in msgs
-    )
+    assert any("input needed" in m.body_md.lower() or "confirm" in m.body_md.lower() for m in msgs)
 
 
 @pytest.mark.unit
@@ -459,3 +440,30 @@ def test_api_followup_routes(client: TestClient, test_env: dict[str, Any]) -> No
     assert "closed" in digest_data
     assert "still_open" in digest_data
     assert "escalated" in digest_data
+
+
+@pytest.mark.unit
+def test_watchdog_alert_sends_a_push(test_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    """The watchdog called ``send_push(title=, body=)`` without awaiting it (#1734).
+
+    ``send_push`` is async and takes ``(topic, payload)``, so the call raised
+    TypeError, was logged and swallowed, and no alert ever reached a phone.
+    """
+    import push  # noqa: PLC0415
+
+    sent: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_send_push(topic: str, payload: dict[str, Any], **_: Any) -> dict[str, int]:
+        sent.append((topic, payload))
+        return {"sent": 1, "failed": 0, "purged": 0}
+
+    monkeypatch.setattr(push, "send_push", fake_send_push)
+    engine: FollowupEngine = test_env["engine"]
+    clock = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
+    engine.sweep(now=clock)
+
+    engine.check_watchdog(now=clock + timedelta(seconds=2 * DEFAULT_SWEEP_INTERVAL_SECONDS + 5))
+
+    assert [topic for topic, _ in sent] == ["staff.escalation"]
+    assert sent[0][1]["title"] == "Barb Watchdog Alert"
+    assert "missed" in sent[0][1]["body"]

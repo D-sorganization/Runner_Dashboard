@@ -91,6 +91,7 @@ from cache_utils import cache_delete as _cache_delete  # noqa: E402
 from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
 from dashboard_config import FLEET_NODES  # noqa: E402
+from dashboard_config import runner_limit as _runner_limit  # noqa: E402
 from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
 from dashboard_config.timeouts import (  # noqa: E402
     HttpTimeout,
@@ -167,7 +168,6 @@ from routers import usage_metrics as _usage_metrics_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from runners.service_control import (  # noqa: E402
-    _runner_limit,
     run_runner_svc,
     runner_num_from_id,
     runner_svc_path,
@@ -1563,8 +1563,10 @@ def _fleet_node_schema_status(system: dict) -> str:
     """Classify remote telemetry shape so stale deployments are visible."""
     if not system:
         return "missing"
-    memory = system.get("memory") if isinstance(system.get("memory"), dict) else {}
-    disk = system.get("disk") if isinstance(system.get("disk"), dict) else {}
+    memory = system.get("memory")
+    disk = system.get("disk")
+    if not isinstance(memory, dict) or not isinstance(disk, dict):
+        return "legacy"
     if isinstance(memory.get("host"), dict) and isinstance(disk.get("storage_devices"), list):
         return "current"
     return "legacy"

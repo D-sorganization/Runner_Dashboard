@@ -53,10 +53,10 @@ def _env_int(name: str, default: int, *, minimum: int | None = None) -> int:
     return value
 
 
-_DEFAULT_CPU_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold else 85.0
-_DEFAULT_MEM_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold else 85.0
-_DEFAULT_DISK_HIGH = ResourceThreshold.DISK_CRITICAL_PERCENT if ResourceThreshold else 92.0
-_DEFAULT_DISK_MIN_FREE_GB = ResourceThreshold.DISK_MIN_FREE_GB if ResourceThreshold else 25.0
+_DEFAULT_CPU_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold is not None else 85.0
+_DEFAULT_MEM_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold is not None else 85.0
+_DEFAULT_DISK_HIGH = ResourceThreshold.DISK_CRITICAL_PERCENT if ResourceThreshold is not None else 92.0
+_DEFAULT_DISK_MIN_FREE_GB = ResourceThreshold.DISK_MIN_FREE_GB if ResourceThreshold is not None else 25.0
 
 CPU_HIGH = _env_float("AUTOSCALER_CPU_HIGH", _DEFAULT_CPU_HIGH, minimum=0.0)
 CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0, minimum=0.0)
@@ -151,7 +151,7 @@ RUNNER_PICKUP_DIR_MAX_AGE_SECONDS = _env_int(
 
 HOSTNAME = platform.node()
 
-_SYSTEMCTL_TIMEOUT_S = HttpTimeout.SYSTEMCTL_S if HttpTimeout else 5
+_SYSTEMCTL_TIMEOUT_S = HttpTimeout.SYSTEMCTL_S if HttpTimeout is not None else 5
 
 # Reused by autoscaler_busy to detect lock files
 _lock_fd: TextIO | None = None

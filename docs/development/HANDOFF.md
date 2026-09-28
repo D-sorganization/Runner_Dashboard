@@ -27,6 +27,22 @@ Last updated: 2026-09-28
 - `ruff format --check backend/staff/ tests/api/test_staff_runner.py tests/unit/test_staff_classifier.py` (clean).
 - `mypy backend/staff/` (clean, 92 files).
 
+## Cross-module type checking, #1734 (DL-#1734)
+
+- Branch `fix/mypy-resolved-imports` (worktree `claude-mypy`), rebased on main `1c0904ae`. PR #1736.
+- Cause: `backend/__init__.py` made mypy name modules `backend.x`, while the backend imports them as `staff.x` / `routers.y` (backend/ on `sys.path`). Those imports never resolved, so every cross-module call was `Any` and CI passed calls to attributes and keyword arguments that do not exist.
+- Fix: `[tool.mypy]` sets `mypy_path = "backend"`, `explicit_package_bases = true` and excludes `backend/__init__.py`; the relaxed overrides use the bare module names. The CI command and the pre-push hook are unchanged and now resolve imports.
+- Runtime bugs this exposed, each with a failing test first:
+  - `GET /api/v1/staff/runs/{id}/stream` passed `request=` to the legacy handler (500); `GET /api/v1/staff/audit` called a non-existent `store.query` (500).
+  - The follow-up watchdog and escalations called async `send_push(title=, body=)` without awaiting it, so no alert reached a phone. `push.notify(topic, title, body)` sends from sync code.
+  - Waiting work items read `WorkItemRecord.run_id` (does not exist), so the inbox's needs-input source failed whenever one existed.
+  - Work-request dispatch (remediation, issue, PR) imported `_normalize_repository_input` from `server`, which lost it in #941 (ImportError on every approval).
+  - `PUT /api/agent-remediation/config` used private helpers the package does not export (500); remediation plan/dispatch imported `_fetch_failed_log_excerpt` from `server`.
+  - Runner troubleshoot and fleet schedule-scale logged `principal.user_id` (502 on every authorised call).
+- Typing-only fixes: `ReadOnlyKwargs` / `LaunchPaths` TypedDicts for `build_command`, `functools.partial` for maintenance executors, `Final` event kinds, narrowed optionals.
+- Validation: new tests in `tests/api/test_staff_v1_audit.py`, `test_remediation_config_put.py`, `test_runner_troubleshoot_principal.py`, `tests/staff/test_inbox_needs_input.py`, `test_work_request_dispatch_repo.py`, plus stream and watchdog cases (all red before, green after). Rebased on main after #1733 merged: `mypy backend/` clean (317 files); WSL full suite 5298 passed (the WSL-only `test_no_stale_vite_config_is_tracked` deselected).
+- Next: mark #1736 ready and arm via `automerge_guard`; then redeploy the three hubs.
+
 ---
 
 # Historical handoffs

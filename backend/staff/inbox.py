@@ -215,7 +215,7 @@ def _collect_needs_input(
     # 2. Work items with state="waiting_on_user"
     wis = w_store.list_work_items(state="waiting_on_user", limit=50)
     for wi in wis:
-        if wi.run_id and wi.run_id in seen_runs:
+        if any(run_id in seen_runs for run_id in wi.links.get("runs", [])):
             continue
         link = f"/staff?thread={wi.thread_id}" if wi.thread_id else f"/staff?work_item={wi.id}"
         items.append(
@@ -607,7 +607,7 @@ async def send_escalation_push(item: InboxItem) -> int:
     }
     try:
         res = await send_push(topic="staff.escalation", payload=payload)
-        return int(res.get("sent", 0)) if isinstance(res, dict) else int(res)
+        return int(res.get("sent", 0))
     except Exception as exc:
         log.warning("Failed sending escalation push for %s: %s", item.id, exc)
         return 0

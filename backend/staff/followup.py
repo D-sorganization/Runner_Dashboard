@@ -12,10 +12,10 @@ import threading
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
+import push
 from fleet_events import FleetEvent, get_event_store
-from push import send_push
 from staff.audit import record_audit
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
@@ -32,7 +32,7 @@ from staff.work_items import (
 log = logging.getLogger("dashboard.staff.followup")
 DEFAULT_SWEEP_INTERVAL_SECONDS = int(os.environ.get("BARB_SWEEP_INTERVAL_SECONDS", "300"))
 DEFAULT_WATCHDOG_MISSED_INTERVALS = 2
-WATCHDOG_EVENT_KIND = "barb_followup_watchdog"
+WATCHDOG_EVENT_KIND: Final = "barb_followup_watchdog"
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,14 +163,7 @@ class FollowupEngine:
                     node=os.environ.get("HOSTNAME", "Desk"),
                 )
                 self.event_store.record(ev)
-                try:
-                    send_push(
-                        topic="staff.escalation",
-                        title="Barb Watchdog Alert",
-                        body=detail,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("Failed sending watchdog push: %s", exc)
+                push.notify("staff.escalation", "Barb Watchdog Alert", detail)
                 return {
                     "ok": False,
                     "alert_fired": True,
@@ -361,14 +354,11 @@ class FollowupEngine:
             kind="text",
             meta={"escalation_type": condition, "item_id": item.id, "run_id": run.id},
         )
-        try:
-            send_push(
-                topic="staff.escalation",
-                title=f"Barb Escalation: {item.title}",
-                body=f"Run {run.id} {condition} after {run.attempt} attempts.",
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Push send failed: %s", exc)
+        push.notify(
+            "staff.escalation",
+            f"Barb Escalation: {item.title}",
+            f"Run {run.id} {condition} after {run.attempt} attempts.",
+        )
 
         detail = {"run_id": run.id, "attempts": run.attempt}
         _audit("barb_followup_escalate", item.id, item.thread_id, detail)

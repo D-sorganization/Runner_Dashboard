@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import provider_switch
 from staff import cli_version, workspace
@@ -78,7 +78,16 @@ def select_first_available_provider(
     return providers[0] if providers else "claude"
 
 
-def read_only_kwargs(role: RoleSpec) -> dict[str, bool]:
+class ReadOnlyKwargs(TypedDict, total=False):
+    read_only: bool
+
+
+class LaunchPaths(TypedDict, total=False):
+    gitdir: str
+    policy: str
+
+
+def read_only_kwargs(role: RoleSpec) -> ReadOnlyKwargs:
     """``read_only`` keyword for ``adapter.build_command`` (#1659), passed only when set.
 
     Post: empty for a normal role, so an adapter with the older signature still works.
@@ -86,14 +95,14 @@ def read_only_kwargs(role: RoleSpec) -> dict[str, bool]:
     return {"read_only": True} if role.code_read_only else {}
 
 
-def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, str]:
+def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> LaunchPaths:
     """``gitdir``/``policy`` keyword arguments for ``adapter.build_command`` (#1586).
 
     Post: only the slots the adapter's argv actually uses are passed, so an
     adapter with the older ``build_command(prompt, workdir, model)`` shape still works.
     """
     argv = getattr(adapter, "argv", ())
-    paths: dict[str, str] = {}
+    paths: LaunchPaths = {}
     if any("{gitdir}" in part for part in argv):
         paths["gitdir"] = str(workspace.git_common_dir(workdir))
     policy_text = getattr(adapter, "policy_text", None)
@@ -203,8 +212,8 @@ def execute_retry_nudge(
     session_id: str | None,
     transcript: Path,
     store: RunStore,
-    wall_clock_timeout: int,
-    idle_timeout: int,
+    wall_clock_timeout: float,
+    idle_timeout: float,
     lock: Any,
     procs: dict[str, subprocess.Popen[str]],
     cancel_flags: set[str],
@@ -215,7 +224,7 @@ def execute_retry_nudge(
     store.append_event(rec.id, "nudge", "session exited 0 without STAFF_RESULT; nudging for result line (#1709)")
     try:
         launch_paths = resolve_launch_paths(adapter, workdir)
-        ro_kwargs = read_only_kwargs(role) if role is not None else {}
+        ro_kwargs: ReadOnlyKwargs = read_only_kwargs(role) if role is not None else {}
         nudge_argv = adapter.build_command(
             RESULT_NUDGE_PROMPT,
             str(workdir),

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1734 — Type-check cross-module imports in the backend
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1734
+- **Branch:** `fix/mypy-resolved-imports`
+- **PR:** #1736
+- **Paths:** `pyproject.toml`, `.pre-commit-config.yaml`, `backend/push.py`, `backend/staff/followup.py`, `backend/staff/inbox.py`, `backend/staff/work_request_dispatch.py`, `backend/staff/runner_ops.py`, `backend/staff/runner.py`, `backend/staff/maintenance.py`, `backend/routers/staff_v1.py`, `backend/routers/remediation.py`, `backend/routers/runner_diagnostics.py`, `backend/server.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL full suite 5298 passed; resolved `mypy backend/` clean on main after #1733)
+- **Summary:** mypy named backend modules `backend.x` while the code imports `staff.x`, so cross-module calls were unchecked. Resolving them found 55 errors, including 500s on the v1 run stream, v1 audit and the remediation config save, ImportErrors on work-request dispatch, 502s on runner troubleshoot and schedule-scale, silently dropped watchdog pushes and a broken inbox needs-input source. All fixed; the pyproject config makes CI and pre-push check resolved imports.
+- **Next step:** Mark #1736 ready and arm auto-merge via `automerge_guard`.
+
 ### DL-#1709 — Staff runner retry nudge for missing STAFF_RESULT line
 
 - **State:** in_progress
