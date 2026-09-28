@@ -143,5 +143,17 @@ describe("ContextPane (SC-D6, Issue #1320)", () => {
     expect(screen.getByText("$3.50")).toBeInTheDocument();
     expect(screen.getByText("$15.00")).toBeInTheDocument();
   });
+
+  it("shows Today: — and no progress fill when usd_today is unknown (#1744)", () => {
+    const roleNoSpend: RoleDetail = {
+      ...mockRole,
+      budget: { usd_per_day: 8, usd_today: undefined as unknown as number },
+    };
+    render(<ContextPane role={roleNoSpend} threadContext={mockThreadContext} />);
+
+    expect(screen.getByText("Today:")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("$8.00")).toBeInTheDocument();
+  });
 });
 

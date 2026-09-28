@@ -54,7 +54,11 @@ export const ROSTER_GROUPS: readonly RosterGroupMeta[] = [
 ] as const;
 
 export interface StaffRoleBudget {
-  daily_limit?: number;
+  usd_per_run?: number;
+  usd_per_day?: number;
+  max_minutes?: number;
+  idle_minutes?: number;
+  /** Not yet served by GET /api/v1/staff/roster; the API sends no per-role spend (#1744). */
   spend_today?: number;
   currency?: string;
   [key: string]: unknown;
@@ -78,6 +82,9 @@ export interface StaffRoleItem {
   pending_proposals_count?: number;
   last_message_preview?: string;
   last_message_at?: string;
+  schedule?: string | null;
+  window?: { start: string; end: string } | string | null;
+  retired?: boolean;
   [key: string]: unknown;
 }
 

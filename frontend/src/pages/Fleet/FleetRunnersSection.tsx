@@ -327,7 +327,9 @@ export const FleetRunnersSection: React.FC<FleetRunnersSectionProps> = ({
                           Run #{run.run_number || run.id} ({run.workflow_name || "job"})
                         </a>
                       ) : (
-                        <span style={{ color: "var(--text-muted, #8b949e)" }}>idle</span>
+                        <span style={{ color: "var(--text-muted, #8b949e)" }}>
+                          {!isOnline ? "-" : isBusy ? "busy" : "idle"}
+                        </span>
                       )}
                     </td>
                     <td style={{ padding: "8px 10px", textAlign: "right" }}>

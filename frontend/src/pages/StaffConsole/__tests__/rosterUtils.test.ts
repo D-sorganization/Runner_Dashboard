@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   categorizeRole,
   computeRoleStatus,
+  formatRoleWindow,
   getRoleHue,
   getRoleTooltipText,
 } from "../rosterUtils";
@@ -56,7 +57,7 @@ describe("getRoleTooltipText (Workstream C / #1721)", () => {
   it("returns reason for budget exhausted and provider issues", () => {
     const budgetRole: StaffRoleItem = {
       ...role("overbudget"),
-      budget: { daily_limit: 10, spend_today: 10 },
+      budget: { usd_per_day: 10, spend_today: 10 },
     };
     expect(getRoleTooltipText(budgetRole)).toBe("budget reached");
 
@@ -65,6 +66,21 @@ describe("getRoleTooltipText (Workstream C / #1721)", () => {
       providers: ["custom-llm"],
     };
     expect(getRoleTooltipText(noProvRole, { "custom-llm": false })).toBe("no provider signed in");
+  });
+});
+
+describe("formatRoleWindow (#1744)", () => {
+  it("returns an empty string for null or undefined", () => {
+    expect(formatRoleWindow(null)).toBe("");
+    expect(formatRoleWindow(undefined)).toBe("");
+  });
+
+  it("formats a {start, end} window with an en dash", () => {
+    expect(formatRoleWindow({ start: "22:00", end: "06:00" })).toBe("22:00–06:00");
+  });
+
+  it("passes a plain string window through unchanged", () => {
+    expect(formatRoleWindow("22:00-06:00")).toBe("22:00-06:00");
   });
 });
 

@@ -44,10 +44,10 @@ export function computeRoleStatus(
   // 2b. Budget limit reached
   if (
     role.budget &&
-    typeof role.budget.daily_limit === "number" &&
+    typeof role.budget.usd_per_day === "number" &&
     typeof role.budget.spend_today === "number" &&
-    role.budget.daily_limit > 0 &&
-    role.budget.spend_today >= role.budget.daily_limit
+    role.budget.usd_per_day > 0 &&
+    role.budget.spend_today >= role.budget.usd_per_day
   ) {
     return {
       status: "unavailable",
@@ -190,6 +190,20 @@ export function getRoleTooltipText(
   }
   const { reason, status } = computeRoleStatus(role, availableProviders);
   return reason || status;
+}
+
+/**
+ * Formats a role's schedule window for display. `GET /api/v1/staff/roster`
+ * sends `window` as null, `{start, end}` (HH:MM), or a plain string; this is
+ * the single place that turns it into text so it never renders as
+ * `[object Object]` (#1744).
+ */
+export function formatRoleWindow(
+  window: { start: string; end: string } | Record<string, string> | string | null | undefined
+): string {
+  if (window == null) return "";
+  if (typeof window === "string") return window;
+  return `${window.start ?? ""}–${window.end ?? ""}`;
 }
 
 /**
