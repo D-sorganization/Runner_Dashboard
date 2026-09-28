@@ -29,7 +29,7 @@ Last updated: 2026-09-28
 
 ## Cross-module type checking, #1734 (DL-#1734)
 
-- Branch `fix/mypy-resolved-imports` (worktree `claude-mypy`), from main `ae42011e`. PR: see branch.
+- Branch `fix/mypy-resolved-imports` (worktree `claude-mypy`), rebased on main `1c0904ae`. PR #1736.
 - Cause: `backend/__init__.py` made mypy name modules `backend.x`, while the backend imports them as `staff.x` / `routers.y` (backend/ on `sys.path`). Those imports never resolved, so every cross-module call was `Any` and CI passed calls to attributes and keyword arguments that do not exist.
 - Fix: `[tool.mypy]` sets `mypy_path = "backend"`, `explicit_package_bases = true` and excludes `backend/__init__.py`; the relaxed overrides use the bare module names. The CI command and the pre-push hook are unchanged and now resolve imports.
 - Runtime bugs this exposed, each with a failing test first:
@@ -41,7 +41,7 @@ Last updated: 2026-09-28
   - Runner troubleshoot and fleet schedule-scale logged `principal.user_id` (502 on every authorised call).
 - Typing-only fixes: `ReadOnlyKwargs` / `LaunchPaths` TypedDicts for `build_command`, `functools.partial` for maintenance executors, `Final` event kinds, narrowed optionals.
 - Validation: new tests in `tests/api/test_staff_v1_audit.py`, `test_remediation_config_put.py`, `test_runner_troubleshoot_principal.py`, `tests/staff/test_inbox_needs_input.py`, `test_work_request_dispatch_repo.py`, plus stream and watchdog cases (all red before, green after). Rebased on main after #1733 merged: `mypy backend/` clean (317 files); WSL full suite 5298 passed (the WSL-only `test_no_stale_vite_config_is_tracked` deselected).
-- Next: open the draft PR, add its SPEC row, mark ready, arm via `automerge_guard`; then redeploy the three hubs.
+- Next: mark #1736 ready and arm via `automerge_guard`; then redeploy the three hubs.
 
 ---
 
