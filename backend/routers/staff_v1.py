@@ -25,7 +25,7 @@ from routers.staff import (
     RunBody,
 )
 from routers.staff_knowledge import router as staff_knowledge_router
-from routers.staff_schedule import HoldsBody
+from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
 from staff import fleet as staff_fleet
 from staff import summary_view, usage
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
@@ -56,7 +56,6 @@ from staff.models import (
 from staff.pagination import CursorPage, paginate_items
 from staff.pricing import price_table_rows
 from staff.runner import get_runner
-from staff.scheduler import get_scheduler
 from staff.store import USAGE_GROUPS
 
 log = logging.getLogger("dashboard.staff.v1")
@@ -351,17 +350,14 @@ async def list_audit_v1(
 async def get_schedule_v1(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    scheduler = get_scheduler()
-    runner = get_runner()
-    return scheduler.schedule_view(runner.roles())
+    return schedule_snapshot()
 
 
 @router.get("/holds", response_model=StaffHoldsResponse)
 async def get_holds_v1(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    scheduler = get_scheduler()
-    return {"holds": [h.to_dict() for h in scheduler.holds.list()]}
+    return {"holds": current_holds()}
 
 
 @router.put("/holds", response_model=StaffHoldsResponse)
@@ -374,9 +370,7 @@ async def put_holds_v1(
     endpoint = "PUT /api/v1/staff/holds"
 
     def _execute() -> dict[str, Any]:
-        scheduler = get_scheduler()
-        raw_holds = [h.model_dump() for h in body.holds]
-        updated = scheduler.replace_holds(raw_holds)
+        updated = replace_holds(body)
         record_audit(
             principal=caller,
             action="hold_set",
@@ -385,7 +379,7 @@ async def put_holds_v1(
             outcome="succeeded",
             detail={"count": len(updated)},
         )
-        return {"holds": [h.to_dict() for h in updated]}
+        return {"holds": updated}
 
     return await _handle_idempotent_post(idempotency_key, endpoint, caller, _execute)
 

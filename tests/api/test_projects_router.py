@@ -221,6 +221,18 @@ async def test_build_project_github_error_is_reported_not_raised(projects_env: P
     assert result["error"] == "github: GitHub API error: rate limited"
 
 
+async def test_build_project_auth_failure_is_one_readable_sentence(projects_env: Path) -> None:  # noqa: ARG001
+    """A 403 put the raw GitHub JSON body on every card (#1718); name the missing permission instead."""
+    raw = 'GitHub API error (403): GitHub 403: /repos/x/contents/y: {"message":"Resource not accessible"}'
+
+    async def forbidden(_endpoint: str) -> dict[str, Any]:
+        raise HTTPException(status_code=502, detail=raw)
+
+    result = await service.build_project("Alpha", fetch=forbidden)
+    assert result["error"] == "github: the dashboard's GitHub App cannot read Alpha (grant it Contents: read)"
+    assert result["coverage_error"] == "github: the dashboard's GitHub App cannot read Alpha (grant it Issues: read)"
+
+
 def test_last_steward_run_picks_newest_for_repo(projects_env: Path) -> None:  # noqa: ARG001
     store = store_mod.get_store()
     store.create_run(_run("r1", "project-steward", "Alpha", created_at="2026-09-21T00:00:00Z"))

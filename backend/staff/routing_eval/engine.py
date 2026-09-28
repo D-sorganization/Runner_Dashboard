@@ -12,10 +12,9 @@ from typing import Any
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.router import BarbRouter, route_deterministic
 from staff.router_models import RoutingFeedbackRecord
+from staff.routing_eval.dataset import ROUTING_EVAL_CASES
+from staff.routing_eval.models import CaseEvalResult, EvalSummary, RoutingEvalCase
 from staff.work_items import WorkItemRecord, WorkItemStore
-
-from tests.staff.routing_eval.dataset import ROUTING_EVAL_CASES
-from tests.staff.routing_eval.models import CaseEvalResult, EvalSummary, RoutingEvalCase
 
 log = logging.getLogger("dashboard.staff.routing_eval")
 

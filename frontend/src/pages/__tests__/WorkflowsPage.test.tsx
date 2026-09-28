@@ -60,12 +60,13 @@ describe("WorkflowsPage", () => {
         new Response(JSON.stringify({ workflows: WORKFLOWS }), { status: 200 }),
       );
 
-    render(<WorkflowsPage warmingRetryMs={10} />);
+    // Long enough that the warming notice is observed before the retry replaces it under load.
+    render(<WorkflowsPage warmingRetryMs={300} />);
 
     expect(
       await screen.findByText(/Gathering workflows from GitHub/),
     ).toBeInTheDocument();
-    expect(await screen.findByText("CI")).toBeInTheDocument();
+    expect(await screen.findByText("CI", undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

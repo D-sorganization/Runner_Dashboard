@@ -81,6 +81,12 @@ Last updated: 2026-09-28
   - Insights (phone) listed 0 reports: the default reports path used the WSL login (`dieterolson`) as the Windows profile name. `windows_repositories_root()` finds the profile that holds `Repositories` (also used by heavy tests).
   - Fleet Command: the minutes parser read one line per field, so wrapped priorities lost text ("link Barb to the Runner Dashboard"), and it stripped outer backticks from multi-span values. It joins wrapped lines and keeps spans balanced; the panel renders them through `OwnerMarkdown` (moved to `primitives/`).
 - Emoji-to-SVG sweep (DL-#1718): pictographic emoji across 25 pages, the composer mic and the proposal card's routed/dry-run labels are SVG glyphs from `decompIcons`; `tests/frontend/test_no_pictographic_emoji.py` guards it.
+- `/api/runs/enriched` sent GitHub's raw run objects (two repository objects and a dozen REST `*_url` links per run): 755 KB for 50 runs. `_slim_run` keeps the run's own fields, `repository` id/name/full_name/html_url/private, actor logins and the commit message: 147 KB. `/api/runs` (Overview, Remediation) is slimmed the same way.
+- Staff checkout discovery guessed the Windows profile from `$USERNAME` (`/mnt/c/Users/<login>`); it now uses `windows_repositories_root()` like the reports path.
+- The 404 page said "Use the sidebar" on phones; it says "navigation" and hides the Ctrl+K hint under 768px. Mobile Fleet no longer puts a single ControlTower machine under a "ControlTower Pools" heading.
+- CI after #1730 (non-required checks): the OpenAPI snapshot missed a docstring change (regenerated with `scripts/gen-api-client.sh`); neutral badges used the muted label colour and failed axe on Queue (now body text on a faint tint, contrast-tested for every theme); system-authored run cards rendered as a raw one-line notice (the chat redesign returned early for system messages), and paragraphs mentioning `#123`/`run-…` lost bold and code formatting. Run Playwright locally with `CI=1 DASHBOARD_URL=http://localhost:5173`; without `DASHBOARD_URL` it tests the deployed hub on 8321.
+- 1280px sweep: at 1280 or narrower, the Staff Console role context wrapped under the roster and scrolled the page sideways; it is now an overlay over the conversation's right edge, closed by default, with its own close button because it covers the header toggle. `.staff` had `margin: 16px` plus `width: 100%` (32px of sideways scroll). Project card headers wrap so "Run steward now" stays inside the card. Card errors from a GitHub 401/403 name the missing permission (Contents or Issues read) instead of the raw JSON body. The Operations tables used `overflow: hidden`, which clipped their right-hand columns on phones; they share `TABLE_FRAME_STYLE`, which scrolls.
+- Live probe of every `/api/v1` GET on the hub: `/holds` and `/schedule` were 500 (`HoldsList.list()`, `StaffScheduler.replace_holds` and `schedule_view` never existed; the Staff page Holds tab showed "Failed to load holds"). The v1 and legacy routes now share `current_holds`, `replace_holds` and `schedule_snapshot` in `routers/staff_schedule.py`. `/routing/eval` was 500 because it imported `tests.staff.routing_eval`, which is not deployed; the engine, dataset and models moved to `backend/staff/routing_eval/`, and `tests/unit/test_backend_never_imports_tests.py` guards the class.
 
 ## Validation
 
@@ -94,7 +100,7 @@ Last updated: 2026-09-28
 ## Next steps
 
 1. Open one draft PR from `feat/ux-overhaul` (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
-2. `/api/runs/enriched` still returns ~760 KB; trim fields or paginate.
+2. Deploy the slim `/api/runs/enriched` payload (`fix/runs-enriched-slim`, stacked on this branch) and re-check Remediation and the Runs views live.
 3. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, the holds decision in #1726, and GitHub App Contents/Issues read on Repository_Management.
 
 ---

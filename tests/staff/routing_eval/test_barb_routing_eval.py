@@ -9,15 +9,14 @@ import pytest
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.router import BarbRouter
 from staff.router_models import RoutingFeedbackRecord
-from staff.work_items import WorkItemStore
-
-from tests.staff.routing_eval.dataset import ROUTING_EVAL_CASES
-from tests.staff.routing_eval.engine import (
+from staff.routing_eval.dataset import ROUTING_EVAL_CASES
+from staff.routing_eval.engine import (
     load_candidate_cases_from_feedback,
     post_eval_summary_to_board,
     run_evaluation,
 )
-from tests.staff.routing_eval.models import EvalSummary
+from staff.routing_eval.models import EvalSummary
+from staff.work_items import WorkItemStore
 
 
 @pytest.fixture(autouse=True)

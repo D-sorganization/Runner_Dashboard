@@ -9,6 +9,10 @@
   height: 100%;
   min-height: 0;
   width: 100%;
+  /* index.css also styles .staff with a 16px margin; that margin plus 100% overflowed the column. */
+  box-sizing: border-box;
+  margin: 0;
+  padding: 16px;
 }
 
 /* Compact underline tab bar for section tabs (13px, 500, accent underline on active) */

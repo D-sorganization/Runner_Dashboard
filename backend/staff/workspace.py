@@ -12,6 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from platform_utils.wsl_paths import windows_repositories_root
 from staff import cli_projects
 from staff.roles import RoleSpec
 
@@ -68,13 +69,17 @@ def repos_roots() -> list[Path]:
     """Directories that may contain fleet checkouts (first match wins)."""
     configured = os.environ.get("STAFF_REPOS_ROOT")
     roots = [Path(p).expanduser() for p in configured.split(os.pathsep) if p] if configured else []
-    home = Path.home()
-    roots += [
+    roots += _default_repos_roots(Path.home())
+    return [r for r in roots if r.is_dir()]
+
+
+def _default_repos_roots(home: Path) -> list[Path]:
+    """Built-in checkout roots: the WSL home's, then the Windows profile's ``Repositories``."""
+    return [
         home / "Repositories",
         home / "actions-runners" / "repos",
-        Path("/mnt/c/Users") / os.environ.get("USERNAME", "diete") / "Repositories",
+        windows_repositories_root(),
     ]
-    return [r for r in roots if r.is_dir()]
 
 
 def rm_root() -> Path | None:

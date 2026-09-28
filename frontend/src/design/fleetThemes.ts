@@ -264,8 +264,10 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--badge-danger-fg': s.error,
     '--badge-info-bg': `${s.info}26`,
     '--badge-info-fg': s.info,
-    '--badge-neutral-bg': `${c.label}26`,
-    '--badge-neutral-fg': c.label,
+    // Neutral badges carry counts and states: body text on a faint secondary tint, never the muted
+    // label colour, which falls below AA once tinted (#1718).
+    '--badge-neutral-bg': `${c.text_secondary}1f`,
+    '--badge-neutral-fg': c.text,
     ...standardThemeNeutrals(theme),
   };
 }

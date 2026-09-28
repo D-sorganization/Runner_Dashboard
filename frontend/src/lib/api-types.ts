@@ -6177,6 +6177,10 @@ export interface paths {
         /**
          * List Workflows
          * @description List all workflows per repository with trigger capabilities and latest run.
+         *
+         *     Serves a catalogue up to an hour old while one background refresh runs; a
+         *     cold cache answers ``status: "warming"`` after ``_WORKFLOWS_LIST_WAIT_S``
+         *     instead of holding the browser connection for minutes.
          */
         get: operations["list_workflows_api_workflows_list_get"];
         put?: never;

@@ -26,6 +26,13 @@ interface FleetNodesEntry {
   system?: { hostname?: string; uptime_seconds?: number };
 }
 
+/** The RunnerCard status for a node: running counts as busy, anything unknown as offline. */
+function cardStatus(node: FleetNode): "online" | "busy" | "offline" {
+  const s = node.status?.toLowerCase() || "offline";
+  if (s === "online") return "online";
+  return s === "busy" || s === "running" ? "busy" : "offline";
+}
+
 /** Map one `/api/fleet/nodes` entry onto the card's flat view model. */
 function toFleetNode(node: FleetNodesEntry): FleetNode {
   const telemetry = machineTelemetry(node);
@@ -105,6 +112,8 @@ export function FleetMobile() {
         others.push([name, node]);
       }
     }
+    // One ControlTower entry is just a machine; the pool heading only helps with several.
+    if (ctPools.length < 2) return { controlTowerPools: [], otherNodes: [...ctPools, ...others] };
     return { controlTowerPools: ctPools, otherNodes: others };
   }, [filtered]);
 
@@ -179,8 +188,7 @@ export function FleetMobile() {
                   </h4>
                   <div style={{ display: "flex", gap: "8px", flexDirection: "row", flexWrap: "wrap" }}>
                     {controlTowerPools.map(([name, node]) => {
-                      const s = node.status?.toLowerCase() || "offline";
-                      const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
+                      const status = cardStatus(node);
                       return (
                         <div key={name} style={{ flex: "1 1 calc(50% - 4px)", minWidth: "140px" }}>
                           <RunnerCard
@@ -199,8 +207,7 @@ export function FleetMobile() {
                 </div>
               )}
               {otherNodes.map(([name, node]) => {
-                const s = node.status?.toLowerCase() || "offline";
-                const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
+                const status = cardStatus(node);
                 return (
                   <RunnerCard
                     key={name}

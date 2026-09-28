@@ -19080,7 +19080,7 @@
     },
     "/api/workflows/list": {
       "get": {
-        "description": "List all workflows per repository with trigger capabilities and latest run.",
+        "description": "List all workflows per repository with trigger capabilities and latest run.\n\nServes a catalogue up to an hour old while one background refresh runs; a\ncold cache answers ``status: \"warming\"`` after ``_WORKFLOWS_LIST_WAIT_S``\ninstead of holding the browser connection for minutes.",
         "operationId": "list_workflows_api_workflows_list_get",
         "responses": {
           "200": {

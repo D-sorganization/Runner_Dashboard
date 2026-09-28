@@ -164,7 +164,7 @@ async def get_routing_evaluation(
 ) -> dict[str, Any]:
     """Execute routing evaluation and return metrics summary (SC-C7)."""
     store = _get_store_or_503()
-    from tests.staff.routing_eval.engine import run_evaluation
+    from staff.routing_eval.engine import run_evaluation
 
     barb_router = BarbRouter()
     summary = run_evaluation(
