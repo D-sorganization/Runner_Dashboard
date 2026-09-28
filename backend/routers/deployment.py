@@ -150,12 +150,10 @@ async def post_deployment_update_signal(
 
 @router.get("/api/deployment/git-drift")
 async def get_git_drift() -> dict:
-    """Return git-commit-based drift: compares HEAD against origin/main.
-
-    Artifact installs have no `.git` checkout, so one or both commits may come
-    back empty. In that case we cannot claim the deployment is "up to date" —
-    we report an unknown drift state instead (issue #1748).
-    """
+    """Return git-commit-based drift: compares HEAD against origin/main."""
+    # Artifact installs have no `.git` checkout, so one or both commits may come
+    # back empty. In that case we cannot claim the deployment is "up to date" —
+    # we report an unknown drift state instead (issue #1748).
     repo_root = Path(__file__).parent.parent.parent
     result: dict[str, object] = {}
 

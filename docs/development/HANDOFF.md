@@ -147,6 +147,8 @@ Last updated: 2026-09-28
 --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` clean (318 files).
 - Next: open the PR as draft.
 
+- Consolidated in #1749. The `get_git_drift` rationale is a comment, not docstring text, because route docstrings feed the generated `frontend/src/lib/openapi.json` (`npm run generate-api:check` in CI).
+
 ---
 
 # Historical handoffs
