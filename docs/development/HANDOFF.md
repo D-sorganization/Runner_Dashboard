@@ -1,4 +1,4 @@
-# Current handoff — Isolate fleet-context sources from event-loop blocking (DL-#1761)
+# Current handoff — Warm the role cache off-loop before gathering fleet context (DL-#1761)
 
 Last updated: 2026-09-28
 
@@ -19,7 +19,7 @@ Last updated: 2026-09-28
   over HTTP. First occurrence was ~1 minute after a restart.
 - Root cause: `_run_source` awaited each source's coroutine directly on the
   shared event loop under `asyncio.wait_for(..., 5.0)`. A source performing
-  synchronous blocking work inside an `async def` (e.g. `staff.roles.load_roles()`'s
+  synchronous blocking work inside an `async def` (`staff.roles.load_roles()`'s
   directory glob/stat/YAML parse reached through `build_staff_summary` →
   `staff.fleet.local_board`, especially on a cold mtime-cache right after a
   restart) freezes the whole single-threaded loop for its duration. While
@@ -27,47 +27,80 @@ Last updated: 2026-09-28
   `wait_for` timeout timers checking them — is starved; when the blocking
   call finally returns control, all the overdue timers fire together, so
   fast sources (0.4 s over HTTP) time out in lockstep with the slow one.
-- Fix: `backend/staff/chat_fleet_context.py` now runs each source's
-  coroutine to completion on its own private event loop inside a worker
-  thread (`_run_source_isolated` + `_await_source`, via `asyncio.to_thread`),
-  so synchronous blocking work in one source can no longer starve its
-  siblings or the shared loop. Added a module-level per-tool last-good
-  snapshot cache (`_LAST_GOOD`): on timeout/error, a tool that succeeded
-  earlier this process renders `stale (age Ns): <body>` instead of
-  `unavailable`; a tool with no prior success still renders `unavailable`.
-  `HEADER_TEMPLATE` and the module docstring now explain the `stale (age Ns)`
-  wording to the model. `MAX_SECTION_CHARS` truncation and the "never raises"
-  postcondition are unchanged.
+- **Rework note (superseded an earlier attempt in this same branch):** the
+  first fix ran each source's coroutine on its own private event loop in a
+  worker thread (`asyncio.to_thread(asyncio.run(...))`), which isolates
+  synchronous blocking cleanly for fake-source tests but is unsafe for real
+  sources: `backend/gh_client.py` holds a module-level shared
+  `httpx.AsyncClient` and `asyncio.Lock` bound to whichever event loop first
+  touches them (the app's main loop), and the `read_briefing`/`read_sessions`
+  paths reach GitHub through `staff.fleet.aggregate_board` /
+  `coordination.staff_view.staff_runs`. Driving those loop-bound objects from
+  a foreign per-source loop risks `RuntimeError` ("bound to a different event
+  loop" / "Event loop is closed") or corrupting the shared client's pool for
+  the main loop — a failure mode fake-source unit tests can't catch. That
+  private-loop approach was removed; sources run on the caller's loop again.
+- Fix (current): before gathering, `build_fleet_context_block` warms the role
+  YAML cache off-loop once per turn — `await asyncio.to_thread(load_roles)`
+  (`_warm_role_cache`), guarded so a warm-up failure is logged and ignored,
+  never raised. With the mtime-cache warm, the later in-loop `load_roles()`
+  call inside `build_staff_summary` only re-stats already-cached files
+  (cheap), instead of a cold full glob/stat/YAML-parse pass, so it can no
+  longer freeze the loop long enough to starve its concurrently gathered
+  siblings. Checked `coordination/briefing.py` and `coordination/service.py`
+  for the same class of problem: `board.read_sessions` (which itself calls
+  `load_roles()`) was already off-loop via `asyncio.to_thread` in both;
+  `briefing.py`'s `_holds()` was a plain synchronous call on the loop, so it
+  now also runs via `asyncio.to_thread(_holds)` — a one-line, same-module fix
+  with no API change. `coordination/staff_view.py staff_runs`'s
+  `runner.store.active_runs()` (sync sqlite) is a smaller, less obviously
+  loop-freezing sync call reachable from the same two paths; left as-is and
+  flagged as a follow-up rather than touched here (out of the surgical scope
+  of this fix).
+- Also kept from the earlier attempt: a module-level per-tool last-good
+  snapshot cache (`_LAST_GOOD`) in `chat_fleet_context.py`: on timeout/error,
+  a tool that succeeded earlier this process renders `stale (age Ns): <body>`
+  instead of `unavailable`; a tool with no prior success still renders
+  `unavailable`. `HEADER_TEMPLATE` and the module docstring explain the
+  `stale (age Ns)` wording to the model (docstring no longer claims a private
+  per-source event loop). `MAX_SECTION_CHARS` truncation and the "never
+  raises" postcondition are unchanged.
 - Files changed: `backend/staff/chat_fleet_context.py`,
-  `tests/unit/test_staff_chat_fleet_context.py`.
+  `backend/coordination/briefing.py`, `tests/unit/test_staff_chat_fleet_context.py`.
 
 ## Validation
 
-- RED: added `test_synchronous_blocking_source_does_not_starve_fast_sibling`,
-  `test_build_fleet_context_block_serves_stale_snapshot_after_timeout`, and
-  `test_build_fleet_context_block_no_snapshot_yet_still_unavailable`; before
-  the fix all failed at fixture setup (`AttributeError: module
-'staff.chat_fleet_context' has no attribute '_LAST_GOOD'`), and the
-  isolation test specifically reproduces the original bug (a `time.sleep`
-  inside one source starves a fast sibling under the shared 0.2 s budget).
+- RED (stale-snapshot fix): before implementing `_LAST_GOOD`, all three new
+  tests failed at fixture setup (`AttributeError: module
+'staff.chat_fleet_context' has no attribute '_LAST_GOOD'`).
+- RED (warm-up fix, rework): `test_build_fleet_context_block_warms_role_cache_off_loop`
+  fails with `load_roles must be warmed exactly once per turn / assert 0 == 1`
+  when the `await _warm_role_cache()` call is removed from
+  `build_fleet_context_block` (verified by temporarily commenting it out,
+  running the test, observing the failure, then restoring it).
 - GREEN: `MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-22.04 -- bash -c 'cd
 /mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/claude-1761 &&
 /home/dieterolson/.cache/rd-test-venv/bin/python -m pytest
 tests/unit/test_staff_chat_fleet_context.py
 tests/unit/test_staff_chat_fleet_prompt.py tests/unit/test_staff_chat_memory.py
--p no:cacheprovider -o addopts="" -q'` → 13 passed.
-- `ruff check backend/staff/chat_fleet_context.py
-tests/unit/test_staff_chat_fleet_context.py` and `ruff format --check` on
-  the same files — clean.
+-p no:cacheprovider -o addopts="" -q'` → 14 passed.
+- GREEN (briefing/sessions regression check): `pytest
+tests/api/test_coordination_claims_auth.py tests/api/test_coordination_api.py
+tests/clients/ -q` → 177 passed.
+- `ruff check backend/staff/chat_fleet_context.py backend/coordination/briefing.py
+tests/unit/test_staff_chat_fleet_context.py` and `ruff format --check` on the
+  same files — clean.
 - `~/.cache/pre-commit/repo57p6mwat/py_env-python3.11/Scripts/mypy.exe
---ignore-missing-imports --explicit-package-bases staff/chat_fleet_context.py`
-  (run from `backend/`) — clean.
+--ignore-missing-imports --explicit-package-bases staff/chat_fleet_context.py
+coordination/briefing.py` (run from `backend/`) — clean.
 
 ## Blockers and risks
 
-- None identified. Each source now spins up a fresh event loop per chat turn
-  (minor per-call overhead, not a hot path). PR not yet opened; lead reviews
-  and pushes per this worktree's assigned rules.
+- None identified. `coordination/staff_view.py staff_runs`'s
+  `runner.store.active_runs()` sync sqlite call is a smaller candidate for the
+  same treatment; deliberately left untouched (flagged, not fixed, per
+  surgical scope). PR not yet opened; lead reviews and pushes per this
+  worktree's assigned rules.
 
 ## Next step
 

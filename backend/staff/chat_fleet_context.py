@@ -7,11 +7,14 @@ and ``read_sessions``.
 Targeted read tools (``read_run``, ``read_issue``, ``read_repo``) require a specific
 target identifier and are NOT handled here.
 
-Each source runs on its own private event loop in a worker thread (#1761): a
-source performing synchronous blocking work (sync sqlite/file/subprocess calls
-inside an ``async def``) freezes only that thread, not the shared loop driving
-the chat turn and the other concurrently gathered sources, so one slow or
-blocking source cannot sweep its siblings into the same timeout. On timeout or
+Before gathering, the role YAML cache (``staff.roles.load_roles``) is warmed
+off-loop once per turn: ``build_staff_summary`` (behind ``read_staff_summary``)
+reads it synchronously, and on a cold mtime-cache — most likely shortly after a
+restart — that means a directory glob, a stat of every role file, and a full
+YAML parse, all run directly on the event loop (#1761). Warming it first via
+``asyncio.to_thread`` means that in-loop call only re-stats already-cached
+files, which is cheap, so it can no longer freeze the loop for the several
+seconds that starved every concurrently gathered source at once. On timeout or
 error, a tool that has succeeded earlier this process renders its last-good
 payload as ``stale (age Ns): <body>`` instead of ``unavailable``; a tool with
 no prior success still renders ``unavailable``.
@@ -26,7 +29,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from staff.roles import RoleSpec
+from staff.roles import RoleSpec, load_roles
 
 __all__ = [
     "FLEET_CONTEXT_TOOLS",
@@ -119,21 +122,21 @@ def declared_fleet_tools(role: RoleSpec | None) -> tuple[str, ...]:
     return tuple(tool for tool in FLEET_CONTEXT_TOOLS if tool in tool_set)
 
 
-async def _await_source(source_fn: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
-    """Await source_fn() as a plain coroutine, regardless of its concrete awaitable type."""
-    return await source_fn()
+async def _warm_role_cache() -> None:
+    """Refresh the ``staff.roles.load_roles`` mtime-cache off the event loop.
 
-
-def _run_source_isolated(source_fn: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
-    """Run one source's coroutine to completion on a fresh event loop.
-
-    Precondition: source_fn takes no arguments and returns an awaitable.
-    Postcondition: returns the awaited payload, or propagates source_fn's exception.
-    Called via ``asyncio.to_thread`` so this executes in its own worker thread with
-    its own event loop, isolating any synchronous blocking work inside source_fn
-    from the shared loop and from every other concurrently gathered source (#1761).
+    Precondition: none.
+    Postcondition: never raises; a failure is logged and swallowed. On success,
+    ``load_roles()`` calls made later this turn on the caller's loop (e.g. inside
+    ``build_staff_summary``) only re-stat already-cached files instead of reading
+    and parsing every role YAML file from a cold cache, which is what made
+    ``read_staff_summary`` block the loop long enough to starve its concurrently
+    gathered siblings (#1761).
     """
-    return asyncio.run(_await_source(source_fn))
+    try:
+        await asyncio.to_thread(load_roles)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed warming staff role cache before fleet context: %s", exc)
 
 
 async def _run_source(
@@ -152,10 +155,7 @@ async def _run_source(
     try:
         if source_fn is None:
             raise KeyError(tool)
-        payload = await asyncio.wait_for(
-            asyncio.to_thread(_run_source_isolated, source_fn),
-            timeout=SOURCE_TIMEOUT_SECONDS,
-        )
+        payload = await asyncio.wait_for(source_fn(), timeout=SOURCE_TIMEOUT_SECONDS)
         body = json.dumps(payload, default=str, separators=(",", ":"), sort_keys=True)
         if len(body) > MAX_SECTION_CHARS:
             body = body[:MAX_SECTION_CHARS] + TRUNCATION_MARKER
@@ -199,6 +199,8 @@ async def build_fleet_context_block(
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed determining time for fleet context: %s", exc)
         time_str = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+    await _warm_role_cache()
 
     tasks = [_run_source(tool, active_sources.get(tool), now_fn) for tool in tools]
     results = await asyncio.gather(*tasks)

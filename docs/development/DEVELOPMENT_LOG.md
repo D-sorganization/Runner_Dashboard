@@ -18,17 +18,17 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1761 — Isolate fleet-context sources from event-loop blocking
+### DL-#1761 — Warm the role cache off-loop before gathering fleet context
 
 - **State:** in_review
 - **Owner:** claude
 - **Issue:** #1761
 - **Branch:** `fix/chat-fleet-context-timeouts`
 - **PR:** not created
-- **Paths:** `backend/staff/chat_fleet_context.py`, `tests/unit/test_staff_chat_fleet_context.py`
+- **Paths:** `backend/staff/chat_fleet_context.py`, `backend/coordination/briefing.py`, `tests/unit/test_staff_chat_fleet_context.py`
 - **Started:** 2026-09-28
-- **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_chat_fleet_context.py tests/unit/test_staff_chat_fleet_prompt.py tests/unit/test_staff_chat_memory.py -q` → 13 passed; `ruff check`/`ruff format --check` clean; mypy `--explicit-package-bases` clean)
-- **Summary:** `build_fleet_context_block`'s `_run_source` used to await each source's coroutine directly on the shared event loop under a 5 s `asyncio.wait_for`. A source with synchronous blocking work inside its `async def` (traced to `load_roles()`'s directory glob/stat/YAML parse on a cold mtime-cache, reached via `build_staff_summary` → `staff.fleet.local_board`) froze the whole loop, starving every other concurrently gathered source and their timeout timers, so fast sources (0.4 s over HTTP) timed out in lockstep with the slow one. Each source now runs on its own private event loop in a worker thread (`asyncio.to_thread`), isolating any sync blocking from its siblings; a module-level per-tool last-good snapshot cache renders `stale (age Ns): <body>` on a later timeout/error instead of `unavailable`, when the tool has succeeded earlier in the process.
+- **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_chat_fleet_context.py tests/unit/test_staff_chat_fleet_prompt.py tests/unit/test_staff_chat_memory.py -q` → 14 passed; `pytest tests/api/test_coordination_claims_auth.py tests/api/test_coordination_api.py tests/clients/ -q` → 177 passed; `ruff check`/`ruff format --check` clean; mypy `--explicit-package-bases` clean)
+- **Summary:** `build_fleet_context_block`'s `_run_source` used to await each source's coroutine directly on the shared event loop under a 5 s `asyncio.wait_for`. A source with synchronous blocking work inside its `async def` (traced to `load_roles()`'s directory glob/stat/YAML parse on a cold mtime-cache, reached via `build_staff_summary` → `staff.fleet.local_board`) froze the whole loop, starving every other concurrently gathered source and their timeout timers, so fast sources (0.4 s over HTTP) timed out in lockstep with the slow one. An earlier attempt in this same branch isolated each source on its own private event loop in a worker thread, but that's unsafe here: `backend/gh_client.py` has a module-level shared `httpx.AsyncClient`/`asyncio.Lock` bound to the main loop, and `read_briefing`/`read_sessions` reach GitHub through it via `aggregate_board`/`staff_runs` — driving those from a foreign per-source loop risks `RuntimeError` or corrupting the shared client's pool, a failure fake-source tests can't catch. Replaced with the minimal fix: `build_fleet_context_block` warms `staff.roles.load_roles()`'s mtime-cache via `asyncio.to_thread` once per turn before gathering (failure logged and swallowed), so the later in-loop `load_roles()` call only re-stats cached files instead of a cold full parse; `coordination/briefing.py`'s `_holds()` (a plain sync call on the loop) also now runs via `asyncio.to_thread`. Kept the module-level per-tool last-good snapshot cache: a later timeout/error renders `stale (age Ns): <body>` instead of `unavailable` when the tool has succeeded earlier in the process.
 - **Next step:** Open the PR against `origin/main`.
 
 ### DL-#1755 — Phone sign-in via Tailscale identity headers

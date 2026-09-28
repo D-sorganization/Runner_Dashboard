@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
@@ -161,38 +161,56 @@ async def test_build_fleet_context_block_truncates_large_payload_and_caps_total(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_synchronous_blocking_source_does_not_starve_fast_sibling(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A source with sync blocking I/O must not make a fast sibling source time out too (#1761).
+async def test_build_fleet_context_block_warms_role_cache_off_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The role YAML cache is refreshed via asyncio.to_thread, not on the caller's loop (#1761).
 
-    Reproduces the reported symptom: a live chat turn saw ``read_staff_summary``,
-    ``read_briefing`` and ``read_sessions`` all time out at the same instant even
-    though two of the three answer in well under a second over HTTP. A source
-    performing synchronous work inside an ``async def`` (sync sqlite/file/subprocess
-    calls) freezes the shared event loop for its duration; every other concurrently
-    gathered source (and the timeout timer checking them) is starved until it lets go,
-    so unrelated fast sources can be swept into the same timeout.
+    ``build_staff_summary`` (behind ``read_staff_summary``) calls
+    ``staff.roles.load_roles()`` synchronously; on a cold mtime-cache — most likely
+    shortly after a restart — that means a directory glob, a stat of every role file
+    and a full YAML parse, run directly on the event loop, which is what froze the
+    loop long enough to starve every concurrently gathered source at once. Warming
+    the cache off-loop first, before gathering, means that later in-loop call only
+    re-stats already-cached files. This asserts the warm-up call itself actually runs
+    on a worker thread, not the thread driving this test's event loop.
     """
-    monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.2)
+    main_thread = threading.current_thread()
+    seen_threads: list[threading.Thread] = []
 
-    role = RoleSpec(
-        name="barb",
-        title="Barb",
-        chat={"tools": ["read_staff_summary", "read_priorities"]},
-    )
+    def _fake_load_roles() -> dict[str, Any]:
+        seen_threads.append(threading.current_thread())
+        return {}
 
-    async def _blocks_the_event_loop() -> dict[str, Any]:
-        time.sleep(0.35)  # simulates sync sqlite/file/subprocess I/O inside an async source
-        return {"blocked": True}
+    monkeypatch.setattr(cfc, "load_roles", _fake_load_roles)
 
-    async def _fast() -> dict[str, Any]:
-        await asyncio.sleep(0.01)
-        return {"ok": True}
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_priorities"]})
+    fake_sources = {"read_priorities": AsyncMock(return_value={"ok": True})}
 
-    fake_sources = {"read_staff_summary": _blocks_the_event_loop, "read_priorities": _fast}
     block = await build_fleet_context_block(role, sources=fake_sources)
 
     assert block is not None
-    assert '{"ok":true}' in block, "a fast sibling source must not be starved by a blocking source"
+    assert len(seen_threads) == 1, "load_roles must be warmed exactly once per turn"
+    assert seen_threads[0] is not main_thread, "the warm-up must not run on the caller's event-loop thread"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_fleet_context_block_survives_role_cache_warm_up_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A role-cache warm-up failure is logged and swallowed; sources still run (#1761)."""
+
+    def _broken_load_roles() -> dict[str, Any]:
+        raise OSError("role directory unreadable")
+
+    monkeypatch.setattr(cfc, "load_roles", _broken_load_roles)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_priorities"]})
+    fake_sources = {"read_priorities": AsyncMock(return_value={"ok": True})}
+
+    block = await build_fleet_context_block(role, sources=fake_sources)
+
+    assert block is not None
+    assert '{"ok":true}' in block
 
 
 @pytest.mark.unit
