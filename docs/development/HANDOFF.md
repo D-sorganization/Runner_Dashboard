@@ -110,6 +110,15 @@ Last updated: 2026-09-28
 - Validation: `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/OverviewPage.test.tsx` 54 passed (the two new assertions red first); `npm run typecheck` and eslint clean.
 - Next: open the PR as draft, then mark ready and arm via `automerge_guard`.
 
+## Scheduled workflows inventory, #1745 (DL-#1745)
+
+- Branch `fix/scheduled-workflows-walk` (worktree `claude-sched-1745`), from `origin/main`. PR: not created.
+- `backend/scheduled_workflows.py` `collect_inventory` walked repos serially and raw-fetched every workflow YAML file (over 1,200 requests for 41 repos), and never finished inside the hub's 20 s answer budget — meanwhile `backend/proxy_utils.py` `proxy_to_hub` timed out at 15 s, so a proxied node always got a 504 instead of the designed "still collecting" degraded answer.
+- `collect_inventory` now reads the `.github/workflows` contents listing per repo (one call, carries blob SHAs) instead of raw-fetching every workflow file, and caches extracted cron expressions by blob SHA in module-level `_CRON_BY_BLOB_SHA` (mirrors `_WORKFLOW_TRIGGER_CACHE` in `routers/runs_workflows.py`); a steady-state walk is workflows-list + contents-listing + one runs call per scheduled workflow, per repo. `schedule_source` is `"blob"` on success (was `"raw_yaml"`), `"unavailable"` when the listing call fails or a path has no matching blob SHA. Repos are walked concurrently behind a bounded `asyncio.Semaphore(_REPO_CONCURRENCY=6)` while `asyncio.gather` preserves output order. The now-unused `gh_raw` parameter was removed from `collect_inventory`; its only caller (`_scheduled_workflows_impl` in `backend/routers/runs_workflows.py`) was updated to match.
+- `backend/proxy_utils.py` extracts the `AsyncClient(timeout=15.0)` literal into module constant `HUB_PROXY_TIMEOUT_S = 15.0`. `_scheduled_workflows_impl` defaults `SCHEDULED_WORKFLOWS_TIMEOUT` to `"10"` (was `"20"`) and clamps the effective SWR wait to `min(timeout, proxy_utils.HUB_PROXY_TIMEOUT_S - 3)`, so a proxying node always receives the degraded answer before its own httpx timeout fires.
+- Validation (WSL, `rd-test-venv`): `pytest tests -q -k "scheduled or proxy"` — 110 passed. `ruff check backend tests` — all checks passed. `ruff format --check` on changed files — clean. `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` — clean.
+- Next: open the PR as draft.
+
 ---
 
 # Historical handoffs

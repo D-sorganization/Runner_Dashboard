@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1745 — Scheduled workflows inventory loads within the proxy timeout
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1745
+- **Branch:** `fix/scheduled-workflows-walk`
+- **PR:** not created
+- **Paths:** `backend/scheduled_workflows.py`, `backend/proxy_utils.py`, `backend/routers/runs_workflows.py`, `tests/test_scheduled_workflows.py`, `tests/api/test_scheduled_workflows_route.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests -q -k "scheduled or proxy"` 110 passed; `ruff check`/`ruff format --check` clean; `mypy backend/` clean)
+- **Summary:** `collect_inventory` walked repos serially and raw-fetched every workflow YAML (1,200+ requests for 41 repos), never finishing inside the hub's answer budget; the hub's 20 s wait also exceeded the proxy's 15 s timeout, so every non-hub node got a 504 instead of the designed degraded answer. The walk now reads the `.github/workflows` contents listing per repo and caches cron expressions by blob SHA, walks repos concurrently behind a bounded semaphore (6), and the hub's wait is clamped below the new `proxy_utils.HUB_PROXY_TIMEOUT_S` constant.
+- **Next step:** Open the PR as draft.
+
 ### DL-#1747 — Fleet page shows only real data and honest loading states
 
 - **State:** in_review

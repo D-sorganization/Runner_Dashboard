@@ -12,6 +12,8 @@ That plan is descriptive only; no write actions are performed here.
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
@@ -20,7 +22,18 @@ from typing import Any
 from time_utils import utc_now_iso
 
 GhJson = Callable[[str], Awaitable[Any]]
-GhRaw = Callable[[str], Awaitable[str]]
+
+# Bounded concurrency for the per-repository walk (issue #1745): a serial walk
+# over 41 repos at 28-68 workflows each took over 1,200 requests and never
+# finished inside the hub's answer budget. Six repos in flight keeps the walk
+# fast without hammering the GitHub API rate limit.
+_REPO_CONCURRENCY = 6
+
+# Workflow-file cron expressions keyed by git blob sha: a file's content never
+# changes under a given sha, so each file is parsed once per edit instead of
+# once per refresh (mirrors ``_WORKFLOW_TRIGGER_CACHE`` in
+# ``routers/runs_workflows.py``).
+_CRON_BY_BLOB_SHA: dict[str, tuple[str, ...]] = {}
 
 _ON_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)(?:'on'|\"on\"|on)\s*:\s*(?:#.*)?$")
 _SCHEDULE_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)schedule\s*:\s*(?:#.*)?$")
@@ -253,102 +266,172 @@ def _build_dry_run_plan(
     return ScheduledWorkflowDryRunPlan(steps=tuple(steps))
 
 
+async def _cron_expressions_for_blob(
+    organization: str,
+    repo_name: str,
+    gh_json: GhJson,
+    sha: str,
+) -> tuple[str, ...]:
+    """Return the cron expressions for a workflow blob, fetching only unseen SHAs."""
+    cached = _CRON_BY_BLOB_SHA.get(sha)
+    if cached is not None:
+        return cached
+    blob = await gh_json(f"/repos/{organization}/{repo_name}/git/blobs/{sha}")
+    content_b64 = blob.get("content", "") if isinstance(blob, dict) else ""
+    content = base64.b64decode(content_b64 or "").decode("utf-8", errors="replace")
+    crons = tuple(extract_cron_expressions(content))
+    _CRON_BY_BLOB_SHA[sha] = crons
+    return crons
+
+
+async def _repo_workflow_entries(
+    organization: str,
+    repo_name: str,
+    gh_json: GhJson,
+) -> list[ScheduledWorkflowEntry]:
+    """Build workflow entries for one repository from a fixed number of calls.
+
+    Reads triggers from the ``.github/workflows`` contents listing (one call,
+    which includes blob SHAs) instead of raw-fetching every workflow file, and
+    fetches a blob only when its SHA has not been seen before (#1745).
+    """
+    workflows_payload = await gh_json(f"/repos/{organization}/{repo_name}/actions/workflows")
+    workflows_data = workflows_payload.get("workflows", []) if isinstance(workflows_payload, dict) else []
+
+    sha_by_path: dict[str, str] = {}
+    listing_available = True
+    try:
+        listing_payload = await gh_json(f"/repos/{organization}/{repo_name}/contents/.github/workflows")
+    except Exception as e:  # noqa: BLE001
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
+        listing_available = False
+        listing_payload = []
+
+    if isinstance(listing_payload, list):
+        for entry in listing_payload:
+            if not isinstance(entry, dict):
+                continue
+            sha, path = entry.get("sha"), entry.get("path")
+            if sha and path:
+                sha_by_path[str(path)] = str(sha)
+    else:
+        listing_available = False
+
+    workflow_entries: list[ScheduledWorkflowEntry] = []
+    for workflow in workflows_data:
+        if not isinstance(workflow, dict):
+            continue
+
+        workflow_path = str(workflow.get("path") or "").strip()
+        workflow_name = str(workflow.get("name") or workflow_path or "").strip()
+        workflow_id = int(workflow["id"]) if workflow.get("id") is not None else None
+        state = str(workflow.get("state") or "").strip() or "unknown"
+        enabled = state == "active"
+
+        schedule_source = "unavailable"
+        cron_expressions: tuple[str, ...] = ()
+        sha = sha_by_path.get(workflow_path) if workflow_path else None
+        if sha:
+            try:
+                cron_expressions = await _cron_expressions_for_blob(organization, repo_name, gh_json, sha)
+                schedule_source = "blob"
+            except Exception as e:  # noqa: BLE001
+                if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                    raise
+                schedule_source = "unavailable"
+        elif not listing_available:
+            schedule_source = "unavailable"
+
+        scheduled = bool(cron_expressions)
+        latest_run: ScheduledWorkflowRunSnapshot | None = None
+        if scheduled and workflow_id is not None:
+            try:
+                runs_payload = await gh_json(
+                    f"/repos/{organization}/{repo_name}/actions/workflows/{workflow_id}/runs?per_page=1"
+                )
+                runs = runs_payload.get("workflow_runs", []) if isinstance(runs_payload, dict) else []
+                if runs:
+                    first_run = runs[0]
+                    if isinstance(first_run, dict):
+                        latest_run = _build_run_snapshot(first_run)
+            except Exception as e:  # noqa: BLE001
+                if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                    raise
+                latest_run = None
+
+        workflow_entries.append(
+            ScheduledWorkflowEntry(
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
+                workflow_path=workflow_path,
+                state=state,
+                enabled=enabled,
+                scheduled=scheduled,
+                schedule_source=schedule_source,
+                cron_expressions=cron_expressions,
+                latest_run=latest_run,
+            )
+        )
+
+    return workflow_entries
+
+
+async def _collect_repo_inventory(
+    organization: str,
+    repo: dict[str, Any],
+    gh_json: GhJson,
+    semaphore: asyncio.Semaphore,
+) -> ScheduledWorkflowRepositoryInventory:
+    repo_name = str(repo.get("name") or "").strip()
+    default_branch = str(repo.get("default_branch") or "").strip() or None
+    async with semaphore:
+        workflow_entries = await _repo_workflow_entries(organization, repo_name, gh_json)
+    return ScheduledWorkflowRepositoryInventory(
+        repository=repo_name,
+        archived=bool(repo.get("archived")),
+        default_branch=default_branch,
+        workflow_count=len(workflow_entries),
+        scheduled_workflow_count=sum(1 for item in workflow_entries if item.scheduled),
+        workflows=tuple(workflow_entries),
+    )
+
+
 async def collect_inventory(
     organization: str,
     gh_json: GhJson,
-    gh_raw: GhRaw,
     *,
     repo_limit: int = 100,
     include_archived: bool = False,
 ) -> ScheduledWorkflowInventoryReport:
-    """Collect a read-only org-wide inventory of scheduled workflows."""
+    """Collect a read-only org-wide inventory of scheduled workflows.
+
+    Repositories are walked concurrently, bounded by ``_REPO_CONCURRENCY``,
+    while the output preserves the order of ``repos_payload`` (#1745).
+    """
 
     repos_payload = await gh_json(f"/orgs/{organization}/repos?per_page={repo_limit}&sort=updated&direction=desc")
-    repositories: list[ScheduledWorkflowRepositoryInventory] = []
-    total_scheduled = 0
 
     if not isinstance(repos_payload, list):
         repos_payload = []
 
+    eligible_repos: list[dict[str, Any]] = []
     for repo in repos_payload:
         if not isinstance(repo, dict):
             continue
         if repo.get("archived") and not include_archived:
             continue
-        repo_name = str(repo.get("name") or "").strip()
-        if not repo_name:
+        if not str(repo.get("name") or "").strip():
             continue
-        default_branch = str(repo.get("default_branch") or "").strip() or None
+        eligible_repos.append(repo)
 
-        workflows_payload = await gh_json(f"/repos/{organization}/{repo_name}/actions/workflows")
-        workflows_data = workflows_payload.get("workflows", []) if isinstance(workflows_payload, dict) else []
-
-        workflow_entries: list[ScheduledWorkflowEntry] = []
-        for workflow in workflows_data:
-            if not isinstance(workflow, dict):
-                continue
-
-            workflow_path = str(workflow.get("path") or "").strip()
-            workflow_name = str(workflow.get("name") or workflow_path or "").strip()
-            workflow_id = int(workflow["id"]) if workflow.get("id") is not None else None
-            state = str(workflow.get("state") or "").strip() or "unknown"
-            enabled = state == "active"
-
-            schedule_source = "unavailable"
-            cron_expressions: list[str] = []
-            if workflow_path:
-                try:
-                    ref_suffix = f"?ref={default_branch}" if default_branch else ""
-                    raw_yaml = await gh_raw(f"/repos/{organization}/{repo_name}/contents/{workflow_path}{ref_suffix}")
-                    cron_expressions = extract_cron_expressions(raw_yaml)
-                    schedule_source = "raw_yaml"
-                except Exception as e:  # noqa: BLE001
-                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
-                        raise
-                    schedule_source = "unavailable"
-
-            scheduled = bool(cron_expressions)
-            latest_run: ScheduledWorkflowRunSnapshot | None = None
-            if scheduled and workflow_id is not None:
-                try:
-                    runs_payload = await gh_json(
-                        f"/repos/{organization}/{repo_name}/actions/workflows/{workflow_id}/runs?per_page=1"
-                    )
-                    runs = runs_payload.get("workflow_runs", []) if isinstance(runs_payload, dict) else []
-                    if runs:
-                        first_run = runs[0]
-                        if isinstance(first_run, dict):
-                            latest_run = _build_run_snapshot(first_run)
-                except Exception as e:  # noqa: BLE001
-                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
-                        raise
-                    latest_run = None
-
-            total_scheduled += int(scheduled)
-            workflow_entries.append(
-                ScheduledWorkflowEntry(
-                    workflow_id=workflow_id,
-                    workflow_name=workflow_name,
-                    workflow_path=workflow_path,
-                    state=state,
-                    enabled=enabled,
-                    scheduled=scheduled,
-                    schedule_source=schedule_source,
-                    cron_expressions=tuple(cron_expressions),
-                    latest_run=latest_run,
-                )
-            )
-
-        repositories.append(
-            ScheduledWorkflowRepositoryInventory(
-                repository=repo_name,
-                archived=bool(repo.get("archived")),
-                default_branch=default_branch,
-                workflow_count=len(workflow_entries),
-                scheduled_workflow_count=sum(1 for item in workflow_entries if item.scheduled),
-                workflows=tuple(workflow_entries),
-            )
+    semaphore = asyncio.Semaphore(_REPO_CONCURRENCY)
+    repositories = list(
+        await asyncio.gather(
+            *[_collect_repo_inventory(organization, repo, gh_json, semaphore) for repo in eligible_repos]
         )
+    )
+    total_scheduled = sum(repo.scheduled_workflow_count for repo in repositories)
 
     report = ScheduledWorkflowInventoryReport(
         organization=organization,

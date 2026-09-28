@@ -8,9 +8,11 @@ answered 504 through the proxy.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 import cache_utils
+import proxy_utils
 import pytest
 from routers import runs_workflows as rw
 
@@ -51,3 +53,30 @@ def test_timed_out_inventory_finishes_in_background_and_is_served_next(slow_inve
     assert second["status"] == "ok"
     assert second["scheduled_workflow_count"] == 1
     assert len(slow_inventory) == 1
+
+
+@pytest.mark.unit
+def test_wait_stays_below_hub_proxy_timeout_for_a_proxied_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The hub must answer degraded before a proxying node's own timeout fires (#1745).
+
+    ``proxy_to_hub`` gives up after ``HUB_PROXY_TIMEOUT_S`` seconds, so the hub's
+    own wait for a cold inventory must stay below that, even when an operator
+    configures a large ``SCHEDULED_WORKFLOWS_TIMEOUT``.
+    """
+    monkeypatch.setattr(cache_utils, "_main_cache", cache_utils.Cache("scheduled-test-clamp"))
+    monkeypatch.setattr(cache_utils, "_swr_refreshes", {})
+    monkeypatch.setenv("SCHEDULED_WORKFLOWS_TIMEOUT", "60")
+    monkeypatch.setattr(proxy_utils, "HUB_PROXY_TIMEOUT_S", 3.2)
+
+    async def never_finishes(*args: object, **kwargs: object) -> _Report:
+        await asyncio.sleep(999)
+        return _Report()
+
+    monkeypatch.setattr(rw.scheduled_workflow_inventory, "collect_inventory", never_finishes)
+
+    start = time.monotonic()
+    result = asyncio.run(rw._scheduled_workflows_impl())
+    elapsed = time.monotonic() - start
+
+    assert result["status"] == "degraded"
+    assert elapsed < proxy_utils.HUB_PROXY_TIMEOUT_S

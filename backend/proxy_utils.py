@@ -12,6 +12,11 @@ from fastapi import HTTPException, Request
 
 log = logging.getLogger("dashboard.proxy")
 
+# Timeout for a proxied request to the hub (issue #1745). A node waiting
+# longer than this for the hub's answer gets an httpx timeout, so any
+# hub-side "wait then answer degraded" budget must stay below this value.
+HUB_PROXY_TIMEOUT_S = 15.0
+
 # ── Hub circuit breaker (issue: blank dashboard when the hub is offline) ──────
 # A spoke proxies fleet-wide endpoints to HUB_URL. If the hub is unreachable the
 # proxy used to raise 504/503 on EVERY request, so a dead hub blanked the whole
@@ -113,7 +118,7 @@ async def proxy_to_hub(request: Request):
     """
     if not HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=HUB_PROXY_TIMEOUT_S) as client:
         url = f"{HUB_URL}{request.url.path}"
         if request.url.query:
             url = f"{url}?{request.url.query}"
