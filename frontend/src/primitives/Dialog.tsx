@@ -19,19 +19,7 @@ import React, {
   useRef,
 } from "react";
 
-// ── Focusable element selector ────────────────────────────────────────────────
-const FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
-function getFocusable(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-}
+import { getFocusable } from "./focusable";
 
 function prefersReducedMotion(): boolean {
   return (

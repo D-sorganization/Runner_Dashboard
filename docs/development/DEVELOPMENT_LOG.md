@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1722 — Console-first Staff page with an Attention drawer
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1722
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `frontend/src/pages/Staff/{StaffPage,InboxPanel,Board,Holds,Roster,OutcomesTable}.tsx`, `InboxPanel.css`, `Board.css`, `StaffPage.css`, `frontend/src/primitives/focusable.ts`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Staff + pages vitest 77 files / 613 passed; tsc and eslint clean; 1440x900 browser check against the live hub: console and composer above the fold, drawer opens and closes, no hover repaint)
+- **Summary:** The 8,000px inbox becomes a one-line "Waiting on you" bar with per-kind counts and a 420px focus-trapped drawer (approvals first, sign-ins grouped, decisions grouped by repo); the Board is a one-line strip with quotas, late roles and machines behind a disclosure; emoji replaced by SVG icons.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1720 — Staff Console thread and composer restyled
 
 - **State:** in_review

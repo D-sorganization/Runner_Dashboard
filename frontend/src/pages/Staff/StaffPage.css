@@ -1,0 +1,75 @@
+/**
+ * StaffPage.css — layout and section tabs for StaffPage (Workstream D).
+ * Calm, dense, precise.
+ */
+
+.staff {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+/* Compact underline tab bar for section tabs (13px, 500, accent underline on active) */
+.staff__tabs {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+}
+
+.staff__tabs .subtabs-strip {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+}
+
+.staff__tabs .subtab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.55;
+  margin-bottom: -1px;
+  padding: 8px 4px;
+  text-decoration: none;
+  transition: color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.staff__tabs .subtab:hover {
+  color: var(--text-primary);
+}
+
+.staff__tabs .subtab.active {
+  border-bottom-color: var(--accent-blue);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.staff__tabs .subtab:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+
+/* Console fills page directly under section tabs */
+.staff__content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Staff panels (Roster, Holds, Outcomes) */
+.staff-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin: 16px;
+  padding: 16px;
+}

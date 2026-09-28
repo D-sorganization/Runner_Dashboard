@@ -1,56 +1,78 @@
 /**
- * InboxPanel.css — styles for the "Waiting on You" inbox panel (Issue #1711).
- * Colours come from design tokens only (see frontend/src/design/tokens.ts and
- * the CSS variables they emit into frontend/src/index.css).
+ * InboxPanel.css — styles for the "Waiting on You" Attention bar and drawer (Workstream D).
+ * Colours and spacing come from design tokens only.
  */
 
+/* ── Collapsed Attention Bar ── */
 .staff-inbox-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 8px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
 }
 
-.staff-inbox-panel__header {
-  display: flex;
+.staff-inbox-bar {
   align-items: center;
-  justify-content: space-between;
+  display: flex;
   flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.staff-inbox-bar__main {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+
+.staff-inbox-bar__title-group {
+  align-items: center;
+  display: flex;
   gap: 8px;
 }
 
-.staff-inbox-panel__title-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.staff-inbox-panel__collapse-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: none;
-  border: none;
+.staff-inbox-bar__title {
   color: var(--text-primary);
-  cursor: pointer;
-  font: inherit;
-  padding: 0;
-}
-
-.staff-inbox-panel__chevron {
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.staff-inbox-panel__title {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 
-.staff-inbox-panel__actions {
-  display: flex;
+.staff-inbox-bar__kind-counts {
   align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.staff-inbox-bar__chip {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  padding: 2px 8px;
+}
+
+.staff-inbox-bar__all-clear {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.staff-inbox-bar__actions {
+  align-items: center;
+  display: flex;
+  flex: none;
   gap: 8px;
 }
 
@@ -59,34 +81,89 @@
   font-size: 12px;
 }
 
-.staff-inbox-panel__content {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
 .staff-inbox-panel__error {
-  color: var(--accent-red);
+  color: var(--status-danger, #ef4444);
   font-size: 12px;
   margin: 0;
 }
 
-/* ── Generic button primitive (shared by inbox actions and item review link) ── */
+/* ── Degraded-source warning callout ── */
+.staff-inbox-panel__degraded-banner {
+  background: var(--badge-warning-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--badge-warning-fg);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.staff-inbox-panel__degraded-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.staff-inbox-panel__degraded-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.staff-inbox-panel__degraded-headline {
+  font-weight: 500;
+}
+
+.staff-inbox-panel__degraded-disclosure summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.staff-inbox-panel__degraded-list {
+  font-family: monospace;
+  font-size: 11px;
+  list-style: none;
+  margin: 4px 0 0;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.staff-inbox-panel__degraded-list li {
+  margin-top: 2px;
+}
+
+.staff-inbox-panel__degraded-error {
+  cursor: help;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* ── Generic button primitive ── */
 .button {
   align-items: center;
   border-radius: var(--radius-sm);
   cursor: pointer;
   display: inline-flex;
   font: inherit;
-  gap: 4px;
+  gap: 6px;
   justify-content: center;
   text-decoration: none;
+  transition: background 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
   white-space: nowrap;
 }
 
 .button--sm {
   font-size: 12px;
-  padding: 3px 10px;
+  font-weight: 500;
+  padding: 4px 10px;
 }
 
 .button--primary {
@@ -116,8 +193,8 @@
 }
 
 .button--ghost:hover {
-  color: var(--text-primary);
   border-color: var(--border);
+  color: var(--text-primary);
 }
 
 .button:disabled {
@@ -125,39 +202,70 @@
   opacity: 0.6;
 }
 
-/* ── Degraded-source warning callout ── */
-.staff-inbox-panel__degraded-banner {
-  background: var(--badge-warning-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--badge-warning-fg);
+/* ── 420px Fixed Right-Side Drawer ── */
+.staff-inbox-drawer__backdrop {
+  backdrop-filter: none;
+  background: rgba(0, 0, 0, 0.45);
+  inset: 0;
+  position: fixed;
+  z-index: 998;
+}
+
+.staff-inbox-drawer {
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border);
+  bottom: 0;
+  box-shadow: var(--shadow-modal);
   display: flex;
-  font-size: 12px;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 100vw;
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 420px;
+  z-index: 999;
+}
+
+.staff-inbox-drawer__header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.staff-inbox-drawer__title-group {
+  align-items: center;
+  display: flex;
   gap: 8px;
-  padding: 8px 10px;
 }
 
-.staff-inbox-panel__degraded-icon {
-  flex: none;
+.staff-inbox-drawer__title {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
 }
 
-.staff-inbox-panel__degraded-list {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
+.staff-inbox-drawer__close {
+  color: var(--text-muted);
+  padding: 4px;
 }
 
-.staff-inbox-panel__degraded-list li {
-  margin-top: 2px;
+.staff-inbox-drawer__close:hover {
+  color: var(--text-primary);
 }
 
-.staff-inbox-panel__degraded-error {
-  cursor: help;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
+.staff-inbox-drawer__content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
 }
 
 /* ── Filter pills ── */
@@ -174,7 +282,9 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
+  font-weight: 500;
   padding: 3px 10px;
+  transition: all 140ms ease-out;
 }
 
 .filter-pill:hover {
@@ -189,11 +299,14 @@
   font-weight: 600;
 }
 
-/* ── Item list ── */
+/* ── Drawer item list ── */
 .staff-inbox-panel__empty {
+  align-items: center;
   color: var(--text-muted);
+  display: flex;
   font-size: 13px;
-  padding: 12px 0;
+  gap: 8px;
+  padding: 24px 0;
 }
 
 .staff-inbox-panel__list {
@@ -202,8 +315,6 @@
   gap: 8px;
   list-style: none;
   margin: 0;
-  max-height: 420px;
-  overflow-y: auto;
   padding: 0;
 }
 
@@ -216,18 +327,23 @@
   gap: 10px;
   justify-content: space-between;
   padding: 10px 12px;
+  transition: border-color 140ms ease-out;
+}
+
+.staff-inbox-item:hover {
+  border-color: var(--border-light);
 }
 
 .staff-inbox-item--critical {
-  border-left-color: var(--accent-red);
+  border-left-color: var(--status-danger, #ef4444);
 }
 
 .staff-inbox-item--high {
-  border-left-color: var(--accent-orange);
+  border-left-color: var(--status-warning, #f59e0b);
 }
 
 .staff-inbox-item--medium {
-  border-left-color: var(--accent-yellow);
+  border-left-color: var(--accent-yellow, #eab308);
 }
 
 .staff-inbox-item--low {
@@ -252,23 +368,77 @@
 .staff-inbox-item__time {
   color: var(--text-muted);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .staff-inbox-item__title {
+  color: var(--text-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .staff-inbox-item__summary {
   color: var(--text-muted);
+  display: -webkit-box;
   font-size: 12px;
+  line-height: 1.45;
   margin: 0;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .staff-inbox-item__action-wrap {
   align-items: center;
   display: flex;
   flex: none;
+}
+
+/* ── Collapsible Group Rows (sign-ins, decisions by repo) ── */
+.staff-inbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+
+.staff-inbox-group__toggle {
+  align-items: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  padding: 6px 10px;
+  text-align: left;
+  transition: all 140ms ease-out;
+  width: 100%;
+}
+
+.staff-inbox-group__toggle:hover {
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.staff-inbox-chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.staff-inbox-group__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding-left: 12px;
 }

@@ -41,7 +41,7 @@ export function OutcomesTable() {
   const { data, error, isLoading, refetch } = useStaffOutcomes(groupBy);
 
   return (
-    <div className="glass-card staff-panel" data-testid="staff-outcomes">
+    <div className="staff-panel" data-testid="staff-outcomes">
       <div className="staff-panel__header">
         <h3 className="staff-panel__title">Outcomes (last 14 days)</h3>
         <div role="group" aria-label="Group scorecard by">
