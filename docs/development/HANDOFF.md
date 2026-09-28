@@ -87,6 +87,16 @@ Last updated: 2026-09-28
 - Validation: route tests 11 + 2, guard 3; WSL `tests/api tests/frontend` 1425 passed (the WSL-only vite-config test fails as usual); ruff, mypy, tsc, eslint, vitest (114) clean; OpenAPI snapshot regenerated (additions only).
 - Next: mark #1737 ready and arm via `automerge_guard`.
 
+## Development-log hygiene: merged-PR reconciliation and archive (no issue)
+
+- Branch `docs/dl-hygiene-archive` (worktree `claude-dl-hygiene`), from main `157232e6`. Draft PR #1739 (https://github.com/D-sorganization/Runner_Dashboard/pull/1739); SPEC.md row added for #1739.
+- `development_log.py` (Repository_Management `shared_scripts`) failed on `DEVELOPMENT_LOG.md`: duplicate DL-#1325 and DL-#1424, `Last verified` without a SHA, 65 active entries (ceiling 40), portfolio WIP breach, and 281 kB (ceiling 100 kB).
+- Duplicates: the first DL-#1325 was DL-#1327's body under the wrong heading, and DL-#1327's own heading had no body; that body now sits under DL-#1327 (PR #1431 merged). The first DL-#1424 was a stale copy of DL-#1333's body; removed (DL-#1333 has the newer copy).
+- Shipped 117 entries whose PR merged, each checked on GitHub: the PR in the entry's `PR` field, else the PR from its `Branch`, else the merged PR whose body closes the entry's issue (consolidated PRs #1526, #1536, #1699, #1727, #1668, #1464). `Last verified` now reads `<merge date> (`<merge sha>`; <evidence>; pre-merge: <old text>)`, plus `Shipped` and `Next step: None — shipped in PR #N`.
+- Moved all 228 shipped entries to `DEVELOPMENT_LOG_ARCHIVE_2026.md` (validator archive format). The log keeps DL-#1718..#1725 (untouched, per owner; their PR #1730 has merged) and parked DL-0001..0003. Log is 13 kB; both the local and main validator report `Development log OK.`
+- Not changed: entries headed with `—` instead of `·` (DL-#1718..#1725 now) are invisible to the validator; converting them was out of scope.
+- Next: mark the draft PR ready once CI is green.
+
 ## Service worker build id, #1740 (DL-#1740)
 
 - Branch `fix/sw-build-id` (worktree `claude-sw-1740`), from main `157232e6`. PR #1741 (draft).
