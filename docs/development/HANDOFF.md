@@ -147,6 +147,14 @@ Last updated: 2026-09-28
 --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` clean (318 files).
 - Next: open the PR as draft.
 
+## OpenAPI drift from the git-drift docstring, #1752 (DL-#1752)
+
+- Repo `D-sorganization/Runner_Dashboard`, worktree `Runner_Dashboard-worktrees/claude-openapi-fix`, branch `fix/git-drift-openapi-docstring`, commit SELF, PR: not created.
+- Problem: #1749 merged a multi-line docstring on `get_git_drift` (`backend/routers/deployment.py`); route docstrings feed `frontend/src/lib/openapi.json`, so `npm run generate-api:check` in the TypeScript typecheck job fails on main.
+- Change: restore the one-line docstring; the #1748 rationale stays as a code comment. No behaviour change.
+- Validation: the CI diff of `generate-api:check` on #1749 showed this docstring as its only hunk.
+- Next: open the PR as draft, then mark ready and arm auto-merge through automerge_guard.
+
 ---
 
 # Historical handoffs

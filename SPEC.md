@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1752 | The git-drift route keeps its one-line docstring so the generated OpenAPI client matches main. |
 | 2026-09-28 | #1748 | Diagnostics fall back to the deployed commit from deployment metadata on artifact installs, and git-drift reports unknown instead of "up to date" when it has no commits. |
 | 2026-09-28 | #1745 | Scheduled-workflow inventory reads workflow files by blob SHA (cached) with bounded concurrency, and the hub answers degraded within the proxy timeout instead of a 504. |
 | 2026-09-28 | #1747 | Fleet page no longer renders the hard-coded "Fair Sharing & Active Leases" design preview, and Fleet Alerts shows a checking state instead of "All systems nominal" while loading. |

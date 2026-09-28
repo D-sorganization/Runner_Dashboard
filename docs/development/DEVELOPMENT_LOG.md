@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1752 — Generated OpenAPI matches main after the git-drift fix
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1752
+- **Branch:** `fix/git-drift-openapi-docstring`
+- **PR:** not created
+- **Paths:** `backend/routers/deployment.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (the CI `generate-api:check` diff on #1749 had this docstring as its only hunk)
+- **Summary:** Keep the `get_git_drift` route docstring one line so the generated OpenAPI stays unchanged.
+- **Next step:** Open the PR and arm auto-merge through automerge_guard.
+
 ### DL-#1748 — Diagnostics report the deployed commit on artifact installs
 
 - **State:** in_review
