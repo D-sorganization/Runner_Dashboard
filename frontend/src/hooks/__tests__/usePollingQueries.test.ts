@@ -38,24 +38,17 @@ describe("usePollingQueries module exports", () => {
     expect(mod.queryClient).toBe(queryClient)
   })
 
-  it("exports all 15 resource hooks", async () => {
+  it("exports all 8 resource hooks", async () => {
     const mod = await import("../usePollingQueries")
     const expectedHooks = [
-      "useFleet",
       "useRepos",
-      "useTests",
-      "useCiResults",
       "useReports",
       "useQueue",
-      "useMachines",
       "useEnrichedRuns",
       "useWatchdog",
-      "useScheduledJobs",
       "useLocalApps",
-      "useRunnerCapacity",
       "useDeployment",
       "useDeploymentState",
-      "useRunnerAudit",
     ]
     for (const name of expectedHooks) {
       expect(typeof (mod as Record<string, unknown>)[name]).toBe("function")

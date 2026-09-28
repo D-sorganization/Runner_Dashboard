@@ -468,8 +468,8 @@ export function OperationsDiagnosticsSection({
         <a href="/api/health" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-link, #58a6ff)" }}>
           /api/health
         </a>
-        <a href="/api/fleet/health" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-link, #58a6ff)" }}>
-          /api/fleet/health
+        <a href="/api/fleet/status" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-link, #58a6ff)" }}>
+          /api/fleet/status
         </a>
         <a href="/api/diagnostics/summary" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-link, #58a6ff)" }}>
           /api/diagnostics/summary

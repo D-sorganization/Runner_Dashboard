@@ -166,6 +166,7 @@ from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
 from routers import usage_metrics as _usage_metrics_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
+from routers import workflow_stats as _workflow_stats_router  # noqa: E402  # issue #1735
 from routers.queue import _queue_impl  # noqa: E402
 from runners.service_control import (  # noqa: E402
     run_runner_svc,
@@ -683,6 +684,7 @@ app.include_router(_runners_router.router)
 app.include_router(_runner_groups_router.router)
 app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
+app.include_router(_workflow_stats_router.router)  # issue #1735
 app.include_router(_assistant_router.router)
 app.include_router(_code_requests_router.router)
 app.include_router(_code_requests_board_router.router)
