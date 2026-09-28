@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1698 — Dashboard unit allows cursor-agent's command sandbox
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1698
+- **Branch:** `fix/1698-cursor-sandbox-namespaces`
+- **PR:** see branch
+- **Paths:** `deploy/runner-dashboard.service`, `deploy/systemd-dropins/40-cursor-sandbox.conf`, `deploy/update-deployed.sh`, `deploy/staff-node-acceptance.sh`, `deploy/setup.sh`, `tests/test_deploy_hardening.py`, `tests/deploy/test_staff_node_acceptance.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (`tests/test_deploy_hardening.py tests/deploy/` 306 passed; cursor-agent ad-hoc runs pass on DeskComputer, ControlTower and OGLaptop with the drop-in)
+- **Summary:** `RestrictNamespaces=user mnt net ipc uts` plus a `SystemCallFilter` addition (`@mount`, Landlock, `seccomp`), measured as the minimum that Cursor's bubblewrap sandbox (#1586) needs. The rest of the unit's hardening is unchanged. Existing nodes get the same allowances as a drop-in that `update-deployed.sh` installs, and node acceptance checks the live setting.
+- **Next step:** Merge the PR once CI is green.
+
 ### DL-#1697 — Skip chat-only providers in staff-node-acceptance ad-hoc loop
 
 - **State:** in_review

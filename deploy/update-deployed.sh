@@ -158,6 +158,28 @@ if [[ -z "$ARTIFACT_SOURCE" ]]; then
     ok "Pre-flight checks passed"
 fi
 
+# ── Ensure the cursor-agent sandbox allowances are present (idempotent, #1698) ─
+# Units installed before #1698 keep RestrictNamespaces=true, which stops
+# cursor-agent's command sandbox (#1586) from starting. setup.sh renders the
+# fixed unit for new nodes; existing nodes get the same allowances as a drop-in.
+install_cursor_sandbox_dropin() {
+    local src; src="$(dirname "$0")/systemd-dropins/40-cursor-sandbox.conf"
+    local dst="/etc/systemd/system/${SERVICE}.service.d/40-cursor-sandbox.conf"
+    [[ -f "$src" ]] || { warn "40-cursor-sandbox.conf not found; skipping cursor sandbox drop-in"; return 0; }
+    cmp -s "$src" "$dst" 2>/dev/null && return 0
+    if dry_run "sudo install $src $dst && sudo systemctl daemon-reload"; then
+        return 0
+    fi
+    if sudo -n true 2>/dev/null; then
+        sudo install -D -m 0644 "$src" "$dst" && sudo systemctl daemon-reload \
+            && ok "Installed cursor sandbox drop-in ($dst)" \
+            || warn "Could not install $dst; cursor-agent staff runs will fail"
+    else
+        warn "cursor-agent sandbox drop-in missing — run: sudo install -D -m 0644 $src $dst && sudo systemctl daemon-reload"
+    fi
+}
+install_cursor_sandbox_dropin
+
 info "Restarting $SERVICE..."
 if ! dry_run "sudo systemctl restart $SERVICE"; then
     sudo systemctl restart "$SERVICE"

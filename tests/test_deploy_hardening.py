@@ -26,7 +26,7 @@ _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u2"
 # These must appear in both the .service template files AND in the setup.sh
 # heredoc so that installed units stay in sync.
 _NEW_HARDENING_DIRECTIVES_391 = (
-    "RestrictNamespaces=true",
+    "RestrictNamespaces=user mnt net ipc uts",
     "CapabilityBoundingSet=",
     "SystemCallFilter=@system-service",
     "LockPersonality=true",
@@ -182,7 +182,42 @@ def test_dashboard_service_allows_wsl_interop_address_families() -> None:
 
 def test_dashboard_service_has_restrict_namespaces() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
-    assert "RestrictNamespaces=true" in content
+    # #1698: cursor-agent --sandbox enabled (#1586) runs commands in bubblewrap, which
+    # needs these namespace types; cgroup and pid stay forbidden.
+    assert "RestrictNamespaces=user mnt net ipc uts" in content
+    assert "RestrictNamespaces=true" not in content
+
+
+def test_dashboard_service_allows_cursor_sandbox_syscalls() -> None:
+    """#1698: bubblewrap remounts / and pivots root (@mount), then applies Landlock and seccomp."""
+    content = _read(_DEPLOY / "runner-dashboard.service")
+    assert "SystemCallFilter=@mount landlock_create_ruleset landlock_add_rule landlock_restrict_self seccomp" in content
+
+
+_CURSOR_SANDBOX_DROPIN = _DEPLOY / "systemd-dropins" / "40-cursor-sandbox.conf"
+
+
+def test_cursor_sandbox_dropin_matches_unit_template() -> None:
+    """#1698: existing nodes get the same allowances as a drop-in; it must not drift from the unit."""
+    dropin = _read(_CURSOR_SANDBOX_DROPIN)
+    unit = _read(_DEPLOY / "runner-dashboard.service")
+    lines = [ln.strip() for ln in dropin.splitlines() if ln.strip() and not ln.startswith("#")]
+    assert lines[0] == "[Service]"
+    # The empty assignment resets the unit's value before the allow-list is applied.
+    assert lines[1:3] == ["RestrictNamespaces=", "RestrictNamespaces=user mnt net ipc uts"]
+    filters = [ln for ln in lines if ln.startswith("SystemCallFilter=")]
+    assert len(filters) == 1
+    assert "~" not in filters[0], "an additive allow-list must not become a deny-list"
+    assert filters[0] in unit
+
+
+def test_update_deployed_installs_cursor_sandbox_dropin_before_restart() -> None:
+    content = _read(_DEPLOY / "update-deployed.sh")
+    assert "systemd-dropins/40-cursor-sandbox.conf" in content
+    install = content.index("\ninstall_cursor_sandbox_dropin\n")
+    restart = content.index('sudo systemctl restart "$SERVICE"')
+    assert install < restart, "the drop-in must be in place before the service restarts"
+    assert "daemon-reload" in content
 
 
 def test_dashboard_service_has_capability_bounding_set() -> None:

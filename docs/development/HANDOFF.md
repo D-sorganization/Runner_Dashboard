@@ -1,3 +1,43 @@
+# Current handoff — Dashboard unit allows cursor-agent's command sandbox (DL-#1698)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1698`
+- Branch: `fix/1698-cursor-sandbox-namespaces`
+- Baseline commit: `6028848b`
+- Implementation commit: `SELF`
+- Pull request: see DL-#1698
+- Governing issue: #1698 (owner chose option 1 on 2026-09-27); DL-#1698. Related: #1586, #1697.
+
+## Objective and status
+
+- Problem: since #1586 the cursor-agent adapter passes `--sandbox enabled`, and Cursor confines the commands it runs with bubblewrap. `runner-dashboard.service` had `RestrictNamespaces=true` and `SystemCallFilter=@system-service`, so every cursor-agent staff run failed with "Sandbox mode is enabled but not available on this system".
+- Minimum allowances were measured on DeskComputer with `systemd-run --user -p NoNewPrivileges=yes -p RestrictNamespaces=... -p SystemCallFilter=... cursor-agent sandbox run true`:
+  - Namespaces: `user mnt net ipc uts`. Dropping any of these gives `unshare: EPERM`. `pid` is not needed.
+  - Syscalls: `@system-service` plus `@mount` (remounting / as MS_PRIVATE, pivot_root), `landlock_create_ruleset landlock_add_rule landlock_restrict_self` (systemd 249 has no `@sandbox` group), and `seccomp` (Cursor installs its own filter).
+- `deploy/runner-dashboard.service` now uses `RestrictNamespaces=user mnt net ipc uts` and a second additive `SystemCallFilter=` line. Every other hardening directive is unchanged. The `setup.sh` parity markers are updated. The autoscaler unit keeps `RestrictNamespaces=true`.
+- Live verification: DeskComputer ran with the same allowances as drop-in `/etc/systemd/system/runner-dashboard.service.d/40-cursor-sandbox.conf`. Ad-hoc run `run-f500600268bf` (cursor-agent) succeeded and executed `echo sandbox-ok` through a sandboxed `shellToolCall`.
+
+## Deploying to existing nodes
+
+- `update-deployed.sh` does not re-render the unit, so the same allowances ship as `deploy/systemd-dropins/40-cursor-sandbox.conf`. `update-deployed.sh` installs it with `install_cursor_sandbox_dropin` before it restarts the service. The function is idempotent (`cmp`), needs passwordless sudo, and otherwise warns with the exact command.
+- `staff-node-acceptance.sh` section 4 reads `systemctl show runner-dashboard -p RestrictNamespaces` and fails "Unit blocks cursor-agent sandbox namespaces" unless `user mnt net ipc uts` are all allowed. `no` means unrestricted and passes.
+- Installed by hand on 2026-09-27 on DeskComputer, ControlTower and OGLaptop, all on main `350f4ea`. Acceptance: cursor-agent ad-hoc runs pass on ControlTower and OGLaptop, each 43/45. The two remaining failures are the C3 board hold and antigravity (#1697, PR #1701).
+
+## Validation
+
+- `pytest tests/test_deploy_hardening.py tests/deploy/`: 306 passed, 17 skipped (POSIX-only). The four new tests were red first.
+- The updated acceptance script on DeskComputer reports `[PASS] Unit allows cursor-agent sandbox namespaces (RestrictNamespaces=ipc net mnt user uts)`.
+
+## Next steps
+
+1. Merge the PR once CI is green.
+
+---
+
 # Current handoff — Skip chat-only providers in staff-node-acceptance ad-hoc loop (DL-#1697)
 
 Last updated: 2026-09-27

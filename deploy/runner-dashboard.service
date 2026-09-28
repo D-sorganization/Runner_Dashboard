@@ -79,12 +79,17 @@ RemoveIPC=true
 # launching Windows binaries for host telemetry. RestrictAddressFamilies made
 # CPU/RAM probes silently fall back to WSL-only metrics, so leave it unset here.
 RestrictAddressFamilies=
-# Prevent kernel namespace creation.
-RestrictNamespaces=true
+# Namespace allow-list (#1698): cursor-agent --sandbox enabled (#1586) confines the
+# commands it runs with bubblewrap, which needs user, mount, network, IPC and UTS
+# namespaces. cgroup and pid namespaces stay forbidden.
+RestrictNamespaces=user mnt net ipc uts
 # Drop all ambient/effective capabilities.
 CapabilityBoundingSet=
 # Syscall allow-list: system-service set covers all normal server operations.
 SystemCallFilter=@system-service
+# Added to the allow-list for the same sandbox (#1698): bubblewrap remounts / and
+# pivots root (@mount), then applies Landlock and its own seccomp filter.
+SystemCallFilter=@mount landlock_create_ruleset landlock_add_rule landlock_restrict_self seccomp
 # Lock execution personality to the native ABI.
 LockPersonality=true
 # Prevent JIT/self-modifying code.
