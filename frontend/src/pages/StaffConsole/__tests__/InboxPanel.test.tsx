@@ -102,9 +102,10 @@ describe("InboxPanel (SC-C5, Issue #1328)", () => {
     expect(screen.getByText("Question from issue-remediator")).not.toBeNull();
     expect(screen.getByText("Escalated: CI deadlock in Tools")).not.toBeNull();
 
-    expect(screen.getByText("CRITICAL")).not.toBeNull();
-    expect(screen.getByText("HIGH")).not.toBeNull();
-    expect(screen.getByText("MEDIUM")).not.toBeNull();
+    // Only urgent severities are labelled; medium/low rows stay quiet (#1722 drawer redesign).
+    expect(screen.getByText("Critical")).not.toBeNull();
+    expect(screen.getByText("High")).not.toBeNull();
+    expect(screen.queryByText("Medium")).toBeNull();
   });
 
   it("renders empty state when there are no waiting items", async () => {

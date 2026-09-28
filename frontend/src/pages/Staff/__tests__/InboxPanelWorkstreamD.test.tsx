@@ -237,7 +237,9 @@ describe("Inbox Attention Panel & Drawer (Workstream D)", () => {
       expect(screen.getByTestId("inbox-item-list")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Providers need sign-in \(2\)/i)).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /Providers need sign-in/i });
+    expect(toggle).toHaveTextContent("2");
+    expect(toggle).toHaveAttribute("aria-expanded");
   });
 
   it("renders degraded source banner with details disclosure", async () => {

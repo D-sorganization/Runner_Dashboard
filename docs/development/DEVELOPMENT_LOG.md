@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1722 — Console-first Staff page with an Attention drawer
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1722
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `frontend/src/pages/Staff/{StaffPage,InboxPanel,Board,Holds,Roster,OutcomesTable}.tsx`, `InboxPanel.css`, `Board.css`, `StaffPage.css`, `frontend/src/primitives/focusable.ts`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Staff vitest 31 files / 233 passed; tsc and eslint clean; 1440x900 browser check of the redesigned drawer against the live hub)
+- **Summary:** The 8,000px inbox becomes a one-line "Waiting on you" bar with per-kind counts and a focus-trapped drawer styled as a modern inbox (underline tabs with counts, borderless rows with tinted kind icons, severity named only when high or critical, section headers for grouped sign-ins and decisions); the Board is a one-line strip with quotas, late roles and machines behind a disclosure; emoji replaced by SVG icons.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1725 — Inbox reports fewer, grouped items
 
 - **State:** in_review
@@ -55,19 +68,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (StaffConsole vitest 27 files / 214 passed; browser check: status dot pinned to the avatar corner)
 - **Summary:** Roster rows get tinted avatars, status dots and a full-reason tooltip; held roles read "N standing rules" instead of the raw hold text (guardrail vs schedule split tracked in #1726); groups collapse and persist; the context pane gets skeleton loading and token-only styling.
-- **Next step:** Ship in the consolidated UX PR for epic #1718.
-
-### DL-#1722 — Console-first Staff page with an Attention drawer
-
-- **State:** in_review
-- **Owner:** claude
-- **Issue:** #1722
-- **Branch:** `feat/ux-overhaul`
-- **PR:** see branch
-- **Paths:** `frontend/src/pages/Staff/{StaffPage,InboxPanel,Board,Holds,Roster,OutcomesTable}.tsx`, `InboxPanel.css`, `Board.css`, `StaffPage.css`, `frontend/src/primitives/focusable.ts`
-- **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (Staff + pages vitest 77 files / 613 passed; tsc and eslint clean; 1440x900 browser check against the live hub: console and composer above the fold, drawer opens and closes, no hover repaint)
-- **Summary:** The 8,000px inbox becomes a one-line "Waiting on you" bar with per-kind counts and a 420px focus-trapped drawer (approvals first, sign-ins grouped, decisions grouped by repo); the Board is a one-line strip with quotas, late roles and machines behind a disclosure; emoji replaced by SVG icons.
 - **Next step:** Ship in the consolidated UX PR for epic #1718.
 
 ### DL-#1720 — Staff Console thread and composer restyled
