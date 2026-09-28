@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1728 — Staff threads API tests stop leaking chat turns and staff-run threads
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1728
+- **Branch:** `fix/staff-threads-test-thread-leak`
+- **PR:** #1729
+- **Paths:** `tests/api/test_staff_threads_api.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-28 (file 14 passed with thread-exception warnings as errors; RED without the stub = 2 errors)
+- **Summary:** The autouse fixture stubs the background chat turn. Tripwires fail any test that runs a real chat turn, creates a real worktree, or leaves a `staff-run-*` thread alive after teardown.
+- **Next step:** Merge PR #1729 once its CI is green.
+
 ### DL-#1748 — Diagnostics report the deployed commit on artifact installs
 
 - **State:** in_review
@@ -257,6 +270,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-27 (StaffConsole vitest 27 files / 214 passed; tsc and eslint clean)
 - **Summary:** Chat-style thread (user bubbles right, assistant prose left, 15px prose type), the composer pinned to the bottom of the console, cards restyled with inline styles moved to CSS; Approve/Deny gating unchanged; accent-text colours use `--text-on-accent`.
 - **Next step:** Ship in the consolidated UX PR for epic #1718.
+>>>>>>> origin/main
 
 ### DL-#1713 — Desktop top bar no longer widens the page
 

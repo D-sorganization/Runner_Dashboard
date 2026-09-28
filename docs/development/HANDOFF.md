@@ -1,4 +1,38 @@
-# Current handoff — Staff runner retry nudge for missing STAFF_RESULT line, #1709 (DL-#1709)
+# Current handoff — Staff threads API tests stop leaking chat turns and staff-run threads (DL-#1728)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `fix/staff-threads-test-thread-leak`
+- Governing issue: #1728; DL-#1728.
+- Pull request: #1729
+
+## Objective and status
+
+- `tests/api/test_staff_threads_api.py` was flaky on Windows under load. Posting a message ran the real background chat turn: the provider version gate ran `claude --version`, and the turn then ran the provider CLI. Its `to_thread` work outlived the test, could dispatch a staff run, and the run's `staff-run-*` worker wrote to a closed store and ran `git worktree add`.
+- The autouse `clean_conversations` fixture now stubs `routers.staff_threads.run_chat_turn_in_background`, which the ack-order test used to do by itself.
+- Tripwires in the same fixture fail a test that calls `ChatTurnRunner.execute_turn`, calls `workspace.add_worktree`, or leaves a `staff-run-*` thread it started alive. That test's workers are joined before the store is reset. Threads already running at setup were leaked by other files and are ignored.
+- Test-only change; no backend code changed.
+
+## Validation
+
+- RED: guard only, no stub → 2 errors (`test_post_message_success_and_idempotent_replay`, `test_thread_stream_sse_and_resume`: "test ran a real chat turn").
+- Leaking files first, then this file (`test_staff_proposals_api.py test_staff_thread_runs.py test_staff_threads_api.py`) → 47 passed.
+- GREEN: `pytest tests/api/test_staff_threads_api.py -p no:pytest-qt -W error::pytest.PytestUnhandledThreadExceptionWarning` → 14 passed; `ruff check` + `ruff format --check` clean.
+
+## Blockers and risks
+
+- Cross-file leak (out of scope): a leak probe over `tests/api` found 12 tests in 7 other staff test files (dispatch_service, on_behalf_of, proposals_api, quota_budget, retry, runner, thread_runs) that leave `staff-run-*` workers alive. Those workers made the first pre-push attempt fail, because the guard first counted threads other files had leaked; that is why the guard was scoped. The follow-up is suggested as a separate task.
+
+## Next steps
+
+1. Merge PR #1729 once all CI checks are green.
+
+---
+
+# Prior handoff — Staff runner retry nudge for missing STAFF_RESULT line, #1709 (DL-#1709)
 
 Last updated: 2026-09-28
 
