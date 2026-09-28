@@ -1721,8 +1721,10 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             "offline_detail": (local_resource_reason["offline_detail"] if local_resource_reason else None),
         }
 
-    remote_coros = [fetch_node(name, url) for name, url in FLEET_NODES.items()] if FLEET_NODES else []
-    gathered = await asyncio.gather(collect_local(), *remote_coros)
+    gathered = await asyncio.gather(
+        collect_local(),
+        *[fetch_node(name, url) for name, url in FLEET_NODES.items()],
+    )
     local_node = gathered[0]
     remote_nodes = list(gathered[1:])
     return [local_node, *remote_nodes]
