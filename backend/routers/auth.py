@@ -222,6 +222,17 @@ async def get_me(principal: Principal = Depends(require_principal)):  # noqa: B0
     return principal
 
 
+@router.post("/refresh")
+async def refresh_session(principal: Principal = Depends(require_principal)):  # noqa: B008
+    """Confirm the current session is still valid (issue #1735).
+
+    Reuses the same principal resolution as ``GET /me``; a valid session
+    simply gets acknowledged, letting the frontend keep the session alive
+    without re-fetching the full principal payload.
+    """
+    return {"ok": True, "principal": principal.id}
+
+
 @router.get("/sessions")
 async def list_sessions(
     principal: Principal = Depends(require_principal),

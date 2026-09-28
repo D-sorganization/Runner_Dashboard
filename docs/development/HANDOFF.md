@@ -43,6 +43,16 @@ Last updated: 2026-09-28
 - Validation: new tests in `tests/api/test_staff_v1_audit.py`, `test_remediation_config_put.py`, `test_runner_troubleshoot_principal.py`, `tests/staff/test_inbox_needs_input.py`, `test_work_request_dispatch_repo.py`, plus stream and watchdog cases (all red before, green after). Rebased on main after #1733 merged: `mypy backend/` clean (317 files); WSL full suite 5298 passed (the WSL-only `test_no_stale_vite_config_is_tracked` deselected).
 - Next: mark #1736 ready and arm via `automerge_guard`; then redeploy the three hubs.
 
+## Frontend calls to routes that do not exist, #1735 (DL-#1735)
+
+- Branch `fix/frontend-route-contract` (worktree `claude-routes`), from main `1c0904ae`. PR: see branch. Implemented by a Sonnet subagent under review; the guard's prefix rule was tightened in review.
+- Insights → Stats called `/api/stats/workflows`, `/timeseries` and `POST /collect`; `workflow_stats.py` has served none of them since the repo was extracted, so the tab was always empty. New `routers/workflow_stats.py` wires them (GETs `require_fleet_peer`, collect `workflows.control`). The database fills only from "Collect now"; no background collector was added (GitHub API budget).
+- `POST /api/auth/refresh` exists: 200 with a live session, 401 without. The session cookie already slides (Starlette re-issues it, 7 days), so the frontend's refresh-before-dialog attempt now works instead of 404ing.
+- Operations → Diagnostics links `/api/fleet/status` (was `/api/fleet/health`). Dead hooks removed: seven in `usePollingQueries.ts`, three in `useStaffQueries.ts`.
+- Guard: `tests/frontend/test_frontend_api_routes_exist.py` fails when an `/api/` literal in `frontend/src` has no route. Prefix matching applies only to bases (ending `/`, followed by `+`, or assigned to a `*BASE` name); a probe `fetch("/api/fleet")` fails it.
+- Validation: route tests 11 + 2, guard 3; WSL `tests/api tests/frontend` 1425 passed (the WSL-only vite-config test fails as usual); ruff, mypy, tsc, eslint, vitest (114) clean; OpenAPI snapshot regenerated (additions only).
+- Next: push, open the draft PR, add its SPEC row, mark ready and arm.
+
 ---
 
 # Historical handoffs

@@ -6953,6 +6953,32 @@
         "tags": ["auth"]
       }
     },
+    "/api/auth/refresh": {
+      "post": {
+        "description": "Confirm the current session is still valid (issue #1735).\n\nReuses the same principal resolution as ``GET /me``; a valid session\nsimply gets acknowledged, letting the frontend keep the session alive\nwithout re-fetching the full principal payload.",
+        "operationId": "refresh_session_api_auth_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Refresh Session",
+        "tags": ["auth"]
+      }
+    },
     "/api/auth/sessions": {
       "get": {
         "description": "List active sessions for the current user.",
@@ -15153,6 +15179,192 @@
         ],
         "summary": "Get Stats",
         "tags": ["repos", "repos"]
+      }
+    },
+    "/api/stats/workflows": {
+      "get": {
+        "description": "Return P50/P95 duration + success-rate stats per workflow (or repo).",
+        "operationId": "get_workflow_stats_summary_api_stats_workflows_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "workflow",
+              "title": "Group By",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Workflow Stats Summary Api Stats Workflows Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Workflow Stats Summary",
+        "tags": ["workflow_stats"]
+      }
+    },
+    "/api/stats/workflows/collect": {
+      "post": {
+        "description": "Trigger an on-demand poll of recent GitHub Actions runs for the org.",
+        "operationId": "collect_workflow_stats_api_stats_workflows_collect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Collect Workflow Stats Api Stats Workflows Collect Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Collect Workflow Stats",
+        "tags": ["workflow_stats"]
+      }
+    },
+    "/api/stats/workflows/timeseries": {
+      "get": {
+        "description": "Return a time-bucketed duration series for trend charting.",
+        "operationId": "get_workflow_stats_timeseries_api_stats_workflows_timeseries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket_hours",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 168,
+              "minimum": 1,
+              "title": "Bucket Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workflow_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Workflow Stats Timeseries Api Stats Workflows Timeseries Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Workflow Stats Timeseries",
+        "tags": ["workflow_stats"]
       }
     },
     "/api/system": {

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1735 — Frontend calls only routes that exist
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1735
+- **Branch:** `fix/frontend-route-contract`
+- **PR:** see branch
+- **Paths:** `backend/routers/workflow_stats.py`, `backend/routers/auth.py`, `backend/server.py`, `frontend/src/hooks/usePollingQueries.ts`, `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/pages/Operations/OperationsDiagnosticsSection.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/frontend/test_frontend_api_routes_exist.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `tests/api tests/frontend` 1425 passed; guard catches a dead `/api/fleet`; tsc, eslint, vitest, ruff, mypy clean)
+- **Summary:** An audit of frontend `/api/` literals against backend routes found the Insights workflow-stats routes never wired, a missing `POST /api/auth/refresh`, a dead Diagnostics link and ten dead hooks. Routes wired, link fixed, hooks removed, and a guard test keeps the frontend to routes that exist.
+- **Next step:** Push the branch and open the PR.
+
 ### DL-#1734 — Type-check cross-module imports in the backend
 
 - **State:** in_review

@@ -2,8 +2,7 @@
  * useStaffQueries.ts — React Query data layer for Staff and conversation data (issue #1304, epic #1347).
  *
  * Implements shared caching, background polling, retry with backoff, and SSE cache
- * synchronization for Staff Console entities (roster, board, summary, runs, threads,
- * messages, work items).
+ * synchronization for Staff Console entities (roster, board, summary, runs).
  *
  * Law of Demeter: components consume typed data records and status flags without
  * reaching into raw network or cache primitives.
@@ -28,7 +27,6 @@ import {
   fetchRoster,
   fetchRun,
   fetchRuns,
-  isNotFound,
   type BoardResponse,
   type HoldsResponse,
   type OutcomesGroupBy,
@@ -62,9 +60,6 @@ export const staffKeys = {
   run: (id: string) => [...staffKeys.all, "run", id] as const,
   outcomes: (groupBy: OutcomesGroupBy) => [...staffKeys.all, "outcomes", groupBy] as const,
   holds: () => [...staffKeys.all, "holds"] as const,
-  threads: () => [...staffKeys.all, "threads"] as const,
-  messages: (threadId?: string) => [...staffKeys.all, "messages", threadId ?? "all"] as const,
-  workItems: () => [...staffKeys.all, "workItems"] as const,
 };
 
 // ── Resource Hooks ─────────────────────────────────────────────────────────────
@@ -181,70 +176,6 @@ export function useStaffHolds(): UseQueryResult<HoldsResponse, Error> {
       queryFn: ({ signal }) => fetchHolds(signal),
       staleTime: 10_000,
       refetchIntervalInBackground: false,
-    },
-    client,
-  );
-}
-
-/** Staff conversation threads. Degrades to empty list if endpoint absent. */
-export function useStaffThreads(): UseQueryResult<{ threads: unknown[] }, Error> {
-  const client = useResolvedQueryClient();
-  return useQuery(
-    {
-      queryKey: staffKeys.threads(),
-      queryFn: async ({ signal }) => {
-        try {
-          return await apiRequest<{ threads: unknown[] }>("/api/staff/threads", { signal });
-        } catch (err) {
-          if (isNotFound(err)) return { threads: [] };
-          throw err;
-        }
-      },
-      staleTime: 10_000,
-    },
-    client,
-  );
-}
-
-/** Messages within a conversation thread. */
-export function useStaffMessages(threadId?: string): UseQueryResult<{ messages: unknown[] }, Error> {
-  const client = useResolvedQueryClient();
-  return useQuery(
-    {
-      queryKey: staffKeys.messages(threadId),
-      queryFn: async ({ signal }) => {
-        const url = threadId
-          ? `/api/staff/threads/${encodeURIComponent(threadId)}/messages`
-          : "/api/staff/messages";
-        try {
-          return await apiRequest<{ messages: unknown[] }>(url, { signal });
-        } catch (err) {
-          if (isNotFound(err)) return { messages: [] };
-          throw err;
-        }
-      },
-      enabled: threadId !== undefined,
-      staleTime: 5_000,
-    },
-    client,
-  );
-}
-
-/** Staff work items list. */
-export function useStaffWorkItems(): UseQueryResult<{ work_items: unknown[] }, Error> {
-  const client = useResolvedQueryClient();
-  return useQuery(
-    {
-      queryKey: staffKeys.workItems(),
-      queryFn: async ({ signal }) => {
-        try {
-          return await apiRequest<{ work_items: unknown[] }>("/api/staff/work-items", { signal });
-        } catch (err) {
-          if (isNotFound(err)) return { work_items: [] };
-          throw err;
-        }
-      },
-      staleTime: 10_000,
     },
     client,
   );
