@@ -23,6 +23,7 @@ import {
 import { AUTO_ROUTE_ROLE, resolveRoleThread, type ThreadApi } from "./consoleThreads";
 import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { RoleDetail } from "./contextTypes";
+import { formatRoleWindow } from "./rosterUtils";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
 import { useGroupCostGuard, type GroupCostGuard } from "./useGroupCostGuard";
@@ -103,7 +104,15 @@ export function toRoleDetail(role: StaffRoleItem): RoleDetail {
       ? role.providers.map((p) => (typeof p === "string" ? { name: p, signed_in: true } : p))
       : [],
     budget: role.budget
-      ? { usd_per_day: role.budget.daily_limit ?? 50, usd_today: role.budget.spend_today ?? 0 }
+      ? { usd_per_day: role.budget.usd_per_day ?? 0, usd_today: role.budget.spend_today }
+      : undefined,
+    schedule: role.schedule
+      ? {
+          cron: role.schedule,
+          window: formatRoleWindow(role.window) || undefined,
+          enabled: !role.retired,
+          next_fire: null,
+        }
       : undefined,
     active_runs: [],
     recent_work_items: [],

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1744 — Staff role details show the real schedule window and budget
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1744
+- **Branch:** `fix/staff-role-details`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/contextTypes.ts`, `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/Staff/Roster.tsx`, `frontend/src/pages/Staff/__tests__/Roster.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`, `frontend/src/pages/StaffConsole/__tests__/useStaffConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/ContextPane.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (`npx vitest run frontend/src/pages/Staff frontend/src/pages/StaffConsole` 257 passed; `npm run typecheck` clean; eslint clean on changed files)
+- **Summary:** The Roster's Schedule cell stringified the API's `{start,end}` window object (`[object Object]`), and the Console's role pane read a nonexistent `budget.daily_limit ?? 50` / `spend_today ?? 0`, always showing a fabricated $50/day cap and $0 spend, and never mapped `schedule` at all. A shared `formatRoleWindow` helper formats the window consistently; `toRoleDetail` now maps the real `usd_per_day` and leaves unknown spend as `undefined` (rendered "—"), and maps `schedule` to cron + formatted window + `enabled: !retired`.
+- **Next step:** Open the PR as draft.
+
 ### DL-#1740 — Service worker gets a distinct build id per build
 
 - **State:** in_review

@@ -61,6 +61,18 @@ Last updated: 2026-09-28
 - Validation: `npx vitest run frontend/src/lib/__tests__/buildId.test.ts` 3 passed (red before the module existed); `npm run typecheck` clean; eslint clean; `npx vite build` bundle contains `sw.js?build=${encodeURIComponent("157232e6")}`, and `VITE_BUILD_ID=rel-test` yields `"rel-test"`.
 - Next: mark #1741 ready and arm via `automerge_guard` once CI is green.
 
+## Staff role details, #1744 (DL-#1744)
+
+- Branch `fix/staff-role-details` (worktree `claude-role-1744`), from `origin/main`. PR: not created.
+- `GET /api/v1/staff/roster` sends `window` as `null` or `{start, end}` (HH:MM) and no per-role spend, but the frontend stringified `window` (`Staff/Roster.tsx` rendered `[object Object]`) and `StaffConsole/useStaffConsole.ts` `toRoleDetail` read a nonexistent `budget.daily_limit ?? 50` / `budget.spend_today ?? 0`, so the Console role pane always showed a made-up "Daily Cap: $50.00" / "Today: $0.00" and never mapped `schedule` at all.
+- New `formatRoleWindow` in `StaffConsole/rosterUtils.ts`: null/undefined → `""`, `{start,end}` → `22:00–06:00` (en dash), a plain string passes through. Used by both `Staff/Roster.tsx`'s Schedule cell and `useStaffConsole.ts`'s `toRoleDetail`.
+- `StaffConsole/types.ts` `StaffRoleBudget` now matches the API (`usd_per_run?`, `usd_per_day?`, `max_minutes?`, `idle_minutes?`) plus `spend_today?: number` documented as not yet served; `daily_limit` removed. `StaffRoleItem` gained `schedule?`, `window?`, `retired?`.
+- `toRoleDetail` maps `budget.usd_per_day` (no invented 50) and passes `spend_today` through unknown rather than 0; `schedule` maps to `{cron, window, enabled: !retired, next_fire: null}` when `role.schedule` is set.
+- `StaffConsole/contextTypes.ts` `RoleBudgetInfo.usd_today` is now optional; `ContextPane.tsx` renders "Today: —" with no progress-bar fill when it is undefined, unchanged behaviour when it is a number.
+- `rosterUtils.ts`'s over-budget check now reads `usd_per_day` instead of `daily_limit` (still requires `spend_today` to be a number, which the live API does not yet send).
+- Validation: `npx vitest run frontend/src/pages/Staff frontend/src/pages/StaffConsole` (257 passed); `npm run typecheck` (clean); `npx eslint` on the changed files (clean).
+- Next: open the PR as draft.
+
 ---
 
 # Historical handoffs

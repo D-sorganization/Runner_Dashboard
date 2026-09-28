@@ -25,7 +25,7 @@ vi.mock("../../Staff/staffApi", async (importOriginal) => ({
 }));
 
 import { ApiClientError } from "../../../lib/api";
-import { useStaffConsole } from "../useStaffConsole";
+import { toRoleDetail, useStaffConsole } from "../useStaffConsole";
 
 const ROLES: StaffRoleItem[] = [
   { name: "barb", title: "Barb", group: "leadership", valid: true },
@@ -72,6 +72,62 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("toRoleDetail (#1744)", () => {
+  it("maps budget.usd_per_day and leaves usd_today unknown when the API sends no spend", () => {
+    const detail = toRoleDetail({
+      name: "night-watch",
+      title: "Overnight Watchdog",
+      valid: true,
+      budget: { usd_per_run: 1, usd_per_day: 8, max_minutes: 60, idle_minutes: 20 },
+    });
+
+    expect(detail.budget).toEqual({ usd_per_day: 8, usd_today: undefined });
+  });
+
+  it("maps schedule to cron + formatted window and enabled from retired", () => {
+    const detail = toRoleDetail({
+      name: "night-watch",
+      title: "Overnight Watchdog",
+      valid: true,
+      schedule: "0 22 * * *",
+      window: { start: "22:00", end: "06:00" },
+      retired: false,
+    });
+
+    expect(detail.schedule).toEqual({
+      cron: "0 22 * * *",
+      window: "22:00–06:00",
+      enabled: true,
+      next_fire: null,
+    });
+  });
+
+  it("leaves schedule undefined when the role has no cron", () => {
+    const detail = toRoleDetail({
+      name: "night-watch",
+      title: "Overnight Watchdog",
+      valid: true,
+      schedule: null,
+    });
+
+    expect(detail.schedule).toBeUndefined();
+  });
+
+  it("marks a retired role's schedule as disabled", () => {
+    const detail = toRoleDetail({
+      name: "night-watch",
+      title: "Overnight Watchdog",
+      valid: true,
+      schedule: "0 22 * * *",
+      window: null,
+      retired: true,
+    });
+
+    expect(detail.schedule?.enabled).toBe(false);
+    expect(detail.schedule?.window).toBeUndefined();
+  });
 });
 
 describe("useStaffConsole", () => {

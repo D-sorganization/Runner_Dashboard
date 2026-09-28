@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1744 | Staff Roster shows a role's window as 22:00–06:00 instead of [object Object]; the Console role pane shows the real daily cap and schedule, and unknown spend as —. |
 | 2026-09-28 | #1740 | Service worker registers with a per-build id (git short SHA, or `VITE_BUILD_ID`) instead of `dev`, so it updates after each deploy and its cache rotates. |
 | 2026-09-28 | #1737 | Frontend calls only routes that exist (#1735): `GET /api/stats/workflows`, `GET /api/stats/workflows/timeseries` and `POST /api/stats/workflows/collect` serve Insights → Stats from `workflow_stats`; `POST /api/auth/refresh` confirms a live session (401 otherwise); Diagnostics links `/api/fleet/status`; ten dead hooks removed; a test fails when a frontend `/api/` literal has no backend route. |
 | 2026-09-28 | #1736 | mypy resolves the backend's own imports (`mypy_path = "backend"`, `explicit_package_bases`), so cross-module calls are type-checked (#1734). Fixes it found: `GET /api/v1/staff/runs/{id}/stream` and `GET /api/v1/staff/audit` no longer 500; follow-up watchdog and escalation pushes are sent (`push.notify`); inbox lists waiting work items; approved remediation/issue/PR work requests dispatch (ImportError); `PUT /api/agent-remediation/config` saves; runner troubleshoot and fleet schedule-scale no longer 502. |
