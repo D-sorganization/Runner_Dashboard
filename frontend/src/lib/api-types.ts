@@ -5767,7 +5767,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Summary V1 */
+        /**
+         * Summary V1
+         * @description The one-call staff brief, identical to ``GET /api/staff/summary`` (#1195).
+         *
+         *     One builder serves both routes, so the versioned API cannot drift from the
+         *     payload Barb and the staff runs read.
+         */
         get: operations["summary_v1_api_v1_staff_summary_get"];
         put?: never;
         post?: never;

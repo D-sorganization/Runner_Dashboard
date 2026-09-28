@@ -1,3 +1,147 @@
+# Current handoff — Staff live-test fixes, consolidated (DL-#1708, DL-#1712, DL-#1711, DL-#1713)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-consol`
+- Branch: `fix/staff-live-test-consolidated-2026-09-27`
+- Baseline commit: `add4f7da`
+- Implementation commit: `SELF`
+- Pull request: #1727 (open)
+- Governing issues: #1708, #1712, #1711, #1713.
+
+## Objective and status
+
+- One PR for three of my open PRs: #1710 (Barb live-test findings), #1714 (approvals from the desktop console, inbox styling and speed) and #1715 (top-bar overflow). Main is strict and all three conflicted in the docs with #1707, so one CI cycle replaces three rebases.
+- Each original PR's own handoff section follows below unchanged. Only documentation overlapped; no code conflicts.
+
+- `frontend/src/lib/openapi.json` and `api-types.ts` regenerated (`npm run generate-api`): the v1 summary route gained a docstring, which the `generate-api:check` CI step caught.
+
+## Next steps
+
+1. Arm auto-merge through `automerge_guard` once CI is green, then close #1710, #1714 and #1715 as superseded.
+2. Redeploy DeskComputer, ControlTower and OGLaptop, then re-run Barb's dispatch test (approve `prop_166a825b0f32` from the inbox Review link).
+
+---
+
+# Current handoff — Desktop top bar no longer widens the page (DL-#1713)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1713`
+- Branch: `fix/1713-topbar-overflow`
+- Baseline commit: `8b207661`
+- Implementation commit: `SELF`
+- Pull request: see DL-#1713
+- Governing issue: #1713; DL-#1713.
+
+## Objective and status
+
+- Problem: at an 800px window the top-bar actions (`.desktop-shell__actions`, `flex: 0 0 auto`) made the page 70px wider than the viewport, so every page scrolled sideways.
+- Fix: in `frontend/src/index.css` the actions are `flex: 0 1 auto`, `flex-wrap: wrap`, `min-width: 0` and right-aligned; the top bar gets `min-width: 0`. At 800px the actions wrap onto a second row.
+
+## Validation
+
+- `npx vitest run frontend/src/shell/__tests__/topbarOverflow.test.ts frontend/src/shell/__tests__/DesktopShell.test.tsx`: 13 passed (the new test failed first).
+- Browser pane at 800x900 with the rule applied: `scrollWidth` 800 = `clientWidth` 800 (was 855 vs 785).
+
+## Next steps
+
+1. Merge the PR, then redeploy the nodes with the other Staff fixes.
+
+---
+
+# Current handoff — Proposals approvable from the desktop console; styled inbox (DL-#1712, DL-#1711)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1712`
+- Branch: `fix/1712-approval-deep-link`
+- Baseline commit: `8b207661`
+- Implementation commit: `SELF`
+- Pull request: see DL-#1712
+- Governing issues: #1712 (approval unreachable), #1711 (unstyled inbox); DL-#1712, DL-#1711.
+
+## Objective and status
+
+- Barb's live test 4: the owner could not approve `prop_166a825b0f32`. Approval inbox items link to `/staff?thread=<id>`, but only the mobile console read `?thread=`, so the desktop console opened with no thread and the ActionCard (Approve/Deny) never rendered.
+- `StaffPage` now seeds `selectedThread` from `?thread=`. `InboxPanel` takes `onOpenThread` and opens `/staff?thread=` links in place (console section), as it already did for `?run=`.
+- `staff/inbox.py` `_approval_text`: a dispatch approval's title names the role and repo; every summary shows the rationale or a prompt excerpt (160 chars) and ends with `(proposal <id>)`, so near-duplicates can be told apart.
+- `staff/inbox.py` `_collect_project_decisions` fetches project overviews concurrently (`asyncio.gather`, as `fleet_overview` does). Awaiting ~40 repos in turn made a cold `GET /api/v1/staff/inbox` take 17-26 s. Test: `tests/staff/test_inbox_project_decisions_concurrent.py`.
+- `staff/inbox.py` `_collect_auth_sign_ins` skips `dispatch_mode="future"` providers. Cline raised a permanent HIGH "Sign-in required" alert although nothing dispatches to it.
+- `StaffConsole/desktop.css`: breakpoints at 1280px (context pane drops under the conversation) and 900px (one column). At 800px the conversation column was about 90px wide, one word per line.
+- `InboxPanel.css` (new): the panel's classes had no stylesheet. Items are cards, filters are pills, the degraded-source warning is clamped to 3 lines with the full text in `title`, and the list scrolls at 420px.
+
+## Validation
+
+- Vitest `frontend/src/pages/StaffConsole frontend/src/pages/Staff frontend/src/pages/__tests__/Staff*`: 31 files, 210 passed before the stylesheet; the two #1712 tests fail without the fix. The styles test is included in the final run.
+- `npx tsc --noEmit -p tsconfig.app.json` clean; eslint clean on touched files.
+- WSL pytest `tests/api/test_staff_inbox.py`: 5 passed.
+
+## Blockers and risks
+
+- None known.
+
+## Next steps
+
+1. Arm auto-merge via automerge_guard once CI is green, then redeploy and let the owner approve `prop_166a825b0f32` from the inbox.
+
+## Change log
+
+- 2026-09-27: Desktop console opens `?thread=` links; approval items identify the proposal; inbox styled.
+
+---
+
+# Current handoff — Staff Console fixes from Barb's live test (DL-#1708)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-barb`
+- Branch: `fix/barb-live-test-findings`
+- Baseline commit: `246c0d58`
+- Implementation commit: `SELF`
+- Pull request: #1710
+- Governing issue: #1708; DL-#1708. Related: #1221 (result contract), #1516 (verification), #1195 (summary).
+
+## Objective and status
+
+- `GET /api/v1/staff/summary` was a 500 (it called a missing `scheduler.schedule_view`). It now returns `summary_view.build_staff_summary()`, the same body as the legacy route.
+- Unattended run prompts (write and read-only) now carry `dashboard_api_note()`, which names the local dashboard API (`/staff/summary`, `/staff/board`, `/staff/runs`, port from `DASHBOARD_PORT`) as the source of live fleet facts. Chat turns do not get it.
+- Both rule sets end with `RESULT_CONTRACT`: the last line must start with `STAFF_RESULT:`, or the run is recorded as failed (#1221).
+- `roles.AD_HOC_ROLE`; verification returns `not_applicable` for an ad-hoc run with no repository, without asking GitHub. Other roles without a repo keep the old verdict.
+- Staff Console: concurrent `resolveRoleThread` calls for one role share one in-flight request, so a double open no longer creates two threads.
+- Credentials inbox: the codex probe also accepts `$CODEX_HOME/auth.json` (default `~/.codex`) and the claude probe accepts `$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude`). Only existence is checked; contents are never read.
+
+## Validation
+
+- WSL rd-test-venv pytest: `tests/api/test_staff_v1_summary.py tests/api/test_staff_fleet_rules.py tests/staff/test_verification_no_repo.py tests/test_credentials_router.py` and the staff/prompt/summary/workspace selection.
+- Vitest: `frontend/src/pages/StaffConsole` suite.
+
+## Blockers and risks
+
+- None known. Follow-up (separate issue): a bounded host-level retry nudge when `STAFF_RESULT:` is missing, from Barb's expert panel.
+
+## Next steps
+
+1. Arm auto-merge via automerge_guard once CI is green, then redeploy the three nodes.
+
+## Change log
+
+- 2026-09-27: Fixes for six findings from Barb's live Staff Console test.
+
+---
+
 # Current handoff — SC-G6: Maxwell page becomes a provider-status view (DL-#1338-maxwell)
 
 Last updated: 2026-09-27

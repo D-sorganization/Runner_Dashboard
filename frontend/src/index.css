@@ -495,13 +495,18 @@ code, pre, .code, kbd {
   border-bottom: 1px solid var(--border, #30363d);
   background: var(--bg-secondary, #161b22);
   flex: 0 0 auto;
+  min-width: 0;
 }
 
+/* Shrink and wrap rather than widen the page on narrow windows (#1713). */
 .desktop-shell__actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .desktop-shell__main {

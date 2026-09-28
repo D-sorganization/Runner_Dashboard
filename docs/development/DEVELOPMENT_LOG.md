@@ -18,6 +18,58 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1713 — Desktop top bar no longer widens the page
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1713
+- **Branch:** `fix/1713-topbar-overflow`
+- **PR:** #1727
+- **Paths:** `frontend/src/index.css`, `frontend/src/shell/__tests__/topbarOverflow.test.ts`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (consolidated tree 07eb3613: vitest 1086 passed, staff pytest 352 passed)
+- **Summary:** The desktop top-bar actions shrink and wrap instead of pushing the page wider than narrow windows.
+- **Next step:** Arm auto-merge on the PR once its CI is green.
+
+### DL-#1712 — Action proposals approvable from the desktop console
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1712
+- **Branch:** `fix/1712-approval-deep-link`
+- **PR:** #1727
+- **Paths:** `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/InboxPanel.tsx`, `backend/staff/inbox.py`, `tests/staff/test_inbox_auth_sign_ins.py`, `tests/staff/test_inbox_project_decisions_concurrent.py`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/__tests__/StaffPageConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`, `tests/api/test_staff_inbox.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (consolidated tree 07eb3613: vitest 1086 passed, staff pytest 352 passed)
+- **Summary:** `/staff?thread=` opens that thread in the desktop console, and inbox thread links open in place, so a proposal's Approve/Deny card is reachable. Approval items name the role, repo and proposal id. The desktop console reflows at 1280px and 900px so the conversation keeps a readable width. The inbox no longer asks the owner to sign in to never-dispatched (`future`) providers such as Cline, and fetches project overviews concurrently (a cold inbox took 17-26 s).
+- **Next step:** Arm auto-merge on the PR once its CI is green.
+
+### DL-#1711 — Style the Staff inbox panel
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1711
+- **Branch:** `fix/1712-approval-deep-link`
+- **PR:** see DL-#1712
+- **Paths:** `frontend/src/pages/Staff/InboxPanel.css`, `frontend/src/pages/Staff/InboxPanel.tsx`, `frontend/src/pages/Staff/__tests__/InboxPanelStyles.test.tsx`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (Staff vitest green; tsc and eslint clean)
+- **Summary:** The "Waiting on You" panel's classes had no stylesheet. `InboxPanel.css` gives compact cards, pill filters, a clamped degraded-source warning with full text in `title`, and a list that scrolls at 420px.
+- **Next step:** Ships with DL-#1712's PR.
+
+### DL-#1708 — Staff Console fixes from Barb's live test
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1708
+- **Branch:** `fix/barb-live-test-findings`
+- **PR:** #1727
+- **Paths:** `backend/routers/staff_v1.py`, `backend/staff/workspace.py`, `backend/staff/roles.py`, `backend/staff/verification.py`, `backend/routers/credentials.py`, `frontend/src/pages/StaffConsole/consoleThreads.ts`, `tests/api/test_staff_v1_summary.py`, `tests/api/test_staff_fleet_rules.py`, `tests/staff/test_verification_no_repo.py`, `tests/test_credentials_router.py`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (consolidated tree 07eb3613: vitest 1086 passed, staff pytest 352 passed)
+- **Summary:** v1 staff summary no longer 500s; run prompts name the local dashboard API and state the STAFF_RESULT contract; ad-hoc runs without a repo verify as not_applicable; the console de-dupes concurrent thread opens; CLI login files count as signed in for codex and claude.
+- **Next step:** Arm auto-merge on the PR once its CI is green.
+
 ### DL-#1338-maxwell — SC-G6: Maxwell page becomes a provider-status view
 
 - **State:** in_review

@@ -15,6 +15,32 @@
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
 }
 
+/* Medium windows: the role context drops under the conversation so the
+   conversation keeps a readable width (#1712). */
+@media (max-width: 1280px) {
+  .staff-console,
+  .staff-console--no-context {
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  }
+
+  .staff-console__context {
+    grid-column: 1 / -1;
+    max-height: 360px;
+  }
+}
+
+/* Narrow windows: one column; the roster scrolls in a short band above the thread. */
+@media (max-width: 900px) {
+  .staff-console,
+  .staff-console--no-context {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .staff-console__roster {
+    max-height: 40vh;
+  }
+}
+
 .staff-console__main {
   display: flex;
   flex-direction: column;

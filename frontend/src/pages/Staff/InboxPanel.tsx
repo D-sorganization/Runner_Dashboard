@@ -16,9 +16,12 @@ import { Badge } from "../../primitives/Badge";
 import { TimeAgo } from "../../primitives/TimeAgo";
 import { fetchStaffInbox, requestStaffBriefing } from "./staffApi";
 import type { InboxAggregate, InboxItem, InboxSource } from "./inboxTypes";
+import "./InboxPanel.css";
 
 export interface InboxPanelProps {
   onOpenRun?: (runId: string) => void;
+  /** Open a `/staff?thread=` link in place, so a proposal's Approve/Deny card is reachable (#1712). */
+  onOpenThread?: (threadId: string) => void;
   className?: string;
   autoRefreshInterval?: number;
 }
@@ -27,6 +30,7 @@ type FilterTab = "all" | InboxSource;
 
 export function InboxPanel({
   onOpenRun,
+  onOpenThread,
   className = "",
   autoRefreshInterval = 30_000,
 }: InboxPanelProps) {
@@ -114,6 +118,13 @@ export function InboxPanel({
         onOpenRun(runId);
       }
     }
+    if (item.link.startsWith("/staff?thread=") && onOpenThread) {
+      e.preventDefault();
+      const threadId = new URLSearchParams(item.link.split("?")[1] || "").get("thread");
+      if (threadId) {
+        onOpenThread(threadId);
+      }
+    }
   };
 
   return (
@@ -192,11 +203,21 @@ export function InboxPanel({
               <div>
                 <strong>Some inbox sources are unavailable:</strong>
                 <ul className="staff-inbox-panel__degraded-list">
-                  {unavailableSources.map(([src, status]) => (
-                    <li key={src}>
-                      <code>{src}</code>: {status.error || "Temporarily unavailable"}
-                    </li>
-                  ))}
+                  {unavailableSources.map(([src, status]) => {
+                    const message = status.error || "Temporarily unavailable";
+                    return (
+                      <li key={src}>
+                        <code>{src}</code>:{" "}
+                        <span
+                          className="staff-inbox-panel__degraded-error"
+                          title={message}
+                          data-testid={`inbox-degraded-error-${src}`}
+                        >
+                          {message}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             </div>
