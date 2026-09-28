@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1708
 - **Branch:** `fix/barb-live-test-findings`
-- **PR:** see branch
+- **PR:** #1710
 - **Paths:** `backend/routers/staff_v1.py`, `backend/staff/workspace.py`, `backend/staff/roles.py`, `backend/staff/verification.py`, `backend/routers/credentials.py`, `frontend/src/pages/StaffConsole/consoleThreads.ts`, `tests/api/test_staff_v1_summary.py`, `tests/api/test_staff_fleet_rules.py`, `tests/staff/test_verification_no_repo.py`, `tests/test_credentials_router.py`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (targeted pytest and StaffConsole vitest green)

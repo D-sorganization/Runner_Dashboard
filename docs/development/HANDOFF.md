@@ -9,7 +9,7 @@ Last updated: 2026-09-27
 - Branch: `fix/barb-live-test-findings`
 - Baseline commit: `246c0d58`
 - Implementation commit: `SELF`
-- Pull request: see DL-#1708
+- Pull request: #1710
 - Governing issue: #1708; DL-#1708. Related: #1221 (result contract), #1516 (verification), #1195 (summary).
 
 ## Objective and status
