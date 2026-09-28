@@ -83,3 +83,16 @@ def test_v1_run_detail_unknown_run_is_structured_404(client: TestClient, monkeyp
 
     assert res.status_code == 404
     assert "not_found" in res.text
+
+
+@pytest.mark.unit
+def test_v1_run_stream_replays_events_and_ends(client: TestClient, store: RunStore) -> None:
+    """The v1 stream passed ``request=`` to the legacy handler, which takes no such argument (#1734)."""
+    store.create_run(_run("run-v1stream"))
+    store.append_event("run-v1stream", "text", "mapping AffineDrift")
+
+    res = client.get("/api/v1/staff/runs/run-v1stream/stream")
+
+    assert res.status_code == 200, res.text
+    assert "event: text" in res.text
+    assert "event: end" in res.text

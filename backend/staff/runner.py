@@ -30,6 +30,7 @@ from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
 from staff.runner_ops import (
+    LaunchPaths,
     execute_retry_nudge,
     extract_transcript_question,
     fail_if_cli_outdated,
@@ -179,7 +180,7 @@ class StaffRunner:
         return select_first_available_provider(self._adapters, providers, ceiling)
 
     @staticmethod
-    def _launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, str]:
+    def _launch_paths(adapter: ProviderAdapter, workdir: Path) -> LaunchPaths:
         return resolve_launch_paths(adapter, workdir)
 
     def submit(self, req: RunRequest) -> RunRecord:

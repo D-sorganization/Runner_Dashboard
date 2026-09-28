@@ -94,6 +94,12 @@ ignore_missing_imports = true
 # removal in #161). The CI step prints the override count to prevent growth.
 disallow_untyped_defs = true
 strict_optional = true
+# The backend runs with backend/ on sys.path, so its modules import each other as
+# ``staff.x`` / ``routers.y``. Resolving them the same way here lets mypy check
+# calls across modules; without it every such import was Any (#1734).
+mypy_path = "backend"
+explicit_package_bases = true
+exclude = ['^backend/__init__\.py$', '^backend/wheels/', '__pycache__/']
 
 [[tool.mypy.overrides]]
 # Strict checking for small, well-typed contract modules (already compliant).
@@ -104,33 +110,33 @@ strict_optional = true
 [[tool.mypy.overrides]]
 # Pre-existing godfiles: relax untyped-defs and strict_optional until #161.
 # Each release this list should shrink. Do NOT add new modules here.
-# Module paths use the `backend.<name>` form because backend/__init__.py exists,
-# which makes mypy treat `backend` as a package.
+# Module paths are the names the backend imports them by (``server``, ``routers.auth``),
+# matching ``mypy_path = "backend"`` above.
 module = [
-    "backend.server",
-    "backend.agent_remediation",
-    "backend.workflow_stats",
-    "backend.usage_monitoring",
-    "backend.runner_autoscaler",
-    "backend.machine_registry",
-    "backend.deployment_drift",
-    "backend.report_files",
-    "backend.scheduled_workflows",
-    "backend.local_app_monitoring",
-    "backend.health",
-    "backend.identity",
-    "backend.lease_synchronizer",
-    "backend.metrics",
-    "backend.proxy_utils",
-    "backend.queue_cleanup",
-    "backend.quota_enforcement",
-    "backend.runner_lease",
-    "backend.routers.admin",
-    "backend.routers.auth",
-    "backend.routers.dispatch",
-    "backend.routers.fleet",
-    "backend.routers.runs_workflows",
-    "backend.routers.system",
+    "server",
+    "agent_remediation",
+    "workflow_stats",
+    "usage_monitoring",
+    "runner_autoscaler",
+    "machine_registry",
+    "deployment_drift",
+    "report_files",
+    "scheduled_workflows",
+    "local_app_monitoring",
+    "health",
+    "identity",
+    "lease_synchronizer",
+    "metrics",
+    "proxy_utils",
+    "queue_cleanup",
+    "quota_enforcement",
+    "runner_lease",
+    "routers.admin",
+    "routers.auth",
+    "routers.dispatch",
+    "routers.fleet",
+    "routers.runs_workflows",
+    "routers.system",
 ]
 disallow_untyped_defs = false
 strict_optional = false

@@ -12,6 +12,7 @@ operation never reports success.
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import sqlite3
@@ -432,21 +433,21 @@ def register_maintenance_actions(registry: ActionRegistry | None = None) -> None
                 params_schema=dict(policy.params_schema),
                 required_scope=policy.required_scope,
                 risk_class=policy.risk_class,
-                executor=lambda p, c, _name=name: execute_maintenance(_name, p, c),
-                verifier=lambda r, p, c, _name=name: verify_maintenance(r, p, c, _name),
+                executor=functools.partial(execute_maintenance, name),
+                verifier=functools.partial(verify_maintenance, action_name=name),
             )
         )
     for alias, target_name in _FLEET_ALIAS_MAP.items():
-        policy = MAINTENANCE_POLICY.get(target_name)
-        if policy:
+        target = MAINTENANCE_POLICY.get(target_name)
+        if target:
             reg.register(
                 ActionDefinition(
                     name=alias,
-                    description=policy.description,
-                    params_schema=dict(policy.params_schema),
-                    required_scope=policy.required_scope,
-                    risk_class=policy.risk_class,
-                    executor=lambda p, c, _t=target_name: execute_maintenance(_t, p, c),
-                    verifier=lambda r, p, c, _t=target_name: verify_maintenance(r, p, c, _t),
+                    description=target.description,
+                    params_schema=dict(target.params_schema),
+                    required_scope=target.required_scope,
+                    risk_class=target.risk_class,
+                    executor=functools.partial(execute_maintenance, target_name),
+                    verifier=functools.partial(verify_maintenance, action_name=target_name),
                 )
             )

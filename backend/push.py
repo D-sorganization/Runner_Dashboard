@@ -7,6 +7,7 @@ or a later real VAPID implementation.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -407,6 +408,37 @@ async def send_push(
         else:
             failed += 1
     return {"sent": sent, "failed": failed, "purged": purged}
+
+
+_pending_notifications: set[asyncio.Task[dict[str, int]]] = set()
+
+
+def _log_notify_failure(task: asyncio.Task[dict[str, int]]) -> None:
+    _pending_notifications.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        log.warning("push notify failed: %s", task.exception())
+
+
+def notify(topic: str, title: str, body: str) -> None:
+    """Send a push from synchronous code, never raising into the caller.
+
+    Inside a running loop the send is scheduled and its failure logged; with no
+    loop it runs to completion here. ``send_push`` is looked up at call time so
+    tests can replace it.
+    """
+    assert topic in PUSH_TOPICS, f"unsupported topic: {topic}"
+    payload = {"title": title, "body": body}
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            asyncio.run(send_push(topic, payload))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("push notify failed: %s", exc)
+        return
+    task = loop.create_task(send_push(topic, payload))
+    _pending_notifications.add(task)
+    task.add_done_callback(_log_notify_failure)
 
 
 @router.post("/subscribe")

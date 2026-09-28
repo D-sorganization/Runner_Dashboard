@@ -222,7 +222,7 @@ async def record_fast_acknowledgment(
             from staff.router import route_deterministic
 
             decision = route_deterministic(prompt_text)
-            if decision:
+            if decision and decision.chosen_role:
                 routed_target = decision.chosen_role
         except Exception as exc:  # noqa: BLE001
             log.debug("Pre-router routing preview failed: %s", exc)
@@ -271,7 +271,7 @@ async def execute_degraded_turn(
     prompt_text = user_msg.body_md if user_msg else ""
 
     decision = route_deterministic(prompt_text)
-    routed_role = decision.chosen_role if decision else (role_name or "barb")
+    routed_role = (decision.chosen_role if decision else None) or role_name or "barb"
     reason = decision.reason if decision else "Fleet status and manual triage"
 
     # Queue follow-up work item

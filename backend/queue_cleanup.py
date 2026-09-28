@@ -30,6 +30,7 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 from enum import StrEnum
+from typing import Any
 
 from dashboard_config.timeouts import Concurrency
 
@@ -619,7 +620,7 @@ async def classify_pr_head_supersession(org: str, repo: str, run: dict) -> dict:
     still open, GitHub returns the current PR head SHA, and those SHAs differ.
     Missing or ambiguous evidence is annotated but never treated as superseded.
     """
-    result = {
+    result: dict[str, Any] = {
         "pull_request_number": None,
         "current_pr_head_sha": "",
         "pr_head_superseded": False,

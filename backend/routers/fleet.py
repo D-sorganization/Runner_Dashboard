@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 import httpx
 from dashboard_config import (
@@ -179,7 +180,7 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         return await proxy_to_hub(request)
     degraded_by_hub_circuit = should_mark_hub_circuit_degraded(request)
 
-    responses = {}
+    responses: dict[str, Any] = {}
     local_metrics = await get_system_metrics_snapshot()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
     local_res_reason = resource_offline_reason(local_metrics)

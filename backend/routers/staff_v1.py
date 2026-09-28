@@ -269,12 +269,11 @@ async def get_run_v1(
 async def stream_run_v1(
     run_id: str,
     after: int = Query(default=0, ge=0),
-    request: Request = None,  # type: ignore
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> StreamingResponse:
     from routers.staff import stream_run
 
-    return await stream_run(run_id=run_id, after=after, request=request, _peer=_peer)
+    return await stream_run(run_id=run_id, after=after, _peer=_peer)
 
 
 # ── Mutating Operations (Idempotent) ──────────────────────────────────────────
@@ -333,7 +332,7 @@ async def list_audit_v1(
     _peer: Principal = Depends(require_scope("staff.audit.read")),
 ) -> StaffV1AuditPage:
     store = get_audit_store()
-    records = store.query(limit=500, principal=principal, action=action)
+    records = store.list_entries(limit=500, principal=principal, action=action)
     raw = [r.to_dict() for r in records]
     page = paginate_items(raw, limit=limit, cursor=cursor, key_fn=lambda r: (r["ts"], r["id"]))
     return StaffV1AuditPage(

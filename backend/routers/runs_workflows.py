@@ -334,7 +334,8 @@ async def _workflow_triggers_by_path(repo_name: str) -> dict[str, list[str]]:
     except HTTPException:
         return {}
     triggers: dict[str, list[str]] = {}
-    for entry in listing if isinstance(listing, list) else []:
+    entries: list[dict[str, Any]] = listing if isinstance(listing, list) else []
+    for entry in entries:
         sha, path = entry.get("sha"), entry.get("path")
         if not sha or not path:
             continue

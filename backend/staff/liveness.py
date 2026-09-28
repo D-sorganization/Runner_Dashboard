@@ -25,7 +25,7 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from fleet_events import FleetEvent, get_event_store
 from staff.roles import RoleSpec
@@ -40,7 +40,7 @@ ALERT_STATUSES = ("late", "dead")
 LATE_FACTOR = 1.5
 DEAD_FACTOR = 3.0
 DEAD_EVENT_DEBOUNCE_SECONDS = 6 * 3600
-DEAD_EVENT_KIND = "staff_role_dead"
+DEAD_EVENT_KIND: Final = "staff_role_dead"
 
 
 class RunLookup(Protocol):
