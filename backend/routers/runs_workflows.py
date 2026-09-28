@@ -78,6 +78,38 @@ async def _fetch_repo_runs(repo_name: str, per_page: int = 10, status: str | Non
         return []
 
 
+_SLIM_REPO_FIELDS = ("id", "name", "full_name", "html_url", "private")
+_SLIM_ACTOR_FIELDS = ("login", "id", "avatar_url")
+_SLIM_COMMIT_FIELDS = ("id", "message", "timestamp")
+
+
+def _pick(value: object, fields: tuple[str, ...]) -> dict | None:
+    """Return only ``fields`` of a nested GitHub object (``None`` when absent)."""
+    if not isinstance(value, dict):
+        return None
+    return {key: value[key] for key in fields if key in value}
+
+
+def _slim_run(run: dict) -> dict:
+    """Drop the parts of a GitHub run payload the dashboard never reads.
+
+    GitHub embeds two full repository objects and a dozen REST ``*_url``
+    links in every run (~15 KB each); the dashboard reads the run's own
+    fields, ``repository.name``/``html_url`` and the actors' logins.
+    """
+    slim = {key: value for key, value in run.items() if key == "html_url" or not key.endswith("_url")}
+    slim.pop("head_repository", None)
+    for key, fields in (
+        ("repository", _SLIM_REPO_FIELDS),
+        ("actor", _SLIM_ACTOR_FIELDS),
+        ("triggering_actor", _SLIM_ACTOR_FIELDS),
+        ("head_commit", _SLIM_COMMIT_FIELDS),
+    ):
+        if key in slim:
+            slim[key] = _pick(slim[key], fields)
+    return slim
+
+
 async def _enrich_run_with_job_placement(run: dict) -> dict:
     """Add job-level runner placement data to a workflow run.
 
@@ -223,7 +255,8 @@ async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     enrichable = runs[:RUN_JOB_ENRICHMENT_LIMIT]
     enriched = list(await asyncio.gather(*[_enrich_run_with_job_placement(run) for run in enrichable]))
     enriched.extend(dict(run) for run in runs[RUN_JOB_ENRICHMENT_LIMIT:])
-    result = {"workflow_runs": enriched, "total_count": len(enriched)}
+    slim = [_slim_run(run) for run in enriched]
+    result = {"workflow_runs": slim, "total_count": len(slim)}
     cache_set(cache_key, result)
     return result
 
