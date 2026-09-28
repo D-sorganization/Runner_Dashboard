@@ -53,6 +53,27 @@ Last updated: 2026-09-28
 - Validation: route tests 11 + 2, guard 3; WSL `tests/api tests/frontend` 1425 passed (the WSL-only vite-config test fails as usual); ruff, mypy, tsc, eslint, vitest (114) clean; OpenAPI snapshot regenerated (additions only).
 - Next: mark #1737 ready and arm via `automerge_guard`.
 
+## Fleet page runner binding, #1738 (DL-#1738)
+
+- Branch `fix/fleet-machine-binding` (worktree `claude-fleet-1738`), from `origin/main`. PR: not created.
+- Objective: fix three bugs found in the 2026-09-28 live sweep of the deployed dashboard (157232e, part of epic #1718).
+  - Every machine showed `Runners 0 / 21`: `FleetMachinesSection` grouped runners by `name.split("-")[2]`, which is always `local` for `d-sorg-local-<Host>-<n>` names, and the count fell back to `health.runners_registered` — the org-wide total on every node.
+  - Busy runners showed Current Task `idle`: `FleetRunnersSection` looked the task up by `run.runner_name`, but `/api/runs` returns workflow runs, which never carry that field.
+  - Ready credential providers still rendered their `setup_hint` (e.g. `Run: gh auth login`).
+- Fix:
+  - `backend/routers/runners.py::_runner_response` now stamps `"machine": infer_machine_from_runner_name(r.get("name"))` on every runner dict, reusing the canonical parser in `backend/workflow_analysis.py` (no new parsing logic). Copies each runner dict rather than mutating it.
+  - `frontend/src/pages/Fleet/FleetMachinesSection.tsx` groups by `runner.machine` and the Runners cell is `{online} / {total}` with no `health.runners_registered` fallback.
+  - `frontend/src/pages/Fleet/FleetRunnersSection.tsx` Current Task cell: `-` when the runner is offline, `busy` when `r.busy` with no known run, else `idle`.
+  - `frontend/src/pages/CredentialsPage.tsx` only renders `setup_hint` when `!probe.usable`.
+- Files changed: `backend/routers/runners.py`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/CredentialsPage.tsx`, plus tests (`tests/api/test_runners_machine_field.py`, `frontend/src/pages/Fleet/__tests__/FleetMachinesSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetRunnersSection.test.tsx`, `frontend/src/pages/__tests__/CredentialsPage.test.tsx`).
+- Validation:
+  - `pytest tests/api/test_runners_machine_field.py` (2 passed), `pytest tests/api/test_routers_runners.py` (all passed) — both run under WSL Ubuntu-22.04 with the repo's pinned `rd-test-venv`.
+  - `ruff check backend/routers/runners.py tests/api/test_runners_machine_field.py` and `ruff format` (clean).
+  - `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/CredentialsPage.test.tsx` (72 passed).
+  - `npx eslint` on the four changed source/test pairs above (clean).
+  - `npx tsc --noEmit -p .` shows only pre-existing, unrelated errors (Node type shims, StaffConsole/Operations/shell test fixtures) — none in the files this change touched.
+- Next: open the PR, and follow up separately on attaching the actual job to a busy runner (needs per-run jobs API calls; called out as out of scope in #1738).
+
 ---
 
 # Historical handoffs

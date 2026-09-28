@@ -48,7 +48,14 @@ export interface MachineNode {
 export interface FleetMachinesSectionProps {
   machines?: MachineNode[];
   nodes?: MachineNode[];
-  runners?: Array<{ id: number; name: string; status: string; busy: boolean; labels?: Array<{ name?: string } | string> }>;
+  runners?: Array<{
+    id: number;
+    name: string;
+    status: string;
+    busy: boolean;
+    labels?: Array<{ name?: string } | string>;
+    machine?: string;
+  }>;
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
@@ -77,8 +84,7 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
 
   const runnersByMachine: Record<string, typeof runners> = {};
   runners.forEach((r) => {
-    const parts = r.name.split("-");
-    const mName = parts.length >= 4 ? parts[2] : (parts[0] || "Unknown");
+    const mName = r.machine || "Unknown";
     if (!runnersByMachine[mName]) runnersByMachine[mName] = [];
     runnersByMachine[mName].push(r);
   });
@@ -218,7 +224,7 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
                         </span>
                       </td>
                       <td style={{ padding: "8px 10px", color: "var(--text-secondary, #c9d1d9)" }}>
-                        {onlineRunners} / {mRunners.length || m.health?.runners_registered || 0}
+                        {onlineRunners} / {mRunners.length}
                       </td>
                       <td style={{ padding: "8px 10px", color: "var(--text-secondary, #c9d1d9)" }}>
                         {isOnline ? (

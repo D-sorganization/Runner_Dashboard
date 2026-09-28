@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1738 — Fleet page binds runners to machines
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1738
+- **Branch:** `fix/fleet-machine-binding`
+- **PR:** (pending)
+- **Paths:** `backend/routers/runners.py`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/CredentialsPage.tsx`, `tests/api/test_runners_machine_field.py`, `frontend/src/pages/Fleet/__tests__/FleetMachinesSection.test.tsx`, `frontend/src/pages/Fleet/__tests__/FleetRunnersSection.test.tsx`, `frontend/src/pages/__tests__/CredentialsPage.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/api/test_runners_machine_field.py tests/api/test_routers_runners.py` all passed; `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/CredentialsPage.test.tsx` 72 passed; ruff and eslint clean)
+- **Summary:** The 2026-09-28 live sweep found every Fleet machine showing `Runners 0 / 21` (grouped by `name.split("-")[2]`, always `local`, falling back to the org-wide `health.runners_registered`), busy runners showing Current Task `idle` (looked up by a `runner_name` field `/api/runs` never returns), and ready credential providers still showing their `setup_hint`. Backend now stamps a canonical `machine` field via the existing `infer_machine_from_runner_name` parser; the Fleet Machines table groups by it with no org-wide fallback; the Runners table shows `busy`/`-`/`idle` from the runner's own state when no run is known; CredentialsPage hides `setup_hint` once a probe is `usable`.
+- **Next step:** Open PR and enable auto-merge.
+
 ### DL-#1735 — Frontend calls only routes that exist
 
 - **State:** in_review

@@ -201,6 +201,24 @@ describe("CredentialsTab", () => {
     expect(screen.getByText("Missing key")).toBeInTheDocument();
   });
 
+  it("hides the setup hint for a usable (ready) provider (#1738)", () => {
+    const readyWithHint: CredentialProbe[] = [
+      {
+        id: "gh",
+        label: "GitHub CLI",
+        status: "ready",
+        detail: "Authenticated",
+        setup_hint: "Run: gh auth login",
+        usable: true,
+        key_provider: "gh",
+      },
+    ];
+    render(<CredentialsTab probes={readyWithHint} summary={{}} loading={false} onRefresh={() => {}} />);
+    expect(screen.getByText("GitHub CLI")).toBeInTheDocument();
+    expect(screen.getByText("Authenticated")).toBeInTheDocument();
+    expect(screen.queryByText("Run: gh auth login")).not.toBeInTheDocument();
+  });
+
   it("re-probe button invokes onRefresh and shows loading text", () => {
     const onRefresh = vi.fn();
     const { rerender } = render(
