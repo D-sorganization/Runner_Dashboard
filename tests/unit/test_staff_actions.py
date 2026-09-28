@@ -638,3 +638,63 @@ def test_code_request_update_outside_a_worker_thread_is_bridge_unavailable() -> 
     res = execute_code_request_update({"id": "cr-x", "description": "d"}, ActionContext(caller=None, thread_id="th"))
     assert res.success is False
     assert res.failure_class == "bridge_unavailable"
+
+
+def test_board_propose_persists_proposal_text_on_work_item(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """execute_board_propose must not drop params['proposal'] (#1758)."""
+    from staff.action_executors import execute_board_propose
+    from staff.actions import ActionContext
+    from staff.work_items import get_work_item_store, reset_work_item_store
+
+    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "wi_test.sqlite3"))
+    reset_work_item_store()
+    proposal_text = "The Board deliberation position on the DC return electrode epic."
+    res = execute_board_propose(
+        {"title": "Adopt sector solver", "proposal": proposal_text},
+        ActionContext(caller=None, thread_id="th-board"),
+    )
+    assert res.success is True
+    assert res.result is not None
+    assert res.result["proposal"] == proposal_text
+
+    wi_store = get_work_item_store()
+    wi = wi_store.get_work_item(res.result["proposal_id"])
+    assert wi is not None
+    assert wi.description == proposal_text
+    reset_work_item_store()
+
+
+def test_board_propose_missing_proposal_is_invalid_params() -> None:
+    from staff.action_executors import execute_board_propose
+    from staff.actions import ActionContext
+
+    res = execute_board_propose({"title": "Adopt sector solver"}, ActionContext(caller=None, thread_id="th"))
+    assert res.success is False
+    assert res.failure_class == "invalid_params"
+
+    res_no_title = execute_board_propose({"proposal": "text"}, ActionContext(caller=None, thread_id="th"))
+    assert res_no_title.success is False
+    assert res_no_title.failure_class == "invalid_params"
+
+
+def test_open_pr_is_not_implemented_and_does_not_claim_success() -> None:
+    """execute_open_pr must not report opened=True without actually opening a PR (#1758)."""
+    from staff.action_executors import execute_open_pr
+    from staff.actions import ActionContext
+
+    res = execute_open_pr(
+        {"repo": "Runner_Dashboard", "branch": "fix/example", "title": "Example"},
+        ActionContext(caller=None, thread_id="th"),
+    )
+    assert res.success is False
+    assert res.failure_class == "not_implemented"
+    assert res.result is None or "opened" not in res.result
+
+
+def test_open_pr_missing_params_is_invalid_params() -> None:
+    from staff.action_executors import execute_open_pr
+    from staff.actions import ActionContext
+
+    res = execute_open_pr({"repo": "Runner_Dashboard"}, ActionContext(caller=None, thread_id="th"))
+    assert res.success is False
+    assert res.failure_class == "invalid_params"

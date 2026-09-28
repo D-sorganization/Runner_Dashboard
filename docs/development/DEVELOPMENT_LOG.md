@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1758 — Board propose persists text; open_pr fails honestly
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1758
+- **Branch:** `fix/honest-board-propose-open-pr`
+- **PR:** not created
+- **Paths:** `backend/staff/action_executors.py`, `backend/staff/work_items.py`, `tests/unit/test_staff_actions.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/api/test_staff_groups_api.py tests/unit/test_staff_groups.py tests/unit/test_staff_group_consensus.py tests/unit/test_staff_actions.py tests/api/test_staff_work_items.py -q` all passed; `ruff check`/`ruff format --check` clean; mypy clean)
+- **Summary:** `execute_board_propose` silently dropped `params["proposal"]`; `execute_open_pr` recorded a success audit row and returned `opened: True` without ever calling GitHub. Added an additive nullable `description` column to `work_items` (guarded `ALTER TABLE` migration, mirroring `staff/store.py`'s `runs` migration pattern) and wired the proposal text through `execute_board_propose`, returned in the result. `execute_open_pr` now validates params, then always returns `success=False, failure_class="not_implemented"` with no audit row.
+- **Next step:** Open the PR as draft.
+
 ### DL-#1755 — Phone sign-in via Tailscale identity headers
 
 - **State:** in_review

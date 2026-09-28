@@ -47,6 +47,12 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 }
 
 
+# Columns added after the first schema shipped. Applied with a guarded
+# ``ALTER TABLE ... ADD COLUMN`` so an existing store upgrades in place and a
+# rollback to the previous code keeps working (extra columns are ignored).
+_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (("description", "TEXT NOT NULL DEFAULT ''"),)
+
+
 class InvalidStateTransitionError(ValueError):
     """Raised when an illegal work item state transition is attempted."""
 
@@ -66,6 +72,7 @@ class WorkItemRecord:
     requested_by: str
     thread_id: str = ""
     owner_role: str = ""
+    description: str = ""
     state: str = "open"
     expected_by: str | None = None
     links: dict[str, list[str]] = field(default_factory=dict)
@@ -81,6 +88,7 @@ class WorkItemRecord:
             "requested_by": self.requested_by,
             "thread_id": self.thread_id,
             "owner_role": self.owner_role,
+            "description": self.description,
             "state": self.state,
             "expected_by": self.expected_by,
             "links": self.links,
@@ -102,6 +110,7 @@ class WorkItemRecord:
             requested_by=row["requested_by"],
             thread_id=row["thread_id"] or "",
             owner_role=row["owner_role"] or "",
+            description=(row["description"] if "description" in row.keys() else "") or "",
             state=row["state"] or "open",
             expected_by=row["expected_by"],
             links=links,
@@ -156,6 +165,28 @@ class WorkItemStore:
                 conn.commit()
             finally:
                 conn.close()
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Add any column in ``_ADDED_COLUMNS`` that the on-disk table lacks (idempotent)."""
+        conn = self._get_conn()
+        try:
+            present = {str(r["name"]) for r in conn.execute("PRAGMA table_info(work_items)").fetchall()}
+            for name, decl in _ADDED_COLUMNS:
+                if name not in present:
+                    conn.execute(f"ALTER TABLE work_items ADD COLUMN {name} {decl}")  # noqa: S608
+            conn.commit()
+        finally:
+            conn.close()
+
+    def columns(self) -> set[str]:
+        """Column names currently present on the ``work_items`` table (for migration tests)."""
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                return {str(r["name"]) for r in conn.execute("PRAGMA table_info(work_items)").fetchall()}
+            finally:
+                conn.close()
 
     def create_work_item(
         self,
@@ -163,12 +194,18 @@ class WorkItemStore:
         requested_by: str,
         thread_id: str = "",
         owner_role: str = "",
+        description: str = "",
         expected_by: str | None = None,
         links: dict[str, list[str]] | None = None,
         work_item_id: str | None = None,
         next_check_at: str | None = None,
     ) -> WorkItemRecord:
-        """Create and persist a new work item."""
+        """Create and persist a new work item.
+
+        Pre: ``title`` and ``requested_by`` are non-empty; ``description`` is optional
+        free text (e.g. a Board proposal body) and defaults to ``""``.
+        Post: the returned record's ``description`` round-trips through the store.
+        """
         wid = work_item_id or f"wi-{uuid.uuid4().hex[:12]}"
         now = _now_iso()
         init_links = links or {"runs": [], "issues": [], "prs": [], "code_requests": []}
@@ -179,6 +216,7 @@ class WorkItemStore:
             requested_by=requested_by,
             thread_id=thread_id,
             owner_role=owner_role,
+            description=description,
             state="open",
             expected_by=expected_by,
             links=init_links,
@@ -194,10 +232,10 @@ class WorkItemStore:
                 conn.execute(
                     """
                     INSERT INTO work_items (
-                        id, title, requested_by, thread_id, owner_role, state,
+                        id, title, requested_by, thread_id, owner_role, description, state,
                         expected_by, links_json, last_progress_at, next_check_at,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.id,
@@ -205,6 +243,7 @@ class WorkItemStore:
                         record.requested_by,
                         record.thread_id,
                         record.owner_role,
+                        record.description,
                         record.state,
                         record.expected_by,
                         json.dumps(record.links),

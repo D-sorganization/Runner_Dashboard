@@ -251,8 +251,9 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
         owner_role=role,
         thread_id=ctx.thread_id,
         requested_by=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        description=prop_body,
     )
-    return ActionResult(success=True, result={"proposal_id": wi.id, "title": title})
+    return ActionResult(success=True, result={"proposal_id": wi.id, "title": title, "proposal": wi.description})
 
 
 def execute_notify_user(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
@@ -295,24 +296,23 @@ def execute_claim_issue(params: dict[str, Any], ctx: ActionContext) -> ActionRes
 
 
 def execute_open_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    """Stub executor for ``open_pr``: refuses honestly instead of claiming success (#1758).
+
+    Pre: ``repo`` and ``branch`` are present.
+    Post: never returns ``success=True`` or an ``opened`` key without actually calling
+    GitHub; no PR was opened, so no success audit row is written for this action.
+    """
     from staff.actions import ActionResult
 
     repo = str(params.get("repo") or "").strip()
     branch = str(params.get("branch") or "").strip()
-    title = str(params.get("title") or f"PR from {branch}").strip()
     if not repo or not branch:
         return ActionResult(success=False, error="Missing 'repo' or 'branch'", failure_class="invalid_params")
-    record_audit(
-        action="open_pr",
-        target=f"{repo}:{branch}",
-        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
-        surface="thread",
-        thread_id=ctx.thread_id,
-        outcome="success",
-        detail={"repo": repo, "branch": branch, "title": title},
-        store=ctx.audit_store,
+    return ActionResult(
+        success=False,
+        error="open_pr is not implemented: open the PR with gh or a staff.dispatch",
+        failure_class="not_implemented",
     )
-    return ActionResult(success=True, result={"opened": True, "repo": repo, "branch": branch, "title": title})
 
 
 def register_standard_actions(registry: ActionRegistry) -> None:
