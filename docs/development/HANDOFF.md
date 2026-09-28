@@ -1,4 +1,37 @@
-# Current handoff — UI/UX overhaul, epic #1718 (DL-#1718, DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723, DL-#1724, DL-#1725)
+# Current handoff — Staff runner retry nudge for missing STAFF_RESULT line, #1709 (DL-#1709)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `fix/staff-runner-result-nudge-1709`
+- Baseline commit: `d5df68b5` (main after #1731 merged)
+- Governing issue: #1709
+
+## Objective and status
+
+- Keep strict contract: a run with no STAFF_RESULT: line is not a success.
+- Bounded retry nudge: when an unattended CLI exits 0 with no STAFF_RESULT: line, resume the same session once with a fixed prompt (`RESULT_NUDGE_PROMPT`) asking only for the result line. Accept it only on an exact prefix match (`stripped.startswith("STAFF_RESULT:")`), and allow at most one nudge per run.
+- Record runs that ended on a question or blocked state as their own failure class, separate from NO_RESULT_ERROR:
+  - Question runs: `failure_class="needs_input"`, `error=f"agent paused asking: {last_line}"`.
+  - Blocked runs: `status="blocked"`, `failure_class="lease_blocked"` (recorded during lease ritual).
+  - Missing result without question: `failure_class="no_result"`, `error=NO_RESULT_ERROR` ("agent exited 0 without a STAFF_RESULT line").
+- All touched files remain under 500 LOC (`runner.py` at 493 LOC, `runner_ops.py` at 291 LOC, `adapters.py` at 489 LOC, `classifier.py` at 444 LOC).
+- All unit, API, and lint/type checks pass.
+
+## Validation
+
+- `pytest tests/api/test_staff_runner.py tests/unit/test_staff_classifier.py tests/unit/test_staff_redaction_everywhere.py` (59 passed).
+- `ruff check backend/ tests/` (clean).
+- `ruff format --check backend/staff/ tests/api/test_staff_runner.py tests/unit/test_staff_classifier.py` (clean).
+- `mypy backend/staff/` (clean, 92 files).
+
+---
+
+# Historical handoffs
+
+## UI/UX overhaul, epic #1718 (DL-#1718, DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723, DL-#1724, DL-#1725)
 
 Last updated: 2026-09-28
 

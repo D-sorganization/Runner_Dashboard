@@ -49,6 +49,7 @@ NON_RETRYABLE_FAILURE_CLASSES = frozenset(
         "timeout",
         "stalled",
         "unknown",
+        "no_result",
     }
 )
 

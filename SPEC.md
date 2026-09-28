@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1709 | Staff runner retry nudge for missing STAFF_RESULT line (#1709): unattended runs exiting 0 without a STAFF_RESULT line receive one bounded host-level retry nudge resuming the same session; the nudge result line is accepted only on exact prefix match (`STAFF_RESULT:`); runs pausing on a question are classified as failure_class="needs_input" with error indicating the agent paused asking, lease-blocked runs as failure_class="lease_blocked", and non-question missing result runs as failure_class="no_result" with error="agent exited 0 without a STAFF_RESULT line". |
 | 2026-09-28 | #1716 | Grok relay proposal deduplication and chat contract hardening (#1716): pending proposals with identical action, params and decision SLA within the same thread are deduplicated in conversation_proposals and proposal_cards; action proposals are included in history replay and context blocks; Barb instructions clarify that chat turns cannot execute proposals; grok.md documents that owner approval happens in the Staff Console. |
 | 2026-09-27 | #1718 | UI/UX overhaul (#1719–#1725 as integrated): design tokens and global type; thread and composer; roster and context pane; Staff page and attention drawer; app shell and primitives; phone access and Web Push; inbox noise. |
 | 2026-09-27 | #1713 | Desktop top-bar actions shrink and wrap, so narrow windows (800px) no longer scroll sideways. |

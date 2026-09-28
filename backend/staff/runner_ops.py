@@ -6,6 +6,7 @@ Contains provider selection, launch arguments resolution, and subprocess output 
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -101,6 +102,24 @@ def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> dict[str, s
     return paths
 
 
+RESULT_NUDGE_PROMPT = "Please emit your final result line now. Reply ONLY with exact prefix: STAFF_RESULT: <summary>"
+
+
+class PumpResult(tuple[dict[str, Any], str]):
+    """(usage, result_line) tuple for backward compatibility with optional session_id."""
+
+    usage: dict[str, Any]
+    result_line: str
+    session_id: str | None
+
+    def __new__(cls, usage: dict[str, Any], result_line: str, session_id: str | None = None) -> PumpResult:
+        inst = super().__new__(cls, (usage, result_line))
+        inst.usage = usage
+        inst.result_line = result_line
+        inst.session_id = session_id
+        return inst
+
+
 def pump_output(
     rec: RunRecord,
     adapter: ProviderAdapter,
@@ -108,13 +127,17 @@ def pump_output(
     transcript: Path,
     store: RunStore,
     watchdog: StaffWatchdog | None = None,
-) -> tuple[dict[str, Any], str]:
+) -> PumpResult:
     """Stream stdout lines into the transcript file and the event store.
 
-    Returns the usage the adapter reported and the last ``STAFF_RESULT:`` text seen.
+    Returns the usage the adapter reported, the last ``STAFF_RESULT:`` text seen,
+    and any captured session_id (#1709).
     """
+    from staff.chat_history import extract_session_id
+
     usage: dict[str, Any] = {}
     result_line = ""
+    session_id: str | None = None
     assert proc.stdout is not None  # noqa: S101
     with transcript.open("a", encoding="utf-8") as tf:
         for line in proc.stdout:
@@ -122,6 +145,9 @@ def pump_output(
                 watchdog.record_output()
             tf.write(redact_sensitive_content(line))
             event = adapter.parse_line(line)
+            if not session_id:
+                pid = getattr(adapter, "provider_id", getattr(rec, "provider", ""))
+                session_id = extract_session_id(pid, event, raw_line=line)
             if event.get("usage"):
                 usage.update(event["usage"])
             if event.get("kind") == "rate_limit_event" and isinstance(event.get("raw"), dict):
@@ -131,4 +157,135 @@ def pump_output(
                 store.append_event(rec.id, event.get("kind", "text"), text)
                 if "STAFF_RESULT:" in text:
                     result_line = text[text.index("STAFF_RESULT:") :]
-    return usage, result_line
+    return PumpResult(usage, result_line, session_id)
+
+
+def pump_nudge_output(
+    rec: RunRecord,
+    adapter: ProviderAdapter,
+    proc: subprocess.Popen[str],
+    transcript: Path,
+    store: RunStore,
+    watchdog: StaffWatchdog | None = None,
+) -> PumpResult:
+    """Stream stdout lines from retry nudge into transcript and event store (#1709).
+
+    Accepts the result line ONLY on an exact prefix match (``text.startswith('STAFF_RESULT:')``).
+    """
+    usage: dict[str, Any] = {}
+    result_line = ""
+    assert proc.stdout is not None  # noqa: S101
+    with transcript.open("a", encoding="utf-8") as tf:
+        tf.write("\n--- [nudge retry for STAFF_RESULT] ---\n")
+        for line in proc.stdout:
+            if watchdog is not None:
+                watchdog.record_output()
+            tf.write(redact_sensitive_content(line))
+            event = adapter.parse_line(line)
+            if event.get("usage"):
+                usage.update(event["usage"])
+            text = (event.get("text") or "").strip()
+            if text:
+                store.append_event(rec.id, "nudge_reply", text)
+                if text.startswith("STAFF_RESULT:"):
+                    result_line = text
+    return PumpResult(usage, result_line)
+
+
+def execute_retry_nudge(
+    *,
+    rec: RunRecord,
+    adapter: ProviderAdapter,
+    plan: Any,
+    role: RoleSpec | None,
+    workdir: Path,
+    env: dict[str, str],
+    session_id: str | None,
+    transcript: Path,
+    store: RunStore,
+    wall_clock_timeout: int,
+    idle_timeout: int,
+    lock: Any,
+    procs: dict[str, subprocess.Popen[str]],
+    cancel_flags: set[str],
+) -> tuple[str, dict[str, Any], int]:
+    if not session_id:
+        return "", {}, 0
+
+    store.append_event(rec.id, "nudge", "session exited 0 without STAFF_RESULT; nudging for result line (#1709)")
+    try:
+        launch_paths = resolve_launch_paths(adapter, workdir)
+        ro_kwargs = read_only_kwargs(role) if role is not None else {}
+        nudge_argv = adapter.build_command(
+            RESULT_NUDGE_PROMPT,
+            str(workdir),
+            model=plan.model,
+            session_id=session_id,
+            **ro_kwargs,
+            **launch_paths,
+        )
+    except Exception as exc:  # noqa: BLE001
+        store.append_event(rec.id, "nudge", f"could not build nudge command: {exc}")
+        return "", {}, 0
+
+    exe = shutil.which(adapter.executable) or adapter.executable
+    try:
+        nudge_proc = subprocess.Popen(
+            [exe, *nudge_argv[1:]],
+            cwd=str(workdir),
+            env=env,
+            stdin=subprocess.PIPE if adapter.prompt_via_stdin else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+    except Exception as exc:  # noqa: BLE001
+        store.append_event(rec.id, "nudge", f"could not launch nudge process: {exc}")
+        return "", {}, 0
+
+    with lock:
+        procs[rec.id] = nudge_proc
+        cancelled = rec.id in cancel_flags
+    if cancelled:
+        from staff.watchdog import terminate_process_group
+
+        terminate_process_group(nudge_proc.pid, grace_period=1.0)
+        return "", {}, -1
+
+    if adapter.prompt_via_stdin and nudge_proc.stdin is not None:
+        nudge_proc.stdin.write(RESULT_NUDGE_PROMPT + "\n")
+        nudge_proc.stdin.close()
+
+    watchdog = StaffWatchdog(
+        run_id=rec.id,
+        proc=nudge_proc,
+        store=store,
+        max_seconds=min(wall_clock_timeout, 300),
+        idle_seconds=min(idle_timeout, 120),
+    )
+    watchdog.start()
+    try:
+        nudge_pump = pump_nudge_output(rec, adapter, nudge_proc, transcript, store, watchdog)
+        try:
+            rc = nudge_proc.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            rc = -1
+    finally:
+        watchdog.stop()
+        with lock:
+            procs.pop(rec.id, None)
+
+    return nudge_pump.result_line, nudge_pump.usage, rc
+
+
+def extract_transcript_question(transcript: Path) -> str | None:
+    """Extract trailing question text from transcript if agent ended on a question."""
+    from staff.classifier import _extract_last_line_text  # noqa: PLC0415
+
+    try:
+        return _extract_last_line_text(transcript.read_text(encoding="utf-8", errors="replace")) or None
+    except Exception:  # noqa: BLE001
+        return None
