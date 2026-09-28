@@ -63,15 +63,15 @@ describe("computeRoleStatus and retired roles (#1759)", () => {
     expect(computeRoleStatus(retiredRole).status).toBe("retired");
   });
 
-  it("a retired role with a retired_reason reports unavailable with the reason prefixed", () => {
+  it("a retired role with a retired_reason reports retired and carries the reason", () => {
     const retiredRole: StaffRoleItem = {
       ...role("retired-2"),
       retired: true,
-      retired_reason: "role retired, replaced by orchestrator",
+      retired_reason: "Role retired: folded into Barb per RM#1733",
     };
     const res = computeRoleStatus(retiredRole);
-    expect(res.status).toBe("unavailable");
-    expect(res.reason).toBe("retired: role retired, replaced by orchestrator");
+    expect(res.status).toBe("retired");
+    expect(res.reason).toBe("Role retired: folded into Barb per RM#1733");
   });
 
   it("retired is evaluated before budget/provider blocks, so a clean retired role is not shown as budget-unavailable", () => {

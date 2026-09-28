@@ -11,8 +11,7 @@ import type { RosterGroupKey, RosterStatus, StaffRoleItem } from "./types";
  *
  * Priority order:
  * 1. invalid: role definition error or valid: false
- * 2. retired: role.retired is true — "retired" if clean, else "unavailable"
- *    with reason "retired: <retired_reason>" (#1759)
+ * 2. retired: role.retired is true; the reason is its retired_reason (#1759)
  * 3. unavailable: operational block (held, budget reached, or no provider signed in)
  * 4. needs_you: pending human action proposal or unread message count
  * 5. working: role is actively executing runs
@@ -33,18 +32,11 @@ export function computeRoleStatus(
   }
 
   // 2. Retired role (#1759). A retired role must never read as available
-  // ("Idle"): a clean retired role (no retired_reason) gets its own status;
-  // one with a retired_reason surfaces it, prefixed, as unavailable.
+  // ("Idle"); it reads "Retired" and carries its retired_reason when it has one.
   if (role.retired) {
-    if (role.retired_reason) {
-      return {
-        status: "unavailable",
-        reason: `retired: ${role.retired_reason}`,
-      };
-    }
     return {
       status: "retired",
-      reason: "retired",
+      reason: role.retired_reason || "retired",
     };
   }
 
