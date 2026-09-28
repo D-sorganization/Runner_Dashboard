@@ -17,7 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetCommandPage } from "../FleetCommand";
 import { operatorSession } from "../FleetCommand/fleetApi";
 import {
+  BOARD,
   DIRECTIVE,
+  PRIORITIES,
   headerOf,
   openSection,
   stubFetch,
@@ -48,6 +50,40 @@ describe("FleetCommandPage — priorities", () => {
     expect(screen.getByTestId("priorities-deferred")).toHaveTextContent("Mobile polish");
     expect(screen.getByTestId("priorities-disagreements")).toHaveTextContent("1 disagreement flag");
     expect(screen.getByTestId("priorities-disagreements")).toHaveTextContent("Codex wants the glass model first");
+  });
+
+  it("renders code spans in board text instead of raw backticks (#1718)", async () => {
+    const active = {
+      ...BOARD.active[0],
+      scope: "Barb reads `/api/staff/summary`",
+      assigned_to: "Alpha files the epic",
+      tracking: "`Runner_Dashboard#1352` (SC-F); docs `Repository_Management#1803`",
+    };
+    stubFetch((url) =>
+      url === "/api/priorities"
+        ? { status: 200, body: { ...PRIORITIES, board: { ...BOARD, active: [active] } } }
+        : undefined,
+    );
+    render(<FleetCommandPage />);
+    const table = await screen.findByTestId("priorities-active");
+    await waitFor(() => expect(table.querySelectorAll("code")).toHaveLength(3));
+    expect(table.textContent).not.toContain("`");
+    expect(within(table).getByText("/api/staff/summary").tagName).toBe("CODE");
+  });
+
+  it("renders code spans in deferred reasons and disagreement flags (#1718)", async () => {
+    const board = {
+      ...BOARD,
+      deferred: [{ item: "Grok docs", project: "RM", reason: "Rewrite `docs/agents/grok.md` later.", reassess: "2026-10-03" }],
+      disagreements: ["Bravo disputes `localToolPermission=always`."],
+    };
+    stubFetch((url) =>
+      url === "/api/priorities" ? { status: 200, body: { ...PRIORITIES, board } } : undefined,
+    );
+    render(<FleetCommandPage />);
+    const flags = await screen.findByTestId("priorities-disagreements");
+    expect(within(flags).getByText("localToolPermission=always").tagName).toBe("CODE");
+    expect(within(screen.getByTestId("priorities-deferred")).getByText("docs/agents/grok.md").tagName).toBe("CODE");
   });
 
   it("shows the no-board-meeting empty state when the backend reports none", async () => {

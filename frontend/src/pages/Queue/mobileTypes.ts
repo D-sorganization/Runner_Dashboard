@@ -77,6 +77,12 @@ export const POLL_INTERVAL_MS = 15_000;
 
 export { formatDuration };
 
+/** A stale run's age (whole minutes from the API) as "40d 3h" / "4h 50m"; "-" when unknown. */
+export function formatAgeMinutes(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes)) return "-";
+  return formatDuration(minutes * 60);
+}
+
 export function elapsedSeconds(run: WorkflowRun): number {
   const start = run.run_started_at ?? run.created_at;
   if (!start) return 0;

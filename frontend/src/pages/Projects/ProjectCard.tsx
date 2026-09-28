@@ -14,7 +14,7 @@ import { CoverageDetails } from "./CoverageDetails";
 import { PriorityBadge } from "./PriorityBadge";
 import { CiStatusBadge } from "./CiStatusBadge";
 import { AssessmentHistory } from "./AssessmentHistory";
-import { OwnerMarkdown } from "./OwnerMarkdown";
+import { OwnerMarkdown } from "../../primitives/OwnerMarkdown";
 import type {
   AssessmentScore,
   ProjectOverview,

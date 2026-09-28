@@ -20,6 +20,7 @@ import {
   FILTER_OPTIONS,
   POLL_INTERVAL_MS,
   elapsedLabel,
+  formatAgeMinutes,
   runRepo,
 } from "./mobileTypes";
 
@@ -164,7 +165,7 @@ export function QueueMobile() {
       } as WorkflowRun,
       status: "stale" as FilterValue,
       repo: run.repo,
-      elapsed: `${run.age_minutes}m`,
+      elapsed: formatAgeMinutes(run.age_minutes),
     }));
     return [...inProgress, ...queued, ...stale];
   }, [queueData, staleData]);

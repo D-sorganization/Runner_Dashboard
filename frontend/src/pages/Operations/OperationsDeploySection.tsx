@@ -55,8 +55,9 @@ export function OperationsDeploySection({
       .then(([dep, orch]) => {
         setDeployData(dep);
         setOrchData(orch);
-        if (dep?.machines && dep.machines.length > 0 && !deployMachine) {
-          setDeployMachine(dep.machines[0].name);
+        if (dep?.machines && dep.machines.length > 0) {
+          const first = dep.machines[0].name;
+          setDeployMachine((current) => current || first);
         }
         onDeployDataChange?.(dep);
         onOrchDataChange?.(orch);
@@ -67,7 +68,7 @@ export function OperationsDeploySection({
       .finally(() => {
         setLoading(false);
       });
-  }, [deployMachine, onDeployDataChange, onOrchDataChange]);
+  }, [onDeployDataChange, onOrchDataChange]);
 
   useEffect(() => {
     if (initialDeployData === undefined) {

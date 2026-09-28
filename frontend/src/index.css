@@ -5017,7 +5017,8 @@ th.sortable.active .sort-indicator {
 }
 
 .mobile-shell__drawer-item {
-  padding: var(--space-4) var(--space-4);
+  padding: var(--space-6) var(--space-8);
+  gap: var(--space-6);
   background: none;
   border: none;
   border-bottom: 1px solid var(--border);
@@ -5034,6 +5035,16 @@ th.sortable.active .sort-indicator {
 .mobile-shell__drawer-item:hover,
 .mobile-shell__drawer-item:focus-visible {
   background-color: var(--bg-hover);
+}
+
+.mobile-shell__drawer-item--active {
+  color: var(--accent-blue);
+  background-color: var(--bg-hover);
+  box-shadow: inset 3px 0 0 var(--accent-blue);
+}
+
+.mobile-shell__drawer-item-icon {
+  flex: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -22,7 +22,10 @@ import type {
 import {
   SUBTAB_OPTIONS,
   getProviderLabel,
+  inventoryItems,
+  issueFromInventory,
   pickRecommendedProvider,
+  prFromInventory,
 } from "./mobileTypes";
 
 // Re-export InFlightDispatch for callers that imported it from this file pre-refactor.
@@ -64,10 +67,12 @@ export function RemediationMobile({
     setFailure(null);
     try {
       const [provResp, runsResp, prsResp, issuesResp] = await Promise.all([
-        fetch("/api/agent-remediation/providers"),
-        fetch("/api/runs?conclusion=failure&per_page=20"),
-        fetch("/api/pulls?state=open&per_page=20"),
-        fetch("/api/issues?state=open&per_page=20"),
+        // The same sources the desktop Remediation tab reads; the old
+        // /providers and /pulls routes never existed (#1718 live sweep).
+        fetch("/api/agent-remediation/config"),
+        fetch("/api/runs/enriched?per_page=50"),
+        fetch("/api/prs?limit=20"),
+        fetch("/api/issues?limit=20"),
       ]);
 
       if (!provResp.ok) {
@@ -89,14 +94,12 @@ export function RemediationMobile({
 
       if (prsResp.ok) {
         const prsData = await prsResp.json();
-        setOpenPRs(Array.isArray(prsData) ? prsData : (prsData.items ?? []));
+        setOpenPRs(inventoryItems(prsData).map(prFromInventory));
       }
 
       if (issuesResp.ok) {
         const issuesData = await issuesResp.json();
-        setOpenIssues(
-          Array.isArray(issuesData) ? issuesData : (issuesData.items ?? []),
-        );
+        setOpenIssues(inventoryItems(issuesData).map(issueFromInventory));
       }
     } catch (e: unknown) {
       setFailure({ error: e });

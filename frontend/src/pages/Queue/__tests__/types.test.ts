@@ -95,6 +95,7 @@ describe("formatReason", () => {
   it("humanises slugs and defaults blanks to 'unknown'", () => {
     expect(formatReason("superseded_pr_head")).toBe("superseded pr head");
     expect(formatReason("")).toBe("unknown");
+    expect(formatReason("unroutable-label")).toBe("unroutable label");
   });
 });
 

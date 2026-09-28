@@ -1,7 +1,7 @@
 /** Owner-authored feature details; notes are untrusted Markdown, never raw HTML. */
 import React from "react";
 import { Badge } from "../../primitives/Badge";
-import { OwnerMarkdown } from "./OwnerMarkdown";
+import { OwnerMarkdown } from "../../primitives/OwnerMarkdown";
 import type { ProjectFeature } from "./types";
 
 export function FeatureDetails({

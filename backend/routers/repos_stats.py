@@ -85,14 +85,13 @@ async def get_stats(request: Request) -> Any:
             return fallback
 
     # --- Runners (independent; fall back to last-known-good counts) -----------
-    runners_data = cache_get("runners", 25.0)
-    if runners_data is None:
-        runners_data = await _with_budget("runners", fetch_org_runners(gh_api_admin, org), None)
-        if isinstance(runners_data, dict):
-            cache_set("runners", runners_data)
-    runners = runners_data.get("runners", []) if isinstance(runners_data, dict) else None
-
-    repos = await _with_budget("recent_repos", get_recent_org_repos(limit=30), [])
+    async def _runners_data() -> Any:
+        data = cache_get("runners", 25.0)
+        if data is None:
+            data = await _with_budget("runners", fetch_org_runners(gh_api_admin, org), None)
+            if isinstance(data, dict):
+                cache_set("runners", data)
+        return data
 
     async def _fetch_repo_runs_local(repo_name: str, per_page: int = 10) -> list[dict]:
         code, stdout, _ = await run_cmd(
@@ -118,12 +117,43 @@ async def get_stats(request: Request) -> Any:
             raise RuntimeError(f"gh search exited {code}")
         return int(json.loads(stdout).get("total_count", 0))
 
-    sampled_repos = repos[:_STATS_REPO_SAMPLE_LIMIT]
-    all_runs_nested = await _with_budget(
-        "workflow_runs",
-        asyncio.gather(*[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in sampled_repos]),
-        [],
+    async def _sampled_runs() -> tuple[list[dict], list[list[dict]]]:
+        repos = await _with_budget("recent_repos", get_recent_org_repos(limit=30), [])
+        sampled = repos[:_STATS_REPO_SAMPLE_LIMIT]
+        nested = await _with_budget(
+            "workflow_runs",
+            asyncio.gather(*[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in sampled]),
+            [],
+        )
+        return sampled, nested
+
+    async def _queue_data() -> Any:
+        # Reuse the resilient /api/queue cache (which already serves
+        # last-known-good on failure); only re-run the fan-out if it is cold.
+        cached_queue = cache_get("queue", _STATS_QUEUE_REUSE_TTL)
+        if cached_queue is not None:
+            return cached_queue
+        return await _with_budget("queue", queue_impl(), None, timeout_s=8.0)
+
+    # Every source is independent and separately budgeted, so they run
+    # concurrently: a cold summary costs the slowest source, not their sum
+    # (the live hub took ~14 s serially).
+    (
+        runners_data,
+        (sampled_repos, all_runs_nested),
+        queue_data,
+        issues_total,
+        prs_total,
+        fleet_data,
+    ) = await asyncio.gather(
+        _runners_data(),
+        _sampled_runs(),
+        _queue_data(),
+        _with_budget("issues_search", _github_search_total_local(f"org:{org}+is:open+is:issue"), None),
+        _with_budget("prs_search", _github_search_total_local(f"org:{org}+is:open+is:pr"), None),
+        _with_budget("fleet", get_fleet_nodes_impl(), None),
     )
+    runners = runners_data.get("runners", []) if isinstance(runners_data, dict) else None
     runs = [run for repo_runs in all_runs_nested for run in repo_runs]
     runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     runs = runs[:100]
@@ -131,21 +161,6 @@ async def get_stats(request: Request) -> Any:
     completed = [r for r in runs if r.get("conclusion")]
     successes = sum(1 for r in completed if r["conclusion"] == "success")
     failures = sum(1 for r in completed if r["conclusion"] == "failure")
-
-    # --- Queue: reuse the resilient /api/queue cache (which already serves
-    # last-known-good on failure). Only re-run the fan-out if no recent cache
-    # exists, and on its own budget so it can't starve the rest of the summary.
-    queue_data = cache_get("queue", _STATS_QUEUE_REUSE_TTL)
-    if queue_data is None:
-        queue_data = await _with_budget("queue", queue_impl(), None, timeout_s=8.0)
-
-    # --- Org PR / issue counts: independent budgets so a slow search API call
-    # cannot zero the queue and machine numbers alongside it.
-    issues_total = await _with_budget("issues_search", _github_search_total_local(f"org:{org}+is:open+is:issue"), None)
-    prs_total = await _with_budget("prs_search", _github_search_total_local(f"org:{org}+is:open+is:pr"), None)
-
-    # --- Fleet machines (independent) ----------------------------------------
-    fleet_data = await _with_budget("fleet", get_fleet_nodes_impl(), None)
 
     # --- Assemble, backfilling any failed field from last-known-good ----------
     if runners is None:

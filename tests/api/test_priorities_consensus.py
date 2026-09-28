@@ -110,3 +110,38 @@ def test_empty_document_parses_to_empty_consensus() -> None:
 def test_parse_table_pads_short_rows_and_ignores_separators() -> None:
     rows = parse_table(["| A | B | C |", "| --- | :-: |", "| 1 |", "| x | y | z | w |"])
     assert rows == [{"a": "1", "b": "", "c": ""}, {"a": "x", "b": "y", "c": "z"}]
+
+
+# Wrapped lines as prettier writes them in real minutes (2026-09-26): the
+# head and each sub-bullet continue on following lines, sometimes unindented.
+_WRAPPED = """## Active Priorities (Execute This Cycle)
+
+1. **Grok go-live** — Repo/Workflow Mgmt — link Barb to the Runner Dashboard
+   live tonight using the owner's chosen contract.
+
+   - Assigned to: Instruction-writer (Alpha) to file the epic; execution by
+     whichever agent/seat the owner directs.
+   - Epic/Issue: `Runner_Dashboard#1352` (SC-F Grok workstream); docs `Repository_Management#1803`
+   - Acceptance criteria: `staff-node-acceptance.sh --run-ad-hoc --expect-sha
+80acce6` passes on DeskComputer.
+
+---
+
+### Deferred Backlog (Documented, Not Executed)
+
+| Item | Project | Reason for Deferral | Reassess Date |
+| ---- | ------- | ------------------- | ------------- |
+| Staff Phase 2 | Runner_Dashboard | Scored 4th. | `2026-10-03` |
+"""
+
+
+@pytest.mark.unit
+def test_wrapped_head_and_bullets_are_joined_and_code_spans_kept_balanced() -> None:
+    (first,) = parse_consensus(_WRAPPED).active
+    assert first.scope == "link Barb to the Runner Dashboard live tonight using the owner's chosen contract."
+    assert first.assigned_to == (
+        "Instruction-writer (Alpha) to file the epic; execution by whichever agent/seat the owner directs."
+    )
+    assert first.tracking == "`Runner_Dashboard#1352` (SC-F Grok workstream); docs `Repository_Management#1803`"
+    assert first.acceptance == "`staff-node-acceptance.sh --run-ad-hoc --expect-sha 80acce6` passes on DeskComputer."
+    assert parse_consensus(_WRAPPED).deferred[0].reassess == "2026-10-03"

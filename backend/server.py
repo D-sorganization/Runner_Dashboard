@@ -123,6 +123,7 @@ from middleware import (  # noqa: E402
     max_body_size_check,
 )
 from models.requests import HelpChatRequest  # noqa: E402
+from platform_utils.wsl_paths import windows_repositories_root  # noqa: E402
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
 from routers import agent_profiles as _agent_profiles_router  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
@@ -377,15 +378,7 @@ except (OSError, subprocess.SubprocessError, TimeoutError, ValueError):
 
 
 # Path to daily progress reports (on Windows mount from WSL2)
-_default_reports_dir = (
-    Path("/mnt/c")
-    / "Users"
-    / os.environ.get("USER", "diete")
-    / "Repositories"
-    / "Repository_Management"
-    / "docs"
-    / "progress-tracking"
-)
+_default_reports_dir = windows_repositories_root() / "Repository_Management" / "docs" / "progress-tracking"
 REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", str(_default_reports_dir)))
 
 # Repos with heavy-test workflows (workflow_dispatch capable)

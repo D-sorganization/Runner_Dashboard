@@ -122,4 +122,23 @@ describe("OperationsPage", () => {
     expect(window.location.hash).toBe("#admission");
     expect(scrollIntoViewMock).toHaveBeenCalled();
   });
+
+  it("fetches each section once instead of refetching on every parent render (#1718)", async () => {
+    const fetchMock = mockAllOperationsFetch();
+    render(<OperationsPage />);
+    await screen.findByText("abc999");
+    // Give any render-triggered refetch loop time to show itself.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const calls = (url: string) =>
+      fetchMock.mock.calls.filter(([u]) => String(u) === url).length;
+    for (const url of [
+      "/api/deployment/state",
+      "/api/orchestrator/queue",
+      "/api/fleet/schedule",
+      "/api/scheduled-workflows",
+      "/api/diagnostics/summary",
+    ]) {
+      expect(calls(url), url).toBe(1);
+    }
+  });
 });

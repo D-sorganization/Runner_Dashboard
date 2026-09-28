@@ -7,6 +7,7 @@ import {
   type WorkflowRun,
   elapsedLabel,
   elapsedSeconds,
+  formatAgeMinutes,
   formatDuration,
   runRepo,
   runnerName,
@@ -97,5 +98,14 @@ describe("statusTone / statusLabel", () => {
     expect(statusLabel("failed")).toBe("failed")
     expect(statusLabel("stale")).toBe("stale")
     expect(statusLabel("all")).toBe("unknown")
+  })
+})
+
+describe("formatAgeMinutes", () => {
+  it("renders stale-run ages in days/hours rather than raw minutes (#1718)", () => {
+    expect(formatAgeMinutes(57790)).toBe("40d 3h")
+    expect(formatAgeMinutes(290)).toBe("4h 50m")
+    expect(formatAgeMinutes(null)).toBe("-")
+    expect(formatAgeMinutes(undefined)).toBe("-")
   })
 })

@@ -9,7 +9,7 @@ Last updated: 2026-09-28
 - Branch: `feat/ux-overhaul`
 - Baseline commit: `19e4f920` (main after #1727 merged)
 - Implementation commit: `SELF`
-- Pull request: not opened yet (branch pushed; GitHub secondary rate limit blocked `gh` at 06:37 UTC)
+- Pull request: not opened yet (branch pushed to `08f95aa3`; GitHub secondary rate limit blocked `gh` at 06:37 UTC)
 - Governing issues: #1718 and children #1719–#1725.
 
 ## Objective and status
@@ -37,10 +37,21 @@ Last updated: 2026-09-28
   - Maxwell: the HTTP card says "not listening" instead of the raw socket error; a failed control reads "Could not start Maxwell: ..."; the intro points at Start Maxwell on the page.
   - Projects: a 401/403 on `project_priorities.yaml` names the missing GitHub App permission instead of dumping the API JSON; decision text renders its Markdown links through the sanitised `OwnerMarkdown` shared with feature notes.
   - Insights: "Highest Attention Workflows" names each row's repository (two "Quality Gate" rows were indistinguishable).
+- Mobile and second-pass sweep (DL-#1718), at 375x812 against the same hub:
+  - Fleet (phone) read `/api/fleet/status`, which has no status or CPU fields, so every machine showed Offline at 0%. It now reads `/api/fleet/nodes` through the shared `machineTelemetry` helper (also used by `machineTelemetryForRunner`).
+  - Remediation (phone) called `/api/agent-remediation/providers` and `/api/pulls`, which never existed, so the page always showed "Not found". It now reads the desktop tab's sources (`/api/agent-remediation/config`, `/api/runs/enriched`, `/api/prs`, `/api/issues`) and adapts the flat inventory rows.
+  - `/api/issues` returned 500 on every call: `lease_synchronizer` indexed `label["name"]`, but the issue inventory flattens labels to strings. Both shapes are accepted now.
+  - Work (phone): stale runs showed "57790m" and slugs such as "stale-feature-branch"; they read "40d 3h" and "stale feature branch" (`formatAgeMinutes`, `formatReason`), on the desktop stale panel too.
+  - The Ask button sat on top of the bottom bar's More tab; it now clears `--bottom-nav-height`. The More drawer rows gained icon spacing and a current-page highlight.
+  - Operations refetched every panel about ten times per load: its summary callbacks were new functions each render and every section's loader depends on its callback. They are `useCallback`s now, and the deploy section picks its default machine without depending on it.
+  - `/api/stats` fetched its six independent sources one after another (~14 s cold); they run concurrently.
+  - Insights (phone) listed 0 reports: the default reports path used the WSL login (`dieterolson`) as the Windows profile name. `windows_repositories_root()` finds the profile that holds `Repositories` (also used by heavy tests).
+  - Fleet Command: the minutes parser read one line per field, so wrapped priorities lost text ("link Barb to the Runner Dashboard"), and it stripped outer backticks from multi-span values. It joins wrapped lines and keeps spans balanced; the panel renders them through `OwnerMarkdown` (moved to `primitives/`).
 
 ## Validation
 
-- `npx vitest run --maxWorkers=3`: 189/189 files, 1594 tests (after the live-sweep fixes).
+- `npx vitest run --maxWorkers=3`: 191/191 files, 1603 tests (after the mobile sweep).
+- WSL pytest for the mobile sweep: `tests/test_stats_summary_resilience.py`, `tests/test_lease_synchronizer.py`, `tests/api/test_wsl_paths.py`, `tests/api/test_priorities*.py` passed.
 - WSL pytest for the live-sweep fixes: `tests/test_cache_swr.py` 6, `tests/api/test_workflows_list.py` 3, `tests/api/test_scheduled_workflows_route.py` 1, `tests/api/test_projects_tracking.py` 22 passed (`test_vite_config` fails under WSL only: `git ls-files` exits 128 there).
 - WSL pytest `tests/staff tests/api tests/unit tests/test_frontend_integrity.py`: 2290 passed (the palette contract failure is fixed in this branch).
 - `tsc --noEmit`, `npm run lint`, ruff and mypy: clean.
@@ -49,7 +60,7 @@ Last updated: 2026-09-28
 ## Next steps
 
 1. Open one draft PR from `feat/ux-overhaul` (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
-2. Remaining live-sweep follow-ups: `/api/stats` takes ~14 s on a cold cache and `/api/runs/enriched` returns ~760 KB (both candidates for `cache_get_swr` / trimming); the Operations page re-polls every panel including the slow ones.
+2. Integrate the emoji-to-SVG sweep (agent commit `79d2664f` on `worktree-agent-a5fc69f0fef4fe2c7`); `/api/runs/enriched` still returns ~760 KB.
 3. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, the holds decision in #1726, and GitHub App Contents/Issues read on Repository_Management.
 
 ---

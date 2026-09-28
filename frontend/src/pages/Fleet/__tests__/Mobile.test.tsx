@@ -87,12 +87,29 @@ const MOCK_SINGLE_ONLINE: typeof MOCK_FLEET = {
 
 const EMPTY_FLEET = {};
 
+/** Wrap flat fixtures in the `/api/fleet/nodes` response the page reads. */
+function nodesPayload(fleet: Record<string, (typeof MOCK_FLEET)[string]>) {
+  return {
+    nodes: Object.entries(fleet).map(([name, n]) => ({
+      name,
+      online: n.status !== "offline",
+      last_seen: "2026-09-28T00:00:00Z",
+      system: {
+        hostname: n.hostname,
+        uptime_seconds: n.uptime_seconds,
+        cpu: { percent: n.cpu_percent },
+        memory: { percent: n.memory_percent },
+      },
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function makeFetch(
-  data: object = MOCK_FLEET,
+  data: object = nodesPayload(MOCK_FLEET),
   ok: boolean = true,
   status: number = 200,
 ) {
@@ -130,7 +147,7 @@ describe("FleetMobile", () => {
   });
 
   it("renders Fleet section after successful fetch", async () => {
-    globalThis.fetch = makeFetch(MOCK_FLEET);
+    globalThis.fetch = makeFetch(nodesPayload(MOCK_FLEET));
     render(<FleetMobile />);
     await waitFor(() => {
       // The main fleet section has aria-label="Fleet"
@@ -139,7 +156,7 @@ describe("FleetMobile", () => {
   });
 
   it("renders status filter group with all/online/busy/offline pills", async () => {
-    globalThis.fetch = makeFetch(MOCK_FLEET);
+    globalThis.fetch = makeFetch(nodesPayload(MOCK_FLEET));
     render(<FleetMobile />);
     await waitFor(() => {
       const filterGroup = screen.getByRole("group", { name: /filter by status/i });
@@ -151,7 +168,7 @@ describe("FleetMobile", () => {
   });
 
   it("clicking Offline filter pill shows only offline runners", async () => {
-    globalThis.fetch = makeFetch(MOCK_FLEET);
+    globalThis.fetch = makeFetch(nodesPayload(MOCK_FLEET));
     render(<FleetMobile />);
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "Fleet" })).toBeInTheDocument();
@@ -173,7 +190,7 @@ describe("FleetMobile", () => {
   });
 
   it("shows empty state message when no runners match the filter", async () => {
-    globalThis.fetch = makeFetch(MOCK_SINGLE_ONLINE);
+    globalThis.fetch = makeFetch(nodesPayload(MOCK_SINGLE_ONLINE));
     render(<FleetMobile />);
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "Fleet" })).toBeInTheDocument();
@@ -194,13 +211,26 @@ describe("FleetMobile", () => {
   });
 
   it("renders with empty fleet data without crashing", async () => {
-    globalThis.fetch = makeFetch(EMPTY_FLEET);
+    globalThis.fetch = makeFetch(nodesPayload(EMPTY_FLEET));
     render(<FleetMobile />);
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "Fleet" })).toBeInTheDocument();
     });
     // Empty fleet: no runner cards, no crash
     expect(document.body).toBeInTheDocument();
+  });
+
+  it("reads machine status and telemetry from /api/fleet/nodes (#1718)", async () => {
+    const fetchMock = makeFetch(nodesPayload(MOCK_FLEET));
+    globalThis.fetch = fetchMock;
+    render(<FleetMobile />);
+    await screen.findByText(/host-a\.local/i);
+    expect(fetchMock).toHaveBeenCalledWith("/api/fleet/nodes");
+    // runner-a is online at 12% CPU / 45% RAM; only runner-c is offline.
+    expect(screen.getByLabelText("CPU: 12%")).toBeInTheDocument();
+    expect(screen.getByLabelText("RAM: 45%")).toBeInTheDocument();
+    const filterGroup = screen.getByRole("group", { name: /filter by status/i });
+    expect(filterGroup.textContent).toMatch(/1\s*Offline/);
   });
 
   it("shows error state when API call fails", async () => {

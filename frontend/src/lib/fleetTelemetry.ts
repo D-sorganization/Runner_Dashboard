@@ -61,7 +61,14 @@ export function machineTelemetryForRunner(
 ): RunnerTelemetry {
   const machine = parseRunnerName(runner.name).machine;
   const node = nodesByName[machine.toLowerCase()] || {};
-  const sys = node.system || {};
+  return { machine: machine, node: node, ...machineTelemetry(node) };
+}
+
+/** CPU/memory percentages and uptime/last-seen labels for one fleet node. */
+export function machineTelemetry(
+  node: any,
+): Pick<RunnerTelemetry, "cpu" | "memory" | "uptime" | "seen"> {
+  const sys = (node && node.system) || {};
   const cpu = sys.cpu || {};
   const mem = sys.memory || {};
   const cpuPct = boundedPercent(cpu.percent_1m_avg || cpu.percent || 0);
@@ -69,12 +76,10 @@ export function machineTelemetryForRunner(
     ? boundedPercent((1 - mem.available_gb / mem.total_gb) * 100)
     : boundedPercent(mem.percent || 0);
   return {
-    machine: machine,
-    node: node,
     cpu: cpuPct,
     memory: memPct,
     uptime: sys.uptime_seconds ? formatDuration(sys.uptime_seconds) : "no uptime",
-    seen: node.last_seen ? timeAgo(node.last_seen) : "not seen",
+    seen: node && node.last_seen ? timeAgo(node.last_seen) : "not seen",
   };
 }
 
