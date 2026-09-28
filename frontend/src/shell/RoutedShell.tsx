@@ -53,7 +53,6 @@ import {
   type InFlightDispatch,
 } from "../pages/Remediation/Mobile";
 import { AnalysisTab } from "../pages/Analysis";
-import { AssessmentsPage } from "../pages/AssessmentsPage";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
 import { MachinesPage } from "../pages/Machines";
@@ -124,8 +123,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
     case "analysis":
     case "reports":
       return <AnalysisTab activeTab={tabId} />;
-    case "assessments":
-      return <AssessmentsPage />;
     case "operations":
     case "conductor":
     case "deployment":

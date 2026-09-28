@@ -1,7 +1,9 @@
 /**
  * ProjectCard — one repository on the Projects tab (issue #1199): feature
  * progress, owner priority tier, open-work coverage (untracked issues/PRs),
- * decisions needed, last project-steward run and a "Run steward now" action. Presentational; the POST is owned by the page so the card stays pure.
+ * decisions needed, last project-steward run and a "Run steward now" action,
+ * plus assessment score history and a "Request assessment" action (#1338).
+ * Presentational; the POSTs are owned by the page so the card stays pure.
  */
 import React from "react";
 import { Badge } from "../../primitives/Badge";
@@ -11,7 +13,8 @@ import { FeatureDetails } from "./FeatureDetails";
 import { CoverageDetails } from "./CoverageDetails";
 import { PriorityBadge } from "./PriorityBadge";
 import { CiStatusBadge } from "./CiStatusBadge";
-import type { ProjectOverview, RepoCiStatus, StewardRun } from "./types";
+import { AssessmentHistory } from "./AssessmentHistory";
+import type { AssessmentScore, ProjectOverview, RepoCiStatus, StewardRun } from "./types";
 
 export interface ProjectCardProps {
   project: ProjectOverview;
@@ -22,6 +25,13 @@ export interface ProjectCardProps {
   /** Latest CI run from GET /api/repos; undefined when unknown (#1338). */
   ci?: RepoCiStatus;
   onRunSteward: (repo: string) => void;
+  /** This repo's assessment scores (#1338); empty when none or unknown. */
+  assessments?: AssessmentScore[];
+  /** True while an assessment request is being submitted. */
+  assessing?: boolean;
+  /** Result line from the last "Request assessment" click, if any. */
+  assessmentNotice?: string;
+  onRequestAssessment: (repo: string, provider: string) => void;
 }
 
 function runTone(
@@ -72,6 +82,10 @@ export function ProjectCard({
   notice,
   ci,
   onRunSteward,
+  assessments = [],
+  assessing = false,
+  assessmentNotice,
+  onRequestAssessment,
 }: ProjectCardProps): React.ReactElement {
   const {
     repo,
@@ -143,6 +157,13 @@ export function ProjectCard({
         <strong>Last steward run</strong>{" "}
         <StewardRunLine run={last_steward_run} />
       </div>
+      <AssessmentHistory
+        repo={repo}
+        entries={assessments}
+        requesting={assessing}
+        notice={assessmentNotice}
+        onRequest={onRequestAssessment}
+      />
       {notice && (
         <p
           role="status"

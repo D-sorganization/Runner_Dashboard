@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338-assessments — SC-G6: Assessments split into Projects
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Assessments", recorded 2026-09-25; workflow follow-up 2026-09-27)
+- **Branch:** `feat/1338-assessments-split`
+- **PR:** #1707
+- **Paths:** `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/Projects/`, `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/navIcons.tsx`, `frontend/src/index.css`, `tests/test_frontend_integrity.py`, `tests/frontend/mobile/viewport_profiles.json`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-28 (Projects tests 5/5 after the card-await fix; earlier WSL vitest shell + Projects, typecheck, eslint, integrity/mobile-harness pytest pass)
+- **Summary:** Each Projects card shows the repo's assessment score history and a "Request assessment" action that submits the existing `assessment.run` Staff request (Jules-Assess-Repo.yml, no role). The Assessments tab is removed and its old addresses redirect to Projects. Backend routes are unchanged.
+- **Next step:** Arm auto-merge on #1707 once its CI is green.
+
 ### DL-#1705 — Restore green main on ci-health-check (Staff.test.tsx line cap)
 
 - **State:** in_progress
@@ -28,7 +41,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `frontend/src/pages/__tests__/Staff.test.tsx`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (commit 246c0d58; Staff.test.tsx reduced from 512 to 473 lines, <= 500 lines soft cap satisfied)
-- **Summary:** CI Standard on main failed on ci-health-check because frontend/src/pages/__tests__/Staff.test.tsx reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
+- **Summary:** CI Standard on main failed on ci-health-check because `frontend/src/pages/__tests__/Staff.test.tsx` reached 512 lines. Condensed verbose mock object literals (BASE_ROLE, ROSTER, RUN) without altering tests or assertions, reducing the file to 473 lines and restoring green main.
 - **Next step:** Open PR and enable auto-merge.
 
 ### DL-#1338-settings — SC-G6: one Settings area with sections

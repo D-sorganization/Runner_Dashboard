@@ -26,12 +26,6 @@ vi.mock("../../pages/Analysis", () => ({
   ),
 }));
 
-vi.mock("../../pages/AssessmentsPage", () => ({
-  AssessmentsPage: () => (
-    <div data-testid="native-assessments">Assessments</div>
-  ),
-}));
-
 vi.mock("../../pages/Conductor", () => ({
   Conductor: () => <div data-testid="native-conductor">Conductor</div>,
 }));
@@ -262,7 +256,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["overview", "native-overview"],
     ["operations", "native-operations"],
     ["insights", "native-analysis"],
-    ["assessments", "native-assessments"],
     ["code-requests", "native-code-requests"],
     ["maxwell", "native-maxwell"],
     ["queue", "native-queue"],
@@ -339,7 +332,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     },
   );
 
-  it.each(["/t/org", "/fleet/org"])(
+  it.each(["/t/org", "/fleet/org", "/t/assessments", "/fleet/assessments"])(
     "redirects retired %s to Projects (#1338)",
     async (path) => {
       renderAt(path);

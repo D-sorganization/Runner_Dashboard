@@ -120,11 +120,22 @@ const RETIRED_LOCAL_TOOLS_PATHS = new Set([
   "/t/local-apps",
 ]);
 
-/** The Organization tab folded into Projects (#1338, owner decision). */
+/** The Organization and Assessments tabs fold into Projects (#1338, owner decisions). */
 const PROJECTS_REDIRECT: RedirectTarget = { to: "/work/projects", label: "Projects" };
 
-/** Old addresses of the retired Organization tab (#1338). */
-const RETIRED_ORG_PATHS = new Set(["/fleet/org", "/org", "/t/org"]);
+/**
+ * Old addresses of the retired Organization and Assessments tabs (#1338):
+ * Projects now carries per-repo CI status, assessment score history and the
+ * "Request assessment" action.
+ */
+const RETIRED_ORG_PATHS = new Set([
+  "/fleet/org",
+  "/org",
+  "/t/org",
+  "/fleet/assessments",
+  "/assessments",
+  "/t/assessments",
+]);
 
 /**
  * Static redirect table mapping old tabIds and legacy aliases to their
@@ -157,6 +168,7 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["schedules"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["diagnostics"] = { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
   table["org"] = PROJECTS_REDIRECT;
+  table["assessments"] = PROJECTS_REDIRECT;
   table["tests"] = TESTS_REDIRECT;
   table["local-apps"] = LOCAL_TOOLS_REDIRECT;
   Object.assign(table, SETTINGS_SECTION_TABS);

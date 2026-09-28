@@ -4,13 +4,15 @@
  * Defines the 4-area information architecture:
  *   - Staff (Staff Console, Fleet Command, Maxwell)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
- *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Assessments)
+ *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights)
  *   - Settings (one Settings page: Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools)
  *
  * Tests lives under Operations → Diagnostics (#1338), not in the nav.
  * Local Tools is a section of the Settings page (#1338), not a nav entry.
  * So are Credentials, Linear Setup, Notifications and Principals (#1338).
  * Organization is retired into Projects (per-repo CI badge, #1338).
+ * Assessments is retired into Projects too: score history on each card and a
+ * "Request assessment" action that runs the existing workflow (#1338).
  */
 import type { NavIcon } from "./navIcons";
 import {
@@ -24,7 +26,6 @@ import {
   SettingsIcon,
   NetworkIcon,
   FlagIcon,
-  ClipboardCheckIcon,
   BriefcaseIcon,
   CompassIcon,
 } from "./navIcons";
@@ -183,17 +184,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: ChartIcon,
     tooltip: "Fleet reports, run analysis, and historical trends.",
     tabId: "insights",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: true,
-  },
-  {
-    id: "assessments",
-    label: "Assessments",
-    group: "fleet",
-    Icon: ClipboardCheckIcon,
-    tooltip: "Repository health assessments and graded scores.",
-    tabId: "assessments",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,
