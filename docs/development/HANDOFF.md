@@ -7,7 +7,7 @@ Last updated: 2026-09-27
 - Repository: `D-sorganization/Runner_Dashboard`
 - Working directory: `Runner_Dashboard-worktrees/claude-ux`
 - Branch: `feat/ux-overhaul`
-- Baseline commit: `07eb3613`
+- Baseline commit: `19e4f920` (main after #1727 merged)
 - Implementation commit: `SELF`
 - Pull request: not opened yet
 - Governing issues: #1718 and children #1719–#1725.
@@ -22,11 +22,25 @@ Last updated: 2026-09-27
 - #1723 Workstream E app shell and primitives: integrated.
 - #1724 Workstream F phone access and Web Push: integrated.
 - #1725 Workstream G inbox noise: integrated.
+- Review fixes found by clicking through the live preview after integration:
+  - The theme runtime writes CSS vars inline on `<html>`; the standard Dark/Light fleet themes carried a stale palette (`--text-muted #71717a`) that undid the 4.5:1 fix. They now emit `tokens.ts` neutrals (`fleetThemeTokenParity.test.ts`).
+  - PushSettings: agy's inline styles and phantom `--status-*` tokens moved to `.push-settings__*` rules (the #834 primitives contract).
+  - Principals shows "Admin access required" on 403; Local Tools shows `artifact <sha>` for artifact installs instead of git probe errors.
+  - `test_color_literal_budget` counts `rgba()` usages outside custom-property definitions; budget tightened 84 -> 61.
+  - The mobile token contract test and `docs/mobile-design-system.md` pin the new palette.
+
+## Validation
+
+- `npx vitest run --maxWorkers=3`: 187/188 files; the one failure is a CodeRequests timing flake under load (19/19 alone, file untouched here).
+- WSL pytest `tests/staff tests/api tests/unit tests/test_frontend_integrity.py`: 2290 passed (the palette contract failure is fixed in this branch).
+- `tsc --noEmit`, `npm run lint`, ruff and mypy: clean.
+- Pre-push `pytest-unit` reports "files were modified by this hook" if the worktree is edited while it runs; do not edit during a push.
 
 ## Next steps
 
-1. Integrate the remaining workstreams, rebase on main after #1727 merges, open one PR (draft, then ready) and arm via `automerge_guard`.
-2. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, and the holds decision in #1726.
+1. Push `feat/ux-overhaul`, open one draft PR (Closes #1719–#1725), mark ready and arm via `automerge_guard`.
+2. Follow-ups from the live sweep: `/api/workflows/list` times out (>120 s) on DeskComputer; Projects shows a raw GitHub 403 JSON blob for `project_priorities.yaml`.
+3. Owner-only: `tailscale serve`, VAPID keys, OAuth for the phone, the holds decision in #1726, and GitHub App Contents/Issues read on Repository_Management.
 
 ---
 

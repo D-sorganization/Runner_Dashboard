@@ -32,6 +32,9 @@ interface LocalAppDrift {
   ahead?: number;
   ref?: string | null;
   error?: string | null;
+  /** "artifact" when the install has no git checkout (#1718 review). */
+  mode?: string | null;
+  deployed_sha?: string | null;
 }
 
 /** HTTP health-probe summary for a local app. */
@@ -112,6 +115,18 @@ function DriftBadge({ app }: { app: LocalApp }): React.ReactElement {
   const d = app.drift || {};
   const behind = d.behind || 0;
   const ahead = d.ahead || 0;
+  if (d.mode === "artifact") {
+    const sha = (d.deployed_sha || "").slice(0, 7);
+    return (
+      <span
+        className={badgeBase}
+        style={{ background: "var(--badge-neutral-bg)", color: "var(--badge-neutral-fg)" }}
+        title={"Installed from an artifact built at " + (d.deployed_sha || "unknown sha")}
+      >
+        {"artifact " + (sha || "?")}
+      </span>
+    );
+  }
   if (!d.available) {
     return (
       <span

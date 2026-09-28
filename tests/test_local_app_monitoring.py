@@ -88,3 +88,67 @@ def test_load_manifest_single_entry(tmp_path: Path) -> None:
     result = lam.load_manifest(path=p)
     assert len(result) == 1
     assert result[0].name == "claude-code"
+
+
+# ---------------------------------------------------------------------------
+# Artifact installs (no .git) — #1718 review: Settings showed "probe error"
+# ---------------------------------------------------------------------------
+
+
+def test_probe_local_app_artifact_install_uses_deployment_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install = tmp_path / "dashboard"
+    install.mkdir()
+    deployment = install / "deployment.json"
+    deployment.write_text(
+        json.dumps({"version": "4.10.0", "git_sha": "e302335eb04d", "git_dirty": False}),
+        encoding="utf-8",
+    )
+    app = lam.LocalAppSpec(name="runner-dashboard", path=install, deployment_file=deployment)
+    git_calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *args: object, **kwargs: object) -> object:
+        if command[:1] == ["git"]:
+            git_calls.append(command)
+        import subprocess
+
+        return subprocess.CompletedProcess(command, 128, "", "fatal: not a git repository")
+
+    monkeypatch.setattr(lam, "run_command", fake_run)
+    monkeypatch.setattr(lam, "probe_health", lambda _app: {"available": False})
+
+    report = lam.probe_local_app(app)
+
+    assert git_calls == []
+    assert report["dirty_available"] is True
+    assert report["dirty"] is False
+    assert "dirty_error" not in report
+    assert report["drift"]["mode"] == "artifact"
+    assert report["drift"]["deployed_sha"] == "e302335eb04d"
+    assert "error" not in report["drift"]
+
+
+def test_probe_local_app_git_checkout_still_probes_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    install = tmp_path / "checkout"
+    (install / ".git").mkdir(parents=True)
+    app = lam.LocalAppSpec(name="tool", path=install)
+    git_calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *args: object, **kwargs: object) -> object:
+        import subprocess
+
+        if command[:1] == ["git"]:
+            git_calls.append(command)
+            out = "0 2" if "rev-list" in command else ""
+            return subprocess.CompletedProcess(command, 0, out, "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(lam, "run_command", fake_run)
+    monkeypatch.setattr(lam, "probe_health", lambda _app: {"available": False})
+
+    report = lam.probe_local_app(app)
+
+    assert len(git_calls) == 2
+    assert report["drift"] == {"ahead": 0, "behind": 2, "ref": app.drift_ref, "available": True}
+    assert report["dirty"] is False

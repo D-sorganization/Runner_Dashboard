@@ -11,6 +11,8 @@
  * Addresses: Runner_Dashboard#618 (Color Theme Management)
  */
 
+import { darkColorTokens, lightColorTokens } from './tokens';
+
 /* ── Fleet Theme Types ──────────────────────────────────────────────── */
 
 export interface FleetThemeColors {
@@ -232,11 +234,7 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--bg-secondary': c.group_bg,
     '--bg-tertiary': c.table_alt,
     '--bg-card': c.group_bg,
-    '--bg-hover': theme.isDark && theme.name === 'Dark'
-      ? '#26262b'
-      : !theme.isDark && theme.name === 'Light'
-        ? '#f4f4f5'
-        : c.button_hover + '22',
+    '--bg-hover': c.button_hover + '22',
     '--border': c.border,
     '--border-light': c.title_border,
     '--text-primary': c.text,
@@ -268,6 +266,30 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--badge-info-fg': s.info,
     '--badge-neutral-bg': `${c.label}26`,
     '--badge-neutral-fg': c.label,
+    ...standardThemeNeutrals(theme),
+  };
+}
+
+/**
+ * The standard Dark/Light themes are the design tokens themselves. These vars
+ * are written inline on <html> and beat index.css, so they must come from
+ * tokens.ts rather than a second copy of the palette (#1719).
+ */
+function standardThemeNeutrals(theme: FleetThemeDef): Record<string, string> {
+  const t =
+    theme === FLEET_THEMES.dark ? darkColorTokens : theme === FLEET_THEMES.light ? lightColorTokens : null;
+  if (!t) return {};
+  return {
+    '--bg-primary': t.bgPrimary,
+    '--bg-secondary': t.bgSecondary,
+    '--bg-tertiary': t.bgTertiary,
+    '--bg-card': t.bgCard,
+    '--bg-hover': t.bgHover,
+    '--border': t.border,
+    '--border-light': t.borderLight,
+    '--text-primary': t.textPrimary,
+    '--text-secondary': t.textSecondary,
+    '--text-muted': t.textMuted,
   };
 }
 

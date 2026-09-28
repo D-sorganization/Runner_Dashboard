@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1723 — App shell, primitives and settings polish
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1723
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** frontend/src/shell/_, frontend/src/primitives/_, frontend/src/design/fleetThemes.ts, frontend/src/pages/Principals.tsx, frontend/src/pages/LocalApps.tsx, backend/local_app_monitoring.py, local_apps.json
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (2026-09-27: design vitest 51 passed (new theme/token parity test); Principals 7, LocalApps 12 passed; test_local_app_monitoring 12 passed; tsc + eslint + ruff + mypy clean; runtime --text-muted #8a8a93 verified in preview)
+- **Summary:** Linear-style sidebar and compact top bar; standard Dark/Light themes emit tokens.ts neutrals (inline <html> vars had undone the 4.5:1 muted text); Principals shows 'Admin access required' on 403; artifact installs report deployed sha instead of git probe errors; local_apps.json points at Runner_Dashboard.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1724 — Phone access and push notifications
 
 - **State:** in_review
@@ -68,19 +81,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (pytest tests/api/test_staff_inbox.py tests/staff 328 passed; ruff, ruff format and mypy clean on inbox.py; Staff vitest 31 files / 233 passed)
 - **Summary:** Display-only: one "N providers need sign-in" item (medium; high only when no provider for a dispatchable role is signed in), identical pending proposals collapse into one item, project decisions become one low-severity item per repo, and items sort by severity, approvals first, newest first. `counts` keep per-provider and per-decision totals. The drawer shows up to five detail lines per grouped item.
-- **Next step:** Ship in the consolidated UX PR for epic #1718.
-
-### DL-#1723 — App shell and primitives restyled
-
-- **State:** in_review
-- **Owner:** claude
-- **Issue:** #1723
-- **Branch:** `feat/ux-overhaul`
-- **PR:** see branch
-- **Paths:** `frontend/src/shell/**` (not MobileShell), `frontend/src/primitives/**`, shell/primitive rules in `frontend/src/index.css`
-- **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (shell + primitives + pages vitest 145 files / 1223 passed; tsc and full eslint clean; 1440x900 browser check)
-- **Summary:** Linear-style 240px sidebar with product mark, section labels and an icon rail; 52px top bar with breadcrumb, a search trigger with a Ctrl K chip, and icon buttons with dropdowns for density, theme and provider; primitives (Dialog, Dropdown, Tooltip, Toaster, Pill, CommandPalette) use tokens and visible focus rings.
 - **Next step:** Ship in the consolidated UX PR for epic #1718.
 
 ### DL-#1721 — Staff Console roster and context pane restyled
