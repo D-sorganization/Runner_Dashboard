@@ -328,6 +328,7 @@ class StaffRunner:
                 ended_at=_now(),
             )
             store.append_event(rec.id, "error", err)
+            return
         try:
             env = {
                 **os.environ,
