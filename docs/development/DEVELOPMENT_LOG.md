@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1725 — Inbox reports fewer, grouped items
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1725
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `backend/staff/inbox.py`, `tests/staff/test_inbox_*.py`, `tests/api/test_staff_inbox.py`, `frontend/src/pages/Staff/{InboxPanel.tsx,InboxPanel.css,inboxTypes.ts}`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (pytest tests/api/test_staff_inbox.py tests/staff 328 passed; ruff, ruff format and mypy clean on inbox.py; Staff vitest 31 files / 233 passed)
+- **Summary:** Display-only: one "N providers need sign-in" item (medium; high only when no provider for a dispatchable role is signed in), identical pending proposals collapse into one item, project decisions become one low-severity item per repo, and items sort by severity, approvals first, newest first. `counts` keep per-provider and per-decision totals. The drawer shows up to five detail lines per grouped item.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1723 — App shell and primitives restyled
 
 - **State:** in_review

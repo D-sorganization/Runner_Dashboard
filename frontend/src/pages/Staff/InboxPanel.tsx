@@ -16,7 +16,10 @@ import { Badge } from "../../primitives/Badge";
 import { getFocusable } from "../../primitives/focusable";
 import { TimeAgo } from "../../primitives/TimeAgo";
 import { fetchStaffInbox, requestStaffBriefing } from "./staffApi";
+import { inboxDetailText } from "./inboxTypes";
 import type { InboxAggregate, InboxItem, InboxSource } from "./inboxTypes";
+
+const MAX_DETAIL_LINES = 5;
 import "./InboxPanel.css";
 
 export interface InboxPanelProps {
@@ -268,6 +271,16 @@ export function InboxPanel({
         </div>
         <h4 className="staff-inbox-item__title">{item.title}</h4>
         <p className="staff-inbox-item__summary">{item.summary}</p>
+        {item.details && item.details.length > 0 ? (
+          <ul className="staff-inbox-item__details" data-testid={`inbox-details-${item.id}`}>
+            {item.details.slice(0, MAX_DETAIL_LINES).map((d, i) => (
+              <li key={i}>{inboxDetailText(d)}</li>
+            ))}
+            {item.details.length > MAX_DETAIL_LINES ? (
+              <li className="staff-inbox-item__details-more">+{item.details.length - MAX_DETAIL_LINES} more</li>
+            ) : null}
+          </ul>
+        ) : null}
       </div>
       <div className="staff-inbox-item__action-wrap">
         <a

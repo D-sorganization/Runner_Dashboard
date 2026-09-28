@@ -1,4 +1,4 @@
-# Current handoff — UI/UX overhaul, epic #1718 (DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723)
+# Current handoff — UI/UX overhaul, epic #1718 (DL-#1719, DL-#1720, DL-#1721, DL-#1722, DL-#1723, DL-#1725)
 
 Last updated: 2026-09-27
 
@@ -20,8 +20,8 @@ Last updated: 2026-09-27
 - #1721 Workstream C roster and context pane: integrated.
 - #1722 Workstream D Staff page and attention drawer: integrated.
 - #1723 Workstream E app shell and primitives: integrated.
+- #1725 Workstream G inbox noise: integrated.
 - #1724 Workstream F phone access and Web Push: pending review.
-- #1725 Workstream G inbox noise: pending review.
 
 ## Next steps
 

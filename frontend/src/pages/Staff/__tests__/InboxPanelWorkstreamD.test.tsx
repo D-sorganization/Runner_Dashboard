@@ -282,3 +282,52 @@ describe("Inbox Attention Panel & Drawer (Workstream D)", () => {
     expect(css).not.toMatch(/\.glass-card:hover/);
   });
 });
+
+describe("InboxPanel grouped details (#1725)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders the backend's aggregated sign-in and per-repo decision details", async () => {
+    const aggregated: InboxAggregate = {
+      ...mockDiverseInbox,
+      count: 2,
+      items: [
+        {
+          id: "auth_sign_in",
+          source: "auth_sign_in",
+          title: "2 providers need sign-in",
+          summary: "Sign-in required for: Codex CLI, Cline.",
+          severity: "medium",
+          created_at: "2026-09-27T10:00:00Z",
+          link: "/settings#credentials",
+          details: [
+            { provider: "codex", label: "Codex CLI", reason: "OPENAI_API_KEY not set" },
+            { provider: "cline", label: "Cline", reason: "" },
+          ],
+        },
+        {
+          id: "project_dec_UpstreamDrift",
+          source: "project_decision",
+          title: "UpstreamDrift: 7 decisions needed",
+          summary: "7 decisions needed in UpstreamDrift STATUS.md charter.",
+          severity: "low",
+          created_at: "2026-09-27T09:00:00Z",
+          link: "/projects/UpstreamDrift",
+          metadata: { repo: "UpstreamDrift" },
+          details: ["d1", "d2", "d3", "d4", "d5", "d6", "d7"],
+        },
+      ],
+    };
+    vi.spyOn(staffApi, "fetchStaffInbox").mockResolvedValue(aggregated);
+    render(<InboxPanel defaultOpen />);
+
+    const auth = await screen.findByTestId("inbox-details-auth_sign_in");
+    expect(auth).toHaveTextContent("Codex CLI: OPENAI_API_KEY not set");
+    expect(auth).toHaveTextContent("Cline");
+
+    const decisions = screen.getByTestId("inbox-details-project_dec_UpstreamDrift");
+    expect(decisions.querySelectorAll("li")).toHaveLength(6);
+    expect(decisions).toHaveTextContent("+2 more");
+  });
+});

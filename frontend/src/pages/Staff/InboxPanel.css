@@ -442,3 +442,28 @@
   margin: 0;
   padding-left: 12px;
 }
+
+.staff-inbox-item__details {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.staff-inbox-item__details li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-inbox-item__details li::before {
+  color: var(--text-muted);
+  content: "2";
+  margin-right: 6px;
+}
+
+.staff-inbox-item__details-more {
+  color: var(--text-muted);
+}
