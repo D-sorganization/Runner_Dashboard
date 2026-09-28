@@ -12,6 +12,7 @@ Fault-tolerant: Any failing source reports 'unavailable' with error detail
 while surviving sources continue to aggregate cleanly.
 """
 
+import asyncio
 import logging
 import os
 from dataclasses import asdict, dataclass, field
@@ -270,8 +271,9 @@ async def _collect_project_decisions() -> list[InboxItem]:
     from projects import service as proj_service
 
     repos = proj_service.configured_repos()
-    for repo in repos:
-        overview = await proj_service.project_overview(repo)
+    # Concurrent, as in fleet_overview: awaiting ~40 repos in turn took 17-26 s cold.
+    overviews = await asyncio.gather(*(proj_service.project_overview(repo) for repo in repos))
+    for repo, overview in zip(repos, overviews, strict=True):
         decisions = overview.get("decisions_needed", [])
         for idx, dec in enumerate(decisions):
             items.append(
