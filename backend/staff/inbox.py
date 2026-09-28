@@ -359,7 +359,8 @@ def _collect_auth_sign_ins() -> list[InboxItem]:
 
         probes = probe_provider_availability()
         for entry in PROVIDER_REGISTRY:
-            if not entry.enabled:
+            # A "future" provider is never dispatched to, so its sign-in is nobody's action.
+            if not entry.enabled or entry.dispatch_mode == "future":
                 continue
             avail = probes.get(entry.dashboard_id)
             if avail and avail.get("installed") and not avail.get("authenticated"):

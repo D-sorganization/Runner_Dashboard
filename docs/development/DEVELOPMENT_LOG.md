@@ -25,10 +25,10 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1712
 - **Branch:** `fix/1712-approval-deep-link`
 - **PR:** see branch
-- **Paths:** `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/InboxPanel.tsx`, `backend/staff/inbox.py`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/__tests__/StaffPageConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`, `tests/api/test_staff_inbox.py`
+- **Paths:** `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/InboxPanel.tsx`, `backend/staff/inbox.py`, `tests/staff/test_inbox_auth_sign_ins.py`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/__tests__/StaffPageConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`, `tests/api/test_staff_inbox.py`
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (Staff vitest 210 passed; test_staff_inbox 5 passed)
-- **Summary:** `/staff?thread=` opens that thread in the desktop console, and inbox thread links open in place, so a proposal's Approve/Deny card is reachable. Approval items name the role, repo and proposal id. The desktop console reflows at 1280px and 900px so the conversation keeps a readable width.
+- **Summary:** `/staff?thread=` opens that thread in the desktop console, and inbox thread links open in place, so a proposal's Approve/Deny card is reachable. Approval items name the role, repo and proposal id. The desktop console reflows at 1280px and 900px so the conversation keeps a readable width. The inbox no longer asks the owner to sign in to never-dispatched (`future`) providers such as Cline.
 - **Next step:** Arm auto-merge on the PR once its CI is green.
 
 ### DL-#1711 — Style the Staff inbox panel

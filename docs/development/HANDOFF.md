@@ -17,6 +17,7 @@ Last updated: 2026-09-27
 - Barb's live test 4: the owner could not approve `prop_166a825b0f32`. Approval inbox items link to `/staff?thread=<id>`, but only the mobile console read `?thread=`, so the desktop console opened with no thread and the ActionCard (Approve/Deny) never rendered.
 - `StaffPage` now seeds `selectedThread` from `?thread=`. `InboxPanel` takes `onOpenThread` and opens `/staff?thread=` links in place (console section), as it already did for `?run=`.
 - `staff/inbox.py` `_approval_text`: a dispatch approval's title names the role and repo; every summary shows the rationale or a prompt excerpt (160 chars) and ends with `(proposal <id>)`, so near-duplicates can be told apart.
+- `staff/inbox.py` `_collect_auth_sign_ins` skips `dispatch_mode="future"` providers. Cline raised a permanent HIGH "Sign-in required" alert although nothing dispatches to it.
 - `StaffConsole/desktop.css`: breakpoints at 1280px (context pane drops under the conversation) and 900px (one column). At 800px the conversation column was about 90px wide, one word per line.
 - `InboxPanel.css` (new): the panel's classes had no stylesheet. Items are cards, filters are pills, the degraded-source warning is clamped to 3 lines with the full text in `title`, and the list scrolls at 420px.
 
