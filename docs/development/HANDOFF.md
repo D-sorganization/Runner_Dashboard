@@ -1,3 +1,49 @@
+# Current handoff — SC-G6: Maxwell page becomes a provider-status view (DL-#1338-maxwell)
+
+Last updated: 2026-09-27
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `Runner_Dashboard-worktrees/claude-1338-maxwell`
+- Branch: `feat/1338-maxwell-provider-status`
+- Baseline commit: `add4f7da`
+- Implementation commit: `SELF`
+- Pull request: #1717 (draft → ready once PR CI is green)
+- Governing issue/epic: #1338 (SC-G6 owner decisions recorded 2026-09-25, row "Maxwell"); DL-#1338-maxwell.
+
+## Objective and status
+
+- Owner decision: Maxwell-Daemon stays a staff provider; its chat folds into the Staff Console (#1330, shipped in #1435) and the page becomes a provider-status view.
+- `pages/MaxwellPage.tsx`: the desktop Maxwell page keeps the status stat row, start/stop/restart controls, dashboard link and recent tasks, and drops the chat console. It links to the Staff Console for chat.
+- `pages/MaxwellPanels.tsx`: `MaxwellChatPanel` and `ChatMessage` removed (only the desktop page used them). `index.css`: the rules only that panel used are removed.
+- `shell/intro.ts`: the Maxwell intro says chat lives in the Staff Console.
+- Unchanged: the mobile Maxwell page (`pages/Maxwell/Mobile.tsx`, its own chat), `/api/maxwell/chat` (used by mobile and codebase chat), and every other `/api/maxwell/*` route.
+
+## Files and decisions
+
+- Tests: chat cases removed from `MaxwellPage.test.tsx`; one new case pins the status-view contract. The desktop-only `maxwell-composer` marker leaves the integrity and mobile-harness marker lists (the mobile chat keeps `maxwell-chat-messages`).
+
+## Validation
+
+- The new test failed first (1 failing, 12 passing).
+- WSL on the row-4/row-5 stack: vitest (MaxwellPage, Maxwell, shell) 324 passed, 2 failed (the known WSL-only #1345 mobile nav timeouts); typecheck and eslint clean; integrity/mobile-harness pytest 75 passed, 1 xfailed.
+- WSL on the original base: vitest (MaxwellPage, Maxwell, intro, RoutedShell) 95 passed, 2 failed (the known WSL-only #1345 mobile nav timeouts); tsc clean; eslint clean; pytest test_frontend_integrity.py and test_mobile_test_harness.py passed.
+
+## Blockers and risks
+
+- The mobile Maxwell page still has chat; the owner row names "the page", and mobile was left as is. Flagged in the PR for a decision.
+
+## Next steps
+
+1. Confirm #1717's CI is green (quality-gate, tests, Vitest, ci-health-check), mark it ready and arm auto-merge via automerge_guard.
+
+## Change log
+
+- 2026-09-27: Maxwell desktop page reduced to a provider-status view with a Staff Console chat link.
+
+---
+
 # Current handoff — SC-G6: Assessments split into Projects (DL-#1338-assessments)
 
 Last updated: 2026-09-27

@@ -2887,11 +2887,6 @@ th.sortable.active .sort-indicator {
   font-size: 11px;
   color: var(--text-muted);
 }
-.maxwell-chat {
-  min-height: min(62vh, 560px);
-  display: flex;
-  flex-direction: column;
-}
 .maxwell-chat-messages {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -2921,40 +2916,6 @@ th.sortable.active .sort-indicator {
 .maxwell-chat-bubble.maxwell {
   align-self: flex-start;
   background: var(--bg-tertiary);
-}
-.maxwell-chat-empty {
-  margin: auto;
-  max-width: 420px;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
-  text-align: center;
-}
-.maxwell-quick-actions {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 10px 0 8px;
-}
-.maxwell-composer {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  padding-top: 10px;
-  background: var(--bg-primary);
-}
-.maxwell-composer textarea {
-  min-height: 42px;
-  max-height: 132px;
-  resize: vertical;
-}
-.maxwell-scroll-button {
-  align-self: center;
-  margin: -38px auto 8px;
-  z-index: 6;
 }
 
 /* ── Mobile responsive ── */
@@ -3155,20 +3116,12 @@ th.sortable.active .sort-indicator {
     width: 100%;
     box-sizing: border-box;
   }
-  .maxwell-chat {
-    min-height: calc(100dvh - 210px);
-  }
   .maxwell-chat-messages {
     min-height: 320px;
     border-radius: 8px 8px 0 0;
   }
   .maxwell-chat-bubble {
     max-width: 94%;
-  }
-  .maxwell-composer {
-    margin: 0 -12px -12px;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--border);
   }
 }
 @media (max-width: 480px) {

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338-maxwell — SC-G6: Maxwell page becomes a provider-status view
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (owner decision row "Maxwell", recorded 2026-09-25)
+- **Branch:** `feat/1338-maxwell-provider-status`
+- **PR:** #1717
+- **Paths:** `frontend/src/pages/MaxwellPage.tsx`, `frontend/src/pages/MaxwellPanels.tsx`, `frontend/src/index.css`, `frontend/src/shell/intro.ts`, `frontend/src/pages/__tests__/MaxwellPage.test.tsx`, `tests/test_frontend_integrity.py`, `tests/frontend/mobile/viewport_profiles.json`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (WSL vitest 95/97, the 2 failures are the known WSL-only #1345 timeouts; tsc, eslint and the integrity/mobile-harness pytest pass)
+- **Summary:** The desktop Maxwell page shows provider status, daemon controls and recent tasks; its chat console is removed and the page links to the Staff Console, where Maxwell chat lives since #1330. Backend routes are unchanged.
+- **Next step:** Arm auto-merge on #1717 once its CI is green.
+
 ### DL-#1338-assessments — SC-G6: Assessments split into Projects
 
 - **State:** in_review
