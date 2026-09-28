@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1748 | Diagnostics fall back to the deployed commit from deployment metadata on artifact installs, and git-drift reports unknown instead of "up to date" when it has no commits. |
 | 2026-09-28 | #1745 | Scheduled-workflow inventory reads workflow files by blob SHA (cached) with bounded concurrency, and the hub answers degraded within the proxy timeout instead of a 504. |
 | 2026-09-28 | #1747 | Fleet page no longer renders the hard-coded "Fair Sharing & Active Leases" design preview, and Fleet Alerts shows a checking state instead of "All systems nominal" while loading. |
 | 2026-09-28 | #1744 | Staff Roster shows a role's window as 22:00–06:00 instead of [object Object]; the Console role pane shows the real daily cap and schedule, and unknown spend as —. |

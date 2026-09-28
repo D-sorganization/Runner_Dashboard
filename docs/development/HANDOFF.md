@@ -119,6 +119,34 @@ Last updated: 2026-09-28
 - Validation (WSL, `rd-test-venv`): `pytest tests -q -k "scheduled or proxy"` — 110 passed. `ruff check backend tests` — all checks passed. `ruff format --check` on changed files — clean. `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` — clean.
 - Next: open the PR as draft.
 
+## Diagnostics on artifact installs, #1748 (DL-#1748)
+
+- Branch `fix/diagnostics-artifact-commit` (worktree `claude-gitdiag`), from main `ae93a03c`.
+  PR: not created.
+- Every hub is installed from a build artifact with no `.git` directory. `GET /api/diagnostics/summary`
+  ran `git rev-parse --short HEAD`, got nothing, and reported `git_commit: "unknown"` even though
+  `server.py`'s `_deployment_info` (written by `deploy/update-deployed.sh`) already knows the deployed
+  `git_sha`. `GET /api/deployment/git-drift` had the matching problem: empty `source`/`remote` commits
+  still reported `is_drifted: false, drift_details: "up to date"` — a claim it cannot make without
+  either commit.
+- `backend/routers/diagnostics.py`: new `set_deployment_info_getter(getter)` (mirrors
+  `routers/runners.py`'s `set_system_metrics_getter` idiom) registers a `Callable[[], dict[str, Any]]`
+  without importing `server` (circular). When `git rev-parse --short HEAD` yields empty output or
+  raises, `git_commit` falls back to the registered getter's `git_sha` (first 8 chars) when present
+  and not `"unknown"`; otherwise `"unknown"`. `backend/server.py` (~line 2504, next to the deployment
+  router's `set_dependencies` call) registers it with `_deployment_info`.
+- `backend/routers/deployment.py` `get_git_drift`: when either the source or remote commit is empty or
+  `"unknown"`, returns `is_drifted: None` and
+  `drift_details: "unknown (no git checkout; see /api/deployment/drift)"` instead of `False` /
+  `"up to date"`. Behavior is unchanged when both commits are present.
+- Frontend consumers (`Diagnostics.tsx`, `OperationsDiagnosticsSection.tsx`, `FleetStatusBanner.tsx`,
+  `FleetTab.tsx`, `OverviewPage.tsx`) all gate on `data.is_drifted` / `driftInfo.is_drifted` truthiness,
+  so `null` renders the same as `false` (not drifted) — no frontend changes were needed.
+- Validation: WSL `pytest tests -q -k "diagnostic or drift"` 114 passed (7 new, red before the fix,
+  green after); `ruff check` and `ruff format --check` clean on changed files; `mypy backend/
+--ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional` clean (318 files).
+- Next: open the PR as draft.
+
 ---
 
 # Historical handoffs

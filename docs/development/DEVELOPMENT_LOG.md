@@ -18,6 +18,25 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1748 — Diagnostics report the deployed commit on artifact installs
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1748
+- **Branch:** `fix/diagnostics-artifact-commit`
+- **PR:** not created
+- **Paths:** `backend/routers/diagnostics.py`, `backend/routers/deployment.py`, `backend/server.py`,
+  `tests/api/test_diagnostics_deployed_commit.py`, `tests/api/test_deployment_git_drift.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests -q -k "diagnostic or drift"` 114 passed;
+  `ruff check`/`ruff format --check` clean; `mypy backend/` clean, 318 files)
+- **Summary:** Artifact-installed hubs have no `.git` directory, so `/api/diagnostics/summary` always
+  reported `git_commit: "unknown"` and `/api/deployment/git-drift` claimed "up to date" with no
+  commits to compare. Diagnostics now falls back to the deployed `git_sha` from deployment metadata
+  (via a new `set_deployment_info_getter`, no `server` import); git-drift reports `is_drifted: null`
+  and an explicit unknown-state message when either commit is missing.
+- **Next step:** Open the PR as draft.
+
 ### DL-#1745 — Scheduled workflows inventory loads within the proxy timeout
 
 - **State:** in_review
