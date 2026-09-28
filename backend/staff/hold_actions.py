@@ -36,6 +36,7 @@ def execute_staff_hold(params: dict[str, Any], ctx: ActionContext) -> ActionResu
                 applies_to=applies_to,
                 lifted_when=str(params.get("lifted_when") or ""),
                 active=True,
+                kind="schedule",  # a staff.hold action always blocks scheduling (#1726)
             )
         )
     hl.replace([h.to_dict() for h in holds])

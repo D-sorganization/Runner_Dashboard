@@ -7233,6 +7233,8 @@ export interface components {
             applies_to?: string[];
             /** Id */
             id?: string | null;
+            /** Kind */
+            kind?: ("guardrail" | "schedule") | null;
             /**
              * Lifted When
              * @default
@@ -8349,6 +8351,12 @@ export interface components {
         /**
          * StaffHold
          * @description One policy hold.
+         *
+         *     ``kind``: ``"guardrail"`` (seeded from a role's YAML ``holds:`` list;
+         *     stays in the role prompt, shown in the UI as a standing rule, never
+         *     blocks scheduling) or ``"schedule"`` (created via the Holds tab, the
+         *     holds API, or a ``staff.hold`` action; blocks scheduling). Owner
+         *     decision, issue #1726.
          */
         StaffHold: {
             /** Active */
@@ -8357,6 +8365,12 @@ export interface components {
             applies_to: string[];
             /** Id */
             id: string;
+            /**
+             * Kind
+             * @default schedule
+             * @enum {string}
+             */
+            kind: "guardrail" | "schedule";
             /** Lifted When */
             lifted_when: string;
             /** Set On */

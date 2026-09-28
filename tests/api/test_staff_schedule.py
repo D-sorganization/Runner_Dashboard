@@ -175,6 +175,155 @@ def test_hold_matches_role_star_repo_and_inactive() -> None:
     assert not holds_mod.matches(off, "night-watch")
 
 
+# ── guardrail vs schedule kind (#1726) ──────────────────────────────────────
+@pytest.mark.unit
+def test_seeded_holds_are_guardrails_and_never_block_scheduling(tmp_path: Path) -> None:
+    """Owner decision (#1726): seeded role-file holds are guardrails, kept in the role prompt
+
+    and shown as standing rules, but they never block the scheduler.
+    """
+    path = tmp_path / "cfg" / "staff_holds.json"
+    holds = holds_mod.HoldsList(path, roles_loader=_roles)
+    seeded = holds.load()
+    assert {h.text: h.kind for h in seeded} == {"no bulk stale-queue cancel": "guardrail", "never merge": "guardrail"}
+    # never blocks, even though it matches the role
+    assert holds.blocking("night-watch") is None
+    assert holds.blocking("steward") is None
+    # but it is still visible via load() for the role prompt / holds tab / briefing
+    assert any(h.text == "never merge" and h.active for h in holds.load())
+
+
+@pytest.mark.unit
+def test_hold_created_via_api_or_action_is_schedule_kind_and_blocks(tmp_path: Path) -> None:
+    """A hold with no seed match (created via the Holds tab / API / staff.hold action) blocks."""
+    holds = holds_mod.HoldsList(tmp_path / "staff_holds.json", roles_loader=_roles)
+    holds.replace([{"text": "freeze deploys", "applies_to": ["night-watch"]}])
+    saved = holds.load()
+    assert saved[0].kind == "schedule"
+    blocker = holds.blocking("night-watch")
+    assert blocker is not None and blocker.text == "freeze deploys"
+    # an explicit kind always wins over the default
+    holds.replace([{"text": "guarded note", "applies_to": ["night-watch"], "kind": "guardrail"}])
+    assert holds.load()[0].kind == "guardrail"
+    assert holds.blocking("night-watch") is None
+
+
+@pytest.mark.unit
+def test_legacy_persisted_seeded_hold_migrates_to_guardrail_on_load(tmp_path: Path) -> None:
+    """Existing live holds seeded before #1726 (no ``kind`` field) become guardrails on upgrade,
+
+    with no manual step, as long as their text still matches a role YAML seed.
+    A legacy hold that does NOT match any current seed keeps blocking (the pre-#1726 default).
+    """
+    path = tmp_path / "staff_holds.json"
+    path.write_text(
+        json.dumps(
+            {
+                "holds": [
+                    {
+                        "id": "hold-a",
+                        "text": "Never merge",  # merged seed applies_to is ["night-watch", "steward"]
+                        "set_on": "2026-09-22",
+                        "lifted_when": "",
+                        "applies_to": ["steward", "night-watch"],  # order differs from the seed; text still matches
+                        "active": True,
+                    },
+                    {
+                        "id": "hold-b",
+                        "text": "freeze Maxwell starts",  # not seeded by any role
+                        "set_on": "2026-09-22",
+                        "lifted_when": "",
+                        "applies_to": ["*"],
+                        "active": True,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    holds = holds_mod.HoldsList(path, roles_loader=_roles)
+    loaded = {h.text: h.kind for h in holds.load()}
+    assert loaded == {"Never merge": "guardrail", "freeze Maxwell starts": "schedule"}
+    # the migration is persisted, so a second load (even with roles unavailable) is stable
+    stale_roles_holds = holds_mod.HoldsList(path, roles_loader=dict)
+    assert {h.text: h.kind for h in stale_roles_holds.load()} == loaded
+    # "freeze Maxwell starts" (schedule, applies_to "*") blocks every role...
+    assert holds.blocking("steward").text == "freeze Maxwell starts"  # type: ignore[union-attr]
+    # ...but with only the guardrail active, the same role is not blocked
+    holds.replace([{"text": "Never merge", "applies_to": ["steward", "night-watch"], "kind": "guardrail"}])
+    assert holds.blocking("steward") is None
+
+
+@pytest.mark.unit
+def test_legacy_seeded_hold_still_migrates_after_a_role_drops_it(tmp_path: Path) -> None:
+    """The live hub case: holds seeded for barb + orchestrator, then orchestrator was retired
+    and its YAML no longer lists them. Matching is by seeded text, so they still become guardrails.
+    """
+    path = tmp_path / "staff_holds.json"
+    path.write_text(
+        json.dumps(
+            {
+                "holds": [
+                    {
+                        "id": "hold-a",
+                        "text": "never MERGE ",  # case/whitespace differ from the seed
+                        "set_on": "2026-09-22",
+                        "applies_to": ["steward", "night-watch", "retired-role"],
+                        "active": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    holds = holds_mod.HoldsList(path, roles_loader=_roles)
+    [hold] = holds.load()
+    assert hold.kind == "guardrail"
+    assert hold.applies_to == ["steward", "night-watch", "retired-role"]
+    assert holds.blocking("retired-role") is None
+
+
+@pytest.mark.unit
+def test_guardrail_hold_still_reaches_the_briefing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Guardrail text flows into the pre-work briefing an agent reads before starting (#1229, #1726)."""
+    from coordination import briefing as briefing_mod
+
+    holds = holds_mod.HoldsList(tmp_path / "staff_holds.json", roles_loader=_roles)
+    holds.load()  # seed: "no bulk stale-queue cancel" / "never merge" are guardrails
+
+    class _S:
+        def __init__(self) -> None:
+            self.holds = holds
+
+    monkeypatch.setattr(briefing_mod, "get_scheduler", lambda: _S())
+    rows, warnings = briefing_mod._holds()
+    assert warnings == []
+    assert {r["text"] for r in rows} == {"no bulk stale-queue cancel", "never merge"}
+    assert all(r["kind"] == "guardrail" for r in rows)
+
+
+@pytest.mark.unit
+def test_scheduler_evaluate_and_status_ignore_guardrail_holds(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+) -> None:
+    """Roster/schedule status: a role with only guardrail holds stays dispatchable (#1726)."""
+    s, runner, clock = sched
+    role = runner.roles()["night-watch"]
+    s.holds.replace([{"text": "guardrail note", "applies_to": ["night-watch"], "kind": "guardrail"}])
+    report = s.evaluate(role, clock["now"])
+    assert report["hold"] is None
+    rows = {r["role"]: r for r in s.status()}
+    assert rows["night-watch"]["hold"] is None
+    # a schedule-kind hold on the same role still blocks
+    s.holds.replace(
+        [
+            {"text": "guardrail note", "applies_to": ["night-watch"], "kind": "guardrail"},
+            {"text": "real freeze", "applies_to": ["night-watch"], "kind": "schedule"},
+        ]
+    )
+    assert s.evaluate(role, clock["now"])["hold"] == "real freeze"
+
+
 # ── budget ───────────────────────────────────────────────────────────────
 class _FakeStore:
     def __init__(self, spend: dict[str, float]) -> None:
@@ -387,6 +536,7 @@ def test_holds_routes_get_put_validate(client: TestClient) -> None:
     assert r.status_code == 200, r.text
     saved = r.json()["holds"]
     assert saved[0]["text"] == "no bulk stale-queue cancel" and saved[0]["active"] is True
+    assert saved[0]["kind"] == "schedule"  # created via the API, not seeded (#1726)
     assert client.get("/api/staff/holds").json()["holds"] == saved
     assert client.put("/api/staff/holds", json={"holds": [{"text": ""}]}, headers=_XHR).status_code == 422
     dup = {"holds": [{"id": "d", "text": "a"}, {"id": "d", "text": "b"}]}

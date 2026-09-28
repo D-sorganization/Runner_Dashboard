@@ -31,15 +31,10 @@ export function computeRoleStatus(
   }
 
   // 2. Unavailable operational blocks
-  // 2a. Operational holds active
-  if (role.holds && role.holds.length > 0) {
-    // TODO(#1726): distinguish guardrails from scheduling holds
-    const count = role.holds.length;
-    return {
-      status: "unavailable",
-      reason: `${count} standing rule${count === 1 ? "" : "s"}`,
-    };
-  }
+  // 2a. `role.holds` is a role's declared `holds:` YAML list — always guardrails (owner
+  // decision, #1726): they stay in the role prompt as standing rules but never block
+  // scheduling, so they do not make the role unavailable. See getRoleTooltipText for
+  // where they are still surfaced, informationally, to the operator.
 
   // 2b. Budget limit reached
   if (
@@ -179,14 +174,15 @@ export function formatRelativeTime(isoString?: string | null): string {
 
 /**
  * Returns full tooltip text describing the role's status.
- * For roles with holds, lists every hold reason in full.
+ * For roles with standing rules (guardrail holds, #1726), lists every one in full;
+ * they are informational and do not change the role's status.
  */
 export function getRoleTooltipText(
   role: StaffRoleItem,
   availableProviders?: Record<string, boolean>
 ): string {
   if (role.holds && role.holds.length > 0) {
-    return role.holds.join(", ");
+    return `Standing rule: ${role.holds.join(", ")}`;
   }
   const { reason, status } = computeRoleStatus(role, availableProviders);
   return reason || status;

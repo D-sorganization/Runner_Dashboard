@@ -23,35 +23,44 @@ describe("categorizeRole advisors (Repository_Management#1788)", () => {
   });
 });
 
-describe("computeRoleStatus hold presentation (Workstream C / #1721)", () => {
-  it("formats single hold as '1 standing rule' instead of 'held: ...'", () => {
+describe("computeRoleStatus and standing rules (guardrail holds, #1726)", () => {
+  it("a role with only standing rules (declared holds:) stays dispatchable, not unavailable", () => {
     const heldRole: StaffRoleItem = {
       ...role("held-1"),
       holds: ["quarantine"],
     };
     const res = computeRoleStatus(heldRole);
-    expect(res.status).toBe("unavailable");
-    expect(res.reason).toBe("1 standing rule");
+    // owner decision (#1726): seeded holds are guardrails — they never block scheduling,
+    // so they must not make the role "unavailable" in the roster either.
+    expect(res.status).toBe("idle");
   });
 
-  it("formats multiple holds as 'N standing rules'", () => {
+  it("multiple standing rules still leave the role dispatchable", () => {
     const heldRole: StaffRoleItem = {
       ...role("held-2"),
       holds: ["quarantine", "C3 HOLD", "rate-limit"],
     };
     const res = computeRoleStatus(heldRole);
-    expect(res.status).toBe("unavailable");
-    expect(res.reason).toBe("3 standing rules");
+    expect(res.status).toBe("idle");
+  });
+
+  it("a role that is actually unavailable for another reason stays unavailable even with standing rules", () => {
+    const heldAndBudgeted: StaffRoleItem = {
+      ...role("held-3"),
+      holds: ["quarantine"],
+      budget: { usd_per_day: 10, spend_today: 10 },
+    };
+    expect(computeRoleStatus(heldAndBudgeted).status).toBe("unavailable");
   });
 });
 
-describe("getRoleTooltipText (Workstream C / #1721)", () => {
-  it("returns full hold reasons joined in tooltip text", () => {
+describe("getRoleTooltipText (Workstream C / #1721, relabeled #1726)", () => {
+  it("labels declared holds as standing rules, not a blocking hold", () => {
     const heldRole: StaffRoleItem = {
       ...role("held-specialist"),
       holds: ["quarantine", "C3 HOLD"],
     };
-    expect(getRoleTooltipText(heldRole)).toBe("quarantine, C3 HOLD");
+    expect(getRoleTooltipText(heldRole)).toBe("Standing rule: quarantine, C3 HOLD");
   });
 
   it("returns reason for budget exhausted and provider issues", () => {

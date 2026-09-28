@@ -460,6 +460,11 @@ def test_staff_hold_and_unhold_lifecycle() -> None:
     assert res_hold.success is True
     assert res_hold.verification_ok is True
 
+    from staff.holds import HoldsList  # noqa: PLC0415
+
+    created = next(h for h in HoldsList().load() if h.id == res_hold.result["hold_id"])
+    assert created.kind == "schedule"  # a staff.hold action always blocks scheduling (#1726)
+
     # Unhold proposal
     unhold_prop = store.create_proposal(
         message_id="msg_h2",

@@ -5,7 +5,8 @@ Every ``tick_seconds`` the scheduler walks the dispatchable roles that carry a
 when the next slot after the role's cursor has passed and every gate opens:
 
   1. the role's ``window`` (``start``/``end``, overnight allowed) contains now;
-  2. no active hold matches the role (``staff.holds``);
+  2. no active *schedule*-kind hold matches the role (``staff.holds``); seeded
+     guardrail holds never block (owner decision, #1726);
   3. the role has no queued/preparing/running run already;
   4. the daily budget allows another run (``staff.budget``).
 
