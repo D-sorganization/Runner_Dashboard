@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1747 — Fleet page shows only real data and honest loading states
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1747
+- **Branch:** `fix/fleet-honest-panels`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/OverviewPage.tsx`, `frontend/src/pages/OverviewLeases.tsx` (deleted), `frontend/src/pages/Fleet/FleetAlertsSection.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (Fleet + Overview vitest 54 passed; typecheck and eslint clean)
+- **Summary:** The Fleet page rendered a hard-coded fake "Active Leases" preview and claimed "All systems nominal" before alerts had loaded. The preview is removed and the alerts section shows a checking state while loading.
+- **Next step:** Open the PR as draft, then mark it ready and arm auto-merge via `automerge_guard`.
+
 ### DL-#1742 — Queue page does not claim idle before its data arrives
 
 - **State:** in_review

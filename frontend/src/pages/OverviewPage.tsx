@@ -12,7 +12,6 @@ import {
   FLEET_ACTIONS,
   type FleetRowActionKey,
 } from "./Fleet";
-import { OverviewLeases } from "./OverviewLeases";
 import { legacyFetch } from "../lib/api";
 import {
   alertContentHash,
@@ -462,10 +461,7 @@ export function OverviewPage(): React.ReactElement {
         />
       </div>
 
-      {/* 6. Active Leases Strip */}
-      <OverviewLeases />
-
-      {/* 7. SC-E6: Maintenance Action Modal with dry-run */}
+      {/* 6. SC-E6: Maintenance Action Modal with dry-run */}
       <MaintenanceActionModal
         isOpen={modalState.isOpen}
         target={modalState.target}

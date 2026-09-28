@@ -15,10 +15,6 @@ vi.mock("../Events", () => ({
   OverviewEventSection: () => <div data-testid="overview-events" />,
 }));
 
-vi.mock("../OverviewLeases", () => ({
-  OverviewLeases: () => <div data-testid="overview-leases" />,
-}));
-
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -147,7 +143,9 @@ describe("OverviewPage", () => {
 
     expect(await screen.findByRole("region", { name: "Fleet status" })).toBeInTheDocument();
     expect(screen.getByTestId("overview-events")).toBeInTheDocument();
-    expect(screen.getByTestId("overview-leases")).toBeInTheDocument();
+    // #1747: the hard-coded "Fair Sharing & Active Leases" design preview is not fleet data.
+    expect(screen.queryByText(/Fair Sharing & Active Leases/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Relinquish Runner/)).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/runners",
       expect.objectContaining({ headers: expect.any(Headers) }),

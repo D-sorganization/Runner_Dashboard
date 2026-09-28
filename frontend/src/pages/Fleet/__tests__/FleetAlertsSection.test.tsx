@@ -83,6 +83,21 @@ describe("FleetAlertsSection", () => {
     expect(screen.getByText(/No active alerts or hosted-runner violations/i)).toBeInTheDocument();
   });
 
+  it("does not claim nominal while the first load is in flight (#1747)", () => {
+    render(
+      <FleetAlertsSection
+        alerts={[]}
+        runnerAudit={null}
+        loading={true}
+        error={null}
+        onRefreshAudit={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText(/All systems nominal/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Checking alerts/i)).toBeInTheDocument();
+  });
+
   it("fails visibly with independent error state and retry CTA", () => {
     const onRetry = vi.fn();
     render(

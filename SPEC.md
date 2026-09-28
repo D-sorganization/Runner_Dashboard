@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1747 | Fleet page no longer renders the hard-coded "Fair Sharing & Active Leases" design preview, and Fleet Alerts shows a checking state instead of "All systems nominal" while loading. |
 | 2026-09-28 | #1742 | Work → Queue shows `—` (loading or unknown) instead of idle/empty until its first `/api/queue` payload arrives, and names a failed load. |
 | 2026-09-28 | #1740 | Service worker registers with a per-build id (git short SHA, or `VITE_BUILD_ID`) instead of `dev`, so it updates after each deploy and its cache rotates. |
 | 2026-09-28 | #1737 | Frontend calls only routes that exist (#1735): `GET /api/stats/workflows`, `GET /api/stats/workflows/timeseries` and `POST /api/stats/workflows/collect` serve Insights → Stats from `workflow_stats`; `POST /api/auth/refresh` confirms a live session (401 otherwise); Diagnostics links `/api/fleet/status`; ten dead hooks removed; a test fails when a frontend `/api/` literal has no backend route. |

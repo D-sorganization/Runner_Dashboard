@@ -69,6 +69,14 @@ Last updated: 2026-09-28
 - Validation: `npx vitest run frontend/src/pages/Queue` 63 passed (new `QueueLoadingState.test.tsx` red before the fix); `npm run typecheck` and eslint clean.
 - Next: mark #1743 ready and arm via `automerge_guard` once CI is green.
 
+## Fleet page honest panels, #1747 (DL-#1747)
+
+- Branch `fix/fleet-honest-panels` (worktree `claude-leases`), from main `4688db93`. PR not created yet.
+- `frontend/src/pages/OverviewLeases.tsx` was a hard-coded design preview ("Fair Sharing & Active Leases — Wave 3": a fake 45m/2h lease on `ubuntu-latest-4xlarge`, a `jules-bot` row, dead "Relinquish Runner" / "View Logs" buttons) rendered live on the Fleet page. Removed from `OverviewPage.tsx`; the component and its test are deleted. No lease/fair-share backend exists to feed it.
+- `frontend/src/pages/Fleet/FleetAlertsSection.tsx` said "All systems nominal" while the first load was in flight; it now shows "Checking alerts and hosted-runner usage…" until loading ends.
+- Validation: `npx vitest run frontend/src/pages/Fleet frontend/src/pages/__tests__/OverviewPage.test.tsx` 54 passed (the two new assertions red first); `npm run typecheck` and eslint clean.
+- Next: open the PR as draft, then mark ready and arm via `automerge_guard`.
+
 ---
 
 # Historical handoffs
