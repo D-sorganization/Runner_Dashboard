@@ -18,6 +18,32 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1723 — App shell and primitives restyled
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1723
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `frontend/src/shell/**` (not MobileShell), `frontend/src/primitives/**`, shell/primitive rules in `frontend/src/index.css`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (shell + primitives + pages vitest 145 files / 1223 passed; tsc and full eslint clean; 1440x900 browser check)
+- **Summary:** Linear-style 240px sidebar with product mark, section labels and an icon rail; 52px top bar with breadcrumb, a search trigger with a Ctrl K chip, and icon buttons with dropdowns for density, theme and provider; primitives (Dialog, Dropdown, Tooltip, Toaster, Pill, CommandPalette) use tokens and visible focus rings.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
+### DL-#1721 — Staff Console roster and context pane restyled
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1721
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** `frontend/src/pages/StaffConsole/{Roster,RosterGroup,RosterRow,ContextPane}.tsx`, `roster.css`, `context.css`, `rosterUtils.ts`
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (StaffConsole vitest 27 files / 214 passed; browser check: status dot pinned to the avatar corner)
+- **Summary:** Roster rows get tinted avatars, status dots and a full-reason tooltip; held roles read "N standing rules" instead of the raw hold text (guardrail vs schedule split tracked in #1726); groups collapse and persist; the context pane gets skeleton loading and token-only styling.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1722 — Console-first Staff page with an Attention drawer
 
 - **State:** in_review
@@ -55,19 +81,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (design/shell/primitives vitest 424 tests pass (one RoutedShell lazy-route flake under load, 3/3 green alone); tsc and eslint clean)
 - **Summary:** Neutral charcoal and white palettes with a 12–24px type scale; `.glass-card` is flat and no longer repaints on hover (the grey centre the owner saw), with an opt-in `.glass-card--interactive`; muted text kept at WCAG AA 4.5:1 on every surface (agy had loosened the guard to 3:1).
-- **Next step:** Ship in the consolidated UX PR for epic #1718.
-
-### DL-#1721 — Staff Console roster and context pane restyled
-
-- **State:** in_review
-- **Owner:** claude
-- **Issue:** #1721
-- **Branch:** `feat/ux-overhaul`
-- **PR:** see branch
-- **Paths:** `frontend/src/pages/StaffConsole/{Roster,RosterGroup,RosterRow,ContextPane}.tsx`, `roster.css`, `context.css`, `rosterUtils.ts`
-- **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (StaffConsole vitest 27 files / 207 passed; tsc and eslint clean)
-- **Summary:** Roster rows get tinted avatars, status dots and a full-reason tooltip; held roles read "N standing rules" instead of the raw hold text (guardrail vs schedule split tracked in #1726); groups collapse and persist; the context pane gets skeleton loading and token-only styling.
 - **Next step:** Ship in the consolidated UX PR for epic #1718.
 
 ### DL-#1713 — Desktop top bar no longer widens the page

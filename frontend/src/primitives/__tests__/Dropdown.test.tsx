@@ -138,4 +138,34 @@ describe("Dropdown", () => {
     fireEvent.mouseDown(screen.getByRole("button", { name: "outside" }));
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
+
+  it("applies polish tokens: --bg-card, 6px padding, and 30px items", () => {
+    const { items: its } = items();
+    render(<Dropdown label="Menu" items={its} />);
+    fireEvent.click(screen.getByRole("button", { name: /menu/i }));
+    const menu = screen.getByRole("menu");
+    expect(menu.style.background).toBe("var(--bg-card)");
+    expect(menu.style.padding).toBe("6px");
+
+    const menuitems = screen.getAllByRole("menuitem");
+    expect(menuitems[0].style.height).toBe("30px");
+  });
+
+  it("supports hideLabel icon button mode with accessible label", () => {
+    const { items: its } = items();
+    const DummyIcon = () => <span data-testid="dummy-icon" />;
+    render(
+      <Dropdown
+        label="Comfortable"
+        Icon={DummyIcon}
+        hideLabel
+        tooltip="Change density"
+        items={its}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /comfortable/i });
+    expect(trigger).toBeInTheDocument();
+    expect(screen.getByTestId("dummy-icon")).toBeInTheDocument();
+  });
 });
+

@@ -13,8 +13,9 @@
 import React, { useMemo, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Tooltip } from "../primitives/Tooltip";
+import { Dropdown } from "../primitives/Dropdown";
 import { CommandPalette, type Command } from "../primitives/CommandPalette";
-import { NAV_ITEMS } from "./navRegistry";
+import { NAV_ITEMS, NAV_GROUPS } from "./navRegistry";
 
 export interface ShellAction {
   /** Stable identifier. */
@@ -52,8 +53,8 @@ function SearchIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
-      width="16"
-      height="16"
+      width="15"
+      height="15"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -68,6 +69,87 @@ function SearchIcon({ className }: { className?: string }) {
   );
 }
 
+function RefreshIcon({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg
+      className={className}
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+    </svg>
+  );
+}
+
+function UserAvatarIcon({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg
+      className={className}
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function LoginIcon({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+      <polyline points="10 17 15 12 10 7" />
+      <line x1="15" y1="12" x2="3" y2="12" />
+    </svg>
+  );
+}
+
+function LogoutIcon({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
+
 function assertActions(actions: ShellAction[]): void {
   for (const a of actions) {
     if (!a.id || !a.label || !a.tooltip || a.tooltip.trim().length === 0) {
@@ -78,18 +160,46 @@ function assertActions(actions: ShellAction[]): void {
   }
 }
 
+function UserMenuAction({ action }: { action: ShellAction }): React.ReactElement {
+  const isLogout = action.label.toLowerCase().includes("out");
+  return (
+    <Dropdown
+      id="shell-user-menu"
+      data-testid="shell-user-menu"
+      label={action.label}
+      hideLabel={true}
+      tooltip={action.tooltip}
+      Icon={UserAvatarIcon}
+      align="right"
+      triggerClassName="shell-action shell-action--avatar"
+      items={[
+        {
+          id: "auth",
+          label: action.label,
+          Icon: isLogout ? LogoutIcon : LoginIcon,
+          onSelect: () => action.onClick(),
+        },
+      ]}
+    />
+  );
+}
+
 function ActionButton({ action }: { action: ShellAction }): React.ReactElement {
-  const Icon = action.Icon;
+  if (action.id === "auth") {
+    return <UserMenuAction action={action} />;
+  }
+  const Icon = action.Icon ?? (action.id === "refresh" ? RefreshIcon : undefined);
   return (
     <Tooltip content={action.tooltip} placement="bottom">
       <button
         type="button"
-        className={`shell-action ${action.active ? "shell-action--active" : ""}`}
+        className={`shell-action ${action.active ? "shell-action--active" : ""} ${Icon ? "shell-action--has-icon" : ""}`}
         aria-pressed={action.active ? true : undefined}
+        aria-label={action.label}
         onClick={action.onClick}
       >
-        {Icon ? <Icon /> : null}
-        <span>{action.label}</span>
+        {Icon ? <Icon className="shell-action__icon" /> : null}
+        <span className="shell-action__label">{action.label}</span>
       </button>
     </Tooltip>
   );
@@ -107,6 +217,13 @@ export function DesktopShell({
   assertActions(actions);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  const activeItem = NAV_ITEMS.find(
+    (it) => it.tabId === activeTabId || it.id === activeTabId,
+  );
+  const activeGroup = activeItem
+    ? NAV_GROUPS.find((g) => g.id === activeItem.group)
+    : undefined;
+
   const commands: Command[] = useMemo(() => {
     return NAV_ITEMS.map((item) => ({
       id: `nav-${item.tabId}`,
@@ -114,6 +231,7 @@ export function DesktopShell({
       group: item.group.charAt(0).toUpperCase() + item.group.slice(1),
       action: () => onSelect(item.tabId),
       keywords: [item.id, item.tabId, item.group, item.tooltip],
+      Icon: item.Icon,
     }));
   }, [onSelect]);
 
@@ -125,6 +243,15 @@ export function DesktopShell({
           <a className="skip-link" href="#main-content">
             Skip to main content
           </a>
+          <div className="desktop-shell__title" data-testid="desktop-shell-title">
+            {activeGroup ? (
+              <>
+                <span className="desktop-shell__breadcrumb-group">{activeGroup.label}</span>
+                <span className="desktop-shell__breadcrumb-separator" aria-hidden="true">/</span>
+              </>
+            ) : null}
+            <span className="desktop-shell__breadcrumb-item">{activeItem?.label ?? "Dashboard"}</span>
+          </div>
           <div className="desktop-shell__search" role="search">
             <button
               type="button"
@@ -135,14 +262,14 @@ export function DesktopShell({
             >
               <SearchIcon className="shell-search-icon" />
               <span className="shell-search-placeholder">
-                Search commands, pages...
+                Search or jump to...
               </span>
-              <kbd className="shell-search-kbd">Ctrl K</kbd>
+              <kbd className="shell-search-kbd">⌘K / Ctrl K</kbd>
             </button>
           </div>
           <div className="desktop-shell__actions">
-            {helpAbout}
             {headerExtra}
+            {helpAbout}
             {actions.map((a) => (
               <ActionButton key={a.id} action={a} />
             ))}

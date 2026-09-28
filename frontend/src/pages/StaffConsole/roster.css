@@ -359,10 +359,15 @@
   border: 1px solid var(--accent-blue);
 }
 
-.roster-status-dot {
+.roster-status-dot-anchor {
   position: absolute;
   bottom: -2px;
   right: -2px;
+  display: flex;
+  line-height: 0;
+}
+
+.roster-status-dot {
   width: 8px;
   height: 8px;
   border-radius: var(--radius-pill, 9999px);

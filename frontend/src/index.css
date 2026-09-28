@@ -814,11 +814,101 @@ table, .tabular {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border, #30363d);
-  background: var(--bg-secondary, #161b22);
-  flex: 0 0 auto;
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+  flex: 0 0 52px;
   min-width: 0;
+  box-sizing: border-box;
+}
+
+.desktop-shell__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.desktop-shell__breadcrumb-group {
+  color: var(--text-muted);
+}
+
+.desktop-shell__breadcrumb-separator {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.desktop-shell__breadcrumb-item {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.desktop-shell__search {
+  display: flex;
+  align-items: center;
+  flex: 0 1 240px;
+  min-width: 140px;
+}
+
+.shell-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out;
+}
+
+.shell-search-btn:hover {
+  border-color: var(--border-light);
+  color: var(--text-secondary);
+}
+
+.shell-search-btn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.shell-search-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.shell-search-placeholder {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-search-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  font-size: 10.5px;
+  font-family: inherit;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  line-height: 1.2;
+  flex-shrink: 0;
 }
 
 /* Shrink and wrap rather than widen the page on narrow windows (#1713). */
@@ -830,6 +920,7 @@ table, .tabular {
   gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
+  margin-left: auto;
 }
 
 .desktop-shell__main {
@@ -842,29 +933,49 @@ table, .tabular {
 .shell-action {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 5px 10px;
+  height: 30px;
+  padding: 0 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border, #30363d);
-  background: var(--bg-primary, #0f1117);
-  color: var(--text-secondary, #8b949e);
-  font-size: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.shell-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.shell-action:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
 }
 
 .shell-action--active {
-  background: var(--accent-blue, #58a6ff);
-  color: var(--text-on-accent, #fff);
+  background: var(--badge-info-bg);
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+}
+
+.shell-action--avatar {
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill, 9999px);
 }
 
 .shell-help-trigger {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   justify-content: center;
   padding: 0;
-  font-size: 14px;
-  font-weight: 700;
 }
 
 .help-about__tabs {
@@ -2334,21 +2445,29 @@ table, .tabular {
 }
 
 .badge {
-  border-radius: 10px;
-  display: inline-block;
+  border-radius: var(--radius-pill, 10px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  font-size: 11.5px;
   font-weight: 500;
+  line-height: 1;
   text-transform: capitalize;
   white-space: nowrap;
+  padding: 0 8px;
 }
 
 .badge-size-sm {
-  font-size: 10px;
-  padding: 1px 6px;
+  height: 18px;
+  font-size: 10.5px;
+  padding: 0 6px;
 }
 
 .badge-size-md {
-  font-size: 11px;
-  padding: 2px 8px;
+  height: 20px;
+  font-size: 11.5px;
+  padding: 0 8px;
 }
 
 .badge-tone-success {
@@ -3850,7 +3969,7 @@ th.sortable.active .sort-indicator {
 
 .segmented-control-option-active {
   background: var(--accent-blue);
-  color: #ffffff;
+  color: var(--text-on-accent);
 }
 
 /* ── SubTabs ── */
@@ -5560,4 +5679,131 @@ th.sortable.active .sort-indicator {
 .fleet-cmd__dispatched a,
 .fleet-cmd__table a {
   color: var(--accent-blue);
+}
+
+/* ── Primitives & Shell Polish (Workstream E) ── */
+
+.command-palette-backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.command-palette-dialog {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-modal);
+  border: 1px solid var(--border);
+}
+
+.command-palette-input {
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+}
+
+.command-palette-input:focus-visible {
+  outline: none;
+}
+
+.command-palette-item {
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm, 6px);
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.command-palette-item-selected {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.command-palette-item:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -1px;
+}
+
+.tooltip {
+  transition: opacity 120ms ease-out;
+}
+
+@keyframes tooltip-fade {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dialog-overlay {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.dialog-panel {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-modal);
+  border: 1px solid var(--border);
+}
+
+.dialog-close-btn:focus-visible,
+.dialog button:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.dropdown-trigger:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.dropdown-menu {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: var(--shadow-card);
+  padding: 6px;
+}
+
+.dropdown-option {
+  height: 30px;
+  font-size: 13px;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-secondary);
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.dropdown-option:hover,
+.dropdown-option[data-highlighted="true"],
+.dropdown-option--focused {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dropdown-option:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -1px;
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.toast-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+.toast-dismiss:focus-visible,
+.toast-action:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.empty-state button:focus-visible,
+.empty-state a:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
 }

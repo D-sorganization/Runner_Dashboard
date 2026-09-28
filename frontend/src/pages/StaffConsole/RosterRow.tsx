@@ -105,16 +105,19 @@ export const RosterRow: React.FC<RosterRowProps> = ({
             {avatarInitial}
           </div>
 
-          {/* Status Dot with Tooltip */}
-          <Tooltip content={statusTooltip} placement="right" delayMs={150}>
-            <span
-              data-testid={`status-dot-${role.name}`}
-              data-status={status}
-              title={statusTooltip}
-              aria-label={statusTooltip}
-              className={`roster-status-dot roster-status-dot--${statusDotType}`}
-            />
-          </Tooltip>
+          {/* Status dot with tooltip. The anchor pins it to the avatar corner;
+              Tooltip's own relative wrapper would otherwise flow below. */}
+          <span className="roster-status-dot-anchor">
+            <Tooltip content={statusTooltip} placement="right" delayMs={150}>
+              <span
+                data-testid={`status-dot-${role.name}`}
+                data-status={status}
+                title={statusTooltip}
+                aria-label={statusTooltip}
+                className={`roster-status-dot roster-status-dot--${statusDotType}`}
+              />
+            </Tooltip>
+          </span>
         </div>
 
         {/* Text Details */}
