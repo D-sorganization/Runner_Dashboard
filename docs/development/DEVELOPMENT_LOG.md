@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1724 — Phone access and push notifications
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1724
+- **Branch:** `feat/ux-overhaul`
+- **PR:** see branch
+- **Paths:** backend/push.py, backend/webpush_crypto.py, frontend/public/sw.js, frontend/src/pages/PushSettings.tsx, frontend/src/pages/StaffConsole/Mobile.tsx, frontend/src/pages/StaffConsole/mobile.css, docs/runbooks/phone-access-tailnet.md
+- **Started:** 2026-09-27
+- **Last verified:** 2026-09-27 (2026-09-27: push pytest 22 passed (incl. RFC 8291 vector); StaffConsole vitest 221 passed; tsc + eslint clean; 375x812 layout checked)
+- **Summary:** Self-hosted Web Push (RFC 8291/8292, VAPID JWT 12h) replaces third-party paths; tailnet phone runbook; mobile roster honours desktop tiering (categorizeRole); thread composer clears the shell nav; inline chevron back button; empty-thread hint.
+- **Next step:** Ship in the consolidated UX PR for epic #1718.
+
 ### DL-#1722 — Console-first Staff page with an Attention drawer
 
 - **State:** in_review

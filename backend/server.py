@@ -2577,6 +2577,9 @@ async def _startup() -> None:
     initialize_http_clients()
     log.info("Initialized pooled HTTP clients with connection reuse")
 
+    # Initialize Web Push transport (issue #1724)
+    _push_router.init_push_transport()
+
     # Notify systemd that we are ready (issue #391 AC-3)
     if _sd_notify is not None:
         _sd_notify("READY=1\nWATCHDOG_USEC=120000000")  # 120s in microseconds

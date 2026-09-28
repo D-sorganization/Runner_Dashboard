@@ -127,4 +127,20 @@ describe("PushSettings", () => {
     const subscribeButton = await screen.findByRole("button", { name: /subscribe/i });
     expect(subscribeButton).toHaveAttribute("data-touch-primitive", "TouchButton");
   });
+
+  it("shows iOS installation hint", async () => {
+    global.fetch = makeVapidFetch(200, "BNbxyz123");
+    render(<PushSettings />);
+    await waitFor(() => {
+      expect(screen.getByText(/Add to Home Screen/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows runbook link when push is not configured", async () => {
+    global.fetch = makeVapidFetch(503);
+    render(<PushSettings />);
+    await waitFor(() => {
+      expect(screen.getByText(/phone-access-tailnet\.md/i)).toBeInTheDocument();
+    });
+  });
 });

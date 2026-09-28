@@ -107,3 +107,60 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(cacheFirst(request));
   }
 });
+
+// Web Push — receive and display notifications (issue #1724)
+self.addEventListener('push', (event) => {
+  let payload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch {
+      payload = { title: event.data.text() };
+    }
+  }
+
+  const title = payload.title || 'Runner Dashboard';
+  const targetUrl = payload.url || payload.deep_link || '/';
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || '/icon.svg',
+    badge: payload.badge || '/icon.svg',
+    tag: payload.tag || payload.topic || 'default',
+    data: {
+      url: targetUrl,
+      ...payload,
+    },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Notification click — focus existing window or open target URL
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const rawUrl = event.notification.data && event.notification.data.url;
+  const targetUrl = new URL(rawUrl || '/', self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url === targetUrl && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      for (const client of clientList) {
+        if ('focus' in client) {
+          if ('navigate' in client) {
+            return client.navigate(targetUrl).then((c) => (c ? c.focus() : client.focus()));
+          }
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+      return null;
+    })
+  );
+});
+

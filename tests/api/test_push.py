@@ -226,3 +226,30 @@ async def test_vapid_public_key_route_returns_200_when_configured(client, monkey
     resp = await client.get("/api/push/vapid-public-key")
     assert resp.status_code == 200
     assert resp.json() == {"publicKey": "BTestKeyValue123"}
+
+
+@pytest.mark.asyncio
+async def test_push_test_endpoint_returns_sent_result(client, push_db: Path) -> None:
+    transport = RecordingTransport(status_code=201)
+    push.set_push_transport(transport)
+
+    push.upsert_subscription(
+        user_id="test-admin",
+        endpoint="https://updates.push.services.example/sub/test",
+        keys=push.PushKeys(p256dh="client-key", auth="client-auth"),
+        user_agent="pytest",
+        topics=["agent.completed"],
+        db_path=push_db,
+    )
+
+    resp = await client.post(
+        "/api/push/test",
+        json={"topic": "agent.completed", "deep_link": "/staff?thread=123"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["topic"] == "agent.completed"
+    assert data["sent"] == 1
+    assert len(transport.sent) == 1
+    assert transport.sent[0][1]["url"] == "/staff?thread=123"
+    assert transport.sent[0][1]["deep_link"] == "/staff?thread=123"

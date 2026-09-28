@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { ROSTER_GROUPS } from "./types";
+import { categorizeRole } from "./rosterUtils";
 import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import { Thread } from "./Thread";
@@ -20,9 +21,20 @@ import { InboxPanel } from "../Staff/InboxPanel";
 import { threadKindForRole } from "./consoleThreads";
 import { isPanelThread } from "./panelTurn";
 import { useStaffConsole } from "./useStaffConsole";
+import { BotIcon } from "../../shell/navIcons";
+import { Badge } from "../../primitives/Badge";
+import { TimeAgo } from "../../primitives/TimeAgo";
+import {
+  fetchRuns,
+  formatEffortUsd,
+  statusTone,
+  targetLabel,
+  type RunRecord,
+  RUN_STATUSES,
+} from "../Staff/staffApi";
 import "./mobile.css";
 
-export type MobileView = "roster" | "thread" | "inbox";
+export type MobileView = "roster" | "thread" | "inbox" | "runs";
 
 export interface StaffConsoleMobileProps {
   roles?: StaffRoleItem[];
@@ -31,6 +43,7 @@ export interface StaffConsoleMobileProps {
   initialThread?: ThreadInfo;
   initialMessages?: ThreadMessage[];
   onOpenThread?: (threadId: string) => void;
+  onOpenRun?: (runId: string) => void;
   onSendMessage?: (payload: SendMessagePayload) => Promise<{ ok: boolean; [key: string]: unknown }>;
   onApproveProposal?: ProposalApproveHandler;
   onDenyProposal?: ProposalDenyHandler;
@@ -40,12 +53,177 @@ export interface StaffConsoleMobileProps {
 function parseUrlParams(): { threadId: string | null; roleName: string | null; tab: string | null } {
   if (typeof window === "undefined") return { threadId: null, roleName: null, tab: null };
   const p = new URLSearchParams(window.location.search);
+  const tabParam = p.get("tab") || (p.get("inbox") ? "inbox" : p.get("runs") ? "runs" : null);
   return {
     threadId: p.get("thread"),
     roleName: p.get("role"),
-    tab: p.get("tab") || (p.get("inbox") ? "inbox" : null),
+    tab: tabParam,
   };
 }
+
+interface MobileRunsViewProps {
+  roles: StaffRoleItem[];
+  onOpenRun?: (runId: string) => void;
+}
+
+const MobileRunsView: React.FC<MobileRunsViewProps> = ({ roles, onOpenRun }) => {
+  const [runs, setRuns] = useState<RunRecord[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const loadRuns = useCallback(async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetchRuns(
+        {
+          role: roleFilter || undefined,
+          status: statusFilter || undefined,
+          limit: 50,
+        },
+        signal,
+      );
+      setRuns(res.runs ?? []);
+    } catch (err: unknown) {
+      if (signal?.aborted) return;
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [roleFilter, statusFilter]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    void loadRuns(ac.signal);
+    return () => ac.abort();
+  }, [loadRuns]);
+
+  const handleOpenRun = (runId: string) => {
+    if (onOpenRun) {
+      onOpenRun(runId);
+    } else if (typeof window !== "undefined") {
+      window.location.href = `/staff?run=${encodeURIComponent(runId)}`;
+    }
+  };
+
+  return (
+    <div className="staff-mobile__runs-container" data-testid="staff-mobile-runs-view">
+      <div className="staff-mobile__runs-filters">
+        <select
+          className="staff-mobile__runs-select"
+          aria-label="Filter by role"
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+        >
+          <option value="">All Roles</option>
+          {roles.map((r) => (
+            <option key={r.name} value={r.name}>
+              {r.title}
+            </option>
+          ))}
+        </select>
+        <select
+          className="staff-mobile__runs-select"
+          aria-label="Filter by status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="">All Statuses</option>
+          {RUN_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="staff-mobile__skeleton" />
+          <div className="staff-mobile__skeleton" />
+          <div className="staff-mobile__skeleton" />
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="console-error-banner" role="alert" style={{ margin: 0 }}>
+          <span>Failed to load runs: {error}</span>
+          <button
+            type="button"
+            className="console-error-banner__retry"
+            onClick={() => void loadRuns()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && (!runs || runs.length === 0) && (
+        <div
+          style={{
+            padding: "24px 16px",
+            textAlign: "center",
+            color: "var(--text-muted, #8b949e)",
+            fontSize: 14,
+          }}
+        >
+          No runs found.
+        </div>
+      )}
+
+      {!loading && !error && runs && runs.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {runs.map((run) => (
+            <div
+              key={run.id}
+              className="staff-mobile__run-card"
+              role="button"
+              tabIndex={0}
+              data-testid={`staff-mobile-run-${run.id}`}
+              onClick={() => handleOpenRun(run.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleOpenRun(run.id);
+                }
+              }}
+            >
+              <div className="staff-mobile__run-header">
+                <span className="staff-mobile__run-role">{run.role}</span>
+                <Badge tone={statusTone(run.status)} size="sm">
+                  {run.status}
+                </Badge>
+              </div>
+              <div className="staff-mobile__run-target">
+                {run.repo ? `${run.repo} ` : ""}
+                {targetLabel(run) ? `(${targetLabel(run)})` : run.id}
+              </div>
+              {run.last_line && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--text-secondary, #8b949e)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {run.last_line}
+                </div>
+              )}
+              <div className="staff-mobile__run-footer">
+                <span>{run.created_at ? <TimeAgo iso={run.created_at} /> : "just now"}</span>
+                {run.cost_usd !== undefined && <span>{formatEffortUsd(run.cost_usd)}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   roles: initialRoles,
@@ -54,6 +232,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   initialThread,
   initialMessages,
   onOpenThread,
+  onOpenRun,
   onSendMessage,
   onApproveProposal,
   onDenyProposal,
@@ -116,6 +295,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
       return;
     }
     if (tab === "inbox") setView("inbox");
+    else if (tab === "runs") setView("runs");
   };
   const syncWithUrlRef = useRef(syncWithUrl);
   syncWithUrlRef.current = syncWithUrl;
@@ -188,7 +368,23 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 aria-label="Back to Roster"
                 onClick={handleBackToRoster}
               >
-                ← Roster
+                <svg
+                  className="staff-mobile__back-icon"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M10 3.5 5.5 8l4.5 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Roster</span>
               </button>
               <h1 className="staff-mobile__title" ref={threadHeadingRef} tabIndex={-1}>
                 {activeThread.title}
@@ -202,7 +398,11 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 aria-label="Role Details"
                 onClick={() => setShowContext(true)}
               >
-                ℹ
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
               </button>
             </div>
           </header>
@@ -210,16 +410,25 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
 
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-            <Thread
-              thread={activeThread}
-              messages={displayMessages}
-              roles={roles}
-              onApproveProposal={handleApproveProposal}
-              onDenyProposal={handleDenyProposal}
-              onCancelRun={sc.cancelRun}
-              onAnswerRun={sc.answerRun}
-              onFollowHandoff={(role) => void sc.openRole(role)}
-            />
+            {displayMessages.length === 0 ? (
+              <div className="staff-mobile__thread-empty" data-testid="staff-mobile-thread-empty">
+                <p className="staff-mobile__thread-empty-title">No messages yet</p>
+                <p className="staff-mobile__thread-empty-hint">
+                  Send a message below to start the conversation.
+                </p>
+              </div>
+            ) : (
+              <Thread
+                thread={activeThread}
+                messages={displayMessages}
+                roles={roles}
+                onApproveProposal={handleApproveProposal}
+                onDenyProposal={handleDenyProposal}
+                onCancelRun={sc.cancelRun}
+                onAnswerRun={sc.answerRun}
+                onFollowHandoff={(role) => void sc.openRole(role)}
+              />
+            )}
           </div>
 
           <div
@@ -256,7 +465,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                     aria-label="Close Details"
                     onClick={() => setShowContext(false)}
                   >
-                    ✕
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
                   </button>
                 </div>
                 <ContextPane role={roleDetail} />
@@ -266,13 +478,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
         </div>
       )}
 
-      {/* ── Roster & Waiting on You Views ────────────────────────────────────── */}
+      {/* ── Roster, Inbox & Runs Views ────────────────────────────────────── */}
       {view !== "thread" && (
         <div
-          className="staff-mobile__content"
+          className="staff-mobile__view-container"
           data-testid="staff-mobile-roster"
           role="region"
-          aria-label="Staff Roster"
+          aria-label="Staff Console"
         >
           <header className="staff-mobile__header">
             <h1 className="staff-mobile__title">Staff Console</h1>
@@ -280,7 +492,100 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
 
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
 
-          <div className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
+          <div className="staff-mobile__main-content">
+            {view === "inbox" ? (
+              <div className="staff-mobile__content" data-testid="staff-mobile-inbox-view">
+                <InboxPanel />
+              </div>
+            ) : view === "runs" ? (
+              <MobileRunsView roles={roles} onOpenRun={onOpenRun} />
+            ) : (
+              <div className="staff-mobile__content">
+                <div className="staff-mobile__search-container">
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    className="staff-mobile__search-input"
+                    placeholder="Search staff roles…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label="Search staff roles"
+                  />
+                </div>
+
+                <div
+                  className="staff-mobile__ask-barb"
+                  data-testid="staff-mobile-ask-barb"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleSelectRole("barb")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSelectRole("barb");
+                    }
+                  }}
+                >
+                  <div className="staff-mobile__ask-barb-icon">
+                    <BotIcon className="staff-mobile__bot-glyph" />
+                  </div>
+                  <div className="staff-mobile__ask-barb-text">
+                    <div className="staff-mobile__ask-barb-title">Ask Barb (auto-route)</div>
+                    <div className="staff-mobile__ask-barb-subtitle">
+                      Ask anything — Barb routes to the right specialist
+                    </div>
+                  </div>
+                </div>
+
+                <div className="staff-mobile__roles-list">
+                  {ROSTER_GROUPS.map((group) => {
+                    // Same tiering as the desktop roster: the API's free-form `group` is normalised.
+                    const groupRoles = filteredRoles.filter((r) => categorizeRole(r) === group.key);
+                    if (groupRoles.length === 0) return null;
+                    return (
+                      <div key={group.key} className="staff-mobile__role-group">
+                        <div className="staff-mobile__role-group-title">
+                          {group.label} ({groupRoles.length})
+                        </div>
+                        <div className="staff-mobile__role-group-items">
+                          {groupRoles.map((role) => (
+                            <div
+                              key={role.name}
+                              data-testid={`staff-mobile-role-${role.name}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => handleSelectRole(role.name)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  handleSelectRole(role.name);
+                                }
+                              }}
+                              className="staff-mobile__role-item"
+                            >
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div className="staff-mobile__role-title">{role.title}</div>
+                                {role.summary && (
+                                  <div className="staff-mobile__role-summary">{role.summary}</div>
+                                )}
+                              </div>
+                              {role.caller_unread_count ? (
+                                <span className="staff-mobile__unread-badge">
+                                  {role.caller_unread_count}
+                                </span>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
             <button
               type="button"
               role="tab"
@@ -289,7 +594,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               data-testid="staff-mobile-tab-roster"
               onClick={() => setView("roster")}
             >
-              Roster
+              Console
             </button>
             <button
               type="button"
@@ -299,95 +604,19 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               data-testid="staff-mobile-tab-inbox"
               onClick={() => setView("inbox")}
             >
-              Waiting on you
+              Inbox
             </button>
-          </div>
-
-          {view === "inbox" ? (
-            <div className="staff-mobile__content" data-testid="staff-mobile-inbox-view">
-              <InboxPanel />
-            </div>
-          ) : (
-            <div className="staff-mobile__content">
-              <div className="staff-mobile__search-container">
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  className="staff-mobile__search-input"
-                  placeholder="Search staff roles…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  aria-label="Search staff roles"
-                />
-              </div>
-
-              <div
-                className="staff-mobile__ask-barb"
-                data-testid="staff-mobile-ask-barb"
-                role="button"
-                tabIndex={0}
-                onClick={() => handleSelectRole("barb")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleSelectRole("barb");
-                  }
-                }}
-              >
-                <div className="staff-mobile__ask-barb-icon">🤖</div>
-                <div className="staff-mobile__ask-barb-text">
-                  <div className="staff-mobile__ask-barb-title">Ask Barb (auto-route)</div>
-                  <div className="staff-mobile__ask-barb-subtitle">
-                    Ask anything — Barb routes to the right specialist
-                  </div>
-                </div>
-              </div>
-
-              <div className="staff-mobile__roles-list">
-                {ROSTER_GROUPS.map((group) => {
-                  const groupRoles = filteredRoles.filter((r) => r.group === group.key);
-                  if (groupRoles.length === 0) return null;
-                  return (
-                    <div key={group.key} className="staff-mobile__role-group">
-                      <div className="staff-mobile__role-group-title">
-                        {group.label} ({groupRoles.length})
-                      </div>
-                      <div className="staff-mobile__role-group-items">
-                        {groupRoles.map((role) => (
-                          <div
-                            key={role.name}
-                            data-testid={`staff-mobile-role-${role.name}`}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => handleSelectRole(role.name)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                handleSelectRole(role.name);
-                              }
-                            }}
-                            className="staff-mobile__role-item"
-                          >
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div className="staff-mobile__role-title">{role.title}</div>
-                              {role.summary && (
-                                <div className="staff-mobile__role-summary">{role.summary}</div>
-                              )}
-                            </div>
-                            {role.caller_unread_count ? (
-                              <span className="staff-mobile__unread-badge">
-                                {role.caller_unread_count}
-                              </span>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "runs"}
+              className={`staff-mobile__tab ${view === "runs" ? "staff-mobile__tab--active" : ""}`}
+              data-testid="staff-mobile-tab-runs"
+              onClick={() => setView("runs")}
+            >
+              Runs
+            </button>
+          </nav>
         </div>
       )}
     </div>
