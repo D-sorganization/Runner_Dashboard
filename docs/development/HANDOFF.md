@@ -1,4 +1,43 @@
-# Current handoff — Seeded role holds are guardrails, not scheduling holds (DL-#1726)
+# Current handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
+
+Last updated: 2026-09-28
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Branch: `fix/tailnet-identity-1755`
+- Governing issue: #1755 (part of epic #1718); DL-#1755.
+- Pull request: #1757 (open, auto-merge armed); rebuilt on main after #1756.
+
+## Objective and status
+
+- With `tailscale serve --bg http://localhost:8321`, uvicorn's proxy-header handling rewrites `request.client` to the phone's tailnet address, so `backend/identity.py` correctly refuses the loopback-admin bypass — and with no GitHub OAuth app configured, the phone had no way to sign in.
+- New `backend/tailnet_identity.py`: `TransportPeerMiddleware` (pure ASGI) records the raw transport peer in `scope["rd.transport_peer"]` before `ProxyHeadersMiddleware` rewrites `scope["client"]`; `build_asgi_app(app)` composes the two, trusting only `127.0.0.1`/`::1` as proxies. `tailnet_principal(request)` admits a request only when `DASHBOARD_TAILSCALE_AUTH=1`, the raw transport peer is loopback, the resolved client is in a Tailscale range (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`), and `Tailscale-User-Login` is in the `DASHBOARD_TAILSCALE_LOGINS` allow-list. The admitted principal (`tailscale:<login>`, `roles=["loopback"]`) has exactly the local loopback principal's power — no escalation.
+- `backend/identity.py` consults `tailnet_principal` in `require_principal` (after session, before the loopback bypass), `_resolve_principal_optional` (used by `resolve_perimeter_principal` and `require_scope`'s checker, so all four resolution paths stay consistent), with lazy imports to avoid a circular import with `tailnet_identity` (which imports `Principal` from `identity`).
+- `backend/tailnet_identity.py` carries full `starlette.types` ASGI annotations, bridged to uvicorn's TypedDict ASGI types with casts in `build_asgi_app`; the pre-push mypy 1.13 hook (its env includes uvicorn) (`--ignore-missing-imports` on `backend/`) is clean.
+- `backend/server.py` now builds `asgi_app = build_asgi_app(app)` at module level and runs uvicorn with `proxy_headers=False` against `asgi_app` (or `"server:asgi_app"` when `WORKERS > 1`), so the resolved client address is computed exactly once, matching pre-#1755 behavior for loopback and XFF-from-127.0.0.1.
+- Reviewed Origin/CSRF/Host checks (`DASHBOARD_PUBLIC_ORIGIN`, `TrustedHostMiddleware`, CSRF): none of them inspect the `Host` header, so a phone request whose Host is `<node>.<tailnet>.ts.net` is unaffected. CSRF enforcement only checks the `X-Requested-With` header on `/api/*`. No change needed there.
+- Docs: `docs/runbooks/phone-access-tailnet.md` documents the two env vars and fixes a pre-existing inaccuracy (the serve-bridge command was documented as `https+insecure://` though the backend serves plain HTTP on 8321 by default).
+
+## Validation
+
+- `tests/api/test_tailnet_identity.py` (19 tests, new): admitted; flag unset; login not allowed (plus case-insensitive allow-list match); forged headers from a direct tailnet caller (raw peer not loopback) refused; client outside tailnet range refused; missing login header refused; `require_principal`/`_resolve_principal_optional`/`resolve_perimeter_principal`/`require_scope` wiring; plain loopback auth unchanged; `TransportPeerMiddleware` records the raw peer before XFF rewrite (httpx `ASGITransport`).
+- `pytest tests/api/test_tailnet_identity.py tests/api/test_structural_auth_perimeter.py tests/api/test_auth_perimeter.py tests/api/test_auth_loopback.py tests/api/test_fleet_identity.py -q` — all passed.
+- `pytest tests/api/test_tailnet_identity.py tests/api -q -k "auth or identity or tailnet or loopback"` — all passed (2 pre-existing skips: conductor source not checked out).
+- `ruff check` / `ruff format --check` on `backend/tailnet_identity.py backend/identity.py backend/server.py tests/api/test_tailnet_identity.py` — clean.
+- No OpenAPI-visible route docstrings changed; `frontend/src/lib/openapi.json` untouched.
+
+## Blockers and risks
+
+- None known. Not yet pushed or opened as a PR (worked in an isolated worktree per task instructions).
+
+## Next steps
+
+1. Push the branch and open a PR referencing #1755.
+
+---
+
+# Prior handoff — Seeded role holds are guardrails, not scheduling holds (DL-#1726)
 
 Last updated: 2026-09-28
 

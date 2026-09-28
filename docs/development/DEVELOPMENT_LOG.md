@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1755 — Phone sign-in via Tailscale identity headers
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1755 (part of epic #1718)
+- **Branch:** `fix/tailnet-identity-1755`
+- **PR:** #1757
+- **Paths:** `backend/tailnet_identity.py`, `backend/identity.py`, `backend/server.py`, `tests/api/test_tailnet_identity.py`, `docs/runbooks/phone-access-tailnet.md`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/api/test_tailnet_identity.py tests/api -q -k "auth or identity or tailnet or loopback"` all passed; `ruff check`/`ruff format --check` clean; pre-push mypy 1.13 clean)
+- **Summary:** `tailscale serve` rewrites the resolved client to the phone's tailnet address, so the loopback-admin bypass correctly refuses it, and with no GitHub OAuth app configured the phone had no way to sign in. `TransportPeerMiddleware` (new `tailnet_identity.py`) records the raw transport peer before uvicorn's `ProxyHeadersMiddleware` rewrites `scope["client"]`; `tailnet_principal` admits a request as a `roles=["loopback"]` principal only when `DASHBOARD_TAILSCALE_AUTH=1`, the raw peer is loopback (rules out a direct tailnet caller forging the header), the resolved client is in a Tailscale range, and `Tailscale-User-Login` is on the `DASHBOARD_TAILSCALE_LOGINS` allow-list. Wired into all four principal-resolution paths in `identity.py`.
+- **Next step:** Open the PR as draft.
+
 ### DL-#1726 — Seeded role holds are guardrails, not scheduling holds
 
 - **State:** in_review
