@@ -69,6 +69,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (RED `test_board_secretary_may_propose_board_convene`; then 45 passed, 1 skipped across the actions, reply-contract and board.convene API tests)
 - **Summary:** The role that chairs the Board could not propose convening it, and its `board.convene` was silently dropped. `check_role_permission` now grants `board.convene` to `BOARD_PROPOSAL_ROLE`; the owner still approves it.
 - **Next step:** Open the PR with #1774 and #1775.
+### DL-#1768 — Fleet context cold-start timeout budget and startup pre-warming
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1768
+- **Branch:** `fix/1768-fleet-context-cold-start-budget`
+- **PR:** #1771
+- **Paths:** `backend/staff/chat_fleet_context.py`, `backend/server.py`, `tests/unit/test_staff_chat_fleet_context.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (`pytest tests/unit/test_staff_chat_fleet_context.py` — 15 passed; `ruff check`/`ruff format --check` clean)
+- **Summary:** First chat turns after a dashboard restart timed out reading peer-node briefing and sessions because no last-good snapshot existed yet and the cold reads exceeded the tight 5.0s steady-state timeout budget. Implemented `COLD_SOURCE_TIMEOUT_SECONDS = 15.0` used whenever a tool has no prior last-good snapshot in `_LAST_GOOD`, ensuring the initial cold fetch succeeds and caches its payload. Also added `warm_fleet_context_snapshots` scheduled in the background during server startup to asynchronously pre-warm all fleet context snapshots.
+- **Next step:** Review and merge PR #1771.
 
 ### DL-#1770 — Staff approvals from another tailnet device
 
@@ -108,6 +120,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_reply_contract.py -q` — 19 passed, 1 skipped; `ruff check`/`ruff format --check` clean; `mypy --ignore-missing-imports` clean)
 - **Summary:** `generate_chat_contract_text()`'s action table never showed `ActionDefinition.params_schema`, so roles guessed param names when proposing actions (Barb invented `agenda`/`seats`/`mode`/`rounds` for `board.convene` instead of using `question`/`title?`). New `_render_params_schema()` renders the schema as `name: type` (optional keys as `name?: type`, empty schema as `—`) in a new `Params` column.
 - **Next step:** Open the PR referencing #1766.
+### DL-#1764 — Host-neutral OAuth 503 hint and Tailscale identity auth guidance
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1764
+- **Branch:** `fix/1764-oauth-hint-tailscale-guidance`
+- **PR:** not created
+- **Paths:** `backend/routers/auth.py`, `tests/api/test_oauth_hint_host_neutral.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (`pytest tests/api/test_oauth_hint_host_neutral.py tests/test_oauth_production_readiness.py tests/test_oauth_config.py` 17 passed; `ruff check`/`ruff format --check` clean; `mypy` clean)
+- **Summary:** Make GitHub OAuth 503 error hint host-neutral, eliminating the hard-coded "OGLaptop" machine name; dynamically mention DASHBOARD_TAILSCALE_AUTH as the tailnet alternative when Tailscale auth is disabled.
+- **Next step:** Commit and create PR referencing #1764.
 
 ### DL-#1762 — read_issue chat context and board.convene
 

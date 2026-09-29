@@ -2642,6 +2642,11 @@ async def _startup() -> None:
     # (when _sd_notify is None or WATCHDOG_USEC is unset).
     asyncio.create_task(_systemd_watchdog_loop())
 
+    # Pre-warm fleet context snapshots off-loop on startup (#1768)
+    from staff.chat_fleet_context import warm_fleet_context_snapshots
+
+    asyncio.create_task(warm_fleet_context_snapshots())
+
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
 
