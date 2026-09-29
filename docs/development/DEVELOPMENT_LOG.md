@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1767 — Board seats see referenced issue/PR items
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1767
+- **Branch:** `fix/board-seats-context-20260928`
+- **PR:** not created
+- **Paths:** `backend/staff/chat_issue_context.py`, `backend/staff/groups.py`, `tests/unit/test_staff_chat_issue_context.py`, `tests/unit/test_staff_groups.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_groups.py tests/unit/test_staff_chat_issue_context.py tests/unit/test_staff_chat_issue_prompt.py tests/unit/test_staff_reply_contract.py tests/api/test_staff_board_convene_api.py tests/api -k "group or board or contract or chat" -q` — 167 passed, 1 skipped; `ruff check`/`ruff format --check` clean; `mypy --ignore-missing-imports` clean)
+- **Summary:** Board seats never saw the material a `board.convene` question referenced, and a truncated Markdown file's marker didn't say what fell off. New role-independent `build_referenced_items_block()` in `chat_issue_context.py` (delegated to by `build_issue_context_block`) is called by `execute_group_turn()` with a larger Board budget (`BOARD_MD_FILE_CHARS`=60000, `BOARD_BLOCK_CHARS`=80000) before fanning out; seats get `prompt + block`, while `collate_consensus`/`board.propose` keep the original prompt. A truncated Markdown file now lists the `#`/`##`/`###` headings it cut off.
+- **Next step:** Open the PR referencing #1767.
+
 ### DL-#1766 — Contract action table shows params_schema
 
 - **State:** in_review

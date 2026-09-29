@@ -1,4 +1,18 @@
-# Current handoff — Contract Params column (DL-#1766)
+# Current handoff — Board seats see referenced items (DL-#1767)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
+- **Branch:** `fix/board-seats-context-20260928` from `origin/main`
+- **PR:** not created
+- **Why:** in the 2026-09-28 live Barb → Board test reviewing UpstreamDrift PR #11080 (51 KB Markdown, 12 proposals), Board seats deliberated on the question's title alone — `seat_prompt()` never saw the referenced PR/issue — and Barb's own read of the packet was silently cut by `MAX_MD_FILE_CHARS = 12000` with no indication of what was missing.
+- **Changes:**
+  - `backend/staff/chat_issue_context.py`: extracted role-independent `build_referenced_items_block(text, *, md_chars, block_chars, fetch, repo_names)`; `build_issue_context_block` now delegates to it. `md_chars` threads through `_render_ref`/`_render_pull_request` (new `_truncate_markdown`/`_omitted_headings_line` helpers) instead of the module constant. A truncated Markdown file now appends `Omitted headings: ` with the `#`/`##`/`###` headings found after the cut (joined `" | "`, max `MAX_HEADINGS_LISTED` = 40). New exported constants `BOARD_MD_FILE_CHARS` (60000) and `BOARD_BLOCK_CHARS` (80000).
+  - `backend/staff/groups.py` `execute_group_turn()`: before fanning out, calls `build_referenced_items_block(prompt, md_chars=BOARD_MD_FILE_CHARS, block_chars=BOARD_BLOCK_CHARS, fetch=fetch)` (new `fetch` param for test injection). When a block is found, seats receive `prompt + "\n\n" + block`; `collate_consensus`/the `board.propose` card keep using the original `prompt`. Wrapped in try/except — a fetch failure logs a warning and falls back to the plain prompt.
+- **Validation:** WSL `pytest tests/unit/test_staff_groups.py tests/unit/test_staff_chat_issue_context.py tests/unit/test_staff_chat_issue_prompt.py tests/unit/test_staff_reply_contract.py tests/api/test_staff_board_convene_api.py tests/api -k "group or board or contract or chat" -q` — 167 passed, 1 skipped. `ruff check backend tests` clean; `ruff format --check` clean on changed files; mypy clean on `backend/staff/chat_issue_context.py backend/staff/groups.py`.
+- **Next:** open a PR referencing #1766 and #1767.
+
+---
+
+# Prior handoff — Contract Params column (DL-#1766)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
 - **Branch:** `fix/board-seats-context-20260928` from `origin/main`

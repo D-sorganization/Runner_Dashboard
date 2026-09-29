@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from staff.action_executors import BOARD_PROPOSAL_ROLE
 from staff.audit import record_audit
+from staff.chat_issue_context import BOARD_BLOCK_CHARS, BOARD_MD_FILE_CHARS, build_referenced_items_block
 from staff.conversation_models import ThreadRecord
 from staff.conversations import get_conversation_store
 from staff.group_models import (
@@ -41,6 +42,7 @@ from staff.reply_contract import ProposedAction
 from staff.thread_bus import get_thread_bus
 
 if TYPE_CHECKING:
+    from staff.chat_issue_context import IssueFetcher
     from staff.conversations import ConversationStore
 
 log = logging.getLogger("dashboard.staff.groups")
@@ -253,18 +255,41 @@ async def execute_group_turn(
     thread_id: str = "",
     seat_runner: SeatRunnerCallable | None = None,
     seat_timeout_seconds: float = DEFAULT_SEAT_TIMEOUT_SECONDS,
+    fetch: IssueFetcher | None = None,
 ) -> ConsensusResult:
-    """Concurrently execute chat turns across all seats in the group with timeout guards."""
+    """Concurrently execute chat turns across all seats in the group with timeout guards.
+
+    Before fanning out, resolves any issue/PR references in ``prompt`` (Board budget:
+    :data:`~staff.chat_issue_context.BOARD_MD_FILE_CHARS` /
+    :data:`~staff.chat_issue_context.BOARD_BLOCK_CHARS`) and, when found, appends the
+    fetched '## Referenced items' block to each seat's prompt only — ``prompt`` itself
+    stays unchanged for :func:`collate_consensus` and the ``board.propose`` card, so a
+    60 KB packet is never pasted into the proposal (Runner_Dashboard#1767). A fetch
+    failure is logged and never fails the turn.
+    """
     group = get_group(group_id)
     if not group:
         raise ValueError(f"Group '{group_id}' not found")
 
     runner = seat_runner or _RUNNER_OVERRIDE or run_seat
 
+    seat_prompt_text = prompt
+    try:
+        block = await build_referenced_items_block(
+            prompt,
+            md_chars=BOARD_MD_FILE_CHARS,
+            block_chars=BOARD_BLOCK_CHARS,
+            fetch=fetch,
+        )
+        if block:
+            seat_prompt_text = prompt + "\n\n" + block
+    except Exception as exc:  # noqa: BLE001 — a fetch failure never fails the turn
+        log.warning("Referenced-items fetch failed for group turn %r: %s", group_id, exc)
+
     async def _run_single_seat(seat: SeatSpec) -> SeatReply:
         try:
             return await asyncio.wait_for(
-                runner(seat, prompt, thread_id),
+                runner(seat, seat_prompt_text, thread_id),
                 timeout=seat_timeout_seconds,
             )
         except TimeoutError:
