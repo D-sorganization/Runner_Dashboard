@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from identity import SCOPE_PRESETS
-from staff.store import _config_dir, _now
+from staff.store import _config_dir, _now, first_touch_lock
 
 # Ensure staff.audit.read scope is granted to operator role
 if "staff.audit.read" not in SCOPE_PRESETS.get("operator", []):
@@ -176,9 +176,9 @@ class StaffAuditStore:
         self.path = path or default_audit_db_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
-        self._conn.row_factory = sqlite3.Row
-        with self._lock:
+        with first_touch_lock(self.path), self._lock:
+            self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
+            self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA)

@@ -18,7 +18,7 @@ from typing import Any
 
 from staff.audit import record_audit
 from staff.store import _now as _now_iso
-from staff.store import default_db_path
+from staff.store import default_db_path, first_touch_lock
 
 log = logging.getLogger("dashboard.staff.work_items")
 
@@ -138,7 +138,7 @@ class WorkItemStore:
         return conn
 
     def _init_db(self) -> None:
-        with self._lock:
+        with first_touch_lock(self.db_path), self._lock:
             conn = self._get_conn()
             try:
                 conn.execute(

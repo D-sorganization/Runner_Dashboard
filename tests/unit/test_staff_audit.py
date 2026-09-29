@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import gzip
 import json
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -20,6 +22,10 @@ from backend.staff.audit import (
     export_audit_ndjson,
     reset_audit_store,
 )
+from backend.staff.conversations import ConversationStore
+from backend.staff.idempotency import IdempotencyStore
+from backend.staff.store import RunStore
+from backend.staff.work_items import WorkItemStore
 
 
 @pytest.fixture
@@ -290,3 +296,63 @@ def test_export_csv_and_ndjson(audit_db: Path) -> None:
     assert len(ndjson_lines) == 2
     assert ndjson_lines[0]["principal"] in ("operator:charlie", "bot:barb")
     store.close()
+
+
+def test_concurrent_first_touch_store_init_is_serialized(tmp_path: Path) -> None:
+    """First-touch init of a fresh staff DB file is serialized per path (regression, #1765).
+
+    SQLite returns ``SQLITE_BUSY`` immediately for ``PRAGMA journal_mode=WAL`` —
+    the busy handler is not invoked — so two threads constructing stores on the
+    same fresh file (as happened on CI: a leaked staff-run worker thread lazily
+    building a store while the next test's fixture built one) raced and one lost
+    with ``sqlite3.OperationalError: database is locked``. Store constructors must
+    serialize their first-touch initialization (connect, WAL pragma, schema) per
+    database path.
+    """
+
+    def _construct_all(path: Path) -> list[Any]:
+        stores: list[Any] = [
+            StaffAuditStore(path),
+            ConversationStore(path),
+            RunStore(path),
+            WorkItemStore(path),
+            IdempotencyStore(path),
+        ]
+        return stores
+
+    errors: list[Exception] = []
+    for i in range(24):
+        path = tmp_path / f"first-touch-{i}" / "staff_runs.sqlite3"
+        barrier_i = threading.Barrier(2)
+        built_i: list[list[Any]] = [[], []]
+
+        def _worker(
+            slot: int,
+            builder: Callable[[Path], list[Any]],
+            barrier: threading.Barrier = barrier_i,
+            built: list[list[Any]] = built_i,
+            db_path: Path = path,
+        ) -> None:
+            barrier.wait()
+            try:
+                built[slot] = builder(db_path)
+            except Exception as exc:  # noqa: BLE001 — the regression under test
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=_worker, args=(0, _construct_all)),
+            threading.Thread(
+                target=_worker,
+                args=(1, lambda p: [ConversationStore(p), RunStore(p), WorkItemStore(p)]),
+            ),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(60)
+        for store in built_i[0] + built_i[1]:
+            close = getattr(store, "close", None)
+            if close is not None:
+                close()
+
+    assert not errors, f"first-touch init raced on a fresh DB file: {errors!r}"

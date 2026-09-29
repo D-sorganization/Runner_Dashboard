@@ -6,6 +6,7 @@ coordination API sees the same fleet-wide in-flight list as ``/api/staff/summary
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -33,7 +34,7 @@ async def staff_runs(repo: str | None = None) -> tuple[list[dict[str, Any]], lis
     """``(runs, warnings)`` for every running/queued staff run fleet-wide, optionally only ``repo``."""
     try:
         runner = get_runner()
-        active = runner.store.active_runs()
+        active = await asyncio.to_thread(runner.store.active_runs)
         local = {
             "machine": runner.machine,
             "running": [r.to_dict() for r in active if r.status == "running"],

@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Header, HTTPException
-from staff.store import _now, default_db_path
+from staff.store import _now, default_db_path, first_touch_lock
 
 log = logging.getLogger("dashboard.staff.idempotency")
 
@@ -67,7 +67,7 @@ class IdempotencyStore:
         try:
             self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
             self._conn.row_factory = sqlite3.Row
-            with self._lock:
+            with first_touch_lock(self.path), self._lock:
                 self._conn.execute("PRAGMA busy_timeout = 30000")
                 self._conn.execute("PRAGMA journal_mode=WAL")
                 self._conn.executescript(_SCHEMA)
