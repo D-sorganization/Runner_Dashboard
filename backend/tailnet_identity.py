@@ -23,12 +23,10 @@ refused by condition 2: their raw transport peer is their own tailnet
 address, never loopback, because only ``tailscaled`` on this host can
 connect via loopback and inject those headers.
 
-Approvals (#1770): the principal also gets the ``tailnet-approver`` role, which
-grants only ``staff.approve``, when the resolved client is *another* tailnet
-device, i.e. not one of ``DASHBOARD_TAILSCALE_SELF_IPS``. Every agent on this
-host is a loopback caller and can also reach the ts.net URL from this host's
-own node, so neither may approve. Unset ``DASHBOARD_TAILSCALE_SELF_IPS`` means
-the host cannot be told apart, and the role is never granted (fail closed).
+Approvals: the loopback power includes ``staff.approve``, so the owner approves
+from any device (#1786). The ``tailnet-approver`` role (#1770) is still added for
+a sign-in from *another* tailnet device, i.e. not one of
+``DASHBOARD_TAILSCALE_SELF_IPS``, so the audit trail can tell a phone from Desk.
 """
 
 from __future__ import annotations
@@ -135,9 +133,8 @@ def tailnet_principal(request: Request) -> Principal | None:
     """Resolve a Tailscale-identity principal, or ``None`` when any admission
     condition fails.
 
-    Same power as the local loopback principal (``roles=["loopback"]``), plus
-    ``tailnet-approver`` (``staff.approve`` only) for a sign-in from another
-    tailnet device (#1770).
+    Same power as the local loopback principal (``roles=["loopback"]``), plus the
+    ``tailnet-approver`` marker role for a sign-in from another tailnet device (#1770).
 
     Post: ``None``, or a human principal whose roles are ``["loopback"]`` or
     ``["loopback", "tailnet-approver"]``.
