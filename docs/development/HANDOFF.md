@@ -1,13 +1,15 @@
-# Current handoff — mobile Staff Console tabs under the shell nav (DL-#1805)
+# Current handoff — complete mobile Staff Console acceptance checks (DL-#1805)
 
 - **Repository / worktree:** Runner_Dashboard, `C:/Users/diete/Repositories/Worktrees/luna-runner1813-20260929`
 - **Branch:** `bot/luna-runner1813-20260929` (includes `origin/main` at `d4229a6`)
-- **PR:** #1813 (root review pending)
-- **Why:** Board-accepted BR-12 (Runner_Dashboard#1805, 3/3, P1): at 390x844 the global bottom nav covered the Staff Console's Console/Inbox/Runs tabs, blocking phone approvals.
-- **Changes:** `mobile.css` makes `.staff-mobile` fit `.mobile-shell__content` (`height: 100%; min-height: 0`) and drops the #1724 composer `bottom` offset, which double-counts the nav once the console ends above it. `tests/e2e/mobile.spec.ts` places the regression outside the mobile-only suite gate, mocks the thread list/detail calls, blocks the service worker, and hit-tests/clicks the Console/Inbox/Runs tabs and send control at 320/390/430px. The #1805 keyed SPEC row now records desktop CI viewport coverage.
-- **Not in scope:** the issue's "surface pending approvals prominently" and physical-phone safe-area/screen-reader checks; the latter needs a real device before release.
-- **Validation:** baseline desktop project reported the test as skipped (1 skipped); after the fix the same project passed 1/1 with no skips and exercised all three viewport widths. See DL-#1805 for the commands.
-- **Next:** root review before push; after merge, deploy to Desk and check on the owner's phone.
+- **PR:** #1813 (draft; pushed update awaiting root CI review)
+- **Commit:** SELF
+- **Why:** Board-accepted BR-12 (Runner_Dashboard#1805, 3/3, P1): at 390x844 the global bottom nav covered the Staff Console's Console/Inbox/Runs tabs, blocking phone approvals. Follow-up review also required visible approval state and controls, retained focus/context, and smaller keyboard/zoom layouts.
+- **Changes:** Existing Inbox state already presents a “Waiting on You” total and “Approvals” count with a filter; the conversation already provides pending proposal Approve controls. `tests/e2e/mobile.spec.ts` verifies shell-reserved nav geometry and real Console/Inbox/Runs hit-tests and clicks at 160/195/215px; it clicks the filter, send and Approve controls at 320/390/430px and checks focus plus selected-thread URL retention. The 44px header controls and visible, nonoverlapping h1 are checked at 160/195/215/320/390/430px, and Approve is normally scrolled into view, hit-tested and clicked at all six widths. `Mobile.tsx` adds semantic classes to the existing thread/message wrappers; `mobile.css` bounds header groups, allows natural wrapping, and lets the message pane shrink/scroll. The composer remains focused and its send control hit-testable when viewport height is reduced and restored. The four approved dependency files pin PyJWT 2.14.0 for CVE-2026-102274 and preserve declared tzdata 2026.4 in the hash-locked export.
+- **Coverage limit:** 160 CSS px is a layout-width equivalent for a 320px viewport at 200%; this is a viewport resize, not actual browser chrome zoom, CSS scaling, or deviceScaleFactor/DPR-as-zoom. The reduced-height test keeps the composer focused but does not open a native keyboard. Physical-phone safe-area, screen-reader and native keyboard checks remain required before release.
+- **Validation:** The original author’s CSS RED/GREEN and 246 Vitest results remain separately recorded in DL-#1805. Review RED reproduced collapsed/overlapping h1 geometry at 160/215px; GREEN: focused desktop `#1805` Playwright passed 11/11 with one worker and zero retries; SC-D8/SC-D9 passed 2/2 on iPhone 12 emulation. Changed-file ESLint, `npm run typecheck`, and targeted mobile spec TypeScript passed. The dependency patch exactly matches the approved four-file patch; its source validation passed pip-audit for both exports and `uv lock --check`; unchanged auth tests were not repeated. See DL-#1805 for the earlier Claude 246 Vitest evidence. Actual zoom, native keyboard, phone safe areas and screen-reader behavior remain external acceptance.
+- **Next:** Await root CI review. Physical acceptance remains open: actual 200% browser zoom, native keyboard, phone safe-area and screen-reader behavior require a physical phone before release.
+- **Coordination:** Canonical inbox check was attempted from `Repository_Management` for `codex-luna-runner1813-20260929`; the board returned a GitHub auth/network error. Retain the existing lease and root presence.
 
 ---
 

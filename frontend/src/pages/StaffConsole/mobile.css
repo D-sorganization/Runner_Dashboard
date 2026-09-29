@@ -30,9 +30,10 @@
 
 .staff-mobile__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 8px clamp(4px, 3vw, 12px);
   min-height: 52px;
   background-color: var(--bg-secondary, #161b22);
   border-bottom: 1px solid var(--border, #30363d);
@@ -44,14 +45,26 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1 1 min-content;
   min-width: 0;
+  max-width: 100%;
 }
 
 .staff-mobile__header-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 1 1 min-content;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+.staff-mobile__header-right .staff-mobile__details-btn:first-child {
+  flex: 1 1 auto;
+  min-width: min-content;
+  padding-inline: 4px;
 }
 
 .staff-mobile__back-btn,
@@ -91,6 +104,8 @@
 }
 
 .staff-mobile__title {
+  flex: 1;
+  min-width: 2ch;
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -184,10 +199,19 @@
 
 .staff-mobile__content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
+}
+
+.staff-mobile__thread-content > .staff-mobile__message-list {
+  min-height: 0;
+}
+
+.staff-mobile__thread-content {
+  overflow: hidden;
 }
 
 /* ── Roster View Specifics ───────────────────────────────────────────────── */
