@@ -400,6 +400,8 @@ SCOPE_PRESETS = {
     ).split(),
     "fleet-peer": sorted(FLEET_PEER_SCOPES),
     "loopback": sorted(LOOPBACK_SCOPES),
+    # A Tailscale sign-in from another tailnet device, e.g. the owner's phone (#1770).
+    "tailnet-approver": ["staff.approve"],
 }
 
 SCOPE_ALIASES: dict[str, str] = {

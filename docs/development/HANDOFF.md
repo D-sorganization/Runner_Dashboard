@@ -1,4 +1,19 @@
-# Current handoff — Board seats see referenced items (DL-#1767)
+# Current handoff — Approvals from another tailnet device (DL-#1770)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
+- **Branch:** `fix/board-seats-context-20260928` from `origin/main`. It also carries #1766 and #1767.
+- **PR:** not created
+- **Why:** in the 2026-09-28 live Barb → Board test, denying Barb's `board.convene` card on DeskComputer failed: "missing required scope 'staff.approve'". The loopback and Tailscale-identity principals both carry only the `loopback` role, and `LOOPBACK_SCOPES` has no `staff.approve`, so no one could approve or deny a MEDIUM proposal on that node. Owner decision (2026-09-28): approvals come from a different tailnet device, e.g. the phone. Bare loopback, which is every agent on the host, and the host's own tailnet node stay without it.
+- **Changes:**
+  - `backend/tailnet_identity.py`: `DASHBOARD_TAILSCALE_SELF_IPS` lists this host's tailnet IPs. A Tailscale sign-in whose resolved client is a tailnet address not in that list gets the extra `tailnet-approver` role. If the list is unset, the role is never granted (fail closed).
+  - `backend/identity.py`: `SCOPE_PRESETS["tailnet-approver"] = ["staff.approve"]`.
+- **Validation:** `tests/api/test_tailnet_identity.py`: 4 new tests. RED first: `test_tailnet_signin_from_other_device_can_approve` failed. Then WSL `pytest tests/api/test_tailnet_identity.py tests/api -k "tailnet or scope or loopback or auth or proposal"` gave 194 passed, 2 skipped. `ruff check backend tests` and `ruff format --check` are clean. mypy is clean on both files.
+- **Deploy note:** set `DASHBOARD_TAILSCALE_SELF_IPS` in each node's env to that node's own tailnet IPs (`tailscale ip`). Without it, nobody gets approvals.
+- **Next:** open one PR for #1766, #1767 and #1770; deploy to DeskComputer with `DASHBOARD_TAILSCALE_SELF_IPS` set; approve Barb's `board.convene` from the phone.
+
+---
+
+# Prior handoff — Board seats see referenced items (DL-#1767)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
 - **Branch:** `fix/board-seats-context-20260928` from `origin/main`

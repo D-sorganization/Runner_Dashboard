@@ -22,6 +22,13 @@ A direct tailnet caller who forges the ``Tailscale-User-Login`` header is
 refused by condition 2: their raw transport peer is their own tailnet
 address, never loopback, because only ``tailscaled`` on this host can
 connect via loopback and inject those headers.
+
+Approvals (#1770): the principal also gets the ``tailnet-approver`` role, which
+grants only ``staff.approve``, when the resolved client is *another* tailnet
+device, i.e. not one of ``DASHBOARD_TAILSCALE_SELF_IPS``. Every agent on this
+host is a loopback caller and can also reach the ts.net URL from this host's
+own node, so neither may approve. Unset ``DASHBOARD_TAILSCALE_SELF_IPS`` means
+the host cannot be told apart, and the role is never granted (fail closed).
 """
 
 from __future__ import annotations
@@ -42,6 +49,8 @@ _TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
 _TAILNET_V6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
 
 _TRANSPORT_PEER_SCOPE_KEY = "rd.transport_peer"
+
+TAILNET_APPROVER_ROLE = "tailnet-approver"
 
 
 class TransportPeerMiddleware:
@@ -102,12 +111,36 @@ def _allowed_logins() -> set[str]:
     return {login.strip().lower() for login in raw.split(",") if login.strip()}
 
 
+def _self_tailnet_ips() -> set[str] | None:
+    """This host's own tailnet addresses, or ``None`` when not configured."""
+    raw = os.environ.get("DASHBOARD_TAILSCALE_SELF_IPS", "")
+    ips: set[str] = set()
+    for part in raw.split(","):
+        try:
+            ips.add(str(ipaddress.ip_address(part.strip())))
+        except ValueError:
+            continue
+    return ips or None
+
+
+def _from_other_tailnet_device(resolved_host: str) -> bool:
+    """True only when ``resolved_host`` is known not to be this host (fail closed)."""
+    self_ips = _self_tailnet_ips()
+    if self_ips is None:
+        return False
+    return str(ipaddress.ip_address(resolved_host)) not in self_ips
+
+
 def tailnet_principal(request: Request) -> Principal | None:
     """Resolve a Tailscale-identity principal, or ``None`` when any admission
     condition fails.
 
-    Same power as the local loopback principal (``roles=["loopback"]``); no
-    escalation beyond that is granted.
+    Same power as the local loopback principal (``roles=["loopback"]``), plus
+    ``tailnet-approver`` (``staff.approve`` only) for a sign-in from another
+    tailnet device (#1770).
+
+    Post: ``None``, or a human principal whose roles are ``["loopback"]`` or
+    ``["loopback", "tailnet-approver"]``.
     """
     if not _tailscale_auth_enabled():
         return None
@@ -134,9 +167,13 @@ def tailnet_principal(request: Request) -> Principal | None:
 
     log.debug("tailnet auth admitted login=%s", login)
 
+    roles = ["loopback"]
+    if _from_other_tailnet_device(str(resolved_host)):
+        roles.append(TAILNET_APPROVER_ROLE)
+
     return Principal(
         id=f"tailscale:{login}",
         type="human",
         name=name,
-        roles=["loopback"],
+        roles=roles,
     )

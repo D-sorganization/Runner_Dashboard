@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1770 — Staff approvals from another tailnet device
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1770
+- **Branch:** `fix/board-seats-context-20260928`
+- **PR:** not created
+- **Paths:** `backend/tailnet_identity.py`, `backend/identity.py`, `tests/api/test_tailnet_identity.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (RED `test_tailnet_signin_from_other_device_can_approve`; then WSL `pytest tests/api/test_tailnet_identity.py tests/api -k "tailnet or scope or loopback or auth or proposal"` gave 194 passed, 2 skipped; ruff and mypy clean)
+- **Summary:** No one could approve Staff Console proposals on a loopback/tailnet node, because neither principal had `staff.approve`. A Tailscale sign-in from a tailnet device other than the host now gets the `tailnet-approver` role, which grants only `staff.approve`. The host is identified by `DASHBOARD_TAILSCALE_SELF_IPS`, and the role is refused when that is unset. Loopback, which covers every agent on the host, stays without approval rights.
+- **Next step:** Deploy with `DASHBOARD_TAILSCALE_SELF_IPS` set on DeskComputer and approve a MEDIUM proposal from the phone.
+
 ### DL-#1767 — Board seats see referenced issue/PR items
 
 - **State:** in_review
