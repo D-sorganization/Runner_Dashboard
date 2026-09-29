@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1793 — Staff Console e2e: cards to act on come from a chat-only requester
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1793
+- **Branch:** `fix/staff-e2e-requester`
+- **PR:** not created
+- **Paths:** `tests/e2e/fakes/identity.json`, `tests/e2e/fakes/start_staff_backend.py`, `tests/e2e/staff/identity.ts`, `tests/e2e/staff/fixtures.ts`, `tests/e2e/staff/staff-console.spec.ts`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (`npx playwright test -c tests/e2e/staff/playwright.config.ts` gave 16 passed, same files as closed #1791 head `55a99df`)
+- **Summary:** After #1788 an approver's own proposal runs at once, so e2e tests that click Approve/Deny found no button. An `e2e-requester` principal (viewer + `staff.chat`) proposes those cards. A new test checks that the operator's own request runs without a tap, and the run tests start from the operator's request.
+- **Next step:** Open the PR for #1793.
+
 ### DL-#1789 — approval policy expands role presets so preset-granted approvers can execute
 
 - **State:** in_review
@@ -121,13 +134,14 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (`pytest tests/unit/test_staff_chat_fleet_context.py` — 15 passed; `ruff check`/`ruff format --check` clean)
 - **Summary:** First chat turns after a dashboard restart timed out reading peer-node briefing and sessions because no last-good snapshot existed yet and the cold reads exceeded the tight 5.0s steady-state timeout budget. Implemented `COLD_SOURCE_TIMEOUT_SECONDS = 15.0` used whenever a tool has no prior last-good snapshot in `_LAST_GOOD`, ensuring the initial cold fetch succeeds and caches its payload. Also added `warm_fleet_context_snapshots` scheduled in the background during server startup to asynchronously pre-warm all fleet context snapshots.
 - **Next step:** Review and merge PR #1771.
+
 ### DL-#1354 — Barb orchestration Board review packet
 
 - **State:** in_review
 - **Owner:** codex
 - **Issue:** #1354 (review deliverable only; epic remains open)
 - **Branch:** `docs/barb-orchestration-review-20260928`
-#1776
+  #1776
 - **Paths:** `docs/development/BARB_ORCHESTRATION_REVIEW.md`, `docs/development/barb-review-assets/`
 - **Started:** 2026-09-28
 - **Last verified:** 2026-09-28 (190 focused Python tests and 534 frontend tests passed; four isolated defect reproductions; desktop/mobile inspection; document checks passed; 18 baseline-only SPEC validator failures disclosed)

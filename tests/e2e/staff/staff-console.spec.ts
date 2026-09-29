@@ -9,9 +9,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Locator, Page } from "@playwright/test";
+import type { Browser, Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
-import { operatorHeaders } from "./identity";
+import { requesterHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
 // The console banner, not an error card from an earlier turn.
@@ -37,13 +37,29 @@ async function proposeDispatch(page: Page, scenario = "dispatch"): Promise<Locat
   return cards.nth(before);
 }
 
-/** Approve a proposed dispatch and return the run card of the run it starts (#1547). */
-async function approveAndFollowRun(page: Page, scenario: string): Promise<Locator> {
+/**
+ * Have a caller who can chat but not approve ask Barb for a dispatch; return the proposal id.
+ * An approver's own request would run at once (#1786), so cards to act on come from here.
+ */
+async function proposeAsRequester(browser: Browser): Promise<string> {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.route("**/api/**", (route) =>
+    route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+  );
+  await openThread(page, BARB);
+  const id = await (await proposeDispatch(page)).getAttribute("data-proposal-id");
+  await context.close();
+  if (!id) throw new Error("proposal card has no id");
+  return id;
+}
+
+/** The operator's own request for a dispatch runs at once; return the run card it starts (#1547, #1786). */
+async function requestAndFollowRun(page: Page, scenario: string): Promise<Locator> {
   await openThread(page, BARB);
   const runCards = conversation(page).locator(".staff-run-card");
-  const card = await proposeDispatch(page, scenario);
   const before = await runCards.count();
-  await card.getByRole("button", { name: "Approve" }).click();
+  await proposeDispatch(page, scenario);
   await expect(runCards).toHaveCount(before + 1);
   return runCards.nth(before);
 }
@@ -173,18 +189,28 @@ test.describe("proposals", () => {
     await expect(page.locator(`[data-proposal-id="${id}"]`)).toContainText("staff.dispatch");
   });
 
-  test("approving a dispatch proposal executes it", async ({ page }) => {
+  test("the operator's own request runs at once, without an Approve tap (#1786)", async ({ page }) => {
     await openThread(page, BARB);
     const card = await proposeDispatch(page);
+
+    await expect(card).toContainText(/Executed by .*e2e-operator/);
+    await expect(card.getByRole("button", { name: /^Approve$/ })).toHaveCount(0);
+  });
+
+  test("approving a dispatch proposal executes it", async ({ page, browser }) => {
+    const id = await proposeAsRequester(browser);
+    await openThread(page, BARB);
+    const card = page.locator(`[data-proposal-id="${id}"]`);
 
     await card.getByRole("button", { name: "Approve" }).click();
 
     await expect(card).toContainText(/Executed by .*e2e-operator/);
   });
 
-  test("denying a proposal marks the card denied", async ({ page }) => {
+  test("denying a proposal marks the card denied", async ({ page, browser }) => {
+    const id = await proposeAsRequester(browser);
     await openThread(page, BARB);
-    const card = await proposeDispatch(page);
+    const card = page.locator(`[data-proposal-id="${id}"]`);
 
     await card.getByRole("button", { name: "Deny" }).click();
 
@@ -195,14 +221,7 @@ test.describe("proposals", () => {
     test.use({ principal: "viewer" });
 
     test("an approval without staff.approve is refused and the card stays actionable", async ({ page, browser }) => {
-      const operator = await browser.newContext();
-      const op = await operator.newPage();
-      await op.route("**/api/**", (route) =>
-        route.continue({ headers: { ...route.request().headers(), ...operatorHeaders } }),
-      );
-      await openThread(op, BARB);
-      const id = await (await proposeDispatch(op)).getAttribute("data-proposal-id");
-      await operator.close();
+      const id = await proposeAsRequester(browser);
 
       await openThread(page, BARB);
       const card = page.locator(`[data-proposal-id="${id}"]`);
@@ -216,14 +235,14 @@ test.describe("proposals", () => {
 
 test.describe("runs", () => {
   test("an approved dispatch shows a run card that follows the run to its result", async ({ page }) => {
-    const run = await approveAndFollowRun(page, "dispatch");
+    const run = await requestAndFollowRun(page, "dispatch");
 
     await expect(run).toContainText("completed", { timeout: 30_000 });
     await expect(run).toContainText("fake run finished");
   });
 
   test("a run that needs input takes an answer and the continuation completes", async ({ page }) => {
-    const run = await approveAndFollowRun(page, "dispatch-ask");
+    const run = await requestAndFollowRun(page, "dispatch-ask");
     const runCards = conversation(page).locator(".staff-run-card");
     await expect(run).toContainText("Which repository should I look at?", { timeout: 30_000 });
     const before = await runCards.count();
@@ -237,7 +256,7 @@ test.describe("runs", () => {
   });
 
   test("a running run can be cancelled from its card", async ({ page }) => {
-    const run = await approveAndFollowRun(page, "dispatch-hang");
+    const run = await requestAndFollowRun(page, "dispatch-hang");
     await expect(run).toContainText("running", { timeout: 30_000 });
 
     await run.getByRole("button", { name: "Cancel run" }).click();

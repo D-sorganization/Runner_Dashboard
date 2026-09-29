@@ -21,7 +21,8 @@ Usage: ``python tests/e2e/fakes/start_staff_backend.py --port 5001 [--state DIR]
 Identity: two principals are seeded, and their bearer tokens are the constants
 in ``tests/e2e/fakes/identity.json`` (fixture values, valid only against this
 throwaway state directory). ``operator`` holds the ``operator`` preset plus
-``staff.approve``; ``viewer`` can read but not chat.
+``staff.approve``; ``viewer`` can read but not chat; ``requester`` can chat but not
+approve, so its proposals wait on a card (#1789).
 """
 
 from __future__ import annotations

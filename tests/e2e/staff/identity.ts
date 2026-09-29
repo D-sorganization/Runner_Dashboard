@@ -22,3 +22,4 @@ function headersFor(id: string): Record<string, string> {
 
 export const operatorHeaders = headersFor("e2e-operator");
 export const viewerHeaders = headersFor("e2e-viewer");
+export const requesterHeaders = headersFor("e2e-requester");

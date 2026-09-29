@@ -1,4 +1,16 @@
-# Current handoff — /execute accepts role presets, not just explicit scopes (DL-#1789)
+# Current handoff — Staff Console e2e requester principal (DL-#1793)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
+- **Branch:** `fix/staff-e2e-requester` from `origin/main` (`e2b57f9`)
+- **PR:** not created
+- **Why:** Staff Console e2e (not a required check) has been red since #1788: the `e2e-operator` fixture holds `staff.approve`, so its own proposals run at once and the Approve/Deny tests time out. This fix was part of #1791, which was closed as a duplicate of #1790; only the approval-policy half was on main.
+- **Changes:** An `e2e-requester` fixture principal (roles `viewer`, scopes `staff.chat`) and `requesterHeaders`. The spec gets `proposeAsRequester(browser)` for the Approve/Deny/viewer tests, a new "operator's own request runs at once" test, and `requestAndFollowRun` for the run tests.
+- **Validation:** `npx playwright test -c tests/e2e/staff/playwright.config.ts` (run from `claude-deploy` at `55a99df`, identical test files) gave 16 passed.
+- **Next:** open the PR and merge.
+
+---
+
+# Prior handoff — /execute accepts role presets, not just explicit scopes (DL-#1789)
 
 - **Repository / worktree:** Runner_Dashboard, worktree `/tmp/rd-wt-RD1789Fix`
 - **Branch:** `bot/issue-1789-approval-role-presets`, rebased onto `origin/main` at `53ce8e5` before push (main advanced by the docs commit `53ce8e5` while the branch was in flight)
