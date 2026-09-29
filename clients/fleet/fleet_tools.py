@@ -476,6 +476,10 @@ COMMANDS: tuple[Command, ...] = (
             },
             "source": {"type": "string", "description": "Submitter identifier (defaults to agent name)."},
             "code_request_url": {"type": "string", "description": "Optional link to an originating Code Request."},
+            "pull_request": {
+                "type": "string",
+                "description": "Optional draft PR or review for the Board to read, as owner/repo#N.",
+            },
             "confirm_not_duplicate": {
                 "type": "boolean",
                 "description": "Confirm submission even if potential duplicate proposals exist.",

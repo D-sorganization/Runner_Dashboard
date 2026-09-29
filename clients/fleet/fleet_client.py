@@ -482,8 +482,12 @@ class FleetClient:
         source: str | None = None,
         code_request_url: str | None = None,
         confirm_not_duplicate: bool = False,
+        pull_request: str | None = None,
     ) -> Any:
-        """Submit a proposal to the Board (requires ``proposals.write`` scope)."""
+        """Submit a proposal to the Board (requires ``proposals.write`` scope).
+
+        ``pull_request`` (``owner/repo#N``) names a draft PR or review for the Board to read.
+        """
         title_text = _text(title, "title", LIMITS.max_proposal_title)
         if isinstance(target_repos, str):
             repos = [r.strip() for r in target_repos.split(",") if r.strip()]
@@ -519,6 +523,7 @@ class FleetClient:
             "urgency": urgency_text,
             "source": _opt_text(source, "source", LIMITS.max_proposal_source) or self.agent or self.session or "agent",
             "code_request_url": _opt_text(code_request_url, "code_request_url", LIMITS.max_proposal_url),
+            "pull_request": _opt_text(pull_request, "pull_request", LIMITS.max_proposal_url),
             "confirm_not_duplicate": bool(confirm_not_duplicate),
         }
         return self.request("POST", "/api/proposals", body=body)

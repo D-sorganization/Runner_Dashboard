@@ -59,9 +59,10 @@ async def run_group_turn_in_background(
     bus = get_thread_bus()
     user_msg = store.get_message(user_message_id)
     prompt = user_msg.body_md if user_msg else ""
+    seat_context = str((user_msg.meta or {}).get("seat_context") or "") if user_msg else ""
 
     try:
-        res = await execute_group_turn(group_id=group_id, prompt=prompt, thread_id=thread_id)
+        res = await execute_group_turn(group_id=group_id, prompt=prompt, thread_id=thread_id, seat_context=seat_context)
 
         meta_dict: dict[str, Any] = {
             "is_group_turn": True,
@@ -186,15 +187,27 @@ def create_group_thread(
     )
 
 
-async def convene_board_thread(question: str, title: str | None, caller_id: str) -> dict[str, Any]:
+async def convene_board_thread(
+    question: str, title: str | None, caller_id: str, include_queue: bool = False
+) -> dict[str, Any]:
     """Create a Board group thread and post ``question`` as its first group turn.
 
     Pre: question is non-empty (the ``board.convene`` executor validates this first).
+    With ``include_queue`` the open proposal queue is read first and stored as the turn's
+    ``seat_context``, so the seats see every proposal while the question stays short
+    (#1787); a failed read raises :class:`~staff.board_queue.QueueUnavailableError`
+    before any thread is created.
     Post: returns {"thread_id", "title"}. The user turn and its reply placeholder are
     persisted with cost already confirmed — the caller's approval of the ``board.convene``
     action stands as the cost confirmation (Runner_Dashboard#1762) — and a background task
     fans the question out to every seat exactly as :func:`dispatch_group_message` does.
     """
+    meta: dict[str, Any] = {"confirm_cost": True}
+    if include_queue:
+        from staff.board_queue import fetch_queue_block  # noqa: PLC0415
+
+        meta["seat_context"] = await fetch_queue_block()
+
     group = get_board_group()
     store = get_conversation_store()
     thread = create_group_thread(group, title, caller_id, store=store)
@@ -205,7 +218,7 @@ async def convene_board_thread(question: str, title: str | None, caller_id: str)
         author=caller_id,
         kind="text",
         body_md=question,
-        meta={"confirm_cost": True},
+        meta=meta,
         delivery="complete",
     )
     reply_placeholder_rec = store.add_message(

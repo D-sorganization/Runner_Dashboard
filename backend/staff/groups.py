@@ -243,6 +243,7 @@ async def execute_group_turn(
     seat_runner: SeatRunnerCallable | None = None,
     seat_timeout_seconds: float = DEFAULT_SEAT_TIMEOUT_SECONDS,
     fetch: IssueFetcher | None = None,
+    seat_context: str = "",
 ) -> ConsensusResult:
     """Concurrently execute chat turns across all seats in the group with timeout guards.
 
@@ -252,7 +253,9 @@ async def execute_group_turn(
     fetched '## Referenced items' block to each seat's prompt only — ``prompt`` itself
     stays unchanged for :func:`collate_consensus` and the ``board.propose`` card, so a
     60 KB packet is never pasted into the proposal (Runner_Dashboard#1767). A fetch
-    failure is logged and never fails the turn.
+    failure is logged and never fails the turn. ``seat_context`` (for example the open
+    proposal queue, #1787) is likewise appended to the seats' prompt only, and references
+    inside it are resolved too.
     """
     group = get_group(group_id)
     if not group:
@@ -260,16 +263,16 @@ async def execute_group_turn(
 
     runner = seat_runner or _RUNNER_OVERRIDE or run_seat
 
-    seat_prompt_text = prompt
+    seat_prompt_text = f"{prompt}\n\n{seat_context}" if seat_context else prompt
     try:
         block = await build_referenced_items_block(
-            prompt,
+            seat_prompt_text,
             md_chars=BOARD_MD_FILE_CHARS,
             block_chars=BOARD_BLOCK_CHARS,
             fetch=fetch,
         )
         if block:
-            seat_prompt_text = prompt + "\n\n" + block
+            seat_prompt_text = seat_prompt_text + "\n\n" + block
     except Exception as exc:  # noqa: BLE001 — a fetch failure never fails the turn
         log.warning("Referenced-items fetch failed for group turn %r: %s", group_id, exc)
 

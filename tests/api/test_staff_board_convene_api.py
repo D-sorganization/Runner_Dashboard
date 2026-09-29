@@ -203,3 +203,74 @@ def test_board_convene_missing_question_is_invalid_params(client: TestClient) ->
     data = decide_resp.json()
     assert data["state"] == "failed"
     assert data["execution_result"]["failure_class"] == "invalid_params"
+
+
+def _convene_proposal(client: TestClient, params: dict[str, Any], key: str) -> str:
+    thread_id = client.post("/api/v1/staff/threads", json={"role": "barb", "title": "Barb chat"}).json()["id"]
+    message_id = client.post(
+        f"/api/v1/staff/threads/{thread_id}/messages",
+        headers={"Idempotency-Key": key},
+        json={"body": "take the open proposals to the Board"},
+    ).json()["message"]["id"]
+    return client.post(
+        "/api/v1/staff/proposals",
+        json={"message_id": message_id, "thread_id": thread_id, "action": "board.convene", "params": params},
+    ).json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_board_convene_include_queue_gives_seats_every_open_proposal(client: TestClient) -> None:
+    """include_queue: the seats get each open proposal's text; the question stays short (#1787)."""
+    from unittest.mock import AsyncMock, patch
+
+    from proposals.models import ProposalItem
+
+    seen: list[str] = []
+
+    async def capturing_runner(seat: SeatSpec, prompt: str, thread_id: str) -> SeatReply:
+        seen.append(prompt)
+        return SeatReply(seat_name=seat.name, status="ok", text="ok")
+
+    set_group_runner_override(capturing_runner)
+    queue = [
+        ProposalItem(number=1848, title="BR-01 Make replay atomic", problem="Two same-key calls both ran."),
+        ProposalItem(number=1859, title="BR-12 Keep mobile Inbox above the nav", problem="Nav covers the tabs."),
+    ]
+    proposal_id = _convene_proposal(client, {"include_queue": True}, "convene-queue-1")
+    with patch("proposals.service.list_proposals", new=AsyncMock(return_value=queue)) as listed:
+        data = client.post(
+            f"/api/v1/staff/proposals/{proposal_id}/decide",
+            json={"decision": "approved", "reason": "owner", "execute": True},
+        ).json()
+        assert data["state"] == "done", data
+        for _ in range(30):
+            if seen:
+                break
+            await asyncio.sleep(0.1)
+    listed.assert_awaited_once_with(state="open")
+
+    assert seen, "no seat ran"
+    assert "Proposal #1848" in seen[0] and "Two same-key calls both ran." in seen[0]
+    assert "Proposal #1859" in seen[0] and "Nav covers the tabs." in seen[0]
+
+    board_thread_id = data["execution_result"]["result"]["thread_id"]
+    question = next(
+        m for m in get_conversation_store().list_messages(board_thread_id) if m.author_kind == "user"
+    ).body_md
+    assert "open Board proposal queue" in question
+    assert "Two same-key calls both ran." not in question
+
+
+def test_board_convene_include_queue_fails_when_the_queue_cannot_be_read(client: TestClient) -> None:
+    """A Board without the queue it was asked to review is not convened (#1787)."""
+    from unittest.mock import AsyncMock, patch
+
+    proposal_id = _convene_proposal(client, {"include_queue": True}, "convene-queue-2")
+    with patch("proposals.service.list_proposals", new=AsyncMock(side_effect=RuntimeError("GitHub down"))):
+        data = client.post(
+            f"/api/v1/staff/proposals/{proposal_id}/decide",
+            json={"decision": "approved", "reason": "owner", "execute": True},
+        ).json()
+    assert data["execution_result"]["success"] is False
+    assert "proposal queue" in data["execution_result"]["error"]
+    assert not [t for t in get_conversation_store().list_threads() if t.meta.get("group") == "board"]

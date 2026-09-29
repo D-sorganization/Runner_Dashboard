@@ -92,3 +92,21 @@ def test_fleet_tool_submit_proposal_registration(client: FleetClient, fake_api: 
     assert req.method == "POST"
     assert req.path == "/api/proposals"
     assert req.body["title"] == "Tool Proposal Title"
+
+
+@pytest.mark.unit
+def test_fleet_client_submit_proposal_sends_the_pull_request_for_the_board(client: FleetClient, fake_api: Any) -> None:
+    """An agent can put a draft PR on the Board's list with its proposal (#1787)."""
+    client.submit_proposal(
+        title="Review the AffineDrift website review",
+        target_repos=["AffineDrift"],
+        problem="The review needs Board dispositions.",
+        evidence="See the PR.",
+        options_considered="File or not.",
+        lean="File the accepted epics.",
+        estimated_cost="Medium",
+        urgency="Routine",
+        pull_request="D-sorganization/AffineDrift#4485",
+    )
+    assert fake_api.last.body["pull_request"] == "D-sorganization/AffineDrift#4485"
+    assert "pull_request" in BY_TOOL["submit_proposal"].properties

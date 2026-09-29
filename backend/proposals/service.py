@@ -130,6 +130,7 @@ def _format_proposal_item(issue: dict[str, Any], meeting_index: dict[int, str] |
         urgency=parsed.get("urgency", ""),
         source=parsed.get("source", "human"),
         code_request_url=parsed.get("code_request_url"),
+        pull_request=parsed.get("pull_request"),
         state=state,
         decision=decision,
         decision_labels=decision_labels,

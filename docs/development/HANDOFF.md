@@ -1,4 +1,17 @@
-# Current handoff — complete mobile Staff Console acceptance checks (DL-#1805)
+# Current handoff — Board intake route for suggestions and draft PRs (DL-#1787)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1787`
+- **Branch:** `feat/board-queue-route-1787` from `origin/main`
+- **PR:** #1812
+- **Why:** owner question 2026-09-29: "We need a route for agents to put suggestions and draft PR's on the list of the things for the board to review". Draft PRs had no route, and `board.convene` never read the proposal queue. The same day's three Board sessions (UD#11080, RD#1776, AffineDrift#4485) showed that seats need each item's own text: given a summary table they guessed content and misnumbered items (RD "BR-10 mobile nav" is BR-12).
+- **Changes:** `backend/proposals/models.py` adds `pull_request` (`owner/repo#N`, or a GitHub PR URL normalised to it) to `CreateProposalRequest` and `ProposalItem`. `store.py` writes it into the form's "Linked Code Request or Issue" field as `Pull request: owner/repo#N` and reads it back, including a bare `owner/repo#N` typed into the form. `backend/staff/board_queue.py` (new) renders the open queue with each proposal's text, cutting at stated limits and naming omitted proposals. `convene_board_thread(..., include_queue)` stores the block as the turn's `seat_context`. `execute_group_turn` appends it to the seats' prompt only, and references inside it are resolved. `board.convene` accepts `include_queue` (the question then defaults) and fails with `upstream_unavailable` if the queue can't be read. `clients/fleet` `submit_proposal` passes `pull_request`.
+- **Decisions:** there is no new issue-form section; the existing optional linked field carries the PR, so form-filed issues parse the same way. The queue is fetched before the Board thread exists, so a failed read leaves no empty Board thread. PR refs in the queue go through the existing referenced-items fetch (`MAX_REFS_PER_TURN` still caps it at 3).
+- **Validation:** see DL-#1787's Last verified.
+- **Next:** open the PR, merge, deploy to Desk, then ask Barb to "take the open proposals to the Board".
+
+---
+
+# Prior handoff — complete mobile Staff Console acceptance checks (DL-#1805)
 
 - **Repository / worktree:** Runner_Dashboard, `C:/Users/diete/Repositories/Worktrees/luna-runner1813-20260929`
 - **Branch:** `bot/luna-runner1813-20260929` (includes `origin/main` at `8169046d`)

@@ -352,8 +352,9 @@ def test_contract_action_table_has_params_column() -> None:
 
     lines = text.splitlines()
     convene_line = next(line for line in lines if line.startswith("| `board.convene`"))
-    assert "question: string" in convene_line
+    assert "question?: string" in convene_line
     assert "title?: string" in convene_line
+    assert "include_queue?: boolean" in convene_line  # #1787
 
     dispatch_line = next(line for line in lines if line.startswith("| `staff.dispatch`"))
     assert "role" in dispatch_line and "prompt" in dispatch_line
