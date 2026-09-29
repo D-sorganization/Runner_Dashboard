@@ -123,9 +123,9 @@ class PushDbProbe:
 
     async def check(self) -> tuple[ProbeStatus, str | None]:
         try:
-            import push  # noqa: PLC0415
+            import push_store  # noqa: PLC0415
 
-            db_path = push.DEFAULT_DB_PATH
+            db_path = push_store.DEFAULT_DB_PATH
             if not db_path.exists():
                 # DB not yet created — OK, subscriptions are optional.
                 return "ok", None

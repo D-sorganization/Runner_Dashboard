@@ -265,7 +265,7 @@ def execute_board_convene(params: dict[str, Any], ctx: ActionContext) -> ActionR
     confirmation, so no separate cost guard is applied here.
     """
     from staff.actions import ActionResult
-    from staff.groups import convene_board_thread
+    from staff.group_threads import convene_board_thread
     from staff.loop_bridge import BridgeUnavailableError, run_on_loop
 
     question = str(params.get("question") or "").strip()

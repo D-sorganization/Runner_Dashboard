@@ -18,8 +18,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from identity import Principal, format_caller, require_scope
 from staff.conversations import get_conversation_store
+from staff.group_threads import create_group_thread
 from staff.groups import (
-    create_group_thread,
     estimate_group_turn_cost,
     get_group,
     list_groups,

@@ -30,6 +30,7 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 
 import push  # noqa: E402
+import push_store  # noqa: E402
 from push import (  # noqa: E402
     PushKeys,
     PushSubscription,
@@ -399,7 +400,7 @@ def test_send_push_filtered_by_user_id(db_path: Path) -> None:
 
 
 def test_push_migrations_fresh_db(db_path: Path) -> None:
-    conn = push._connect(db_path)
+    conn = push_store._connect(db_path)
     row = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
     assert row[0] >= 1
     conn.close()
@@ -426,8 +427,8 @@ def test_push_migrations_v1_state(db_path: Path) -> None:
             """
         )
 
-    # Now connect using push._connect which should run migrations safely
-    conn2 = push._connect(db_path)
+    # Now connect using push_store._connect which should run migrations safely
+    conn2 = push_store._connect(db_path)
     row = conn2.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
     assert row[0] >= 1
     conn2.close()
