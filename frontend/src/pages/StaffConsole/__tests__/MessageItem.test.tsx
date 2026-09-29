@@ -43,3 +43,43 @@ describe("MessageItem system messages", () => {
     expect(notice.querySelector("strong")?.textContent).toBe("Staff Run Started");
   });
 });
+
+/** #1774: a dropped-action warning in `meta.warnings` must surface visibly, not just in meta. */
+describe("MessageItem action warnings (#1774)", () => {
+  function roleMessage(overrides: Partial<ThreadMessage>): ThreadMessage {
+    return {
+      id: "m2",
+      thread_id: "t1",
+      author: "board-secretary",
+      author_kind: "staff",
+      kind: "text",
+      body_md: "I'll convene the Board.",
+      delivery: "complete",
+      created_at: "2026-09-28T00:00:00Z",
+      ...overrides,
+    } as ThreadMessage;
+  }
+
+  it("renders a compact notice for a dropped-action warning", () => {
+    render(
+      <MessageItem
+        message={roleMessage({
+          meta: {
+            warnings: [
+              "Role 'board-secretary' does not hold permission for action 'board.convene'; action dropped.",
+            ],
+          },
+        })}
+      />,
+    );
+    const notice = screen.getByRole("note", { name: /action warnings/i });
+    expect(notice).toHaveTextContent(
+      "Action not proposed: Role 'board-secretary' does not hold permission for action 'board.convene'; action dropped.",
+    );
+  });
+
+  it("renders nothing when the message has no warnings", () => {
+    render(<MessageItem message={roleMessage({})} />);
+    expect(screen.queryByRole("note", { name: /action warnings/i })).not.toBeInTheDocument();
+  });
+});

@@ -1,4 +1,16 @@
-# Current handoff — board-secretary may convene the Board (DL-#1773)
+# Current handoff — dropped-action warnings surface in the Staff Console (DL-#1774)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
+- **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. Follows DL-#1773 on the same branch; #1775 follows this.
+- **PR:** not created
+- **Why:** in the 2026-09-28 live test, when `parse_reply` drops a proposed action (permission, unknown action, bad params), the warning only lands in the message's `meta.warnings`. The Staff Console rendered only the reply prose ("I'll convene the Board…"), so the owner saw a promise with no approval card and no explanation.
+- **Changes:** `frontend/src/pages/StaffConsole/MessageItem.tsx` — a role-authored (non-user, non-system) message with non-empty `meta.warnings` now renders a compact `role="note"` block below the message body, one line per warning; a warning whose text contains "dropped" is prefixed `Action not proposed: `. `frontend/src/pages/StaffConsole/thread.css` — `.thread-message-item__warnings` reuses the existing `--badge-warning-bg`/`--badge-warning-fg` tokens (same pair `ActionCard`/`RunCard`/`ReviewCard` already use).
+- **Validation:** RED first on `frontend/src/pages/StaffConsole/__tests__/MessageItem.test.tsx` — `getByRole("note", { name: /action warnings/i })` found no element. Then `npx vitest run frontend/src/pages/StaffConsole`: 245 passed. `npm run typecheck`: clean. `npx eslint` on changed `.tsx`/`.ts` files: clean.
+- **Next:** #1775 (landing composer sends via auto-route thread; "New conversation" control) on this branch, then one PR for #1773–#1775.
+
+---
+
+# Prior handoff — board-secretary may convene the Board (DL-#1773)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
 - **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. #1774 and #1775 follow on this branch.

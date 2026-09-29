@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1774 — dropped-action warnings surface in the Staff Console
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1774
+- **Branch:** `fix/console-convene-warnings-20260928`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/thread.css`, `frontend/src/pages/StaffConsole/__tests__/MessageItem.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (RED: `getByRole("note", { name: /action warnings/i })` found no element; then `npx vitest run frontend/src/pages/StaffConsole` — 245 passed)
+- **Summary:** A role message whose `meta.warnings` is non-empty now shows a compact `role="note"` notice below the message, one line per warning, prefixed `Action not proposed: ` when the warning says an action was dropped.
+- **Next step:** Open the PR with #1773 and #1775.
+
 ### DL-#1773 — board-secretary may propose board.convene
 
 - **State:** in_review
