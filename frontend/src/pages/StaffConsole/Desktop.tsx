@@ -5,7 +5,7 @@
  * State comes from `useStaffConsole`, shared with the mobile layout. Nothing
  * is fetched or created until the user picks a role.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Composer } from "./Composer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { ContextPane } from "./ContextPane";
@@ -46,6 +46,17 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
   const [composerPrefill, setComposerPrefill] = useState("");
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
+
+  // The address names the open conversation, so a reload or shared link reopens it (#1783).
+  // replaceState, not push: switching threads should not flood the back stack.
+  const activeThreadId = activeThread?.id;
+  useEffect(() => {
+    if (!activeThreadId || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("thread") === activeThreadId) return;
+    params.set("thread", activeThreadId);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}`);
+  }, [activeThreadId]);
 
   const handleExport = (format: "markdown" | "json") => {
     if (!activeThread) return;

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1783 — desktop Staff Console keeps `?thread=` in sync
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1783
+- **Branch:** `fix/staff-console-thread-url-1783`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/__tests__/Desktop.test.tsx`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (RED: new Desktop test failed on main. Then `npx vitest run frontend/src/pages/StaffConsole frontend/src/pages/Staff` gave 271 passed; typecheck and eslint clean)
+- **Summary:** An effect in `StaffConsoleDesktop` calls `history.replaceState` to set `?thread=<active id>` and keeps other params, so a reload or copied link reopens the open conversation.
+- **Next step:** Open the PR for #1783.
+
 ### DL-#1781 — staff chat parses `Repo#N` references and binds bare `#N` to the nearest repo
 
 - **State:** in_review
@@ -69,6 +82,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (RED `test_board_secretary_may_propose_board_convene`; then 45 passed, 1 skipped across the actions, reply-contract and board.convene API tests)
 - **Summary:** The role that chairs the Board could not propose convening it, and its `board.convene` was silently dropped. `check_role_permission` now grants `board.convene` to `BOARD_PROPOSAL_ROLE`; the owner still approves it.
 - **Next step:** Open the PR with #1774 and #1775.
+
 ### DL-#1768 — Fleet context cold-start timeout budget and startup pre-warming
 
 - **State:** in_review
@@ -120,6 +134,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_reply_contract.py -q` — 19 passed, 1 skipped; `ruff check`/`ruff format --check` clean; `mypy --ignore-missing-imports` clean)
 - **Summary:** `generate_chat_contract_text()`'s action table never showed `ActionDefinition.params_schema`, so roles guessed param names when proposing actions (Barb invented `agenda`/`seats`/`mode`/`rounds` for `board.convene` instead of using `question`/`title?`). New `_render_params_schema()` renders the schema as `name: type` (optional keys as `name?: type`, empty schema as `—`) in a new `Params` column.
 - **Next step:** Open the PR referencing #1766.
+
 ### DL-#1764 — Host-neutral OAuth 503 hint and Tailscale identity auth guidance
 
 - **State:** in_progress

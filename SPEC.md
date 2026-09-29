@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-29 | #1783 | The desktop Staff Console keeps `?thread=` in the address in step with the open conversation, so reloads and shared links reopen it. |
 | 2026-09-28 | #1765 | Staff store constructors (runs, conversations + audit, work items, idempotency) serialize first-touch SQLite initialization per database path, so concurrent lazy construction (a leaked staff-run worker building a store while another thread builds one on the same fresh `staff_runs.sqlite3`) can no longer lose the `PRAGMA journal_mode=WAL` race and fail with `sqlite3.OperationalError: database is locked` or a duplicate-column migration error (CI run 36524561683, `tests/api/test_staff_proposals_api.py` ERROR at setup). |
 | 2026-09-28 | #1781 | Staff chat reference parsing reads `Repo#N` (no owner) as that repo and binds a bare `#N` to the nearest repo named before it, so Board seats get the right packets. |
 | 2026-09-28 | #1775 | The Staff Console landing composer now opens (or creates) the Barb auto-route thread and sends there instead of failing with "No conversation is open"; a new "New conversation" control starts a fresh thread for the current role. |

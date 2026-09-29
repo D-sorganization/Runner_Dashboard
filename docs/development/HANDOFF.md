@@ -1,4 +1,16 @@
-# Current handoff — staff chat parses `Repo#N` references (DL-#1781)
+# Current handoff — desktop Staff Console keeps `?thread=` in sync (DL-#1783)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1783` (its `node_modules` is a junction to `claude-deploy/node_modules`; remove the junction, never recurse it)
+- **Branch:** `fix/staff-console-thread-url-1783` from `origin/main` (`b2665ee`)
+- **PR:** not created
+- **Why:** in the 2026-09-28 live Board test, **New conversation** switched to a fresh thread but the address still named the old one (`?thread=` is read once on mount, never written), so a reload reopened the wrong conversation.
+- **Changes:** `frontend/src/pages/StaffConsole/Desktop.tsx` adds a `useEffect` on the active thread id that calls `history.replaceState` with `?thread=<id>` and keeps the other params. There's a test in `__tests__/Desktop.test.tsx`.
+- **Validation:** RED: the new test failed on main. GREEN: `npx vitest run frontend/src/pages/StaffConsole frontend/src/pages/Staff` gave 271 passed. `npm run typecheck` and eslint on the changed files are clean.
+- **Next:** open the PR; after merge, deploy to Desk.
+
+---
+
+# Prior handoff — staff chat parses `Repo#N` references (DL-#1781)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1781`
 - **Branch:** `fix/staff-repo-hash-refs-1781` from `origin/main` (`cddef48`)
