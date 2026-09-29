@@ -14,6 +14,13 @@
       "roles": ["viewer"],
       "scopes": [],
       "token": "e2e-viewer-fixture"
+    },
+    {
+      "id": "e2e-requester",
+      "name": "E2E Requester",
+      "roles": ["viewer"],
+      "scopes": ["staff.chat"],
+      "token": "e2e-requester-fixture"
     }
   ]
 }
