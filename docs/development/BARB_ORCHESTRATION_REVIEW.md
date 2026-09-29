@@ -1,6 +1,6 @@
 # Barb fleet orchestration: implementation review and draft issues
 
-**Board review packet — 2026-09-28 (America/Los_Angeles).** Governing epic: [Runner_Dashboard #1354](https://github.com/D-sorganization/Runner_Dashboard/issues/1354). Review baseline: [`df2f9093`](https://github.com/D-sorganization/Runner_Dashboard/tree/df2f9093db7062ad514ea84a0d0b2501e52c696a), verified against remote `main`. These are proposed issue bodies, not filed issues or approved implementation work. The parent epic remains open.
+**Board review packet — 2026-09-28 (America/Los_Angeles).** [Draft PR #1776](https://github.com/D-sorganization/Runner_Dashboard/pull/1776). Governing epic: [Runner_Dashboard #1354](https://github.com/D-sorganization/Runner_Dashboard/issues/1354). Review baseline: [`df2f9093`](https://github.com/D-sorganization/Runner_Dashboard/tree/df2f9093db7062ad514ea84a0d0b2501e52c696a), verified against remote `main`. These are proposed issue bodies, not filed issues or approved implementation work. The parent epic remains open.
 
 ## Assessment
 
@@ -268,6 +268,8 @@ Four isolated experiments against real functions/stores completed with exit 0 (n
 Browser evidence: real frontend plus temporary fixture backend, fixture operator bearer restricted to local API requests, no real chat turn sent. Viewed desktop and mobile captures. Mobile Inbox tab rectangle was `{x:136.66,y:792,width:116.67,height:44}`; `document.elementFromPoint` inside it returned the global navigation SVG. Opening Ask Barb created a fixture thread successfully. These observations do not assert a live fleet/provider test.
 
 Suggested new tests belong with each implementation issue, not in this documentation-only PR. Source changes were intentionally not made. Full repository/production certification, every provider version, real-network failover and physical-device accessibility were not performed. Follow the existing cold-start fixes separately; do not use this review to claim their deployed validation.
+
+Documentation checks passed: Prettier for the packet/handoff/development log, development-log validator, all 18 draft bodies and pinned source/image paths, and `git diff --check`. The central fleet SPEC changelog checker reports **18 identical pre-existing failures** on reviewed main and this branch (historical header, row-key, duplicate-key and unescaped-pipe violations). The new row introduces none; historical rows were preserved. These failures are disclosed rather than presented as passing checks.
 
 ## Pinned source index
 

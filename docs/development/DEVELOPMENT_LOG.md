@@ -114,10 +114,10 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** codex
 - **Issue:** #1354 (review deliverable only; epic remains open)
 - **Branch:** `docs/barb-orchestration-review-20260928`
-- **PR:** #1776
+#1776
 - **Paths:** `docs/development/BARB_ORCHESTRATION_REVIEW.md`, `docs/development/barb-review-assets/`
 - **Started:** 2026-09-28
-- **Last verified:** 2026-09-28 (190 focused Python tests and 534 frontend tests passed; four isolated defect reproductions; desktop/mobile browser inspection)
+- **Last verified:** 2026-09-28 (190 focused Python tests and 534 frontend tests passed; four isolated defect reproductions; desktop/mobile inspection; document checks passed; 18 baseline-only SPEC validator failures disclosed)
 - **Summary:** Documentation-only implementation/UX review pinned to df2f9093: 18 proposed issue bodies with priorities, evidence, owners, dependencies and acceptance criteria. Runtime, deployment, ingress and standing authority are unchanged.
 - **Next step:** Board reviews the packet and decides which draft issues and policy changes to authorize.
 
