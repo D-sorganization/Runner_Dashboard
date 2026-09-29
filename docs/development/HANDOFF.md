@@ -1,4 +1,16 @@
-# Current handoff — Barb as the front door (DL-#1786)
+# Current handoff — approval policy counts role-preset scopes (DL-#1789)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
+- **Branch:** `fix/approve-policy-role-scopes` from `origin/main` (`64a73b4`, which includes #1788)
+- **PR:** not created
+- **Why:** #1786 deployed to Desk. Deciding the two Board convene cards (`prop_b56f35e68b05` UD#11080, `prop_eb16a4f02683` RD#1776) recorded `approved` by `__loopback__`, but `execute` returned 403 `lacks 'staff.approve'`. `check_approval_policy` read `approver.scopes` only; the loopback principal's scopes come from its role preset.
+- **Changes:** `backend/staff/actions.py` `check_approval_policy` uses `principal_has_scope(approver, "staff.approve")`. `tests/api/test_staff_owner_requests.py` uses the real loopback principal shape and adds a direct policy test.
+- **Validation:** RED then GREEN. `pytest tests/api tests/unit -k "staff or identity or tailnet or loopback or scope or auth or proposal or chat or approv"` gave 1268 passed. ruff is clean.
+- **Next:** merge, deploy to Desk, then `POST /api/v1/staff/proposals/{id}/execute` for both approved Board cards.
+
+---
+
+# Prior handoff — Barb as the front door (DL-#1786)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
 - **Branch:** `feat/barb-front-door` from `origin/main` (`63f4088`)

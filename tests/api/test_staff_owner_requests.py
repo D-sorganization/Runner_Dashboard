@@ -22,13 +22,8 @@ from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.groups import SeatReply, SeatSpec, reset_group_runner_override, set_group_runner_override
 from staff.thread_bus import reset_thread_bus
 
-OWNER = Principal(
-    id="__loopback__",
-    type="human",
-    name="Owner at Desk",
-    roles=["loopback"],
-    scopes=["staff.read", "staff.chat", "staff.approve"],
-)
+# The real Desk principal: its power comes only from the ``loopback`` role preset (#1789).
+OWNER = Principal(id="__loopback__", type="human", name="Loopback development admin", roles=["loopback"])
 CHAT_ONLY = Principal(id="viewer-bob", type="human", name="Bob", roles=["viewer"], scopes=["staff.read", "staff.chat"])
 
 
@@ -137,3 +132,14 @@ async def test_high_risk_action_in_an_owner_turn_keeps_its_card() -> None:
     (prop,) = get_conversation_store().list_proposals(thread_id=tid)
     assert prop.action == "staff.hold"
     assert prop.state == "proposed"
+
+
+def test_desk_principal_passes_the_approval_policy_through_its_role() -> None:
+    """#1789: ``staff.approve`` granted by a role preset counts, not only explicit scopes."""
+    from staff.actions import ACTION_REGISTRY, check_approval_policy
+    from staff.conversation_models import ActionProposalRecord
+
+    prop = ActionProposalRecord(
+        id="prop_x", message_id="m", thread_id="t", action="board.convene", params={}, risk="medium", state="approved"
+    )
+    check_approval_policy(ACTION_REGISTRY.get("board.convene"), prop, OWNER)  # does not raise

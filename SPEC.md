@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-29 | #1789 | `check_approval_policy` counts `staff.approve` granted by a role preset (`principal_has_scope`), so Desk's loopback principal can execute what it approves and owner requests to Barb run from Desk. |
 | 2026-09-29 | #1786 | Barb is the owner's front door: loopback (Desk) sign-ins hold `staff.approve`, and when the person who sent a chat message may approve, the actions the answering role proposes up to MEDIUM risk (e.g. `board.convene`) run at once under that person; HIGH-risk actions and callers without `staff.approve` keep their approval card. |
 | 2026-09-29 | #1783 | The desktop Staff Console keeps `?thread=` in the address in step with the open conversation, so reloads and shared links reopen it. |
 | 2026-09-28 | #1765 | Staff store constructors (runs, conversations + audit, work items, idempotency) serialize first-touch SQLite initialization per database path, so concurrent lazy construction (a leaked staff-run worker building a store while another thread builds one on the same fresh `staff_runs.sqlite3`) can no longer lose the `PRAGMA journal_mode=WAL` race and fail with `sqlite3.OperationalError: database is locked` or a duplicate-column migration error (CI run 36524561683, `tests/api/test_staff_proposals_api.py` ERROR at setup). |

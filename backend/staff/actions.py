@@ -201,8 +201,8 @@ def check_approval_policy(
         if not is_owner(approver):
             raise PermissionError(f"Action '{prop.action}' has risk '{risk}' and requires owner approval")
 
-    scopes = set(approver.scopes or [])
-    if "staff.approve" not in scopes and not is_owner(approver):
+    # Role presets count too: Desk's staff.approve comes from its ``loopback`` role (#1789).
+    if not principal_has_scope(approver, "staff.approve") and not is_owner(approver):
         raise PermissionError(f"Principal '{approver.id}' lacks 'staff.approve' scope")
     if action and not is_owner(approver) and not principal_has_scope(approver, action.required_scope):
         raise PermissionError(f"Principal '{approver.id}' lacks '{action.required_scope}' required by '{action.name}'")

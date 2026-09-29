@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1789 — approval policy counts role-preset scopes
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1789
+- **Branch:** `fix/approve-policy-role-scopes`
+- **PR:** not created
+- **Paths:** `backend/staff/actions.py`, `tests/api/test_staff_owner_requests.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (RED: both tests with the real loopback principal failed with `lacks 'staff.approve'`. GREEN: staff/identity/chat subset gave 1268 passed)
+- **Summary:** After #1786 deployed, Desk could decide a proposal but `execute` returned 403, because `check_approval_policy` read only explicit `approver.scopes`. It now uses `principal_has_scope`.
+- **Next step:** Open the PR for #1789.
+
 ### DL-#1786 — Barb as the front door: owner requests run without a second approval
 
 - **State:** in_review
