@@ -38,6 +38,18 @@
 
 ---
 
+# Prior handoff — atomic idempotency reservation for Staff API v1 (DL-#1795)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1795`
+- **Branch:** `fix/idempotent-reservation-1795` from `origin/main` (`8169046`)
+- **PR:** #1814
+- **Why:** Board 2026-09-29 accepted BR-01: same-key requests to v1 mutating routes could both execute, a reused key with a new body replayed the old answer, and a failed receipt write returned 503 after the effect.
+- **Changes:** `reserve`/`complete`/`release` in `staff/idempotency.py` (pending rows, payload fingerprint, lease, operation id, in-place migration); `_handle_idempotent_post` reserves first and maps states to 409 codes; optional `Idempotency-Key` on `POST /threads` (new-thread shaping moved to `thread_helpers.shape_new_thread` to stay under the 500-line cap).
+- **Validation:** 1096 passed in the staff/idempotency selection of `tests/api` and `tests/unit`; ruff clean.
+- **Next:** merge PR #1814; BR-02 (#1796) carries the operation id across peer forwarding.
+
+---
+
 # Prior handoff — PyJWT 2.14.0 for CVE-2026-102274 (DL-#1815)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-pyjwt`

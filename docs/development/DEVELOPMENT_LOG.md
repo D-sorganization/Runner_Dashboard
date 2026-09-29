@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1795 — atomic idempotency reservation for Staff API v1 (BR-01)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1795 (Board 2026-09-29, RD review PR #1776 item BR-01)
+- **Branch:** `fix/idempotent-reservation-1795` from `origin/main` (`8169046`)
+- **PR:** #1814
+- **Paths:** `backend/staff/idempotency.py`, `backend/routers/staff_v1.py`, `backend/routers/staff_threads.py`, `backend/staff/thread_helpers.py`, `tests/unit/test_idempotency_reserve.py`, `tests/api/test_staff_v1_idempotency.py`, `tests/api/test_staff_threads_api.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `d4229a6` (GREEN: 9 ledger unit tests, 6 route tests and the thread-create test pass; 1096 passed in the staff/idempotency selection of `tests/api` and `tests/unit`; ruff clean)
+- **Summary:** The ledger was check-then-act: `get()` before the action and `save()` after, so two same-key requests both ran (the review observed a count of 2). `IdempotencyStore.reserve()` now inserts a pending row under `BEGIN IMMEDIATE` with a payload fingerprint, a lease and an operation id, then returns acquired, replay, in_progress, mismatch or unknown_outcome. `complete()` stores the receipt and `release()` frees a pending key when the action fails. Old tables gain the new columns on open, and their rows replay as before. The v1 handler maps each state to a 409 code. When the receipt cannot be written after the effect, it returns the effect instead of a 503. Cancel, holds and export may re-take a lapsed reservation; dispatch may not. Thread creation takes an optional key. Carrying the operation id through peer forwarding is BR-02 (#1796).
+- **Next step:** Merge PR #1814; then BR-02 (#1796).
+
 ### DL-#1787 — one route for agents to queue suggestions and draft PRs for the Board
 
 - **State:** in_review

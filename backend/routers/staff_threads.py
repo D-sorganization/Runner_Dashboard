@@ -18,7 +18,7 @@ from fastapi import (
     Response,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from identity import Principal, format_caller, require_fleet_peer, require_scope
 from staff.audit import record_audit
 from staff.availability import record_fast_acknowledgment
@@ -40,7 +40,7 @@ from staff.loop_guard import enforce_loop_guard_or_raise
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
 from staff.thread_bus import get_thread_bus
-from staff.thread_helpers import find_idempotent_reply
+from staff.thread_helpers import find_idempotent_reply, shape_new_thread
 
 log = logging.getLogger("dashboard.staff.threads")
 
@@ -73,36 +73,29 @@ def _get_store_or_503() -> Any:
 async def create_thread(
     body: CreateThreadRequest,
     caller: Principal = Depends(require_scope("staff.chat")),
-) -> dict[str, Any]:
-    """Create a new conversation thread."""
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    """Create a thread; a retry under the same Idempotency-Key returns the first one (#1795)."""
+    if not idempotency_key:
+        return await _create_thread(body, caller)
+    from routers.staff_v1 import _handle_idempotent_post
+
+    async def _create() -> JSONResponse:
+        return JSONResponse(status_code=status.HTTP_201_CREATED, content=await _create_thread(body, caller))
+
+    endpoint, payload = "POST /api/v1/staff/threads", body.model_dump(mode="json")
+    return await _handle_idempotent_post(idempotency_key, endpoint, format_caller(caller), payload, _create)
+
+
+async def _create_thread(body: CreateThreadRequest, caller: Principal) -> dict[str, Any]:
     store = _get_store_or_503()
     caller_id = format_caller(caller)
-
-    kind = body.kind or "direct"
-    if kind == "panel":
+    if (body.kind or "direct") == "panel":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"code": "panel_via_panels_api", "message": "Start a panel with POST /api/v1/staff/panels"},
         )
-    role = body.role
-    if kind == "auto" or role == "auto":
-        kind = "auto"
-        role = "barb"
-
-    participants = list(body.participants)
-    from staff.group_threads import resolve_group_thread_meta
-
-    kind, role, meta = resolve_group_thread_meta(kind, role, participants)
-
-    if role and role not in participants:
-        participants.append(role)
-    if caller_id not in participants:
-        participants.append(caller_id)
-
-    title = body.title
-    if not title:
-        title = f"Conversation with {role.title()}" if role else "New conversation"
-
+    title, kind, participants, meta = shape_new_thread(body, caller_id)
     try:
         rec = store.create_thread(
             title=title,
