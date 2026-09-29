@@ -121,6 +121,7 @@ async def test_build_fleet_context_block_redacts_exception_message() -> None:
 @pytest.mark.asyncio
 async def test_build_fleet_context_block_timeout_renders_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(cfc, "COLD_SOURCE_TIMEOUT_SECONDS", 0.05)
 
     role = RoleSpec(
         name="barb",
@@ -254,6 +255,7 @@ async def test_build_fleet_context_block_no_snapshot_yet_still_unavailable(
 ) -> None:
     """A tool with no prior success this process still renders unavailable, not a fabricated stale body."""
     monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(cfc, "COLD_SOURCE_TIMEOUT_SECONDS", 0.05)
 
     role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_briefing"]})
 
@@ -265,3 +267,49 @@ async def test_build_fleet_context_block_no_snapshot_yet_still_unavailable(
     assert block is not None
     section = block[block.index("### read_briefing") :]
     assert section == "### read_briefing\nunavailable (TimeoutError)"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cold_first_turn_slower_than_steady_timeout_succeeds_under_cold_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cold first turn slower than steady-state SOURCE_TIMEOUT_SECONDS succeeds
+    within COLD_SOURCE_TIMEOUT_SECONDS (#1768).
+    """
+    monkeypatch.setattr(cfc, "SOURCE_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(cfc, "COLD_SOURCE_TIMEOUT_SECONDS", 0.3)
+
+    role = RoleSpec(name="barb", title="Barb", chat={"tools": ["read_briefing"]})
+
+    async def _cold_source() -> dict[str, Any]:
+        # Slower than steady-state 0.05s, but within cold budget 0.3s
+        await asyncio.sleep(0.12)
+        return {"briefing": ["node-1", "node-2"]}
+
+    block = await build_fleet_context_block(role, sources={"read_briefing": _cold_source})
+    assert block is not None
+    section = block[block.index("### read_briefing") :]
+    assert "unavailable" not in section
+    assert '{"briefing":["node-1","node-2"]}' in section
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_warm_fleet_context_snapshots_populates_last_good(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pre-warming populates last-good snapshots so subsequent timeouts render stale (#1768)."""
+    fake_sources = {
+        "read_staff_summary": AsyncMock(return_value={"summary": "warm"}),
+        "read_priorities": AsyncMock(return_value={"priorities": "warm"}),
+        "read_briefing": AsyncMock(return_value={"briefing": "warm"}),
+        "read_sessions": AsyncMock(return_value={"sessions": "warm"}),
+    }
+
+    assert len(cfc._LAST_GOOD) == 0
+    await cfc.warm_fleet_context_snapshots(sources=fake_sources)
+    assert len(cfc._LAST_GOOD) == 4
+    for tool in cfc.FLEET_CONTEXT_TOOLS:
+        assert tool in cfc._LAST_GOOD
+        assert '"warm"' in cfc._LAST_GOOD[tool][1]

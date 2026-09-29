@@ -69,6 +69,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (RED `test_board_secretary_may_propose_board_convene`; then 45 passed, 1 skipped across the actions, reply-contract and board.convene API tests)
 - **Summary:** The role that chairs the Board could not propose convening it, and its `board.convene` was silently dropped. `check_role_permission` now grants `board.convene` to `BOARD_PROPOSAL_ROLE`; the owner still approves it.
 - **Next step:** Open the PR with #1774 and #1775.
+### DL-#1768 — Fleet context cold-start timeout budget and startup pre-warming
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1768
+- **Branch:** `fix/1768-fleet-context-cold-start-budget`
+- **PR:** #1771
+- **Paths:** `backend/staff/chat_fleet_context.py`, `backend/server.py`, `tests/unit/test_staff_chat_fleet_context.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (`pytest tests/unit/test_staff_chat_fleet_context.py` — 15 passed; `ruff check`/`ruff format --check` clean)
+- **Summary:** First chat turns after a dashboard restart timed out reading peer-node briefing and sessions because no last-good snapshot existed yet and the cold reads exceeded the tight 5.0s steady-state timeout budget. Implemented `COLD_SOURCE_TIMEOUT_SECONDS = 15.0` used whenever a tool has no prior last-good snapshot in `_LAST_GOOD`, ensuring the initial cold fetch succeeds and caches its payload. Also added `warm_fleet_context_snapshots` scheduled in the background during server startup to asynchronously pre-warm all fleet context snapshots.
+- **Next step:** Review and merge PR #1771.
 
 ### DL-#1770 — Staff approvals from another tailnet device
 
