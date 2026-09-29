@@ -10,6 +10,7 @@ import os
 import platform
 import re
 import shutil
+import sqlite3
 import subprocess
 import threading
 import uuid
@@ -34,6 +35,7 @@ from staff.runner_ops import (
     execute_retry_nudge,
     extract_transcript_question,
     fail_if_cli_outdated,
+    new_run_record,
     pump_output,
     read_only_kwargs,
     resolve_launch_paths,
@@ -185,33 +187,34 @@ class StaffRunner:
 
     def submit(self, req: RunRequest) -> RunRecord:
         """Validate, persist as ``queued`` and start the worker thread."""
+        rec, plan, _created = self.admit(req)
+        self.launch(rec, plan)
+        return rec
+
+    def admit(self, req: RunRequest, *, run_id: str | None = None) -> tuple[RunRecord, RunPlan, bool]:
+        """Validate and persist as ``queued`` without starting a worker (#1796).
+
+        A ``run_id`` that already has a row returns that row with ``created=False``, so
+        a retried operation is admitted once. Call :meth:`launch` only when created.
+        """
         plan = self.plan(req)
+        if run_id and (existing := self.store.get_run(run_id)) is not None:
+            return existing, plan, False
         role = self.roles().get(plan.role)
-        max_att = getattr(role, "max_attempts", 2) or 2
-        rec = RunRecord(
-            id=f"run-{uuid.uuid4().hex[:12]}",
-            role=plan.role,
-            provider=plan.provider,
-            model=plan.model,
-            machine=self.machine,
-            repo=plan.repo,
-            target_kind=plan.target_kind,
-            target_ref=plan.target_ref,
-            prompt=plan.prompt,
-            requested_by=req.requested_by,
-            on_behalf_of=req.on_behalf_of,
-            branch=plan.branch,
-            strategy_mode=plan.strategy_mode,
-            max_attempts=max_att,
-            thread_id=req.thread_id,
-            work_item_id=req.work_item_id,
-            origin_node=getattr(req, "origin_node", "") or "",
-        )
-        self.store.create_run(rec)
+        rec = new_run_record(plan, req, self.machine, getattr(role, "max_attempts", 2) or 2, run_id)
+        try:
+            self.store.create_run(rec)
+        except sqlite3.IntegrityError:
+            if (existing := self.store.get_run(rec.id)) is None:
+                raise
+            return existing, plan, False
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
         handle_run_status_change(rec, "queued")
+        return rec, plan, True
+
+    def launch(self, rec: RunRecord, plan: RunPlan) -> None:
+        """Start the worker thread for a run :meth:`admit` created."""
         threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True).start()
-        return rec
 
     def cancel(self, run_id: str) -> bool:
         with self._lock:

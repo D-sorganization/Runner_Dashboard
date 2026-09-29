@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict
@@ -16,6 +17,7 @@ import provider_switch
 from staff import cli_version, workspace
 from staff import quota as quota_mod
 from staff.adapters import ProviderAdapter
+from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore, _now
@@ -299,3 +301,26 @@ def extract_transcript_question(transcript: Path) -> str | None:
         return last if last.endswith("?") else None
     except Exception:  # noqa: BLE001
         return None
+
+
+def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: int, run_id: str | None) -> RunRecord:
+    """The ``queued`` row for an admitted run; ``run_id`` defaults to a fresh id."""
+    return RunRecord(
+        id=run_id or f"run-{uuid.uuid4().hex[:12]}",
+        role=plan.role,
+        provider=plan.provider,
+        model=plan.model,
+        machine=machine,
+        repo=plan.repo,
+        target_kind=plan.target_kind,
+        target_ref=plan.target_ref,
+        prompt=plan.prompt,
+        requested_by=req.requested_by,
+        on_behalf_of=req.on_behalf_of,
+        branch=plan.branch,
+        strategy_mode=plan.strategy_mode,
+        max_attempts=max_attempts,
+        thread_id=req.thread_id,
+        work_item_id=req.work_item_id,
+        origin_node=getattr(req, "origin_node", "") or "",
+    )

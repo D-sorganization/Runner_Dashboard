@@ -38,6 +38,18 @@
 
 ---
 
+# Prior handoff — dispatch admission and audit before the worker starts (DL-#1796)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1796`
+- **Branch:** `fix/dispatch-admission-audit-1796`, rebased onto main after BR-01 (PR #1814) merged
+- **PR:** #1817
+- **Why:** Board 2026-09-29 accepted BR-02 (P0): an audit outage returned an error after the provider had already started.
+- **Changes:** audit → `admit` → `launch` in `dispatch_service`; `StaffRunner.admit`/`launch` with `submit` kept as both; the `RunRecord` builder moved to `runner_ops.new_run_record` to keep `runner.py` under 500 lines; operation id on `DispatchCommand`, the peer `/run` body and the v1 reservation.
+- **Validation:** 1213 passed in the staff selection of `tests/api` and `tests/unit`; ruff clean.
+- **Next:** rebase onto main once #1814 merges, open the PR; BR-03 (#1797) next.
+
+---
+
 # Prior handoff — atomic idempotency reservation for Staff API v1 (DL-#1795)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1795`

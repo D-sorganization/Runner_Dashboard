@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -20,10 +21,11 @@ from fastapi import HTTPException
 from identity import Principal, format_caller
 from staff import consolidation
 from staff import fleet as staff_fleet
-from staff.audit import record_audit
+from staff.audit import AuditError, record_audit
 from staff.budget import BudgetGuard
 from staff.rate_limit import check_rate_limit
 from staff.runner import RunRequest, StaffRunner, get_runner
+from staff.store import _now
 
 log = logging.getLogger("dashboard.staff")
 
@@ -61,6 +63,8 @@ class DispatchCommand:
     origin_node: str = ""
     # Dispatch even when the role's budget or the provider's plan window is spent (#1588); audited.
     ignore_budget: bool = False
+    # One admitted run per operation (#1796): an Idempotency-Key reservation, or a peer's forward.
+    operation_id: str = ""
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -73,7 +77,16 @@ class DispatchCommand:
         body = asdict(self)
         for key in ("role", "requested_by", "on_behalf_of"):
             body.pop(key)
+        if not body["operation_id"]:
+            body.pop("operation_id")  # peers on older builds never see an empty field
         return body
+
+    def run_id(self) -> str:
+        """The run id this command admits: derived from ``operation_id`` when given."""
+        if not self.operation_id:
+            return f"run-{uuid.uuid4().hex[:12]}"
+        op = self.operation_id
+        return op if op.startswith("run-") else f"run-{op.removeprefix('op-')}"
 
 
 def failure_class_for(exc: HTTPException) -> str:
@@ -132,9 +145,10 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     Pre: ``cmd`` is a valid :class:`DispatchCommand`; ``caller`` is the authenticated
     principal the rate limit and audit are charged to.
     Post: a forwarded call returns the peer's response plus ``forwarded_to``; a dry run
-    returns the plan and creates nothing; a real local dispatch has a ``queued`` run row
-    and a ``dispatch`` audit entry before returning. Any refusal is an ``HTTPException``
-    raised before a run row exists.
+    returns the plan and creates nothing; a real local dispatch writes the ``dispatch``
+    audit entry, then the ``queued`` run row, then starts the worker (#1796), so an audit
+    outage starts nothing. Any refusal is an ``HTTPException`` raised before a run row
+    exists, except ``launch_failed``, which names the run it left ``failed``.
     """
     runner = get_runner()
     spec = runner.roles().get(cmd.role)
@@ -180,26 +194,46 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             status_code=429,
             detail={"code": "budget_exceeded", "message": f"{budget_reason}; resend with ignore_budget to override"},
         )
-    rec = runner.submit(req)
-    record_audit(
-        action="dispatch",
-        target=f"role:{rec.role}",
-        principal=format_caller(caller),
-        on_behalf_of=cmd.on_behalf_of,
-        surface=cmd.surface,
-        thread_id=cmd.thread_id,
-        request_id=rec.id,
-        run_id=rec.id,
-        outcome="success",
-        detail={
-            "repo": rec.repo,
-            "target_ref": rec.target_ref,
-            "provider": rec.provider,
-            "machine": rec.machine,
-            **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
-        },
-        fail_closed=True,
-    )
+    run_id = cmd.run_id()
+    audit_ctx: dict[str, Any] = {
+        "target": f"role:{plan.role}",
+        "principal": format_caller(caller),
+        "on_behalf_of": cmd.on_behalf_of,
+        "surface": cmd.surface,
+        "thread_id": cmd.thread_id,
+        "request_id": run_id,
+        "run_id": run_id,
+    }
+    try:
+        record_audit(
+            action="dispatch",
+            **audit_ctx,
+            outcome="admitted",
+            detail={
+                "repo": plan.repo,
+                "target_ref": plan.target_ref,
+                "provider": plan.provider,
+                "machine": runner.machine,
+                **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
+                **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
+            },
+            fail_closed=True,
+        )
+    except AuditError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
+        ) from exc
+    rec, plan, created = runner.admit(req, run_id=run_id)
+    if created:
+        try:
+            runner.launch(rec, plan)
+        except Exception as exc:
+            _record_launch_failure(runner, rec.id, exc, audit_ctx)
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "launch_failed", "message": f"worker did not start: {exc}", "run_id": rec.id},
+            ) from exc
     log.info(
         "staff: dispatched %s role=%s provider=%s repo=%s target=%s by %s",
         rec.id,
@@ -210,3 +244,11 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         cmd.requested_by,
     )
     return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine}
+
+
+def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, audit_ctx: dict[str, Any]) -> None:
+    """Leave an admitted run whose worker never started visibly ``failed`` (#1796)."""
+    error = f"worker did not start: {exc}"
+    runner.store.update_run(run_id, status="failed", error=error, failure_class="launch_failed", ended_at=_now())
+    runner.store.append_event(run_id, "failed", error)
+    record_audit(action="dispatch", **audit_ctx, outcome="launch_failed", detail={"error": str(exc)}, fail_closed=False)
