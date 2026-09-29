@@ -20,10 +20,31 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
-_OAUTH_BLOCKED_HINT = (
+_OAUTH_BLOCKED_HINT_BASE = (
     "Ask an administrator to configure the dedicated GitHub OAuth app for the "
-    "OGLaptop MagicDNS HTTPS callback; development login is not a production fallback."
+    "MagicDNS HTTPS callback; development login is not a production fallback."
 )
+
+
+def _oauth_blocked_hint() -> str:
+    """Return an operator hint when production GitHub OAuth is not ready.
+
+    Stays host-neutral rather than naming a fixed machine (issue #1764).
+    When Tailscale identity sign-in is disabled, informs the operator about
+    DASHBOARD_TAILSCALE_AUTH as the tailnet alternative.
+    """
+    from tailnet_identity import _tailscale_auth_enabled
+
+    if not _tailscale_auth_enabled():
+        return (
+            f"{_OAUTH_BLOCKED_HINT_BASE} Alternatively, for tailnet devices, "
+            "enable Tailscale identity sign-in via DASHBOARD_TAILSCALE_AUTH=1 and "
+            "DASHBOARD_TAILSCALE_LOGINS."
+        )
+    return _OAUTH_BLOCKED_HINT_BASE
+
+
+_OAUTH_BLOCKED_HINT = _OAUTH_BLOCKED_HINT_BASE
 
 
 def _dev_login_enabled() -> bool:
@@ -50,7 +71,7 @@ def _require_production_oauth(config: OAuthConfig) -> None:
             detail={
                 "message": "Production GitHub OAuth is not ready.",
                 "reason": exc.diagnostic["reason"],
-                "hint": _OAUTH_BLOCKED_HINT,
+                "hint": _oauth_blocked_hint(),
             },
         ) from exc
 

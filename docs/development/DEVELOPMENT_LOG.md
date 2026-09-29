@@ -108,6 +108,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_reply_contract.py -q` — 19 passed, 1 skipped; `ruff check`/`ruff format --check` clean; `mypy --ignore-missing-imports` clean)
 - **Summary:** `generate_chat_contract_text()`'s action table never showed `ActionDefinition.params_schema`, so roles guessed param names when proposing actions (Barb invented `agenda`/`seats`/`mode`/`rounds` for `board.convene` instead of using `question`/`title?`). New `_render_params_schema()` renders the schema as `name: type` (optional keys as `name?: type`, empty schema as `—`) in a new `Params` column.
 - **Next step:** Open the PR referencing #1766.
+### DL-#1764 — Host-neutral OAuth 503 hint and Tailscale identity auth guidance
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1764
+- **Branch:** `fix/1764-oauth-hint-tailscale-guidance`
+- **PR:** not created
+- **Paths:** `backend/routers/auth.py`, `tests/api/test_oauth_hint_host_neutral.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (`pytest tests/api/test_oauth_hint_host_neutral.py tests/test_oauth_production_readiness.py tests/test_oauth_config.py` 17 passed; `ruff check`/`ruff format --check` clean; `mypy` clean)
+- **Summary:** Make GitHub OAuth 503 error hint host-neutral, eliminating the hard-coded "OGLaptop" machine name; dynamically mention DASHBOARD_TAILSCALE_AUTH as the tailnet alternative when Tailscale auth is disabled.
+- **Next step:** Commit and create PR referencing #1764.
 
 ### DL-#1762 — read_issue chat context and board.convene
 
