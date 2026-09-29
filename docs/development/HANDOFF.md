@@ -1,4 +1,17 @@
-# Current handoff — Barb as the front door (DL-#1786)
+# Current handoff — /execute accepts role presets, not just explicit scopes (DL-#1789)
+
+- **Repository / worktree:** Runner_Dashboard, worktree `/tmp/rd-wt-RD1789Fix`
+- **Branch:** `bot/issue-1789-approval-role-presets`, rebased onto `origin/main` at `53ce8e5` before push (main advanced by the docs commit `53ce8e5` while the branch was in flight)
+- **PR:** not created
+- **Why:** follow-up to #1786 (PR #1788), found approving the live Board cards from Desk: `check_approval_policy` read only the principal's explicit `scopes`, so loopback/tailnet principals (`roles=["loopback"]`/`["tailnet-approver"]`, no explicit scopes) passed `/decide` (the route's `require_scope` expands presets) but got 403 `Principal '__loopback__' lacks 'staff.approve' scope` on `/execute`; an owner request to Barb from Desk still left its card because the #1786 auto-run hits the same check.
+- **Changes:** `backend/staff/actions.py` `check_approval_policy` — the `staff.approve` gate now uses `principal_has_scope(approver, "staff.approve")`, the same preset-expanding helper as the action `required_scope` check two lines below. Authority is not widened beyond the presets: presets that do not grant the scope (`bot`, `viewer`) still fail closed, and the 403 error text is unchanged so existing clients see the same message.
+- **Decisions:** keep the risk gates untouched (HIGH/CRITICAL/owner-only require the owner). The fix is exactly the issue's prescribed one; tests use the real loopback principal shape (`roles=["loopback"]`, no explicit scopes) at the policy unit level and through the routes.
+- **Validation:** RED: `test_approval_policy_accepts_role_presets_for_approve` failed on main with the issue's exact error; the new route test `test_execute_route_accepts_a_decide_capable_role_preset` 403'd on main. GREEN: 75 passed on `tests/unit/test_staff_actions.py` + `tests/api/test_staff_proposal_hardening.py tests/api/test_staff_proposals_api.py tests/api/test_staff_owner_requests.py tests/api/test_tailnet_identity.py tests/api/test_staff_board_convene_api.py`; 575 passed on the staff API suite subset; `ruff check`/`ruff format --check` clean; the CI mypy commands clean.
+- **Next:** open the PR; after merge, deploy to Desk and execute the two pending Board cards.
+
+---
+
+# Prior handoff — Barb as the front door (DL-#1786)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
 - **Branch:** `feat/barb-front-door` from `origin/main` (`63f4088`)
