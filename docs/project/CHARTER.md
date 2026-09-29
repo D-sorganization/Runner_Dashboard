@@ -29,13 +29,13 @@ Provide a unified, secure web control console and AI Staff Console for the D-sor
 | F8  | Staff Agent and Tooling APIs            | in-progress | #1352    | Versioned /api/v1/staff API, MCP tools, and external agent connectors.    |
 | F9  | Staff Console Shell and Navigation      | in-progress | #1350    | Four-area layout, staff roster sidebar, and mobile responsive shell.      |
 | F10 | UI Modernization and Legacy Pruning     | in-progress | #1353    | Retiring classic layout and consolidating off-theme legacy dispatch tabs. |
-| F11 | Code Requests and Proposals Pipeline    | in-progress | #1279    | Agent-agnostic planner-to-executor pipeline and board suggestion box.     |
-| F12 | Multi-Host Node Infrastructure          | in-progress | #1258    | Node cluster synchronization, self-updating roles, and Ollama bridges.    |
-| F13 | Projects and Fleet Stewardship          | in-progress | #1248    | Per-repo charters, status reporting, and deferred-plan owner tracking.    |
+| F11 | Code Requests and Proposals Pipeline    | shipped     | #1279    | Agent-agnostic planner-to-executor pipeline and board suggestion box.     |
+| F12 | Multi-Host Node Infrastructure          | shipped     | #1258    | Node cluster synchronization, self-updating roles, and Ollama bridges.    |
+| F13 | Projects and Fleet Stewardship          | shipped     | #1248    | Per-repo charters, status reporting, and deferred-plan owner tracking.    |
 | F14 | Staff Hub Reliability and Watchdogs     | in-progress | #1347    | Process tree cleanup, orphan run reconciliation, and error boundaries.    |
 | F15 | Maxwell Control Plane Proxy             | shipped     | #1338    | HTTP proxy interface and contract tests for external Maxwell daemon.      |
 | F16 | Fleet Coordination and Priorities       | shipped     | #1233    | Priorities API, board meetings, directives, and lease tracking.           |
-| F17 | Board Deliberation and Group Threads    | planned     | #1339    | Multi-seat group threads coordinated by Board-Secretary.                  |
+| F17 | Board Deliberation and Group Threads    | shipped     | #1339    | Multi-seat group threads coordinated by Board-Secretary.                  |
 | F18 | Offline Release Artifact Pipeline       | parked      | #1085    | Checksummed bundle distribution bypassing machine-local npm installs.     |
 
 ## Links

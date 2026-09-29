@@ -2,8 +2,8 @@
 
 # Project Status
 
-- Last steward run: `2026-09-25`
-- 18 features: 6 shipped, 10 in-progress, 1 planned, 1 parked
+- Last steward run: `2026-09-29`
+- 18 features: 10 shipped, 7 in-progress, 0 planned, 1 parked
 
 ## Progress
 
@@ -19,13 +19,13 @@
 | F8  | Staff Agent and Tooling APIs            | in-progress | 85%      | Public staff API, MCP tools, and spend limits active (#1312, #1323, #1336) |
 | F9  | Staff Console Shell and Navigation      | in-progress | 90%      | Mobile navigation and context pane shipped (#1320, #1331)                  |
 | F10 | UI Modernization and Legacy Pruning     | in-progress | 60%      | Insights tab merged; classic layout retirement pending (#1326, #1345)      |
-| F11 | Code Requests and Proposals Pipeline    | in-progress | 25%      | Rename PR #1432 open; planning and executor stages pending (#1279)         |
-| F12 | Multi-Host Node Infrastructure          | in-progress | 75%      | OGLaptop and ControlTower worker runbooks verified (#1273, #1276)          |
-| F13 | Projects and Fleet Stewardship          | in-progress | 80%      | Deferred-plan owner exposure and charter tracking active (#1251)           |
+| F11 | Code Requests and Proposals Pipeline    | shipped     | 100%     | Rename, data model, and agent-agnostic dispatch shipped; epic #1279 closed (#1432, #1443, #1456) |
+| F12 | Multi-Host Node Infrastructure          | shipped     | 100%     | OGLaptop bridge verified and duplicate-address outage guard shipped; epic #1258 closed (#1262, #1272) |
+| F13 | Projects and Fleet Stewardship          | shipped     | 100%     | Deferred-plan owner exposure shipped; epic #1248 closed (#1254)            |
 | F14 | Staff Hub Reliability and Watchdogs     | in-progress | 95%      | Watchdogs, orphan recovery, and error boundaries active (#1292, #1294)     |
 | F15 | Maxwell Control Plane Proxy             | shipped     | 100%     | HTTP proxy and contract tests maintained; review pending (#1338)           |
 | F16 | Fleet Coordination and Priorities       | shipped     | 100%     | Fleet Command UI and coordination endpoints active (#1229, #1233)          |
-| F17 | Board Deliberation and Group Threads    | planned     | 0%       | Issue #1339 opened for group threads and secretary coordination            |
+| F17 | Board Deliberation and Group Threads    | shipped     | 100%     | Group threads (#1480) and Board review/routing (#1763, #1772) shipped; epic #1339 closed |
 | F18 | Offline Release Artifact Pipeline       | parked      | 15%      | Deferred to follow-up issue #1085 after lockfile fix                       |
 
 ## Blockers
@@ -41,17 +41,15 @@
 
 ## Changed Since Last Run
 
-- Implemented Barb follow-up engine to detect stalled and blocked runs, handle retries, and escalate failures (#1327).
-- Added accessible row action menus on machines and runners with approval-gated maintenance dispatch (#1333).
-- Consolidated Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan, and Schedules into a unified Operations page (#1325).
-- Restructured mobile Staff Console navigation with composer and push notifications deep links (#1331).
-- Added "Waiting on you" inbox and Barb briefings inside the dashboard (#1328).
-- Consolidated Machines, Runner Audit, and Event Log into one Fleet page (#1324).
-- Opened pull request #1432 to rename Feature Requests to Code Requests with backwards-compatible aliases.
+- Shipped Code Requests pipeline: rename, data model/lifecycle store, and agent-agnostic dispatch; epic #1279 closed (#1432, #1443, #1456).
+- Shipped Board Deliberation group threads and the Barb→Board review/routing flow; epic #1339 closed (#1480, #1763, #1772).
+- Closed multi-host node infrastructure epic #1258 (OGLaptop bridge verification, duplicate-address outage guard, #1272).
+- Closed Projects/Fleet Stewardship epic #1248 (deferred-plan owner exposure, #1254).
+- Shipped phone sign-in via Tailscale identity headers (#1757) and a host-neutral OAuth 503 hint (#1769).
+- Resolved three prior Decisions Needed items: off-theme work-request consolidation (#1337), VHDX compaction policy (#1332), and remote ingress for cloud agent clients (#1335) — all closed since the last run.
+- Shipped devlog cleanup: ship merged entries, merge duplicates, archive shipped entries (#1739).
 
 ## Decisions Needed
 
 - Confirm deprecation, relocation, or retention for off-theme pages (Cline Launcher, Tests, Organization, Assessments, Local Tools, Maxwell) (#1338).
-- Approve remote ingress strategy for cloud-hosted agent clients such as Grok Bot and Claude Cowork (Tailscale Funnel vs local connector) (#1335).
-- Decide policy on scheduling automated VHDX compaction for WSL runner disks considering locking overhead and risk (#1332).
-- Approve consolidation of eleven standalone work request screens into "ask a role" plus a single advanced form (#1337).
+- CI Standard has been red on `main` since 2026-09-27 (~06:52 UTC): `ci-health-check` fails the 500-line source-file soft cap on `backend/staff/groups.py` (567 lines, introduced by the Board review/group-threads work), which fails `quality-gate` and blocks the `tests` job downstream. First appeared: 2026-09-27. Needs an owner decision on whether to extract/split `backend/staff/groups.py` or raise the soft cap — this role is docs-only and cannot touch source.
