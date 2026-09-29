@@ -107,12 +107,17 @@ class FollowupEngine:
         conversation_store: ConversationStore | None = None,
         event_store: Any | None = None,
         sweep_interval_seconds: int = DEFAULT_SWEEP_INTERVAL_SECONDS,
+        runner: Any | None = None,
+        holds: Any | None = None,
     ) -> None:
         self.run_store = run_store or get_run_store()
         self.work_item_store = work_item_store or get_work_item_store()
         self.conversation_store = conversation_store or get_conversation_store()
         self.event_store = event_store or get_event_store()
         self.sweep_interval_seconds = max(30, sweep_interval_seconds)
+        # Retries start on the staff runner through staff.retry (#1797); both resolve lazily.
+        self._runner_override = runner
+        self._holds_override = holds
 
         self._lock = threading.RLock()
         self._last_sweep_at: datetime | None = None
@@ -302,35 +307,47 @@ class FollowupEngine:
         _audit("barb_followup_decision_ping", prop.id, prop.thread_id, detail)
         return _mk_record(prop.id, "decision_overdue", "decision_ping", detail, now_iso, "proposal")
 
+    def _runner(self) -> Any:
+        if self._runner_override is None:
+            from staff.runner import get_runner
+
+            self._runner_override = get_runner()
+        return self._runner_override
+
+    def _holds(self) -> Any:
+        if self._holds_override is None:
+            from staff.holds import HoldsList
+
+            self._holds_override = HoldsList()
+        return self._holds_override
+
     def _handle_stalled_or_failed_run(
         self, item: WorkItemRecord, run: RunRecord, now: datetime, condition: str
     ) -> FollowupRecord:
+        """Retry the run through :func:`staff.retry.launch_retry`, or escalate (#1797).
+
+        A stalled original is cancelled and marked failed first, so it cannot finish
+        alongside its retry. The retry runs on a worker with the original's thread,
+        work-item and origin links; the class, attempt, budget and hold gates decide.
+        """
+        from staff.retry import launch_retry
+
         now_iso = now.isoformat().replace("+00:00", "Z")
-        if run.attempt < run.max_attempts:
-            new_run_id = f"{run.id}-r{run.attempt + 1}"
-            retry_run = RunRecord(
-                id=new_run_id,
-                role=run.role,
-                provider=run.provider,
-                model=run.model,
-                machine=run.machine,
-                repo=run.repo,
-                target_kind=run.target_kind,
-                target_ref=run.target_ref,
-                prompt=run.prompt,
-                status="queued",
-                attempt=run.attempt + 1,
-                max_attempts=run.max_attempts,
-                retry_of=run.id,
-                created_at=now_iso,
-            )
-            self.run_store.create_run(retry_run)
-            self.work_item_store.add_link(item.id, "runs", new_run_id)
-            detail = {
-                "run_id": run.id,
-                "new_run_id": new_run_id,
-                "attempt": retry_run.attempt,
-            }
+        runner = self._runner()
+        if run.status != "failed":
+            runner.cancel(run.id)
+            self.run_store.update_run(run.id, status="failed", failure_class="stalled", ended_at=now_iso)
+            self.run_store.append_event(run.id, "stalled", "reconciled by Barb's follow-up before a retry")
+        decision = launch_retry(
+            runner, run, source="followup", holds=self._holds(), allow_classes=frozenset({"stalled"})
+        )
+        if decision.launched or decision.reason == "already claimed":
+            if decision.run_id not in item.links.get("runs", []):
+                self.work_item_store.add_link(item.id, "runs", decision.run_id)
+            detail = {"run_id": run.id, "new_run_id": decision.run_id, "attempt": run.attempt + 1}
+            if not decision.launched:
+                # Another path (post-execution retry, a concurrent sweep) owns this attempt.
+                return _mk_record(item.id, condition, "retry_pending", detail, now_iso)
             _audit("barb_followup_retry", item.id, item.thread_id, detail)
             return _mk_record(item.id, condition, "retry", detail, now_iso)
 
@@ -338,7 +355,7 @@ class FollowupEngine:
             item.id,
             "escalated",
             actor="barb",
-            reason=f"Run {run.id} {condition} after {run.attempt} attempts",
+            reason=f"Run {run.id} {condition} after {run.attempt} attempts; not retried: {decision.reason}",
         )
         body = (
             f"🚨 **Barb Follow-Up Escalation**\n\n"
@@ -360,7 +377,7 @@ class FollowupEngine:
             f"Run {run.id} {condition} after {run.attempt} attempts.",
         )
 
-        detail = {"run_id": run.id, "attempts": run.attempt}
+        detail = {"run_id": run.id, "attempts": run.attempt, "retry_refused": decision.reason}
         _audit("barb_followup_escalate", item.id, item.thread_id, detail)
         return _mk_record(item.id, condition, "escalate", detail, now_iso)
 

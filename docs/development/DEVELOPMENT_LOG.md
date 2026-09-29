@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1797 — follow-up retries launch through retry.py (BR-03)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1797 (Board 2026-09-29, RD review PR #1776 item BR-03; depends on BR-01 #1795 and BR-02 #1796)
+- **Branch:** `fix/followup-retry-launch-1797` from `origin/main` (`6458d3c`, BR-01 and BR-02 merged)
+- **PR:** #1818
+- **Paths:** `backend/staff/retry.py`, `backend/staff/followup.py`, `tests/api/test_staff_retry_launch.py`, `tests/api/test_staff_followup.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `1b84dff` (GREEN: 9 retry-launch tests, 30 followup and retry tests; 1208 passed in the staff/retry/followup/dispatch/runner/idempotency selection of `tests/api` and `tests/unit`; ruff clean)
+- **Summary:** The follow-up engine wrote a `queued` retry row and linked it, but no worker consumed it; the scheduler then treated it as active work. `launch_retry(runner, failed, source, holds, allow_classes)` re-reads the run and applies `should_retry` (class, attempts, budget) and the schedule holds. It inserts `{root}-a{n}` with the original's thread, work-item and origin links, then starts the worker through `runner.launch`. A second claimant gets `already claimed`. The follow-up engine takes injectable `runner`/`holds`, cancels and fails a stalled original first, allows the `stalled` class on that path only, links the attempt, records `retry_pending` when another path owns it, and escalates with the refusal reason otherwise. `handle_post_execution_retry` uses the same deterministic ids and now copies provenance.
+- **Next step:** Merge PR #1818; then rebase BR-04 (#1798) onto main and open its PR.
+
 ### DL-#1804 — Staff Console role readiness and context from real data (BR-11)
 
 - **State:** in_progress
@@ -46,7 +59,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1796 — dispatch admission and audit before the worker starts (BR-02)
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1796 (Board 2026-09-29, RD review PR #1776 item BR-02; depends on BR-01 #1795)
 - **Branch:** `fix/dispatch-admission-audit-1796` from `origin/main` (`1877c6c`, BR-01 merged)
@@ -55,7 +68,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `301f7af` (GREEN: 6 admission tests; 1213 passed in the staff/idempotency/dispatch/runner/audit selection of `tests/api` and `tests/unit`; ruff clean)
 - **Summary:** `dispatch_staff_run` called `runner.submit()` (row plus daemon worker) and then wrote the fail-closed audit, so an audit failure came after the worker had started. The audit (outcome `admitted`) now comes first, then `runner.admit()` persists the queued row, then `runner.launch()` starts the worker. An `AuditError` becomes 503 `audit_unavailable` with nothing admitted. The run id derives from the command's operation id (`op-X` → `run-X`), so a retry finds the admitted row and does not launch again. The v1 dispatch now passes its reservation id and may re-take a lapsed reservation. Peers forward the id; a non-peer's body cannot set it. A launch error marks the run `failed`/`launch_failed` and returns 503 with the run id. The scheduler, review and run-link paths still use `submit`. Starting an admitted-but-never-launched run after a restart is left to the existing orphan reconcile.
-- **Next step:** Merge PR #1817; then rebase BR-03 (#1797, PR #1818) onto main.
+- **Next step:** None; merged as PR #1817 (`6458d3c`).
 
 ### DL-#1795 — atomic idempotency reservation for Staff API v1 (BR-01)
 
