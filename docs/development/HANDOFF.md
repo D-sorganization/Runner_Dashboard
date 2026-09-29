@@ -1,4 +1,16 @@
-# Current handoff — landing composer sends via auto-route thread; New conversation (DL-#1775)
+# Current handoff — staff chat parses `Repo#N` references (DL-#1781)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1781`
+- **Branch:** `fix/staff-repo-hash-refs-1781` from `origin/main` (`cddef48`)
+- **PR:** not created
+- **Why:** Barb's live `board.convene` question for the Barb orchestration review (RD PR #1776) said "Runner_Dashboard PR #1776 … Repository_Management#1848 through #1865". `parse_issue_refs` had no `Repo#N` form, so every `#N` was attributed to the first repo named anywhere in the text: the seats would have been sent nonexistent `Runner_Dashboard#1848`/`#1865` instead of the RM proposals.
+- **Changes:** `backend/staff/chat_issue_context.py` `parse_issue_refs` — a `Repo#N` pass for known repo names (longest name first, so `Tools_Private` is not `Tools`); a bare `#N` binds to the nearest repo mentioned before it (fallback: first mention); refs are returned in text order. Tests in `tests/unit/test_staff_chat_issue_context.py`.
+- **Validation:** RED: `test_parse_repo_hash_form_without_owner` and `test_parse_bare_number_binds_to_nearest_preceding_repo` failed. GREEN: 22 passed; `pytest tests/unit/test_staff_chat_issue_context.py tests/unit/test_staff_chat_issue_prompt.py tests/unit/test_staff_groups.py tests/api -k "issue or group or board or chat"` 148 passed. `ruff check`/`ruff format` clean.
+- **Next:** open the PR; after merge, deploy to Desk.
+
+---
+
+# Prior handoff — landing composer sends via auto-route thread; New conversation (DL-#1775)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
 - **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. Follows DL-#1774 on the same branch.

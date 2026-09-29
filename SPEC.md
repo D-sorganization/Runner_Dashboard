@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1781 | Staff chat reference parsing reads `Repo#N` (no owner) as that repo and binds a bare `#N` to the nearest repo named before it, so Board seats get the right packets. |
 | 2026-09-28 | #1775 | The Staff Console landing composer now opens (or creates) the Barb auto-route thread and sends there instead of failing with "No conversation is open"; a new "New conversation" control starts a fresh thread for the current role. |
 | 2026-09-28 | #1774 | A Staff Console message whose action was dropped (permission, unknown action, bad params) now shows a compact notice below the message instead of silently promising it happened. |
 | 2026-09-28 | #1773 | `board-secretary`, the Board's chair, may now propose `board.convene` (still MEDIUM, owner-approved). Before this, its convene proposals were dropped as unpermitted. |

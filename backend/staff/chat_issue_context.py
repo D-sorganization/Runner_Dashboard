@@ -109,40 +109,51 @@ def parse_issue_refs(
     single mention is never double-counted):
       1. ``owner/repo#N``
       2. a GitHub issue/PR URL
-      3. ``PR #N`` / ``issue #N`` / bare ``#N`` — only when a name from ``repo_names``
-         (or :data:`DEFAULT_KNOWN_REPO_NAMES` when ``repo_names`` is empty) appears
-         anywhere in ``text``; the matched repo name is used for every such bare ref.
+      3. ``Repo#N`` for a name from ``repo_names`` (or :data:`DEFAULT_KNOWN_REPO_NAMES`
+         when ``repo_names`` is empty): that repo, never another one named nearby (#1781)
+      4. ``PR #N`` / ``issue #N`` / bare ``#N`` — only when such a repo name appears in
+         ``text``; each binds to the nearest repo named before it, or to the first
+         repo named when none precedes it.
 
     Pre: text is a string (possibly empty).
-    Post: returns at most MAX_REFS_PER_TURN deduplicated IssueRef, in first-seen order.
+    Post: returns at most MAX_REFS_PER_TURN deduplicated IssueRef, in text order.
     """
-    refs: list[IssueRef] = []
-    seen: set[tuple[str, str, int]] = set()
+    found: list[tuple[int, IssueRef]] = []
     working = text
 
-    def _add(owner: str, repo: str, number: int) -> None:
-        key = (owner, repo, number)
-        if key not in seen:
-            seen.add(key)
-            refs.append(IssueRef(owner=owner, repo=repo, number=number))
-
     for m in list(_GITHUB_URL_RE.finditer(working)):
-        _add(m.group(1), m.group(2), int(m.group(3)))
+        found.append((m.start(), IssueRef(owner=m.group(1), repo=m.group(2), number=int(m.group(3)))))
         working = _mask(working, m.start(), m.end())
 
     for m in list(_OWNER_REPO_HASH_RE.finditer(working)):
-        _add(m.group(1), m.group(2), int(m.group(3)))
+        found.append((m.start(), IssueRef(owner=m.group(1), repo=m.group(2), number=int(m.group(3)))))
         working = _mask(working, m.start(), m.end())
 
     names = tuple(repo_names) if repo_names else DEFAULT_KNOWN_REPO_NAMES
-    found_repo = next(
-        (name for name in names if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)),
-        None,
-    )
-    if found_repo:
-        for m in _BARE_NUM_RE.finditer(working):
-            _add(default_owner, found_repo, int(m.group(1)))
+    canonical = {name.lower(): name for name in names}
+    # Longest first so "Tools_Private" is never read as "Tools".
+    alternation = "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+    repo_hash_re = re.compile(rf"(?<![\w/.-])({alternation})#(\d+)\b", re.IGNORECASE)
+    for m in list(repo_hash_re.finditer(working)):
+        repo = canonical[m.group(1).lower()]
+        found.append((m.start(), IssueRef(owner=default_owner, repo=repo, number=int(m.group(2)))))
+        working = _mask(working, m.start(), m.end())
 
+    mention_re = re.compile(rf"\b({alternation})\b", re.IGNORECASE)
+    mentions = [(m.start(), canonical[m.group(1).lower()]) for m in mention_re.finditer(text)]
+    if mentions:
+        for m in _BARE_NUM_RE.finditer(working):
+            preceding = [repo for pos, repo in mentions if pos < m.start()]
+            repo = preceding[-1] if preceding else mentions[0][1]
+            found.append((m.start(), IssueRef(owner=default_owner, repo=repo, number=int(m.group(1)))))
+
+    refs: list[IssueRef] = []
+    seen: set[tuple[str, str, int]] = set()
+    for _, ref in sorted(found, key=lambda item: item[0]):
+        key = (ref.owner, ref.repo, ref.number)
+        if key not in seen:
+            seen.add(key)
+            refs.append(ref)
     return refs[:MAX_REFS_PER_TURN]
 
 

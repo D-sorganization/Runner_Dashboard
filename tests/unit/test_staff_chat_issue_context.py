@@ -80,6 +80,32 @@ def test_parse_dedupes_and_caps_at_three() -> None:
 
 
 @pytest.mark.unit
+def test_parse_repo_hash_form_without_owner() -> None:
+    """``Repo#N`` names its own repo; it is not a bare ref for another repo (#1781)."""
+    text = (
+        "Runner_Dashboard PR #1776 proposes 18 drafts, filed as Board proposals "
+        "Repository_Management#1848 through #1865 in the same order."
+    )
+    assert parse_issue_refs(text) == [
+        IssueRef(owner="D-sorganization", repo="Runner_Dashboard", number=1776),
+        IssueRef(owner="D-sorganization", repo="Repository_Management", number=1848),
+        IssueRef(owner="D-sorganization", repo="Repository_Management", number=1865),
+    ]
+
+
+@pytest.mark.unit
+def test_parse_bare_number_binds_to_nearest_preceding_repo() -> None:
+    assert parse_issue_refs("UpstreamDrift PR #5 and Tools #7 need review.") == [
+        IssueRef(owner="D-sorganization", repo="UpstreamDrift", number=5),
+        IssueRef(owner="D-sorganization", repo="Tools", number=7),
+    ]
+    # A bare ref before any repo mention still falls back to the first repo named.
+    assert parse_issue_refs("#42 is the Runner_Dashboard bug.") == [
+        IssueRef(owner="D-sorganization", repo="Runner_Dashboard", number=42)
+    ]
+
+
+@pytest.mark.unit
 def test_parse_no_refs_in_plain_message() -> None:
     assert parse_issue_refs("Good morning, how is the fleet?") == []
 
