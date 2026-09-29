@@ -240,6 +240,7 @@ def check_role_permission(
         return True
 
     if role_name == BOARD_PROPOSAL_ROLE and act_name in (
+        "board.convene",
         "board.propose",
         "submit_proposal",
         "staff.dispatch",

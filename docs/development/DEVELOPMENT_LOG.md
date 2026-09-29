@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1773 — board-secretary can propose board.convene
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1773
+- **Branch:** `fix/1773-board-secretary-convene`
+- **PR:** not created
+- **Paths:** `backend/staff/actions.py`, `tests/unit/test_staff_actions.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (`pytest tests/unit/test_staff_actions.py tests/api/test_staff_board_convene_api.py tests/api/test_staff_groups_api.py tests/unit/test_staff_groups.py` — 48 passed; ruff check/format clean; mypy clean)
+- **Summary:** `board-secretary` (`BOARD_PROPOSAL_ROLE`) was not permitted to propose `board.convene` in `check_role_permission()`, causing the proposed action to be silently dropped with a permission error. Added `"board.convene"` to the allowed actions for `BOARD_PROPOSAL_ROLE`. The action remains MEDIUM risk and requires owner approval before execution.
+- **Next step:** Push branch, open PR, and release agent lease.
+
 ### DL-#1770 — Staff approvals from another tailnet device
 
 - **State:** in_review

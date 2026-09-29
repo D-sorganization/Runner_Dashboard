@@ -193,6 +193,7 @@ def test_permission_denial_role_not_permitted() -> None:
 def test_check_role_permission_board_proposal_role_and_dropped_alias() -> None:
     """BOARD_PROPOSAL_ROLE has default permission; underscore alias 'board_secretary' is dropped."""
     board_act = ACTION_REGISTRY.get("board.propose")
+    convene_act = ACTION_REGISTRY.get("board.convene")
     dispatch_act = ACTION_REGISTRY.get("staff.dispatch")
     submit_act = ActionDefinition(
         name="submit_proposal",
@@ -202,11 +203,13 @@ def test_check_role_permission_board_proposal_role_and_dropped_alias() -> None:
 
     # BOARD_PROPOSAL_ROLE ('board-secretary') is authorized
     assert check_role_permission(board_act, BOARD_PROPOSAL_ROLE)
+    assert check_role_permission(convene_act, BOARD_PROPOSAL_ROLE)
     assert check_role_permission(dispatch_act, BOARD_PROPOSAL_ROLE)
     assert check_role_permission(submit_act, BOARD_PROPOSAL_ROLE)
 
     # Underscore alias 'board_secretary' must be rejected
     assert not check_role_permission(board_act, "board_secretary")
+    assert not check_role_permission(convene_act, "board_secretary")
     assert not check_role_permission(dispatch_act, "board_secretary")
     assert not check_role_permission(submit_act, "board_secretary")
 

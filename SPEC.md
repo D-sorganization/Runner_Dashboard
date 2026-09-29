@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1773 | Authorize `board-secretary` (`BOARD_PROPOSAL_ROLE`) to propose `board.convene` in `check_role_permission` so the role that coordinates the Board can convene it. The proposal remains MEDIUM risk and still requires owner approval. |
 | 2026-09-28 | #1770 | A Tailscale sign-in from a tailnet device other than the dashboard host (`DASHBOARD_TAILSCALE_SELF_IPS`) gets the `tailnet-approver` role (`staff.approve` only), so the owner can approve Staff Console proposals from the phone. Loopback and the host's own node cannot approve; if the variable is unset, nobody gets the role. |
 | 2026-09-28 | #1767 | Board group turns resolve issue/PR references in the question and append the fetched `## Referenced items` block to every seat's prompt (larger Board budget: 60000 Markdown chars, 80000 block chars); a truncated Markdown file now lists the headings it cut off. |
 | 2026-09-28 | #1766 | The chat reply contract's action table adds a `Params` column rendered from each action's `params_schema` (e.g. `question: string, title?: string`), so roles stop guessing action parameter names. |
