@@ -17,7 +17,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from staff import outcomes
-from staff.models import StaffOutcomesResponse
+from staff.models_insights import StaffOutcomesResponse
 from staff.runner import get_runner
 
 log = logging.getLogger("dashboard.staff.outcomes")

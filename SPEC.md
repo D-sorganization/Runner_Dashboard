@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.297
+**Spec Version:** 2.5.298
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-26T00:00:00-07:00
 **Status:** Active
@@ -12,6 +12,7 @@
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
 | 2026-09-29 | #1805 | Mobile Staff Console fits the shell content box, so the fixed bottom nav no longer covers the Console/Inbox/Runs tabs; the composer drops its now-redundant nav offset (BR-12). |
+| 2026-09-29 | #1792 | Split the six source files that failed the repo's 500-line quality-gate cap on main (staff groups, staff models, inbox, push, StaffConsole Mobile, Staff InboxPanel) into cohesive new modules (group_threads, models_insights, inbox_models/inbox_auth, push_store, MobileRuns, inboxIcons/inboxPanelMeta) with consumers migrated; no behavior change, so main's ci-health-check can go green again. |
 | 2026-09-29 | #1786 | Barb is the owner's front door: loopback (Desk) sign-ins hold `staff.approve`, and when the person who sent a chat message may approve, the actions the answering role proposes up to MEDIUM risk (e.g. `board.convene`) run at once under that person; HIGH-risk actions and callers without `staff.approve` keep their approval card. |
 | 2026-09-29 | #1789 | The staff approval policy (`check_approval_policy`) now expands the approver's role presets: `staff.approve` and the action's `required_scope` are decided with `principal_has_scope`, the preset-expanding helper the routes use, so preset-granted approvers (loopback Desk sign-ins, tailnet, operator) can also execute approved proposals instead of only deciding them; principals whose presets do not grant the scope fail closed. |
 | 2026-09-29 | #1783 | The desktop Staff Console keeps `?thread=` in the address in step with the open conversation, so reloads and shared links reopen it. |

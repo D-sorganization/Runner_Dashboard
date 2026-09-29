@@ -23,6 +23,17 @@
 
 ---
 
+# Prior handoff — split over-cap source files to unblock the main 500-line gate
+
+- **Repository / worktree:** Runner_Dashboard (`/home/dieterolson/Repositories/Runner_Dashboard`)
+- **Branch:** `bot/main-red-groups-cap` from `origin/main` (`64a73b4`)
+- **PR:** #1792 (agent:claude)
+- **Why:** `main` CI Standard red since 2026-09-27: `ci-health-check` fails "Verify no source file exceeds 500 lines", cascading to `quality-gate` and `tests` (run 36599799561). Six files exceeded the cap (groups.py 567, models.py 502, inbox.py 613, push.py 519, Mobile.tsx 634, InboxPanel.tsx 646); the gate has no waiver/exception mechanism, so the files were split into cohesive modules instead.
+- **Validation:** local gate simulation passes; `ruff`/`mypy backend` clean; 221 pytest passed across push/staff-groups/inbox/knowledge/outcomes suites; 139 vitest passed (Mobile, InboxPanel, A11yKeyboard, RoutedShell); `npm run typecheck` and eslint clean on changed files.
+- **Next:** merge PR #1792 and verify the next CI Standard run on `main` is green.
+
+---
+
 # Prior handoff — /execute accepts role presets, not just explicit scopes (DL-#1789)
 
 - **Repository / worktree:** Runner_Dashboard, worktree `/tmp/rd-wt-RD1789Fix`

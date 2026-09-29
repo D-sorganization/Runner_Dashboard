@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from knowledge_pack import KnowledgePack
 from staff.knowledge_refresh import get_knowledge_dir, pack_is_stale
-from staff.models import (
+from staff.models_insights import (
     StaffKnowledgeInfoResponse,
     StaffKnowledgeSearchResponse,
 )
