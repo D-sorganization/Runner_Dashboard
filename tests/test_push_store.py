@@ -140,9 +140,7 @@ def test_store_init_idempotent_on_existing_db(db_path: Path) -> None:
 def test_store_init_idempotent_across_store_module_use(db_path: Path) -> None:
     _connect(db_path).close()
     _connect(db_path).close()
-    row = sqlite3.connect(db_path).execute(
-        "SELECT COUNT(*) FROM push_subscriptions"
-    ).fetchone()[0]
+    row = sqlite3.connect(db_path).execute("SELECT COUNT(*) FROM push_subscriptions").fetchone()[0]
     assert row == 0  # opening a store never seeds data
 
 

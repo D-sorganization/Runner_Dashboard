@@ -13,7 +13,7 @@ import re
 from typing import Any
 
 from gh_utils import gh_api, gh_api_write
-from proposals.models import CreateProposalRequest
+from proposals.models import PR_REF_RE, CreateProposalRequest
 
 log = logging.getLogger("dashboard.proposals.store")
 
@@ -46,7 +46,8 @@ class ProposalStoreError(RuntimeError):
 def render_proposal_markdown(req: CreateProposalRequest, source: str) -> str:
     """Render the issue body matching the board-proposal form template, in form order."""
     repos_str = ", ".join(req.target_repos)
-    code_request = req.code_request_url or "_No response_"
+    links = [link for link in (req.code_request_url, req.pull_request and f"Pull request: {req.pull_request}") if link]
+    code_request = "\n".join(links) or "_No response_"
 
     return f"""### Submitter / Source
 {source}
@@ -109,6 +110,17 @@ def parse_proposal_markdown(body: str) -> dict[str, Any]:
     target_repos = [r.strip() for r in target_repos_raw.split(",") if r.strip()]
 
     code_req_raw = sections.get("linked code request or issue (optional)", "")
+    # The linked field may also name the PR under review (#1787): "Pull request: owner/repo#N",
+    # or a bare owner/repo#N typed into the form.
+    pull_request = None
+    other_links: list[str] = []
+    for line in code_req_raw.splitlines():
+        ref = line.strip().removeprefix("Pull request:").strip()
+        if pull_request is None and PR_REF_RE.match(ref):
+            pull_request = ref
+        elif line.strip():
+            other_links.append(line.strip())
+    code_req_raw = "\n".join(other_links)
     code_request_url = None if code_req_raw.strip().lower() in ("", _NO_RESPONSE, "none", "n/a") else code_req_raw
 
     source_raw = sections.get("submitter / source", "")
@@ -124,6 +136,7 @@ def parse_proposal_markdown(body: str) -> dict[str, Any]:
         "urgency": sections.get("urgency", ""),
         "source": source or "human",
         "code_request_url": code_request_url,
+        "pull_request": pull_request,
     }
 
 

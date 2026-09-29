@@ -265,10 +265,12 @@ def execute_board_convene(params: dict[str, Any], ctx: ActionContext) -> ActionR
     confirmation, so no separate cost guard is applied here.
     """
     from staff.actions import ActionResult
+    from staff.board_queue import DEFAULT_QUEUE_QUESTION, QueueUnavailableError
     from staff.group_threads import convene_board_thread
     from staff.loop_bridge import BridgeUnavailableError, run_on_loop
 
-    question = str(params.get("question") or "").strip()
+    include_queue = params.get("include_queue") in (True, "true", "True", 1)
+    question = str(params.get("question") or "").strip() or (DEFAULT_QUEUE_QUESTION if include_queue else "")
     if not question:
         return ActionResult(success=False, error="Missing 'question'", failure_class="invalid_params")
     raw_title = params.get("title")
@@ -276,9 +278,11 @@ def execute_board_convene(params: dict[str, Any], ctx: ActionContext) -> ActionR
     caller_id = format_caller(ctx.caller) if ctx.caller else "staff_action"
 
     try:
-        out = run_on_loop(convene_board_thread, question, title, caller_id)
+        out = run_on_loop(convene_board_thread, question, title, caller_id, include_queue)
     except BridgeUnavailableError as exc:
         return ActionResult(success=False, error=f"board.convene {exc}", failure_class="bridge_unavailable")
+    except QueueUnavailableError as exc:
+        return ActionResult(success=False, error=f"board.convene {exc}", failure_class="upstream_unavailable")
 
     return ActionResult(success=True, result={"thread_id": out["thread_id"], "title": out["title"]})
 
@@ -440,8 +444,11 @@ def register_standard_actions(registry: ActionRegistry) -> None:
         ),
         ActionDefinition(
             name="board.convene",
-            description="Convene the Board of Directors to deliberate a question.",
-            params_schema={"question": "string", "title": "string?"},
+            description=(
+                "Convene the Board of Directors to deliberate a question. With include_queue, "
+                "the seats also get every open board:proposal item and answer per proposal."
+            ),
+            params_schema={"question": "string?", "title": "string?", "include_queue": "boolean?"},
             required_scope="staff.chat",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_board_convene,

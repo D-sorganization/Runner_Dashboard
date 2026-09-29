@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1787 — one route for agents to queue suggestions and draft PRs for the Board
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1787
+- **Branch:** `feat/board-queue-route-1787`
+- **PR:** #1812
+- **Paths:** `backend/proposals/`, `backend/staff/board_queue.py`, `backend/staff/groups.py`, `backend/staff/action_executors.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleet_tools.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (RED: new tests failed on main; GREEN: 398 passed, 1 skipped across `tests/clients`, the proposals store/routes, board-queue, board-convene, staff groups/actions/reply-contract, owner-request and code-request suites; `ruff check`/`ruff format` clean)
+- **Summary:** Proposals carry an optional `pull_request` (`owner/repo#N`) in the form's linked field. `board.convene` with `include_queue` gives the seats every open `board:proposal` item with its own text, seat-only, and asks for one disposition per proposal. Built after the 2026-09-29 Board sessions, where seats given only a summary table guessed item content and misnumbered items.
+- **Next step:** Open the PR, merge it, deploy to Desk, and ask Barb to take the open proposals to the Board.
+
 ### DL-#1805 — mobile Staff Console tabs sit under the shell's bottom nav (BR-12)
 
 - **State:** in_review
@@ -30,6 +43,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-29 (Original author validation (Claude): RED: the new `tests/e2e/mobile.spec.ts` #1805 test fails on main's CSS, "inbox tab at 320px"; GREEN: it and SC-D9 pass on all four mobile profiles against a local Vite preview; `vitest run frontend/src/pages/StaffConsole` 246 passed. Desktop CI follow-up: RED: `npm run test:e2e -- --project=chromium-desktop tests/e2e/mobile.spec.ts --grep '#1805'` reported 1 skipped because the regression was under the mobile-only suite gate; GREEN: the same desktop project with `--workers=1` passed 1/1 with no skips, exercising 320/390/430px tab and composer hit targets against local Vite. Thread list/detail responses are mocked so the test is self-contained.) Acceptance follow-up (Codex): RED: the 160px effective-layout check exposed overlapping header controls and an Approve action outside the hit-testable area; the restored heading contract then reproduced a collapsed/overlapping h1 at 160/215px. GREEN: the final focused desktop #1805 run passed 11/11 with one worker and zero retries, including shell tab hit/click at 160/195/215px, header geometry plus 44px controls and visible h1 at 160/195/215/320/390/430px, scroll/hit/click Approve at those widths, and the retained 320/390/430px Inbox/send/approval/focus flows. SC-D8/SC-D9 passed 2/2 on iPhone 12 emulation. Changed-file ESLint, `npm run typecheck`, and targeted mobile spec TypeScript passed. The separate PyJWT/tzdata dependency patch was merged to main by PR #1816 (`8169046d`); its recorded pip-audit runs and `uv lock --check` passed, and its unchanged auth modules were not rerun. The viewport cases resize CSS layout; browser zoom/native keyboard/physical-device safe-area and screen-reader behavior remain unverified.)
 - **Summary:** `.staff-mobile` had `min-height: 100vh` inside `.mobile-shell__content`, whose box already stops above the fixed 64px nav, so the console overran it and the nav covered the Console/Inbox/Runs tabs (hit-testing the Inbox tab returned the shell's Staff button). Inside the shell the console is now `height: 100%; min-height: 0`, and the #1724 composer offset, which would now double-count the nav, is removed. The conversation message pane can shrink and scroll within its semantic thread/message wrappers. Header groups stay bounded by the header and wrap naturally when needed; the title remains visible with ellipsis and action targets retain 44px hit areas. #1805 verifies shell-reserved navigation geometry and real tab clicks, plus Inbox counts/filter, send, Approve, selected-thread URL and focus. The PyJWT 2.14.0/tzdata 2026.4 dependency fix is already on `main` through PR #1816; PR #1813 contains no independent dependency change.
 - **Next step:** Verify actual 200% browser zoom, native keyboard behavior, phone safe areas and screen-reader navigation on a physical phone before release.
+
 ### DL-#1815 — PyJWT 2.14.0 for CVE-2026-102274
 
 - **State:** shipped

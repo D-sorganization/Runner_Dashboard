@@ -208,3 +208,46 @@ def test_estimated_effort_and_urgency_reject_free_text() -> None:
     payload["urgency"] = "high"
     with pytest.raises(Exception):  # noqa: B017 - pydantic ValidationError
         CreateProposalRequest(**payload)
+
+
+@pytest.mark.unit
+def test_pull_request_round_trips_through_the_linked_section() -> None:
+    """A proposal can carry the draft PR it asks the Board to review (#1787)."""
+    req = CreateProposalRequest(**_VALID_PAYLOAD, pull_request="D-sorganization/UpstreamDrift#11080")
+    body = render_proposal_markdown(req, source="claude-session-1")
+    parsed = parse_proposal_markdown(body)
+
+    assert parsed["pull_request"] == "D-sorganization/UpstreamDrift#11080"
+    assert parsed["code_request_url"] is None
+
+
+@pytest.mark.unit
+def test_pull_request_accepts_a_github_url_and_keeps_a_code_request_link() -> None:
+    req = CreateProposalRequest(
+        **_VALID_PAYLOAD,
+        pull_request="https://github.com/D-sorganization/AffineDrift/pull/4485",
+        code_request_url="https://github.com/D-sorganization/Runner_Dashboard/issues/1",
+    )
+    assert req.pull_request == "D-sorganization/AffineDrift#4485"
+    parsed = parse_proposal_markdown(render_proposal_markdown(req, source="agent"))
+    assert parsed["pull_request"] == "D-sorganization/AffineDrift#4485"
+    assert parsed["code_request_url"] == "https://github.com/D-sorganization/Runner_Dashboard/issues/1"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", ["#11080", "UpstreamDrift", "https://example.com/o/r/pull/1", "o/r#x"])
+def test_pull_request_rejects_anything_but_owner_repo_number(bad: str) -> None:
+    with pytest.raises(ValueError):
+        CreateProposalRequest(**_VALID_PAYLOAD, pull_request=bad)
+
+
+@pytest.mark.unit
+def test_form_filed_bare_pr_ref_is_read_as_the_pull_request() -> None:
+    """A human filling the form's optional link field with owner/repo#N gets the same treatment."""
+    body = (
+        "### Target Repository / Repositories\nAffineDrift\n\n"
+        "### Linked Code Request or Issue (Optional)\nD-sorganization/AffineDrift#4485\n"
+    )
+    parsed = parse_proposal_markdown(body)
+    assert parsed["pull_request"] == "D-sorganization/AffineDrift#4485"
+    assert parsed["code_request_url"] is None

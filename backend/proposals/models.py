@@ -22,6 +22,8 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _HEADING_INJECTION_RE = re.compile(r"(?m)^\s{0,3}#{1,6}\s")
 _REPO_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?$")
 _SOURCE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,99}$")
+PR_REF_RE = re.compile(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)$")
+_PR_URL_RE = re.compile(r"^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/(\d+)/?$")
 
 MAX_TITLE_LENGTH = 200
 MAX_TEXT_LENGTH = 10000
@@ -60,6 +62,8 @@ class CreateProposalRequest(BaseModel):
     urgency: Urgency
     source: str | None = Field(default=None, max_length=100)
     code_request_url: str | None = Field(default=None, max_length=500)
+    # The draft PR or review the proposal asks the Board to read, as ``owner/repo#N`` (#1787).
+    pull_request: str | None = Field(default=None, max_length=200)
     confirm_not_duplicate: bool = Field(default=False)
 
     @field_validator("title", mode="before")
@@ -130,6 +134,18 @@ class CreateProposalRequest(BaseModel):
             raise ValueError("code_request_url must be an https URL")
         return cleaned
 
+    @field_validator("pull_request", mode="before")
+    @classmethod
+    def validate_pull_request(cls, v: Any) -> str | None:
+        """Accept ``owner/repo#N`` or a GitHub pull-request URL; store ``owner/repo#N``."""
+        if not v:
+            return None
+        cleaned = sanitize_text(str(v), 200)
+        match = PR_REF_RE.match(cleaned) or _PR_URL_RE.match(cleaned)
+        if not match:
+            raise ValueError("pull_request must be owner/repo#N or https://github.com/owner/repo/pull/N")
+        return f"{match.group(1)}#{match.group(2)}"
+
 
 class DuplicateCandidate(BaseModel):
     """An open proposal that might match the new submission."""
@@ -164,6 +180,7 @@ class ProposalItem(BaseModel):
     urgency: str = ""
     source: str = "human"
     code_request_url: str | None = None
+    pull_request: str | None = None
     state: str = "open"
     decision: str | None = None
     decision_labels: list[str] = Field(default_factory=list)
