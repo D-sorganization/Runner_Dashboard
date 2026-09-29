@@ -6,11 +6,15 @@
  */
 
 import { test as base, expect, type Page } from "@playwright/test";
-import { operatorHeaders, viewerHeaders } from "./identity";
+import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
-type Principal = "operator" | "viewer";
+type Principal = "operator" | "viewer" | "requester";
 
-const HEADERS: Record<Principal, Record<string, string>> = { operator: operatorHeaders, viewer: viewerHeaders };
+const HEADERS: Record<Principal, Record<string, string>> = {
+  operator: operatorHeaders,
+  viewer: viewerHeaders,
+  requester: requesterHeaders,
+};
 
 export const test = base.extend<{ principal: Principal }>({
   principal: ["operator", { option: true }],
