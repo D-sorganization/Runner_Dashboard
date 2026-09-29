@@ -1,4 +1,17 @@
-# Current handoff — desktop Staff Console keeps `?thread=` in sync (DL-#1783)
+# Current handoff — Barb as the front door (DL-#1786)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
+- **Branch:** `feat/barb-front-door` from `origin/main` (`63f4088`)
+- **PR:** not created
+- **Why:** owner direction 2026-09-29: "if I ask barb, she should be able to do it" and "Barb needs to be able to get things done and to be my interface for getting everything done." Two Board convene cards (UD#11080, RD#1776) sat pending because Desk (loopback) had no `staff.approve` (#1770 granted it only to other tailnet devices), and a request to Barb still produced a card.
+- **Changes:** `backend/identity.py` adds `staff.approve` to `LOOPBACK_SCOPES`. `backend/staff/owner_requests.py` (new) has `request_approves` (requester has `staff.approve` and risk ≤ MEDIUM) and `run_for_requester` (`execute_proposal(..., approve=True)` in a worker thread, then `refresh_proposal_card`). `backend/staff/chat.py` threads `requester` through `run_chat_turn_in_background` → `execute_turn` → `_run_turn_attempt` and runs each approved proposal after posting it. `backend/routers/staff_threads.py` passes `requester=caller`. `backend/tailnet_identity.py` docstrings are updated.
+- **Decisions:** HIGH/CRITICAL/owner-only (`staff.hold`, `staff.unhold`) keep the card. Reply handoffs only open a thread, so the next turn there carries the requester through the same route.
+- **Validation:** RED then GREEN: `pytest tests/api/test_staff_owner_requests.py tests/api/test_tailnet_identity.py` gave 26 passed.
+- **Next:** open the PR; after merge, deploy to Desk, then approve the two pending Board cards from Desk.
+
+---
+
+# Prior handoff — desktop Staff Console keeps `?thread=` in sync (DL-#1783)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1783` (its `node_modules` is a junction to `claude-deploy/node_modules`; remove the junction, never recurse it)
 - **Branch:** `fix/staff-console-thread-url-1783` from `origin/main` (`b2665ee`)

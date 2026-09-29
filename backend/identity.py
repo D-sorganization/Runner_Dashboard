@@ -376,7 +376,7 @@ def require_principal(
 FLEET_PEER_SCOPES = frozenset({"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain"})
 LOOPBACK_SCOPES = frozenset(
     (
-        "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write "
+        "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write staff.approve "
         "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain "
         "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write"
     ).split()

@@ -335,7 +335,9 @@ async def post_message(
 
         # Spawn background chat turn execution (SC-B4, #1307)
         asyncio.create_task(
-            run_chat_turn_in_background(turn_thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id)
+            run_chat_turn_in_background(
+                turn_thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id, requester=caller
+            )
         )
 
         resp_data: dict[str, Any] = {

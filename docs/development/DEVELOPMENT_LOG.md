@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1786 — Barb as the front door: owner requests run without a second approval
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1786
+- **Branch:** `feat/barb-front-door`
+- **PR:** not created
+- **Paths:** `backend/identity.py`, `backend/tailnet_identity.py`, `backend/staff/owner_requests.py`, `backend/staff/chat.py`, `backend/routers/staff_threads.py`, `tests/api/test_staff_owner_requests.py`, `tests/api/test_tailnet_identity.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (RED: the owner-convene test left the proposal `proposed`, and the three loopback-approve tests failed. GREEN: `tests/api/test_staff_owner_requests.py` + `tests/api/test_tailnet_identity.py` 26 passed)
+- **Summary:** `staff.approve` joins `LOOPBACK_SCOPES`. The message route passes the caller into the chat turn as `requester`; after each `post_proposal`, `staff/owner_requests.run_for_requester` executes the proposal off-loop under the requester when `request_approves` holds (requester has `staff.approve`, action risk ≤ MEDIUM) and refreshes the card. The normal role-permission and approval-policy checks still run.
+- **Next step:** Open the PR for #1786.
+
 ### DL-#1783 — desktop Staff Console keeps `?thread=` in sync
 
 - **State:** in_review

@@ -400,7 +400,7 @@ async def test_transport_peer_middleware_sets_none_when_no_client() -> None:
 
 
 # ---------------------------------------------------------------------------
-# #1770: staff.approve only for a sign-in from another tailnet device
+# #1770 / #1786: every tailnet and loopback sign-in may approve
 # ---------------------------------------------------------------------------
 
 _SELF_TAILNET_IP = "100.101.102.103"
@@ -428,17 +428,21 @@ def test_tailnet_signin_from_other_device_can_approve(monkeypatch: pytest.Monkey
     assert not _identity.principal_has_scope(prin, "staff.admin")
 
 
-def test_tailnet_signin_from_host_itself_cannot_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tailnet_signin_from_host_itself_can_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1786: the owner approves from anywhere, including a browser on this host."""
     prin = _signed_in(monkeypatch, _SELF_TAILNET_IP, _SELF_TAILNET_IP)
     assert prin.roles == ["loopback"]
-    assert not _identity.principal_has_scope(prin, "staff.approve")
+    assert _identity.principal_has_scope(prin, "staff.approve")
 
 
-def test_tailnet_signin_without_self_ips_cannot_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tailnet_signin_without_self_ips_can_approve(monkeypatch: pytest.MonkeyPatch) -> None:
     prin = _signed_in(monkeypatch, _TAILNET_CLIENT_IP, None)
     assert prin.roles == ["loopback"]
-    assert not _identity.principal_has_scope(prin, "staff.approve")
+    assert _identity.principal_has_scope(prin, "staff.approve")
 
 
-def test_loopback_principal_still_cannot_approve() -> None:
-    assert not _identity.principal_has_scope(_identity._loopback_principal(), "staff.approve")
+def test_loopback_principal_can_approve_but_is_not_admin() -> None:
+    """#1786: Desk approves; approval still does not grant admin."""
+    prin = _identity._loopback_principal()
+    assert _identity.principal_has_scope(prin, "staff.approve")
+    assert not _identity.principal_has_scope(prin, "staff.admin")
