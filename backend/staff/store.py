@@ -204,7 +204,7 @@ class RunStore:
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
         self._conn.row_factory = sqlite3.Row
-        with self._lock:
+        with first_touch_lock(self.path), self._lock:
             self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA)
@@ -448,6 +448,26 @@ class RunStore:
 
 _store: RunStore | None = None
 _store_lock = threading.Lock()
+
+# ── first-touch init serialization (issue #1765 / CI run 36524561683) ──
+# RunStore, ConversationStore and StaffAuditStore can all first-touch the same
+# fresh staff_runs.sqlite3 file from different threads (a leaked staff-run
+# worker lazily building a store while another component builds one). SQLite
+# returns SQLITE_BUSY immediately for ``PRAGMA journal_mode=WAL`` — without
+# invoking the busy handler — when the conversion races another connection's
+# first-touch of the same file, and concurrent ``ALTER TABLE`` migrations are
+# not idempotent either. Constructors therefore serialize their first-touch
+# init (connect, WAL pragma, schema/migrations) per database path.
+_first_touch_locks: dict[str, threading.RLock] = {}
+_first_touch_locks_guard = threading.Lock()
+
+
+def first_touch_lock(path: Path) -> threading.RLock:
+    """Per-path reentrant lock guarding store first-touch initialization."""
+    key = str(path)
+    with _first_touch_locks_guard:
+        lock = _first_touch_locks.setdefault(key, threading.RLock())
+    return lock
 
 
 def get_store(path: Path | None = None) -> RunStore:
