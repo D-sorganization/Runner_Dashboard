@@ -13,6 +13,7 @@ from staff.chat_issue_context import (
     IssueFetcher,
     IssueRef,
     build_issue_context_block,
+    build_referenced_items_block,
     parse_issue_refs,
     role_declares_read_issue,
 )
@@ -242,3 +243,124 @@ async def test_build_issue_context_block_max_three_refs() -> None:
     block = await build_issue_context_block(role, text, fetch=fetch)
     assert block is not None
     assert len(calls) == 3
+
+
+# ── build_referenced_items_block (role-independent, Runner_Dashboard#1767) ──────
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_referenced_items_block_needs_no_role() -> None:
+    """Unlike build_issue_context_block, this is usable outside a role's read_issue chat tool."""
+
+    async def fake_gh_api(endpoint: str) -> dict[str, Any]:
+        return {"title": "Proposal packet", "state": "open", "labels": [], "body": "body text"}
+
+    fetch = IssueFetcher(gh_api=fake_gh_api, gh_api_raw=AsyncMock())
+    block = await build_referenced_items_block("D-sorganization/UpstreamDrift#11080", fetch=fetch)
+
+    assert block is not None
+    assert block.startswith("## Referenced items")
+    assert "Proposal packet" in block
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_referenced_items_block_none_without_a_reference() -> None:
+    fetch = IssueFetcher(gh_api=AsyncMock(), gh_api_raw=AsyncMock())
+    block = await build_referenced_items_block("Good morning!", fetch=fetch)
+    assert block is None
+    fetch.gh_api.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_referenced_items_block_custom_md_and_block_chars() -> None:
+    """Board turns pass larger md_chars/block_chars than a chat turn's module defaults."""
+
+    async def fake_gh_api(endpoint: str) -> Any:
+        if endpoint.endswith("/issues/11080"):
+            return {"title": "t", "state": "open", "labels": [], "body": "b", "pull_request": {}}
+        if endpoint.endswith("/pulls/11080"):
+            return {"head": {"sha": "sha1"}}
+        if endpoint.endswith("/pulls/11080/files"):
+            return [{"filename": "BIG.md"}]
+        raise AssertionError(endpoint)
+
+    async def fake_gh_api_raw(endpoint: str) -> str:
+        # Bigger than the default MAX_MD_FILE_CHARS but under the custom md_chars budget.
+        return "Y" * (MAX_MD_FILE_CHARS + 500)
+
+    fetch = IssueFetcher(gh_api=fake_gh_api, gh_api_raw=fake_gh_api_raw)
+    block = await build_referenced_items_block(
+        "D-sorganization/UpstreamDrift#11080",
+        md_chars=MAX_MD_FILE_CHARS + 1000,
+        block_chars=200_000,
+        fetch=fetch,
+    )
+
+    assert block is not None
+    assert "…(truncated)" not in block
+
+
+# ── Omitted headings after truncation (Runner_Dashboard#1767) ───────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_truncated_markdown_lists_omitted_headings() -> None:
+    body = "A" * 100 + "\n# First Cut Heading\nsome text\n## Second Cut Heading\nmore text\n"
+    md_chars = 100  # Cuts before both headings.
+
+    async def fake_gh_api(endpoint: str) -> Any:
+        if endpoint.endswith("/issues/11080"):
+            return {"title": "t", "state": "open", "labels": [], "body": "b", "pull_request": {}}
+        if endpoint.endswith("/pulls/11080"):
+            return {"head": {"sha": "sha1"}}
+        if endpoint.endswith("/pulls/11080/files"):
+            return [{"filename": "NOTES.md"}]
+        raise AssertionError(endpoint)
+
+    async def fake_gh_api_raw(endpoint: str) -> str:
+        return body
+
+    fetch = IssueFetcher(gh_api=fake_gh_api, gh_api_raw=fake_gh_api_raw)
+    block = await build_referenced_items_block(
+        "D-sorganization/UpstreamDrift#11080",
+        md_chars=md_chars,
+        fetch=fetch,
+    )
+
+    assert block is not None
+    assert "…(truncated)" in block
+    assert "Omitted headings: # First Cut Heading | ## Second Cut Heading" in block
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_truncated_markdown_with_no_trailing_headings_has_no_omitted_line() -> None:
+    body = "A" * 200  # No headings at all.
+    md_chars = 100
+
+    async def fake_gh_api(endpoint: str) -> Any:
+        if endpoint.endswith("/issues/11080"):
+            return {"title": "t", "state": "open", "labels": [], "body": "b", "pull_request": {}}
+        if endpoint.endswith("/pulls/11080"):
+            return {"head": {"sha": "sha1"}}
+        if endpoint.endswith("/pulls/11080/files"):
+            return [{"filename": "NOTES.md"}]
+        raise AssertionError(endpoint)
+
+    async def fake_gh_api_raw(endpoint: str) -> str:
+        return body
+
+    fetch = IssueFetcher(gh_api=fake_gh_api, gh_api_raw=fake_gh_api_raw)
+    block = await build_referenced_items_block(
+        "D-sorganization/UpstreamDrift#11080",
+        md_chars=md_chars,
+        fetch=fetch,
+    )
+
+    assert block is not None
+    assert "…(truncated)" in block
+    assert "Omitted headings" not in block

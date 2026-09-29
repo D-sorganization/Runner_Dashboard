@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from staff.action_executors import BOARD_PROPOSAL_ROLE, validate_action_default_roles
+from staff.chat_issue_context import IssueFetcher
 from staff.conversations import (
     ConversationStore,
     get_conversation_store,
@@ -260,6 +261,79 @@ async def test_execute_group_turn_timeout() -> None:
     assert charlie_reply.status == "timeout"
     assert "no response - timed out" in charlie_reply.text.lower()
     assert "Charlie: no response" in res.quorum
+
+
+# ── 5b. REFERENCED-ITEMS BLOCK FOR SEATS (Runner_Dashboard#1767) ────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_group_turn_seats_get_fetched_body_proposal_keeps_plain_prompt() -> None:
+    """Seats see the fetched packet under the header; the board.propose card keeps the plain prompt."""
+    seen_prompts: list[str] = []
+
+    async def fake_runner(seat: SeatSpec, prompt: str, thread_id: str) -> SeatReply:
+        seen_prompts.append(prompt)
+        return SeatReply(seat_name=seat.name, status="ok", text=f"{seat.name} position", cost_usd=0.01)
+
+    async def fake_gh_api(endpoint: str) -> dict:
+        return {"title": "Proposal packet", "state": "open", "labels": [], "body": "R09-R12 findings here."}
+
+    async def fake_gh_api_raw(endpoint: str) -> str:
+        return "unused"
+
+    fetch = IssueFetcher(gh_api=fake_gh_api, gh_api_raw=fake_gh_api_raw)
+    prompt = "Review D-sorganization/UpstreamDrift#11080 and decide."
+
+    res = await execute_group_turn(
+        group_id="board",
+        prompt=prompt,
+        thread_id="th_refs",
+        seat_runner=fake_runner,
+        fetch=fetch,
+    )
+
+    assert len(seen_prompts) == 4
+    for seat_prompt_text in seen_prompts:
+        assert prompt in seat_prompt_text
+        assert "## Referenced items" in seat_prompt_text
+        assert "R09-R12 findings here." in seat_prompt_text
+
+    # The proposal was built from the ORIGINAL prompt, never the 60 KB packet.
+    assert res.proposed_actions, "expected a board.propose action"
+    proposal_text = res.proposed_actions[0].params.get("proposal", "")
+    assert "R09-R12 findings here." not in proposal_text
+    assert prompt in proposal_text
+
+
+@pytest.mark.asyncio
+async def test_execute_group_turn_fetch_failure_falls_back_to_plain_prompt() -> None:
+    """A raising fetch path never fails the turn; seats still run on the plain prompt.
+
+    build_referenced_items_block itself never raises (a failed per-ref fetch renders
+    'unavailable'), so this exercises groups.py's own defensive try/except by forcing
+    a failure above that per-ref safety net — the same as an unexpected error in the
+    default fetcher's construction would look like.
+    """
+    seen_prompts: list[str] = []
+
+    async def fake_runner(seat: SeatSpec, prompt: str, thread_id: str) -> SeatReply:
+        seen_prompts.append(prompt)
+        return SeatReply(seat_name=seat.name, status="ok", text=f"{seat.name} position", cost_usd=0.01)
+
+    prompt = "Review D-sorganization/UpstreamDrift#11080 and decide."
+
+    with patch("staff.groups.build_referenced_items_block", side_effect=RuntimeError("network unavailable")):
+        res = await execute_group_turn(
+            group_id="board",
+            prompt=prompt,
+            thread_id="th_refs_fail",
+            seat_runner=fake_runner,
+        )
+
+    assert len(seen_prompts) == 4
+    for seat_prompt_text in seen_prompts:
+        assert seat_prompt_text == prompt
+    assert all(r.status == "ok" for r in res.seat_replies)
 
 
 # ── 6. SHARED THREAD-CREATION HELPER (board.convene, Runner_Dashboard#1762) ──

@@ -105,6 +105,26 @@ def _slugify_handoff_target(raw: str) -> str:
     return re.sub(r"[\s_]+", "-", raw.strip()).lower()
 
 
+def _render_params_schema(params_schema: dict[str, Any]) -> str:
+    """Render an ``ActionDefinition.params_schema`` as ``name: type`` pairs for the contract table.
+
+    Pre: ``params_schema`` maps param name -> type string; a type ending in ``?`` marks
+    the param optional (e.g. ``"string?"``).
+    Post: returns ``"question: string, title?: string"``-style text, or ``"—"`` when
+    ``params_schema`` is empty. Never raises.
+    """
+    if not params_schema:
+        return "—"
+    parts = []
+    for name, type_str in params_schema.items():
+        type_str = str(type_str)
+        if type_str.endswith("?"):
+            parts.append(f"{name}?: {type_str[:-1]}")
+        else:
+            parts.append(f"{name}: {type_str}")
+    return ", ".join(parts)
+
+
 def generate_chat_contract_text(registry: ActionRegistry | None = None) -> str:
     """Generate the chat reply contract prompt dynamically from the action registry (DRY)."""
     from staff.actions import ACTION_REGISTRY
@@ -115,7 +135,8 @@ def generate_chat_contract_text(registry: ActionRegistry | None = None) -> str:
     rows = []
     for a in actions:
         desc = a.description.replace("|", "\\|").strip()
-        rows.append(f"| `{a.name}` | {a.risk_class} | `{a.required_scope}` | {desc} |")
+        params = _render_params_schema(a.params_schema).replace("|", "\\|")
+        rows.append(f"| `{a.name}` | {a.risk_class} | `{a.required_scope}` | {params} | {desc} |")
     action_table = "\n".join(rows)
 
     return f"""# Chat Reply Contract (Shared Fragment)
@@ -150,8 +171,8 @@ The prose is the answer. The trailing parts are optional and never a substitute 
 
 ### Actions You May Propose
 
-| Action | Risk | Required Scope | Description |
-| ------ | ---- | -------------- | ----------- |
+| Action | Risk | Required Scope | Params | Description |
+| ------ | ---- | -------------- | ------ | ----------- |
 {action_table}
 
 ## `handoff:`

@@ -1,4 +1,45 @@
-# Current handoff — Board-review flow fixes, #1758–#1762 (DL-#1758, DL-#1759, DL-#1760, DL-#1761, DL-#1762)
+# Current handoff — Approvals from another tailnet device (DL-#1770)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
+- **Branch:** `fix/board-seats-context-20260928` from `origin/main`. It also carries #1766 and #1767.
+- **PR:** not created
+- **Why:** in the 2026-09-28 live Barb → Board test, denying Barb's `board.convene` card on DeskComputer failed: "missing required scope 'staff.approve'". The loopback and Tailscale-identity principals both carry only the `loopback` role, and `LOOPBACK_SCOPES` has no `staff.approve`, so no one could approve or deny a MEDIUM proposal on that node. Owner decision (2026-09-28): approvals come from a different tailnet device, e.g. the phone. Bare loopback, which is every agent on the host, and the host's own tailnet node stay without it.
+- **Changes:**
+  - `backend/tailnet_identity.py`: `DASHBOARD_TAILSCALE_SELF_IPS` lists this host's tailnet IPs. A Tailscale sign-in whose resolved client is a tailnet address not in that list gets the extra `tailnet-approver` role. If the list is unset, the role is never granted (fail closed).
+  - `backend/identity.py`: `SCOPE_PRESETS["tailnet-approver"] = ["staff.approve"]`.
+- **Validation:** `tests/api/test_tailnet_identity.py`: 4 new tests. RED first: `test_tailnet_signin_from_other_device_can_approve` failed. Then WSL `pytest tests/api/test_tailnet_identity.py tests/api -k "tailnet or scope or loopback or auth or proposal"` gave 194 passed, 2 skipped. `ruff check backend tests` and `ruff format --check` are clean. mypy is clean on both files.
+- **Deploy note:** set `DASHBOARD_TAILSCALE_SELF_IPS` in each node's env to that node's own tailnet IPs (`tailscale ip`). Without it, nobody gets approvals.
+- **Next:** open one PR for #1766, #1767 and #1770; deploy to DeskComputer with `DASHBOARD_TAILSCALE_SELF_IPS` set; approve Barb's `board.convene` from the phone.
+
+---
+
+# Prior handoff — Board seats see referenced items (DL-#1767)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
+- **Branch:** `fix/board-seats-context-20260928` from `origin/main`
+- **PR:** not created
+- **Why:** in the 2026-09-28 live Barb → Board test reviewing UpstreamDrift PR #11080 (51 KB Markdown, 12 proposals), Board seats deliberated on the question's title alone — `seat_prompt()` never saw the referenced PR/issue — and Barb's own read of the packet was silently cut by `MAX_MD_FILE_CHARS = 12000` with no indication of what was missing.
+- **Changes:**
+  - `backend/staff/chat_issue_context.py`: extracted role-independent `build_referenced_items_block(text, *, md_chars, block_chars, fetch, repo_names)`; `build_issue_context_block` now delegates to it. `md_chars` threads through `_render_ref`/`_render_pull_request` (new `_truncate_markdown`/`_omitted_headings_line` helpers) instead of the module constant. A truncated Markdown file now appends `Omitted headings: ` with the `#`/`##`/`###` headings found after the cut (joined `" | "`, max `MAX_HEADINGS_LISTED` = 40). New exported constants `BOARD_MD_FILE_CHARS` (60000) and `BOARD_BLOCK_CHARS` (80000).
+  - `backend/staff/groups.py` `execute_group_turn()`: before fanning out, calls `build_referenced_items_block(prompt, md_chars=BOARD_MD_FILE_CHARS, block_chars=BOARD_BLOCK_CHARS, fetch=fetch)` (new `fetch` param for test injection). When a block is found, seats receive `prompt + "\n\n" + block`; `collate_consensus`/the `board.propose` card keep using the original `prompt`. Wrapped in try/except — a fetch failure logs a warning and falls back to the plain prompt.
+- **Validation:** WSL `pytest tests/unit/test_staff_groups.py tests/unit/test_staff_chat_issue_context.py tests/unit/test_staff_chat_issue_prompt.py tests/unit/test_staff_reply_contract.py tests/api/test_staff_board_convene_api.py tests/api -k "group or board or contract or chat" -q` — 167 passed, 1 skipped. `ruff check backend tests` clean; `ruff format --check` clean on changed files; mypy clean on `backend/staff/chat_issue_context.py backend/staff/groups.py`.
+- **Next:** open a PR referencing #1766 and #1767.
+
+---
+
+# Prior handoff — Contract Params column (DL-#1766)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
+- **Branch:** `fix/board-seats-context-20260928` from `origin/main`
+- **PR:** not created
+- **Why:** in the 2026-09-28 live Barb → Board test, Barb proposed `board.convene` with invented params (`agenda`, `seats`, `mode`, `rounds`) instead of the registered `{question, title?}` — the action table in `generate_chat_contract_text()` never showed `params_schema`, so every role had to guess param names for every action.
+- **Changes:** `backend/staff/reply_contract.py`: new `_render_params_schema()` renders an `ActionDefinition.params_schema` dict as `name: type` pairs (`?`-suffixed types become `name?: type`; empty schema renders `—`); `generate_chat_contract_text()` adds a `Params` column to the action table between `Required Scope` and `Description`.
+- **Validation:** `tests/unit/test_staff_reply_contract.py::test_contract_action_table_has_params_column` (new) — RED first (`AssertionError` on the missing `Params` column header), then GREEN. Full file: 19 passed, 1 skipped. `ruff check backend tests` clean; `ruff format --check` clean on changed files; mypy clean on `backend/staff/reply_contract.py`.
+- **Next:** implement #1767 (referenced-items block reused for Board seats) in the same worktree.
+
+---
+
+# Prior handoff — Board-review flow fixes, #1758–#1762 (DL-#1758, DL-#1759, DL-#1760, DL-#1761, DL-#1762)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-flow`
 - **Branch:** `fix/board-review-flow-20260928` from `origin/main` `b0b3867e`; merges `fix/honest-board-propose-open-pr`, `fix/spa-cache-retired-status`, `fix/chat-routing-followups`, `feat/barb-read-issue-board-convene`, `fix/chat-fleet-context-timeouts`.

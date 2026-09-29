@@ -45,6 +45,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("DASHBOARD_TAILSCALE_AUTH", raising=False)
     monkeypatch.delenv("DASHBOARD_TAILSCALE_LOGINS", raising=False)
     monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
+    monkeypatch.delenv("DASHBOARD_TAILSCALE_SELF_IPS", raising=False)
     yield
 
 
@@ -396,3 +397,48 @@ async def test_transport_peer_middleware_sets_none_when_no_client() -> None:
     mw = TransportPeerMiddleware(inner_app)
     await mw({"type": "http", "client": None}, None, None)
     assert captured["transport_peer"] is None
+
+
+# ---------------------------------------------------------------------------
+# #1770: staff.approve only for a sign-in from another tailnet device
+# ---------------------------------------------------------------------------
+
+_SELF_TAILNET_IP = "100.101.102.103"
+
+
+def _signed_in(monkeypatch: pytest.MonkeyPatch, client_host: str, self_ips: str | None) -> Principal:
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    if self_ips is not None:
+        monkeypatch.setenv("DASHBOARD_TAILSCALE_SELF_IPS", self_ips)
+    req = _mock_request(
+        transport_peer="127.0.0.1",
+        client_host=client_host,
+        headers={"Tailscale-User-Login": _LOGIN},
+    )
+    prin = tailnet_principal(req)
+    assert prin is not None
+    return prin
+
+
+def test_tailnet_signin_from_other_device_can_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+    prin = _signed_in(monkeypatch, _TAILNET_CLIENT_IP, f"{_SELF_TAILNET_IP}, fd7a:115c:a1e0::1")
+    assert "tailnet-approver" in prin.roles
+    assert _identity.principal_has_scope(prin, "staff.approve")
+    assert not _identity.principal_has_scope(prin, "staff.admin")
+
+
+def test_tailnet_signin_from_host_itself_cannot_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+    prin = _signed_in(monkeypatch, _SELF_TAILNET_IP, _SELF_TAILNET_IP)
+    assert prin.roles == ["loopback"]
+    assert not _identity.principal_has_scope(prin, "staff.approve")
+
+
+def test_tailnet_signin_without_self_ips_cannot_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+    prin = _signed_in(monkeypatch, _TAILNET_CLIENT_IP, None)
+    assert prin.roles == ["loopback"]
+    assert not _identity.principal_has_scope(prin, "staff.approve")
+
+
+def test_loopback_principal_still_cannot_approve() -> None:
+    assert not _identity.principal_has_scope(_identity._loopback_principal(), "staff.approve")

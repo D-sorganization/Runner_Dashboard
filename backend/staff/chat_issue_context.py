@@ -20,9 +20,12 @@ if TYPE_CHECKING:
 log = logging.getLogger("dashboard.staff.chat_issue_context")
 
 __all__ = [
+    "BOARD_BLOCK_CHARS",
+    "BOARD_MD_FILE_CHARS",
     "DEFAULT_KNOWN_REPO_NAMES",
     "MAX_BLOCK_CHARS",
     "MAX_BODY_CHARS",
+    "MAX_HEADINGS_LISTED",
     "MAX_MD_FILE_CHARS",
     "MAX_REFS_PER_TURN",
     "READ_ISSUE_TOOL",
@@ -30,6 +33,7 @@ __all__ = [
     "IssueFetcher",
     "IssueRef",
     "build_issue_context_block",
+    "build_referenced_items_block",
     "parse_issue_refs",
     "role_declares_read_issue",
 ]
@@ -52,7 +56,15 @@ SOURCE_TIMEOUT_SECONDS: float = 5.0
 MAX_BODY_CHARS: int = 4000
 MAX_MD_FILE_CHARS: int = 12000
 MAX_BLOCK_CHARS: int = 30000
+MAX_HEADINGS_LISTED: int = 40
 TRUNCATION_MARKER: str = " …(truncated)"
+
+# Board turns get a larger budget than a chat turn: a Board seat deliberates a whole
+# review packet, not a single issue mention (Runner_Dashboard#1767).
+BOARD_MD_FILE_CHARS: int = 60000
+BOARD_BLOCK_CHARS: int = 80000
+
+_HEADING_RE = re.compile(r"^(#{1,3})\s+\S.*$", re.MULTILINE)
 
 HEADER = (
     "## Referenced items\n"
@@ -177,7 +189,38 @@ async def _timed_raw(call: _AsyncRawCall, endpoint: str) -> str:
     return await asyncio.wait_for(call(endpoint), timeout=SOURCE_TIMEOUT_SECONDS)
 
 
-async def _render_pull_request(ref: IssueRef, fetcher: IssueFetcher) -> list[str]:
+def _omitted_headings_line(content: str, cut: int) -> str:
+    """Render the ``#``/``##``/``###`` heading lines found after ``content[cut:]``.
+
+    Pre: ``content`` is the full (untruncated) text; ``cut`` is the char index the
+    truncation marker was inserted at.
+    Post: returns ``"Omitted headings: h1 | h2 | ..."`` (at most :data:`MAX_HEADINGS_LISTED`
+    headings, in document order) or ``""`` when no heading falls after the cut.
+    """
+    headings = [m.group(0).strip() for m in _HEADING_RE.finditer(content, cut)]
+    if not headings:
+        return ""
+    return "Omitted headings: " + " | ".join(headings[:MAX_HEADINGS_LISTED])
+
+
+def _truncate_markdown(content: str, md_chars: int) -> str:
+    """Truncate a fetched Markdown file to ``md_chars``, noting the headings it cut off.
+
+    Pre: ``md_chars`` is the maximum character budget for this file.
+    Post: content at or under ``md_chars`` is returned unchanged; otherwise the cut
+    content is followed by :data:`TRUNCATION_MARKER` and, when headings fell after the
+    cut, a line naming them (Runner_Dashboard#1767).
+    """
+    if len(content) <= md_chars:
+        return content
+    omitted = _omitted_headings_line(content, md_chars)
+    truncated = content[:md_chars] + TRUNCATION_MARKER
+    if omitted:
+        truncated += "\n" + omitted
+    return truncated
+
+
+async def _render_pull_request(ref: IssueRef, fetcher: IssueFetcher, md_chars: int = MAX_MD_FILE_CHARS) -> list[str]:
     """Changed-file list plus the text of changed Markdown files, at the PR head ref."""
     lines: list[str] = []
     try:
@@ -197,8 +240,7 @@ async def _render_pull_request(ref: IssueRef, fetcher: IssueFetcher) -> list[str
         try:
             endpoint = f"repos/{ref.owner}/{ref.repo}/contents/{filename}?ref={head_sha}"
             content = str(await _timed_raw(fetcher.gh_api_raw, endpoint))
-            if len(content) > MAX_MD_FILE_CHARS:
-                content = content[:MAX_MD_FILE_CHARS] + TRUNCATION_MARKER
+            content = _truncate_markdown(content, md_chars)
             lines.append(f"\n#### {filename}\n{content}")
         except Exception as exc:  # noqa: BLE001
             log.warning("read_issue: markdown file %s of %s unavailable: %s", filename, ref, type(exc).__name__)
@@ -206,7 +248,7 @@ async def _render_pull_request(ref: IssueRef, fetcher: IssueFetcher) -> list[str
     return lines
 
 
-async def _render_ref(ref: IssueRef, fetcher: IssueFetcher) -> str:
+async def _render_ref(ref: IssueRef, fetcher: IssueFetcher, md_chars: int = MAX_MD_FILE_CHARS) -> str:
     """Render one reference's section. Never raises; a failed fetch renders 'unavailable'."""
     try:
         issue = await _timed_api(fetcher.gh_api, f"repos/{ref.owner}/{ref.repo}/issues/{ref.number}")
@@ -228,8 +270,41 @@ async def _render_ref(ref: IssueRef, fetcher: IssueFetcher) -> str:
 
     lines = [f"### {ref}", f"**{title}** ({state})", f"Labels: {labels or 'none'}", "", body]
     if "pull_request" in issue:
-        lines.extend(await _render_pull_request(ref, fetcher))
+        lines.extend(await _render_pull_request(ref, fetcher, md_chars))
     return "\n".join(lines)
+
+
+async def build_referenced_items_block(
+    text: str,
+    *,
+    md_chars: int = MAX_MD_FILE_CHARS,
+    block_chars: int = MAX_BLOCK_CHARS,
+    fetch: IssueFetcher | None = None,
+    repo_names: tuple[str, ...] = (),
+) -> str | None:
+    """Build the '## Referenced items' markdown block for any text mentioning an issue/PR.
+
+    Role-independent (Runner_Dashboard#1767): callers that are not a chat turn for a
+    role declaring ``read_issue`` — e.g. Board group turns — use this directly instead
+    of :func:`build_issue_context_block`.
+
+    Pre: none beyond types.
+    Post: returns None when no reference is found in ``text``; otherwise a markdown
+    string starting with '## Referenced items' and at most ``block_chars`` long. Never
+    raises — a failed fetch renders as 'unavailable'.
+    """
+    refs = parse_issue_refs(text, repo_names=repo_names)
+    if not refs:
+        return None
+
+    fetcher = fetch if fetch is not None else _default_fetcher()
+    sections = await asyncio.gather(*(_render_ref(ref, fetcher, md_chars) for ref in refs))
+
+    block = HEADER + "\n\n" + "\n\n".join(sections)
+    if len(block) > block_chars:
+        block = block[: block_chars - len(TRUNCATION_MARKER)] + TRUNCATION_MARKER
+
+    return block
 
 
 async def build_issue_context_block(
@@ -241,22 +316,11 @@ async def build_issue_context_block(
 
     Pre: none beyond types.
     Post: returns None when the role does not declare ``read_issue`` or no reference is
-    found in ``text``; otherwise a markdown string starting with '## Referenced items' and
-    at most MAX_BLOCK_CHARS long. Never raises — a failed fetch renders as 'unavailable'.
+    found in ``text``; otherwise delegates to :func:`build_referenced_items_block` with
+    the role's declared repo names. Never raises — a failed fetch renders as 'unavailable'.
     """
     if not role_declares_read_issue(role):
         return None
 
     repo_names = role.repos if role is not None and role.repos else ()
-    refs = parse_issue_refs(text, repo_names=repo_names)
-    if not refs:
-        return None
-
-    fetcher = fetch if fetch is not None else _default_fetcher()
-    sections = await asyncio.gather(*(_render_ref(ref, fetcher) for ref in refs))
-
-    block = HEADER + "\n\n" + "\n\n".join(sections)
-    if len(block) > MAX_BLOCK_CHARS:
-        block = block[: MAX_BLOCK_CHARS - len(TRUNCATION_MARKER)] + TRUNCATION_MARKER
-
-    return block
+    return await build_referenced_items_block(text, fetch=fetch, repo_names=repo_names)
