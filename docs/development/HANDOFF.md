@@ -1,4 +1,16 @@
-# Current handoff — Board-review flow fixes, #1758–#1762 (DL-#1758, DL-#1759, DL-#1760, DL-#1761, DL-#1762)
+# Current handoff — Contract Params column (DL-#1766)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
+- **Branch:** `fix/board-seats-context-20260928` from `origin/main`
+- **PR:** not created
+- **Why:** in the 2026-09-28 live Barb → Board test, Barb proposed `board.convene` with invented params (`agenda`, `seats`, `mode`, `rounds`) instead of the registered `{question, title?}` — the action table in `generate_chat_contract_text()` never showed `params_schema`, so every role had to guess param names for every action.
+- **Changes:** `backend/staff/reply_contract.py`: new `_render_params_schema()` renders an `ActionDefinition.params_schema` dict as `name: type` pairs (`?`-suffixed types become `name?: type`; empty schema renders `—`); `generate_chat_contract_text()` adds a `Params` column to the action table between `Required Scope` and `Description`.
+- **Validation:** `tests/unit/test_staff_reply_contract.py::test_contract_action_table_has_params_column` (new) — RED first (`AssertionError` on the missing `Params` column header), then GREEN. Full file: 19 passed, 1 skipped. `ruff check backend tests` clean; `ruff format --check` clean on changed files; mypy clean on `backend/staff/reply_contract.py`.
+- **Next:** implement #1767 (referenced-items block reused for Board seats) in the same worktree.
+
+---
+
+# Prior handoff — Board-review flow fixes, #1758–#1762 (DL-#1758, DL-#1759, DL-#1760, DL-#1761, DL-#1762)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-flow`
 - **Branch:** `fix/board-review-flow-20260928` from `origin/main` `b0b3867e`; merges `fix/honest-board-propose-open-pr`, `fix/spa-cache-retired-status`, `fix/chat-routing-followups`, `feat/barb-read-issue-board-convene`, `fix/chat-fleet-context-timeouts`.

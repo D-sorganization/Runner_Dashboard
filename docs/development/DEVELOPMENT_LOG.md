@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1766 — Contract action table shows params_schema
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1766
+- **Branch:** `fix/board-seats-context-20260928`
+- **PR:** not created
+- **Paths:** `backend/staff/reply_contract.py`, `tests/unit/test_staff_reply_contract.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_reply_contract.py -q` — 19 passed, 1 skipped; `ruff check`/`ruff format --check` clean; `mypy --ignore-missing-imports` clean)
+- **Summary:** `generate_chat_contract_text()`'s action table never showed `ActionDefinition.params_schema`, so roles guessed param names when proposing actions (Barb invented `agenda`/`seats`/`mode`/`rounds` for `board.convene` instead of using `question`/`title?`). New `_render_params_schema()` renders the schema as `name: type` (optional keys as `name?: type`, empty schema as `—`) in a new `Params` column.
+- **Next step:** Open the PR referencing #1766.
+
 ### DL-#1762 — read_issue chat context and board.convene
 
 - **State:** in_review

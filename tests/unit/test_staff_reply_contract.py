@@ -343,6 +343,23 @@ def test_action_requirements_vocabulary_completeness() -> None:
 
 
 @pytest.mark.unit
+def test_contract_action_table_has_params_column() -> None:
+    """The contract's action table shows params_schema so roles stop guessing param names (#1766)."""
+    from staff.reply_contract import generate_chat_contract_text
+
+    text = generate_chat_contract_text()
+    assert "| Action | Risk | Required Scope | Params | Description |" in text
+
+    lines = text.splitlines()
+    convene_line = next(line for line in lines if line.startswith("| `board.convene`"))
+    assert "question: string" in convene_line
+    assert "title?: string" in convene_line
+
+    dispatch_line = next(line for line in lines if line.startswith("| `staff.dispatch`"))
+    assert "role" in dispatch_line and "prompt" in dispatch_line
+
+
+@pytest.mark.unit
 def test_compose_prompt_chat_turn_vs_batch(sample_role: RoleSpec) -> None:
     from staff.workspace import compose_prompt
 

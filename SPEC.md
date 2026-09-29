@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1766 | The chat reply contract's action table adds a `Params` column rendered from each action's `params_schema` (e.g. `question: string, title?: string`), so roles stop guessing action parameter names. |
 | 2026-09-28 | #1758 | `board.propose` persists the proposal text on the work item (`description` column, additive migration) and returns it in the result; `open_pr` no longer claims `opened: True` — it returns an honest `not_implemented` failure. |
 | 2026-09-28 | #1759 | SPA shell (`/`, client routes, `/sw.js`) serves `Cache-Control: no-cache` so a deploy is not masked by a cached stale bundle; Staff Console roster shows a retired role as "Retired" instead of "Idle". |
 | 2026-09-28 | #1760 | Auto-route follow-ups after a Barb reply are no longer keyword-pre-routed (only explicit `/role`/`@mention`), keyword pre-routing ignores pasted table rows/blockquotes/fenced code, and `handoff: <Display Name>` is slugified instead of being dropped. |
