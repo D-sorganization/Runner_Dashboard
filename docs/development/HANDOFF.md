@@ -1,37 +1,17 @@
-# Current handoff — Board propose persists text; open_pr fails honestly (DL-#1758)
+# Current handoff — Board-review flow fixes, #1758–#1762 (DL-#1758, DL-#1759, DL-#1760, DL-#1761, DL-#1762)
 
-Last updated: 2026-09-28
-
-## Identity
-
-- Repository: `D-sorganization/Runner_Dashboard`
-- Branch: `fix/honest-board-propose-open-pr`
-- Worktree: `Runner_Dashboard-worktrees/claude-1758`
-- Base: `origin/main`
-- Governing issue: #1758
-- Pull request: not created
-
-## Objective and status
-
-- `execute_board_propose` (`backend/staff/action_executors.py`) built the work item title from `title` alone and silently dropped `params["proposal"]` — the Board deliberation position text built by `backend/staff/groups.py` `_board_proposal` was never persisted. `backend/staff/work_items.py` `WorkItemStore`/`WorkItemRecord`/`create_work_item` had no description/body/notes field, so there was nowhere to put it.
-- `execute_open_pr` recorded a success audit row and returned `success=True, result={"opened": True, ...}` without ever calling GitHub — an approved "open PR" card showed success for work that never happened.
-- Fix: added an additive nullable `description` column to `work_items` (default `''`, migrated in place via a guarded `ALTER TABLE ... ADD COLUMN` mirroring `staff/store.py`'s `_ADDED_COLUMNS`/`_migrate` pattern for `runs`; new `WorkItemStore.columns()` helper for introspection/tests). `execute_board_propose` now passes `description=proposal` through to `create_work_item` and returns the persisted text as `result["proposal"]`; missing `title` or `proposal` still returns `invalid_params`. `execute_open_pr` now validates params and then always returns `ActionResult(success=False, error="open_pr is not implemented: open the PR with gh or a staff.dispatch", failure_class="not_implemented")` — no audit row is written since nothing happened (matches how `invalid_params` failures elsewhere in this file skip auditing). `failure_class="not_implemented"` is not enumerated in `classifier.ALLOWED_FAILURE_CLASSES` because that set governs run-classification failures, not the separate `ActionResult.failure_class` free-text field used across `action_executors.py` (`invalid_params`, `unknown_action`, `execution_exception`, `bridge_unavailable`, etc. are similarly ad hoc); the frontend `ErrorCard.tsx` `getFailureClassTitle` already has a generic title-cased fallback for unrecognised classes, so no frontend change was needed. Grepped `tests/` and `frontend/src` for `"opened"` — no prior test or type asserted `opened: True`, so nothing else needed updating.
-
-## Validation
-
-- RED observed first: `test_board_propose_persists_proposal_text_on_work_item` failed with `KeyError: 'proposal'`; `test_open_pr_is_not_implemented_and_does_not_claim_success` failed with `assert True is False` (executor still returned `success=True`).
-- WSL `pytest tests/unit/test_staff_actions.py -q` — 21 passed.
-- WSL `pytest tests/api/test_staff_groups_api.py tests/unit/test_staff_groups.py tests/unit/test_staff_group_consensus.py tests/unit/test_staff_actions.py tests/api/test_staff_work_items.py -q` — 52 passed.
-- `ruff check backend tests` — clean. `ruff format --check backend/staff/action_executors.py backend/staff/work_items.py tests/unit/test_staff_actions.py` — clean.
-- `mypy --ignore-missing-imports backend/staff/action_executors.py backend/staff/work_items.py` (run from worktree root, so `pyproject.toml`'s `mypy_path = "backend"` applies) — Success, no issues.
-
-## Blockers and risks
-
-- None known. Not pushed or opened as a PR (worked in an isolated worktree per task instructions; lead reviews and pushes).
-
-## Next steps
-
-1. Push the branch and open a PR referencing #1758.
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-flow`
+- **Branch:** `fix/board-review-flow-20260928` from `origin/main` `b0b3867e`; merges `fix/honest-board-propose-open-pr`, `fix/spa-cache-retired-status`, `fix/chat-routing-followups`, `feat/barb-read-issue-board-convene`, `fix/chat-fleet-context-timeouts`.
+- **PR:** not created
+- **Why:** the 2026-09-28 live test of the owner's review → Barb → Board → issues workflow (UpstreamDrift PR #11080) failed at every step: Barb could not read the PR, her fleet reads timed out, the auto-router sent her follow-up to Maintenance, Maintenance's `handoff: Board Secretary` was dropped, and no action could convene the Board.
+- **Changes:**
+  - #1760 `backend/staff/chat_preroute.py`: a follow-up in an auto thread where Barb has replied stays with Barb unless it is an explicit `/role`/`@mention`; keyword matching ignores pasted tables, quotes and code. `backend/staff/reply_contract.py`: `handoff: Board Secretary` → `board-secretary`.
+  - #1761 `backend/staff/chat_fleet_context.py`: role cache warmed off-loop before gathering; last-good `stale (age Ns)` fallback. `backend/coordination/briefing.py` `_holds()` off-loop.
+  - #1762 new `backend/staff/chat_issue_context.py` (`read_issue`: issue/PR body, PR files and changed Markdown, bounded, injected as untrusted quoted data); `board.convene` action (MEDIUM, owner approval = cost confirmation) in `backend/staff/action_executors.py` + `backend/staff/groups.py` `create_group_thread`/`convene_board_thread` (route shares the helper).
+  - #1758 `board.propose` stores the proposal text (`work_items.description`, additive migration); `open_pr` fails with `not_implemented` instead of claiming success.
+  - #1759 SPA shell and `/sw.js` served `Cache-Control: no-cache`; retired roles show "Retired" with their reason.
+- **Validation:** see the consolidated PR body (per-branch RED→GREEN in each DL entry; combined suite run on this branch).
+- **Next:** open the PR as draft, mark ready, arm via `automerge_guard`; deploy to DeskComputer; re-run the Barb → Board flow for UpstreamDrift PR #11080.
 
 ---
 

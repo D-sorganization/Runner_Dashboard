@@ -18,12 +18,64 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1762 — read_issue chat context and board.convene
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1762
+- **Branch:** `fix/board-review-flow-20260928` (consolidated)
+- **PR:** not created
+- **Paths:** `backend/staff/chat_issue_context.py`, `backend/staff/chat.py`, `backend/staff/chat_fleet_context.py`, `backend/staff/groups.py`, `backend/staff/action_executors.py`, `backend/routers/staff_groups.py`, `tests/unit/test_staff_chat_issue_context.py`, `tests/unit/test_staff_chat_issue_prompt.py`, `tests/unit/test_staff_groups.py`, `tests/api/test_staff_board_convene_api.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/unit -k "staff_chat or staff_groups or staff_proposals or staff_action_executors" tests/api/test_staff_groups_api.py tests/api/test_staff_proposals_api.py tests/api/test_staff_board_convene_api.py -q` — 151 passed; `ruff check`/`ruff format --check` clean; `mypy --ignore-missing-imports` clean)
+- **Summary:** Barb's role declared the `read_issue` chat tool but it was a documented no-op, so she could not discuss an issue/PR the owner named in chat, and no action took a question to the Board. New `chat_issue_context.py` recognises `owner/repo#N`/GitHub URLs/`PR #N`/bare `#N` (max 3, deduped) and injects bounded title/state/labels/body plus PR changed-files and changed-markdown text, wired into `chat.py` next to the fleet context block. New `board.convene` action (MEDIUM risk, `staff.chat` scope) creates a Board group thread and starts one group turn via a shared `create_group_thread` helper (factored out of the `/groups/{id}/threads` router endpoint, DRY) and a new `convene_board_thread`, scheduled off the proposals worker thread with `loop_bridge.run_on_loop`.
+- **Next step:** Open the PR referencing #1762.
+
+### DL-#1761 — Warm the role cache off-loop before gathering fleet context
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1761
+- **Branch:** `fix/board-review-flow-20260928` (consolidated)
+- **PR:** not created
+- **Paths:** `backend/staff/chat_fleet_context.py`, `backend/coordination/briefing.py`, `tests/unit/test_staff_chat_fleet_context.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/unit/test_staff_chat_fleet_context.py tests/unit/test_staff_chat_fleet_prompt.py tests/unit/test_staff_chat_memory.py -q` → 14 passed; `pytest tests/api/test_coordination_claims_auth.py tests/api/test_coordination_api.py tests/clients/ -q` → 177 passed; `ruff check`/`ruff format --check` clean; mypy `--explicit-package-bases` clean)
+- **Summary:** `build_fleet_context_block`'s `_run_source` used to await each source's coroutine directly on the shared event loop under a 5 s `asyncio.wait_for`. A source with synchronous blocking work inside its `async def` (traced to `load_roles()`'s directory glob/stat/YAML parse on a cold mtime-cache, reached via `build_staff_summary` → `staff.fleet.local_board`) froze the whole loop, starving every other concurrently gathered source and their timeout timers, so fast sources (0.4 s over HTTP) timed out in lockstep with the slow one. An earlier attempt in this same branch isolated each source on its own private event loop in a worker thread, but that's unsafe here: `backend/gh_client.py` has a module-level shared `httpx.AsyncClient`/`asyncio.Lock` bound to the main loop, and `read_briefing`/`read_sessions` reach GitHub through it via `aggregate_board`/`staff_runs` — driving those from a foreign per-source loop risks `RuntimeError` or corrupting the shared client's pool, a failure fake-source tests can't catch. Replaced with the minimal fix: `build_fleet_context_block` warms `staff.roles.load_roles()`'s mtime-cache via `asyncio.to_thread` once per turn before gathering (failure logged and swallowed), so the later in-loop `load_roles()` call only re-stats cached files instead of a cold full parse; `coordination/briefing.py`'s `_holds()` (a plain sync call on the loop) also now runs via `asyncio.to_thread`. Kept the module-level per-tool last-good snapshot cache: a later timeout/error renders `stale (age Ns): <body>` instead of `unavailable` when the tool has succeeded earlier in the process.
+- **Next step:** Open the PR against `origin/main`.
+
+### DL-#1760 — Auto-route pre-router follow-up and handoff display-name fixes
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1760
+- **Branch:** `fix/board-review-flow-20260928` (consolidated)
+- **PR:** not created
+- **Paths:** `backend/staff/chat_preroute.py`, `backend/staff/reply_contract.py`, `tests/unit/test_staff_chat_preroute.py`, `tests/api/test_staff_chat_preroute_api.py`, `tests/unit/test_staff_reply_contract.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/api/test_staff_chat_preroute_api.py tests/api/test_staff_routing_api.py tests/unit/test_staff_reply_contract.py tests/unit/test_staff_chat_preroute.py tests/unit/test_staff_chat_handoff.py tests/code_requests/test_handoff_rules_drift.py -q`: 69 passed, 1 skipped; `ruff check`/`ruff format --check` clean; mypy clean)
+- **Summary:** A pasted decision table's stray keyword hit pre-routed a caller's reply to Barb away from her mid-conversation, and a role's `handoff: Board Secretary` display name was silently dropped by the single-token handoff regex. `chat_preroute._preroute` now only allows keyword pre-routing (not explicit `/role`/`@mention`) when the auto thread has no prior Barb reply before the caller's message, and strips pasted markdown table rows/blockquotes/fenced code before the keyword stage. `reply_contract._HANDOFF_RE` now accepts a display name and slugifies it (`Board Secretary` -> `board-secretary`); unknown-role rejection in `chat_handoff.py` is unchanged.
+- **Next step:** Open a PR referencing #1760.
+
+### DL-#1759 — SPA shell no-cache + retired-role roster status
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1759
+- **Branch:** `fix/board-review-flow-20260928` (consolidated)
+- **PR:** not created
+- **Paths:** `backend/server.py`, `tests/test_spa_fallback.py`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/pages/StaffConsole/__tests__/rosterUtils.test.ts`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (WSL `pytest tests/test_spa_fallback.py tests/test_static_serving.py -q` 14 passed; `npx vitest run frontend/src/pages/StaffConsole` 239 passed; `npm run typecheck` and `eslint` clean; `ruff check`/`ruff format --check` clean; mypy clean)
+- **Summary:** After a deploy the browser kept running the stale bundle because the SPA shell (`/`, `/t/:tabId`, `/settings/push`) and `/sw.js` were served with no `Cache-Control`, so a cached `index.html` could keep pointing at a superseded hashed `/assets/*` chunk. `serve_index`, `serve_spa_fallback` and `serve_service_worker` now set `Cache-Control: no-cache`; the hashed `/assets/*` `StaticFiles` mount is unchanged. Separately, `computeRoleStatus` never considered `role.retired`, so a retired role showed as "Idle"; it now checks `retired` right after the invalid check and returns a new `"retired"` status carrying its `retired_reason`, with `RosterRow.tsx` labeling it "Retired".
+- **Next step:** Open the PR.
+
 ### DL-#1758 — Board propose persists text; open_pr fails honestly
 
 - **State:** in_review
 - **Owner:** claude
 - **Issue:** #1758
-- **Branch:** `fix/honest-board-propose-open-pr`
+- **Branch:** `fix/board-review-flow-20260928` (consolidated)
 - **PR:** not created
 - **Paths:** `backend/staff/action_executors.py`, `backend/staff/work_items.py`, `tests/unit/test_staff_actions.py`
 - **Started:** 2026-09-28
