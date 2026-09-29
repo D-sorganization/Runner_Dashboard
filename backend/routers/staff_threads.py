@@ -90,7 +90,7 @@ async def create_thread(
         role = "barb"
 
     participants = list(body.participants)
-    from staff.groups import resolve_group_thread_meta
+    from staff.group_threads import resolve_group_thread_meta
 
     kind, role, meta = resolve_group_thread_meta(kind, role, participants)
 
@@ -270,7 +270,7 @@ async def post_message(
                 detail={"code": "panel_thread_read_only", "message": "A panel thread takes no new messages"},
             )
 
-        from staff.groups import dispatch_group_message, is_group_thread
+        from staff.group_threads import dispatch_group_message, is_group_thread
 
         if is_group_thread(thread):
             return await dispatch_group_message(thread, body, caller, caller_id, idempotency_key, store)

@@ -18,8 +18,23 @@ import { TimeAgo } from "../../primitives/TimeAgo";
 import { fetchStaffInbox, requestStaffBriefing } from "./staffApi";
 import { inboxDetailText } from "./inboxTypes";
 import type { InboxAggregate, InboxItem, InboxSource } from "./inboxTypes";
-
-const MAX_DETAIL_LINES = 5;
+import {
+  KIND_LABEL,
+  MAX_DETAIL_LINES,
+  SEVERITY_LABEL,
+  SOURCE_PRIORITY,
+  STORAGE_KEY,
+  getDecisionRepo,
+} from "./inboxPanelMeta";
+import {
+  InboxDegradedBanner,
+  KindIcon,
+  ChevronDownIcon,
+  CheckCircleIcon,
+  ClipboardIcon,
+  CloseIcon,
+  RefreshIcon,
+} from "./inboxIcons";
 import "./InboxPanel.css";
 
 export interface InboxPanelProps {
@@ -33,138 +48,6 @@ export interface InboxPanelProps {
 }
 
 type FilterTab = "all" | InboxSource;
-
-const STORAGE_KEY = "staff_inbox_drawer_open";
-
-const SOURCE_PRIORITY: Record<string, number> = {
-  approval: 1,
-  escalation: 2,
-  needs_input: 3,
-  auth_sign_in: 4,
-  project_decision: 5,
-  board_proposal: 6,
-};
-
-function ChevronDownIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-function ClipboardIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
-    </svg>
-  );
-}
-
-function RefreshIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="23 4 23 10 17 10" />
-      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-    </svg>
-  );
-}
-
-function CloseIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
-function AlertTriangleIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  );
-}
-
-function CheckCircleIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  );
-}
-
-const KIND_LABEL: Record<InboxSource, string> = {
-  approval: "Approval",
-  escalation: "Escalation",
-  needs_input: "Question",
-  auth_sign_in: "Sign-in",
-  project_decision: "Decision",
-  board_proposal: "Proposal",
-};
-
-const KIND_ICON_PATHS: Record<InboxSource, React.ReactNode> = {
-  approval: (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <polyline points="9 12 11 14 15 10" />
-    </>
-  ),
-  escalation: (
-    <>
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </>
-  ),
-  needs_input: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
-  auth_sign_in: (
-    <>
-      <circle cx="7.5" cy="15.5" r="4.5" />
-      <path d="M10.7 12.3L21 2" />
-      <path d="M16 7l3 3" />
-    </>
-  ),
-  project_decision: (
-    <>
-      <path d="M4 22V4a1 1 0 0 1 1-1h11l-2 4 2 4H5" />
-    </>
-  ),
-  board_proposal: (
-    <>
-      <path d="M9 18h6" />
-      <path d="M10 22h4" />
-      <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />
-    </>
-  ),
-};
-
-function KindIcon({ source }: { source: InboxSource }) {
-  return (
-    <span className={`staff-inbox-row__icon staff-inbox-row__icon--${source}`} aria-hidden="true">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        {KIND_ICON_PATHS[source] ?? KIND_ICON_PATHS.needs_input}
-      </svg>
-    </span>
-  );
-}
-
-const SEVERITY_LABEL: Partial<Record<InboxItem["severity"], string>> = { critical: "Critical", high: "High" };
-
-function getDecisionRepo(item: InboxItem): string {
-  if (typeof item.metadata?.repo === "string" && item.metadata.repo) return item.metadata.repo;
-  if (item.link.includes("repo=")) {
-    const r = new URLSearchParams(item.link.split("?")[1] || "").get("repo");
-    if (r) return r;
-  }
-  const match = item.title.match(/^\[?([a-zA-Z0-9_.-]+)\]?[:-]/);
-  return match ? match[1] : "General";
-}
 
 export function InboxPanel({
   onOpenRun,
@@ -433,37 +316,7 @@ export function InboxPanel({
           </button>
         </div>
       </div>
-
-      {unavailableSources.length > 0 ? (
-        <div className="staff-inbox-panel__degraded-banner" role="alert" data-testid="inbox-degraded-banner">
-          <AlertTriangleIcon className="staff-inbox-panel__degraded-icon" />
-          <div className="staff-inbox-panel__degraded-body">
-            <div className="staff-inbox-panel__degraded-headline">
-              {`${unavailableSources.length} source${unavailableSources.length === 1 ? "" : "s"} unavailable: ${unavailableSources.map(([src]) => src).join(", ")}`}
-            </div>
-            <details className="staff-inbox-panel__degraded-disclosure">
-              <summary>Details</summary>
-              <ul className="staff-inbox-panel__degraded-list">
-                {unavailableSources.map(([src, status]) => {
-                  const message = status.error || "Temporarily unavailable";
-                  return (
-                    <li key={src}>
-                      <code>{src}</code>:{" "}
-                      <span
-                        className="staff-inbox-panel__degraded-error"
-                        title={message}
-                        data-testid={`inbox-degraded-error-${src}`}
-                      >
-                        {message}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </details>
-          </div>
-        </div>
-      ) : null}
+      {unavailableSources.length > 0 ? <InboxDegradedBanner unavailableSources={unavailableSources} /> : null}
 
       {isDrawerOpen ? (
         <>

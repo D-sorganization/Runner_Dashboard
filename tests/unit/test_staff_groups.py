@@ -25,18 +25,20 @@ from staff.conversations import (
     get_conversation_store,
     reset_conversation_store,
 )
+from staff.group_threads import (
+    convene_board_thread,
+    create_group_thread,
+    resolve_group_thread_meta,
+)
 from staff.groups import (
     SeatReply,
     SeatSpec,
-    convene_board_thread,
-    create_group_thread,
     estimate_group_turn_cost,
     execute_group_turn,
     get_board_group,
     get_group,
     list_groups,
     reset_group_runner_override,
-    resolve_group_thread_meta,
     set_group_runner_override,
 )
 from staff.thread_bus import reset_thread_bus
