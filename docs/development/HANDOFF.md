@@ -2,11 +2,11 @@
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
 - **Branch:** `feat/barb-front-door` from `origin/main` (`63f4088`)
-- **PR:** not created
+- **PR:** #1788 (auto-merge armed)
 - **Why:** owner direction 2026-09-29: "if I ask barb, she should be able to do it" and "Barb needs to be able to get things done and to be my interface for getting everything done." Two Board convene cards (UD#11080, RD#1776) sat pending because Desk (loopback) had no `staff.approve` (#1770 granted it only to other tailnet devices), and a request to Barb still produced a card.
 - **Changes:** `backend/identity.py` adds `staff.approve` to `LOOPBACK_SCOPES`. `backend/staff/owner_requests.py` (new) has `request_approves` (requester has `staff.approve` and risk ≤ MEDIUM) and `run_for_requester` (`execute_proposal(..., approve=True)` in a worker thread, then `refresh_proposal_card`). `backend/staff/chat.py` threads `requester` through `run_chat_turn_in_background` → `execute_turn` → `_run_turn_attempt` and runs each approved proposal after posting it. `backend/routers/staff_threads.py` passes `requester=caller`. `backend/tailnet_identity.py` docstrings are updated.
 - **Decisions:** HIGH/CRITICAL/owner-only (`staff.hold`, `staff.unhold`) keep the card. Reply handoffs only open a thread, so the next turn there carries the requester through the same route.
-- **Validation:** RED then GREEN: `pytest tests/api/test_staff_owner_requests.py tests/api/test_tailnet_identity.py` gave 26 passed.
+- **Validation:** RED then GREEN: `pytest tests/api/test_staff_owner_requests.py tests/api/test_tailnet_identity.py` gave 26 passed. The local staff/identity/chat subset gave 1261 passed. CI caught `test_api_chat_turn_action_proposals`: its `operator`-role principal now approves by asking, so the fixture principal is chat-only (`viewer`). `test_staff_chat_turns.py` + `test_staff_owner_requests.py` gave 7 passed.
 - **Next:** open the PR; after merge, deploy to Desk, then approve the two pending Board cards from Desk.
 
 ---

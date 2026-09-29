@@ -28,11 +28,13 @@ from staff.conversations import (
 )
 from staff.thread_bus import reset_thread_bus
 
+# Chat-only on purpose: a caller who may approve would run proposals at once (#1786),
+# and these tests check the card that waits for approval.
 TEST_PRINCIPAL = Principal(
     id="operator-alice",
     type="human",
     name="Alice",
-    roles=["operator"],
+    roles=["viewer"],
     scopes=["staff.chat", "staff.read"],
 )
 

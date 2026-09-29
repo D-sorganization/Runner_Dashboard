@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1786
 - **Branch:** `feat/barb-front-door`
-- **PR:** not created
+- **PR:** #1788
 - **Paths:** `backend/identity.py`, `backend/tailnet_identity.py`, `backend/staff/owner_requests.py`, `backend/staff/chat.py`, `backend/routers/staff_threads.py`, `tests/api/test_staff_owner_requests.py`, `tests/api/test_tailnet_identity.py`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 (RED: the owner-convene test left the proposal `proposed`, and the three loopback-approve tests failed. GREEN: `tests/api/test_staff_owner_requests.py` + `tests/api/test_tailnet_identity.py` 26 passed)
