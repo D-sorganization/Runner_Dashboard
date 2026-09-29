@@ -6,7 +6,7 @@
  * recent live thread, or a newly created one.
  */
 import { describe, expect, it, vi } from "vitest";
-import { pickRoleThread, resolveRoleThread, threadKindForRole, type ThreadApi } from "../consoleThreads";
+import { createFreshRoleThread, pickRoleThread, resolveRoleThread, threadKindForRole, type ThreadApi } from "../consoleThreads";
 import type { ThreadInfo } from "../threadTypes";
 
 function thread(overrides: Partial<ThreadInfo>): ThreadInfo {
@@ -133,5 +133,30 @@ describe("resolveRoleThread", () => {
 
     expect(deps.listThreads).toHaveBeenCalledTimes(2);
     expect(deps.createThread).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createFreshRoleThread (#1775)", () => {
+  it("always creates a new thread, bypassing pickRoleThread even when a thread for the role exists", async () => {
+    const created = thread({ id: "fresh-2", participants: ["user:me", "maintenance"] });
+    const deps: ThreadApi = {
+      listThreads: vi.fn().mockResolvedValue([thread({ id: "existing" })]),
+      createThread: vi.fn().mockResolvedValue(created),
+    };
+    await expect(createFreshRoleThread("maintenance", "Fleet Maintenance", deps)).resolves.toBe(created);
+    expect(deps.listThreads).not.toHaveBeenCalled();
+    expect(deps.createThread).toHaveBeenCalledWith({
+      role: "maintenance",
+      kind: "direct",
+      title: "Conversation with Fleet Maintenance",
+    });
+  });
+
+  it("rejects a created thread the role does not participate in (postcondition)", async () => {
+    const wrong = thread({ id: "wrong", participants: ["user:me"] });
+    const deps: ThreadApi = { listThreads: vi.fn(), createThread: vi.fn().mockResolvedValue(wrong) };
+    await expect(createFreshRoleThread("maintenance", "Fleet Maintenance", deps)).rejects.toThrow(
+      /does not include role 'maintenance'/,
+    );
   });
 });

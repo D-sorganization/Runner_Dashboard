@@ -107,6 +107,13 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
           <div className="staff-console__header-actions">
             {activeThread && (
               <>
+                <button
+                  type="button"
+                  className="staff-console__export-btn"
+                  onClick={() => void sc.newConversation()}
+                >
+                  New conversation
+                </button>
                 <Dropdown
                   label="Export"
                   items={[

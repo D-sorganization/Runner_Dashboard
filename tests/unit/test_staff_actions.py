@@ -225,6 +225,14 @@ def test_check_role_permission_board_proposal_role_and_dropped_alias() -> None:
     assert not check_role_permission(board_act, "delegate_alias", role_spec=role_reporting_alias)
 
 
+def test_board_secretary_may_propose_board_convene() -> None:
+    """The role that chairs the Board may propose convening it (#1773); other roles may not."""
+    convene_act = ACTION_REGISTRY.get("board.convene")
+    assert convene_act is not None
+    assert check_role_permission(convene_act, BOARD_PROPOSAL_ROLE)
+    assert not check_role_permission(convene_act, "board_secretary")
+
+
 def test_no_board_secretary_literals_in_staff_actions() -> None:
     """staff/actions.py must not contain 'board_secretary' or 'board-secretary' literals."""
     actions_path = Path(__file__).resolve().parents[2] / "backend" / "staff" / "actions.py"

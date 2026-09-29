@@ -20,7 +20,7 @@ import {
   fetchThreads,
   postThreadMessage,
 } from "../Staff/staffApi";
-import { AUTO_ROUTE_ROLE, resolveRoleThread, type ThreadApi } from "./consoleThreads";
+import { AUTO_ROUTE_ROLE, createFreshRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
 import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { RoleDetail } from "./contextTypes";
 import { formatRoleWindow } from "./rosterUtils";
@@ -68,6 +68,8 @@ export interface StaffConsoleState {
   openRole: (roleName: string) => Promise<ThreadInfo | null>;
   openThread: (thread: ThreadInfo, roleName?: string) => void;
   closeThread: () => void;
+  /** Start a fresh thread for the current role, even if one already exists (#1775). */
+  newConversation: () => Promise<ThreadInfo | null>;
   sendMessage: (payload: SendMessagePayload) => Promise<SendResult>;
   /** A Board message held for cost confirmation (SC-D7); render with `GroupCostConfirm`. */
   costGuard: Pick<GroupCostGuard, "pending" | "confirm" | "cancel">;
@@ -233,13 +235,35 @@ export function useStaffConsole({
 
   const closeThread = useCallback(() => setActiveThread(null), []);
 
+  const newConversation = useCallback(async (): Promise<ThreadInfo | null> => {
+    const roleName = selectedRole ?? AUTO_ROUTE_ROLE;
+    setOpeningRole(roleName);
+    try {
+      const title = roleByName(roleName)?.title || roleName;
+      const thread = await createFreshRoleThread(roleName, title, threadApi);
+      setHistory(NO_MESSAGES);
+      setActiveThread(thread);
+      setSelectedRole(roleName);
+      setError(null);
+      return thread;
+    } catch (err) {
+      report("thread", err);
+      return null;
+    } finally {
+      setOpeningRole(null);
+    }
+  }, [selectedRole, roleByName, threadApi, report]);
+
   const sendNow = useCallback(
     async (payload: SendMessagePayload): Promise<SendResult> => {
       if (onSendMessage) return onSendMessage(payload);
-      if (!activeThread) return { ok: false, error: "No conversation is open" };
+      // No conversation open yet (e.g. the landing composer): open the
+      // auto-route role thread first, then deliver the message to it (#1775).
+      const thread = activeThread ?? (await openRole(AUTO_ROUTE_ROLE));
+      if (!thread) return { ok: false, error: "No conversation is open" };
       try {
         const message = await postThreadMessage(
-          activeThread.id,
+          thread.id,
           { body: payload.body, meta: payload.meta },
           payload.idempotencyKey,
         );
@@ -249,7 +273,7 @@ export function useStaffConsole({
         return { ok: false, error: errorMessage(err) };
       }
     },
-    [activeThread, onSendMessage, report],
+    [activeThread, onSendMessage, openRole, report],
   );
 
   const { send: sendMessage, pending: costPending, confirm: confirmCost, cancel: cancelCost } = useGroupCostGuard(
@@ -330,6 +354,7 @@ export function useStaffConsole({
     openRole,
     openThread,
     closeThread,
+    newConversation,
     sendMessage,
     costGuard: { pending: costPending, confirm: confirmCost, cancel: cancelCost },
     approveProposal,

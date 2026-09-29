@@ -187,6 +187,38 @@ describe("StaffConsoleDesktop", () => {
     expect(api.fetchRoster).toHaveBeenCalled();
   });
 
+  it("starts a fresh conversation for the open role via New conversation, even though one already exists (#1775)", async () => {
+    render(<StaffConsoleDesktop roles={ROLES} />);
+    openMaintenance();
+    await screen.findByText("All hosts healthy.");
+
+    const fresh: ThreadInfo = {
+      id: "thr_maint_fresh",
+      title: "Conversation with Fleet Maintenance",
+      kind: "direct",
+      participants: ["user:me", "maintenance"],
+      status: "active",
+    };
+    api.createThread.mockResolvedValue(fresh);
+
+    fireEvent.click(screen.getByRole("button", { name: /new conversation/i }));
+
+    await waitFor(() =>
+      expect(api.createThread).toHaveBeenCalledWith({
+        role: "maintenance",
+        kind: "direct",
+        title: "Conversation with Fleet Maintenance",
+      }),
+    );
+    // The active thread switched to the freshly created one, not the reused old thread.
+    await waitFor(() =>
+      expect(screen.getByTitle("Export thread as Markdown")).toHaveAttribute(
+        "href",
+        "/api/v1/staff/threads/thr_maint_fresh/export?format=markdown",
+      ),
+    );
+  });
+
   it("collapses and restores the context pane", () => {
     render(<StaffConsoleDesktop roles={ROLES} />);
 

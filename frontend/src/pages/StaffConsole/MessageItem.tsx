@@ -51,6 +51,20 @@ export interface MessageItemProps {
   onFollowHandoff?: (targetRole: string) => void;
 }
 
+/** #1774: a message whose action was dropped (permission/unknown/bad params) says so. */
+function ActionWarnings({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="thread-message-item__warnings" role="note" aria-label="Action warnings">
+      {warnings.map((warning, i) => (
+        <div key={i} className="thread-message-item__warning-line">
+          {/dropped/i.test(warning) ? `Action not proposed: ${warning}` : warning}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function getRoleTint(role: string): { bg: string; fg: string } {
   const tints = [
     { bg: "rgba(88, 166, 255, 0.15)", fg: "var(--accent-blue, #58a6ff)" },
@@ -92,6 +106,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const roleDisplayName = isUser ? "You" : roleName.charAt(0).toUpperCase() + roleName.slice(1);
   const roleInitial = roleName.charAt(0).toUpperCase();
   const roleTint = getRoleTint(roleName);
+  const warnings = !isUser && Array.isArray(message.meta?.warnings) ? (message.meta!.warnings as string[]) : [];
 
   const handleCopy = async () => {
     try {
@@ -359,6 +374,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       )}
 
       {renderContent()}
+      {warnings.length > 0 && <ActionWarnings warnings={warnings} />}
     </div>
   );
 };

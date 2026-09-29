@@ -1,4 +1,44 @@
-# Current handoff — Approvals from another tailnet device (DL-#1770)
+# Current handoff — landing composer sends via auto-route thread; New conversation (DL-#1775)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
+- **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. Follows DL-#1774 on the same branch.
+- **PR:** not created
+- **Why:** on `/staff` with no conversation open, typing into the landing composer and pressing Enter failed with "Failed to send message: No conversation is open" — `useStaffConsole.ts` `sendNow` bailed out instead of opening Barb's auto-route thread. Separately, there was no way to start a **new** conversation with a role: `resolveRoleThread` always reopens the role's most recent thread, so a new topic landed in an old thread whose history and routing state carried over.
+- **Changes:**
+  - `frontend/src/pages/StaffConsole/consoleThreads.ts`: new `createFreshRoleThread(role, roleTitle, api)` — always calls `api.createThread`, bypassing `pickRoleThread`; same postcondition check as `resolveRoleThread` (created thread must include the role as a participant).
+  - `frontend/src/pages/StaffConsole/useStaffConsole.ts`: `sendNow` now opens the `AUTO_ROUTE_ROLE` (`barb`) thread via `openRole` when `activeThread` is null, then posts to it, instead of returning an error (the `onSendMessage` override still short-circuits first). New `newConversation()` in the returned state: creates a fresh thread for the current/selected role via `createFreshRoleThread`, clears history, and makes it active.
+  - `frontend/src/pages/StaffConsole/Desktop.tsx`: "New conversation" button in the open conversation's header, next to Export (reuses `.staff-console__export-btn` styling).
+  - `frontend/src/pages/StaffConsole/Mobile.tsx`: matching "New conversation" button in the thread header, next to the Role Details button.
+- **Validation:** RED first — `useStaffConsole.test.tsx` "opens the auto-route (barb) thread..." failed on `expect(deps.listThreads).toHaveBeenCalledWith("barb")` (0 calls); `consoleThreads.test.ts` failed to import `createFreshRoleThread` (didn't exist); `Desktop.test.tsx` "New conversation" button not found. Then `npx vitest run frontend/src/pages/StaffConsole`: 245 passed. `npm run typecheck`: clean. `npx eslint` on changed `.tsx`/`.ts` files: clean.
+- **Next:** open one PR for #1773, #1774 and #1775.
+
+---
+
+# Prior handoff — dropped-action warnings surface in the Staff Console (DL-#1774)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
+- **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. Follows DL-#1773 on the same branch; #1775 follows this.
+- **PR:** not created
+- **Why:** in the 2026-09-28 live test, when `parse_reply` drops a proposed action (permission, unknown action, bad params), the warning only lands in the message's `meta.warnings`. The Staff Console rendered only the reply prose ("I'll convene the Board…"), so the owner saw a promise with no approval card and no explanation.
+- **Changes:** `frontend/src/pages/StaffConsole/MessageItem.tsx` — a role-authored (non-user, non-system) message with non-empty `meta.warnings` now renders a compact `role="note"` block below the message body, one line per warning; a warning whose text contains "dropped" is prefixed `Action not proposed: `. `frontend/src/pages/StaffConsole/thread.css` — `.thread-message-item__warnings` reuses the existing `--badge-warning-bg`/`--badge-warning-fg` tokens (same pair `ActionCard`/`RunCard`/`ReviewCard` already use).
+- **Validation:** RED first on `frontend/src/pages/StaffConsole/__tests__/MessageItem.test.tsx` — `getByRole("note", { name: /action warnings/i })` found no element. Then `npx vitest run frontend/src/pages/StaffConsole`: 245 passed. `npm run typecheck`: clean. `npx eslint` on changed `.tsx`/`.ts` files: clean.
+- **Next:** #1775 (landing composer sends via auto-route thread; "New conversation" control) on this branch, then one PR for #1773–#1775.
+
+---
+
+# Prior handoff — board-secretary may convene the Board (DL-#1773)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
+- **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. #1774 and #1775 follow on this branch.
+- **PR:** not created
+- **Why:** in the 2026-09-28 live test, Barb routed "take UpstreamDrift#11080 to the Board" to `board-secretary`. Its `board.convene` proposal was dropped with "does not hold permission", and the reply still said "I'll convene the Board".
+- **Changes:** `backend/staff/actions.py` `check_role_permission()` now allows `board.convene` for `BOARD_PROPOSAL_ROLE`. Approval is unchanged: MEDIUM, owner or `staff.approve`.
+- **Validation:** RED first on `tests/unit/test_staff_actions.py::test_board_secretary_may_propose_board_convene`. Then `pytest tests/unit/test_staff_actions.py tests/unit/test_staff_reply_contract.py tests/api/test_staff_board_convene_api.py`: 45 passed, 1 skipped. ruff is clean.
+- **Next:** #1774 (show dropped-action warnings) and #1775 (landing composer / new conversation) on this branch, then one PR.
+
+---
+
+# Prior handoff — Approvals from another tailnet device (DL-#1770)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
 - **Branch:** `fix/board-seats-context-20260928` from `origin/main`. It also carries #1766 and #1767.

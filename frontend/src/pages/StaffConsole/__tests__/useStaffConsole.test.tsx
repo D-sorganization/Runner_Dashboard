@@ -258,6 +258,41 @@ describe("useStaffConsole", () => {
     expect(result.current.error).toEqual({ kind: "send", message: detail.message });
   });
 
+  it("opens the auto-route (barb) thread and sends when the landing composer has no active thread (#1775)", async () => {
+    const deps = threadApi({
+      listThreads: vi.fn().mockResolvedValue([]),
+      createThread: vi.fn().mockResolvedValue({
+        id: "thr_barb_auto",
+        title: "Conversation with Barb",
+        kind: "auto",
+        participants: ["user:me", "barb"],
+        status: "active",
+      }),
+    });
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: deps, streamEnabled: false }),
+    );
+
+    let outcome: { ok: boolean } | undefined;
+    await act(async () => {
+      outcome = await result.current.sendMessage({ body: "what's waiting on me?", idempotencyKey: "k-5" });
+    });
+
+    expect(deps.listThreads).toHaveBeenCalledWith("barb");
+    expect(deps.createThread).toHaveBeenCalledWith({
+      role: "barb",
+      kind: "auto",
+      title: "Conversation with Barb",
+    });
+    expect(outcome?.ok).toBe(true);
+    expect(api.postThreadMessage).toHaveBeenCalledWith(
+      "thr_barb_auto",
+      { body: "what's waiting on me?", meta: undefined },
+      "k-5",
+    );
+    expect(result.current.activeThread?.id).toBe("thr_barb_auto");
+  });
+
   it("refuses to send without an open thread", async () => {
     const { result } = renderHook(() =>
       useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false }),
