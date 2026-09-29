@@ -394,6 +394,14 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               <button
                 type="button"
                 className="staff-mobile__details-btn"
+                data-testid="staff-mobile-new-conversation-btn"
+                onClick={() => void sc.newConversation()}
+              >
+                New conversation
+              </button>
+              <button
+                type="button"
+                className="staff-mobile__details-btn"
                 data-testid="staff-mobile-details-btn"
                 aria-label="Role Details"
                 onClick={() => setShowContext(true)}

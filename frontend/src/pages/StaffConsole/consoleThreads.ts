@@ -75,3 +75,25 @@ export async function resolveRoleThread(role: string, roleTitle: string, api: Th
     inFlightByRole.delete(name);
   }
 }
+
+/**
+ * Precondition: `role` is a non-empty role name.
+ * Postcondition: the returned thread includes `role` as a participant.
+ * Always creates a new thread for the role, bypassing `pickRoleThread` — used
+ * by "New conversation" so a fresh topic never lands in an old thread whose
+ * history and routing state carry over (#1775).
+ */
+export async function createFreshRoleThread(role: string, roleTitle: string, api: ThreadApi): Promise<ThreadInfo> {
+  const name = role.trim();
+  if (!name) throw new Error("createFreshRoleThread: role name must be non-empty");
+
+  const created = await api.createThread({
+    role: name,
+    kind: threadKindForRole(name),
+    title: `Conversation with ${roleTitle || name}`,
+  });
+  if (!created?.participants?.includes(name)) {
+    throw new Error(`createFreshRoleThread: created thread ${created?.id ?? "?"} does not include role '${name}'`);
+  }
+  return created;
+}

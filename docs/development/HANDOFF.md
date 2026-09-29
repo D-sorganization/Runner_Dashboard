@@ -1,4 +1,20 @@
-# Current handoff — dropped-action warnings surface in the Staff Console (DL-#1774)
+# Current handoff — landing composer sends via auto-route thread; New conversation (DL-#1775)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
+- **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. Follows DL-#1774 on the same branch.
+- **PR:** not created
+- **Why:** on `/staff` with no conversation open, typing into the landing composer and pressing Enter failed with "Failed to send message: No conversation is open" — `useStaffConsole.ts` `sendNow` bailed out instead of opening Barb's auto-route thread. Separately, there was no way to start a **new** conversation with a role: `resolveRoleThread` always reopens the role's most recent thread, so a new topic landed in an old thread whose history and routing state carried over.
+- **Changes:**
+  - `frontend/src/pages/StaffConsole/consoleThreads.ts`: new `createFreshRoleThread(role, roleTitle, api)` — always calls `api.createThread`, bypassing `pickRoleThread`; same postcondition check as `resolveRoleThread` (created thread must include the role as a participant).
+  - `frontend/src/pages/StaffConsole/useStaffConsole.ts`: `sendNow` now opens the `AUTO_ROUTE_ROLE` (`barb`) thread via `openRole` when `activeThread` is null, then posts to it, instead of returning an error (the `onSendMessage` override still short-circuits first). New `newConversation()` in the returned state: creates a fresh thread for the current/selected role via `createFreshRoleThread`, clears history, and makes it active.
+  - `frontend/src/pages/StaffConsole/Desktop.tsx`: "New conversation" button in the open conversation's header, next to Export (reuses `.staff-console__export-btn` styling).
+  - `frontend/src/pages/StaffConsole/Mobile.tsx`: matching "New conversation" button in the thread header, next to the Role Details button.
+- **Validation:** RED first — `useStaffConsole.test.tsx` "opens the auto-route (barb) thread..." failed on `expect(deps.listThreads).toHaveBeenCalledWith("barb")` (0 calls); `consoleThreads.test.ts` failed to import `createFreshRoleThread` (didn't exist); `Desktop.test.tsx` "New conversation" button not found. Then `npx vitest run frontend/src/pages/StaffConsole`: 245 passed. `npm run typecheck`: clean. `npx eslint` on changed `.tsx`/`.ts` files: clean.
+- **Next:** open one PR for #1773, #1774 and #1775.
+
+---
+
+# Prior handoff — dropped-action warnings surface in the Staff Console (DL-#1774)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
 - **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. Follows DL-#1773 on the same branch; #1775 follows this.

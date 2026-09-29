@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1775 | The Staff Console landing composer now opens (or creates) the Barb auto-route thread and sends there instead of failing with "No conversation is open"; a new "New conversation" control starts a fresh thread for the current role. |
 | 2026-09-28 | #1774 | A Staff Console message whose action was dropped (permission, unknown action, bad params) now shows a compact notice below the message instead of silently promising it happened. |
 | 2026-09-28 | #1773 | `board-secretary`, the Board's chair, may now propose `board.convene` (still MEDIUM, owner-approved). Before this, its convene proposals were dropped as unpermitted. |
 | 2026-09-28 | #1770 | A Tailscale sign-in from a tailnet device other than the dashboard host (`DASHBOARD_TAILSCALE_SELF_IPS`) gets the `tailnet-approver` role (`staff.approve` only), so the owner can approve Staff Console proposals from the phone. Loopback and the host's own node cannot approve; if the variable is unset, nobody gets the role. |

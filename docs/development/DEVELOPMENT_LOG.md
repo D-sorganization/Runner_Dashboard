@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1775 — landing composer sends via auto-route thread; New conversation
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1775
+- **Branch:** `fix/console-convene-warnings-20260928`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/consoleThreads.ts`, `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/__tests__/consoleThreads.test.ts`, `frontend/src/pages/StaffConsole/__tests__/useStaffConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/Desktop.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (RED: `listThreads` not called with "barb" (0 calls); `createFreshRoleThread` missing; "New conversation" button not found. Then `npx vitest run frontend/src/pages/StaffConsole` — 245 passed)
+- **Summary:** Sending from the landing composer with no open thread now opens (or creates) Barb's auto-route thread and delivers the message there instead of failing. A "New conversation" control in the thread header creates a fresh thread for the current role via `createFreshRoleThread`, bypassing thread reuse.
+- **Next step:** Open the PR with #1773 and #1774.
+
 ### DL-#1774 — dropped-action warnings surface in the Staff Console
 
 - **State:** in_review
