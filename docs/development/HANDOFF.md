@@ -1,13 +1,13 @@
 # Current handoff — mobile Staff Console tabs under the shell nav (DL-#1805)
 
-- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1805`
-- **Branch:** `fix/staff-mobile-nav-1805` from `origin/main`
-- **PR:** not created
+- **Repository / worktree:** Runner_Dashboard, `C:/Users/diete/Repositories/Worktrees/luna-runner1813-20260929`
+- **Branch:** `bot/luna-runner1813-20260929` (includes `origin/main` at `d4229a6`)
+- **PR:** #1813 (root review pending)
 - **Why:** Board-accepted BR-12 (Runner_Dashboard#1805, 3/3, P1): at 390x844 the global bottom nav covered the Staff Console's Console/Inbox/Runs tabs, blocking phone approvals.
-- **Changes:** `mobile.css` makes `.staff-mobile` fit `.mobile-shell__content` (`height: 100%; min-height: 0`) and drops the #1724 composer `bottom` offset, which double-counts the nav once the console ends above it. `tests/e2e/mobile.spec.ts` adds a test that hit-tests and clicks each tab and the send button at 320/390/430px, with the service worker blocked (its "New version" toast can cover the tabs).
+- **Changes:** `mobile.css` makes `.staff-mobile` fit `.mobile-shell__content` (`height: 100%; min-height: 0`) and drops the #1724 composer `bottom` offset, which double-counts the nav once the console ends above it. `tests/e2e/mobile.spec.ts` places the regression outside the mobile-only suite gate, mocks the thread list/detail calls, blocks the service worker, and hit-tests/clicks the Console/Inbox/Runs tabs and send control at 320/390/430px. The #1805 keyed SPEC row now records desktop CI viewport coverage.
 - **Not in scope:** the issue's "surface pending approvals prominently" and physical-phone safe-area/screen-reader checks; the latter needs a real device before release.
-- **Validation:** see DL-#1805's Last verified.
-- **Next:** open the PR, merge, deploy to Desk, and check on the owner's phone.
+- **Validation:** baseline desktop project reported the test as skipped (1 skipped); after the fix the same project passed 1/1 with no skips and exercised all three viewport widths. See DL-#1805 for the commands.
+- **Next:** root review before push; after merge, deploy to Desk and check on the owner's phone.
 
 ---
 
