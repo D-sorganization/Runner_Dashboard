@@ -182,7 +182,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
       {/* ── Thread View ──────────────────────────────────────────────────────── */}
       {view === "thread" && activeThread && (
         <div
-          className="staff-mobile__content"
+          className="staff-mobile__content staff-mobile__thread-content"
           data-testid="staff-mobile-thread"
           role="region"
           aria-label="Staff Conversation"
@@ -245,7 +245,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
 
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
 
-          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+          <div className="staff-mobile__message-list" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
             {displayMessages.length === 0 ? (
               <div className="staff-mobile__thread-empty" data-testid="staff-mobile-thread-empty">
                 <p className="staff-mobile__thread-empty-title">No messages yet</p>
