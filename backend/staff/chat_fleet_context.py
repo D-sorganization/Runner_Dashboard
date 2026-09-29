@@ -33,12 +33,14 @@ from typing import Any
 from staff.roles import RoleSpec, load_roles
 
 __all__ = [
+    "COLD_SOURCE_TIMEOUT_SECONDS",
     "FLEET_CONTEXT_TOOLS",
     "MAX_BLOCK_CHARS",
     "MAX_SECTION_CHARS",
     "SOURCE_TIMEOUT_SECONDS",
     "build_fleet_context_block",
     "declared_fleet_tools",
+    "warm_fleet_context_snapshots",
 ]
 
 log = logging.getLogger("dashboard.staff.chat_fleet_context")
@@ -51,6 +53,7 @@ FLEET_CONTEXT_TOOLS: tuple[str, ...] = (
 )
 
 SOURCE_TIMEOUT_SECONDS: float = 5.0
+COLD_SOURCE_TIMEOUT_SECONDS: float = 15.0
 MAX_SECTION_CHARS: int = 2500
 MAX_BLOCK_CHARS: int = 8000
 TRUNCATION_MARKER: str = " …(truncated)"
@@ -156,7 +159,8 @@ async def _run_source(
     try:
         if source_fn is None:
             raise KeyError(tool)
-        payload = await asyncio.wait_for(source_fn(), timeout=SOURCE_TIMEOUT_SECONDS)
+        timeout = COLD_SOURCE_TIMEOUT_SECONDS if tool not in _LAST_GOOD else SOURCE_TIMEOUT_SECONDS
+        payload = await asyncio.wait_for(source_fn(), timeout=timeout)
         body = json.dumps(payload, default=str, separators=(",", ":"), sort_keys=True)
         if len(body) > MAX_SECTION_CHARS:
             body = body[:MAX_SECTION_CHARS] + TRUNCATION_MARKER
@@ -171,6 +175,23 @@ async def _run_source(
             age_seconds = max(0, round((now_fn() - snapshot_time).total_seconds()))
             body = f"stale (age {age_seconds}s): {snapshot_body}"
     return tool, body
+
+
+async def warm_fleet_context_snapshots(
+    sources: Mapping[str, Callable[[], Awaitable[dict[str, Any]]]] | None = None,
+    now: Callable[[], datetime] | None = None,
+) -> None:
+    """Pre-warm last-good snapshots for all fleet context tools.
+
+    Precondition: none.
+    Postcondition: runs all FLEET_CONTEXT_TOOLS, caching last-good payloads in
+    _LAST_GOOD. Never raises; errors are logged and swallowed.
+    """
+    active_sources = sources if sources is not None else DEFAULT_SOURCES
+    now_fn = now if now is not None else lambda: datetime.now(UTC)
+    await _warm_role_cache()
+    tasks = [_run_source(tool, active_sources.get(tool), now_fn) for tool in FLEET_CONTEXT_TOOLS]
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def build_fleet_context_block(
