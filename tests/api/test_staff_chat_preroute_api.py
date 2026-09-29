@@ -69,6 +69,21 @@ async def _post_to_auto_thread(text: str) -> dict[str, Any]:
         return data
 
 
+async def _post_message(thread_id: str, text: str) -> dict[str, Any]:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    ) as client:
+        resp = await client.post(
+            f"/api/v1/staff/threads/{thread_id}/messages",
+            headers={"Idempotency-Key": f"key-{thread_id}-{text}"},
+            json={"body": text},
+        )
+        assert resp.status_code == 202, resp.text
+        return resp.json()
+
+
 async def _await_complete(store: ConversationStore, message_id: str) -> Any:
     for _ in range(40):
         msg = store.get_message(message_id)
@@ -132,3 +147,62 @@ async def test_a_preroute_failure_falls_back_to_barb() -> None:
     assert reply.thread_id == auto_id
     assert reply.delivery == "complete"
     assert "Queue looks healthy." in reply.body_md
+
+
+@pytest.mark.asyncio
+async def test_a_keyword_follow_up_after_barb_replies_stays_with_barb() -> None:
+    """A caller follow-up in an auto thread that already holds a Barb reply is not pre-routed (#1760)."""
+    store = get_conversation_store()
+    with patch.object(ChatTurnRunner, "_spawn_cli_process", side_effect=_make_proc):
+        data = await _post_to_auto_thread("analyse issue #12 for me")
+        first_reply = await _await_complete(store, data["reply_placeholder"]["id"])
+        auto_id = data["auto_thread_id"]
+        assert first_reply.author == "barb"
+
+        follow_up = await _post_message(auto_id, "analyse the queue backlog")
+        second_reply = await _await_complete(store, follow_up["reply_placeholder"]["id"])
+
+    assert second_reply.author == "barb"
+    assert second_reply.thread_id == auto_id
+    assert [m for m in store.list_messages(auto_id) if m.kind == "handoff"] == []
+    assert "handoff" not in follow_up
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_mention_follow_up_after_barb_replies_still_routes() -> None:
+    """An explicit @mention follow-up may still pre-route even after Barb has replied (#1760)."""
+    store = get_conversation_store()
+    with patch.object(ChatTurnRunner, "_spawn_cli_process", side_effect=_make_proc):
+        data = await _post_to_auto_thread("analyse issue #12 for me")
+        first_reply = await _await_complete(store, data["reply_placeholder"]["id"])
+        auto_id = data["auto_thread_id"]
+        assert first_reply.author == "barb"
+
+        follow_up = await _post_message(auto_id, "@maintenance please take this")
+        second_reply = await _await_complete(store, follow_up["reply_placeholder"]["id"])
+
+    assert second_reply.author == "maintenance"
+    assert second_reply.thread_id != auto_id
+    cards = [m for m in store.list_messages(auto_id) if m.kind == "handoff"]
+    assert len(cards) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_keyword_inside_a_pasted_table_row_does_not_route_a_fresh_message() -> None:
+    """Keyword pre-routing ignores rule keywords pasted inside a markdown table row (#1760)."""
+    store = get_conversation_store()
+    text = (
+        "Here is the decision table:\n\n"
+        "| Proposal | Decision |\n"
+        "| --- | --- |\n"
+        "| Isolate Engine, Recorder, and Analysis State | Take it to the Board of Directors |\n"
+    )
+    with patch.object(ChatTurnRunner, "_spawn_cli_process", side_effect=_make_proc):
+        data = await _post_to_auto_thread(text)
+        reply = await _await_complete(store, data["reply_placeholder"]["id"])
+
+    auto_id = data["auto_thread_id"]
+    assert reply.author == "barb"
+    assert reply.thread_id == auto_id
+    assert [m for m in store.list_messages(auto_id) if m.kind == "handoff"] == []
+    assert "handoff" not in data

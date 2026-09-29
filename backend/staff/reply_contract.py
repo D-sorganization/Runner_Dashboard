@@ -89,8 +89,20 @@ class _DynamicKnownActions(Set[str]):
 
 ALL_KNOWN_ACTIONS: _DynamicKnownActions = _DynamicKnownActions()
 
-_HANDOFF_RE = re.compile(r"^\s*handoff:\s*([a-zA-Z0-9_-]+)\s*$", re.IGNORECASE)
+_HANDOFF_RE = re.compile(r"^\s*handoff:\s*([a-zA-Z0-9][a-zA-Z0-9 _-]{0,59})\s*$", re.IGNORECASE)
 _QUESTION_RE = re.compile(r"^\s*question:\s*(.+)$", re.IGNORECASE)
+
+
+def _slugify_handoff_target(raw: str) -> str:
+    """Normalise a ``handoff:`` target to a role slug (DL-#1760).
+
+    Pre: ``raw`` is ``_HANDOFF_RE``'s captured group (letters, digits, spaces,
+    ``_``, ``-``, at most 60 characters).
+    Post: a single-token id such as ``night-watch`` is unchanged apart from
+    lowercasing; a display name such as ``Board Secretary`` becomes
+    ``board-secretary`` (runs of spaces/underscores collapsed to one hyphen).
+    """
+    return re.sub(r"[\s_]+", "-", raw.strip()).lower()
 
 
 def generate_chat_contract_text(registry: ActionRegistry | None = None) -> str:
@@ -388,7 +400,7 @@ def parse_reply(
 
         m_handoff = _HANDOFF_RE.match(line)
         if m_handoff:
-            handoff = m_handoff.group(1).strip()
+            handoff = _slugify_handoff_target(m_handoff.group(1))
             line_kinds[i] = "handoff_or_question"
             continue
 

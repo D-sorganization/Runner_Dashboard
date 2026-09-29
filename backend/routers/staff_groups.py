@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from identity import Principal, format_caller, require_scope
 from staff.conversations import get_conversation_store
 from staff.groups import (
+    create_group_thread,
     estimate_group_turn_cost,
     get_group,
     list_groups,
@@ -102,21 +103,6 @@ async def create_group_thread_endpoint(
         )
 
     caller_id = format_caller(caller)
-    participants = [group.coordinator] + [s.name for s in group.seats]
-    if caller_id not in participants:
-        participants.append(caller_id)
-
-    thread_title = title or f"{group.name} Deliberation"
     store = get_conversation_store()
-    rec = store.create_thread(
-        title=thread_title,
-        kind="group",
-        participants=participants,
-        created_by=caller_id,
-        meta={
-            "group": group.id,
-            "coordinator": group.coordinator,
-            "seats": [s.name for s in group.seats],
-        },
-    )
+    rec = create_group_thread(group, title, caller_id, store=store)
     return rec.to_dict()

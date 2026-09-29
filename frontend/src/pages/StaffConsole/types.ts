@@ -9,7 +9,8 @@ export type RosterStatus =
   | "working"
   | "needs_you"
   | "unavailable"
-  | "invalid";
+  | "invalid"
+  | "retired";
 
 export type RosterGroupKey =
   | "pinned"
@@ -85,6 +86,7 @@ export interface StaffRoleItem {
   schedule?: string | null;
   window?: { start: string; end: string } | string | null;
   retired?: boolean;
+  retired_reason?: string;
   [key: string]: unknown;
 }
 

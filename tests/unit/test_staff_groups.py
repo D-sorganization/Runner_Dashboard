@@ -27,11 +27,16 @@ from staff.conversations import (
 from staff.groups import (
     SeatReply,
     SeatSpec,
+    convene_board_thread,
+    create_group_thread,
     estimate_group_turn_cost,
     execute_group_turn,
+    get_board_group,
     get_group,
     list_groups,
+    reset_group_runner_override,
     resolve_group_thread_meta,
+    set_group_runner_override,
 )
 from staff.thread_bus import reset_thread_bus
 
@@ -255,3 +260,75 @@ async def test_execute_group_turn_timeout() -> None:
     assert charlie_reply.status == "timeout"
     assert "no response - timed out" in charlie_reply.text.lower()
     assert "Charlie: no response" in res.quorum
+
+
+# ── 6. SHARED THREAD-CREATION HELPER (board.convene, Runner_Dashboard#1762) ──
+
+
+@pytest.mark.unit
+def test_create_group_thread_populates_coordinator_seats_and_caller(conv_store: ConversationStore) -> None:
+    """create_group_thread builds the same shape the router endpoint used to build inline."""
+    group = get_board_group()
+    thread = create_group_thread(group, "Custom Title", "alice", store=conv_store)
+
+    assert thread.kind == "group"
+    assert thread.title == "Custom Title"
+    assert thread.meta["group"] == "board"
+    assert thread.meta["coordinator"] == "board-secretary"
+    assert "board-secretary" in thread.participants
+    assert "alpha" in thread.participants
+    assert "alice" in thread.participants
+
+
+@pytest.mark.unit
+def test_create_group_thread_default_title(conv_store: ConversationStore) -> None:
+    group = get_board_group()
+    thread = create_group_thread(group, None, "alice", store=conv_store)
+    assert thread.title == f"{group.name} Deliberation"
+
+
+@pytest.mark.asyncio
+async def test_convene_board_thread_creates_thread_and_starts_one_group_turn(
+    conv_store: ConversationStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """convene_board_thread creates a Board thread and fans the question out once (stub seat runner)."""
+    # convene_board_thread resolves the module-level singleton via get_conversation_store();
+    # pin it to the fixture's db so both sides see the same store.
+    monkeypatch.setenv("STAFF_RUNS_DB", str(conv_store.path))
+    call_count = 0
+
+    async def stub_runner(seat: SeatSpec, prompt: str, thread_id: str) -> SeatReply:
+        nonlocal call_count
+        call_count += 1
+        return SeatReply(seat_name=seat.name, status="ok", text=f"{seat.name} view on: {prompt}")
+
+    set_group_runner_override(stub_runner)
+    try:
+        out = await convene_board_thread("Should we adopt WebGPU?", "WebGPU Deliberation", "barb")
+        assert out["title"] == "WebGPU Deliberation"
+        thread_id = out["thread_id"]
+
+        thread = conv_store.get_thread(thread_id)
+        assert thread is not None
+        assert thread.kind == "group"
+        assert thread.meta["group"] == "board"
+
+        messages = conv_store.list_messages(thread_id)
+        assert any("Should we adopt WebGPU?" in (m.body_md or "") for m in messages)
+        placeholder = next(m for m in messages if m.meta.get("is_group_turn"))
+        assert placeholder.delivery == "pending"
+
+        for _ in range(50):
+            await asyncio.sleep(0.05)
+            rec = conv_store.get_message(placeholder.id)
+            if rec and rec.delivery == "complete":
+                break
+
+        completed = conv_store.get_message(placeholder.id)
+        assert completed is not None
+        assert completed.delivery == "complete"
+        assert "### Board Deliberation" in completed.body_md
+        # Exactly one group turn ran: one call per seat, not one per seat per turn.
+        assert call_count == len(get_board_group().seats)
+    finally:
+        reset_group_runner_override()

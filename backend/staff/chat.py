@@ -47,6 +47,7 @@ from staff.chat_history import (
     extract_session_id,
     format_history_replay,
 )
+from staff.chat_issue_context import build_issue_context_block
 from staff.chat_knowledge import build_knowledge_turn_block
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
@@ -153,8 +154,9 @@ class ChatTurnRunner:
         raw_prompt = user_msg.body_md if user_msg else ""
         knowledge_block = build_knowledge_turn_block(role, raw_prompt)
         fleet_block = await build_fleet_context_block(role)
+        issue_block = await build_issue_context_block(role, raw_prompt)
         pending_block = build_pending_proposals_block(self.conv_store, thread_id)
-        context_blocks = (fleet_block, knowledge_block, pending_block)
+        context_blocks = (fleet_block, issue_block, knowledge_block, pending_block)
         prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)

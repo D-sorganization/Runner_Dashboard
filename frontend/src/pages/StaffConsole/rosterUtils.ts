@@ -11,10 +11,11 @@ import type { RosterGroupKey, RosterStatus, StaffRoleItem } from "./types";
  *
  * Priority order:
  * 1. invalid: role definition error or valid: false
- * 2. unavailable: operational block (held, budget reached, or no provider signed in)
- * 3. needs_you: pending human action proposal or unread message count
- * 4. working: role is actively executing runs
- * 5. idle: available and ready for dispatch
+ * 2. retired: role.retired is true; the reason is its retired_reason (#1759)
+ * 3. unavailable: operational block (held, budget reached, or no provider signed in)
+ * 4. needs_you: pending human action proposal or unread message count
+ * 5. working: role is actively executing runs
+ * 6. idle: available and ready for dispatch
  */
 export function computeRoleStatus(
   role: StaffRoleItem,
@@ -30,13 +31,22 @@ export function computeRoleStatus(
     };
   }
 
-  // 2. Unavailable operational blocks
-  // 2a. `role.holds` is a role's declared `holds:` YAML list — always guardrails (owner
+  // 2. Retired role (#1759). A retired role must never read as available
+  // ("Idle"); it reads "Retired" and carries its retired_reason when it has one.
+  if (role.retired) {
+    return {
+      status: "retired",
+      reason: role.retired_reason || "retired",
+    };
+  }
+
+  // 3. Unavailable operational blocks
+  // 3a. `role.holds` is a role's declared `holds:` YAML list — always guardrails (owner
   // decision, #1726): they stay in the role prompt as standing rules but never block
   // scheduling, so they do not make the role unavailable. See getRoleTooltipText for
   // where they are still surfaced, informationally, to the operator.
 
-  // 2b. Budget limit reached
+  // 3b. Budget limit reached
   if (
     role.budget &&
     typeof role.budget.usd_per_day === "number" &&
@@ -50,7 +60,7 @@ export function computeRoleStatus(
     };
   }
 
-  // 2c. No provider signed in
+  // 3c. No provider signed in
   if (
     role.providers &&
     role.providers.length > 0 &&
@@ -63,7 +73,7 @@ export function computeRoleStatus(
     };
   }
 
-  // 3. Needs human attention / review
+  // 4. Needs human attention / review
   if (
     (typeof role.pending_proposals_count === "number" && role.pending_proposals_count > 0) ||
     (typeof role.caller_unread_count === "number" && role.caller_unread_count > 0)
@@ -74,7 +84,7 @@ export function computeRoleStatus(
     };
   }
 
-  // 4. Actively working
+  // 5. Actively working
   if (typeof role.active_runs === "number" && role.active_runs > 0) {
     return {
       status: "working",
@@ -82,7 +92,7 @@ export function computeRoleStatus(
     };
   }
 
-  // 5. Default idle
+  // 6. Default idle
   return {
     status: "idle",
     reason: "idle",

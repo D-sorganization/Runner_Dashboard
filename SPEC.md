@@ -11,6 +11,11 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-28 | #1758 | `board.propose` persists the proposal text on the work item (`description` column, additive migration) and returns it in the result; `open_pr` no longer claims `opened: True` — it returns an honest `not_implemented` failure. |
+| 2026-09-28 | #1759 | SPA shell (`/`, client routes, `/sw.js`) serves `Cache-Control: no-cache` so a deploy is not masked by a cached stale bundle; Staff Console roster shows a retired role as "Retired" instead of "Idle". |
+| 2026-09-28 | #1760 | Auto-route follow-ups after a Barb reply are no longer keyword-pre-routed (only explicit `/role`/`@mention`), keyword pre-routing ignores pasted table rows/blockquotes/fenced code, and `handoff: <Display Name>` is slugified instead of being dropped. |
+| 2026-09-28 | #1761 | Chat fleet-context gathering warms the staff role cache off-loop before running its sources (`read_staff_summary`, `read_briefing`, `read_sessions`, `read_priorities`), so a cold-cache YAML parse can no longer freeze the event loop and time out all of them together; a tool that times out after an earlier success renders `stale (age Ns): <body>` instead of `unavailable`. |
+| 2026-09-28 | #1762 | Implement the `read_issue` chat tool (bounded issue/PR context injection for chat turns naming an issue, PR, or GitHub URL) and add `board.convene`, a MEDIUM-risk action that creates a Board group thread and starts one group turn to deliberate a question. |
 | 2026-09-28 | #1755 | Phone sign-in over the tailnet via Tailscale identity headers (`DASHBOARD_TAILSCALE_AUTH`, `DASHBOARD_TAILSCALE_LOGINS`), gated on the raw transport peer being loopback so a direct tailnet caller cannot forge the identity headers. |
 | 2026-09-28 | #1726 | Seeded role-file holds are now guardrails (kept in the role prompt, shown as standing rules, never block scheduling); only holds created via the Holds tab, the holds API, or `staff.hold` are schedule holds that block. |
 | 2026-09-28 | #1739 | Development log passes its validator again: the duplicate DL-#1325 and DL-#1424 are merged into their originals; 117 entries whose PR merged (each checked on GitHub) are marked shipped with the merge SHA; all shipped entries move to `docs/development/DEVELOPMENT_LOG_ARCHIVE_2026.md`, so the log drops from 281 kB to 13 kB. |

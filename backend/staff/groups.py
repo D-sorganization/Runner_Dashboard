@@ -55,6 +55,8 @@ __all__ = [
     "SeatReply",
     "SeatSpec",
     "collate_consensus",
+    "convene_board_thread",
+    "create_group_thread",
     "dispatch_group_message",
     "estimate_group_turn_cost",
     "execute_group_turn",
@@ -403,6 +405,81 @@ def resolve_group_thread_meta(
         "seats": [s.name for s in group.seats],
     }
     return "group", group.coordinator, meta
+
+
+def create_group_thread(
+    group: GroupDefinition,
+    title: str | None,
+    caller_id: str,
+    store: ConversationStore | None = None,
+) -> ThreadRecord:
+    """Create a group thread populated with the group's coordinator and seats.
+
+    Shared by ``POST /groups/{id}/threads`` and the ``board.convene`` action so both
+    build the same thread shape (DRY; Runner_Dashboard#1762).
+
+    Pre: group is a loaded GroupDefinition.
+    Post: returns a persisted ThreadRecord with kind='group', participants including
+    every seat and the coordinator (plus caller_id when non-empty and not already a
+    participant), and meta {group, coordinator, seats}.
+    """
+    participants = [group.coordinator] + [s.name for s in group.seats]
+    if caller_id and caller_id not in participants:
+        participants.append(caller_id)
+
+    conv_store = store or get_conversation_store()
+    return conv_store.create_thread(
+        title=title or f"{group.name} Deliberation",
+        kind="group",
+        participants=participants,
+        created_by=caller_id,
+        meta={
+            "group": group.id,
+            "coordinator": group.coordinator,
+            "seats": [s.name for s in group.seats],
+        },
+    )
+
+
+async def convene_board_thread(question: str, title: str | None, caller_id: str) -> dict[str, Any]:
+    """Create a Board group thread and post ``question`` as its first group turn.
+
+    Pre: question is non-empty (the ``board.convene`` executor validates this first).
+    Post: returns {"thread_id", "title"}. The user turn and its reply placeholder are
+    persisted with cost already confirmed — the caller's approval of the ``board.convene``
+    action stands as the cost confirmation (Runner_Dashboard#1762) — and a background task
+    fans the question out to every seat exactly as :func:`dispatch_group_message` does.
+    """
+    group = get_board_group()
+    store = get_conversation_store()
+    thread = create_group_thread(group, title, caller_id, store=store)
+
+    user_msg = store.add_message(
+        thread_id=thread.id,
+        author_kind="user",
+        author=caller_id,
+        kind="text",
+        body_md=question,
+        meta={"confirm_cost": True},
+        delivery="complete",
+    )
+    reply_placeholder_rec = store.add_message(
+        thread_id=thread.id,
+        author_kind="role",
+        author=group.coordinator,
+        kind="text",
+        body_md="",
+        meta={"in_reply_to": user_msg.id, "is_group_turn": True, "group": group.id},
+        delivery="pending",
+    )
+
+    bus = get_thread_bus()
+    await bus.publish_message(thread.id, user_msg.to_dict())
+    await bus.publish_message(thread.id, reply_placeholder_rec.to_dict())
+    asyncio.create_task(
+        run_group_turn_in_background(thread.id, user_msg.id, reply_placeholder_rec.id, group.id, caller_id)
+    )
+    return {"thread_id": thread.id, "title": thread.title}
 
 
 async def dispatch_group_message(

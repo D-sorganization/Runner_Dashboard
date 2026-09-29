@@ -232,6 +232,35 @@ def test_fleet_action_authorization(maintenance_role: RoleSpec, sample_role: Rol
 
 
 @pytest.mark.unit
+def test_handoff_display_name_is_slugified() -> None:
+    raw = "Declining this request.\n\nhandoff: Board Secretary\n"
+    parsed = parse_reply(raw)
+    assert parsed.handoff == "board-secretary"
+    assert parsed.reply == "Declining this request."
+
+
+@pytest.mark.unit
+def test_handoff_single_token_ids_are_unaffected() -> None:
+    assert parse_reply("Done.\n\nhandoff: night-watch\n").handoff == "night-watch"
+    assert parse_reply("Done.\n\nhandoff: librarian\n").handoff == "librarian"
+    assert parse_reply("Done.\n\nhandoff: e2e-analyst\n").handoff == "e2e-analyst"
+
+
+@pytest.mark.unit
+def test_handoff_display_name_with_underscores_and_mixed_case() -> None:
+    parsed = parse_reply("Done.\n\nhandoff: Issue_Remediator Team\n")
+    assert parsed.handoff == "issue-remediator-team"
+
+
+@pytest.mark.unit
+def test_handoff_regex_does_not_swallow_ordinary_prose() -> None:
+    raw = "handoff: this is a very long sentence explaining the situation, not a role name.\n"
+    parsed = parse_reply(raw)
+    assert parsed.handoff is None
+    assert raw.strip() in parsed.reply
+
+
+@pytest.mark.unit
 def test_handoff_validation_against_defers_to(sample_role: RoleSpec) -> None:
     # sample_role defers_to: ["librarian", "night-watch"]
     raw = "Audited maps.\n\nhandoff: sanitation\n"

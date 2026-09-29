@@ -1,4 +1,21 @@
-# Current handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
+# Current handoff — Board-review flow fixes, #1758–#1762 (DL-#1758, DL-#1759, DL-#1760, DL-#1761, DL-#1762)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-flow`
+- **Branch:** `fix/board-review-flow-20260928` from `origin/main` `b0b3867e`; merges `fix/honest-board-propose-open-pr`, `fix/spa-cache-retired-status`, `fix/chat-routing-followups`, `feat/barb-read-issue-board-convene`, `fix/chat-fleet-context-timeouts`.
+- **PR:** not created
+- **Why:** the 2026-09-28 live test of the owner's review → Barb → Board → issues workflow (UpstreamDrift PR #11080) failed at every step: Barb could not read the PR, her fleet reads timed out, the auto-router sent her follow-up to Maintenance, Maintenance's `handoff: Board Secretary` was dropped, and no action could convene the Board.
+- **Changes:**
+  - #1760 `backend/staff/chat_preroute.py`: a follow-up in an auto thread where Barb has replied stays with Barb unless it is an explicit `/role`/`@mention`; keyword matching ignores pasted tables, quotes and code. `backend/staff/reply_contract.py`: `handoff: Board Secretary` → `board-secretary`.
+  - #1761 `backend/staff/chat_fleet_context.py`: role cache warmed off-loop before gathering; last-good `stale (age Ns)` fallback. `backend/coordination/briefing.py` `_holds()` off-loop.
+  - #1762 new `backend/staff/chat_issue_context.py` (`read_issue`: issue/PR body, PR files and changed Markdown, bounded, injected as untrusted quoted data); `board.convene` action (MEDIUM, owner approval = cost confirmation) in `backend/staff/action_executors.py` + `backend/staff/groups.py` `create_group_thread`/`convene_board_thread` (route shares the helper).
+  - #1758 `board.propose` stores the proposal text (`work_items.description`, additive migration); `open_pr` fails with `not_implemented` instead of claiming success.
+  - #1759 SPA shell and `/sw.js` served `Cache-Control: no-cache`; retired roles show "Retired" with their reason.
+- **Validation:** see the consolidated PR body (per-branch RED→GREEN in each DL entry; combined suite run on this branch).
+- **Next:** open the PR as draft, mark ready, arm via `automerge_guard`; deploy to DeskComputer; re-run the Barb → Board flow for UpstreamDrift PR #11080.
+
+---
+
+# Prior handoff — Phone sign-in via Tailscale identity headers (DL-#1755)
 
 Last updated: 2026-09-28
 

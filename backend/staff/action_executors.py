@@ -251,8 +251,36 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
         owner_role=role,
         thread_id=ctx.thread_id,
         requested_by=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        description=prop_body,
     )
-    return ActionResult(success=True, result={"proposal_id": wi.id, "title": title})
+    return ActionResult(success=True, result={"proposal_id": wi.id, "title": title, "proposal": wi.description})
+
+
+def execute_board_convene(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    """Convene the Board of Directors to deliberate ``question`` (Runner_Dashboard#1762).
+
+    Pre: runs in an anyio worker thread, same as ``execute_staff_dispatch``.
+    Post: creates a Board group thread and starts one group turn on the event loop via
+    ``run_on_loop``; the owner's approval of this MEDIUM-risk action stands as the cost
+    confirmation, so no separate cost guard is applied here.
+    """
+    from staff.actions import ActionResult
+    from staff.groups import convene_board_thread
+    from staff.loop_bridge import BridgeUnavailableError, run_on_loop
+
+    question = str(params.get("question") or "").strip()
+    if not question:
+        return ActionResult(success=False, error="Missing 'question'", failure_class="invalid_params")
+    raw_title = params.get("title")
+    title = str(raw_title).strip() or None if raw_title else None
+    caller_id = format_caller(ctx.caller) if ctx.caller else "staff_action"
+
+    try:
+        out = run_on_loop(convene_board_thread, question, title, caller_id)
+    except BridgeUnavailableError as exc:
+        return ActionResult(success=False, error=f"board.convene {exc}", failure_class="bridge_unavailable")
+
+    return ActionResult(success=True, result={"thread_id": out["thread_id"], "title": out["title"]})
 
 
 def execute_notify_user(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
@@ -295,24 +323,23 @@ def execute_claim_issue(params: dict[str, Any], ctx: ActionContext) -> ActionRes
 
 
 def execute_open_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    """Stub executor for ``open_pr``: refuses honestly instead of claiming success (#1758).
+
+    Pre: ``repo`` and ``branch`` are present.
+    Post: never returns ``success=True`` or an ``opened`` key without actually calling
+    GitHub; no PR was opened, so no success audit row is written for this action.
+    """
     from staff.actions import ActionResult
 
     repo = str(params.get("repo") or "").strip()
     branch = str(params.get("branch") or "").strip()
-    title = str(params.get("title") or f"PR from {branch}").strip()
     if not repo or not branch:
         return ActionResult(success=False, error="Missing 'repo' or 'branch'", failure_class="invalid_params")
-    record_audit(
-        action="open_pr",
-        target=f"{repo}:{branch}",
-        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
-        surface="thread",
-        thread_id=ctx.thread_id,
-        outcome="success",
-        detail={"repo": repo, "branch": branch, "title": title},
-        store=ctx.audit_store,
+    return ActionResult(
+        success=False,
+        error="open_pr is not implemented: open the PR with gh or a staff.dispatch",
+        failure_class="not_implemented",
     )
-    return ActionResult(success=True, result={"opened": True, "repo": repo, "branch": branch, "title": title})
 
 
 def register_standard_actions(registry: ActionRegistry) -> None:
@@ -410,6 +437,14 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             required_scope="board.proposals.write",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_board_propose,
+        ),
+        ActionDefinition(
+            name="board.convene",
+            description="Convene the Board of Directors to deliberate a question.",
+            params_schema={"question": "string", "title": "string?"},
+            required_scope="staff.chat",
+            risk_class=ActionRiskClass.MEDIUM,
+            executor=execute_board_convene,
         ),
         ActionDefinition(
             name="notify_user",

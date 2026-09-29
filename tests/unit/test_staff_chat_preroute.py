@@ -174,3 +174,85 @@ def test_a_failing_role_loader_falls_back_to_barb() -> None:
         _, pre = _preroute(store, bus, "analyse the queue backlog", known_roles=None)
 
     assert pre is None
+
+
+# ── Follow-ups after a Barb reply stay with Barb (#1760) ────────────────────
+
+
+def _barb_reply(store: ConversationStore, thread_id: str) -> None:
+    store.add_message(thread_id=thread_id, author_kind="role", author="barb", body_md="Let me look into that.")
+
+
+def test_a_keyword_follow_up_after_a_barb_reply_is_not_confident() -> None:
+    store, bus = get_conversation_store(), _Bus()
+    thread, first_msg = _ask(store, "hello, how is your day going?")
+    asyncio.run(
+        preroute_auto_message(
+            thread=thread, user_msg=first_msg, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+        )
+    )
+    _barb_reply(store, thread.id)
+    follow_up = store.add_message(
+        thread_id=thread.id, author_kind="user", author="dieter", body_md="analyse the queue backlog"
+    )
+
+    pre = asyncio.run(
+        preroute_auto_message(
+            thread=thread, user_msg=follow_up, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+        )
+    )
+
+    assert pre is None
+    assert [m for m in store.list_messages(thread.id) if m.kind == "handoff"] == []
+
+
+def test_an_explicit_mention_follow_up_after_a_barb_reply_still_routes() -> None:
+    store, bus = get_conversation_store(), _Bus()
+    thread, first_msg = _ask(store, "hello, how is your day going?")
+    asyncio.run(
+        preroute_auto_message(
+            thread=thread, user_msg=first_msg, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+        )
+    )
+    _barb_reply(store, thread.id)
+    follow_up = store.add_message(
+        thread_id=thread.id, author_kind="user", author="dieter", body_md="@librarian please tidy this up"
+    )
+
+    pre = asyncio.run(
+        preroute_auto_message(
+            thread=thread, user_msg=follow_up, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+        )
+    )
+
+    assert pre is not None
+    assert pre.role == "librarian"
+
+
+def test_confident_route_with_allow_keyword_false_only_accepts_explicit() -> None:
+    assert confident_route("analyse the queue backlog", KNOWN, allow_keyword=False) is None
+
+    decision = confident_route("@librarian tidy the style guide", KNOWN, allow_keyword=False)
+    assert decision is not None
+    assert decision.chosen_role == "librarian"
+
+
+def test_confident_route_ignores_keywords_inside_a_pasted_table_row() -> None:
+    text = (
+        "Here is the decision table:\n\n"
+        "| Proposal | Decision |\n"
+        "| --- | --- |\n"
+        "| Isolate Engine, Recorder, and Analysis State | Take it to the Board of Directors |\n\n"
+        "Take it to the Board of Directors."
+    )
+    assert confident_route(text, KNOWN) is None
+
+
+def test_confident_route_ignores_keywords_inside_a_blockquote() -> None:
+    text = "> please investigate the root cause\n\nJust forwarding that quote along, no action needed."
+    assert confident_route(text, KNOWN) is None
+
+
+def test_confident_route_ignores_keywords_inside_fenced_code() -> None:
+    text = "```\ninvestigate()\n```\n\nJust sharing a code sample."
+    assert confident_route(text, KNOWN) is None
