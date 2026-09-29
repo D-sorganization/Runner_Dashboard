@@ -421,6 +421,20 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     });
   });
 
+  it("renders a New conversation button in mobile thread header that triggers newConversation (#1775)", () => {
+    render(
+      <StaffConsoleMobile
+        roles={MOCK_ROLES}
+        initialThread={MOCK_BARB_THREAD}
+        initialMessages={MOCK_MESSAGES}
+        initialView="thread"
+      />,
+    );
+
+    const newBtn = screen.getByTestId("staff-mobile-new-conversation-btn");
+    expect(newBtn).toBeInTheDocument();
+  });
+
   it("enforces 44px+ touch targets in mobile.css contract", () => {
     const css = fs.readFileSync(path.join(__dirname, "../mobile.css"), "utf8");
 

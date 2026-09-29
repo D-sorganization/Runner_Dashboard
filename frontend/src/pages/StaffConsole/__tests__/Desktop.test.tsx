@@ -213,4 +213,64 @@ describe("StaffConsoleDesktop", () => {
       window.matchMedia = original;
     }
   });
+
+  it("sending from the landing composer opens Barb auto-route thread and delivers message (#1775)", async () => {
+    const barbThread: ThreadInfo = {
+      id: "thr_barb_1",
+      title: "Conversation with Barb",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+      status: "active",
+    };
+    api.fetchThreads.mockImplementation(({ role }) => {
+      if (role === "barb") return Promise.resolve({ threads: [barbThread] });
+      return Promise.resolve({ threads: [] });
+    });
+
+    render(<StaffConsoleDesktop roles={ROLES} />);
+
+    expect(screen.getByPlaceholderText(/message barb or type \/dispatch/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(/message barb or type \/dispatch/i), {
+      target: { value: "Review issue #11080" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() =>
+      expect(api.postThreadMessage).toHaveBeenCalledWith(
+        "thr_barb_1",
+        expect.objectContaining({ body: "Review issue #11080" }),
+        expect.any(String),
+      ),
+    );
+    expect(await screen.findByRole("heading", { name: "Conversation with Barb" })).toBeInTheDocument();
+  });
+
+  it("conversation header has a 'New conversation' control that creates a fresh thread (#1775)", async () => {
+    const freshThread: ThreadInfo = {
+      id: "thr_maint_2",
+      title: "Conversation with Fleet Maintenance",
+      kind: "direct",
+      participants: ["user:me", "maintenance"],
+      status: "active",
+    };
+    api.createThread.mockResolvedValue(freshThread);
+
+    render(<StaffConsoleDesktop roles={ROLES} />);
+    openMaintenance();
+    await screen.findByText("All hosts healthy.");
+
+    const newBtn = screen.getByRole("button", { name: /new conversation/i });
+    expect(newBtn).toBeInTheDocument();
+
+    fireEvent.click(newBtn);
+
+    await waitFor(() =>
+      expect(api.createThread).toHaveBeenCalledWith({
+        role: "maintenance",
+        kind: "direct",
+        title: "Conversation with Fleet Maintenance",
+      }),
+    );
+  });
 });

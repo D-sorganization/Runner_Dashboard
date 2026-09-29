@@ -107,6 +107,29 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
           <div className="staff-console__header-actions">
             {activeThread && (
               <>
+                <button
+                  type="button"
+                  className="staff-console__new-conv-btn"
+                  data-testid="staff-console-new-conversation-btn"
+                  aria-label="New conversation"
+                  title="New conversation"
+                  onClick={() => void sc.newConversation()}
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  <span>New conversation</span>
+                </button>
                 <Dropdown
                   label="Export"
                   items={[

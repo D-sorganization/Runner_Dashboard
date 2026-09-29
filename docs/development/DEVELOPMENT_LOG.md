@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1775 — Staff Console landing composer & new conversation
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1775
+- **Branch:** `fix/1775-staff-console-new-conversation`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/StaffConsole/mobile.css`, `frontend/src/pages/StaffConsole/__tests__/useStaffConsole.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/Desktop.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (Vitest `npx vitest run frontend/src/pages/StaffConsole/__tests__/` — 23 test files, 213 passed; eslint clean; tsc clean; vite build clean)
+- **Summary:** On `/staff` with no thread open, sending from the landing composer previously failed with "Failed to send message: No conversation is open". Updated `sendNow` in `useStaffConsole.ts` to resolve (or create) the Barb auto-route thread when `activeThread` is null and deliver the message there. Added `newConversation` method to `useStaffConsole` and a "New conversation" button to the conversation header on desktop and mobile so users can start fresh threads with a role without carrying over prior history and routing states.
+- **Next step:** Push branch, open PR, and release agent lease.
+
 ### DL-#1770 — Staff approvals from another tailnet device
 
 - **State:** in_review

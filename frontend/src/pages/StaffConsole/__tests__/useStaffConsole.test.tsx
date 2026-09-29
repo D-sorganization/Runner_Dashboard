@@ -342,4 +342,71 @@ describe("useStaffConsole", () => {
     expect(ok).toBe(false);
     expect(result.current.error).toEqual({ kind: "run", message: "404 Run not found" });
   });
+
+  it("sending with no open thread resolves the Barb auto-route thread and delivers the message (#1775)", async () => {
+    const barbThread: ThreadInfo = {
+      id: "thr_barb_auto",
+      title: "Conversation with Barb",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+      status: "active",
+    };
+    const deps = threadApi({
+      listThreads: vi.fn().mockImplementation((role: string) => {
+        if (role === "barb") return Promise.resolve([barbThread]);
+        return Promise.resolve([]);
+      }),
+    });
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: deps, streamEnabled: false }),
+    );
+
+    expect(result.current.activeThread).toBeNull();
+
+    let outcome: { ok: boolean } | undefined;
+    await act(async () => {
+      outcome = await result.current.sendMessage({ body: "Take this to the board", idempotencyKey: "k-barb" });
+    });
+
+    expect(outcome?.ok).toBe(true);
+    expect(result.current.activeThread?.id).toBe("thr_barb_auto");
+    expect(result.current.selectedRole).toBe("barb");
+    expect(api.postThreadMessage).toHaveBeenCalledWith(
+      "thr_barb_auto",
+      { body: "Take this to the board", meta: undefined },
+      "k-barb",
+    );
+  });
+
+  it("newConversation creates a fresh thread for the current role (#1775)", async () => {
+    const freshThread: ThreadInfo = {
+      id: "thr_maint_fresh",
+      title: "Conversation with Fleet Maintenance",
+      kind: "direct",
+      participants: ["user:me", "maintenance"],
+      status: "active",
+    };
+    const deps = threadApi({
+      createThread: vi.fn().mockResolvedValue(freshThread),
+    });
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: deps, streamEnabled: false }),
+    );
+
+    await act(async () => {
+      await result.current.openRole("maintenance");
+    });
+    expect(result.current.activeThread?.id).toBe("thr_real_123");
+
+    await act(async () => {
+      await result.current.newConversation();
+    });
+
+    expect(deps.createThread).toHaveBeenCalledWith({
+      role: "maintenance",
+      kind: "direct",
+      title: "Conversation with Fleet Maintenance",
+    });
+    expect(result.current.activeThread?.id).toBe("thr_maint_fresh");
+  });
 });

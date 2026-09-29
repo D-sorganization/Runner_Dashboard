@@ -47,6 +47,7 @@
 }
 
 .staff-mobile__back-btn,
+.staff-mobile__new-conv-btn,
 .staff-mobile__details-btn {
   display: inline-flex;
   align-items: center;
@@ -78,6 +79,7 @@
 }
 
 .staff-mobile__back-btn:active,
+.staff-mobile__new-conv-btn:active,
 .staff-mobile__details-btn:active {
   background-color: var(--bg-tertiary, #21262d);
 }
