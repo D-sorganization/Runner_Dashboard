@@ -253,3 +253,28 @@
     transition: none;
   }
 }
+
+/* ── Dropped-Action Warnings (#1774) ── */
+
+.thread-message-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.thread-message-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--status-warning-fg, var(--accent-orange, #f0883e));
+  background: var(--status-warning-bg, rgba(226, 179, 64, 0.12));
+  border: 1px solid var(--status-warning-fg, var(--accent-orange, #f0883e));
+  border-radius: var(--radius-sm, 6px);
+  padding: 4px 10px;
+  word-break: break-word;
+}
+

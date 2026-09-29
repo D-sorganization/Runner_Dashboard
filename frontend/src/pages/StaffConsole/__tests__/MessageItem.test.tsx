@@ -21,6 +21,19 @@ function systemMessage(overrides: Partial<ThreadMessage>): ThreadMessage {
   } as ThreadMessage;
 }
 
+function roleMessage(overrides: Partial<ThreadMessage>): ThreadMessage {
+  return {
+    id: "m2",
+    thread_id: "t1",
+    author: "board-secretary",
+    author_kind: "staff",
+    kind: "text",
+    body_md: "I'll convene the Board to deliberate.",
+    created_at: "2026-09-28T00:00:00Z",
+    ...overrides,
+  } as ThreadMessage;
+}
+
 describe("MessageItem system messages", () => {
   it("renders a system-authored run_card message as a run card", () => {
     const { container } = render(
@@ -43,3 +56,37 @@ describe("MessageItem system messages", () => {
     expect(notice.querySelector("strong")?.textContent).toBe("Staff Run Started");
   });
 });
+
+describe("MessageItem dropped-action warnings (#1774)", () => {
+  it("renders a compact notice under a role message when meta.warnings is non-empty", () => {
+    render(
+      <MessageItem
+        message={roleMessage({
+          meta: {
+            warnings: [
+              "Role 'board-secretary' does not hold permission for action 'board.convene'; action dropped.",
+              "Action 'unknown_action' is unknown and was dropped.",
+            ],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("I'll convene the Board to deliberate.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Action not proposed: Role 'board-secretary' does not hold permission for action 'board.convene'; action dropped.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Action not proposed: Action 'unknown_action' is unknown and was dropped."),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render action warnings when meta.warnings is empty or missing", () => {
+    const { container } = render(
+      <MessageItem message={roleMessage({ meta: { warnings: [] } })} />,
+    );
+    expect(container.querySelector(".thread-message-warning")).toBeNull();
+  });
+});
+

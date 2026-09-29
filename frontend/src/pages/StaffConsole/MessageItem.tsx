@@ -93,6 +93,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const roleInitial = roleName.charAt(0).toUpperCase();
   const roleTint = getRoleTint(roleName);
 
+  const rawWarnings = !isUser && Array.isArray(message.meta?.warnings) ? message.meta.warnings : [];
+  const warnings = rawWarnings
+    .map((w) => (typeof w === "string" ? w.trim() : String(w).trim()))
+    .filter((w) => w.length > 0);
+
   const handleCopy = async () => {
     try {
       if (navigator?.clipboard?.writeText) {
@@ -359,6 +364,16 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       )}
 
       {renderContent()}
+
+      {warnings.length > 0 && (
+        <div className="thread-message-warnings" data-testid="message-warnings" role="status" aria-label="Action warnings">
+          {warnings.map((w, idx) => (
+            <div key={idx} className="thread-message-warning">
+              Action not proposed: {w}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1774 — Staff Console dropped-action warnings
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1774
+- **Branch:** `fix/1774-dropped-action-warnings`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/thread.css`, `frontend/src/pages/StaffConsole/__tests__/MessageItem.test.tsx`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (Vitest `npx vitest run frontend/src/pages/StaffConsole/__tests__/` — 23 test files, 210 passed; eslint clean; tsc clean; vite build clean)
+- **Summary:** When a proposed action is dropped during reply parsing (permission, unknown action, invalid parameters), the warning was stored in `meta.warnings` but never rendered in the Staff Console, leaving the owner with an unfulfilled promise and no card or explanation. Updated `MessageItem.tsx` to render a compact notice under role messages ("Action not proposed: …", one line per warning) with warning styling.
+- **Next step:** Push branch, open PR, and release agent lease.
+
 ### DL-#1770 — Staff approvals from another tailnet device
 
 - **State:** in_review
