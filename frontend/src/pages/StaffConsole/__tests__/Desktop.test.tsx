@@ -219,6 +219,27 @@ describe("StaffConsoleDesktop", () => {
     );
   });
 
+  it("keeps ?thread= in the URL in sync with the open conversation (#1783)", async () => {
+    window.history.replaceState(null, "", "/staff?section=console&thread=thr_old");
+    render(<StaffConsoleDesktop roles={ROLES} />);
+    openMaintenance();
+    await screen.findByText("All hosts healthy.");
+
+    const fresh: ThreadInfo = {
+      id: "thr_maint_url",
+      title: "Conversation with Fleet Maintenance",
+      kind: "direct",
+      participants: ["user:me", "maintenance"],
+      status: "active",
+    };
+    api.createThread.mockResolvedValue(fresh);
+    fireEvent.click(screen.getByRole("button", { name: /new conversation/i }));
+
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("thread")).toBe("thr_maint_url"));
+    // Other query parameters survive the rewrite.
+    expect(new URLSearchParams(window.location.search).get("section")).toBe("console");
+  });
+
   it("collapses and restores the context pane", () => {
     render(<StaffConsoleDesktop roles={ROLES} />);
 
