@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1773 — board-secretary may propose board.convene
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1773
+- **Branch:** `fix/console-convene-warnings-20260928`
+- **PR:** not created
+- **Paths:** `backend/staff/actions.py`, `tests/unit/test_staff_actions.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (RED `test_board_secretary_may_propose_board_convene`; then 45 passed, 1 skipped across the actions, reply-contract and board.convene API tests)
+- **Summary:** The role that chairs the Board could not propose convening it, and its `board.convene` was silently dropped. `check_role_permission` now grants `board.convene` to `BOARD_PROPOSAL_ROLE`; the owner still approves it.
+- **Next step:** Open the PR with #1774 and #1775.
+
 ### DL-#1770 — Staff approvals from another tailnet device
 
 - **State:** in_review

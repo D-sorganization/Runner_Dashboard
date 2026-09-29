@@ -1,4 +1,16 @@
-# Current handoff — Approvals from another tailnet device (DL-#1770)
+# Current handoff — board-secretary may convene the Board (DL-#1773)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-console-fixes`
+- **Branch:** `fix/console-convene-warnings-20260928` from `origin/main`. #1774 and #1775 follow on this branch.
+- **PR:** not created
+- **Why:** in the 2026-09-28 live test, Barb routed "take UpstreamDrift#11080 to the Board" to `board-secretary`. Its `board.convene` proposal was dropped with "does not hold permission", and the reply still said "I'll convene the Board".
+- **Changes:** `backend/staff/actions.py` `check_role_permission()` now allows `board.convene` for `BOARD_PROPOSAL_ROLE`. Approval is unchanged: MEDIUM, owner or `staff.approve`.
+- **Validation:** RED first on `tests/unit/test_staff_actions.py::test_board_secretary_may_propose_board_convene`. Then `pytest tests/unit/test_staff_actions.py tests/unit/test_staff_reply_contract.py tests/api/test_staff_board_convene_api.py`: 45 passed, 1 skipped. ruff is clean.
+- **Next:** #1774 (show dropped-action warnings) and #1775 (landing composer / new conversation) on this branch, then one PR.
+
+---
+
+# Prior handoff — Approvals from another tailnet device (DL-#1770)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
 - **Branch:** `fix/board-seats-context-20260928` from `origin/main`. It also carries #1766 and #1767.

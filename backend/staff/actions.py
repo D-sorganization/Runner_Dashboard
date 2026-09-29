@@ -239,8 +239,10 @@ def check_role_permission(
     if role_name == "maintenance" and (act_name.startswith("maintenance.") or act_name in _MAINTENANCE_ACTIONS):
         return True
 
+    # The Board's chair may also convene it; approval stays with the owner (#1773).
     if role_name == BOARD_PROPOSAL_ROLE and act_name in (
         "board.propose",
+        "board.convene",
         "submit_proposal",
         "staff.dispatch",
     ):
