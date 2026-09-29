@@ -240,3 +240,29 @@ def test_result_is_not_posted_to_a_thread_that_does_not_exist() -> None:
     res = execute_proposal(prop.id, approver=APPROVER, approve=True)
     assert res.success and NOOP_CALLS == [{}]
     assert store.list_messages("th_ghost") == []
+
+
+@pytest.mark.unit
+def test_execute_route_accepts_a_decide_capable_role_preset(client: TestClient) -> None:
+    """Issue #1789: /execute expands the caller's role presets, exactly like /decide does.
+
+    The loopback principal (`roles=["loopback"]`, no explicit scopes) passes the routes'
+    ``require_scope`` guard, but the approval policy used to 403 it because it only read
+    the principal's explicit scopes.
+    """
+    loopback = Principal(id="__loopback__", type="human", name="Loopback development admin", roles=["loopback"])
+    app.dependency_overrides[require_principal] = lambda: loopback
+    app.dependency_overrides[require_scope("staff.approve")] = lambda: loopback
+
+    prop_id = _proposal()
+    decided = client.post(
+        f"/api/v1/staff/proposals/{prop_id}/decide",
+        json={"decision": "approved", "reason": "desk approval", "execute": False},
+        headers=_XHR,
+    )
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["state"] == "approved"
+
+    done = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", headers=_XHR)
+    assert done.status_code == 200, done.text
+    assert done.json()["state"] == "done" and len(NOOP_CALLS) == 1

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1789 — approval policy expands role presets so preset-granted approvers can execute
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1789
+- **Branch:** `bot/issue-1789-approval-role-presets`
+- **PR:** not created
+- **Paths:** `backend/staff/actions.py`, `tests/unit/test_staff_actions.py`, `tests/api/test_staff_proposal_hardening.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (commit `7834b16` on this branch; RED: the preset tests failed on main — the unit policy test raised `PermissionError: Principal '__loopback__' lacks 'staff.approve' scope` and the `/execute` route test 403'd. GREEN: 75 passed on `tests/unit/test_staff_actions.py` + the staff proposal-hardening/proposals/owner-request/tailnet/board-convene API subset, 575 passed on the staff suite subset; `ruff check`/`ruff format --check` clean; CI mypy commands clean)
+- **Summary:** `check_approval_policy` now grants `staff.approve` with `principal_has_scope`, the same preset-expanding helper as the action `required_scope` check below it, so principals decide-capable through their role preset (`loopback`, `tailnet-approver`, `operator`) can execute approved proposals from Desk. Presets that do not grant the scope (`bot`, `viewer`) still fail closed, and the 403 error text is unchanged.
+- **Next step:** Open the PR for #1789.
+
 ### DL-#1786 — Barb as the front door: owner requests run without a second approval
 
 - **State:** in_review
