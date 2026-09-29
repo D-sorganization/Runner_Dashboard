@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1815 — PyJWT 2.14.0 for CVE-2026-102274
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1815
+- **Branch:** `fix/pyjwt-cve-bump` from `origin/main` (`d4229a6`)
+- **PR:** not created
+- **Paths:** `pyproject.toml`, `uv.lock`, `requirements.lock.txt`, `requirements.txt`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `d4229a6` (`uv lock --upgrade-package pyjwt` resolved 78 packages; exports regenerated with the commands in their headers)
+- **Summary:** pip-audit flags PyJWT 2.13.0 (CVE-2026-102274, fixed in 2.14.0), which failed lint, security-scan and tests on every PR. The pin moves to 2.14.0. The hashed lock also gains `tzdata==2026.4`, a direct dependency since #1736 that the lock had not been re-exported for.
+- **Next step:** Merge; the blocked PRs (#1812, #1814) then re-run green.
+
 ### DL-#1793 — Staff Console e2e: cards to act on come from a chat-only requester
 
 - **State:** in_review
