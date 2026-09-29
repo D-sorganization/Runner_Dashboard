@@ -1,4 +1,30 @@
-# Current handoff — desktop Staff Console keeps `?thread=` in sync (DL-#1783)
+# Current handoff — /execute accepts role presets, not just explicit scopes (DL-#1789)
+
+- **Repository / worktree:** Runner_Dashboard, worktree `/tmp/rd-wt-RD1789Fix`
+- **Branch:** `bot/issue-1789-approval-role-presets`, rebased onto `origin/main` at `53ce8e5` before push (main advanced by the docs commit `53ce8e5` while the branch was in flight)
+- **PR:** not created
+- **Why:** follow-up to #1786 (PR #1788), found approving the live Board cards from Desk: `check_approval_policy` read only the principal's explicit `scopes`, so loopback/tailnet principals (`roles=["loopback"]`/`["tailnet-approver"]`, no explicit scopes) passed `/decide` (the route's `require_scope` expands presets) but got 403 `Principal '__loopback__' lacks 'staff.approve' scope` on `/execute`; an owner request to Barb from Desk still left its card because the #1786 auto-run hits the same check.
+- **Changes:** `backend/staff/actions.py` `check_approval_policy` — the `staff.approve` gate now uses `principal_has_scope(approver, "staff.approve")`, the same preset-expanding helper as the action `required_scope` check two lines below. Authority is not widened beyond the presets: presets that do not grant the scope (`bot`, `viewer`) still fail closed, and the 403 error text is unchanged so existing clients see the same message.
+- **Decisions:** keep the risk gates untouched (HIGH/CRITICAL/owner-only require the owner). The fix is exactly the issue's prescribed one; tests use the real loopback principal shape (`roles=["loopback"]`, no explicit scopes) at the policy unit level and through the routes.
+- **Validation:** RED: `test_approval_policy_accepts_role_presets_for_approve` failed on main with the issue's exact error; the new route test `test_execute_route_accepts_a_decide_capable_role_preset` 403'd on main. GREEN: 75 passed on `tests/unit/test_staff_actions.py` + `tests/api/test_staff_proposal_hardening.py tests/api/test_staff_proposals_api.py tests/api/test_staff_owner_requests.py tests/api/test_tailnet_identity.py tests/api/test_staff_board_convene_api.py`; 575 passed on the staff API suite subset; `ruff check`/`ruff format --check` clean; the CI mypy commands clean.
+- **Next:** open the PR; after merge, deploy to Desk and execute the two pending Board cards.
+
+---
+
+# Prior handoff — Barb as the front door (DL-#1786)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
+- **Branch:** `feat/barb-front-door` from `origin/main` (`63f4088`)
+- **PR:** #1788 (auto-merge armed)
+- **Why:** owner direction 2026-09-29: "if I ask barb, she should be able to do it" and "Barb needs to be able to get things done and to be my interface for getting everything done." Two Board convene cards (UD#11080, RD#1776) sat pending because Desk (loopback) had no `staff.approve` (#1770 granted it only to other tailnet devices), and a request to Barb still produced a card.
+- **Changes:** `backend/identity.py` adds `staff.approve` to `LOOPBACK_SCOPES`. `backend/staff/owner_requests.py` (new) has `request_approves` (requester has `staff.approve` and risk ≤ MEDIUM) and `run_for_requester` (`execute_proposal(..., approve=True)` in a worker thread, then `refresh_proposal_card`). `backend/staff/chat.py` threads `requester` through `run_chat_turn_in_background` → `execute_turn` → `_run_turn_attempt` and runs each approved proposal after posting it. `backend/routers/staff_threads.py` passes `requester=caller`. `backend/tailnet_identity.py` docstrings are updated.
+- **Decisions:** HIGH/CRITICAL/owner-only (`staff.hold`, `staff.unhold`) keep the card. Reply handoffs only open a thread, so the next turn there carries the requester through the same route.
+- **Validation:** RED then GREEN: `pytest tests/api/test_staff_owner_requests.py tests/api/test_tailnet_identity.py` gave 26 passed. The local staff/identity/chat subset gave 1261 passed. CI caught `test_api_chat_turn_action_proposals`: its `operator`-role principal now approves by asking, so the fixture principal is chat-only (`viewer`). `test_staff_chat_turns.py` + `test_staff_owner_requests.py` gave 7 passed.
+- **Next:** open the PR; after merge, deploy to Desk, then approve the two pending Board cards from Desk.
+
+---
+
+# Prior handoff — desktop Staff Console keeps `?thread=` in sync (DL-#1783)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1783` (its `node_modules` is a junction to `claude-deploy/node_modules`; remove the junction, never recurse it)
 - **Branch:** `fix/staff-console-thread-url-1783` from `origin/main` (`b2665ee`)
@@ -59,6 +85,19 @@
 - **Changes:** `backend/staff/actions.py` `check_role_permission()` now allows `board.convene` for `BOARD_PROPOSAL_ROLE`. Approval is unchanged: MEDIUM, owner or `staff.approve`.
 - **Validation:** RED first on `tests/unit/test_staff_actions.py::test_board_secretary_may_propose_board_convene`. Then `pytest tests/unit/test_staff_actions.py tests/unit/test_staff_reply_contract.py tests/api/test_staff_board_convene_api.py`: 45 passed, 1 skipped. ruff is clean.
 - **Next:** #1774 (show dropped-action warnings) and #1775 (landing composer / new conversation) on this branch, then one PR.
+
+---
+
+# Prior handoff — Barb orchestration review (DL-#1354)
+
+- **Repository / worktree:** Runner_Dashboard, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/barb-orchestration-review`.
+- **Branch / commit (at review):** `docs/barb-orchestration-review-20260928`; packet commit `c910dd07`; `SELF` is the PR-metadata/validation follow-up. Reviewed baseline: `df2f9093db7062ad514ea84a0d0b2501e52c696a`.
+- **PR:** #1776. Governing epic #1354 stays open; this review does not implement its acceptance criteria.
+- **Objective / completed:** Comprehensive implementation and UX review of Barb as the fleet front door. Added `BARB_ORCHESTRATION_REVIEW.md` with 18 draft issues and two fixture screenshots in `barb-review-assets/`; added one SPEC change-log row and DL-#1354. No runtime code changes.
+- **Validation:** `python -m pytest tests/clients tests/api/test_staff_v1_api.py tests/api/test_staff_dispatch_service.py tests/unit/test_staff_actions.py tests/unit/test_staff_reconcile.py tests/api/test_staff_followup.py -q --tb=short` passed (190 tests). `node node_modules/vitest/vitest.mjs run frontend/src/pages/StaffConsole frontend/src/shell/__tests__ --reporter=dot` passed (54 files, 534 tests). Four isolated probes confirmed duplicate same-key execution, session collision, overdue-item exclusion and worker-before-audit ordering. Playwright inspected fixture desktop 1440x1000 and mobile 390x844; Inbox was covered by global navigation.
+- **Constraints / limits:** ADR 0007 stays local-only; owner-confirmed dispatch stays in force. No real provider/fleet/Board dispatch or production deployment was performed. Source context indexes were absent; direct source review used. Existing #1768/#1764 fixes are credited separately. Main checkout's branch and other sessions' files were preserved.
+- **Document checks:** Markdown formatting, 18 draft bodies, pinned source/image paths, development-log validation and diff whitespace passed. Central SPEC checker has 18 identical historical failures on main and this branch; no new violation and no historical row edits. Fixture browser/backend/Vite processes were stopped after inspection.
+- **Continuation:** Review the packet in the PR, then file approved drafts in their designated repositories. Cross-repo policy decisions use the formal Repository_Management Board proposal process. Do not close #1354 or treat packet merge as implementation/production certification.
 
 ---
 

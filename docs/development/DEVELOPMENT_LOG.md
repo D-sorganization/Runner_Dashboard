@@ -18,6 +18,32 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1789 — approval policy expands role presets so preset-granted approvers can execute
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1789
+- **Branch:** `bot/issue-1789-approval-role-presets`
+- **PR:** not created
+- **Paths:** `backend/staff/actions.py`, `tests/unit/test_staff_actions.py`, `tests/api/test_staff_proposal_hardening.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (commit `7834b16` on this branch; RED: the preset tests failed on main — the unit policy test raised `PermissionError: Principal '__loopback__' lacks 'staff.approve' scope` and the `/execute` route test 403'd. GREEN: 75 passed on `tests/unit/test_staff_actions.py` + the staff proposal-hardening/proposals/owner-request/tailnet/board-convene API subset, 575 passed on the staff suite subset; `ruff check`/`ruff format --check` clean; CI mypy commands clean)
+- **Summary:** `check_approval_policy` now grants `staff.approve` with `principal_has_scope`, the same preset-expanding helper as the action `required_scope` check below it, so principals decide-capable through their role preset (`loopback`, `tailnet-approver`, `operator`) can execute approved proposals from Desk. Presets that do not grant the scope (`bot`, `viewer`) still fail closed, and the 403 error text is unchanged.
+- **Next step:** Open the PR for #1789.
+
+### DL-#1786 — Barb as the front door: owner requests run without a second approval
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1786
+- **Branch:** `feat/barb-front-door`
+- **PR:** #1788
+- **Paths:** `backend/identity.py`, `backend/tailnet_identity.py`, `backend/staff/owner_requests.py`, `backend/staff/chat.py`, `backend/routers/staff_threads.py`, `tests/api/test_staff_owner_requests.py`, `tests/api/test_tailnet_identity.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (RED: the owner-convene test left the proposal `proposed`, and the three loopback-approve tests failed. GREEN: `tests/api/test_staff_owner_requests.py` + `tests/api/test_tailnet_identity.py` 26 passed)
+- **Summary:** `staff.approve` joins `LOOPBACK_SCOPES`. The message route passes the caller into the chat turn as `requester`; after each `post_proposal`, `staff/owner_requests.run_for_requester` executes the proposal off-loop under the requester when `request_approves` holds (requester has `staff.approve`, action risk ≤ MEDIUM) and refreshes the card. The normal role-permission and approval-policy checks still run.
+- **Next step:** Open the PR for #1786.
+
 ### DL-#1783 — desktop Staff Console keeps `?thread=` in sync
 
 - **State:** in_review
@@ -95,6 +121,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (`pytest tests/unit/test_staff_chat_fleet_context.py` — 15 passed; `ruff check`/`ruff format --check` clean)
 - **Summary:** First chat turns after a dashboard restart timed out reading peer-node briefing and sessions because no last-good snapshot existed yet and the cold reads exceeded the tight 5.0s steady-state timeout budget. Implemented `COLD_SOURCE_TIMEOUT_SECONDS = 15.0` used whenever a tool has no prior last-good snapshot in `_LAST_GOOD`, ensuring the initial cold fetch succeeds and caches its payload. Also added `warm_fleet_context_snapshots` scheduled in the background during server startup to asynchronously pre-warm all fleet context snapshots.
 - **Next step:** Review and merge PR #1771.
+### DL-#1354 — Barb orchestration Board review packet
+
+- **State:** in_review
+- **Owner:** codex
+- **Issue:** #1354 (review deliverable only; epic remains open)
+- **Branch:** `docs/barb-orchestration-review-20260928`
+#1776
+- **Paths:** `docs/development/BARB_ORCHESTRATION_REVIEW.md`, `docs/development/barb-review-assets/`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (190 focused Python tests and 534 frontend tests passed; four isolated defect reproductions; desktop/mobile inspection; document checks passed; 18 baseline-only SPEC validator failures disclosed)
+- **Summary:** Documentation-only implementation/UX review pinned to df2f9093: 18 proposed issue bodies with priorities, evidence, owners, dependencies and acceptance criteria. Runtime, deployment, ingress and standing authority are unchanged.
+- **Next step:** Board reviews the packet and decides which draft issues and policy changes to authorize.
 
 ### DL-#1770 — Staff approvals from another tailnet device
 

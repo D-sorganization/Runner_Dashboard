@@ -18,7 +18,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from staff.adapters import (
     ADAPTERS,
@@ -65,11 +65,15 @@ from staff.chat_streaming import (
 from staff.classifier import classify_run_failure
 from staff.cli_version import version_gate
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.owner_requests import request_approves, run_for_requester
 from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
 from staff.roles import RoleSpec, load_roles
 from staff.thread_bus import get_thread_bus
 from staff.turn_prompt import compose_turn_prompt, context_section
+
+if TYPE_CHECKING:
+    from identity import Principal
 
 log = logging.getLogger("dashboard.staff.chat")
 
@@ -137,8 +141,13 @@ class ChatTurnRunner:
         placeholder_id: str,
         role_name: str,
         provider: str | None = None,
+        requester: Principal | None = None,
     ) -> ChatTurnResult:
-        """Execute a conversational chat turn with fallback chain and degraded mode."""
+        """Execute a conversational chat turn with fallback chain and degraded mode.
+
+        ``requester`` is who sent the message; when their message may approve an action
+        the role proposes, it runs at once instead of waiting on a card (#1786).
+        """
         roles = load_roles()
         role = roles.get(role_name)
 
@@ -206,6 +215,7 @@ class ChatTurnRunner:
                         prompt=prompt_text,
                         session_id=existing_session,
                         is_resume=True,
+                        requester=requester,
                     )
                     if result.ok:
                         record_successful_turn(
@@ -240,6 +250,7 @@ class ChatTurnRunner:
                     session_id=None,
                     is_resume=False,
                     replayed_history=was_fallback,
+                    requester=requester,
                 )
                 if result.ok:
                     record_successful_turn(
@@ -300,6 +311,7 @@ class ChatTurnRunner:
         session_id: str | None,
         is_resume: bool,
         replayed_history: bool = False,
+        requester: Principal | None = None,
     ) -> ChatTurnResult:
         scratch_dir = thread_scratch_dir(thread_id)
         bus = get_thread_bus()
@@ -410,7 +422,7 @@ class ChatTurnRunner:
         created_proposals: list[ProposedAction] = []
         for action in parsed.actions:
             try:
-                await post_proposal(
+                prop = await post_proposal(
                     self.conv_store,
                     bus,
                     thread_id=thread_id,
@@ -422,6 +434,9 @@ class ChatTurnRunner:
                 created_proposals.append(action)
             except Exception as exc:  # noqa: BLE001
                 log.warning("Failed to persist action proposal %s: %s", action.action, exc)
+                continue
+            if requester is not None and prop.state == "proposed" and request_approves(requester, action.action):
+                await run_for_requester(self.conv_store, bus, prop.id, requester)
 
         # Persist provider session id on thread metadata
         if captured_session_id:
@@ -455,6 +470,7 @@ async def run_chat_turn_in_background(
     placeholder_id: str,
     role_name: str,
     caller_id: str,
+    requester: Principal | None = None,
 ) -> None:
     """Async background task invoked by POST /threads/{id}/messages to execute reply."""
     try:
@@ -464,6 +480,7 @@ async def run_chat_turn_in_background(
             user_message_id=user_message_id,
             placeholder_id=placeholder_id,
             role_name=role_name,
+            requester=requester,
         )
         if result.ok and result.handoff:
             await post_reply_handoff(

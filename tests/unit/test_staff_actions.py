@@ -159,6 +159,41 @@ def test_approval_policy_matrix() -> None:
     check_approval_policy(ACTION_REGISTRY.get("staff.hold"), prop_high, TEST_OWNER)
 
 
+def test_approval_policy_accepts_role_presets_for_approve() -> None:
+    """Issue #1789: the policy expands the approver's role presets, not just explicit scopes.
+
+    The loopback principal (`roles=["loopback"]`, no explicit scopes) is decide-capable
+    through ``principal_has_scope``; without preset expansion ``/execute`` 403'd for it
+    even though `/decide` accepted it. Role presets that do not grant ``staff.approve``
+    stay fail-closed.
+    """
+    store = get_conversation_store()
+    th = store.create_thread(title="Preset Approvals", kind="direct", participants=["barb", "user"])
+    prop_medium = store.create_proposal(
+        message_id="msg_preset",
+        thread_id=th.id,
+        action="staff.dispatch",
+        params={"role": "librarian", "repo": "Tools"},
+        risk="medium",
+        principal="barb",
+    )
+    action = ACTION_REGISTRY.get("staff.dispatch")
+
+    # Real loopback principal shape: role preset only, no explicit scopes.
+    loopback = Principal(id="__loopback__", type="human", name="Loopback development admin", roles=["loopback"])
+    check_approval_policy(action, prop_medium, loopback)
+
+    # Fail closed: the bot preset may propose/dispatch but does not grant staff.approve.
+    bot = Principal(id="barb", type="bot", name="Barb", roles=["bot"])
+    with pytest.raises(PermissionError, match="staff.approve"):
+        check_approval_policy(action, prop_medium, bot)
+
+    # Fail closed: no role expansion at all (unknown preset, no scopes).
+    nobody = Principal(id="nobody", type="human", name="Nobody", roles=["developer"])
+    with pytest.raises(PermissionError, match="staff.approve"):
+        check_approval_policy(action, prop_medium, nobody)
+
+
 def test_permission_denial_role_not_permitted() -> None:
     # A role without permission cannot get an action executed even if proposed
     unauthorized_role = RoleSpec(
