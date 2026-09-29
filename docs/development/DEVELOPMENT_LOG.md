@@ -108,6 +108,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-28 (`pytest tests/unit/test_staff_chat_fleet_context.py` — 15 passed; `ruff check`/`ruff format --check` clean)
 - **Summary:** First chat turns after a dashboard restart timed out reading peer-node briefing and sessions because no last-good snapshot existed yet and the cold reads exceeded the tight 5.0s steady-state timeout budget. Implemented `COLD_SOURCE_TIMEOUT_SECONDS = 15.0` used whenever a tool has no prior last-good snapshot in `_LAST_GOOD`, ensuring the initial cold fetch succeeds and caches its payload. Also added `warm_fleet_context_snapshots` scheduled in the background during server startup to asynchronously pre-warm all fleet context snapshots.
 - **Next step:** Review and merge PR #1771.
+### DL-#1354 — Barb orchestration Board review packet
+
+- **State:** in_review
+- **Owner:** codex
+- **Issue:** #1354 (review deliverable only; epic remains open)
+- **Branch:** `docs/barb-orchestration-review-20260928`
+- **PR:** #1776
+- **Paths:** `docs/development/BARB_ORCHESTRATION_REVIEW.md`, `docs/development/barb-review-assets/`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (190 focused Python tests and 534 frontend tests passed; four isolated defect reproductions; desktop/mobile browser inspection)
+- **Summary:** Documentation-only implementation/UX review pinned to df2f9093: 18 proposed issue bodies with priorities, evidence, owners, dependencies and acceptance criteria. Runtime, deployment, ingress and standing authority are unchanged.
+- **Next step:** Board reviews the packet and decides which draft issues and policy changes to authorize.
 
 ### DL-#1770 — Staff approvals from another tailnet device
 

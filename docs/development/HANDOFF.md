@@ -75,6 +75,18 @@
 
 ---
 
+# Prior handoff — Barb orchestration review (DL-#1354)
+
+- **Repository / worktree:** Runner_Dashboard, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/barb-orchestration-review`.
+- **Branch / commit (at review):** `docs/barb-orchestration-review-20260928`; `SELF` is the documentation commit. Reviewed baseline: `df2f9093db7062ad514ea84a0d0b2501e52c696a`.
+- **PR:** #1776. Governing epic #1354 stays open; this review does not implement its acceptance criteria.
+- **Objective / completed:** Comprehensive implementation and UX review of Barb as the fleet front door. Added `BARB_ORCHESTRATION_REVIEW.md` with 18 draft issues and two fixture screenshots in `barb-review-assets/`; added one SPEC change-log row and DL-#1354. No runtime code changes.
+- **Validation:** `python -m pytest tests/clients tests/api/test_staff_v1_api.py tests/api/test_staff_dispatch_service.py tests/unit/test_staff_actions.py tests/unit/test_staff_reconcile.py tests/api/test_staff_followup.py -q --tb=short` passed (190 tests). `node node_modules/vitest/vitest.mjs run frontend/src/pages/StaffConsole frontend/src/shell/__tests__ --reporter=dot` passed (54 files, 534 tests). Four isolated probes confirmed duplicate same-key execution, session collision, overdue-item exclusion and worker-before-audit ordering. Playwright inspected fixture desktop 1440x1000 and mobile 390x844; Inbox was covered by global navigation.
+- **Constraints / limits:** ADR 0007 stays local-only; owner-confirmed dispatch stays in force. No real provider/fleet/Board dispatch or production deployment was performed. Source context indexes were absent; direct source review used. Existing #1768/#1764 fixes are credited separately. Main checkout's branch and other sessions' files were preserved.
+- **Continuation:** Review the packet in the PR, then file approved drafts in their designated repositories. Cross-repo policy decisions use the formal Repository_Management Board proposal process. Do not close #1354 or treat packet merge as implementation/production certification.
+
+---
+
 # Prior handoff — Approvals from another tailnet device (DL-#1770)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-board-seats`
