@@ -10,6 +10,17 @@
 
 ---
 
+# Prior handoff — PyJWT 2.14.0 for CVE-2026-102274 (DL-#1815)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-pyjwt`
+- **Branch:** `fix/pyjwt-cve-bump` from `origin/main` (`d4229a6`)
+- **PR:** not created
+- **Why:** pip-audit failed every PR on PyJWT 2.13.0 (CVE-2026-102274).
+- **Changes:** pin 2.14.0; `uv.lock`, `requirements.lock.txt` and `requirements.txt` regenerated (lock also gains the declared `tzdata`).
+- **Next:** merge; re-run the blocked PRs.
+
+---
+
 # Prior handoff — split over-cap source files to unblock the main 500-line gate
 
 - **Repository / worktree:** Runner_Dashboard (`/home/dieterolson/Repositories/Runner_Dashboard`)
