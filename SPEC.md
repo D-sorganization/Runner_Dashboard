@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-29 | #1805 | Mobile Staff Console fits the shell content box, so the fixed bottom nav no longer covers the Console/Inbox/Runs tabs; the composer drops its now-redundant nav offset (BR-12). |
 | 2026-09-29 | #1786 | Barb is the owner's front door: loopback (Desk) sign-ins hold `staff.approve`, and when the person who sent a chat message may approve, the actions the answering role proposes up to MEDIUM risk (e.g. `board.convene`) run at once under that person; HIGH-risk actions and callers without `staff.approve` keep their approval card. |
 | 2026-09-29 | #1789 | The staff approval policy (`check_approval_policy`) now expands the approver's role presets: `staff.approve` and the action's `required_scope` are decided with `principal_has_scope`, the preset-expanding helper the routes use, so preset-granted approvers (loopback Desk sign-ins, tailnet, operator) can also execute approved proposals instead of only deciding them; principals whose presets do not grant the scope fail closed. |
 | 2026-09-29 | #1783 | The desktop Staff Console keeps `?thread=` in the address in step with the open conversation, so reloads and shared links reopen it. |

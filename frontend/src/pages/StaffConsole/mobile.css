@@ -18,6 +18,14 @@
   box-sizing: border-box;
 }
 
+/* Inside the mobile shell the console must fit the shell's content box, which
+   already stops above the fixed bottom nav. With min-height: 100vh it overran
+   that box and the nav covered the Console/Inbox/Runs tabs (#1805). */
+.mobile-shell__content .staff-mobile {
+  height: 100%;
+  min-height: 0;
+}
+
 /* ── Top Header ──────────────────────────────────────────────────────────── */
 
 .staff-mobile__header {
@@ -352,10 +360,9 @@
   flex-shrink: 0;
 }
 
-/* Inside the mobile shell the fixed bottom nav covers the scrollport's last
-   --bottom-nav-height px, so the sticky composer must stop above it (#1724). */
+/* Inside the mobile shell the console already ends above the fixed bottom nav
+   (#1805), which also owns the safe area, so the composer needs no offset. */
 .mobile-shell__content .staff-mobile__composer-container {
-  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
   padding-bottom: 12px;
 }
 

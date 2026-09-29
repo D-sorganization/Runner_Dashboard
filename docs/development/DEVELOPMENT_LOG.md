@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1805 — mobile Staff Console tabs sit under the shell's bottom nav (BR-12)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1805
+- **Branch:** `fix/staff-mobile-nav-1805`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/mobile.css`, `tests/e2e/mobile.spec.ts`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 (RED: the new `tests/e2e/mobile.spec.ts` #1805 test fails on main's CSS, "inbox tab at 320px"; GREEN: it and SC-D9 pass on all four mobile profiles against a local Vite preview; `vitest run frontend/src/pages/StaffConsole` 246 passed)
+- **Summary:** `.staff-mobile` had `min-height: 100vh` inside `.mobile-shell__content`, whose box already stops above the fixed 64px nav, so the console overran it and the nav covered the Console/Inbox/Runs tabs (hit-testing the Inbox tab returned the shell's Staff button). Inside the shell the console is now `height: 100%; min-height: 0`, and the #1724 composer offset, which would now double-count the nav, is removed. The e2e test hit-tests and clicks each tab and the send button at 320, 390 and 430px.
+- **Next step:** Open the PR and merge it once CI is green.
+
 ### DL-#1793 — Staff Console e2e: cards to act on come from a chat-only requester
 
 - **State:** in_review

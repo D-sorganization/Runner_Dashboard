@@ -219,6 +219,42 @@ test.describe("Mobile Staff Console (SC-D8)", () => {
     await expect(page.locator("text=Conversation with Barb")).toBeVisible();
   });
 
+  test.describe("with the service worker blocked", () => {
+    // Its "New version" toast can sit over the tabs; this test is about the shell nav.
+    test.use({ serviceWorkers: "block" });
+
+    test("Console, Inbox, Runs and the composer are not covered by the shell nav (#1805)", async ({
+      page,
+    }) => {
+      await mockStaffApi(page);
+
+      /** The element under `locator`'s centre is the locator itself or inside it. */
+      async function ownsItsCentre(locator: import("@playwright/test").Locator): Promise<boolean> {
+        return locator.evaluate((el) => {
+          const box = el.getBoundingClientRect();
+          const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return el.contains(top);
+        });
+      }
+
+      for (const width of [320, 390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto("/staff");
+        for (const view of ["inbox", "runs", "roster"]) {
+          const tab = page.getByTestId(`staff-mobile-tab-${view}`);
+          expect(await ownsItsCentre(tab), `${view} tab at ${width}px`).toBe(true);
+          await tab.click();
+          await expect(tab).toHaveAttribute("aria-selected", "true");
+        }
+
+        await page.getByTestId("staff-mobile-ask-barb").click();
+        const send = page.getByRole("button", { name: "Send message" });
+        await expect(send).toBeVisible();
+        expect(await ownsItsCentre(send), `send button at ${width}px`).toBe(true);
+      }
+    });
+  });
+
   test("keyboard walkthrough: open Barb, focus follows the view, back returns to search (SC-D9)", async ({
     page,
   }) => {

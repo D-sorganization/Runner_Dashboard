@@ -1,4 +1,17 @@
-# Current handoff — Staff Console e2e requester principal (DL-#1793)
+# Current handoff — mobile Staff Console tabs under the shell nav (DL-#1805)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1805`
+- **Branch:** `fix/staff-mobile-nav-1805` from `origin/main`
+- **PR:** not created
+- **Why:** Board-accepted BR-12 (Runner_Dashboard#1805, 3/3, P1): at 390x844 the global bottom nav covered the Staff Console's Console/Inbox/Runs tabs, blocking phone approvals.
+- **Changes:** `mobile.css` makes `.staff-mobile` fit `.mobile-shell__content` (`height: 100%; min-height: 0`) and drops the #1724 composer `bottom` offset, which double-counts the nav once the console ends above it. `tests/e2e/mobile.spec.ts` adds a test that hit-tests and clicks each tab and the send button at 320/390/430px, with the service worker blocked (its "New version" toast can cover the tabs).
+- **Not in scope:** the issue's "surface pending approvals prominently" and physical-phone safe-area/screen-reader checks; the latter needs a real device before release.
+- **Validation:** see DL-#1805's Last verified.
+- **Next:** open the PR, merge, deploy to Desk, and check on the owner's phone.
+
+---
+
+# Prior handoff — Staff Console e2e requester principal (DL-#1793)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-easy-approve`
 - **Branch:** `fix/staff-e2e-requester` from `origin/main` (`e2b57f9`)
