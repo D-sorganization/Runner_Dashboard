@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1781 — staff chat parses `Repo#N` references and binds bare `#N` to the nearest repo
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1781
+- **Branch:** `fix/staff-repo-hash-refs-1781`
+- **PR:** not created
+- **Paths:** `backend/staff/chat_issue_context.py`, `tests/unit/test_staff_chat_issue_context.py`
+- **Started:** 2026-09-28
+- **Last verified:** 2026-09-28 (RED: 2 new parse tests failed on main. Then 22 context tests passed, and 148 passed on `pytest tests/unit/test_staff_chat_issue_*.py tests/unit/test_staff_groups.py tests/api -k "issue or group or board or chat"`)
+- **Summary:** `parse_issue_refs` now recognises `Repo#N` for known repo names (masked before the bare pass), binds each bare `#N` to the nearest preceding repo mention (falling back to the first mention), and returns refs in text order.
+- **Next step:** Open the PR for #1781.
+
 ### DL-#1775 — landing composer sends via auto-route thread; New conversation
 
 - **State:** in_review
