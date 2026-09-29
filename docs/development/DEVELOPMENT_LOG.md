@@ -44,6 +44,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** `check_approval_policy` now grants `staff.approve` with `principal_has_scope`, the same preset-expanding helper as the action `required_scope` check below it, so principals decide-capable through their role preset (`loopback`, `tailnet-approver`, `operator`) can execute approved proposals from Desk. Presets that do not grant the scope (`bot`, `viewer`) still fail closed, and the 403 error text is unchanged.
 - **Next step:** Open the PR for #1789.
 
+### DL-#1792 — split over-cap source files to unblock the main 500-line gate
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** none (main-branch CI red; context RD#1785 steward note)
+- **Branch:** `bot/main-red-groups-cap` from `origin/main` (`64a73b4`)
+- **PR:** #1792
+- **Paths:** `backend/staff/groups.py`, `backend/staff/group_threads.py`, `backend/staff/models.py`, `backend/staff/models_insights.py`, `backend/staff/inbox.py`, `backend/staff/inbox_models.py`, `backend/staff/inbox_auth.py`, `backend/push.py`, `backend/push_store.py`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `MobileRuns.tsx`, `frontend/src/pages/Staff/InboxPanel.tsx`, `inboxIcons.tsx`, `inboxPanelMeta.ts`, touched routers/tests importing the moved symbols
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `491e09c` (GREEN: gate simulation of the ci-standard find/EXEMPT pipeline passes; `ruff check backend tests` and `mypy backend` clean; 221 pytest passed across affected suites; 139 vitest passed; tsc + eslint clean)
+- **Summary:** ci-health-check on main fails "Verify no source file exceeds 500 lines" since 2026-09-27 (CI Standard run 36599799561), red on six files: groups.py 567, models.py 502, inbox.py 613, push.py 519, Mobile.tsx 634, InboxPanel.tsx 646. The gate has only a hard-coded exempt list (no waiver/expiry mechanism), so each file lost a cohesive section to a new module with consumers migrated; no behavior change.
+- **Next step:** merge PR #1792 and confirm the next CI Standard run on main is green.
+
 ### DL-#1786 — Barb as the front door: owner requests run without a second approval
 
 - **State:** in_review
