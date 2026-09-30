@@ -15,6 +15,7 @@ import { Roster } from "./Roster";
 import { Thread } from "./Thread";
 import { isPanelThread } from "./panelTurn";
 import type { StaffRoleItem } from "./types";
+import { useRoleContext, useRosterReadiness } from "./useRoleContext";
 import { useStaffConsole } from "./useStaffConsole";
 import { Dropdown } from "../../primitives/Dropdown";
 import "./desktop.css";
@@ -46,6 +47,9 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
   const [composerPrefill, setComposerPrefill] = useState("");
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
+  // Readiness comes only from the backend's providers and schedule reports (#1804).
+  const readiness = useRosterReadiness(roles);
+  const context = useRoleContext(currentRole, activeThread?.id);
 
   // The address names the open conversation, so a reload or shared link reopens it (#1783).
   // replaceState, not push: switching threads should not flood the back stack.
@@ -76,7 +80,8 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
     <div className={`staff-console${showContext ? "" : " staff-console--no-context"}`} data-testid="staff-console-desktop">
       <Roster
         className="staff-console__roster"
-        roles={roles}
+        roles={readiness.roles}
+        availableProviders={readiness.availableProviders}
         selectedRoleId={sc.selectedRole ?? undefined}
         onSelectRole={(name) => void sc.openRole(name)}
         onThreadCreated={(thread) => sc.openThread(thread)}
@@ -281,10 +286,7 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
               <line x1="18" y1="6" x2="6" y2="18" />
             </svg>
           </button>
-          <ContextPane
-            role={sc.roleDetail}
-            threadContext={activeThread ? { thread_id: activeThread.id } : null}
-          />
+          <ContextPane {...context} />
         </aside>
       )}
     </div>

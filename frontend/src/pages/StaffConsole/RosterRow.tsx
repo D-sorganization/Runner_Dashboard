@@ -14,6 +14,8 @@ const STATUS_LABELS: Record<RosterStatus, string> = {
   working: "Working",
   needs_you: "Needs Attention",
   unavailable: "Unavailable",
+  held: "Held",
+  unknown: "Status unknown",
   invalid: "Invalid",
   retired: "Retired",
 };
@@ -45,6 +47,8 @@ export const RosterRow: React.FC<RosterRowProps> = ({
     statusDotType = "busy";
   } else if (status === "idle") {
     statusDotType = "available";
+  } else if (status === "held" || status === "unknown") {
+    statusDotType = status;
   } else {
     statusDotType = "unavailable";
   }
@@ -148,7 +152,7 @@ export const RosterRow: React.FC<RosterRowProps> = ({
       {/* Right controls: unread badge + pin toggle */}
       <div className="roster-row-controls">
         {/* Hidden reason element preserving data-testid for assertions */}
-        {(status === "unavailable" || status === "invalid" || status === "retired") && reason && (
+        {status !== "idle" && status !== "working" && status !== "needs_you" && reason && (
           <span
             data-testid={`status-reason-${role.name}`}
             className="sr-only"

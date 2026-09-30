@@ -9,8 +9,8 @@ const mockRole: RoleDetail = {
   title: "Overnight Watchdog",
   mandate: "Monitor fleet health and clean up stalled runners overnight.",
   providers: [
-    { name: "claude", signed_in: true, node: "ControlTower" },
-    { name: "codex", signed_in: true, node: "DeskComputer" },
+    { name: "claude", readiness: "installed", node: "ControlTower" },
+    { name: "codex", readiness: "unknown", node: "DeskComputer" },
   ],
   schedule: {
     cron: "0 22 * * *",
@@ -56,7 +56,8 @@ describe("ContextPane (SC-D6, Issue #1320)", () => {
 
     expect(screen.getByText("Overnight Watchdog")).not.toBeNull();
     expect(screen.getByText(/Monitor fleet health/i)).not.toBeNull();
-    expect(screen.getByText("claude")).not.toBeNull();
+    expect(screen.getByTestId("context-provider-claude")).toHaveTextContent("claude · installed");
+    expect(screen.getByTestId("context-provider-codex")).toHaveTextContent("codex · unknown");
     expect(screen.getByText(/3.50/)).not.toBeNull();
     expect(screen.getByText(/15.00/)).not.toBeNull();
     expect(screen.getByText("run_nw_01")).not.toBeNull();

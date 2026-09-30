@@ -1,4 +1,19 @@
-# Current handoff — regenerate the stale OpenAPI snapshot (DL-#1819)
+# Current handoff — Staff Console role readiness from real data (DL-#1804)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1804`
+- **Branch:** `fix/role-readiness-1804` from `origin/main` (`6458d3ca`)
+- **PR:** not created
+- **Commit:** SELF
+- **Why:** Board-accepted BR-11 (#1804, P1): the console invented readiness. `toRoleDetail` turned provider names into `signed_in: true`, set run and work-item lists empty, and derived schedule enabled from `!retired`; Desktop passed no provider availability to the roster and no toggle handler to the context pane, whose switch silently did nothing. A role with no available provider showed "Idle" with a green dot.
+- **Changes:** New `roleContextApi.ts` (typed calls to existing `GET /providers`, `GET /schedule`, `PUT /roles/{role}/schedule`, `GET /work-items`) and `useStaffProviders`/`useStaffSchedule`/`useStaffWorkItems` in `hooks/useStaffQueries.ts`. `roleDetail.ts` builds the pane's role/thread records from loaded data only; `useRoleContext.ts` (`useRosterReadiness`, `useRoleContext`) feeds Desktop and the new `MobileContextDrawer.tsx` (extracted from `Mobile.tsx`). `computeRoleStatus` adds `held` (schedule hold) and `unknown` (availability not loaded or not naming the role's providers); "Idle" needs availability loaded and an installed provider. Providers show installed / not installed / unknown and the pane says sign-in is not reported. The schedule switch persists through `PUT /roles/{role}/schedule` and rolls back with the server's reason; with no handler, unknown or failed schedule data, or a retired role it is disabled and says why. `ContextReadiness.tsx` renders readiness, providers, offline nodes (board `offline`), runs and work items with loading/unavailable notes. `useStaffConsole` no longer builds a role detail.
+- **Decisions:** no backend change. The backend reports provider installation (`available_providers()` = CLI on PATH), not sign-in, so "installed-but-signed-out" cannot yet be told apart from signed in; the UI claims neither. Roles are not node-pinned, so offline nodes are shown in the context pane, not on roster rows. Schedule holds (`GET /schedule` `hold`) are shown as Held; `holds:` guardrails stay informational (#1726).
+- **Validation:** see DL-#1804's Last verified.
+- **Open questions:** sign-in state per provider needs BR-09's capability contract (#1802); whether a held role should also block manual dispatch in the UI (the backend only blocks scheduled runs).
+- **Next:** push the branch and open the PR.
+
+---
+
+# Prior handoff — regenerate the stale OpenAPI snapshot (DL-#1819)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-openapi-regen`
 - **Branch:** `fix/openapi-snapshot-regen` from `origin/main` (`6458d3c`)

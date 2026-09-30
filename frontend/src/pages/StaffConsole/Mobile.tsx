@@ -15,7 +15,7 @@ import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadType
 import { Thread } from "./Thread";
 import { Composer } from "./Composer";
 import { GroupCostConfirm } from "./GroupCostConfirm";
-import { ContextPane } from "./ContextPane";
+import { MobileContextDrawer } from "./MobileContextDrawer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { InboxPanel } from "../Staff/InboxPanel";
 import { threadKindForRole } from "./consoleThreads";
@@ -75,7 +75,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     onApproveProposal,
     onDenyProposal,
   });
-  const { roles, selectedRole, activeThread, currentRole: currentRoleObj, roleDetail } = sc;
+  const { roles, selectedRole, activeThread, currentRole: currentRoleObj } = sc;
   const [view, setView] = useState<MobileView>(initialView);
 
   // SC-D9: move keyboard focus with the full-screen view change. The thread
@@ -283,33 +283,11 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </div>
 
           {showContext && (
-            <div
-              className="staff-mobile__drawer-overlay"
-              data-testid="staff-mobile-context-drawer"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Role Context Details"
-              onClick={() => setShowContext(false)}
-            >
-              <div className="staff-mobile__drawer" onClick={(e) => e.stopPropagation()}>
-                <div className="staff-mobile__drawer-header">
-                  <h2 style={{ margin: 0, fontSize: 16 }}>{currentRoleObj.title} Details</h2>
-                  <button
-                    type="button"
-                    className="staff-mobile__drawer-close"
-                    data-testid="staff-mobile-close-drawer"
-                    aria-label="Close Details"
-                    onClick={() => setShowContext(false)}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-                <ContextPane role={roleDetail} />
-              </div>
-            </div>
+            <MobileContextDrawer
+              role={currentRoleObj}
+              threadId={activeThread?.id}
+              onClose={() => setShowContext(false)}
+            />
           )}
         </div>
       )}

@@ -388,6 +388,16 @@
   background-color: var(--text-muted, #868e98);
 }
 
+/* #1804: a hold blocks the schedule; readiness not reported yet. Neither is green. */
+.roster-status-dot--held {
+  background-color: var(--accent-orange, #db6d28);
+}
+
+.roster-status-dot--unknown {
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-muted, #868e98);
+}
+
 .roster-status-dot--invalid {
   background-color: var(--accent-red, #f85149);
 }

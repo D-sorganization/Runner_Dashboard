@@ -28,8 +28,9 @@ describe("computeRoleStatus and standing rules (guardrail holds, #1726)", () => 
     const heldRole: StaffRoleItem = {
       ...role("held-1"),
       holds: ["quarantine"],
+      providers: ["claude"],
     };
-    const res = computeRoleStatus(heldRole);
+    const res = computeRoleStatus(heldRole, { claude: true });
     // owner decision (#1726): seeded holds are guardrails — they never block scheduling,
     // so they must not make the role "unavailable" in the roster either.
     expect(res.status).toBe("idle");
@@ -39,8 +40,9 @@ describe("computeRoleStatus and standing rules (guardrail holds, #1726)", () => 
     const heldRole: StaffRoleItem = {
       ...role("held-2"),
       holds: ["quarantine", "C3 HOLD", "rate-limit"],
+      providers: ["claude"],
     };
-    const res = computeRoleStatus(heldRole);
+    const res = computeRoleStatus(heldRole, { claude: true });
     expect(res.status).toBe("idle");
   });
 
@@ -113,7 +115,28 @@ describe("getRoleTooltipText (Workstream C / #1721, relabeled #1726)", () => {
       ...role("no-prov"),
       providers: ["custom-llm"],
     };
-    expect(getRoleTooltipText(noProvRole, { "custom-llm": false })).toBe("no provider signed in");
+    expect(getRoleTooltipText(noProvRole, { "custom-llm": false })).toBe("no provider installed");
+  });
+});
+
+describe("computeRoleStatus never invents readiness (#1804)", () => {
+  const ready: StaffRoleItem = { ...role("ready"), providers: ["claude"] };
+
+  it("is idle only when availability is loaded and a provider is installed", () => {
+    expect(computeRoleStatus(ready, { claude: true }).status).toBe("idle");
+  });
+
+  it("is unknown while availability is not loaded or does not name the provider", () => {
+    expect(computeRoleStatus(ready).status).toBe("unknown");
+    expect(computeRoleStatus(ready, { codex: true }).status).toBe("unknown");
+    expect(computeRoleStatus({ ...role("no-providers") }, { claude: true }).status).toBe("unknown");
+  });
+
+  it("reports a schedule hold as held, with its text", () => {
+    expect(computeRoleStatus({ ...ready, schedule_hold: "release freeze" }, { claude: true })).toEqual({
+      status: "held",
+      reason: "hold: release freeze",
+    });
   });
 });
 
