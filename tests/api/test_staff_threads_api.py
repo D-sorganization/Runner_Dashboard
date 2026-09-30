@@ -402,3 +402,25 @@ def test_ack_is_stored_before_the_reply_slot(client: TestClient):
     detail = client.get(f"/api/v1/staff/threads/{tid}?since_seq=0").json()
     kinds = [m["author_kind"] for m in sorted(detail["messages"], key=lambda m: m["seq"])]
     assert kinds == ["user", "system", "role"]
+
+
+def test_create_thread_with_idempotency_key_creates_one_thread(client: TestClient, clean_conversations):
+    """A retried create under the same key returns the first thread (#1795)."""
+    from staff.idempotency import reset_idempotency_store
+
+    reset_idempotency_store()
+    try:
+        headers = {"Idempotency-Key": "thread-once"}
+        body = {"title": "Retry me", "role": "night-watch"}
+        first = client.post("/api/v1/staff/threads", json=body, headers=headers)
+        again = client.post("/api/v1/staff/threads", json=body, headers=headers)
+        changed = client.post("/api/v1/staff/threads", json={**body, "title": "Other"}, headers=headers)
+    finally:
+        reset_idempotency_store()
+
+    assert first.status_code == 201, first.text
+    assert again.status_code == 201, again.text
+    assert again.json()["id"] == first.json()["id"]
+    assert again.headers["Idempotent-Replay"] == "true"
+    assert changed.status_code == 409, changed.text
+    assert [t.title for t in clean_conversations.list_threads(limit=50)].count("Retry me") == 1

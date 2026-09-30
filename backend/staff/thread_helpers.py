@@ -59,3 +59,25 @@ def collect_inbox_items(store: ConversationStore, caller_id: str) -> list[dict[s
             inbox_items.append(item)
 
     return inbox_items
+
+
+def shape_new_thread(body: Any, caller_id: str) -> tuple[str, str, list[str], dict[str, Any]]:
+    """Resolve title, kind, participants and meta for a new thread from a create request."""
+    from staff.group_threads import resolve_group_thread_meta
+
+    kind = body.kind or "direct"
+    role = body.role
+    if kind == "auto" or role == "auto":
+        kind = "auto"
+        role = "barb"
+
+    participants = list(body.participants)
+    kind, role, meta = resolve_group_thread_meta(kind, role, participants)
+
+    if role and role not in participants:
+        participants.append(role)
+    if caller_id not in participants:
+        participants.append(caller_id)
+
+    title = body.title or (f"Conversation with {role.title()}" if role else "New conversation")
+    return title, kind, participants, meta

@@ -37,6 +37,7 @@ from staff.cli_version import provider_versions
 from staff.idempotency import (
     IdempotencyStoreError,
     get_idempotency_store,
+    payload_fingerprint,
     require_idempotency_header,
 )
 from staff.models import (
@@ -63,16 +64,54 @@ router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
 router.include_router(staff_knowledge_router)
 
 
+def _reservation_conflict(state: str, operation_id: str) -> HTTPException:
+    """The 409 for a reservation this request cannot run under (#1795)."""
+    if state == "mismatch":
+        detail = {
+            "code": "idempotency_key_reused",
+            "message": "This Idempotency-Key was already used with a different request body.",
+            "retryable": False,
+            "hint": "Use a new Idempotency-Key for a different request.",
+        }
+        return HTTPException(status_code=409, detail=detail)
+    if state == "in_progress":
+        detail = {
+            "code": "idempotency_in_progress",
+            "message": "A request with this Idempotency-Key is still being processed.",
+            "retryable": True,
+            "hint": "Retry the same request shortly to receive its result.",
+        }
+        return HTTPException(status_code=409, detail=detail, headers={"Retry-After": "1"})
+    detail = {
+        "code": "idempotency_outcome_unknown",
+        "message": (
+            f"An earlier request with this Idempotency-Key (operation {operation_id}) never recorded its result."
+        ),
+        "retryable": False,
+        "hint": "Check GET /api/v1/staff/runs before sending a new request with a new key.",
+        "operation_id": operation_id,
+    }
+    return HTTPException(status_code=409, detail=detail)
+
+
 async def _handle_idempotent_post(
     key: str,
     endpoint: str,
     caller: str,
+    payload: Any,
     action: Any,
+    *,
+    takeover_safe: bool = False,
 ) -> Response:
-    """Execute action with 24h idempotency guarantee, failing closed (503) on store error."""
+    """Execute ``action`` at most once per (key, endpoint, caller) for 24 h.
+
+    The key is reserved before the action runs, so concurrent requests with the same
+    key execute once (#1795). A store failure before the action fails closed with 503.
+    ``takeover_safe`` marks actions that may be re-run after a lapsed reservation.
+    """
     store = get_idempotency_store()
     try:
-        cached = store.get(key=key, endpoint=endpoint, principal=caller)
+        reservation = store.reserve(key, endpoint, caller, payload_fingerprint(payload), takeover_safe=takeover_safe)
     except IdempotencyStoreError as exc:
         raise HTTPException(
             status_code=503,
@@ -84,7 +123,8 @@ async def _handle_idempotent_post(
             },
         ) from exc
 
-    if cached is not None:
+    if reservation.state == "replay" and reservation.record is not None:
+        cached = reservation.record
         headers = dict(cached.response_headers)
         headers["Idempotent-Replay"] = "true"
         return Response(
@@ -93,51 +133,43 @@ async def _handle_idempotent_post(
             media_type="application/json",
             headers=headers,
         )
+    if reservation.state != "acquired":
+        raise _reservation_conflict(reservation.state, reservation.operation_id)
 
-    res = action()
-    if asyncio.iscoroutine(res):
-        result = await res
-    else:
-        result = res
+    try:
+        res = action()
+        result = await res if asyncio.iscoroutine(res) else res
+    except BaseException:
+        # The action did not complete, so free the key for a retry.
+        try:
+            store.release(key, endpoint, caller)
+        except IdempotencyStoreError:
+            log.exception("could not release idempotency key %s for %s", key, endpoint)
+        raise
 
-    if isinstance(result, BaseModel):
-        body_dict = result.model_dump()
+    status_code = 200
+    if isinstance(result, Response):
+        body_json = bytes(result.body).decode("utf-8")
+        status_code = result.status_code
+    elif isinstance(result, BaseModel):
+        body_json = json.dumps(result.model_dump())
     elif isinstance(result, dict):
-        body_dict = result
-    elif isinstance(result, Response):
-        return result
+        body_json = json.dumps(result)
     else:
-        body_dict = {"result": result}
-
-    body_json = json.dumps(body_dict)
+        body_json = json.dumps({"result": result})
     resp_headers = {"Content-Type": "application/json"}
 
     try:
-        store.save(
-            key=key,
-            endpoint=endpoint,
-            principal=caller,
-            status_code=200,
-            response_headers=resp_headers,
-            response_body=body_json,
-        )
-    except IdempotencyStoreError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "idempotency_store_failure",
-                "message": f"Idempotency store record failed: {exc}",
-                "retryable": True,
-                "hint": (
-                    "Action was completed but could not be recorded in idempotency ledger; "
-                    "subsequent retries may re-execute."
-                ),
-            },
-        ) from exc
+        store.complete(key, endpoint, caller, status_code, resp_headers, body_json)
+    except IdempotencyStoreError:
+        # The effect happened; report it. The reservation stays pending, so a retry is
+        # answered with in-progress or unknown-outcome instead of running again.
+        log.exception("could not record idempotent result for %s under key %s", endpoint, key)
+        resp_headers["Idempotency-Receipt"] = "unrecorded"
 
     return Response(
         content=body_json,
-        status_code=200,
+        status_code=status_code,
         media_type="application/json",
         headers=resp_headers,
     )
@@ -295,7 +327,9 @@ async def dispatch_v1(
 
         return await staff_dispatch(role=role, body=body, request=request, caller=_peer)
 
-    return await _handle_idempotent_post(idempotency_key, endpoint, caller, _execute)
+    # A lapsed dispatch reservation is not retaken: re-running it could start a second run.
+    payload = body.model_dump(mode="json")
+    return await _handle_idempotent_post(idempotency_key, endpoint, caller, payload, _execute)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=StaffCancelResponse)
@@ -312,7 +346,7 @@ async def cancel_run_v1(
 
         return await staff_cancel_run(run_id=run_id, caller=_peer)
 
-    return await _handle_idempotent_post(idempotency_key, endpoint, caller, _execute)
+    return await _handle_idempotent_post(idempotency_key, endpoint, caller, {}, _execute, takeover_safe=True)
 
 
 # ── Audit, Holds, Schedule & Usage ────────────────────────────────────────────
@@ -380,7 +414,8 @@ async def put_holds_v1(
         )
         return {"holds": updated}
 
-    return await _handle_idempotent_post(idempotency_key, endpoint, caller, _execute)
+    payload = body.model_dump(mode="json")
+    return await _handle_idempotent_post(idempotency_key, endpoint, caller, payload, _execute, takeover_safe=True)
 
 
 @router.get("/usage", response_model=StaffUsageResponse, response_model_exclude_none=True)
@@ -418,4 +453,4 @@ async def export_usage_v1(
         except FileNotFoundError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return await _handle_idempotent_post(idempotency_key, endpoint, caller_str, _execute)
+    return await _handle_idempotent_post(idempotency_key, endpoint, caller_str, {}, _execute, takeover_safe=True)
