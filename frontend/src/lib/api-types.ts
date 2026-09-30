@@ -5882,7 +5882,7 @@ export interface paths {
         put?: never;
         /**
          * Create Thread
-         * @description Create a new conversation thread.
+         * @description Create a thread; a retry under the same Idempotency-Key returns the first one (#1795).
          */
         post: operations["create_thread_api_v1_staff_threads_post"];
         delete?: never;
@@ -6985,6 +6985,8 @@ export interface components {
             options_considered: string;
             /** Problem */
             problem: string;
+            /** Pull Request */
+            pull_request?: string | null;
             /** Source */
             source?: string | null;
             /** Target Repos */
@@ -7653,6 +7655,8 @@ export interface components {
              * @default
              */
             problem: string;
+            /** Pull Request */
+            pull_request?: string | null;
             /**
              * Source
              * @default human
@@ -7737,6 +7741,8 @@ export interface components {
              * @default
              */
             problem: string;
+            /** Pull Request */
+            pull_request?: string | null;
             /**
              * Source
              * @default human
@@ -8132,6 +8138,8 @@ export interface components {
             machine: string;
             /** Model */
             model?: string | null;
+            /** Operation Id */
+            operation_id?: string | null;
             /** Origin Node */
             origin_node?: string | null;
             /** Pr */
@@ -17651,7 +17659,9 @@ export interface operations {
     create_thread_api_v1_staff_threads_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -17667,9 +17677,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
