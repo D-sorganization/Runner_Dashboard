@@ -1,4 +1,17 @@
-# Current handoff — follow-up retries launch through retry.py (DL-#1797)
+# Current handoff — lab experiment: ant-colony pheromone-trail node picking
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-run-ab288145f9d0`
+- **Branch:** `lab/ant-colony-scheduler`
+- **PR:** not yet created (about to open as draft, `lab-experiment` + `do-not-merge`)
+- **Why:** Scheduled Mad Scientist pass (Repository_Management#1788 playbook). No lab PRs were open, so this run poses a new "Can we...?" question fusing swarm intelligence with fleet scheduling: can ant-colony pheromone trails discover the fastest runner node from feedback alone, without hardcoding it?
+- **Changes:** New `lab/ant-colony-scheduler/` directory only — `aco_scheduler.py` (round-robin/random/ACO simulations over a synthetic node-duration fixture), `test_aco_scheduler.py` (7 pytest cases, written red before the implementation), `fixtures/node_profiles.json` and `generate_trace.py` + `fixtures/pheromone_trace.json`, `visualize.html` (self-contained canvas page), `README.md` (the notebook write-up). Nothing outside this directory changed; no fleet dispatch, no live writes.
+- **Result:** ACO's mean simulated job duration (64.7s) beat round-robin (66.9s) but lost to plain random (61.9s) over 300 jobs/seed 42 — a modest, noisy lean toward the fastest node (pheromone 0.387 vs. 0.336 vs. 0.277), not the clean convergence ACO shows in low-noise routing problems. Documented in the README as an instructive partial result, with what a second iteration (smoothed/EWMA reward) would need.
+- **Validation:** `python3 -m pytest test_aco_scheduler.py -q` — 7 passed, run from `lab/ant-colony-scheduler/`.
+- **Next:** open the draft PR (`lab-experiment`, `do-not-merge`); the companion notebook entry could not be landed in `Repository_Management/docs/lab/` from this run (that repo is not checked out in this worktree and fleet rules forbid touching other worktrees) — the full write-up is in this PR's `README.md` instead, to be copied into `Repository_Management/docs/lab/` as a follow-up docs-only PR. Only the owner promotes with `lab:promote`; nothing here is meant to merge.
+
+---
+
+# Prior handoff — follow-up retries launch through retry.py (DL-#1797)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1797`
 - **Branch:** `fix/followup-retry-launch-1797`, rebased onto main after BR-01 (#1814) and BR-02 (#1817) merged
