@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import secrets
 import socket
 from dataclasses import dataclass
 from typing import Any
@@ -136,12 +137,17 @@ def _opt(pattern: re.Pattern[str], value: Any, name: str) -> str | None:
     return None if value is None else _match(pattern, value, name)
 
 
-def default_session(agent: str, host: str | None = None, day: dt.date | None = None) -> str:
-    short_host = (host if host is not None else socket.gethostname()).split(".", 1)[0] or "host"
+def short_host(host: str | None = None) -> str:
+    return (host if host is not None else socket.gethostname()).split(".", 1)[0] or "host"
+
+
+def default_session(agent: str, host: str | None = None, day: dt.date | None = None, nonce: str | None = None) -> str:
+    """``<agent>-<host>-<YYYYMMDD>-<nonce>``; the random nonce keeps concurrent sessions apart (#1799)."""
     stamp = (day or dt.datetime.now(dt.timezone.utc).date()).strftime("%Y%m%d")  # noqa: UP017
+    tail = f"{stamp}-{nonce if nonce is not None else secrets.token_hex(3)}"
     prefix = f"{agent}-"
-    middle = _SESSION_UNSAFE.sub("-", short_host)[: max(1, _MAX_SESSION - len(prefix) - len(stamp) - 1)]
-    return f"{prefix}{middle}-{stamp}"
+    middle = _SESSION_UNSAFE.sub("-", short_host(host))[: max(1, _MAX_SESSION - len(prefix) - len(tail) - 1)]
+    return f"{prefix}{middle}-{tail}"
 
 
 def _compact(data: dict[str, Any]) -> dict[str, Any]:
@@ -182,10 +188,13 @@ def _decode(raw: bytes) -> Any:
         return {"text": text[:2000]}
 
 
-def _resolve_session(configured: str | None, session: str | None, agent: str | None) -> str:
+def _resolve_session(
+    configured: str | None, session: str | None, agent: str | None, derived: dict[str, str] | None = None
+) -> str:
+    """Pick the call's session; a derived one is minted once per agent and cached in ``derived``."""
     value = session if session is not None else configured
     if value is None and agent is not None:
-        value = default_session(agent)
+        value = derived.setdefault(agent, default_session(agent)) if derived is not None else default_session(agent)
     _check(value is not None, "session is required (argument, FLEET_SESSION, or an agent to derive one from)")
     checked = _match(PATTERNS.session, value, "session")
     _check(

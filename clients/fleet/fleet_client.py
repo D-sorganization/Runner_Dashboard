@@ -44,6 +44,7 @@ from fleet_validators import (
     _text,
     _validate_directive,
     default_session,
+    short_host,
 )
 
 __all__ = [
@@ -92,7 +93,14 @@ class FleetClient:
         self._configured_session = _opt(
             PATTERNS.session, session if session is not None else (os.environ.get("FLEET_SESSION") or None), "session"
         )
+        self._session_source = "argument" if session is not None else "env" if self._configured_session else "derived"
+        self._derived: dict[str, str] = {}
         self.session = self._session(None) if (self._configured_session or self.agent) else None
+
+    def identity(self) -> dict[str, str | None]:
+        """Who this client acts as: principal agent, host and session, each reported separately."""
+        source = self._session_source
+        return {"agent": self.agent, "host": short_host(), "session": self.session, "session_source": source}
 
     # ------------------------------------------------------------------ transport
 
@@ -152,7 +160,7 @@ class FleetClient:
                 raise FleetAPIError(0, {"error": "unreachable", "url": self.base_url, "reason": str(reason)}) from None
 
     def _session(self, session: str | None, agent: str | None = None) -> str:
-        return _resolve_session(self._configured_session, session, agent or self.agent)
+        return _resolve_session(self._configured_session, session, agent or self.agent, self._derived)
 
     def _agent(self, agent: str | None) -> str | None:
         return _opt(PATTERNS.agent, agent if agent is not None else self.agent, "agent")

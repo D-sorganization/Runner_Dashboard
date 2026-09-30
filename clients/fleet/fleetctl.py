@@ -88,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
             namespace.url, timeout=namespace.timeout, agent=namespace.default_agent, session=namespace.default_session
         )
         _emit(command.invoke(client, _arguments(command, namespace)))
+        if client.identity()["session_source"] == "derived" and client.session:
+            sys.stderr.write(f"fleetctl: derived session; export FLEET_SESSION={client.session} to reuse it\n")
     except FleetArgumentError as exc:
         _emit({"error": "invalid_arguments", "message": str(exc)})
         return 2

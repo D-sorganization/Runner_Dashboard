@@ -1,4 +1,17 @@
-# Current handoff — fair follow-up sweep with durable claims (DL-#1798)
+# Current handoff — unique default fleet session per client (DL-#1799)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1799`
+- **Branch:** `fix/unique-agent-session-1799` from `origin/main` (`6458d3c`)
+- **PR:** not created
+- **Why:** Board 2026-09-29 accepted BR-05 (P1): the derived session `<agent>-<host>-<YYYYMMDD>` was shared by every session of one agent on one host that day.
+- **Changes:** `fleet_validators.default_session` adds a random suffix (`nonce` parameter for tests) and `short_host`; `_resolve_session` caches the derived session per agent in the client's dict; `FleetClient.identity()`; `fleetctl` stderr hint; MCP instructions and `docs/agents/connect.md` describe the new default and the resume path.
+- **Decisions:** no on-disk session cache: a file shared by the host would give two concurrent sessions the same id again, which is the bug. Resume stays explicit through `FLEET_SESSION`.
+- **Validation:** see DL-#1799's Last verified.
+- **Next:** open the PR, mark it ready and arm; then BR-04 (#1798) once BR-03 (#1818) merges.
+
+---
+
+# Prior handoff — fair follow-up sweep with durable claims (DL-#1798)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1798`
 - **Branch:** `fix/followup-fair-sweep-1798` from `origin/main` (`932d4b8`, after BR-02 #1817 and BR-03 #1818 merged)
