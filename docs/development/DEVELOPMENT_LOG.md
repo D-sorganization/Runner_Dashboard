@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1804 — Staff Console role readiness and context from real data (BR-11)
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1804 (Board 2026-09-29, RD review PR #1776 item BR-11; BR-09 #1802 capability contract not built)
+- **Branch:** `fix/role-readiness-1804` from `origin/main` (`6458d3ca`)
+- **PR:** not created
+- **Paths:** `frontend/src/pages/StaffConsole/` (`roleContextApi.ts`, `roleDetail.ts`, `useRoleContext.ts`, `ContextReadiness.tsx`, `MobileContextDrawer.tsx`, `ContextPane.tsx`, `Desktop.tsx`, `Mobile.tsx`, `RosterRow.tsx`, `rosterUtils.ts`, `useStaffConsole.ts`, `contextTypes.ts`, `types.ts`, CSS), `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/pages/StaffConsole/__tests__/roleReadiness.test.tsx`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `6458d3ca` + working tree (RED: 9/9 new mounted-path tests failed on base; GREEN: 359 passed across `frontend/src/pages/StaffConsole`, `frontend/src/pages/Staff` and `frontend/src/hooks`; `npm run typecheck` and changed-file ESLint clean)
+- **Summary:** The roster and context pane show only readiness the backend reported. Provider installation, schedule enabled/hold/next fire, board offline nodes, role runs and work items, and thread-linked runs and work items load through the staff React Query layer from existing routes. Roles read Held, Unavailable (no provider installed), Status unknown or Idle (installed provider) distinctly; loading or a failed source is never shown as ready. The schedule switch persists via `PUT /roles/{role}/schedule` with rollback, or is disabled with its reason. Sign-in state is not reported by the backend and awaits BR-09.
+- **Next step:** Push `fix/role-readiness-1804` and open the PR.
+
 ### DL-#1819 — regenerate the stale OpenAPI snapshot on main
 
 - **State:** in_review

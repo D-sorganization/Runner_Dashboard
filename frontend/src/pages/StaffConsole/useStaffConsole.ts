@@ -7,7 +7,7 @@
  * decision) so the layout shows it; nothing is dropped silently and no thread
  * id is invented client-side (see consoleThreads.ts).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   answerThreadRun,
   cancelRun as cancelStaffRun,
@@ -22,8 +22,6 @@ import {
 } from "../Staff/staffApi";
 import { AUTO_ROUTE_ROLE, createFreshRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
 import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
-import type { RoleDetail } from "./contextTypes";
-import { formatRoleWindow } from "./rosterUtils";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
 import { useGroupCostGuard, type GroupCostGuard } from "./useGroupCostGuard";
@@ -64,7 +62,6 @@ export interface StaffConsoleState {
   isReconnecting: boolean;
   error: ConsoleError | null;
   currentRole: StaffRoleItem;
-  roleDetail: RoleDetail;
   openRole: (roleName: string) => Promise<ThreadInfo | null>;
   openThread: (thread: ThreadInfo, roleName?: string) => void;
   closeThread: () => void;
@@ -96,30 +93,6 @@ const DEFAULT_THREAD_API: ThreadApi = {
 };
 
 const NO_MESSAGES: ThreadMessage[] = [];
-
-export function toRoleDetail(role: StaffRoleItem): RoleDetail {
-  return {
-    name: role.name,
-    title: role.title,
-    mandate: role.summary || "",
-    providers: Array.isArray(role.providers)
-      ? role.providers.map((p) => (typeof p === "string" ? { name: p, signed_in: true } : p))
-      : [],
-    budget: role.budget
-      ? { usd_per_day: role.budget.usd_per_day ?? 0, usd_today: role.budget.spend_today }
-      : undefined,
-    schedule: role.schedule
-      ? {
-          cron: role.schedule,
-          window: formatRoleWindow(role.window) || undefined,
-          enabled: !role.retired,
-          next_fire: null,
-        }
-      : undefined,
-    active_runs: [],
-    recent_work_items: [],
-  };
-}
 
 export function useStaffConsole({
   roles: suppliedRoles,
@@ -338,7 +311,6 @@ export function useStaffConsole({
 
   const barb = roleByName(AUTO_ROUTE_ROLE) ?? FALLBACK_BARB;
   const currentRole = (selectedRole && roleByName(selectedRole)) || barb;
-  const roleDetail = useMemo(() => toRoleDetail(currentRole), [currentRole]);
 
   return {
     roles,
@@ -350,7 +322,6 @@ export function useStaffConsole({
     isReconnecting: stream.isReconnecting,
     error,
     currentRole,
-    roleDetail,
     openRole,
     openThread,
     closeThread,

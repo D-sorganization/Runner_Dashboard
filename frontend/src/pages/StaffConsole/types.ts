@@ -9,6 +9,8 @@ export type RosterStatus =
   | "working"
   | "needs_you"
   | "unavailable"
+  | "held"
+  | "unknown"
   | "invalid"
   | "retired";
 
@@ -87,6 +89,8 @@ export interface StaffRoleItem {
   window?: { start: string; end: string } | string | null;
   retired?: boolean;
   retired_reason?: string;
+  /** A schedule-blocking hold from GET /api/v1/staff/schedule (#1804); not the role file's `holds:`. */
+  schedule_hold?: string | null;
   [key: string]: unknown;
 }
 

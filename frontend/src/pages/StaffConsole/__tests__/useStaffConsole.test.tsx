@@ -25,7 +25,8 @@ vi.mock("../../Staff/staffApi", async (importOriginal) => ({
 }));
 
 import { ApiClientError } from "../../../lib/api";
-import { toRoleDetail, useStaffConsole } from "../useStaffConsole";
+import { toRoleDetail } from "../roleDetail";
+import { useStaffConsole } from "../useStaffConsole";
 
 const ROLES: StaffRoleItem[] = [
   { name: "barb", title: "Barb", group: "leadership", valid: true },
@@ -74,7 +75,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("toRoleDetail (#1744)", () => {
+describe("toRoleDetail (#1744, #1804)", () => {
   it("maps budget.usd_per_day and leaves usd_today unknown when the API sends no spend", () => {
     const detail = toRoleDetail({
       name: "night-watch",
@@ -86,7 +87,7 @@ describe("toRoleDetail (#1744)", () => {
     expect(detail.budget).toEqual({ usd_per_day: 8, usd_today: undefined });
   });
 
-  it("maps schedule to cron + formatted window and enabled from retired", () => {
+  it("maps schedule to cron + formatted window and leaves enabled unknown without a schedule report", () => {
     const detail = toRoleDetail({
       name: "night-watch",
       title: "Overnight Watchdog",
@@ -99,9 +100,34 @@ describe("toRoleDetail (#1744)", () => {
     expect(detail.schedule).toEqual({
       cron: "0 22 * * *",
       window: "22:00–06:00",
-      enabled: true,
+      enabled: null,
       next_fire: null,
+      hold: null,
     });
+    expect(detail.readiness?.status).toBe("unknown");
+  });
+
+  it("takes enabled, next fire and a blocking hold from the schedule report", () => {
+    const detail = toRoleDetail(
+      { name: "night-watch", title: "Overnight Watchdog", valid: true, schedule: "0 22 * * *", providers: ["claude"] },
+      {
+        availableProviders: { claude: true },
+        schedule: { role: "night-watch", enabled: true, hold: "release freeze", next_fire: "2026-09-29T22:00:00Z" },
+      },
+    );
+
+    expect(detail.schedule).toMatchObject({ enabled: true, hold: "release freeze", next_fire: "2026-09-29T22:00:00Z" });
+    expect(detail.readiness).toEqual({ status: "held", reason: "hold: release freeze" });
+    expect(detail.providers).toEqual([{ name: "claude", readiness: "installed" }]);
+  });
+
+  it("does not treat the scheduler's own disabled marker as a hold", () => {
+    const detail = toRoleDetail(
+      { name: "night-watch", title: "Overnight Watchdog", valid: true, schedule: "0 22 * * *" },
+      { schedule: { role: "night-watch", enabled: false, hold: "schedule disabled for role" } },
+    );
+
+    expect(detail.schedule).toMatchObject({ enabled: false, hold: null });
   });
 
   it("leaves schedule undefined when the role has no cron", () => {
@@ -115,7 +141,7 @@ describe("toRoleDetail (#1744)", () => {
     expect(detail.schedule).toBeUndefined();
   });
 
-  it("marks a retired role's schedule as disabled", () => {
+  it("reports a retired role as retired without inventing its schedule state", () => {
     const detail = toRoleDetail({
       name: "night-watch",
       title: "Overnight Watchdog",
@@ -125,8 +151,9 @@ describe("toRoleDetail (#1744)", () => {
       retired: true,
     });
 
-    expect(detail.schedule?.enabled).toBe(false);
+    expect(detail.schedule?.enabled).toBeNull();
     expect(detail.schedule?.window).toBeUndefined();
+    expect(detail.readiness?.status).toBe("retired");
   });
 });
 

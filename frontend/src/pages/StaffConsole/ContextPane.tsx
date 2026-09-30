@@ -5,6 +5,7 @@
  */
 import React, { useState, useEffect } from "react";
 import type { ContextPaneProps } from "./contextTypes";
+import { RoleReadinessSection, RunList, WorkItemList } from "./ContextReadiness";
 import { Skeleton, SkeletonLine } from "../../primitives/Skeleton";
 import "./context.css";
 
@@ -12,22 +13,27 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
   role,
   threadContext,
   onToggleSchedule,
+  scheduleDisabledReason,
   className = "",
   isLoading = false,
 }) => {
   const [activeTab, setActiveTab] = useState<"role" | "thread">("role");
-  const [scheduleEnabled, setScheduleEnabled] = useState<boolean>(role?.schedule?.enabled ?? true);
+  // Unknown (null) until the schedule source answers; never defaulted to enabled (#1804).
+  const [scheduleEnabled, setScheduleEnabled] = useState<boolean | null>(role?.schedule?.enabled ?? null);
   const [isToggling, setIsToggling] = useState<boolean>(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (role?.schedule?.enabled !== undefined) {
-      setScheduleEnabled(role.schedule.enabled);
-    }
+    setScheduleEnabled(role?.schedule?.enabled ?? null);
   }, [role?.schedule?.enabled]);
 
+  // An enabled switch always persists; otherwise it is disabled and says why (#1804).
+  const switchDisabledReason = !onToggleSchedule
+    ? "Read-only: schedule changes are not available here."
+    : scheduleDisabledReason || (scheduleEnabled === null ? "Schedule status unknown." : null);
+
   const handleToggle = async () => {
-    if (!role || !onToggleSchedule || isToggling) return;
+    if (!role || !onToggleSchedule || isToggling || switchDisabledReason || scheduleEnabled === null) return;
     const targetState = !scheduleEnabled;
     const previousState = scheduleEnabled;
 
@@ -145,6 +151,8 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
               </div>
             </div>
 
+            <RoleReadinessSection role={role} />
+
             {/* Mandate in prose style */}
             <div>
               <div className="context-section-label">
@@ -166,10 +174,11 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                   <button
                     type="button"
                     role="switch"
-                    aria-checked={scheduleEnabled}
+                    aria-checked={scheduleEnabled === true}
                     aria-label="Toggle schedule"
                     onClick={handleToggle}
-                    disabled={isToggling}
+                    disabled={isToggling || Boolean(switchDisabledReason)}
+                    title={switchDisabledReason ?? undefined}
                     className={`context-switch-btn ${
                       scheduleEnabled ? "context-switch-btn--checked" : ""
                     }`}
@@ -190,35 +199,20 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                       : "context-schedule-status--paused"
                   }`}
                 >
-                  {scheduleEnabled ? "Active" : "Schedule Paused"}
+                  {scheduleEnabled === null ? "Schedule status unknown" : scheduleEnabled ? "Active" : "Schedule Paused"}
                 </div>
+                {role.schedule.hold && (
+                  <div className="context-schedule-window" data-testid="context-role-hold">
+                    Held: {role.schedule.hold}
+                  </div>
+                )}
+                {switchDisabledReason && (
+                  <div className="context-schedule-window" data-testid="context-schedule-reason">
+                    {switchDisabledReason}
+                  </div>
+                )}
               </div>
             )}
-
-            {/* Providers Section: Chips with status dots */}
-            <div>
-              <div className="context-section-label">
-                Providers
-              </div>
-              <div className="context-providers-list">
-                {role.providers?.map((p) => (
-                  <span
-                    key={p.name}
-                    className="context-provider-chip"
-                  >
-                    <span
-                      className={`context-provider-dot ${
-                        p.signed_in
-                          ? "context-provider-dot--signed-in"
-                          : "context-provider-dot--signed-out"
-                      }`}
-                      aria-hidden="true"
-                    />
-                    <span>{p.name}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
 
             {/* Budget & Spend: Thin progress bar + numbers */}
             {role.budget && (
@@ -252,27 +246,15 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
               </div>
             )}
 
-            {/* Active Runs */}
-            {role.active_runs && role.active_runs.length > 0 && (
-              <div>
-                <div className="context-section-label">
-                  Active Runs
-                </div>
-                <div className="context-runs-list">
-                  {role.active_runs.map((r) => (
-                    <div
-                      key={r.id}
-                      className="context-run-row"
-                    >
-                      <span className="context-run-id">{r.id}</span>
-                      <span className="context-run-status">
-                        {r.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Active Runs and work items owned by the role (#1804) */}
+            <div>
+              <div className="context-section-label">Active Runs</div>
+              <RunList runs={role.active_runs} state={role.sources?.runs} />
+            </div>
+            <div>
+              <div className="context-section-label">Work Items</div>
+              <WorkItemList items={role.recent_work_items} state={role.sources?.work_items} />
+            </div>
           </div>
         )}
 
@@ -318,15 +300,16 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
               <div className="context-section-label">
                 Linked Work Items
               </div>
-              {threadContext?.linked_work_items?.length ? (
-                threadContext.linked_work_items.map((wi) => (
-                  <div key={wi.id} className="context-work-item">
-                    <span className="context-work-item-id">{wi.id}</span>: <span>{wi.title}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="context-empty-text">None</div>
-              )}
+              <WorkItemList items={threadContext?.linked_work_items} state={threadContext?.sources?.work_items} />
+            </div>
+
+            <div>
+              <div className="context-section-label">Linked Runs</div>
+              <RunList
+                runs={threadContext?.linked_runs}
+                state={threadContext?.sources?.runs ?? "ready"}
+                testId="context-linked-runs"
+              />
             </div>
 
             <div>

@@ -38,8 +38,17 @@ import {
   type RunRecord,
   type RunsFilter,
   type RunsResponse,
+  type ScheduleResponse,
   type StaffSummaryResponse,
 } from "../pages/Staff/staffApi";
+import {
+  fetchStaffProviders,
+  fetchStaffSchedule,
+  fetchWorkItems,
+  type ProvidersResponse,
+  type WorkItemRecord,
+  type WorkItemsFilter,
+} from "../pages/StaffConsole/roleContextApi";
 import { queryClient as defaultQueryClient } from "./usePollingQueries";
 
 /** Helper that returns the ambient QueryClient or falls back to the exported singleton. */
@@ -60,6 +69,9 @@ export const staffKeys = {
   run: (id: string) => [...staffKeys.all, "run", id] as const,
   outcomes: (groupBy: OutcomesGroupBy) => [...staffKeys.all, "outcomes", groupBy] as const,
   holds: () => [...staffKeys.all, "holds"] as const,
+  providers: () => [...staffKeys.all, "providers"] as const,
+  schedule: () => [...staffKeys.all, "schedule"] as const,
+  workItems: (filter: WorkItemsFilter) => [...staffKeys.all, "work-items", filter] as const,
 };
 
 // ── Resource Hooks ─────────────────────────────────────────────────────────────
@@ -174,6 +186,51 @@ export function useStaffHolds(): UseQueryResult<HoldsResponse, Error> {
     {
       queryKey: staffKeys.holds(),
       queryFn: ({ signal }) => fetchHolds(signal),
+      staleTime: 10_000,
+      refetchIntervalInBackground: false,
+    },
+    client,
+  );
+}
+
+/** Provider installation on this node (#1804). Installed is not signed in. */
+export function useStaffProviders(): UseQueryResult<ProvidersResponse, Error> {
+  const client = useResolvedQueryClient();
+  return useQuery(
+    {
+      queryKey: staffKeys.providers(),
+      queryFn: ({ signal }) => fetchStaffProviders(signal),
+      staleTime: 30_000,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: false,
+    },
+    client,
+  );
+}
+
+/** Per-role schedule gate: enabled, blocking hold, next fire (#1804). */
+export function useStaffSchedule(): UseQueryResult<ScheduleResponse, Error> {
+  const client = useResolvedQueryClient();
+  return useQuery(
+    {
+      queryKey: staffKeys.schedule(),
+      queryFn: ({ signal }) => fetchStaffSchedule(signal),
+      staleTime: 10_000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    },
+    client,
+  );
+}
+
+/** Work items owned by a role or linked to a thread (#1804); idle until a filter is set. */
+export function useStaffWorkItems(filter: WorkItemsFilter): UseQueryResult<{ work_items: WorkItemRecord[] }, Error> {
+  const client = useResolvedQueryClient();
+  return useQuery(
+    {
+      queryKey: staffKeys.workItems(filter),
+      queryFn: ({ signal }) => fetchWorkItems(filter, signal),
+      enabled: Boolean(filter.owner_role || filter.thread_id),
       staleTime: 10_000,
       refetchIntervalInBackground: false,
     },

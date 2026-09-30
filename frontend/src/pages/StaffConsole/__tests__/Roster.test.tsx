@@ -48,6 +48,7 @@ const MOCK_ROLES: StaffRoleItem[] = [
     group: "specialists",
     valid: true,
     active_runs: 0,
+    providers: ["anthropic"],
   },
   {
     name: "fleet-maintenance",
@@ -64,6 +65,7 @@ const MOCK_ROLES: StaffRoleItem[] = [
     group: "specialists",
     valid: true,
     holds: ["quarantine"],
+    providers: ["anthropic"],
   },
   {
     name: "budget-exhausted-role",
@@ -158,10 +160,10 @@ describe("Staff Console Roster Sidebar (SC-D3)", () => {
     expect(budgetDot).toHaveAttribute("data-status", "unavailable");
     expect(screen.getByTestId("status-reason-budget-exhausted-role")).toHaveTextContent("budget reached");
 
-    // Unavailable: no provider signed in
+    // Unavailable: none of its providers installed (sign-in is not reported, #1804)
     const provDot = screen.getByTestId("status-dot-no-provider-role");
     expect(provDot).toHaveAttribute("data-status", "unavailable");
-    expect(screen.getByTestId("status-reason-no-provider-role")).toHaveTextContent("no provider signed in");
+    expect(screen.getByTestId("status-reason-no-provider-role")).toHaveTextContent("no provider installed");
 
     // Invalid: validation error
     const invalidDot = screen.getByTestId("status-dot-invalid-role");
@@ -422,10 +424,11 @@ describe("Staff Console Roster Sidebar (SC-D3)", () => {
         group: "specialists",
         valid: true,
         holds: ["quarantine", "C3 HOLD"],
+        providers: ["claude"],
       },
     ];
 
-    render(<Roster roles={rolesWithHolds} />);
+    render(<Roster roles={rolesWithHolds} availableProviders={{ claude: true }} />);
 
     const rowBtn = screen.getByTestId("roster-row-btn-policy-held");
     expect(rowBtn).toHaveAttribute("aria-label");

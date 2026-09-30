@@ -12,10 +12,12 @@ import type { RosterGroupKey, RosterStatus, StaffRoleItem } from "./types";
  * Priority order:
  * 1. invalid: role definition error or valid: false
  * 2. retired: role.retired is true; the reason is its retired_reason (#1759)
- * 3. unavailable: operational block (held, budget reached, or no provider signed in)
- * 4. needs_you: pending human action proposal or unread message count
- * 5. working: role is actively executing runs
- * 6. idle: available and ready for dispatch
+ * 3. unavailable: operational block (budget reached, or none of its providers installed)
+ * 4. held: a hold blocks the role's schedule (`schedule_hold`, from GET /schedule)
+ * 5. needs_you: pending human action proposal or unread message count
+ * 6. working: role is actively executing runs
+ * 7. unknown: provider availability not loaded or not reported for any of its providers
+ * 8. idle: a provider is installed on this node — only when the data says so (#1804)
  */
 export function computeRoleStatus(
   role: StaffRoleItem,
@@ -60,20 +62,25 @@ export function computeRoleStatus(
     };
   }
 
-  // 3c. No provider signed in
-  if (
-    role.providers &&
-    role.providers.length > 0 &&
-    availableProviders &&
-    role.providers.every((p) => availableProviders[p] === false)
-  ) {
+  // 3c. None of the role's providers is installed on this node. The backend
+  // reports installation only; sign-in is not known, so it is never claimed.
+  const providers = role.providers ?? [];
+  if (availableProviders && providers.length > 0 && providers.every((p) => availableProviders[p] === false)) {
     return {
       status: "unavailable",
-      reason: "no provider signed in",
+      reason: "no provider installed",
     };
   }
 
-  // 4. Needs human attention / review
+  // 4. A hold blocks the schedule (#1804). Distinct from `role.holds` guardrails above.
+  if (role.schedule_hold) {
+    return {
+      status: "held",
+      reason: `hold: ${role.schedule_hold}`,
+    };
+  }
+
+  // 5. Needs human attention / review
   if (
     (typeof role.pending_proposals_count === "number" && role.pending_proposals_count > 0) ||
     (typeof role.caller_unread_count === "number" && role.caller_unread_count > 0)
@@ -84,7 +91,7 @@ export function computeRoleStatus(
     };
   }
 
-  // 5. Actively working
+  // 6. Actively working
   if (typeof role.active_runs === "number" && role.active_runs > 0) {
     return {
       status: "working",
@@ -92,7 +99,15 @@ export function computeRoleStatus(
     };
   }
 
-  // 6. Default idle
+  // 7. Readiness is only claimed from data: availability loaded and a provider installed.
+  if (!availableProviders || !providers.some((p) => availableProviders[p] === true)) {
+    return {
+      status: "unknown",
+      reason: "provider availability unknown",
+    };
+  }
+
+  // 8. Idle: valid, not blocked, and able to run on this node
   return {
     status: "idle",
     reason: "idle",
