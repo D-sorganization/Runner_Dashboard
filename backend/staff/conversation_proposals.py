@@ -199,7 +199,13 @@ def list_proposals(
     message_id: str | None = None,
     state: str | None = None,
     limit: int = 100,
+    after_deadline: tuple[str, str] | None = None,
 ) -> list[ActionProposalRecord]:
+    """Newest first; with ``after_deadline`` (``("", "")`` starts), only proposals with a ``decide_by``.
+
+    The deadline mode pages in ``(decide_by, id)`` order from that cursor, so a caller can walk every
+    pending deadline instead of the newest ``limit`` (BR-04, #1798).
+    """
     clauses: list[str] = []
     params: list[Any] = []
     if thread_id:
@@ -211,8 +217,13 @@ def list_proposals(
     if state:
         clauses.append("state = ?")
         params.append(state)
+    order = "created_at DESC"
+    if after_deadline is not None:
+        clauses.append("decide_by IS NOT NULL AND (decide_by, id) > (?, ?)")
+        params.extend(after_deadline)
+        order = "decide_by, id"
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    query = f"SELECT * FROM action_proposals {where} ORDER BY created_at DESC LIMIT ?"  # noqa: S608
+    query = f"SELECT * FROM action_proposals {where} ORDER BY {order} LIMIT ?"  # noqa: S608
     params.append(limit)
     with lock:
         rows = conn.execute(query, tuple(params)).fetchall()

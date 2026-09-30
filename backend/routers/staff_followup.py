@@ -65,6 +65,7 @@ async def get_status(
         "last_sweep_at": last_sweep,
         "sweep_interval_seconds": engine.sweep_interval_seconds,
         "watchdog": watchdog,
+        "backlog": engine.last_backlog.to_dict() if engine.last_backlog else None,
     }
 
 
