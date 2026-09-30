@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1799 — unique default fleet session per client (BR-05)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1799 (Board 2026-09-29, RD review PR #1776 item BR-05)
+- **Branch:** `fix/unique-agent-session-1799` from `origin/main` (`6458d3c`)
+- **PR:** not created
+- **Paths:** `clients/fleet/fleet_validators.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleetctl.py`, `clients/fleet/fleet_mcp.py`, `docs/agents/connect.md`, `tests/clients/test_fleet_session_identity.py`, `tests/clients/test_fleet_client.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `6458d3c` (RED: 6 of 9 new tests fail on main; GREEN: `tests/clients` and `tests/api/test_coordination_api.py` pass; ruff clean)
+- **Summary:** `default_session` derived `<agent>-<host>-<YYYYMMDD>`, so two Codex sessions on one computer on one day shared presence, mailbox attribution and release. It now appends a random 6-hex suffix; `FleetClient` mints it once per agent and caches it, so one client (and one MCP server process) keeps its session across calls. An explicit `FLEET_SESSION` / `--as-session` / per-call `session` still wins and is the resume path. `fleetctl` prints a derived session on stderr as an `export FLEET_SESSION=...` hint. `FleetClient.identity()` reports agent (principal), host, session and session source separately; staff run ids stay separate on `/api/staff/runs`.
+- **Next step:** Open the PR, mark it ready and arm auto-merge.
+
 ### DL-#1798 — fair follow-up sweep with durable claims (BR-04)
 
 - **State:** in_review

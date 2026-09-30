@@ -30,7 +30,7 @@ agent's machine. Nothing needs to be installed.
 | `FLEET_API_URL`     | Dashboard base URL (a tailnet name works)                  | `http://127.0.0.1:8321` |
 | `FLEET_API_TOKEN`   | Per-agent bot token (see [below](#mint-a-per-agent-token)) | none                    |
 | `FLEET_AGENT`       | Default `agent` for presence and claims                    | none                    |
-| `FLEET_SESSION`     | Default `session` for presence, messages and claims        | `<agent>-<host>-<date>` |
+| `FLEET_SESSION`     | Default `session` for presence, messages and claims        | derived (see below)     |
 | `FLEET_API_TIMEOUT` | Request timeout in seconds                                 | `30`                    |
 
 Every request sends `X-Requested-With: XMLHttpRequest` (the CSRF header the dashboard
@@ -43,8 +43,12 @@ id it uses must start with `<name>-` (sessions match `[A-Za-z0-9][A-Za-z0-9_.-]{
 The clients follow the same rule so a mismatch fails before anything is sent (CLI exit 2):
 
 - With an agent known (`FLEET_AGENT`, `--as-agent`, or a call's `agent`) and no session
-  given, the client derives `<agent>-<short host>-<YYYYMMDD>`, for example
-  `codex-DeskComputer-20260923`.
+  given, the client derives `<agent>-<short host>-<YYYYMMDD>-<6 hex>`, for example
+  `codex-DeskComputer-20260923-4f1a9c`. The random suffix is chosen once per client (one
+  MCP server process, one `FleetClient`, one `fleetctl` run), so two sessions of the same
+  agent on the same host never share an identity. To resume a session, or to share one
+  across several `fleetctl` runs, set `FLEET_SESSION` (or `--as-session`) to it; `fleetctl`
+  prints the derived value on stderr as `export FLEET_SESSION=...`.
 - An explicit session (`FLEET_SESSION`, `--as-session`, or a call's `session`) that does not
   start with `<agent>-` is rejected with an error naming the expected prefix.
 - Without an agent, any valid session id is accepted and a session is required.
