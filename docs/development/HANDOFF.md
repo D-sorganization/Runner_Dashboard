@@ -1,4 +1,16 @@
-# Current handoff — Board intake route for suggestions and draft PRs (DL-#1787)
+# Current handoff — regenerate the stale OpenAPI snapshot (DL-#1819)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-openapi-regen`
+- **Branch:** `fix/openapi-snapshot-regen` from `origin/main` (`6458d3c`)
+- **PR:** not created
+- **Why:** main's `Frontend Tests / TypeScript typecheck (tsc)` has been red since #1812: `generate-api:check` found the snapshot stale after #1812, #1814 and #1817.
+- **Changes:** regenerated `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` with `scripts/gen-api-client.sh` (no source changes).
+- **Validation:** `generate-api:check` passes; `npm run typecheck` clean.
+- **Next:** open the PR, mark it ready and arm; then file the workflow follow-up from #1819 (run `generate-api:check` when `backend/**` changes).
+
+---
+
+# Prior handoff — Board intake route for suggestions and draft PRs (DL-#1787)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1787`
 - **Branch:** `feat/board-queue-route-1787` from `origin/main`

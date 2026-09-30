@@ -896,6 +896,18 @@
             "title": "Problem",
             "type": "string"
           },
+          "pull_request": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pull Request"
+          },
           "source": {
             "anyOf": [
               {
@@ -2317,6 +2329,17 @@
             "title": "Problem",
             "type": "string"
           },
+          "pull_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pull Request"
+          },
           "source": {
             "default": "human",
             "title": "Source",
@@ -2461,6 +2484,17 @@
             "default": "",
             "title": "Problem",
             "type": "string"
+          },
+          "pull_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pull Request"
           },
           "source": {
             "default": "human",
@@ -3260,6 +3294,19 @@
               }
             ],
             "title": "Model"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "pattern": "^[A-Za-z0-9-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
           },
           "origin_node": {
             "anyOf": [
@@ -17996,8 +18043,26 @@
         "tags": ["staff-threads"]
       },
       "post": {
-        "description": "Create a new conversation thread.",
+        "description": "Create a thread; a retry under the same Idempotency-Key returns the first one (#1795).",
         "operationId": "create_thread_api_v1_staff_threads_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -18013,9 +18078,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Create Thread Api V1 Staff Threads Post",
-                  "type": "object"
+                  "title": "Response Create Thread Api V1 Staff Threads Post"
                 }
               }
             },

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1819 — regenerate the stale OpenAPI snapshot on main
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1819
+- **Branch:** `fix/openapi-snapshot-regen` from `origin/main` (`6458d3c`)
+- **PR:** not created
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `6458d3c` (`npm run generate-api:check` passes after regeneration; `npm run typecheck` clean)
+- **Summary:** `Frontend Tests / TypeScript typecheck (tsc)` failed on every push to main since #1812, because #1812, #1814 and #1817 changed backend models and routes without regenerating the snapshot, and the PR frontend scope skipped `generate-api:check` for backend-only diffs. This regenerates the snapshot and types only. Running the check on backend-only PRs is the follow-up named in #1819 and needs a workflow change, which ships alone.
+- **Next step:** Open the PR, mark it ready and arm auto-merge.
+
 ### DL-#1796 — dispatch admission and audit before the worker starts (BR-02)
 
 - **State:** in_review
