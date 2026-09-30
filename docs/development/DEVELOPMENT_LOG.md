@@ -18,9 +18,22 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1797 — follow-up retries launch through retry.py (BR-03)
+### DL-#1798 — fair follow-up sweep with durable claims (BR-04)
 
 - **State:** in_review
+- **Owner:** claude
+- **Issue:** #1798 (Board 2026-09-29, RD review PR #1776 item BR-04; depends on BR-03 #1797)
+- **Branch:** `fix/followup-fair-sweep-1798` from `origin/main` (`932d4b8`)
+- **PR:** not created
+- **Paths:** `backend/staff/followup.py`, `backend/staff/followup_ledger.py`, `backend/staff/work_items.py`, `backend/staff/decision_sla.py`, `backend/staff/conversations.py`, `backend/staff/conversation_proposals.py`, `backend/routers/staff_followup.py`, `tests/api/test_staff_followup_fair_sweep.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `911a81b` (RED: all 7 new tests fail on the BR-03 base; GREEN: 7 passed; 1161 passed, 1 skipped in the staff/followup/decision/work-item/proposal/conversation/inbox selection of `tests/api` and `tests/unit`; ruff and mypy clean)
+- **Summary:** The sweep read `list_work_items(limit=100)` (newest first), so an overdue item behind 100 newer ones was never checked; debounce, history and counters were process dictionaries; the decision scan stopped at the newest 500 pending proposals. The sweep now walks `WorkItemStore.list_active_page` (earliest deadline first, keyset cursor) and claims each target in `FollowupLedger` with one conditional UPSERT on `followup_checks.next_check_at`, releasing it when no action was needed. Records persist in `followup_records`; the digest counts retries and reroutes from them. `overdue_decisions` pages every pending deadline through `list_proposals(after_deadline=...)`. `SweepBacklog` reports active, overdue, oldest due age, overdue decisions and duration.
+- **Next step:** Open the PR, mark it ready and arm auto-merge.
+
+### DL-#1797 — follow-up retries launch through retry.py (BR-03)
+
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1797 (Board 2026-09-29, RD review PR #1776 item BR-03; depends on BR-01 #1795 and BR-02 #1796)
 - **Branch:** `fix/followup-retry-launch-1797` from `origin/main` (`6458d3c`, BR-01 and BR-02 merged)
@@ -29,7 +42,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `1b84dff` (GREEN: 9 retry-launch tests, 30 followup and retry tests; 1208 passed in the staff/retry/followup/dispatch/runner/idempotency selection of `tests/api` and `tests/unit`; ruff clean)
 - **Summary:** The follow-up engine wrote a `queued` retry row and linked it, but no worker consumed it; the scheduler then treated it as active work. `launch_retry(runner, failed, source, holds, allow_classes)` re-reads the run and applies `should_retry` (class, attempts, budget) and the schedule holds. It inserts `{root}-a{n}` with the original's thread, work-item and origin links, then starts the worker through `runner.launch`. A second claimant gets `already claimed`. The follow-up engine takes injectable `runner`/`holds`, cancels and fails a stalled original first, allows the `stalled` class on that path only, links the attempt, records `retry_pending` when another path owns it, and escalates with the refusal reason otherwise. `handle_post_execution_retry` uses the same deterministic ids and now copies provenance.
-- **Next step:** Merge PR #1818; then rebase BR-04 (#1798) onto main and open its PR.
+- **Next step:** None; merged as PR #1818 (`932d4b8`).
 
 ### DL-#1804 — Staff Console role readiness and context from real data (BR-11)
 

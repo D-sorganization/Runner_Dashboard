@@ -1,4 +1,16 @@
-# Current handoff — follow-up retries launch through retry.py (DL-#1797)
+# Current handoff — fair follow-up sweep with durable claims (DL-#1798)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1798`
+- **Branch:** `fix/followup-fair-sweep-1798` from `origin/main` (`932d4b8`, after BR-02 #1817 and BR-03 #1818 merged)
+- **PR:** not created
+- **Why:** Board 2026-09-29 accepted BR-04 (P1): the follow-up sweep could starve overdue work and forgot its state on restart.
+- **Changes:** new `staff/followup_ledger.py` (claims, history, `SweepBacklog`); `WorkItemStore.list_active_page`; deadline paging for `list_proposals`/`overdue_decisions`; the follow-up status route reports the last backlog.
+- **Validation:** `tests/api/test_staff_followup_fair_sweep.py` 7 passed (all 7 fail on the base); 1161 passed, 1 skipped in the staff regression selection.
+- **Next:** open the PR, mark it ready and arm auto-merge.
+
+---
+
+# Prior handoff — follow-up retries launch through retry.py (DL-#1797)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1797`
 - **Branch:** `fix/followup-retry-launch-1797`, rebased onto main after BR-01 (#1814) and BR-02 (#1817) merged

@@ -413,16 +413,11 @@ class ConversationStore:
         message_id: str | None = None,
         state: str | None = None,
         limit: int = 100,
+        after_deadline: tuple[str, str] | None = None,
     ) -> list[ActionProposalRecord]:
         self._ensure_available()
-        return _proposals.list_proposals(
-            self._conn,
-            self._lock,
-            thread_id=thread_id,
-            message_id=message_id,
-            state=state,
-            limit=limit,
-        )
+        args = (self._conn, self._lock, thread_id, message_id, state, limit)
+        return _proposals.list_proposals(*args, after_deadline=after_deadline)
 
     def decide_proposal(
         self,

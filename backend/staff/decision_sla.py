@@ -49,14 +49,21 @@ def _deadline(prop: ActionProposalRecord) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-def overdue_decisions(store: ConversationStore, now: datetime) -> list[ActionProposalRecord]:
-    """Undecided proposals whose ``decide_by`` has passed, oldest first."""
+def overdue_decisions(store: ConversationStore, now: datetime, page: int = 200) -> list[ActionProposalRecord]:
+    """Undecided proposals whose ``decide_by`` has passed, oldest first.
+
+    Walks every pending deadline in pages (BR-04, #1798); the newest-500 scan it replaces could
+    leave an old overdue decision unseen behind newer proposals.
+    """
     due = []
-    for prop in store.list_proposals(state="proposed", limit=500):
-        deadline = _deadline(prop)
-        if deadline is not None and deadline <= now:
-            due.append(prop)
-    return sorted(due, key=lambda p: p.decide_by or "")
+    cursor: tuple[str, str] = ("", "")
+    while batch := store.list_proposals(state="proposed", limit=page, after_deadline=cursor):
+        for prop in batch:
+            deadline = _deadline(prop)
+            if deadline is not None and deadline <= now:
+                due.append(prop)
+        cursor = (batch[-1].decide_by or "", batch[-1].id)
+    return sorted(due, key=lambda p: _deadline(p) or now)
 
 
 def _barb_approver(required_scope: str) -> Principal:

@@ -121,6 +121,11 @@ class WorkItemRecord:
         )
 
 
+def active_cursor(item: WorkItemRecord) -> tuple[str, str, str]:
+    """Keyset cursor for :meth:`WorkItemStore.list_active_page`."""
+    return (item.expected_by or "~", item.created_at, item.id)
+
+
 class WorkItemStore:
     """SQLite-backed persistent store for work items."""
 
@@ -325,6 +330,28 @@ class WorkItemStore:
             items = [item for item in items if not (item.expected_by and item.expected_by < now)]
 
         return items
+
+    def list_active_page(self, after: tuple[str, str, str] | None = None, limit: int = 200) -> list[WorkItemRecord]:
+        """One page of non-terminal items, earliest deadline first (BR-04, #1798).
+
+        Items without a deadline sort last; ties break on ``created_at`` then ``id``. Pass the
+        last item's :func:`active_cursor` as ``after`` for the next page. New arrivals never
+        push an older deadline off the page, unlike ``list_work_items`` (newest first).
+        """
+        terminal = sorted(TERMINAL_STATES)
+        query = f"SELECT * FROM work_items WHERE state NOT IN ({', '.join('?' * len(terminal))})"  # noqa: S608
+        params: list[Any] = list(terminal)
+        if after is not None:
+            query += " AND (COALESCE(expected_by, '~'), created_at, id) > (?, ?, ?)"
+            params.extend(after)
+        query += " ORDER BY COALESCE(expected_by, '~'), created_at, id LIMIT ?"
+        params.append(limit)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                return [WorkItemRecord.from_row(r) for r in conn.execute(query, tuple(params)).fetchall()]
+            finally:
+                conn.close()
 
     def transition_state(
         self,

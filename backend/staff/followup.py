@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 import uuid
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from collections.abc import Iterator
+from dataclasses import asdict, astuple, dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 import push
@@ -20,12 +22,14 @@ from staff.audit import record_audit
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.decision_sla import apply_decision_defaults, overdue_decisions
+from staff.followup_ledger import FollowupLedger, LedgerRecord, SweepBacklog, stamp
 from staff.roles import load_roles
 from staff.store import RunRecord, RunStore, get_run_store
 from staff.work_items import (
     TERMINAL_STATES,
     WorkItemRecord,
     WorkItemStore,
+    active_cursor,
     get_work_item_store,
 )
 
@@ -70,6 +74,7 @@ class SweepResult:
     followups: list[FollowupRecord]
     actions_count: dict[str, int]
     digest: FollowupDigest
+    backlog: SweepBacklog | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,6 +83,7 @@ class SweepResult:
             "followups": [f.to_dict() for f in self.followups],
             "actions_count": self.actions_count,
             "digest": self.digest.to_dict(),
+            "backlog": self.backlog.to_dict() if self.backlog else None,
         }
 
 
@@ -109,6 +115,7 @@ class FollowupEngine:
         sweep_interval_seconds: int = DEFAULT_SWEEP_INTERVAL_SECONDS,
         runner: Any | None = None,
         holds: Any | None = None,
+        ledger: FollowupLedger | None = None,
     ) -> None:
         self.run_store = run_store or get_run_store()
         self.work_item_store = work_item_store or get_work_item_store()
@@ -119,11 +126,12 @@ class FollowupEngine:
         self._runner_override = runner
         self._holds_override = holds
 
+        # Claims, history and counters persist in the work-item database (BR-04, #1798).
+        self.ledger = ledger or FollowupLedger(self.work_item_store.db_path)
+        self._worker = f"followup-{uuid.uuid4().hex[:8]}"
         self._lock = threading.RLock()
         self._last_sweep_at: datetime | None = None
-        self._last_followup: dict[str, float] = {}
-        self._followup_history: dict[str, list[FollowupRecord]] = {}
-        self._counters: dict[str, int] = {"retried": 0, "rerouted": 0, "escalated": 0}
+        self.last_backlog: SweepBacklog | None = None
 
     @property
     def last_sweep_at(self) -> datetime | None:
@@ -131,8 +139,17 @@ class FollowupEngine:
             return self._last_sweep_at
 
     def get_followup_records(self, target_id: str) -> list[FollowupRecord]:
-        with self._lock:
-            return list(self._followup_history.get(target_id, []))
+        return [FollowupRecord(*astuple(r)) for r in self.ledger.records_for(target_id)]
+
+    def _persist(self, rec: FollowupRecord) -> None:
+        self.ledger.record(LedgerRecord(*astuple(rec)))
+
+    def _active_items(self, page: int = 200) -> Iterator[WorkItemRecord]:
+        """Every non-terminal work item, earliest deadline first, in keyset pages."""
+        after = None
+        while batch := self.work_item_store.list_active_page(after=after, limit=page):
+            yield from batch
+            after = active_cursor(batch[-1])
 
     def _get_barb_thread_id(self) -> str:
         threads = self.conversation_store.list_threads(status="open", limit=50)
@@ -186,43 +203,37 @@ class FollowupEngine:
     def sweep(self, now: datetime | None = None) -> SweepResult:
         """Run a single idempotent follow-up sweep over work items and runs."""
         dt = now or datetime.now(UTC)
-        ts, iso = dt.timestamp(), dt.isoformat().replace("+00:00", "Z")
+        started, iso = time.monotonic(), dt.isoformat().replace("+00:00", "Z")
+        now_s, next_s = stamp(dt), stamp(dt + timedelta(seconds=self.sweep_interval_seconds))
         with self._lock:
             self._last_sweep_at = dt
 
         followups: list[FollowupRecord] = []
         counts: dict[str, int] = {}
-        items = self.work_item_store.list_work_items(limit=100)
+        backlog = SweepBacklog()
         roles = load_roles()
 
-        for item in items:
-            if item.state in TERMINAL_STATES:
-                continue
-            if ts - self._last_followup.get(item.id, float("-inf")) < self.sweep_interval_seconds:
+        # Earliest deadline first, every page: new arrivals cannot starve older work (BR-04).
+        for item in self._active_items():
+            backlog.observe(item.expected_by, iso, dt)
+            if not self.ledger.claim(item.id, "work_item", now_s, next_s, self._worker):
                 continue
             rec = self._process_item(item, dt, roles)
-            if rec:
-                followups.append(rec)
-                counts[rec.action_taken] = counts.get(rec.action_taken, 0) + 1
-                with self._lock:
-                    self._last_followup[item.id] = ts
-                    self._followup_history.setdefault(item.id, []).append(rec)
-                    ckey = {
-                        "retry": "retried",
-                        "reroute": "rerouted",
-                        "escalate": "escalated",
-                    }.get(rec.action_taken, rec.action_taken)
-                    if ckey in self._counters:
-                        self._counters[ckey] += 1
-
-        for rec in self._sweep_decisions(dt):
+            if rec is None:
+                self.ledger.release(item.id, now_s, self._worker)
+                continue
+            self._persist(rec)
             followups.append(rec)
             counts[rec.action_taken] = counts.get(rec.action_taken, 0) + 1
-            with self._lock:
-                self._last_followup[rec.target_id] = ts
-                self._followup_history.setdefault(rec.target_id, []).append(rec)
 
-        return SweepResult(iso, len(items), followups, counts, self.get_daily_digest(now=dt))
+        for rec in self._sweep_decisions(dt, now_s, next_s, backlog):
+            self._persist(rec)
+            followups.append(rec)
+            counts[rec.action_taken] = counts.get(rec.action_taken, 0) + 1
+
+        backlog.duration_ms = int((time.monotonic() - started) * 1000)
+        self.last_backlog = backlog
+        return SweepResult(iso, backlog.active, followups, counts, self.get_daily_digest(now=dt), backlog)
 
     def _process_item(self, item: WorkItemRecord, now: datetime, valid_roles: dict[str, Any]) -> FollowupRecord | None:
         runs = item.links.get("runs", [])
@@ -262,18 +273,16 @@ class FollowupEngine:
             return self._handle_overdue_item(item, now)
         return None
 
-    def _recently_followed(self, target_id: str, ts: float) -> bool:
-        with self._lock:
-            return ts - self._last_followup.get(target_id, float("-inf")) < self.sweep_interval_seconds
-
-    def _sweep_decisions(self, now: datetime) -> list[FollowupRecord]:
+    def _sweep_decisions(self, now: datetime, now_s: str, next_s: str, backlog: SweepBacklog) -> list[FollowupRecord]:
         """Decision SLA (WP-2.6, #1607): apply each overdue default, ping overdue decisions without one.
 
-        A default that was refused stays with the owner and is pinged like a silent item.
+        A default that was refused stays with the owner and is pinged like a silent item. Each
+        overdue proposal is claimed in the ledger first, so one worker acts on it per interval.
         """
-        ts, now_iso = now.timestamp(), now.isoformat().replace("+00:00", "Z")
+        now_iso = now.isoformat().replace("+00:00", "Z")
         overdue = overdue_decisions(self.conversation_store, now)
-        recent = {p.id for p in overdue if self._recently_followed(p.id, ts)}
+        backlog.decisions_overdue = len(overdue)
+        recent = {p.id for p in overdue if not self.ledger.claim(p.id, "proposal", now_s, next_s, self._worker)}
         records: list[FollowupRecord] = []
         refused: set[str] = set()
         for o in apply_decision_defaults(self.conversation_store, now=now, skip=recent):
@@ -436,10 +445,8 @@ class FollowupEngine:
         still_open = sum(1 for it in items if it.state not in TERMINAL_STATES)
         escalated = sum(1 for it in items if it.state == "escalated")
 
-        with self._lock:
-            retried = self._counters.get("retried", 0)
-            rerouted = self._counters.get("rerouted", 0)
-
+        actions = self.ledger.action_counts(start)
+        retried, rerouted = actions.get("retry", 0), actions.get("reroute", 0)
         return FollowupDigest(closed, retried, rerouted, escalated, still_open, start, now_iso)
 
 
