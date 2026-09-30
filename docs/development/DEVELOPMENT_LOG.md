@@ -18,31 +18,44 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1776 — Board-accepted RD review items BR-01..18: turnover of the remainder
+
+- **State:** parked
+- **Owner:** unassigned (was claude; turned over 2026-09-30)
+- **Issue:** #1776 (Codex review PR with 18 draft items); Board 2026-09-29 (RM#1874, archive RM#1875) accepted them as #1795–#1811
+- **Branch:** not applicable (tracker; each item has its own entry and branch)
+- **PR:** not applicable
+- **Paths:** `docs/development/HANDOFF.md`, `docs/development/DEVELOPMENT_LOG.md`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-30 @ `d86c773` (no open claude PRs or `claim:claude` issues; issue states read from GitHub)
+- **Summary:** Shipped: BR-01 #1795, BR-02 #1796, BR-03 #1797, BR-04 #1798, BR-05 #1799 and BR-11 #1804, plus #1819 (stale OpenAPI snapshot, and backend-only PRs now run `generate-api:check`). BR-12 #1805 merged as PR #1813 and stays open only for physical-device checks (200% zoom, native keyboard, phone safe areas, screen reader) that an agent cannot do. BR-08 is deferred to the 2026-10-25 freeze. BR-06/07/09/10/13/14/15/16/17/18 (#1800–#1803, #1806–#1811) are `judgement:design`: per CLAUDE.md nobody implements them until two agents post design opinions, the opinions converge and the owner relabels them `judgement:objective`. Owner decisions pending: BR-06 availability objectives; whether a Held role blocks or only warns on manual dispatch (BR-11); provider sign-in state needs BR-09 #1802.
+- **Next step:** Post a structured design opinion on #1800 (BR-06), the first design-gated item.
+
 ### DL-#1799 — unique default fleet session per client (BR-05)
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1799 (Board 2026-09-29, RD review PR #1776 item BR-05)
 - **Branch:** `fix/unique-agent-session-1799` from `origin/main` (`6458d3c`)
-- **PR:** not created
+- **PR:** PR #1821, merged
 - **Paths:** `clients/fleet/fleet_validators.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleetctl.py`, `clients/fleet/fleet_mcp.py`, `docs/agents/connect.md`, `tests/clients/test_fleet_session_identity.py`, `tests/clients/test_fleet_client.py`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `6458d3c` (RED: 6 of 9 new tests fail on main; GREEN: `tests/clients` and `tests/api/test_coordination_api.py` pass; ruff clean)
 - **Summary:** `default_session` derived `<agent>-<host>-<YYYYMMDD>`, so two Codex sessions on one computer on one day shared presence, mailbox attribution and release. It now appends a random 6-hex suffix; `FleetClient` mints it once per agent and caches it, so one client (and one MCP server process) keeps its session across calls. An explicit `FLEET_SESSION` / `--as-session` / per-call `session` still wins and is the resume path. `fleetctl` prints a derived session on stderr as an `export FLEET_SESSION=...` hint. `FleetClient.identity()` reports agent (principal), host, session and session source separately; staff run ids stay separate on `/api/staff/runs`.
-- **Next step:** Open the PR, mark it ready and arm auto-merge.
+- **Next step:** None; merged as PR #1821 (`6909c69`).
 
 ### DL-#1798 — fair follow-up sweep with durable claims (BR-04)
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1798 (Board 2026-09-29, RD review PR #1776 item BR-04; depends on BR-03 #1797)
 - **Branch:** `fix/followup-fair-sweep-1798` from `origin/main` (`932d4b8`)
-- **PR:** not created
+- **PR:** PR #1825, merged
 - **Paths:** `backend/staff/followup.py`, `backend/staff/followup_ledger.py`, `backend/staff/work_items.py`, `backend/staff/decision_sla.py`, `backend/staff/conversations.py`, `backend/staff/conversation_proposals.py`, `backend/routers/staff_followup.py`, `tests/api/test_staff_followup_fair_sweep.py`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `911a81b` (RED: all 7 new tests fail on the BR-03 base; GREEN: 7 passed; 1161 passed, 1 skipped in the staff/followup/decision/work-item/proposal/conversation/inbox selection of `tests/api` and `tests/unit`; ruff and mypy clean)
 - **Summary:** The sweep read `list_work_items(limit=100)` (newest first), so an overdue item behind 100 newer ones was never checked; debounce, history and counters were process dictionaries; the decision scan stopped at the newest 500 pending proposals. The sweep now walks `WorkItemStore.list_active_page` (earliest deadline first, keyset cursor) and claims each target in `FollowupLedger` with one conditional UPSERT on `followup_checks.next_check_at`, releasing it when no action was needed. Records persist in `followup_records`; the digest counts retries and reroutes from them. `overdue_decisions` pages every pending deadline through `list_proposals(after_deadline=...)`. `SweepBacklog` reports active, overdue, oldest due age, overdue decisions and duration.
-- **Next step:** Open the PR, mark it ready and arm auto-merge.
+- **Next step:** None; merged as PR #1825 (`1755822`).
 
 ### DL-#1797 — follow-up retries launch through retry.py (BR-03)
 
@@ -59,29 +72,29 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1804 — Staff Console role readiness and context from real data (BR-11)
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1804 (Board 2026-09-29, RD review PR #1776 item BR-11; BR-09 #1802 capability contract not built)
 - **Branch:** `fix/role-readiness-1804` from `origin/main` (`6458d3ca`)
-- **PR:** not created
+- **PR:** PR #1822, merged
 - **Paths:** `frontend/src/pages/StaffConsole/` (`roleContextApi.ts`, `roleDetail.ts`, `useRoleContext.ts`, `ContextReadiness.tsx`, `MobileContextDrawer.tsx`, `ContextPane.tsx`, `Desktop.tsx`, `Mobile.tsx`, `RosterRow.tsx`, `rosterUtils.ts`, `useStaffConsole.ts`, `contextTypes.ts`, `types.ts`, CSS), `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/pages/StaffConsole/__tests__/roleReadiness.test.tsx`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `6458d3ca` + working tree (RED: 9/9 new mounted-path tests failed on base; GREEN: 359 passed across `frontend/src/pages/StaffConsole`, `frontend/src/pages/Staff` and `frontend/src/hooks`; `npm run typecheck` and changed-file ESLint clean)
 - **Summary:** The roster and context pane show only readiness the backend reported. Provider installation, schedule enabled/hold/next fire, board offline nodes, role runs and work items, and thread-linked runs and work items load through the staff React Query layer from existing routes. Roles read Held, Unavailable (no provider installed), Status unknown or Idle (installed provider) distinctly; loading or a failed source is never shown as ready. The schedule switch persists via `PUT /roles/{role}/schedule` with rollback, or is disabled with its reason. Sign-in state is not reported by the backend and awaits BR-09.
-- **Next step:** Push `fix/role-readiness-1804` and open the PR.
+- **Next step:** None; merged as PR #1822 (`de107fc`).
 
 ### DL-#1819 — stale OpenAPI snapshot on main, and the check backend-only PRs skipped
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1819
 - **Branch:** `ci/api-contract-on-backend-prs-1819` from `origin/main` (`2cef164`); the snapshot regeneration shipped as PR #1820
-- **PR:** not created
+- **PR:** PRs #1820 (snapshot) and #1823 (workflow), merged
 - **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `.github/workflows/frontend-tests.yml`, `tests/frontend/test_api_generation_contract.py`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `2cef164` (RED: the new workflow-contract test fails on main; GREEN: `tests/frontend/test_api_generation_contract.py`, `tests/test_frontend_typecheck_gate.py` and the workflow hygiene/pinning tests pass)
 - **Summary:** #1812, #1814 and #1817 changed backend models and routes without regenerating `frontend/src/lib/openapi.json`, and main's `Frontend Tests / TypeScript typecheck (tsc)` then failed on every push. PR #1820 regenerated the snapshot and types. The cause was `frontend-scope` skipping the `typecheck` job (which runs `generate-api:check`) for backend-only diffs; it now emits `run_api_contract` (frontend changes, any `backend/` change, and non-PR events) and gates `typecheck` on it.
-- **Next step:** Open the workflow PR, mark it ready and arm auto-merge.
+- **Next step:** None; merged as PRs #1820 (snapshot) and #1823 (workflow) (`d86c773`).
 
 ### DL-#1796 — dispatch admission and audit before the worker starts (BR-02)
 
@@ -111,16 +124,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1787 — one route for agents to queue suggestions and draft PRs for the Board
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1787
 - **Branch:** `feat/board-queue-route-1787`
-- **PR:** #1812
+- **PR:** PR #1812, merged
 - **Paths:** `backend/proposals/`, `backend/staff/board_queue.py`, `backend/staff/groups.py`, `backend/staff/action_executors.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleet_tools.py`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 (RED: new tests failed on main; GREEN: 398 passed, 1 skipped across `tests/clients`, the proposals store/routes, board-queue, board-convene, staff groups/actions/reply-contract, owner-request and code-request suites; `ruff check`/`ruff format` clean)
 - **Summary:** Proposals carry an optional `pull_request` (`owner/repo#N`) in the form's linked field. `board.convene` with `include_queue` gives the seats every open `board:proposal` item with its own text, seat-only, and asks for one disposition per proposal. Built after the 2026-09-29 Board sessions, where seats given only a summary table guessed item content and misnumbered items.
-- **Next step:** Open the PR, merge it, deploy to Desk, and ask Barb to take the open proposals to the Board.
+- **Next step:** None; merged as PR #1812 (`9974b7f`).
 
 ### DL-#1805 — mobile Staff Console tabs sit under the shell's bottom nav (BR-12)
 
