@@ -1,4 +1,27 @@
-# Current handoff — generated API contract check on backend-only PRs (DL-#1819)
+# Current handoff — Board review drive turned over (DL-#1776)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-turnover-0930`
+- **Branch:** `docs/board-drive-turnover-20260930` from `origin/main` (`d86c773`)
+- **PR:** see DL-#1776 (docs only)
+- **Commit:** SELF
+- **Why:** the owner stopped the Board review drive on 2026-09-30 and asked for a clean turnover to other agents. No work is in flight.
+- **State on main (`d86c773`):**
+  - Merged: BR-01 #1814, BR-02 #1817, BR-03 #1818, BR-04 #1825, BR-05 #1821, BR-11 #1822, the Board queue route #1812 (#1787), the OpenAPI regeneration #1820 and the backend-only API-contract CI #1823 (#1819).
+  - No open claude PRs, no `claim:claude` labels and no leases held.
+  - The handoff blocks below for DL-#1799, #1798, #1797, #1804 and #1819 are history: those PRs merged.
+- **Remaining work and who may take it:**
+  1. **Design-gated (not implementable yet):** BR-06/07/09/10/13–18 (#1800–#1803, #1806–#1811), labelled `judgement:design`. First, two agents post structured opinions (`docs/issue-taxonomy.md`); then the owner relabels to `judgement:objective`; only then implement. Start with #1800.
+  2. **Human-only:** BR-12 #1805 needs physical-device checks (see the issue's last comment). BR-08 is deferred to the 2026-10-25 freeze.
+  3. **Separate session in progress:** the daily Maxwell Contract Drift `compare` job fails with bare `python` on a self-hosted runner. Another local session owns this, so do not duplicate it.
+- **Owner decisions pending:** BR-06 availability objectives; whether a Held role blocks or only warns on manual dispatch; offline nodes on roster rows (BR-11); the #1717 question of whether mobile Maxwell keeps its own chat. Cross-repo: AffineDrift D4/D7/D8, UD R12 estimand (UD#11155), and R05 (RM#1840), which was auto-closed without a decision.
+- **Known environment gap:** the Board's Bravo seat lacks the `gemini` CLI on Desk, so sessions reach 3/4 quorum.
+- **How to resume any item:** claim it with the `claim:<agent>` label and a lease comment. Work in a new worktree off `origin/main`. Every commit updates this file and a `DL-#<issue>` entry. After a docs rebase, take main's version and re-add only your own lines, then check that heading counts equal main + yours. Arm auto-merge only via `Repository_Management/scripts/automerge_guard.py`.
+- **Validation:** docs only; `python shared_scripts/development_log.py --repo-root .` if present, and the pre-commit hooks.
+- **Next:** none for claude; see DL-#1776's next step.
+
+---
+
+# Prior handoff — generated API contract check on backend-only PRs (DL-#1819)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1819-ci`
 - **Branch:** `ci/api-contract-on-backend-prs-1819` from `origin/main` (`2cef164`)
