@@ -102,12 +102,14 @@ async def _handle_idempotent_post(
     action: Any,
     *,
     takeover_safe: bool = False,
+    pass_operation_id: bool = False,
 ) -> Response:
     """Execute ``action`` at most once per (key, endpoint, caller) for 24 h.
 
     The key is reserved before the action runs, so concurrent requests with the same
     key execute once (#1795). A store failure before the action fails closed with 503.
-    ``takeover_safe`` marks actions that may be re-run after a lapsed reservation.
+    ``takeover_safe`` marks actions that may be re-run after a lapsed reservation, and
+    ``pass_operation_id`` hands the reservation's operation id to ``action`` (#1796).
     """
     store = get_idempotency_store()
     try:
@@ -137,7 +139,7 @@ async def _handle_idempotent_post(
         raise _reservation_conflict(reservation.state, reservation.operation_id)
 
     try:
-        res = action()
+        res = action(reservation.operation_id) if pass_operation_id else action()
         result = await res if asyncio.iscoroutine(res) else res
     except BaseException:
         # The action did not complete, so free the key for a retry.
@@ -322,14 +324,17 @@ async def dispatch_v1(
     caller = format_caller(_peer)
     endpoint = f"POST /api/v1/staff/{role}/run"
 
-    async def _execute() -> Any:
-        from routers.staff import dispatch as staff_dispatch
+    async def _execute(operation_id: str) -> Any:
+        from routers.staff import run_dispatch
 
-        return await staff_dispatch(role=role, body=body, request=request, caller=_peer)
+        return await run_dispatch(role, body, request, _peer, operation_id=operation_id)
 
-    # A lapsed dispatch reservation is not retaken: re-running it could start a second run.
+    # The reservation's operation id names the run, so a lapsed reservation can be retaken:
+    # the retry finds the admitted run instead of starting a second one (#1796).
     payload = body.model_dump(mode="json")
-    return await _handle_idempotent_post(idempotency_key, endpoint, caller, payload, _execute)
+    return await _handle_idempotent_post(
+        idempotency_key, endpoint, caller, payload, _execute, takeover_safe=True, pass_operation_id=True
+    )
 
 
 @router.post("/runs/{run_id}/cancel", response_model=StaffCancelResponse)

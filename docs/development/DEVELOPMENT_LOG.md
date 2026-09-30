@@ -18,9 +18,22 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1795 — atomic idempotency reservation for Staff API v1 (BR-01)
+### DL-#1796 — dispatch admission and audit before the worker starts (BR-02)
 
 - **State:** in_review
+- **Owner:** claude
+- **Issue:** #1796 (Board 2026-09-29, RD review PR #1776 item BR-02; depends on BR-01 #1795)
+- **Branch:** `fix/dispatch-admission-audit-1796` from `origin/main` (`1877c6c`, BR-01 merged)
+- **PR:** #1817
+- **Paths:** `backend/staff/dispatch_service.py`, `backend/staff/runner.py`, `backend/staff/runner_ops.py`, `backend/routers/staff.py`, `backend/routers/staff_v1.py`, `tests/api/test_staff_dispatch_admission.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `301f7af` (GREEN: 6 admission tests; 1213 passed in the staff/idempotency/dispatch/runner/audit selection of `tests/api` and `tests/unit`; ruff clean)
+- **Summary:** `dispatch_staff_run` called `runner.submit()` (row plus daemon worker) and then wrote the fail-closed audit, so an audit failure came after the worker had started. The audit (outcome `admitted`) now comes first, then `runner.admit()` persists the queued row, then `runner.launch()` starts the worker. An `AuditError` becomes 503 `audit_unavailable` with nothing admitted. The run id derives from the command's operation id (`op-X` → `run-X`), so a retry finds the admitted row and does not launch again. The v1 dispatch now passes its reservation id and may re-take a lapsed reservation. Peers forward the id; a non-peer's body cannot set it. A launch error marks the run `failed`/`launch_failed` and returns 503 with the run id. The scheduler, review and run-link paths still use `submit`. Starting an admitted-but-never-launched run after a restart is left to the existing orphan reconcile.
+- **Next step:** Merge PR #1817; then rebase BR-03 (#1797, PR #1818) onto main.
+
+### DL-#1795 — atomic idempotency reservation for Staff API v1 (BR-01)
+
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1795 (Board 2026-09-29, RD review PR #1776 item BR-01)
 - **Branch:** `fix/idempotent-reservation-1795` from `origin/main` (`8169046`)
@@ -29,7 +42,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `d4229a6` (GREEN: 9 ledger unit tests, 6 route tests and the thread-create test pass; 1096 passed in the staff/idempotency selection of `tests/api` and `tests/unit`; ruff clean)
 - **Summary:** The ledger was check-then-act: `get()` before the action and `save()` after, so two same-key requests both ran (the review observed a count of 2). `IdempotencyStore.reserve()` now inserts a pending row under `BEGIN IMMEDIATE` with a payload fingerprint, a lease and an operation id, then returns acquired, replay, in_progress, mismatch or unknown_outcome. `complete()` stores the receipt and `release()` frees a pending key when the action fails. Old tables gain the new columns on open, and their rows replay as before. The v1 handler maps each state to a 409 code. When the receipt cannot be written after the effect, it returns the effect instead of a 503. Cancel, holds and export may re-take a lapsed reservation; dispatch may not. Thread creation takes an optional key. Carrying the operation id through peer forwarding is BR-02 (#1796).
-- **Next step:** Merge PR #1814; then BR-02 (#1796).
+- **Next step:** None; merged as PR #1814 (`1877c6c`).
 
 ### DL-#1787 — one route for agents to queue suggestions and draft PRs for the Board
 

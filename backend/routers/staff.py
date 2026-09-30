@@ -80,6 +80,8 @@ class RunBody(BaseModel):
     dry_run: bool = False
     # Run even when the role's budget or the provider's plan window is spent (#1588); audited.
     ignore_budget: bool = False
+    # Set by a forwarding peer so a retried forward admits one run (#1796); ignored from others.
+    operation_id: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9-]+$")
 
     @field_validator("repo")
     @classmethod
@@ -354,8 +356,17 @@ async def dispatch(
     PR-consolidation decision (#1213) is evaluated first and lands in
     ``plan.consolidation`` and the run's ``strategy_mode``.
     """
+    return await run_dispatch(role, body, request, caller)
+
+
+async def run_dispatch(
+    role: str, body: RunBody, request: Request, caller: Principal, operation_id: str = ""
+) -> dict[str, Any]:
+    """The /run policy; ``operation_id`` comes from the v1 Idempotency-Key reservation (#1796)."""
     caller_id = staff_fleet.caller_identity(caller)
     is_peer = staff_fleet.is_fleet_peer(caller)
+    if is_peer and body.operation_id:
+        operation_id = body.operation_id
     surface = body.surface or "api"
     thread_id = body.thread_id or ""
     origin_node = body.origin_node or ""
@@ -385,5 +396,6 @@ async def dispatch(
         thread_id=thread_id,
         origin_node=origin_node,
         ignore_budget=body.ignore_budget,
+        operation_id=operation_id,
     )
     return await dispatch_staff_run(cmd, caller)
