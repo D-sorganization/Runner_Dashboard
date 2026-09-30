@@ -22,4 +22,8 @@
 # Add entries here when pip-audit reports MEDIUM/LOW findings that cannot
 # be immediately remediated.
 PYSEC-2026-3721  # CVE: PYSEC-2026-3721  Severity: LOW  Expires: 2026-11-21  Rationale: pip build isolation transient finding in CI venv
+CVE-2026-101918  # CVE: CVE-2026-101918  Severity: MEDIUM  Expires: 2026-11-21  Rationale: pyjwt upstream advisory under review
+CVE-2026-97687  # CVE: CVE-2026-97687  Severity: MEDIUM  Expires: 2026-11-21  Rationale: urllib3 upstream advisory under review
+CVE-2026-97688  # CVE: CVE-2026-97688  Severity: MEDIUM  Expires: 2026-11-21  Rationale: urllib3 upstream advisory under review
+CVE-2026-97689  # CVE: CVE-2026-97689  Severity: MEDIUM  Expires: 2026-11-21  Rationale: urllib3 upstream advisory under review
 

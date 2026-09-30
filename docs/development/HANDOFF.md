@@ -1,4 +1,16 @@
-# Current handoff — Board review drive turned over (DL-#1776)
+# Current handoff — Maxwell Contract Drift gets a Python (DL-#1826)
+
+- **Repository / worktree:** Runner_Dashboard, `_wt/rd-maxwell-drift-python`
+- **Branch:** `fix/maxwell-contract-drift-python` from `origin/main` (`d86c7732`)
+- **PR:** #1827
+- **Why:** the daily `compare` job failed with `python: command not found` (exit 127) on self-hosted runners since at least 2026-09-25 (#1826).
+- **Changes:** pinned `actions/setup-python` (Python 3.11) before the compare step; regression test in `tests/test_maxwell_contract_drift.py`. Workflow-only change, shipped alone.
+- **Validation:** see DL-#1826's Last verified.
+- **Next:** pass CI, merge PR #1827; verify with a `workflow_dispatch` run after merge.
+
+---
+
+# Prior handoff — Board review drive turned over (DL-#1776)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-turnover-0930`
 - **Branch:** `docs/board-drive-turnover-20260930` from `origin/main` (`d86c773`)
