@@ -1,4 +1,16 @@
-# Current handoff — unique default fleet session per client (DL-#1799)
+# Current handoff — generated API contract check on backend-only PRs (DL-#1819)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1819-ci`
+- **Branch:** `ci/api-contract-on-backend-prs-1819` from `origin/main` (`2cef164`)
+- **PR:** not created
+- **Why:** the OpenAPI snapshot went stale on main because backend-only PRs skipped `generate-api:check` (#1819).
+- **Changes:** `frontend-scope` emits `run_api_contract`; the `typecheck` job (generate-api check + tsc) runs when it is true. Workflow-only change, shipped alone.
+- **Validation:** see DL-#1819's Last verified.
+- **Next:** open the PR, mark it ready and arm; the regeneration shipped as PR #1820.
+
+---
+
+# Prior handoff — unique default fleet session per client (DL-#1799)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1799`
 - **Branch:** `fix/unique-agent-session-1799` from `origin/main` (`6458d3c`)

@@ -70,18 +70,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** The roster and context pane show only readiness the backend reported. Provider installation, schedule enabled/hold/next fire, board offline nodes, role runs and work items, and thread-linked runs and work items load through the staff React Query layer from existing routes. Roles read Held, Unavailable (no provider installed), Status unknown or Idle (installed provider) distinctly; loading or a failed source is never shown as ready. The schedule switch persists via `PUT /roles/{role}/schedule` with rollback, or is disabled with its reason. Sign-in state is not reported by the backend and awaits BR-09.
 - **Next step:** Push `fix/role-readiness-1804` and open the PR.
 
-### DL-#1819 — regenerate the stale OpenAPI snapshot on main
+### DL-#1819 — stale OpenAPI snapshot on main, and the check backend-only PRs skipped
 
 - **State:** in_review
 - **Owner:** claude
 - **Issue:** #1819
-- **Branch:** `fix/openapi-snapshot-regen` from `origin/main` (`6458d3c`)
+- **Branch:** `ci/api-contract-on-backend-prs-1819` from `origin/main` (`2cef164`); the snapshot regeneration shipped as PR #1820
 - **PR:** not created
-- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `.github/workflows/frontend-tests.yml`, `tests/frontend/test_api_generation_contract.py`
 - **Started:** 2026-09-29
-- **Last verified:** 2026-09-29 @ `6458d3c` (`npm run generate-api:check` passes after regeneration; `npm run typecheck` clean)
-- **Summary:** `Frontend Tests / TypeScript typecheck (tsc)` failed on every push to main since #1812, because #1812, #1814 and #1817 changed backend models and routes without regenerating the snapshot, and the PR frontend scope skipped `generate-api:check` for backend-only diffs. This regenerates the snapshot and types only. Running the check on backend-only PRs is the follow-up named in #1819 and needs a workflow change, which ships alone.
-- **Next step:** Open the PR, mark it ready and arm auto-merge.
+- **Last verified:** 2026-09-29 @ `2cef164` (RED: the new workflow-contract test fails on main; GREEN: `tests/frontend/test_api_generation_contract.py`, `tests/test_frontend_typecheck_gate.py` and the workflow hygiene/pinning tests pass)
+- **Summary:** #1812, #1814 and #1817 changed backend models and routes without regenerating `frontend/src/lib/openapi.json`, and main's `Frontend Tests / TypeScript typecheck (tsc)` then failed on every push. PR #1820 regenerated the snapshot and types. The cause was `frontend-scope` skipping the `typecheck` job (which runs `generate-api:check`) for backend-only diffs; it now emits `run_api_contract` (frontend changes, any `backend/` change, and non-PR events) and gates `typecheck` on it.
+- **Next step:** Open the workflow PR, mark it ready and arm auto-merge.
 
 ### DL-#1796 — dispatch admission and audit before the worker starts (BR-02)
 
