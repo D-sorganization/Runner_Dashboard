@@ -25,6 +25,8 @@ from fastapi.testclient import TestClient
 from fleet_events import EventStore, get_event_store
 from identity import Principal, require_principal, require_scope
 from routers.staff_followup import router as followup_router
+from staff import roles as roles_mod
+from staff.adapters import ADAPTERS
 from staff.conversations import (
     ConversationStore,
     get_conversation_store,
@@ -36,6 +38,7 @@ from staff.followup import (
     FollowupEngine,
     reset_followup_engine,
 )
+from staff.holds import HoldsList
 from staff.store import RunRecord, RunStore, get_run_store, reset_store
 from staff.work_items import (
     WorkItemRecord,
@@ -51,6 +54,28 @@ TEST_PRINCIPAL = Principal(
     roles=["admin"],
     scopes=["staff.read", "staff.write", "staff.chat", "staff.dispatch"],
 )
+
+
+class _FakeRunner:
+    """The runner surface ``staff.retry.launch_retry`` uses; records launches, starts nothing."""
+
+    machine = "Desk"
+
+    def __init__(self, store: RunStore) -> None:
+        self.store = store
+        self._adapters = ADAPTERS
+        self.launched: list[str] = []
+        self.cancelled: list[str] = []
+
+    def roles(self) -> dict[str, roles_mod.RoleSpec]:
+        return {"librarian": roles_mod.parse_role({"name": "librarian", "title": "Librarian"}, "<inline>")}
+
+    def cancel(self, run_id: str) -> bool:
+        self.cancelled.append(run_id)
+        return False
+
+    def launch(self, rec: RunRecord, plan: Any) -> None:
+        self.launched.append(rec.id)
 
 
 @pytest.fixture
@@ -69,6 +94,7 @@ def test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[s
     w_store = get_work_item_store(db_path)
     c_store = get_conversation_store(db_path)
     e_store = get_event_store()
+    runner = _FakeRunner(r_store)
 
     engine = FollowupEngine(
         run_store=r_store,
@@ -76,6 +102,8 @@ def test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[s
         conversation_store=c_store,
         event_store=e_store,
         sweep_interval_seconds=300,
+        runner=runner,
+        holds=HoldsList(tmp_path / "holds.json", roles_loader=dict),
     )
 
     yield {
@@ -85,6 +113,7 @@ def test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[s
         "conversation_store": c_store,
         "event_store": e_store,
         "db_path": db_path,
+        "runner": runner,
     }
 
     reset_followup_engine()
@@ -160,6 +189,7 @@ def test_simulated_stalled_run_retries_then_escalates(test_env: dict[str, Any]) 
     assert retry_run is not None
     assert retry_run.attempt == 2
     assert retry_run.retry_of == run_1.id
+    assert test_env["runner"].launched == [retry_run_id]  # the retry has a worker (#1797)
 
     # 2. Advance clock past sweep interval and simulate that attempt 2 also stalled
     clock = clock + timedelta(seconds=DEFAULT_SWEEP_INTERVAL_SECONDS + 10)

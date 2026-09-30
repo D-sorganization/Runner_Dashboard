@@ -15,7 +15,9 @@ from __future__ import annotations
 import logging
 import os
 import random
+import sqlite3
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +26,8 @@ from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 if TYPE_CHECKING:
     from staff.budget import BudgetGuard
+    from staff.holds import HoldsList
+    from staff.plan import RunPlan
     from staff.roles import RoleSpec
     from staff.store import RunRecord
 
@@ -173,8 +177,6 @@ def handle_post_execution_retry(
     if role is None:
         return False
 
-    import uuid
-
     from staff.budget import BudgetGuard
     from staff.runner import RunPlan
     from staff.store import RunRecord
@@ -192,7 +194,7 @@ def handle_post_execution_retry(
             store.update_run(root_id, next_attempt_at=iso_next)
 
         next_attempt = latest.attempt + 1
-        attempt_id = f"run-{uuid.uuid4().hex[:12]}"
+        attempt_id = attempt_run_id(root_id, next_attempt)
         next_branch = f"{plan.branch}-retry-{next_attempt}"
         attempt_plan = RunPlan(
             role=plan.role,
@@ -227,8 +229,10 @@ def handle_post_execution_retry(
             attempt=next_attempt,
             max_attempts=latest.max_attempts,
             next_attempt_at=iso_next,
+            **_provenance(latest),
         )
-        store.create_run(attempt_rec)
+        if not _claim(store, attempt_rec):
+            return False
         retry_msg = (
             f"scheduled attempt {next_attempt}/{latest.max_attempts} "
             f"after {delay:.2f}s backoff (reason: {latest.failure_class})"
@@ -251,7 +255,7 @@ def handle_post_execution_retry(
             can_run, _ = guard.can_run(role)
             if can_run:
                 next_attempt = latest.attempt + 1
-                attempt_id = f"run-{uuid.uuid4().hex[:12]}"
+                attempt_id = attempt_run_id(root_id, next_attempt)
                 next_branch = f"{plan.branch}-fallback-{next_attempt}"
                 argv = runner._adapters[fallback].build_command(
                     plan.prompt, "<workdir>", plan.model, **read_only_kwargs(role)
@@ -289,8 +293,10 @@ def handle_post_execution_retry(
                     attempt=next_attempt,
                     max_attempts=latest.max_attempts + 1,
                     fallback_provider=fallback,
+                    **_provenance(latest),
                 )
-                store.create_run(fallback_rec)
+                if not _claim(store, fallback_rec):
+                    return False
                 store.append_event(
                     root_id,
                     "fallback",
@@ -318,3 +324,120 @@ def _schedule(runner: Any, rec: RunRecord, plan: Any, delay: float) -> None:
             name=f"staff-retry-{rec.id}",
         )
         thread.start()
+
+
+def attempt_run_id(root_id: str, attempt: int) -> str:
+    """The id of attempt ``attempt`` of the run rooted at ``root_id`` (#1797).
+
+    Deterministic, so every path that retries one run (post-execution, follow-up
+    sweeps, a restart) races on the same primary key and exactly one attempt launches.
+    """
+    return f"{root_id}-a{attempt}"
+
+
+def _provenance(rec: RunRecord) -> dict[str, Any]:
+    return {"thread_id": rec.thread_id, "work_item_id": rec.work_item_id, "origin_node": rec.origin_node}
+
+
+def _claim(store: Any, rec: RunRecord) -> bool:
+    """Insert the attempt row; False when another path already claimed this attempt."""
+    try:
+        store.create_run(rec)
+    except sqlite3.IntegrityError:
+        log.info("retry attempt %s already claimed", rec.id)
+        return False
+    return True
+
+
+@dataclass(frozen=True)
+class RetryDecision:
+    """What :func:`launch_retry` did: ``launched`` with the attempt's ``run_id``, or why not."""
+
+    launched: bool
+    run_id: str = ""
+    reason: str = ""
+
+
+def retry_plan(runner: Any, rec: RunRecord, role: RoleSpec) -> RunPlan:
+    """Re-run ``rec`` as stored: its composed prompt, provider, model and target."""
+    from staff.plan import RunPlan
+
+    adapter = runner._adapters[rec.provider]
+    base_branch = rec.branch or f"staff/{rec.role}-task"
+    return RunPlan(
+        role=rec.role,
+        provider=rec.provider,
+        model=rec.model,
+        repo=rec.repo,
+        target_kind=rec.target_kind,
+        target_ref=rec.target_ref,
+        operator_prompt="",
+        prompt=rec.prompt,
+        argv=adapter.build_command(rec.prompt, "<workdir>", rec.model, **read_only_kwargs(role)),
+        branch=f"{base_branch}-retry-{rec.attempt + 1}",
+        lease_ritual=bool(role.permissions.get("lease", True)) and rec.target_kind == "issue" and bool(rec.repo),
+        **_provenance(rec),
+    )
+
+
+def launch_retry(
+    runner: Any,
+    failed: RunRecord,
+    *,
+    source: str,
+    holds: HoldsList,
+    allow_classes: frozenset[str] = frozenset(),
+) -> RetryDecision:
+    """Start the next attempt of a failed run on the runner's worker, at most once (#1797).
+
+    Pre: ``failed`` names a run on ``runner``'s store.
+    Post: ``launched`` means a queued attempt row exists with thread, work-item and
+    origin provenance and its worker has been started. The class, attempt and budget
+    gates are :func:`should_retry`'s (``allow_classes`` widens only the class gate), and
+    an active schedule hold on the role refuses. A second caller for the same attempt
+    gets ``reason="already claimed"``.
+    """
+    from staff.budget import BudgetGuard
+    from staff.store import RunRecord
+
+    store = runner.store
+    latest = store.get_run(failed.id)
+    if latest is None or latest.status != "failed":
+        return RetryDecision(False, reason=f"run {failed.id} is {latest.status if latest else 'missing'}")
+    role = runner.roles().get(latest.role)
+    if role is None or latest.provider not in runner._adapters:
+        return RetryDecision(False, reason=f"role {latest.role} or provider {latest.provider} is not available")
+    gated = replace(latest, failure_class="provider_error") if latest.failure_class in allow_classes else latest
+    ok, reason = should_retry(gated, role, budget_guard=BudgetGuard(store))
+    if not ok:
+        return RetryDecision(False, reason=reason)
+    hold = holds.blocking(role.name, latest.repo)
+    if hold is not None:
+        return RetryDecision(False, reason=f"hold: {hold.text}")
+
+    root_id = latest.retry_of or latest.id
+    attempt = latest.attempt + 1
+    plan = retry_plan(runner, latest, role)
+    rec = RunRecord(
+        id=attempt_run_id(root_id, attempt),
+        role=latest.role,
+        provider=latest.provider,
+        model=latest.model,
+        machine=runner.machine,
+        repo=latest.repo,
+        target_kind=latest.target_kind,
+        target_ref=latest.target_ref,
+        prompt=latest.prompt,
+        requested_by=latest.requested_by,
+        on_behalf_of=latest.on_behalf_of,
+        branch=plan.branch,
+        retry_of=root_id,
+        attempt=attempt,
+        max_attempts=latest.max_attempts,
+        **_provenance(latest),
+    )
+    if not _claim(store, rec):
+        return RetryDecision(False, run_id=rec.id, reason="already claimed")
+    store.append_event(root_id, "retry", f"{source}: attempt {attempt}/{latest.max_attempts} ({latest.failure_class})")
+    runner.launch(rec, plan)
+    return RetryDecision(True, run_id=rec.id, reason="retry launched")

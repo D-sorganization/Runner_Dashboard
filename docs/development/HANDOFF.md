@@ -1,4 +1,16 @@
-# Current handoff — Staff Console role readiness from real data (DL-#1804)
+# Current handoff — follow-up retries launch through retry.py (DL-#1797)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1797`
+- **Branch:** `fix/followup-retry-launch-1797`, rebased onto main after BR-01 (#1814) and BR-02 (#1817) merged
+- **PR:** #1818
+- **Why:** Board 2026-09-29 accepted BR-03 (P0): follow-up retries were queued rows that never ran.
+- **Changes:** `launch_retry`, `retry_plan` and `attempt_run_id` in `staff/retry.py`; `FollowupEngine` retries through them; post-execution retries share the deterministic ids.
+- **Validation:** 1208 passed in the staff selection of `tests/api` and `tests/unit`; ruff clean.
+- **Next:** rebase after BR-01 and BR-02 merge, open the PR; then BR-05.
+
+---
+
+# Prior handoff — Staff Console role readiness from real data (DL-#1804)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1804`
 - **Branch:** `fix/role-readiness-1804` from `origin/main` (`6458d3ca`)
