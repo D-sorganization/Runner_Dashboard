@@ -1,0 +1,369 @@
+{
+  "nodes": [
+    "ControlTower",
+    "DeskComputer",
+    "OGLaptop"
+  ],
+  "trace": [
+    {
+      "step": 5,
+      "ControlTower": 0.3358263905577773,
+      "DeskComputer": 0.3328765254791247,
+      "OGLaptop": 0.3312970839630979
+    },
+    {
+      "step": 10,
+      "ControlTower": 0.34063517263518683,
+      "DeskComputer": 0.33209337451630794,
+      "OGLaptop": 0.32727145284850523
+    },
+    {
+      "step": 15,
+      "ControlTower": 0.3426635327088961,
+      "DeskComputer": 0.3287188380925603,
+      "OGLaptop": 0.32861762919854365
+    },
+    {
+      "step": 20,
+      "ControlTower": 0.339137241184145,
+      "DeskComputer": 0.3316901771908432,
+      "OGLaptop": 0.32917258162501184
+    },
+    {
+      "step": 25,
+      "ControlTower": 0.34308767091965003,
+      "DeskComputer": 0.330355052998246,
+      "OGLaptop": 0.32655727608210405
+    },
+    {
+      "step": 30,
+      "ControlTower": 0.34632020131622315,
+      "DeskComputer": 0.33093151145916544,
+      "OGLaptop": 0.3227482872246114
+    },
+    {
+      "step": 35,
+      "ControlTower": 0.34846815032771,
+      "DeskComputer": 0.3276366173702309,
+      "OGLaptop": 0.3238952323020591
+    },
+    {
+      "step": 40,
+      "ControlTower": 0.3482767885980471,
+      "DeskComputer": 0.3264840955980718,
+      "OGLaptop": 0.32523911580388104
+    },
+    {
+      "step": 45,
+      "ControlTower": 0.3479882741583353,
+      "DeskComputer": 0.3285338471319282,
+      "OGLaptop": 0.3234778787097366
+    },
+    {
+      "step": 50,
+      "ControlTower": 0.34346201534412363,
+      "DeskComputer": 0.32791125867980897,
+      "OGLaptop": 0.32862672597606746
+    },
+    {
+      "step": 55,
+      "ControlTower": 0.3448697336777338,
+      "DeskComputer": 0.33039224010377205,
+      "OGLaptop": 0.32473802621849407
+    },
+    {
+      "step": 60,
+      "ControlTower": 0.34996444154978756,
+      "DeskComputer": 0.3282280822874869,
+      "OGLaptop": 0.32180747616272565
+    },
+    {
+      "step": 65,
+      "ControlTower": 0.34934240170509323,
+      "DeskComputer": 0.3272636654419453,
+      "OGLaptop": 0.32339393285296153
+    },
+    {
+      "step": 70,
+      "ControlTower": 0.35414909053271465,
+      "DeskComputer": 0.3253056138722223,
+      "OGLaptop": 0.320545295595063
+    },
+    {
+      "step": 75,
+      "ControlTower": 0.3540237267235321,
+      "DeskComputer": 0.3263421027837174,
+      "OGLaptop": 0.3196341704927506
+    },
+    {
+      "step": 80,
+      "ControlTower": 0.358245359419005,
+      "DeskComputer": 0.3258192349430726,
+      "OGLaptop": 0.3159354056379223
+    },
+    {
+      "step": 85,
+      "ControlTower": 0.35995739245016195,
+      "DeskComputer": 0.32462583953714214,
+      "OGLaptop": 0.3154167680126959
+    },
+    {
+      "step": 90,
+      "ControlTower": 0.3624297930341083,
+      "DeskComputer": 0.3257359661769376,
+      "OGLaptop": 0.31183424078895405
+    },
+    {
+      "step": 95,
+      "ControlTower": 0.36671723537417816,
+      "DeskComputer": 0.3237763035732508,
+      "OGLaptop": 0.3095064610525711
+    },
+    {
+      "step": 100,
+      "ControlTower": 0.36857507886037033,
+      "DeskComputer": 0.32218294667198166,
+      "OGLaptop": 0.30924197446764806
+    },
+    {
+      "step": 105,
+      "ControlTower": 0.3703895610058198,
+      "DeskComputer": 0.32254762305664475,
+      "OGLaptop": 0.3070628159375354
+    },
+    {
+      "step": 110,
+      "ControlTower": 0.36920144665630406,
+      "DeskComputer": 0.32506756569888956,
+      "OGLaptop": 0.3057309876448065
+    },
+    {
+      "step": 115,
+      "ControlTower": 0.37100489126940334,
+      "DeskComputer": 0.32174870475934086,
+      "OGLaptop": 0.30724640397125585
+    },
+    {
+      "step": 120,
+      "ControlTower": 0.3727696361673613,
+      "DeskComputer": 0.3219703412357192,
+      "OGLaptop": 0.3052600225969194
+    },
+    {
+      "step": 125,
+      "ControlTower": 0.3713493115453067,
+      "DeskComputer": 0.32531723788460565,
+      "OGLaptop": 0.3033334505700877
+    },
+    {
+      "step": 130,
+      "ControlTower": 0.37521164381646377,
+      "DeskComputer": 0.3218912803897652,
+      "OGLaptop": 0.302897075793771
+    },
+    {
+      "step": 135,
+      "ControlTower": 0.3749213013169263,
+      "DeskComputer": 0.3204795680408694,
+      "OGLaptop": 0.30459913064220434
+    },
+    {
+      "step": 140,
+      "ControlTower": 0.37866727538787504,
+      "DeskComputer": 0.3203789595756894,
+      "OGLaptop": 0.30095376503643556
+    },
+    {
+      "step": 145,
+      "ControlTower": 0.380332357307345,
+      "DeskComputer": 0.3205853421431121,
+      "OGLaptop": 0.2990823005495429
+    },
+    {
+      "step": 150,
+      "ControlTower": 0.37753176407173283,
+      "DeskComputer": 0.3232975097080835,
+      "OGLaptop": 0.29917072622018365
+    },
+    {
+      "step": 155,
+      "ControlTower": 0.37651174917725266,
+      "DeskComputer": 0.3225318863294773,
+      "OGLaptop": 0.30095636449327
+    },
+    {
+      "step": 160,
+      "ControlTower": 0.37838048914069794,
+      "DeskComputer": 0.3214470141416488,
+      "OGLaptop": 0.30017249671765345
+    },
+    {
+      "step": 165,
+      "ControlTower": 0.3783372894513915,
+      "DeskComputer": 0.3191499451565628,
+      "OGLaptop": 0.30251276539204575
+    },
+    {
+      "step": 170,
+      "ControlTower": 0.383210107140299,
+      "DeskComputer": 0.3158250331929216,
+      "OGLaptop": 0.3009648596667793
+    },
+    {
+      "step": 175,
+      "ControlTower": 0.3862601849741514,
+      "DeskComputer": 0.31574457698423714,
+      "OGLaptop": 0.2979952380416116
+    },
+    {
+      "step": 180,
+      "ControlTower": 0.3856311962430513,
+      "DeskComputer": 0.3165835913307772,
+      "OGLaptop": 0.2977852124261714
+    },
+    {
+      "step": 185,
+      "ControlTower": 0.38454622951032286,
+      "DeskComputer": 0.3175597376812682,
+      "OGLaptop": 0.2978940328084088
+    },
+    {
+      "step": 190,
+      "ControlTower": 0.3841414953010644,
+      "DeskComputer": 0.31688443588039245,
+      "OGLaptop": 0.2989740688185431
+    },
+    {
+      "step": 195,
+      "ControlTower": 0.38098966888993674,
+      "DeskComputer": 0.31955262406070495,
+      "OGLaptop": 0.29945770704935837
+    },
+    {
+      "step": 200,
+      "ControlTower": 0.3809643573486624,
+      "DeskComputer": 0.32372965470237924,
+      "OGLaptop": 0.29530598794895835
+    },
+    {
+      "step": 205,
+      "ControlTower": 0.3779279291829358,
+      "DeskComputer": 0.3271645514820096,
+      "OGLaptop": 0.29490751933505455
+    },
+    {
+      "step": 210,
+      "ControlTower": 0.3822582931190109,
+      "DeskComputer": 0.32535844017037274,
+      "OGLaptop": 0.29238326671061626
+    },
+    {
+      "step": 215,
+      "ControlTower": 0.38081298765761584,
+      "DeskComputer": 0.3284313097209968,
+      "OGLaptop": 0.29075570262138745
+    },
+    {
+      "step": 220,
+      "ControlTower": 0.38396778445759056,
+      "DeskComputer": 0.3268962314028284,
+      "OGLaptop": 0.28913598413958097
+    },
+    {
+      "step": 225,
+      "ControlTower": 0.3800059294862838,
+      "DeskComputer": 0.3274954190040748,
+      "OGLaptop": 0.2924986515096413
+    },
+    {
+      "step": 230,
+      "ControlTower": 0.37900608788458673,
+      "DeskComputer": 0.3278282819604775,
+      "OGLaptop": 0.29316563015493574
+    },
+    {
+      "step": 235,
+      "ControlTower": 0.3802645345740556,
+      "DeskComputer": 0.3295034492616409,
+      "OGLaptop": 0.2902320161643034
+    },
+    {
+      "step": 240,
+      "ControlTower": 0.3766592931805382,
+      "DeskComputer": 0.3321580970272524,
+      "OGLaptop": 0.29118260979220945
+    },
+    {
+      "step": 245,
+      "ControlTower": 0.373989225792838,
+      "DeskComputer": 0.3335685299756375,
+      "OGLaptop": 0.2924422442315246
+    },
+    {
+      "step": 250,
+      "ControlTower": 0.3752890396673436,
+      "DeskComputer": 0.3352462892098847,
+      "OGLaptop": 0.2894646711227717
+    },
+    {
+      "step": 255,
+      "ControlTower": 0.37673171366691605,
+      "DeskComputer": 0.33700927996773394,
+      "OGLaptop": 0.2862590063653501
+    },
+    {
+      "step": 260,
+      "ControlTower": 0.3781293444221216,
+      "DeskComputer": 0.33563341411037695,
+      "OGLaptop": 0.2862372414675016
+    },
+    {
+      "step": 265,
+      "ControlTower": 0.3805887620960696,
+      "DeskComputer": 0.3338564102928829,
+      "OGLaptop": 0.28555482761104745
+    },
+    {
+      "step": 270,
+      "ControlTower": 0.3828795143030724,
+      "DeskComputer": 0.33380566437063114,
+      "OGLaptop": 0.28331482132629643
+    },
+    {
+      "step": 275,
+      "ControlTower": 0.3838986003169511,
+      "DeskComputer": 0.33529688538937524,
+      "OGLaptop": 0.28080451429367376
+    },
+    {
+      "step": 280,
+      "ControlTower": 0.3864312319449919,
+      "DeskComputer": 0.3362761489352176,
+      "OGLaptop": 0.2772926191197905
+    },
+    {
+      "step": 285,
+      "ControlTower": 0.3853838807823017,
+      "DeskComputer": 0.33731444032584756,
+      "OGLaptop": 0.27730167889185076
+    },
+    {
+      "step": 290,
+      "ControlTower": 0.3820277744114916,
+      "DeskComputer": 0.33979229116681003,
+      "OGLaptop": 0.2781799344216984
+    },
+    {
+      "step": 295,
+      "ControlTower": 0.38575786638474513,
+      "DeskComputer": 0.3377866050310035,
+      "OGLaptop": 0.27645552858425154
+    },
+    {
+      "step": 300,
+      "ControlTower": 0.3870519368735993,
+      "DeskComputer": 0.33644115276463976,
+      "OGLaptop": 0.27650691036176095
+    }
+  ]
+}

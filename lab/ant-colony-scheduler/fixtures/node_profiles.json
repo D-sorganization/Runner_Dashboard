@@ -1,0 +1,8 @@
+{
+  "_comment": "Synthetic fixture, not live fleet telemetry. Shape mirrors GET /api/staff/summary machine names (ControlTower, DeskComputer, OGLaptop) and models a plausible spread of job-duration profiles per node for the lab experiment only. No production data was read or written to build this file.",
+  "nodes": [
+    {"name": "ControlTower", "mean_duration_s": 42.0, "std_duration_s": 6.0},
+    {"name": "DeskComputer", "mean_duration_s": 58.0, "std_duration_s": 14.0},
+    {"name": "OGLaptop", "mean_duration_s": 95.0, "std_duration_s": 30.0}
+  ]
+}
