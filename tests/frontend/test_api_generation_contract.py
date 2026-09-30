@@ -31,6 +31,20 @@ def test_frontend_ci_checks_generated_api_contract() -> None:
     assert workflow.index("npm run generate-api:check") < workflow.index("npm run typecheck")
 
 
+def test_backend_only_prs_run_the_generated_api_contract_check() -> None:
+    """A backend route or model change alters the snapshot, so it must trigger the check (#1819)."""
+    workflow = (ROOT / ".github/workflows/frontend-tests.yml").read_text(encoding="utf-8")
+    scope = workflow[workflow.index("  frontend-scope:") : workflow.index("\n  typecheck:")]
+    typecheck = workflow[workflow.index("\n  typecheck:") :]
+    typecheck = typecheck[: typecheck.index("npm run generate-api:check")]
+
+    assert "run_api_contract: ${{ steps.scope.outputs.run_api_contract }}" in scope
+    assert 'echo "run_api_contract=true" >> "$GITHUB_OUTPUT"' in scope
+    assert 'run_api_contract = run_frontend or any(path.startswith("backend/") for path in files)' in scope
+    assert "run_api_contract={" in scope
+    assert "needs.frontend-scope.outputs.run_api_contract == 'true'" in typecheck
+
+
 def test_committed_openapi_snapshot_and_generated_types_are_real() -> None:
     snapshot = json.loads((ROOT / "frontend/src/lib/openapi.json").read_text(encoding="utf-8"))
     types = (ROOT / "frontend/src/lib/api-types.ts").read_text(encoding="utf-8")

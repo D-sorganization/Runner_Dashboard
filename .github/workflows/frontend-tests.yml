@@ -22,6 +22,7 @@ jobs:
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
       run_staff_e2e: ${{ steps.scope.outputs.run_staff_e2e }}
+      run_api_contract: ${{ steps.scope.outputs.run_api_contract }}
     steps:
       - name: Detect changed frontend surface
         id: scope
@@ -34,6 +35,7 @@ jobs:
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "run_frontend_tests=true" >> "$GITHUB_OUTPUT"
             echo "run_staff_e2e=true" >> "$GITHUB_OUTPUT"
+            echo "run_api_contract=true" >> "$GITHUB_OUTPUT"
             echo "Non-PR event: full frontend validation required."
             exit 0
           fi
@@ -84,13 +86,16 @@ jobs:
           staff_prefixes = ("frontend/src/pages/Staff", "backend/staff/", "backend/routers/staff", "tests/e2e/")
           run_staff = run_frontend or any(path.startswith(staff_prefixes) for path in files)
           print(f"run_staff_e2e={'true' if run_staff else 'false'}")
+          # Backend routes and models change the generated OpenAPI snapshot (#1819).
+          run_api_contract = run_frontend or any(path.startswith("backend/") for path in files)
+          print(f"run_api_contract={'true' if run_api_contract else 'false'}")
           print(f"changed_file_count={len(files)}", file=sys.stderr)
           EOF
 
   typecheck:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
-    if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
+    if: needs.frontend-scope.outputs.run_api_contract == 'true'
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
