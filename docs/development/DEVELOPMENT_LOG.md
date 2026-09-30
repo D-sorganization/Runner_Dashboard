@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1826 — Maxwell Contract Drift has no Python on self-hosted runners
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1826
+- **Branch:** `fix/maxwell-contract-drift-python` from `origin/main` (`d86c7732`)
+- **PR:** #1827
+- **Paths:** `.github/workflows/maxwell-contract-drift.yml`, `tests/test_maxwell_contract_drift.py`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ `d86c7732` (RED: the new workflow test fails on main; GREEN: 160 passed across the drift, action-pinning, runner-routing, workflow-hygiene, scheduled-workflow and SPEC change-log tests)
+- **Summary:** The daily `compare` job ran `python scripts/check_maxwell_contract_drift.py` with no setup step, and the `d-sorg-fleet` runners have no `python` on PATH, so it exited 127 every day since at least 2026-09-25 (run 36692266598). The job now installs Python 3.11 with the repo's pinned `actions/setup-python` SHA before the step; a test asserts the order.
+- **Next step:** Pass CI, merge PR #1827, and confirm with a `workflow_dispatch` run.
+
 ### DL-#1776 — Board-accepted RD review items BR-01..18: turnover of the remainder
 
 - **State:** parked
