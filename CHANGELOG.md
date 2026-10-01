@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fleet clients derive unique default sessions; Staff availability reflects reported provider and schedule data (#1799, #1804).
 - Mobile Staff Console tab geometry fits the shell content area (#1805). Physical-device keyboard, safe-area and screen-reader checks remain pending.
 - Fresh setup targets Maxwell's 8080 listener (#1830); scheduled Maxwell contract checks install Python first (#1826).
+- Container security pins advance the Debian OpenSSL/PCRE2 package set and urllib3 to verified fixed versions while preserving hash-verified installs and scan gates (#1840).
 
 Release preparation does not resolve the remaining design-gated Board items or qualify production deployment.
 

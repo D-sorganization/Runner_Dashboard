@@ -4,6 +4,8 @@ Prepared 2026-09-30 for Runner_Dashboard issue #1834. No production service, roo
 
 ## Verified current state
 
+- Security repair #1840 / PR #1841 merged33df0462 and integrated into this draft: exact Debian OpenSSL/PCRE2 security refresh and urllib3 2.8.0 targeted lock upgrade. Local real Docker/Trivy scan and71Linux hardening/HTTP tests pass;66release coherence/hardening tests pass after integration. Existing GitHub repair Docker job110220731442 remains queued; do not equate merge with scan completion. Latest release-head CI remains required.
+
 - Main is protected. Windows validation PR #1833 merged b6cee8df; watchdog test PR #1837 merged f6dffd96.
 - Live OGLaptop dashboard remains fadc115895a5a4d31deca41ecf86412065a8cb50, version4.10.0. JSON /livez and /readyz probes pass.
 - GitHub environments inventory returned total_count0. The workflow-required oglaptop-production environment is absent.

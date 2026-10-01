@@ -13,13 +13,13 @@ WORKDIR /app
 
 # Install system dependencies (curl needed for HEALTHCHECK). Keep the Debian
 # OpenSSL security package set exact and non-overridable so resolution fails
-# closed if Debian's CVE-2026-14456-fixed version is unavailable.
-RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u2' \
+# closed if Debian's fixed security version is unavailable.
+RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u3' \
     && apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     gzip='1.13-1+deb13u1' \
-    libpcre2-8-0='10.46-1~deb13u2' \
+    libpcre2-8-0='10.46-1~deb13u3' \
     libsqlite3-0='3.46.1-7+deb13u2' \
     libssl3t64="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     openssl="${OPENSSL_DEBIAN_SECURITY_VERSION}" \

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1840 — Refresh vulnerable container security pins
+
+- **State:** shipped
+- **Owner:** codex (Gemini 3.8 Flash source-fed CLI draft and review)
+- **Issue:** #1840
+- **Branch:** `fix/issue-1840-container-security` from `origin/main` (`f6dffd96`)
+- **PR:** #1841 (merged)
+- **Paths:** `Dockerfile`, `uv.lock`, `requirements.lock.txt`, `tests/test_deploy_hardening.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED four security assertions; GREEN63Windows hardening tests,71Linux hardening/HTTP tests with isolated frozen dependencies, ruff lint/format, real Docker build/hash enforcement and Trivy0.70 HIGH/CRITICAL ignore-unfixed scan exit0.
+- **Summary:** Failed release scan reported seven Debian and two Python fixable HIGH findings. Verified official Debian security replacements OpenSSL3.5.7-1~deb13u3/PCRE2 10.46-1~deb13u3 and PyPI urllib3 2.8.0. Only urllib3 changed in the Python graph; generated hashes match publisher. Preserve base digest/runtime bounds/scan gates; no production mutation. Second Gemini review found an overstated test docstring, corrected.
+- **Next step:** Merged at33df0462; integrated into release draft. Local Docker/Trivy pass; existing GitHub Docker job110220731442 still queued. Collect exact release-head checks without duplicate dispatch; retain operator gates.
+
 ### DL-#1834 — Coherent patch release preparation
 
 - **State:** in_review
@@ -27,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** #1835 (draft)
 - **Paths:** `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`, `docs/development/QUALIFIED_DEPLOYMENT_PREFLIGHT.md`
 - **Started:** 2026-09-30
-- **Last verified:** 2026-09-30 @ d5ea8c7d; RED VERSION-only bump fails static/lock coherence; GREEN three coherence tests, uv lock --check, generated schema and typecheck pass. Full Windows release source: 5,606 cases, zero failures/errors, 62 skips/expected failures. Full Linux reviewed-main rerun: 5,606 cases, zero failures/errors, 80 skips/expected failures; 14 sibling-dependent checks restored and passed separately. Backend/frontend CI pass at this head; Docker queued. No dependency changes.
+- **Last verified:** 2026-09-30 @ d5ea8c7d; RED VERSION-only bump fails static/lock coherence; GREEN three coherence tests, uv lock --check, generated schema and typecheck pass. Full Windows release source: 5,606 cases, zero failures/errors, 62 skips/expected failures. Full Linux reviewed-main rerun: 5,606 cases, zero failures/errors, 80 skips/expected failures; 14 sibling-dependent checks restored and passed separately. Backend/frontend CI pass at this head; Docker queued at that prior head. Security follow-up #1840 integrated33df0462:66release coherence/hardening tests pass; only urllib3 Python dependency changed, local Docker/Trivy and71Linux hardening/HTTP tests passed on reviewed repair source.
 - **Summary:** Synchronize patch metadata and record truthful reviewed fixes since older production. No production mutation. Existing type generation remains identical except schema info version.
 - **Next step:** Collect exact-head Docker CI (71f2f933 job110212483375 now running; backend/frontend passed); obtain physical-device acceptance, root/protected-environment approval, #1838 standby inventory recovery and #1839 root-owned Python policy acceptance. Official 3.12.14 candidate checksum, pinned provenance and archive paths verified without installation; details in preflight. Keep release draft until acceptance.
 
