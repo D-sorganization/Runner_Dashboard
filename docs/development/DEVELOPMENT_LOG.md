@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1836 — Observe systemd watchdog recovery explicitly
+
+- **State:** in_progress
+- **Owner:** codex (Gemini 3.8 Flash drafted fix via agy CLI)
+- **Issue:** #1836
+- **Branch:** `test/issue-1836-watchdog-recovery` from `origin/main` (`b6cee8df`)
+- **PR:** not created
+- **Paths:** `tests/test_systemd_watchdog.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED full Linux suite5605cases has one failure; controlled300ms logging delay reproduces it; GREEN same delayed reproduction passes, Linux10watchdog tests pass, Windows9pass/1platformskip; ruff lint/format pass.
+- **Summary:** Wait for successful notifier retry with a2s event deadline; always cancel/join the background task. Preserve recovery/count and cancellation contracts; production code unchanged.
+- **Next step:** Open focused PR and collect full Linux rerun in isolated validation checkout.
+
 ### DL-#1832 — Portable Windows validation harnesses
 
 - **State:** in_progress

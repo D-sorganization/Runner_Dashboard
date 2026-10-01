@@ -66,26 +66,30 @@ async def test_server_watchdog_task_noops_without_systemd(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_server_watchdog_task_survives_notifier_failure(monkeypatch) -> None:
+async def test_server_watchdog_task_survives_notifier_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """A1: an exception from sd_notify (rare but possible during shutdown)
     must not kill the background task — the next iteration must still fire."""
     import server
 
     call_count = {"n": 0}
+    retry_observed = asyncio.Event()
 
     def flaky(_payload: str) -> None:
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise RuntimeError("simulated sd_notify failure")
+        retry_observed.set()
 
     monkeypatch.setattr(server, "_sd_notify", flaky)
     monkeypatch.setenv("WATCHDOG_USEC", "200000")
 
     task = asyncio.create_task(server._systemd_watchdog_loop())
-    await asyncio.sleep(0.35)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    try:
+        await asyncio.wait_for(retry_observed.wait(), timeout=2.0)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
 
     assert call_count["n"] >= 2, "loop must continue past a single notifier failure"
 

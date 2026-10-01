@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-30 | #1836 | Systemd watchdog recovery test waits for an observed successful retry with bounded timeout and guaranteed cleanup instead of cancelling after a fixed timing sample. Runtime behavior unchanged. |
 | 2026-09-30 | #1832 | Windows test harnesses reuse compatible Bash discovery and path conversion; the process-tree watchdog test permits interpreter startup and polls boundedly for descendant termination. Production behavior is unchanged. |
 | 2026-09-30 | #1831 | Align `.env.example` `MAXWELL_PORT=8080` with the runtime and daemon listener instead of dashboard pool port 8322; regression-test the copied template target. |
 | 2026-09-30 | #1826 | The scheduled Maxwell Contract Drift workflow installs Python with the pinned `actions/setup-python` step before running `scripts/check_maxwell_contract_drift.py`; on self-hosted runners without `python` on PATH the job had failed daily with exit 127. |

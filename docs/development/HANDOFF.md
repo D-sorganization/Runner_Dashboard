@@ -1,3 +1,15 @@
+# Current handoff — systemd watchdog test recovery (DL-#1836)
+
+- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1836`; branch `test/issue-1836-watchdog-recovery`, base `b6cee8df`; issue #1836; PR not created.
+- Gemini3.8 Flash agy source-fed draft integrated: asyncio.Event observes successful retry, bounded2s wait, finally cancels/joins. No runtime change.
+- RED full Linux baseline5605cases:1failure,0errors,66skipped/xfail in921.686s; sole failure was fixed.35s watchdog recovery sample. Controlled300ms exception logging delay reproduces old failure; GREEN same delayed run passes. Linux10targeted pass; Windows9pass/1AF_UNIXskip; ruff lint/format pass.
+- PR #1833 merged `b6cee8df`; Windows20targeted pass, Linux19pass/1cross-environmentskip. PR #1831 Maxwell template shipped `9755f69c`.
+- Draft release PR #1835, worktree codex-1834, af85d181:4.10.1 coherent metadata. RED/GREEN3existing coherence tests, uv lock --check and schema check pass. Hold publication pending full validation and #1805 physical phone acceptance (explicit before-release criterion); Board design gates remain.
+- Production remains older fadc1158, livez/readyz pass, mobile old build overlap confirmed versus corrected source preview.16hermetic Staff E2E plus frontend lint/typecheck/build/coverage passed. No production mutation.
+- Next: focused PR, full Linux rerun with regular Linux Git metadata; merge passing test fix, sync draft release docs/base; prepare qualified deployment prerequisites and physical-device acceptance request. Goal ACTIVE.
+
+---
+
 # Current handoff — overnight dashboard completion (DL-#1832)
 
 - Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1832`; branch `fix/issue-1832-windows-validation`; governing issue #1832; PR not created.
