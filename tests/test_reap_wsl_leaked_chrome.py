@@ -9,45 +9,32 @@ process is ever touched by this suite.
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from deploy.bash_host import BASH, SKIP_REASON, as_bash_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "deploy" / "reap-wsl-leaked-chrome.sh"
 MAINTENANCE_SCRIPT_PATH = REPO_ROOT / "deploy" / "scheduled-dashboard-maintenance.sh"
 
 
-def _find_bash() -> str | None:
-    """Locate a real (non-WSL-launcher) bash, preferring Git for Windows.
-
-    Plain "bash" on Windows PATH can resolve to the WSL launcher shim at
-    System32\\bash.exe, which does not accept a native Windows/MSYS path the
-    way Git Bash does. Prefer Git Bash explicitly when present.
-    """
-    git_bash = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
-    if git_bash.exists():
-        return str(git_bash)
-    return shutil.which("bash")
-
-
-BASH_PATH = _find_bash()
+BASH_PATH = BASH
 BASH_UNAVAILABLE = BASH_PATH is None
-SKIP_REASON = "bash is unavailable on this platform"
 
 
 def _make_fake_powershell(tmp_path: Path, record_path: Path) -> Path:
     """Write a fake powershell.exe that records its argv and stdin."""
     fake = tmp_path / "fake-bin" / "powershell.exe"
     fake.parent.mkdir(parents=True, exist_ok=True)
+    bash_record_path = as_bash_path(record_path)
     fake.write_text(
         "#!/usr/bin/env bash\n"
-        f'printf \'%s\\n\' "$@" > "{record_path}.args"\n'
-        f'cat > "{record_path}.stdin" 2>/dev/null || true\n'
+        f'printf \'%s\\n\' "$@" > "{bash_record_path}.args"\n'
+        f'cat > "{bash_record_path}.stdin" 2>/dev/null || true\n'
         'echo "3"\n',
         encoding="utf-8",
         newline="\n",
@@ -67,12 +54,12 @@ def _run_script(
     env = os.environ.copy()
     env["PATH"] = os.environ.get("PATH", "")
     if powershell_path is not None:
-        env["POWERSHELL_BIN"] = str(powershell_path)
+        env["POWERSHELL_BIN"] = as_bash_path(powershell_path)
     if env_overrides:
         env.update(env_overrides)
 
     result = subprocess.run(
-        [BASH_PATH, SCRIPT_PATH.as_posix()],
+        [BASH_PATH, as_bash_path(SCRIPT_PATH)],
         env=env,
         cwd=str(tmp_path),
         capture_output=True,
