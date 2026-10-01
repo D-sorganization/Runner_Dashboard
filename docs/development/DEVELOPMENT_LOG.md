@@ -20,11 +20,11 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1840 — Refresh vulnerable container security pins
 
-- **State:** in_progress
+- **State:** in_review
 - **Owner:** codex (Gemini 3.8 Flash source-fed CLI draft and review)
 - **Issue:** #1840
 - **Branch:** `fix/issue-1840-container-security` from `origin/main` (`f6dffd96`)
-- **PR:** pending
+- **PR:** #1841
 - **Paths:** `Dockerfile`, `uv.lock`, `requirements.lock.txt`, `tests/test_deploy_hardening.py`, `SPEC.md`
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ SELF; RED four security assertions; GREEN63Windows hardening tests,71Linux hardening/HTTP tests with isolated frozen dependencies, ruff lint/format, real Docker build/hash enforcement and Trivy0.70 HIGH/CRITICAL ignore-unfixed scan exit0.

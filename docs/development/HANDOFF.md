@@ -1,6 +1,6 @@
 # Current handoff — container scan repair (DL-#1840)
 
-- Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1840`, branch `fix/issue-1840-container-security`, issue #1840, lease session codex-rd-overnight-1840. Production unchanged; peer checkout preserved.
+- Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1840`, branch `fix/issue-1840-container-security`, issue #1840, PR #1841, lease session codex-rd-overnight-1840. Production unchanged; peer checkout preserved.
 - Release older-head Docker run36813181457/job110212483375 failed fixable HIGH findings. Gemini 3.8 Flash CLI drafted TDD changes; second CLI review verified delta and identified an overstated docstring, corrected.
 - RED four assertions; GREEN63Windows hardening and71Linux hardening/HTTP tests using isolated frozen dependencies. Docker build and matching Trivy0.70 scan exit0. Logs `/home/dieterolson/.cache/rd1840-docker-build.log`, `rd1840-trivy-scan.log`, `rd1840-tests.log`. Official Trivy archive checksum verified before execution.
 - Only urllib3 lock changed2.7→2.8; exact OpenSSL/PCRE Debian pins move deb13u2→u3. Preserve base digest/runtime/hash enforcement/scan gates. No suppression or broad upgrades.
