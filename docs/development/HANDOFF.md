@@ -1,27 +1,39 @@
 # Current handoff — patch release preparation (DL-#1834)
 
-- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1834`; branch `chore/issue-1834-release-4.10.1`; issue #1834; PR not created.
+- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1834`; branch `chore/issue-1834-release-4.10.1`; issue #1834; PR #1835 (draft).
 - Changes: coherent 4.10.1 metadata in VERSION, Python/Node manifests/locks, OpenAPI, SPEC and truthful CHANGELOG. Gemini 3.8 Flash source-fed agy drafts/review; invented draft commands rejected against source.
 - TDD: VERSION-only bump fails static and uv.lock coherence. All three existing coherence tests pass after sync; uv lock --check passes with no dependency upgrades; gen-api-client.sh --check passes after preserving LF endings.
-- PR #1833 fixes Windows harness validation, guarded auto-merge armed; all20 Windows targeted pass, Linux19 pass + Git-index cross-environment skip. Lint/security/policy CI passed; backend check pending at last read.
-- Full Linux backend session34871 still running in original checkout, durable .playwright-cli/backend-linux.log and backend-linux-results.xml; last seen74%. Do not restart. Frontend checks/coverage and16 hermetic Staff E2E passed. Production remains fadc1158, no deployment yet.
-- Release is a draft until full validation and physical-device acceptance (#1805) are satisfied. Remaining design-gated Board issues require convergent opinions and owner relabel. Qualified OGLaptop root helper/cosign absent; production environment visibility unconfirmed. Follow runbook human approval boundary.
+- PR #1833 fixes Windows harness validation, guarded auto-merge armed; all20 Windows targeted pass, Linux19 pass + Git-index cross-environment skip. Lint/security/policy CI passed; backend CI passed; merged b6cee8df.
+- Full Linux backend session34871 finished in original checkout, durable .playwright-cli/backend-linux.log and backend-linux-results.xml; baseline finished5605cases with1watchdog timing failure and66skipped/xfail; fix1836 merged viaPR1837 atf6dffd96, full rerun session52546 now43%. Rerun uses /home/dieterolson/.cache/runner-dashboard-validation-1836 with regular Linux Git metadata; durable backend-linux-1836.log/results.xml in original .playwright-cli. Frontend checks/coverage and16 hermetic Staff E2E passed. Production remains fadc1158, no deployment yet.
+- Release is a draft until full validation and physical-device acceptance (#1805) are satisfied. Remaining design-gated Board issues require convergent opinions and owner relabel. Qualified OGLaptop root helper/cosign absent; production environments list is empty: required approval environment absent. Follow runbook human approval boundary.
 - GitHub auth refresh: run owner bootstrap captured/redacted; remove stale process GH_TOKEN/GITHUB_TOKEN and use GH_CONFIG_DIR C:/Users/diete/Repositories/.codex-github-runtime/gh-config for CLI. Never print tokens. Bootstrap reported duplicate sslBackend values; scoped gh API now works.
 - Goal active. Next: draft release PR and collect validation; prepare reviewed bootstrap prerequisites without altering services.
 
+
 ---
 
-# Current handoff — overnight dashboard completion: Maxwell setup template (DL-#1830)
+# Current handoff — systemd watchdog test recovery (DL-#1836)
 
-- Repository/worktree: Runner_Dashboard, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1830`.
-- Branch: `fix/issue-1830-maxwell-template`; commit: SELF (implementation 75f6a1c5); PR: #1831, open.
-- Governing issue: #1830. Objective: fresh installs target Maxwell's documented 8080 listener rather than the pool dashboard on 8322.
-- Changes: `.env.example`, `tests/test_env_template.py`, `SPEC.md` (PR #1831 changelog required by freshness CI). Gemini 3.8 Flash drafted and reviewed; Codex executed and integrated. Explicit operator overrides remain supported.
-- Validation: RED `python -m pytest tests/test_env_template.py -q --tb=short` failed 8322 != 8080. GREEN `python -m pytest tests/test_env_template.py tests/test_dashboard_config.py tests/test_fleet_autoconfig.py -q --tb=short`: 60 passed. `python -m ruff check tests/test_env_template.py` and `python -m ruff format --check tests/test_env_template.py` passed.
-- Broader evidence: frontend typecheck/lint/build/coverage passed on base 1fd83eca; coverage 83.35% lines. Full backend pytest session 70220 remains running, last observed 33%, no failures yet; poll its live handle before repeating.
-- Runtime: existing local deployment reports fadc115895a5a4d31deca41ecf86412065a8cb50 (older than checkout). `/livez` and `/readyz` both return JSON status ok; all five readiness probes ok. Browser renders Staff Console and mobile Fleet at 390x844; all three nodes appear Online, no console errors. Current-source preview on :5173 confirms Inbox and Runs are clickable at 390x844 after dismissing the update toast; live old deployment still reproduces #1805. OGLaptop production deploy is governed by docs/runbooks/qualified-release-deploy.md and the protected environment approval. Remaining workflows still need verification. Do not use `/healthz`: it returns SPA HTML.
-- Constraints: agy headless command tools denied, so source must be supplied in --print argument for tool-free drafting/reviews. Board design-gated work and physical-device checks remain unverified. No user changes discarded. Goal not complete.
-- Next steps: inspect PR #1831 CI; inspect full backend test result; finish desktop/mobile workflow checks and assess existing deployment update path without restarting peer processes blindly.
+- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1836`; branch `test/issue-1836-watchdog-recovery`, base `b6cee8df`; issue #1836; PR not created.
+- Gemini3.8 Flash agy source-fed draft integrated: asyncio.Event observes successful retry, bounded2s wait, finally cancels/joins. No runtime change.
+- RED full Linux baseline5605cases:1failure,0errors,66skipped/xfail in921.686s; sole failure was fixed.35s watchdog recovery sample. Controlled300ms exception logging delay reproduces old failure; GREEN same delayed run passes. Linux10targeted pass; Windows9pass/1AF_UNIXskip; ruff lint/format pass.
+- PR #1833 merged `b6cee8df`; Windows20targeted pass, Linux19pass/1cross-environmentskip. PR #1831 Maxwell template shipped `9755f69c`.
+- Draft release PR #1835, worktree codex-1834, af85d181:4.10.1 coherent metadata. RED/GREEN3existing coherence tests, uv lock --check and schema check pass. Hold publication pending full validation and #1805 physical phone acceptance (explicit before-release criterion); Board design gates remain.
+- Production remains older fadc1158, livez/readyz pass, mobile old build overlap confirmed versus corrected source preview.16hermetic Staff E2E plus frontend lint/typecheck/build/coverage passed. No production mutation.
+- Next: focused PR, full Linux rerun with regular Linux Git metadata; merge passing test fix, sync draft release docs/base; prepare qualified deployment prerequisites and physical-device acceptance request. Goal ACTIVE.
+
+---
+
+# Current handoff — overnight dashboard completion (DL-#1832)
+
+- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1832`; branch `fix/issue-1832-windows-validation`; governing issue #1832; PR not created.
+- Changes: three test harnesses use the existing Bash helper and bounded startup/death waits. Gemini 3.8 Flash supplied source-fed drafts via agy CLI; Codex verified and integrated. Production watchdog behavior unchanged.
+- Validation: baseline targeted run failed; all 20 targeted tests now pass Windows, standalone reaper tests pass, ruff lint/format pass. Linux targeted: 19 passed, one Git-index check skipped because WSL cannot resolve Windows worktree metadata; that check passed on Windows.
+- Broad validation: Windows backend suite finished with nine failures accounted for by #1832. Full Linux suite session 34871 continues in the original checkout; durable log `.playwright-cli/backend-linux.log`, JUnit `.playwright-cli/backend-linux-results.xml`. Poll before restarting. Frontend typecheck/lint/build/test coverage passed (83.35% lines). Hermetic Staff E2E: 16 passed with guard, isolated fake backend stopped.
+- Shipped source: #1830 merged via PR #1831 at `9755f69c`; fresh template now targets Maxwell 8080. Main live deployment remains older `fadc1158`, version 4.10.0. Current preview :5173 confirms mobile Inbox/Runs clicks; older live build reproduces #1805. `/livez` and `/readyz` pass. `/healthz` returns SPA HTML.
+- Deployment: qualified-release runbook governs OGLaptop. Root deployment helper and cosign absent; production environment API returned 404 (absence or visibility unconfirmed). Prepare and validate new release before requesting final production approval. Never install test dependencies into production venv.
+- Constraints: agy unattended tool calls auto-denied; feed exact source in --print for drafts/reviews. Design-labelled Board issues require convergent opinions and owner relabel. Physical-device checks remain human-only. Goal ACTIVE, not complete.
+- Next: open #1832 PR after Linux validation; collect full Linux result; prepare coherent patch release and production prerequisites.
 
 ---
 # Current handoff — Maxwell Contract Drift gets a Python (DL-#1826)
