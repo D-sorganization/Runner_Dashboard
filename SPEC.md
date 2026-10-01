@@ -1,7 +1,7 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
 **Spec Version:** 2.5.298
-**Application Version:** 4.10.0 (see `VERSION`)
+**Application Version:** 4.10.1 (see `VERSION`)
 **Last Updated:** 2026-09-26T00:00:00-07:00
 **Status:** Active
 
@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-30 | #1834 | Prepare coherent 4.10.1 release metadata and notes for reviewed Staff reliability and mobile fixes; publication and qualified production deployment remain separate gates. |
 | 2026-09-30 | #1831 | Align `.env.example` `MAXWELL_PORT=8080` with the runtime and daemon listener instead of dashboard pool port 8322; regression-test the copied template target. |
 | 2026-09-30 | #1826 | The scheduled Maxwell Contract Drift workflow installs Python with the pinned `actions/setup-python` step before running `scripts/check_maxwell_contract_drift.py`; on self-hosted runners without `python` on PATH the job had failed daily with exit 127. |
 | 2026-09-29 | #1819 | Frontend Tests runs the TypeScript typecheck job, including `generate-api:check`, on pull requests that change `backend/**`, so a backend route or model change cannot leave the generated OpenAPI snapshot stale on main. |

@@ -1,3 +1,16 @@
+# Current handoff — patch release preparation (DL-#1834)
+
+- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1834`; branch `chore/issue-1834-release-4.10.1`; issue #1834; PR not created.
+- Changes: coherent 4.10.1 metadata in VERSION, Python/Node manifests/locks, OpenAPI, SPEC and truthful CHANGELOG. Gemini 3.8 Flash source-fed agy drafts/review; invented draft commands rejected against source.
+- TDD: VERSION-only bump fails static and uv.lock coherence. All three existing coherence tests pass after sync; uv lock --check passes with no dependency upgrades; gen-api-client.sh --check passes after preserving LF endings.
+- PR #1833 fixes Windows harness validation, guarded auto-merge armed; all20 Windows targeted pass, Linux19 pass + Git-index cross-environment skip. Lint/security/policy CI passed; backend check pending at last read.
+- Full Linux backend session34871 still running in original checkout, durable .playwright-cli/backend-linux.log and backend-linux-results.xml; last seen74%. Do not restart. Frontend checks/coverage and16 hermetic Staff E2E passed. Production remains fadc1158, no deployment yet.
+- Release is a draft until full validation and physical-device acceptance (#1805) are satisfied. Remaining design-gated Board issues require convergent opinions and owner relabel. Qualified OGLaptop root helper/cosign absent; production environment visibility unconfirmed. Follow runbook human approval boundary.
+- GitHub auth refresh: run owner bootstrap captured/redacted; remove stale process GH_TOKEN/GITHUB_TOKEN and use GH_CONFIG_DIR C:/Users/diete/Repositories/.codex-github-runtime/gh-config for CLI. Never print tokens. Bootstrap reported duplicate sslBackend values; scoped gh API now works.
+- Goal active. Next: draft release PR and collect validation; prepare reviewed bootstrap prerequisites without altering services.
+
+---
+
 # Current handoff — overnight dashboard completion: Maxwell setup template (DL-#1830)
 
 - Repository/worktree: Runner_Dashboard, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1830`.

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1834 — Coherent patch release preparation
+
+- **State:** in_progress
+- **Owner:** codex (Gemini 3.8 Flash release draft and review)
+- **Issue:** #1834
+- **Branch:** `chore/issue-1834-release-4.10.1` from `origin/main` (`9755f69c`)
+- **PR:** not created
+- **Paths:** `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED VERSION-only bump fails both static/lock coherence checks; GREEN all 3 coherence tests, uv lock --check, generated schema check pass. No dependency changes.
+- **Summary:** Synchronize patch metadata and record truthful reviewed fixes since older production. No production mutation. Existing type generation remains identical except schema info version.
+- **Next step:** Draft PR; collect full Linux suite and CI; obtain outstanding physical-device acceptance before release, then use qualified deployment approval gate.
+
 ### DL-#1830 — Fresh setup uses the Maxwell daemon listener
 
 - **State:** in_progress
