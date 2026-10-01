@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1840 — Refresh vulnerable container security pins
+
+- **State:** in_progress
+- **Owner:** codex (Gemini 3.8 Flash source-fed CLI draft and review)
+- **Issue:** #1840
+- **Branch:** `fix/issue-1840-container-security` from `origin/main` (`f6dffd96`)
+- **PR:** pending
+- **Paths:** `Dockerfile`, `uv.lock`, `requirements.lock.txt`, `tests/test_deploy_hardening.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED four security assertions; GREEN63Windows hardening tests,71Linux hardening/HTTP tests with isolated frozen dependencies, ruff lint/format, real Docker build/hash enforcement and Trivy0.70 HIGH/CRITICAL ignore-unfixed scan exit0.
+- **Summary:** Failed release scan reported seven Debian and two Python fixable HIGH findings. Verified official Debian security replacements OpenSSL3.5.7-1~deb13u3/PCRE2 10.46-1~deb13u3 and PyPI urllib3 2.8.0. Only urllib3 changed in the Python graph; generated hashes match publisher. Preserve base digest/runtime bounds/scan gates; no production mutation. Second Gemini review found an overstated test docstring, corrected.
+- **Next step:** Open focused PR, pass required exact-head checks and guarded merge; synchronize release PR #1835 afterward. Preserve unrelated pending deployment approvals.
+
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 
 - **State:** in_progress

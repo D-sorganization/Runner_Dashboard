@@ -17,10 +17,12 @@ _ROOT = Path(__file__).parent.parent
 _DEPLOY = _ROOT / "deploy"
 _DOCKERFILE = _ROOT / "Dockerfile"
 _LOCK = _ROOT / "requirements.lock.txt"
+_UV_LOCK = _ROOT / "uv.lock"
 _PYPROJECT = _ROOT / "pyproject.toml"
 
 _PYTHON_313_SLIM_DIGEST = "7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4"  # pragma: allowlist secret
-_OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u2"
+_OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u3"
+_PCRE2_DEBIAN_SECURITY_VERSION = "10.46-1~deb13u3"
 
 # ── Issue #391: new hardening directives ─────────────────────────────────────
 # These must appear in both the .service template files AND in the setup.sh
@@ -128,8 +130,49 @@ def test_dockerfile_refreshes_cve_2026_14456_affected_packages() -> None:
     assert f"RUN {version_arg}='{_OPENSSL_DEBIAN_SECURITY_VERSION}'" in content
     for package in ("libssl3t64", "openssl", "openssl-provider-legacy"):
         assert f'{package}="${{{version_arg}}}"' in content
+    assert "3.5.7-1~deb13u2" not in content
     assert "3.5.6-1~deb13u2" not in content
     assert "apt-get upgrade" not in content
+
+
+def test_dockerfile_pins_pcre2_security_version() -> None:
+    """The image must pin Debian's patched PCRE2 library version."""
+    content = _read(_DOCKERFILE)
+    assert f"libpcre2-8-0='{_PCRE2_DEBIAN_SECURITY_VERSION}'" in content, (
+        f"Dockerfile must pin libpcre2-8-0 to patched version {_PCRE2_DEBIAN_SECURITY_VERSION}"
+    )
+    assert "libpcre2-8-0='10.46-1~deb13u2'" not in content, (
+        "Dockerfile contains vulnerable PCRE2 package version 10.46-1~deb13u2"
+    )
+
+
+def test_uv_lock_urllib3_meets_security_baseline() -> None:
+    """uv.lock must resolve urllib3 >= 2.8.0 to satisfy Trivy vulnerability gates."""
+    assert _UV_LOCK.exists(), "uv.lock must exist"
+    lock_data = tomllib.loads(_read(_UV_LOCK))
+    packages = lock_data.get("package", [])
+    urllib3_entries = [pkg for pkg in packages if pkg.get("name") == "urllib3"]
+    assert urllib3_entries, "urllib3 must be present in uv.lock"
+    for entry in urllib3_entries:
+        version_str = str(entry.get("version", ""))
+        parts = [int(part) for part in version_str.split(".")]
+        version_tuple = tuple(parts)
+        assert version_tuple >= (2, 8, 0), (
+            f"urllib3 version {version_str!r} in uv.lock is below required security baseline 2.8.0"
+        )
+
+
+def test_requirements_lock_urllib3_meets_security_baseline() -> None:
+    """The container export must retain urllib3's patched security baseline."""
+    content = _read(_LOCK)
+    match = re.search(r"^urllib3==([0-9]+\.[0-9]+(?:\.[0-9]+)?)", content, re.MULTILINE)
+    assert match, "requirements.lock.txt must contain an explicit urllib3 pin"
+    version_str = match.group(1)
+    parts = [int(part) for part in version_str.split(".")]
+    version_tuple = tuple(parts)
+    assert version_tuple >= (2, 8, 0), (
+        f"urllib3 version {version_str!r} in requirements.lock.txt is below required security baseline 2.8.0"
+    )
 
 
 def test_dockerfile_installs_with_require_hashes() -> None:

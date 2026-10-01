@@ -1,4 +1,14 @@
-# Current handoff — systemd watchdog test recovery (DL-#1836)
+# Current handoff — container scan repair (DL-#1840)
+
+- Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1840`, branch `fix/issue-1840-container-security`, issue #1840, lease session codex-rd-overnight-1840. Production unchanged; peer checkout preserved.
+- Release older-head Docker run36813181457/job110212483375 failed fixable HIGH findings. Gemini 3.8 Flash CLI drafted TDD changes; second CLI review verified delta and identified an overstated docstring, corrected.
+- RED four assertions; GREEN63Windows hardening and71Linux hardening/HTTP tests using isolated frozen dependencies. Docker build and matching Trivy0.70 scan exit0. Logs `/home/dieterolson/.cache/rd1840-docker-build.log`, `rd1840-trivy-scan.log`, `rd1840-tests.log`. Official Trivy archive checksum verified before execution.
+- Only urllib3 lock changed2.7→2.8; exact OpenSSL/PCRE Debian pins move deb13u2→u3. Preserve base digest/runtime/hash enforcement/scan gates. No suppression or broad upgrades.
+- Next: focused PR, required CI and guarded merge; merge protected main into release draft afterward. Release phone/root/env/standby/Python-policy approvals remain pending in release worktree preflight. Do not mark goal complete from tests.
+
+---
+
+# Prior handoff — systemd watchdog test recovery (DL-#1836)
 
 - Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1836`; branch `test/issue-1836-watchdog-recovery`, base `b6cee8df`; issue #1836; PR not created.
 - Gemini3.8 Flash agy source-fed draft integrated: asyncio.Event observes successful retry, bounded2s wait, finally cancels/joins. No runtime change.
