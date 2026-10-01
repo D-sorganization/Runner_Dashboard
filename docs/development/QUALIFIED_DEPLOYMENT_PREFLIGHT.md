@@ -8,7 +8,8 @@ Prepared 2026-09-30 for Runner_Dashboard issue #1834. No production service, roo
 - Live OGLaptop dashboard remains fadc115895a5a4d31deca41ecf86412065a8cb50, version4.10.0. JSON /livez and /readyz probes pass.
 - GitHub environments inventory returned total_count0. The workflow-required oglaptop-production environment is absent.
 - Root qualified deployment helper, its libraries and /usr/local/bin/cosign are absent.
-- Draft release PR #1835 prepares4.10.1; no4.10.1 artifact published. Full Linux backend rerun passed 5,606 cases with zero failures/errors and 80 skips/expected failures; targeted sibling checks restored 14 additional skipped checks and passed (one pre-existing playbook fixture skip). Windows release-source validation and physical release acceptance remain outstanding.
+- Issue #1838: direct existing WSL GitHub org API confirms OGLaptop registrations 7/8 absent; all eight local installations and registration files exist. Units 7/8 are inactive/dead (MainPID 0), with old registration IDs 223/224. Qualified deployment requires exact inventory 1–8, so this is another actual precondition blocker. No registration/credential/service changes attempted.
+- Draft release PR #1835 prepares4.10.1; no4.10.1 artifact published. Full Linux backend rerun passed 5,606 cases with zero failures/errors and 80 skips/expected failures; targeted sibling checks restored 14 additional skipped checks and passed (one pre-existing playbook fixture skip). Full Windows release-source validation also passed 5,606 cases with zero failures/errors and 62 skips/expected failures. Docker CI and physical release acceptance remain outstanding.
 
 ## Concrete bootstrap inputs
 
@@ -54,5 +55,6 @@ Separate branch policy payload: {"name":"main","type":"branch"}. Verify server-r
 - Full Linux suite, exact PR CI and coherent release metadata/schema.
 - Issue #1805 explicitly requires physical-phone safe-area and screen-reader order before release, plus200% zoom and native keyboard open/close checks. Automated viewport clicks already passed; physical acceptance is pending.
 - Owner acceptance/relabel for remaining Board design issues is separate; release notes do not claim them complete.
+- Recover only missing standby registrations 7/8 under the existing recovery runbook, with owner approval, protected credential backups and rollback. Keep them offline and desired capacity four. Re-prove complete paginated inventory before qualification. Do not use broad setup or start dormant units.
 - After approved publication, qualify exact signed/attested4.10.1 artifact and protected-main SHA, then dispatch existing qualified workflow in07:00–22:00 America/Los_Angeles window. Prove exact runner inventory, idle peers, unchanged scheduler capacity and rollback readiness according to runbook.
 - Protected GitHub environment approval is the final production deployment boundary. No source-copy or direct service replacement.

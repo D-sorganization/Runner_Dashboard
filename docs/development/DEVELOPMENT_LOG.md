@@ -27,9 +27,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** #1835 (draft)
 - **Paths:** `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`, `docs/development/QUALIFIED_DEPLOYMENT_PREFLIGHT.md`
 - **Started:** 2026-09-30
-- **Last verified:** 2026-09-30 @ SELF; RED VERSION-only bump fails both static/lock coherence checks; GREEN all 3 coherence tests, uv lock --check, generated schema check pass. No dependency changes. Full Linux rerun5606cases:0failures/errors,80skipped/xfail;14 additional sibling-dependent checks restored and passed; one pre-existing playbook fixture skip remains. Typecheck passes on merged source.
+- **Last verified:** 2026-09-30 @ d5ea8c7d; RED VERSION-only bump fails static/lock coherence; GREEN three coherence tests, uv lock --check, generated schema and typecheck pass. Full Windows release source: 5,606 cases, zero failures/errors, 62 skips/expected failures. Full Linux reviewed-main rerun: 5,606 cases, zero failures/errors, 80 skips/expected failures; 14 sibling-dependent checks restored and passed separately. Backend/frontend CI pass at this head; Docker queued. No dependency changes.
 - **Summary:** Synchronize patch metadata and record truthful reviewed fixes since older production. No production mutation. Existing type generation remains identical except schema info version.
-- **Next step:** Verify draft PR #1835; collect Windows release-source suite and CI; obtain outstanding physical-device acceptance before release, then use qualified deployment approval gate.
+- **Next step:** Verify draft PR #1835; collect Windows release-source suite and Docker CI; obtain physical-device acceptance, root/protected-environment approval and #1838 standby inventory recovery before qualified production deployment.
 
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 
