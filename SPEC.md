@@ -11,7 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
-| 2026-09-30 | #1834 | Prepare coherent 4.10.1 release metadata and notes for reviewed Staff reliability and mobile fixes; publication and qualified production deployment remain separate gates. |
+| 2026-09-30 | #1834 | Prepare coherent 4.10.1 release metadata and notes for reviewed Staff reliability and mobile fixes; record root Python qualification blocker #1839 and verified candidate provenance. Publication and qualified production deployment remain separate gates. |
 | 2026-09-30 | #1836 | Systemd watchdog recovery test waits for an observed successful retry with bounded timeout and guaranteed cleanup instead of cancelling after a fixed timing sample. Runtime behavior unchanged. |
 | 2026-09-30 | #1832 | Windows test harnesses reuse compatible Bash discovery and path conversion; the process-tree watchdog test permits interpreter startup and polls boundedly for descendant termination. Production behavior is unchanged. |
 | 2026-09-30 | #1831 | Align `.env.example` `MAXWELL_PORT=8080` with the runtime and daemon listener instead of dashboard pool port 8322; regression-test the copied template target. |

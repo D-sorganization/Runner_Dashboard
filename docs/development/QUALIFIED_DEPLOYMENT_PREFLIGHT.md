@@ -13,6 +13,23 @@ Prepared 2026-09-30 for Runner_Dashboard issue #1834. No production service, roo
 
 ## Concrete bootstrap inputs
 
+### Python authority blocker — #1839
+
+Ubuntu 26.04 supplies root-owned `/usr/bin/python3` 3.14.4; no root-owned Python 3.12 exists at the checked system paths. The qualified scheduler runtime requires exactly 3.12. User-managed Python 3.12.14 exists but is not root execution authority. No deployment was attempted.
+
+Both Gemini advisory seats recommend a dedicated, verified root-owned Python 3.12 prefix and one closed selector shared by deployment and scheduler setup, with runtime preflight before filesystem/service mutation. This remains `judgement:design`; maintainer acceptance/relabel is required before implementation. Preserve distro Python and the backend 3.12 wheel ABI. Qualifying scheduler 3.14 alone would not resolve the separate backend installation boundary.
+
+Prepared candidate (unprivileged cache only; not extracted, installed or executed):
+
+- Official Astral release `20260929`, asset `cpython-3.12.14+20260929-x86_64-unknown-linux-gnu-install_only.tar.gz`.
+- Local archive `/home/dieterolson/.cache/runner-dashboard-qualified-prep/cpython-3.12.14-20260929-linux-x86_64.tar.gz`.
+- SHA-256 `06c90b93f419b63371c18f20fed0558a1a901f6518c3c24f755077e048447e7f`, matching the publisher asset digest and signed subject.
+- GitHub attestation verification passed with repository, signer workflow `astral-sh/python-build-standalone/.github/workflows/release.yml` and source digest `4a7348fcaa53d686c894674a5071f52f8b54dac6` pinned. This signed workflow digest differs from the release tag target; do not conflate them. Verified SLSA provenance identifies release workflow run `36594441142`, attempt 1.
+- Archive inspection passed: 4,534 members, 1,049 links; member/link destinations remain within the `python/` prefix, with no special devices. This is preparation evidence, not runtime qualification.
+- Verification records: `python-3.12.14-provenance-pinned.json` and `.log` alongside the archive. A future approved operator install must reverify provenance/digest, use a root-owned fixed prefix with protected ancestors, and prove interpreter/venv/import/ownership contracts before enabling deployment authority.
+
+Publisher sources: [release](https://github.com/astral-sh/python-build-standalone/releases/tag/20260929), [distribution layout](https://github.com/astral-sh/python-build-standalone/blob/main/docs/distributions.rst).
+
 Clean regular Linux Git checkout: /home/dieterolson/.cache/runner-dashboard-qualified-prep/source-b6cee8df
 
 Reviewed protected-main source commit: b6cee8df2d0c109ea4f0a4e5ed42aed319071d68

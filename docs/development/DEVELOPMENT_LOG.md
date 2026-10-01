@@ -29,7 +29,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ d5ea8c7d; RED VERSION-only bump fails static/lock coherence; GREEN three coherence tests, uv lock --check, generated schema and typecheck pass. Full Windows release source: 5,606 cases, zero failures/errors, 62 skips/expected failures. Full Linux reviewed-main rerun: 5,606 cases, zero failures/errors, 80 skips/expected failures; 14 sibling-dependent checks restored and passed separately. Backend/frontend CI pass at this head; Docker queued. No dependency changes.
 - **Summary:** Synchronize patch metadata and record truthful reviewed fixes since older production. No production mutation. Existing type generation remains identical except schema info version.
-- **Next step:** Verify draft PR #1835; collect Windows release-source suite and Docker CI; obtain physical-device acceptance, root/protected-environment approval and #1838 standby inventory recovery before qualified production deployment.
+- **Next step:** Collect exact-head Docker CI (71f2f933 job110212483375 now running; backend/frontend passed); obtain physical-device acceptance, root/protected-environment approval, #1838 standby inventory recovery and #1839 root-owned Python policy acceptance. Official 3.12.14 candidate checksum, pinned provenance and archive paths verified without installation; details in preflight. Keep release draft until acceptance.
 
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 
