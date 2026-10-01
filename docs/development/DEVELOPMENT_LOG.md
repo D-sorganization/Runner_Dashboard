@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1830 — Fresh setup uses the Maxwell daemon listener
+### DL-#1832 — Portable Windows validation harnesses
 
 - **State:** in_progress
+- **Owner:** codex (Gemini 3.8 Flash drafts and review)
+- **Issue:** #1832
+- **Branch:** `fix/issue-1832-windows-validation` from `origin/main` (`9755f69c`)
+- **PR:** not created
+- **Paths:** `tests/deploy/test_wait_healthy.py`, `tests/test_reap_wsl_leaked_chrome.py`, `tests/unit/test_staff_watchdog.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED targeted baseline exits 1 with Windows shell/startup failures; GREEN all 20 targeted tests pass on Windows; standalone reaper tests and ruff lint/format pass. Linux targeted: 19 passed, one cross-environment Git-index skip (passed Windows).
+- **Summary:** Reuse the existing compatible Bash discovery/path helper; permit two Python interpreter startups before testing idle process-tree termination and poll boundedly for descendant death. No production timeout change.
+- **Next step:** Finish Linux validation, open focused PR, then collect full Linux suite and prepare qualified release.
+
+### DL-#1830 — Fresh setup uses the Maxwell daemon listener
+
+- **State:** shipped
 - **Owner:** codex (Gemini 3.8 Flash draft and review)
 - **Issue:** #1830
 - **Branch:** `fix/issue-1830-maxwell-template`
-- **PR:** not created
+- **PR:** #1831 (merged)
 - **Paths:** `.env.example`, `tests/test_env_template.py`, `SPEC.md`
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ SELF; RED fails 8322 != 8080; GREEN 60 template/config/registry tests pass; ruff lint/format pass; SPEC freshness CI identified the missing changelog, now added for PR #1831.
 - **Summary:** Copying the template previously overrode corrected runtime defaults with a pool dashboard port. Align the example to Maxwell's 8080 listener. TDD executed; Gemini draft reviewed against exact runtime source.
-- **Next step:** Inspect CI for PR #1831.
+- **Next step:** Released source awaits a new qualified deployment; main merge is `9755f69c`.
 
 
 

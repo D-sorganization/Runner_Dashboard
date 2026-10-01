@@ -7,18 +7,17 @@ was rolled back. ``wait_healthy`` checks after every sleep, including the last.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from deploy.bash_host import BASH, SKIP_REASON, as_bash_path
 
 ROOT = Path(__file__).resolve().parents[2]
 LIB = ROOT / "deploy" / "lib.sh"
 UPDATE_SCRIPT = ROOT / "deploy" / "update-deployed.sh"
-BASH = shutil.which("bash")
 
-pytestmark = [pytest.mark.unit, pytest.mark.skipif(BASH is None, reason="bash not available")]
+pytestmark = [pytest.mark.unit, pytest.mark.skipif(BASH is None, reason=SKIP_REASON)]
 
 
 def _run(healthy_on_call: int, delays: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -36,8 +35,9 @@ rc=0
 wait_healthy check || rc=$?
 echo "rc=$rc calls=$calls slept=[${{slept# }}]"
 """
+    assert BASH is not None
     return subprocess.run(
-        [BASH, "-c", script, "wait_healthy_test", LIB.as_posix()], capture_output=True, text=True, check=True
+        [BASH, "-c", script, "wait_healthy_test", as_bash_path(LIB)], capture_output=True, text=True, check=True
     )
 
 

@@ -234,14 +234,15 @@ def test_watchdog_kills_chatty_cli_after_wall_clock_timeout(
 def test_watchdog_kills_grandchild_process(
     staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Grandchild spawns and prints PID, then parent sleeps silently -> triggers idle timeout
-    monkeypatch.setenv("STAFF_IDLE_TIMEOUT_SECONDS", "0.4")
+    # Two interpreter startups must finish before the silence we're testing;
+    # Windows startup routinely exceeded the former 0.4s budget (#1832).
+    monkeypatch.setenv("STAFF_IDLE_TIMEOUT_SECONDS", "2.0")
     monkeypatch.setenv("STAFF_RUN_TIMEOUT_SECONDS", "30.0")
 
     rec = staff_runner.submit(
         runner_mod.RunRequest(role="watchdog-role", provider="fake-spawner", prompt="test spawner")
     )
-    done = _wait_for_terminal(staff_runner.store, rec.id, timeout=5.0)
+    done = _wait_for_terminal(staff_runner.store, rec.id, timeout=10.0)
 
     assert done.status == "failed"
     assert done.failure_class == "stalled"
@@ -256,7 +257,9 @@ def test_watchdog_kills_grandchild_process(
 
     assert len(grandchild_pids) == 1
     grandchild_pid = grandchild_pids[0]
-    time.sleep(0.5)
+    death_deadline = time.monotonic() + 5.0
+    while psutil.pid_exists(grandchild_pid) and time.monotonic() < death_deadline:
+        time.sleep(0.05)
     assert not psutil.pid_exists(grandchild_pid)
 
 
