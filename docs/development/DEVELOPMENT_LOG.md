@@ -20,42 +20,55 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1840 — Refresh vulnerable container security pins
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** codex (Gemini 3.8 Flash source-fed CLI draft and review)
 - **Issue:** #1840
 - **Branch:** `fix/issue-1840-container-security` from `origin/main` (`f6dffd96`)
-- **PR:** #1841
+- **PR:** #1841 (merged)
 - **Paths:** `Dockerfile`, `uv.lock`, `requirements.lock.txt`, `tests/test_deploy_hardening.py`, `SPEC.md`
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ SELF; RED four security assertions; GREEN63Windows hardening tests,71Linux hardening/HTTP tests with isolated frozen dependencies, ruff lint/format, real Docker build/hash enforcement and Trivy0.70 HIGH/CRITICAL ignore-unfixed scan exit0.
 - **Summary:** Failed release scan reported seven Debian and two Python fixable HIGH findings. Verified official Debian security replacements OpenSSL3.5.7-1~deb13u3/PCRE2 10.46-1~deb13u3 and PyPI urllib3 2.8.0. Only urllib3 changed in the Python graph; generated hashes match publisher. Preserve base digest/runtime bounds/scan gates; no production mutation. Second Gemini review found an overstated test docstring, corrected.
-- **Next step:** Open focused PR, pass required exact-head checks and guarded merge; synchronize release PR #1835 afterward. Preserve unrelated pending deployment approvals.
+- **Next step:** Merged at33df0462; integrated into release draft. Local Docker/Trivy pass; existing GitHub Docker job110220731442 still queued. Collect exact release-head checks without duplicate dispatch; retain operator gates.
+
+### DL-#1834 — Coherent patch release preparation
+
+- **State:** in_review
+- **Owner:** codex (Gemini 3.8 Flash release draft and review)
+- **Issue:** #1834
+- **Branch:** `chore/issue-1834-release-4.10.1` from `origin/main` (`9755f69c`)
+- **PR:** #1835 (draft)
+- **Paths:** `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`, `docs/development/QUALIFIED_DEPLOYMENT_PREFLIGHT.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ d5ea8c7d; RED VERSION-only bump fails static/lock coherence; GREEN three coherence tests, uv lock --check, generated schema and typecheck pass. Full Windows release source: 5,606 cases, zero failures/errors, 62 skips/expected failures. Full Linux reviewed-main rerun: 5,606 cases, zero failures/errors, 80 skips/expected failures; 14 sibling-dependent checks restored and passed separately. Backend/frontend CI pass at this head; Docker queued at that prior head. Security follow-up #1840 integrated33df0462:66release coherence/hardening tests pass; only urllib3 Python dependency changed, local Docker/Trivy and71Linux hardening/HTTP tests passed on reviewed repair source.
+- **Summary:** Synchronize patch metadata and record truthful reviewed fixes since older production. No production mutation. Existing type generation remains identical except schema info version.
+- **Next step:** Collect exact-head Docker CI (71f2f933 job110212483375 now running; backend/frontend passed); obtain physical-device acceptance, root/protected-environment approval, #1838 standby inventory recovery and #1839 root-owned Python policy acceptance. Official 3.12.14 candidate checksum, pinned provenance and archive paths verified without installation; details in preflight. Keep release draft until acceptance.
 
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** codex (Gemini 3.8 Flash drafted fix via agy CLI)
 - **Issue:** #1836
 - **Branch:** `test/issue-1836-watchdog-recovery` from `origin/main` (`b6cee8df`)
-- **PR:** not created
+- **PR:** #1837 (merged)
 - **Paths:** `tests/test_systemd_watchdog.py`, `SPEC.md`
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ SELF; RED full Linux suite5605cases has one failure; controlled300ms logging delay reproduces it; GREEN same delayed reproduction passes, Linux10watchdog tests pass, Windows9pass/1platformskip; ruff lint/format pass.
 - **Summary:** Wait for successful notifier retry with a2s event deadline; always cancel/join the background task. Preserve recovery/count and cancellation contracts; production code unchanged.
-- **Next step:** Open focused PR and collect full Linux rerun in isolated validation checkout.
+- **Next step:** Shipped at f6dffd96; full Linux rerun passes5606cases with0failures/errors and80skipped/xfail; source awaits release.
 
 ### DL-#1832 — Portable Windows validation harnesses
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** codex (Gemini 3.8 Flash drafts and review)
 - **Issue:** #1832
 - **Branch:** `fix/issue-1832-windows-validation` from `origin/main` (`9755f69c`)
-- **PR:** not created
+- **PR:** #1833 (merged)
 - **Paths:** `tests/deploy/test_wait_healthy.py`, `tests/test_reap_wsl_leaked_chrome.py`, `tests/unit/test_staff_watchdog.py`, `SPEC.md`
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ SELF; RED targeted baseline exits 1 with Windows shell/startup failures; GREEN all 20 targeted tests pass on Windows; standalone reaper tests and ruff lint/format pass. Linux targeted: 19 passed, one cross-environment Git-index skip (passed Windows).
 - **Summary:** Reuse the existing compatible Bash discovery/path helper; permit two Python interpreter startups before testing idle process-tree termination and poll boundedly for descendant death. No production timeout change.
-- **Next step:** Finish Linux validation, open focused PR, then collect full Linux suite and prepare qualified release.
+- **Next step:** Shipped at b6cee8df; prepare qualified release.
 
 ### DL-#1830 — Fresh setup uses the Maxwell daemon listener
 

@@ -1,38 +1,26 @@
-# Current handoff — container scan repair (DL-#1840)
+# Current handoff — validated draft release and production gates (DL-#1834)
 
-- Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1840`, branch `fix/issue-1840-container-security`, issue #1840, PR #1841, lease session codex-rd-overnight-1840. Production unchanged; peer checkout preserved.
-- Release older-head Docker run36813181457/job110212483375 failed fixable HIGH findings. Gemini 3.8 Flash CLI drafted TDD changes; second CLI review verified delta and identified an overstated docstring, corrected.
-- RED four assertions; GREEN63Windows hardening and71Linux hardening/HTTP tests using isolated frozen dependencies. Docker build and matching Trivy0.70 scan exit0. Logs `/home/dieterolson/.cache/rd1840-docker-build.log`, `rd1840-trivy-scan.log`, `rd1840-tests.log`. Official Trivy archive checksum verified before execution.
-- Only urllib3 lock changed2.7→2.8; exact OpenSSL/PCRE Debian pins move deb13u2→u3. Preserve base digest/runtime/hash enforcement/scan gates. No suppression or broad upgrades.
-- Next: focused PR, required CI and guarded merge; merge protected main into release draft afterward. Release phone/root/env/standby/Python-policy approvals remain pending in release worktree preflight. Do not mark goal complete from tests.
+- Additional verified deployment blocker #1839: Ubuntu system Python is 3.14.4, but root scheduler qualification requires 3.12; no checked root-owned 3.12 exists. Both Gemini advisory seats recommend a dedicated verified root-owned 3.12 prefix and shared closed selector, with preflight before mutation. Design acceptance/relabel remains pending. Official Astral 3.12.14 archive is cached only, checksum and pinned workflow/source attestation verified; archive paths/links inspected. Nothing extracted/installed/executed. See preflight for exact digest and provenance. Do not use the user-owned interpreter as root authority or replace distro Python.
+- Security repair #1840 / PR #1841 merged33df0462 and integrated into this release draft. Gemini CLI draft/review; RED4 security assertions, GREEN63Windows hardening/71Linux hardening-HTTP tests; real local Docker/Trivy pass. GitHub Docker job110220731442 remains queued; do not claim it passed. Previous release Docker scan failed fixed vulnerabilities. Collect new exact-head checks after push; no capacity expansion.
 
----
-
-# Prior handoff — systemd watchdog test recovery (DL-#1836)
-
-- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1836`; branch `test/issue-1836-watchdog-recovery`, base `b6cee8df`; issue #1836; PR not created.
-- Gemini3.8 Flash agy source-fed draft integrated: asyncio.Event observes successful retry, bounded2s wait, finally cancels/joins. No runtime change.
-- RED full Linux baseline5605cases:1failure,0errors,66skipped/xfail in921.686s; sole failure was fixed.35s watchdog recovery sample. Controlled300ms exception logging delay reproduces old failure; GREEN same delayed run passes. Linux10targeted pass; Windows9pass/1AF_UNIXskip; ruff lint/format pass.
-- PR #1833 merged `b6cee8df`; Windows20targeted pass, Linux19pass/1cross-environmentskip. PR #1831 Maxwell template shipped `9755f69c`.
-- Draft release PR #1835, worktree codex-1834, af85d181:4.10.1 coherent metadata. RED/GREEN3existing coherence tests, uv lock --check and schema check pass. Hold publication pending full validation and #1805 physical phone acceptance (explicit before-release criterion); Board design gates remain.
-- Production remains older fadc1158, livez/readyz pass, mobile old build overlap confirmed versus corrected source preview.16hermetic Staff E2E plus frontend lint/typecheck/build/coverage passed. No production mutation.
-- Next: focused PR, full Linux rerun with regular Linux Git metadata; merge passing test fix, sync draft release docs/base; prepare qualified deployment prerequisites and physical-device acceptance request. Goal ACTIVE.
-
----
-
-# Current handoff — overnight dashboard completion (DL-#1832)
-
-- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1832`; branch `fix/issue-1832-windows-validation`; governing issue #1832; PR not created.
-- Changes: three test harnesses use the existing Bash helper and bounded startup/death waits. Gemini 3.8 Flash supplied source-fed drafts via agy CLI; Codex verified and integrated. Production watchdog behavior unchanged.
-- Validation: baseline targeted run failed; all 20 targeted tests now pass Windows, standalone reaper tests pass, ruff lint/format pass. Linux targeted: 19 passed, one Git-index check skipped because WSL cannot resolve Windows worktree metadata; that check passed on Windows.
-- Broad validation: Windows backend suite finished with nine failures accounted for by #1832. Full Linux suite session 34871 continues in the original checkout; durable log `.playwright-cli/backend-linux.log`, JUnit `.playwright-cli/backend-linux-results.xml`. Poll before restarting. Frontend typecheck/lint/build/test coverage passed (83.35% lines). Hermetic Staff E2E: 16 passed with guard, isolated fake backend stopped.
-- Shipped source: #1830 merged via PR #1831 at `9755f69c`; fresh template now targets Maxwell 8080. Main live deployment remains older `fadc1158`, version 4.10.0. Current preview :5173 confirms mobile Inbox/Runs clicks; older live build reproduces #1805. `/livez` and `/readyz` pass. `/healthz` returns SPA HTML.
-- Deployment: qualified-release runbook governs OGLaptop. Root deployment helper and cosign absent; production environment API returned 404 (absence or visibility unconfirmed). Prepare and validate new release before requesting final production approval. Never install test dependencies into production venv.
-- Constraints: agy unattended tool calls auto-denied; feed exact source in --print for drafts/reviews. Design-labelled Board issues require convergent opinions and owner relabel. Physical-device checks remain human-only. Goal ACTIVE, not complete.
-- Next: open #1832 PR after Linux validation; collect full Linux result; prepare coherent patch release and production prerequisites.
+- Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1834`; branch `chore/issue-1834-release-4.10.1`; issue #1834; draft PR #1835. Tested release source: d5ea8c7d (before the focused security dependency refresh). Main:33df0462.
+- Merged: Maxwell fresh-template listener #1830 / PR #1831 (9755f69c); portable Windows Bash/watchdog harnesses #1832 / PR #1833 (b6cee8df); event-observed systemd watchdog recovery #1836 / PR #1837 (f6dffd96). Gemini 3.8 Flash supplied source-fed agy drafts/reviews; Codex verified/integrated. TDD RED/GREEN captured; production watchdog behavior unchanged.
+- Release metadata: VERSION 4.10.1 coherent with Python/Node manifests/locks, OpenAPI, SPEC and truthful CHANGELOG. Existing coherence tests RED with VERSION-only bump, all three GREEN after synchronization; uv lock --check, generated schema/type check and TypeScript typecheck pass. Focused security follow-up upgrades only urllib3 to2.8.0, plus exact Debian OpenSSL/PCRE2 pins; no other Python dependency changes.
+- Full Windows release-source suite session25530 finished exit0: 5,606 cases, zero failures/errors, 62 skips/expected failures in 1,153.070s. Log: Windows TEMP/rd1834-windows-full.log; JUnit: original Runner_Dashboard/.playwright-cli/backend-windows-release-results.xml.
+- Full Linux source rerun session52546 finished exit0: 5,606 cases, zero failures/errors, 80 skips/expected failures in 436.179s. This used b6cee8df plus the identical merged watchdog fix in a regular Linux Git validation checkout, /home/dieterolson/.cache/runner-dashboard-validation-1836. Fourteen extra sibling-dependent skipped checks were restored and passed separately in session86466; one pre-existing playbook fixture skip remains. Log/JUnit: original .playwright-cli/backend-linux-1836.log and backend-linux-1836-results.xml.
+- Frontend lint/build/coverage and 16 hermetic Staff E2E passed locally. At d5ea8c7d, release PR backend/frontend CI passed including Staff E2E, Vitest, typecheck and performance; Docker lane queued while eligible Desktop runners busy. Documentation follow-up may start new exact-head checks; do not inflate capacity or repeatedly poll.
+- Production remains fadc115895a5a4d31deca41ecf86412065a8cb50 / 4.10.0. JSON /livez and /readyz pass; /healthz is SPA HTML. Current-source preview :5173 confirms mobile Inbox/Runs clicks; old live build reproduces #1805. Source preview uses older live backend, so hermetic tests provide separate full workflow evidence.
+- Concrete review artifact: docs/development/QUALIFIED_DEPLOYMENT_PREFLIGHT.md. Clean reviewed bootstrap source b6cee8df and official Cosign 3.0.6 binary are prepared in /home/dieterolson/.cache/runner-dashboard-qualified-prep. Binary checksum verified against pinned installer source. No root/service/env changes made.
+- GitHub environments inventory is empty; required oglaptop-production reviewer gate absent. Explicit approval for root helper/sudoers and protected-environment activation requested asynchronously; no reply received. Do not activate without reply.
+- #1838: direct existing WSL gh org API lists OGLaptop registrations 1–6 only; all eight local installations/registration files exist. Units 7/8 inactive/dead/MainPID0, old IDs223/224. Recovery approval requested separately. Restore only missing standby registrations with protected backups and rollback; keep both offline and desired host capacity four. No credential/service changes attempted. Qualified deployment requires exact 1–8 inventory.
+- #1805 explicitly requires physical-phone safe-area/screen-reader checks before release, plus zoom/native-keyboard acceptance. Automated viewport/hit tests passed; physical results requested and pending. Keep VERSION PR draft; do not publish around this gate.
+- Both Gemini review seats posted one structured advisory opinion each on all ten design-gated Board issues: #1800–1803 and #1806–1811. Opinions are source-fed/packet-based; maintainer acceptance of qualifications, owner policy decisions and judgement:objective relabel remain required. No design implementation. Host capacity four is not a hardcoded fleet-wide Staff admission limit. Freeze expiration does not authorize expanded autonomy; separate Board decision required.
+- GitHub auth: refresh with existing owner bootstrap, capture/redact output; remove stale process GH_TOKEN/GITHUB_TOKEN and use C:/Users/diete/Repositories/.codex-github-runtime/gh-config. Never print tokens. Windows bot cannot list org runners (403); existing WSL gh auth can do scoped read-only inventory.
+- Hourly overnight heartbeat remains ACTIVE with quiet-on-unchanged instructions. Goal ACTIVE, not complete. Next: collect exact-head CI, preserve pending approvals and release gates; upon approved prerequisites and acceptance, publish qualified artifact then use protected production workflow in allowed daytime window and verify rollback/readiness/inventory. Never hot-replace source or change peer checkout.
 
 ---
-# Current handoff — Maxwell Contract Drift gets a Python (DL-#1826)
+
+# Prior handoff — Maxwell Contract Drift gets a Python (DL-#1826)
 
 - **Repository / worktree:** Runner_Dashboard, `_wt/rd-maxwell-drift-python`
 - **Branch:** `fix/maxwell-contract-drift-python` from `origin/main` (`d86c7732`)

@@ -37,6 +37,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Staff Hub PR-consolidation strategy: roles may declare `strategy.consolidate_when` (`open_prs`, `utilisation_pct`); the scheduler and `POST /api/staff/{role}/run` evaluate it against the repo's open non-draft PRs and fleet utilisation, inject a `consolidate` / `serial` paragraph into the prompt, return `plan.consolidation`, store `strategy_mode` and the parsed `outcome` ("consolidated N PRs into #M") on the run; the Staff tab shows the threshold on the roster card and the outcome in the run log (#1213, epic #1192).
 - Staff board scheduled-role liveness: `GET /api/staff/board` reports `liveness` per node and, with peers, `liveness_alerts` (late/dead roles across online nodes); `GET /api/staff/summary` carries `liveness_alerts`; a role turning `dead` records a `staff_role_dead` fleet event once per 6 h; the Staff tab Board panel lists the alerts (#1209, epic #1192).
 
+## [4.10.1] - 2026-09-30
+
+### Fixed
+
+- Staff requests reserve idempotency keys before execution; dispatch audit admission precedes worker launch (#1795, #1796).
+- Follow-up retries launch workers and preserve origin links; persistent paged follow-up checks avoid starving older work (#1797, #1798).
+- Fleet clients derive unique default sessions; Staff availability reflects reported provider and schedule data (#1799, #1804).
+- Mobile Staff Console tab geometry fits the shell content area (#1805). Physical-device keyboard, safe-area and screen-reader checks remain pending.
+- Fresh setup targets Maxwell's 8080 listener (#1830); scheduled Maxwell contract checks install Python first (#1826).
+- Container security pins advance the Debian OpenSSL/PCRE2 package set and urllib3 to verified fixed versions while preserving hash-verified installs and scan gates (#1840).
+
+Release preparation does not resolve the remaining design-gated Board items or qualify production deployment.
+
 ## [4.10.0] - 2026-09-22
 
 ### Added
