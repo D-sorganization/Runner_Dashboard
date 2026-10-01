@@ -25,37 +25,37 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1834
 - **Branch:** `chore/issue-1834-release-4.10.1` from `origin/main` (`9755f69c`)
 - **PR:** #1835 (draft)
-- **Paths:** `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`
+- **Paths:** `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`, `docs/development/QUALIFIED_DEPLOYMENT_PREFLIGHT.md`
 - **Started:** 2026-09-30
-- **Last verified:** 2026-09-30 @ SELF; RED VERSION-only bump fails both static/lock coherence checks; GREEN all 3 coherence tests, uv lock --check, generated schema check pass. No dependency changes.
+- **Last verified:** 2026-09-30 @ SELF; RED VERSION-only bump fails both static/lock coherence checks; GREEN all 3 coherence tests, uv lock --check, generated schema check pass. No dependency changes. Full Linux rerun5606cases:0failures/errors,80skipped/xfail;14 additional sibling-dependent checks restored and passed; one pre-existing playbook fixture skip remains. Typecheck passes on merged source.
 - **Summary:** Synchronize patch metadata and record truthful reviewed fixes since older production. No production mutation. Existing type generation remains identical except schema info version.
-- **Next step:** Verify draft PR #1835; collect full Linux suite and CI; obtain outstanding physical-device acceptance before release, then use qualified deployment approval gate.
+- **Next step:** Verify draft PR #1835; collect Windows release-source suite and CI; obtain outstanding physical-device acceptance before release, then use qualified deployment approval gate.
 
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** codex (Gemini 3.8 Flash drafted fix via agy CLI)
 - **Issue:** #1836
 - **Branch:** `test/issue-1836-watchdog-recovery` from `origin/main` (`b6cee8df`)
-- **PR:** not created
+- **PR:** #1837 (merged)
 - **Paths:** `tests/test_systemd_watchdog.py`, `SPEC.md`
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ SELF; RED full Linux suite5605cases has one failure; controlled300ms logging delay reproduces it; GREEN same delayed reproduction passes, Linux10watchdog tests pass, Windows9pass/1platformskip; ruff lint/format pass.
 - **Summary:** Wait for successful notifier retry with a2s event deadline; always cancel/join the background task. Preserve recovery/count and cancellation contracts; production code unchanged.
-- **Next step:** Open focused PR and collect full Linux rerun in isolated validation checkout.
+- **Next step:** Shipped at f6dffd96; full Linux rerun passes5606cases with0failures/errors and80skipped/xfail; source awaits release.
 
 ### DL-#1832 — Portable Windows validation harnesses
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** codex (Gemini 3.8 Flash drafts and review)
 - **Issue:** #1832
 - **Branch:** `fix/issue-1832-windows-validation` from `origin/main` (`9755f69c`)
-- **PR:** not created
+- **PR:** #1833 (merged)
 - **Paths:** `tests/deploy/test_wait_healthy.py`, `tests/test_reap_wsl_leaked_chrome.py`, `tests/unit/test_staff_watchdog.py`, `SPEC.md`
 - **Started:** 2026-09-30
 - **Last verified:** 2026-09-30 @ SELF; RED targeted baseline exits 1 with Windows shell/startup failures; GREEN all 20 targeted tests pass on Windows; standalone reaper tests and ruff lint/format pass. Linux targeted: 19 passed, one cross-environment Git-index skip (passed Windows).
 - **Summary:** Reuse the existing compatible Bash discovery/path helper; permit two Python interpreter startups before testing idle process-tree termination and poll boundedly for descendant death. No production timeout change.
-- **Next step:** Finish Linux validation, open focused PR, then collect full Linux suite and prepare qualified release.
+- **Next step:** Shipped at b6cee8df; prepare qualified release.
 
 ### DL-#1830 — Fresh setup uses the Maxwell daemon listener
 

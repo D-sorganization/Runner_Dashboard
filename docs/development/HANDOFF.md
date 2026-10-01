@@ -1,3 +1,12 @@
+# Validation update — draft release #1835
+
+- Full Linux rerun session52546 finished exit0:5606cases,0failures,0errors,80skipped/xfail in436.179s.14 extra skips from absent sibling clones were restored and passed in targeted suite86466 after read-only sibling links; one pre-existing playbook fixture skip remains. Logs/JUnit remain in original checkout .playwright-cli/backend-linux-1836.*.
+- Release-source coherence3tests and TypeScript typecheck pass after merging mainf6dffd96 into draft branchbcba47a0. Full Windows release-source suite launched; output is temporary rd1834-windows-full.log; JUnit original .playwright-cli/backend-windows-release-results.xml.
+- Concrete root bootstrap and protected environment proposal: docs/development/QUALIFIED_DEPLOYMENT_PREFLIGHT.md. Official Cosign3.0.6 binary checksum verified, clean sourceb6cee8df prepared; no root/service/env mutation. User approval and #1805 physical-phone results requested asynchronously; no response yet.
+- Two Gemini CLI source-fed design opinions posted on #1800:5924187232 and5924187413. Both prefer explicit authoritative endpoint plus durable receipt-based retries. Qualification/maintainer relabel and owner outage objectives remain pending; no design implementation.
+
+---
+
 # Current handoff — patch release preparation (DL-#1834)
 
 - Worktree: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1834`; branch `chore/issue-1834-release-4.10.1`; issue #1834; PR #1835 (draft).
