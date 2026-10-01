@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-01 | #1844 | Realign line numbers in .secrets.baseline for tests/test_maxwell_contract.py following upstream OpenAPI schema drift update (#1828), restoring green CI Secrets baseline diff checks on main. |
 | 2026-10-01 | #1805 | Keep mobile Inbox, Runs, send and approval controls in an unobscured local navigation region above the global mobile navigation; Vitest component and shell layout tests verify shell bottom offsets and 44px hit-testable bounds across 320, 390 and 430px widths. |
 | 2026-10-01 | #1828 | Refresh vendored Maxwell OpenAPI snapshot from upstream Maxwell_Daemon to resolve contract drift, deriving worker contract fixtures and schema validations from the typed WorkersStatusResponse schema. |
 | 2026-09-30 | #1840 | Refresh exact Debian OpenSSL/PCRE2 security pins and targeted urllib3 lock/export to close release container scan findings; preserve base digest, Python bounds, hash enforcement and scan thresholds. |
