@@ -25,7 +25,10 @@
             "title": "Verification"
           }
         },
-        "required": ["id", "text"],
+        "required": [
+          "id",
+          "text"
+        ],
         "title": "AcceptanceCriterion",
         "type": "object"
       },
@@ -372,7 +375,10 @@
             "type": "string"
           }
         },
-        "required": ["repo", "task_id"],
+        "required": [
+          "repo",
+          "task_id"
+        ],
         "title": "AssembleMemoryRequest",
         "type": "object"
       },
@@ -452,7 +458,12 @@
             "title": "Supersedes Owner Id"
           }
         },
-        "required": ["session_id", "owner_id", "heartbeat_at", "expires_at"],
+        "required": [
+          "session_id",
+          "owner_id",
+          "heartbeat_at",
+          "expires_at"
+        ],
         "title": "AssignmentLease",
         "type": "object"
       },
@@ -583,7 +594,9 @@
             "type": "array"
           }
         },
-        "required": ["backends"],
+        "required": [
+          "backends"
+        ],
         "title": "BackendCatalogResponse",
         "type": "object"
       },
@@ -621,7 +634,9 @@
             "type": "boolean"
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "title": "BackendConfigPayload",
         "type": "object"
       },
@@ -661,7 +676,9 @@
             "type": "boolean"
           }
         },
-        "required": ["success"],
+        "required": [
+          "success"
+        ],
         "title": "BackendTestResponse",
         "type": "object"
       },
@@ -679,7 +696,10 @@
             "type": "string"
           }
         },
-        "required": ["role", "content"],
+        "required": [
+          "role",
+          "content"
+        ],
         "title": "ChatMessage",
         "type": "object"
       },
@@ -940,7 +960,12 @@
             "type": "array"
           }
         },
-        "required": ["id", "session_id", "created_at", "current_plan"],
+        "required": [
+          "id",
+          "session_id",
+          "created_at",
+          "current_plan"
+        ],
         "title": "Checkpoint",
         "type": "object"
       },
@@ -991,12 +1016,19 @@
         "description": "Action available in the control plane.",
         "properties": {
           "expected_status": {
-            "enum": ["failed", "queued"],
+            "enum": [
+              "failed",
+              "queued"
+            ],
             "title": "Expected Status",
             "type": "string"
           },
           "kind": {
-            "enum": ["retry", "waive", "cancel"],
+            "enum": [
+              "retry",
+              "waive",
+              "cancel"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -1023,7 +1055,13 @@
             "type": "string"
           }
         },
-        "required": ["kind", "label", "path", "target_id", "expected_status"],
+        "required": [
+          "kind",
+          "label",
+          "path",
+          "target_id",
+          "expected_status"
+        ],
         "title": "ControlPlaneActionView",
         "type": "object"
       },
@@ -1159,7 +1197,9 @@
             "title": "Reason"
           }
         },
-        "required": ["confirmation_token"],
+        "required": [
+          "confirmation_token"
+        ],
         "title": "ControlRequest",
         "type": "object"
       },
@@ -1178,7 +1218,11 @@
             "type": "string"
           }
         },
-        "required": ["action", "applied_at", "previous_state"],
+        "required": [
+          "action",
+          "applied_at",
+          "previous_state"
+        ],
         "title": "ControlResponse",
         "type": "object"
       },
@@ -1196,7 +1240,10 @@
             "type": "number"
           }
         },
-        "required": ["month_to_date_usd", "by_backend"],
+        "required": [
+          "month_to_date_usd",
+          "by_backend"
+        ],
         "title": "CostSummary",
         "type": "object"
       },
@@ -1245,12 +1292,20 @@
             "type": "string"
           },
           "severity": {
-            "enum": ["blocker", "warning", "note"],
+            "enum": [
+              "blocker",
+              "warning",
+              "note"
+            ],
             "title": "Severity",
             "type": "string"
           }
         },
-        "required": ["severity", "critic", "message"],
+        "required": [
+          "severity",
+          "critic",
+          "message"
+        ],
         "title": "CriticFindingView",
         "type": "object"
       },
@@ -1419,7 +1474,9 @@
             "$ref": "#/components/schemas/DelegateSession"
           }
         },
-        "required": ["session"],
+        "required": [
+          "session"
+        ],
         "title": "DelegateSessionSnapshot",
         "type": "object"
       },
@@ -1504,7 +1561,11 @@
             "type": "string"
           }
         },
-        "required": ["id", "role", "status"],
+        "required": [
+          "id",
+          "role",
+          "status"
+        ],
         "title": "DelegateSessionView",
         "type": "object"
       },
@@ -1535,7 +1596,11 @@
             "title": "Repo"
           }
         },
-        "required": ["confirmation_token", "prompt", "idempotency_key"],
+        "required": [
+          "confirmation_token",
+          "prompt",
+          "idempotency_key"
+        ],
         "title": "DispatchRequest",
         "type": "object"
       },
@@ -1554,7 +1619,11 @@
             "type": "string"
           }
         },
-        "required": ["task_id", "status", "queued_at"],
+        "required": [
+          "task_id",
+          "status",
+          "queued_at"
+        ],
         "title": "DispatchResponse",
         "type": "object"
       },
@@ -1579,7 +1648,9 @@
             "type": "string"
           }
         },
-        "required": ["suite_id"],
+        "required": [
+          "suite_id"
+        ],
         "title": "EvalRunRequest",
         "type": "object"
       },
@@ -1599,7 +1670,9 @@
             "type": "string"
           }
         },
-        "required": ["target_id"],
+        "required": [
+          "target_id"
+        ],
         "title": "GateCancelRequest",
         "type": "object"
       },
@@ -1619,7 +1692,9 @@
             "type": "string"
           }
         },
-        "required": ["target_id"],
+        "required": [
+          "target_id"
+        ],
         "title": "GateRetryRequest",
         "type": "object"
       },
@@ -1676,7 +1751,11 @@
             "type": "boolean"
           }
         },
-        "required": ["id", "name", "status"],
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
         "title": "GateTimelineEntry",
         "type": "object"
       },
@@ -1707,7 +1786,11 @@
             "type": "string"
           }
         },
-        "required": ["target_id", "actor", "reason"],
+        "required": [
+          "target_id",
+          "actor",
+          "reason"
+        ],
         "title": "GateWaiverRequest",
         "type": "object"
       },
@@ -1778,12 +1861,22 @@
             "$ref": "#/components/schemas/AgentRole"
           }
         },
-        "required": ["id", "role", "output_artifact_kind"],
+        "required": [
+          "id",
+          "role",
+          "output_artifact_kind"
+        ],
         "title": "GraphNode",
         "type": "object"
       },
       "GraphStatus": {
-        "enum": ["queued", "running", "completed", "failed", "blocked"],
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "blocked"
+        ],
         "title": "GraphStatus",
         "type": "string"
       },
@@ -1875,7 +1968,11 @@
             "type": "number"
           }
         },
-        "required": ["status", "uptime_seconds", "gate"],
+        "required": [
+          "status",
+          "uptime_seconds",
+          "gate"
+        ],
         "title": "HealthResponse",
         "type": "object"
       },
@@ -1914,7 +2011,11 @@
             "type": "string"
           }
         },
-        "required": ["repo", "number", "backends"],
+        "required": [
+          "repo",
+          "number",
+          "backends"
+        ],
         "title": "IssueAbDispatch",
         "type": "object"
       },
@@ -1930,7 +2031,9 @@
             "type": "array"
           }
         },
-        "required": ["items"],
+        "required": [
+          "items"
+        ],
         "title": "IssueBatchDispatch",
         "type": "object"
       },
@@ -1972,7 +2075,10 @@
             "type": "string"
           }
         },
-        "required": ["repo", "title"],
+        "required": [
+          "repo",
+          "title"
+        ],
         "title": "IssueCreate",
         "type": "object"
       },
@@ -2032,7 +2138,10 @@
             "type": "string"
           }
         },
-        "required": ["repo", "number"],
+        "required": [
+          "repo",
+          "number"
+        ],
         "title": "IssueDispatch",
         "type": "object"
       },
@@ -2327,7 +2436,11 @@
       },
       "LeaseRecoveryPolicy": {
         "description": "Recovery behavior once a session lease expires.",
-        "enum": ["abandon", "recoverable", "takeover_allowed"],
+        "enum": [
+          "abandon",
+          "recoverable",
+          "takeover_allowed"
+        ],
         "title": "LeaseRecoveryPolicy",
         "type": "string"
       },
@@ -2438,7 +2551,10 @@
             "type": "string"
           }
         },
-        "required": ["backend_name", "model"],
+        "required": [
+          "backend_name",
+          "model"
+        ],
         "title": "OnboardingSmokeTestRequest",
         "type": "object"
       },
@@ -2489,7 +2605,11 @@
             "type": "string"
           }
         },
-        "required": ["task_id", "repo", "issue_number"],
+        "required": [
+          "task_id",
+          "repo",
+          "issue_number"
+        ],
         "title": "RecordMemoryOutcome",
         "type": "object"
       },
@@ -2549,7 +2669,9 @@
             "title": "Warning"
           }
         },
-        "required": ["selected_backend"],
+        "required": [
+          "selected_backend"
+        ],
         "title": "ResourceRoutingView",
         "type": "object"
       },
@@ -2580,7 +2702,10 @@
             "type": "string"
           }
         },
-        "required": ["host", "user"],
+        "required": [
+          "host",
+          "user"
+        ],
         "title": "SSHConnectRequest",
         "type": "object"
       },
@@ -2609,7 +2734,11 @@
             "type": "string"
           }
         },
-        "required": ["host", "user", "command"],
+        "required": [
+          "host",
+          "user",
+          "command"
+        ],
         "title": "SSHRunRequest",
         "type": "object"
       },
@@ -2641,7 +2770,12 @@
           },
           "risk_level": {
             "default": "medium",
-            "enum": ["low", "medium", "high", "critical"],
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
             "title": "Risk Level",
             "type": "string"
           }
@@ -2675,7 +2809,11 @@
             "type": "string"
           }
         },
-        "required": ["pipeline_state", "gate", "sandbox"],
+        "required": [
+          "pipeline_state",
+          "gate",
+          "sandbox"
+        ],
         "title": "StatusResponse",
         "type": "object"
       },
@@ -2766,7 +2904,9 @@
             "type": "string"
           }
         },
-        "required": ["task_id"],
+        "required": [
+          "task_id"
+        ],
         "title": "StatusV2RetryingTask",
         "type": "object"
       },
@@ -2822,7 +2962,11 @@
             "$ref": "#/components/schemas/StatusV2Tokens"
           }
         },
-        "required": ["task_id", "last_event", "tokens"],
+        "required": [
+          "task_id",
+          "last_event",
+          "tokens"
+        ],
         "title": "StatusV2RunningTask",
         "type": "object"
       },
@@ -2915,7 +3059,13 @@
             "type": "array"
           }
         },
-        "required": ["id", "status", "created_at", "transcript", "artifacts"],
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "transcript",
+          "artifacts"
+        ],
         "title": "TaskDetail",
         "type": "object"
       },
@@ -2957,7 +3107,11 @@
             "type": "string"
           }
         },
-        "required": ["work_item_id", "template", "nodes"],
+        "required": [
+          "work_item_id",
+          "template",
+          "nodes"
+        ],
         "title": "TaskGraph",
         "type": "object"
       },
@@ -2999,7 +3153,9 @@
             "type": "string"
           }
         },
-        "required": ["work_item_id"],
+        "required": [
+          "work_item_id"
+        ],
         "title": "TaskGraphCreate",
         "type": "object"
       },
@@ -3025,7 +3181,10 @@
             "type": "array"
           }
         },
-        "required": ["graph", "node_runs"],
+        "required": [
+          "graph",
+          "node_runs"
+        ],
         "title": "TaskGraphView",
         "type": "object"
       },
@@ -3054,7 +3213,10 @@
             "type": "integer"
           }
         },
-        "required": ["tasks", "total"],
+        "required": [
+          "tasks",
+          "total"
+        ],
         "title": "TaskListResponse",
         "type": "object"
       },
@@ -3089,7 +3251,10 @@
           "issue_mode": {
             "anyOf": [
               {
-                "enum": ["plan", "implement"],
+                "enum": [
+                  "plan",
+                  "implement"
+                ],
                 "type": "string"
               },
               {
@@ -3179,7 +3344,9 @@
             "title": "Task Id"
           }
         },
-        "required": ["prompt"],
+        "required": [
+          "prompt"
+        ],
         "title": "TaskSubmit",
         "type": "object"
       },
@@ -3213,7 +3380,12 @@
             "type": "string"
           }
         },
-        "required": ["id", "status", "created_at", "prompt_preview"],
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "prompt_preview"
+        ],
         "title": "TaskSummary",
         "type": "object"
       },
@@ -3514,7 +3686,9 @@
             "type": "string"
           }
         },
-        "required": ["refresh_token"],
+        "required": [
+          "refresh_token"
+        ],
         "title": "TokenRefreshRequest",
         "type": "object"
       },
@@ -3546,7 +3720,9 @@
             "type": "string"
           }
         },
-        "required": ["subject"],
+        "required": [
+          "subject"
+        ],
         "title": "TokenRequest",
         "type": "object"
       },
@@ -3581,7 +3757,11 @@
             "type": "string"
           }
         },
-        "required": ["access_token", "expires_in", "role"],
+        "required": [
+          "access_token",
+          "expires_in",
+          "role"
+        ],
         "title": "TokenResponse",
         "type": "object"
       },
@@ -3645,7 +3825,11 @@
             "type": "string"
           }
         },
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError",
         "type": "object"
       },
@@ -3660,7 +3844,10 @@
             "type": "string"
           }
         },
-        "required": ["daemon", "contract"],
+        "required": [
+          "daemon",
+          "contract"
+        ],
         "title": "VersionResponse",
         "type": "object"
       },
@@ -3702,7 +3889,9 @@
             "title": "Repo"
           }
         },
-        "required": ["prompt"],
+        "required": [
+          "prompt"
+        ],
         "title": "WebhookTriggerRequest",
         "type": "object"
       },
@@ -3793,7 +3982,9 @@
             "type": "string"
           }
         },
-        "required": ["title"],
+        "required": [
+          "title"
+        ],
         "title": "WorkItemCreate",
         "type": "object"
       },
@@ -3932,7 +4123,9 @@
             "$ref": "#/components/schemas/WorkItemStatus"
           }
         },
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "title": "WorkItemTransition",
         "type": "object"
       },
@@ -4063,6 +4256,24 @@
         ],
         "title": "WorkItemView",
         "type": "object"
+      },
+      "WorkersStatusResponse": {
+        "properties": {
+          "queue_depth": {
+            "title": "Queue Depth",
+            "type": "integer"
+          },
+          "worker_count": {
+            "title": "Worker Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "worker_count",
+          "queue_depth"
+        ],
+        "title": "WorkersStatusResponse",
+        "type": "object"
       }
     }
   },
@@ -4078,7 +4289,7 @@
     },
     "summary": "Autonomous AI control plane orchestrating agent tasks.",
     "title": "Maxwell-Daemon API",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8682,9 +8893,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Workers Status Api V1 Workers Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/WorkersStatusResponse"
                 }
               }
             },

@@ -112,9 +112,7 @@ def _maxwell_contract_payloads() -> dict[str, dict]:
         "task_detail": _schema_payload(openapi, _response_schema(openapi, "/api/tasks/{task_id}")),
         "dispatch": _schema_payload(openapi, _response_schema(openapi, "/api/dispatch", "post", "202")),
         "control": _schema_payload(openapi, _response_schema(openapi, "/api/control/{action}", "post")),
-        # These MD endpoints still publish generic object schemas. Keep explicit
-        # producer-observed payloads until MD gives them typed OpenAPI responses.
-        "workers": {"worker_count": 2, "queue_depth": 0},
+        "workers": _schema_payload(openapi, _response_schema(openapi, "/api/v1/workers")),
     }
 
 

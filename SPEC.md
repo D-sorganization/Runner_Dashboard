@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-01 | #1828 | Refresh vendored Maxwell OpenAPI snapshot from upstream Maxwell_Daemon to resolve contract drift, deriving worker contract fixtures and schema validations from the typed WorkersStatusResponse schema. |
 | 2026-09-30 | #1840 | Refresh exact Debian OpenSSL/PCRE2 security pins and targeted urllib3 lock/export to close release container scan findings; preserve base digest, Python bounds, hash enforcement and scan thresholds. |
 | 2026-09-30 | #1836 | Systemd watchdog recovery test waits for an observed successful retry with bounded timeout and guaranteed cleanup instead of cancelling after a fixed timing sample. Runtime behavior unchanged. |
 | 2026-09-30 | #1832 | Windows test harnesses reuse compatible Bash discovery and path conversion; the process-tree watchdog test permits interpreter startup and polls boundedly for descendant termination. Production behavior is unchanged. |
