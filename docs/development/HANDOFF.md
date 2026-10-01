@@ -1,3 +1,16 @@
+# Current handoff — overnight dashboard completion: Maxwell setup template (DL-#1830)
+
+- Repository/worktree: Runner_Dashboard, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1830`.
+- Branch: `fix/issue-1830-maxwell-template`; commit: SELF (implementation 75f6a1c5); PR: #1831, open.
+- Governing issue: #1830. Objective: fresh installs target Maxwell's documented 8080 listener rather than the pool dashboard on 8322.
+- Changes: `.env.example`, `tests/test_env_template.py`, `SPEC.md` (PR #1831 changelog required by freshness CI). Gemini 3.8 Flash drafted and reviewed; Codex executed and integrated. Explicit operator overrides remain supported.
+- Validation: RED `python -m pytest tests/test_env_template.py -q --tb=short` failed 8322 != 8080. GREEN `python -m pytest tests/test_env_template.py tests/test_dashboard_config.py tests/test_fleet_autoconfig.py -q --tb=short`: 60 passed. `python -m ruff check tests/test_env_template.py` and `python -m ruff format --check tests/test_env_template.py` passed.
+- Broader evidence: frontend typecheck/lint/build/coverage passed on base 1fd83eca; coverage 83.35% lines. Full backend pytest session 70220 remains running, last observed 33%, no failures yet; poll its live handle before repeating.
+- Runtime: existing local deployment reports fadc115895a5a4d31deca41ecf86412065a8cb50 (older than checkout). `/livez` and `/readyz` both return JSON status ok; all five readiness probes ok. Browser renders Staff Console and mobile Fleet at 390x844; all three nodes appear Online, no console errors. Current-source preview on :5173 confirms Inbox and Runs are clickable at 390x844 after dismissing the update toast; live old deployment still reproduces #1805. OGLaptop production deploy is governed by docs/runbooks/qualified-release-deploy.md and the protected environment approval. Remaining workflows still need verification. Do not use `/healthz`: it returns SPA HTML.
+- Constraints: agy headless command tools denied, so source must be supplied in --print argument for tool-free drafting/reviews. Board design-gated work and physical-device checks remain unverified. No user changes discarded. Goal not complete.
+- Next steps: inspect PR #1831 CI; inspect full backend test result; finish desktop/mobile workflow checks and assess existing deployment update path without restarting peer processes blindly.
+
+---
 # Current handoff — Maxwell Contract Drift gets a Python (DL-#1826)
 
 - **Repository / worktree:** Runner_Dashboard, `_wt/rd-maxwell-drift-python`

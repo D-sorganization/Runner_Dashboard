@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-09-30 | #1831 | Align `.env.example` `MAXWELL_PORT=8080` with the runtime and daemon listener instead of dashboard pool port 8322; regression-test the copied template target. |
 | 2026-09-30 | #1826 | The scheduled Maxwell Contract Drift workflow installs Python with the pinned `actions/setup-python` step before running `scripts/check_maxwell_contract_drift.py`; on self-hosted runners without `python` on PATH the job had failed daily with exit 127. |
 | 2026-09-29 | #1819 | Frontend Tests runs the TypeScript typecheck job, including `generate-api:check`, on pull requests that change `backend/**`, so a backend route or model change cannot leave the generated OpenAPI snapshot stale on main. |
 | 2026-09-29 | #1799 | Fleet clients derive a unique default session, `<agent>-<host>-<YYYYMMDD>-<6 hex>`, minted once per client (and per agent for per-call agents), so two sessions of one agent on one host no longer share presence, mailbox or release identity. An explicit session (`FLEET_SESSION`, `--as-session`, a call's `session`) still wins and is how a session is resumed; `fleetctl` prints the derived session on stderr as an `export FLEET_SESSION=...` hint, and `FleetClient.identity()` reports agent, host, session and its source separately. |

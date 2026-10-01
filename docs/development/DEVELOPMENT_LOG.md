@@ -18,6 +18,22 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1830 — Fresh setup uses the Maxwell daemon listener
+
+- **State:** in_progress
+- **Owner:** codex (Gemini 3.8 Flash draft and review)
+- **Issue:** #1830
+- **Branch:** `fix/issue-1830-maxwell-template`
+- **PR:** not created
+- **Paths:** `.env.example`, `tests/test_env_template.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED fails 8322 != 8080; GREEN 60 template/config/registry tests pass; ruff lint/format pass; SPEC freshness CI identified the missing changelog, now added for PR #1831.
+- **Summary:** Copying the template previously overrode corrected runtime defaults with a pool dashboard port. Align the example to Maxwell's 8080 listener. TDD executed; Gemini draft reviewed against exact runtime source.
+- **Next step:** Inspect CI for PR #1831.
+
+
+
+
 ### DL-#1826 — Maxwell Contract Drift has no Python on self-hosted runners
 
 - **State:** in_review
