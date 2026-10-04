@@ -36,11 +36,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **State:** in_review
 - **Owner:** claude
 - **Issue:** #1864 (epic Repository_Management#1889; RM sibling Repository_Management#1915)
-- **Branch:** `ci/1864-event-tiered-ci`; `chore/1864-prepush-parity`
+- **Branch:** `ci/1864-event-tiered-ci`; `chore/1864-prepush-parity` (merged as #1868); `chore/1929-resync-run-pytest-diff`
 - **PR:** see the branches (CI tiers and pre-push parity ship as separate PRs)
 - **Paths:** `.github/workflows/ci-standard.yml`, `tests/test_workflow_hygiene.py`, `tests/test_ci_config.py`, `.pre-commit-config.yaml`, `scripts/run_pytest_diff.py`, `scripts/run_mypy_diff.py`, `tests/test_run_pytest_diff.py`
 - **Started:** 2026-10-04
-- **Last verified:** 2026-10-04 @ SELF; CI tier tests RED then GREEN; 206 passed in `tests/test_workflow_hygiene.py` + `tests/test_ci_config.py` + `tests/test_required_checks_drift.py` + `tests/test_mypy_override_ratchet.py` + `tests/test_fleet_merge_checker.py`; `check_required_checks_drift.py` against the merge-queue snapshots reports no drift.
+- **Last verified:** 2026-10-04 @ SELF; vendored `scripts/run_pytest_diff.py` re-synced to Repository_Management PR #1930 (`48893688`), "Local fix" fork removed; no-fork test RED then GREEN; 20 passed in `tests/test_run_pytest_diff.py`.
 - **Summary:** `ci-standard.yml` runs the full suite once, in `merge_group`. `pull_request` gets lint/format/type check and fast tests; `push` to main runs only the cheap `ci-health-check`. A `changes` job owns the tier and the docs-only detector (PR only, fail closed). Pre-push drops bandit and runs diff-scoped pytest vendored from Repository_Management `shared_scripts/run_pytest_diff.py`.
 - **Next step:** After both PRs merge, compare one merge_group run time against the PR-tier run time on a code PR and record it on #1864.
 

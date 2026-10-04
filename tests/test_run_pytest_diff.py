@@ -118,6 +118,13 @@ def test_vendored_files_name_their_upstream() -> None:
         assert any(f"Vendored from Repository_Management shared_scripts/{name}" in line for line in head), name
 
 
+def test_vendored_pytest_diff_carries_no_local_fork() -> None:
+    """Repository_Management#1929 upstreamed the #1868 fixes; the copy must not fork."""
+    text = (REPO_ROOT / "scripts" / "run_pytest_diff.py").read_text(encoding="utf-8")
+    assert "Local fix" not in text
+    assert "def is_collectible_test_module(" in text
+
+
 def test_pre_push_pytest_is_diff_scoped_in_the_repo_environment() -> None:
     hook = _pre_push_hook("pytest-unit")
     assert hook["stages"] == ["pre-push"]

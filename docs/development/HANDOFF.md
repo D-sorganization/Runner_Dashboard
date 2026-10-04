@@ -1,3 +1,12 @@
+# Current handoff — re-sync vendored run_pytest_diff (DL-#1864, Repository_Management#1929)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1929-sync`; branch `chore/1929-resync-run-pytest-diff`; commit SELF; PR: see the branch.
+- **Change:** `scripts/run_pytest_diff.py` is re-synced from Repository_Management `shared_scripts/run_pytest_diff.py` at `48893688` (branch `fix/1929-pytest-diff-collectible`, RM PR #1930), which upstreamed this repo's two #1868 "Local fix" changes. Only the `scripts.` import and 120-column ruff format differ from upstream. Behaviour is unchanged.
+- **Validation:** `pytest tests/test_run_pytest_diff.py` → 20 passed (new no-fork test RED first against the forked copy); ruff and mypy clean.
+- **Next:** once RM #1930 merges, re-pin the vendored-from header to its merge SHA (one-line change).
+
+---
+
 # Current handoff — event-tiered CI Standard (DL-#1864, #1864)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-ci-tiers`; branch `ci/1864-event-tiered-ci`; commit SELF; PR: see the branch. Workflow-only change, shipped alone (pre-push parity is a separate PR on `chore/1864-prepush-parity`).
