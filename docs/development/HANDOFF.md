@@ -1,3 +1,12 @@
+# Current handoff (parallel PR) — staged-only gitleaks at commit (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871-gl`; branch `chore/1871-gitleaks-staged`; commit SELF; PR: see the branch. The Spec Check workflow half ships alone as #1872 (`ci/1871-spec-check-backend`).
+- **Change:** `.pre-commit-config.yaml` gitleaks hook runs `gitleaks protect --staged` (was `detect --source .`, a whole-history scan at every commit). `ci-secrets.yml` is unchanged and keeps its full-history `detect` scan. `.secrets.baseline` line number for the detect-secrets `rev` SHA moved 81 → 82 after the comment grew by one line.
+- **Validation:** `pytest tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py` → 155 passed (staged-only test RED first; CI full-history guard added as a regression pin). Local `gitleaks protect --staged` (v8.24.0) on this commit's staged diff scanned ~1 KB in 0.5 s, no leaks.
+- **Next:** merge through the queue.
+
+---
+
 # Current handoff — event-tiered CI Standard (DL-#1864, #1864)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-ci-tiers`; branch `ci/1864-event-tiered-ci`; commit SELF; PR: see the branch. Workflow-only change, shipped alone (pre-push parity is a separate PR on `chore/1864-prepush-parity`).

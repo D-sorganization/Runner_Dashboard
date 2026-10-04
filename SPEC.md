@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-04 | #1871 | The commit-stage gitleaks pre-commit hook scans staged changes only (`gitleaks protect --staged`) instead of the whole repository history; CI Secrets keeps the full-history scan. |
 | 2026-10-04 | #1864 | CI Standard is event-tiered: a `changes` job picks the tier per event — `pull_request` runs lint, format, type check and fast tests (no coverage, bandit, pip-audit or security-scan); `merge_group` runs the full suite; `push` to main runs no duplicate heavy jobs. The docs-only scope detector runs on `pull_request` only and fails closed on a truncated file listing; `quality-gate` and `tests` report and fail closed on every event (Repository_Management#1915). |
 | 2026-10-04 | #1862 | `config/fleet_merge_policy.json` covers all 41 merge-queue repositories; `fetch_live_repo_snapshot` reads branch protection on each repository's own default branch (four do not use `main`) and counts only active workflows toward `disallowed_workflows` (Repository_Management#1900). |
 | 2026-10-04 | #1846 | [RD-1] Event-driven CI-fix dispatch as the only CI iteration path: route lint/format to cheapest provider (< $0.50), test/logic to tier:cli, and escalate to tier:strong after 3 attempts; enforce concurrency locking of 1 active session per PR, log truncation to <= 200 lines, failing test extraction, and audit telemetry (`backend/ci_fix_dispatch.py`, `backend/routers/remediation_ci_fix.py`, `backend/routers/remediation.py`, `tests/api/test_ci_fix_dispatch.py`). |

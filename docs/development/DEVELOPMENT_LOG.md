@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1871 — Spec Check covers backend; staged-only gitleaks at commit
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1871 (epic Repository_Management#1889)
+- **Branch:** `ci/1871-spec-check-backend`; `chore/1871-gitleaks-staged`
+- **PR:** see the branches (workflow change ships alone; the pre-commit change is a separate PR)
+- **Paths:** `.github/workflows/ci-spec-check.yml`, `tests/test_spec_check_workflow.py`, `.pre-commit-config.yaml`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; Spec Check detection step executed against fixture file lists; new tests RED then GREEN; 175 passed in `tests/test_spec_check_workflow.py` + `tests/test_workflow_hygiene.py` + `tests/test_workflow_action_pinning.py` + `tests/test_workflow_runner_routing.py`; actionlint clean.
+- **Summary:** Spec Check treats `backend/**` as source, so a backend-only PR without a SPEC.md update fails; its PR comment asks for one change-log row keyed by the PR and says never to bump the release-derived Spec Version (Repository_Management#1520). The commit-stage gitleaks hook scans staged changes only; CI Secrets keeps the full-history scan.
+- **Next step:** Accept a `changes/<issue>-*.md` fragment in Spec Check once Repository_Management#1922 / #1924 land and the fleet sync reaches this repository.
+
 ### DL-#1890 — Merge queue replaces strict up-to-date protection
 
 - **State:** in_progress

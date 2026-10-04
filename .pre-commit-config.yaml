@@ -61,7 +61,8 @@ repos:
   # SECRET SCANNING (Issue #396)
   # ===========================================================================
   # Two complementary scanners:
-  #   - gitleaks: regex + entropy on staged content, repo-tuned via
+  #   - gitleaks: regex + entropy on staged changes only (`protect --staged`;
+  #     CI Secrets keeps the full-history scan), repo-tuned via
   #     `.gitleaks.toml`.
   #   - detect-secrets: heuristic scan against the audited `.secrets.baseline`;
   #     fails only on NEW findings outside the baseline.
@@ -72,7 +73,7 @@ repos:
     hooks:
       - id: gitleaks
         name: "gitleaks (secret scan)"
-        entry: gitleaks detect --source . --config .gitleaks.toml --no-banner --redact
+        entry: gitleaks protect --staged --config .gitleaks.toml --no-banner --redact
         language: system
         pass_filenames: false
 
