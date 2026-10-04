@@ -5786,6 +5786,27 @@
         "title": "WebVitalsPayload",
         "type": "object"
       },
+      "WeeklyUsageReportRequest": {
+        "description": "Body for ``POST /api/usage/report/weekly`` (USE-1, #1865).",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Render only; do not touch GitHub",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "repository": {
+            "default": "D-sorganization/Repository_Management",
+            "description": "owner/name of the repository holding the report issue",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            "title": "Repository",
+            "type": "string"
+          }
+        },
+        "title": "WeeklyUsageReportRequest",
+        "type": "object"
+      },
       "WorkRequest": {
         "additionalProperties": false,
         "description": "The body of ``POST /api/v1/staff/requests``.",
@@ -15877,6 +15898,56 @@
           }
         },
         "summary": "Post Page View",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/report/weekly": {
+      "post": {
+        "description": "Render this ISO week's usage report and create/update its comment (idempotent).",
+        "operationId": "post_weekly_report_api_usage_report_weekly_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeeklyUsageReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Weekly Report Api Usage Report Weekly Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Weekly Report",
         "tags": ["usage-metrics"]
       }
     },
