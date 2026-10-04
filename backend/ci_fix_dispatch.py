@@ -4,7 +4,7 @@ Dispatches fresh, small, capped sessions on failing CI for open PRs with auto-me
 - Truncates log tail to <= 200 lines.
 - Extracts failing test names.
 - Enforces strict concurrency lock (1 CI-fix session per PR at a time).
-- Routes lint/format to cheapest provider (< $0.50), tests/logic to tier:cli.
+- Routes lint/format to cheapest provider (< $0.50), tests/logic to tier:cli (agy, else Sonnet).
 - Escalates to tier:strong after max_same_failure_attempts (default 3).
 - Records audit entries for cost, attempt, model, and provider.
 """
@@ -155,6 +155,22 @@ def classify_failure_type(workflow_name: str, log_excerpt: str) -> str:
     return "test"
 
 
+# Route models (#1880). tier:cli prefers agy with Gemini 3.8 Flash, then Claude Sonnet
+# (Repository_Management agent-tier rule); the agy model matches conductor/tiers.py.
+STRONG_MODEL = "claude-opus-5-5"
+CLI_CLAUDE_MODEL = "claude-sonnet-5-5"
+CHEAP_CODEX_MODEL = "gpt-6-luna"
+AGY_MODEL = "gemini-3.8-flash-high"
+
+
+def _agy_runs_unattended() -> bool:
+    """Whether agy can take an unattended CI fix: the staff adapter's own flag (#1880)."""
+    from staff.adapters import ADAPTERS  # noqa: PLC0415
+
+    adapter = ADAPTERS.get("antigravity")
+    return bool(adapter is not None and adapter.unattended)
+
+
 def route_ci_fix(
     failure_type: str,
     attempt_number: int = 1,
@@ -165,7 +181,7 @@ def route_ci_fix(
         return CIFixRoute(
             provider="claude_code_cli",
             tier="strong",
-            model="claude-3-7-opus",
+            model=STRONG_MODEL,
             cost_budget=5.00,
             escalated=True,
             reason=f"Escalated to strong tier after {attempt_number} consecutive attempts",
@@ -176,20 +192,31 @@ def route_ci_fix(
         return CIFixRoute(
             provider="codex_cli",
             tier="cheap",
-            model="gpt-5-codex",
+            model=CHEAP_CODEX_MODEL,
             cost_budget=0.40,
             escalated=False,
             reason="Routed to cheap tier for narrow lint/format fix",
             effort=resolve_effort("ci_fix:lint"),
         )
 
+    if _agy_runs_unattended():
+        return CIFixRoute(
+            provider="antigravity",
+            tier="cli",
+            model=AGY_MODEL,
+            cost_budget=1.50,
+            escalated=False,
+            reason="Routed to standard CLI tier (agy, Gemini 3.8 Flash) for test/logic fix",
+            effort=resolve_effort(f"ci_fix:{failure_type}"),
+        )
+
     return CIFixRoute(
         provider="claude_code_cli",
         tier="cli",
-        model="claude-3-5-sonnet",
+        model=CLI_CLAUDE_MODEL,
         cost_budget=1.50,
         escalated=False,
-        reason="Routed to standard CLI tier for test/logic fix",
+        reason="Routed to standard CLI tier for test/logic fix (agy skipped: it cannot run unattended)",
         effort=resolve_effort(f"ci_fix:{failure_type}"),
     )
 
