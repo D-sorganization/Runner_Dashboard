@@ -37,7 +37,7 @@ def sample_policy() -> dict[str, Any]:
         "merge_queue": {
             "required": True,
             "parameters": {
-                "check_response_timeout_minutes": 60,
+                "check_response_timeout_minutes": 180,
                 "grouping_strategy": "ALLGREEN",
                 "max_entries_to_build": 5,
                 "max_entries_to_merge": 5,
@@ -270,7 +270,7 @@ def test_check_fleet_aggregation(
 
 def test_format_drift_issue() -> None:
     findings = [
-        "merge queue parameter 'check_response_timeout_minutes' is 15, expected 60",
+        "merge queue parameter 'check_response_timeout_minutes' is 15, expected 180",
         "repository flag 'allow_auto_merge' is False, expected True",
     ]
     title, body = format_drift_issue("D-sorganization/UpstreamDrift", findings)

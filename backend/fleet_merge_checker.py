@@ -236,8 +236,11 @@ def _github_api(url: str, *, token: str | None) -> Any:
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if not url.startswith("https://api.github.com/"):
+        raise ValueError(f"refusing non-GitHub-API URL: {url!r}")
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
+    # Scheme and host are pinned above, so file:/custom schemes cannot reach urlopen.
+    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310  # nosec B310
         return json.loads(response.read().decode("utf-8"))
 
 

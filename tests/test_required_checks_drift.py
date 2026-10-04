@@ -205,7 +205,7 @@ _MERGE_QUEUE_RULESET = {
                 "max_entries_to_merge": 5,
                 "min_entries_to_merge_wait_minutes": 5,
                 "grouping_strategy": "ALLGREEN",
-                "check_response_timeout_minutes": 60,
+                "check_response_timeout_minutes": 180,
             },
         }
     ],
