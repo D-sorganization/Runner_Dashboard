@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Required checks report on `merge_group` (#1852). The required-checks policy now also requires the merge queue (squash, ALLGREEN, build 5, group 1–5, 5 min wait, 180 min timeout — raised from 60 on 2026-10-04 after runner saturation timed out queue entries) and `require_branches_up_to_date: false`; `check_required_checks_drift.py` reports drift on either. Settings were applied on 2026-10-04 by the #1900 pilot.
 - **Next step:** Wire `check_required_checks_drift.py --live` into the daily fleet settings drift check (#1850).
 
+### DL-#1864 — Event-tiered CI Standard and fleet pre-push parity
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1864 (epic Repository_Management#1889; RM sibling Repository_Management#1915)
+- **Branch:** `ci/1864-event-tiered-ci`; `chore/1864-prepush-parity`
+- **PR:** see the branches (CI tiers and pre-push parity ship as separate PRs)
+- **Paths:** `.github/workflows/ci-standard.yml`, `tests/test_workflow_hygiene.py`, `tests/test_ci_config.py`, `.pre-commit-config.yaml`, `scripts/run_pytest_diff.py`, `scripts/run_mypy_diff.py`, `tests/test_run_pytest_diff.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; CI tier tests RED then GREEN; 206 passed in `tests/test_workflow_hygiene.py` + `tests/test_ci_config.py` + `tests/test_required_checks_drift.py` + `tests/test_mypy_override_ratchet.py` + `tests/test_fleet_merge_checker.py`; `check_required_checks_drift.py` against the merge-queue snapshots reports no drift.
+- **Summary:** `ci-standard.yml` runs the full suite once, in `merge_group`. `pull_request` gets lint/format/type check and fast tests; `push` to main runs only the cheap `ci-health-check`. A `changes` job owns the tier and the docs-only detector (PR only, fail closed). Pre-push drops bandit and runs diff-scoped pytest vendored from Repository_Management `shared_scripts/run_pytest_diff.py`.
+- **Next step:** After both PRs merge, compare one merge_group run time against the PR-tier run time on a code PR and record it on #1864.
+
 ### DL-#1840 — Refresh vulnerable container security pins
 
 - **State:** in_review

@@ -472,3 +472,224 @@ def test_required_context_workflows_run_in_the_merge_queue() -> None:
         )
 
     assert found == sources, f"no workflow file found for {sorted(sources - found)}"
+
+
+# ---------------------------------------------------------------------------
+# Event-tiered CI Standard (issue #1864, sibling of Repository_Management#1915)
+#
+# pull_request  -> PR tier: lint, format, type check and fast tests.
+# merge_group   -> full tier: everything (the authoritative gate).
+# push to main  -> post-merge tier: no duplicate heavy jobs; the squash commit
+#                  is the tree the merge queue already tested.
+# A `changes` job decides the tier and, on pull_request only, whether the PR
+# touches any Python surface (the docs-only fast path). `quality-gate` and
+# `tests-required` report on every event and fail closed.
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+
+_CI_STANDARD = _WORKFLOWS_DIR / "ci-standard.yml"
+_HEAVY_FULL_TIER_JOBS = ("security-scan",)
+_PYTHON_LANE_JOBS = ("lint", "tests")
+
+
+def _ci_jobs() -> dict:
+    jobs = _load_workflow(_CI_STANDARD)["jobs"]
+    assert isinstance(jobs, dict)
+    return jobs
+
+
+def _ci_step(job_id: str, *, name: str | None = None, step_id: str | None = None) -> dict:
+    for step in _ci_jobs()[job_id]["steps"]:
+        if name is not None and step.get("name") == name:
+            return step
+        if step_id is not None and step.get("id") == step_id:
+            return step
+    raise AssertionError(f"ci-standard.yml job {job_id!r} has no step name={name!r} id={step_id!r}")
+
+
+def _run_step(step: dict, env: dict[str, str]) -> tuple[int, dict[str, str]]:
+    """Execute a workflow `run:` script under bash the way Actions does.
+
+    Returns the exit code and whatever the script appended to $GITHUB_OUTPUT.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        output_path = Path(tmp) / "github_output"
+        output_path.write_text("", encoding="utf-8")
+        full_env = {"PATH": os.environ.get("PATH", ""), "GITHUB_OUTPUT": str(output_path), **env}
+        result = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
+            env=full_env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        outputs: dict[str, str] = {}
+        for line in output_path.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                outputs[key] = value
+    return result.returncode, outputs
+
+
+def _tier_for(event_name: str) -> dict[str, str]:
+    code, outputs = _run_step(_ci_step("changes", step_id="tier"), {"EVENT_NAME": event_name})
+    assert code == 0, f"tier step failed for {event_name}"
+    return outputs
+
+
+def test_ci_standard_keeps_every_trigger() -> None:
+    """The tiers depend on all three events still reaching the workflow."""
+    data = _load_workflow(_CI_STANDARD)
+    for event in ("pull_request", "merge_group", "push", "workflow_dispatch"):
+        assert _has_trigger(data, event), f"ci-standard.yml lost its `{event}` trigger"
+
+
+def test_changes_job_runs_on_every_event() -> None:
+    """The tier decision must exist on every event, or downstream gates go blind."""
+    changes = _ci_jobs()["changes"]
+    assert "if" not in changes, "`changes` must not be conditional; every gate reads its outputs"
+    outputs = changes["outputs"]
+    for key in ("tier", "full_suite", "run_python_tests"):
+        assert key in outputs, f"`changes` must output {key!r}"
+
+
+@pytest.mark.parametrize(
+    ("event_name", "tier", "full_suite", "run_python_tests"),
+    [
+        ("pull_request", "pr", "false", None),  # decided by the scope detector
+        ("merge_group", "full", "true", "true"),
+        ("workflow_dispatch", "full", "true", "true"),
+        ("push", "post-merge", "false", "false"),
+        ("schedule", "full", "true", "true"),  # unknown events fail safe to full
+    ],
+)
+def test_tier_per_event(event_name: str, tier: str, full_suite: str, run_python_tests: str | None) -> None:
+    outputs = _tier_for(event_name)
+    assert outputs.get("tier") == tier
+    assert outputs.get("full_suite") == full_suite
+    assert outputs.get("run_python_tests") == run_python_tests
+
+
+def test_docs_only_scope_detector_runs_on_pull_request_only() -> None:
+    """The docs-only fast path is a PR optimisation; queue groups can mix PRs."""
+    scope = _ci_step("changes", step_id="python-scope")
+    assert scope.get("if") == "github.event_name == 'pull_request'", (
+        "the docs-only detector must never run (and so never skip) outside pull_request"
+    )
+    assert _tier_for("merge_group")["run_python_tests"] == "true", "merge_group must never skip the Python lane"
+
+
+def test_scope_detector_fails_closed_on_truncated_file_listing() -> None:
+    """The files API returns at most 100 entries per page; a truncated list is not proof of docs-only."""
+    scope = _ci_step("changes", step_id="python-scope")["run"]
+    assert "len(files) >= 100" in scope
+
+
+def test_python_lane_jobs_gate_on_changes_job() -> None:
+    jobs = _ci_jobs()
+    for job_id in _PYTHON_LANE_JOBS:
+        condition = str(jobs[job_id].get("if", ""))
+        assert "needs.changes.outputs.run_python_tests == 'true'" in condition, job_id
+        assert "changes" in jobs[job_id]["needs"], job_id
+
+
+def test_heavy_jobs_run_only_in_the_full_tier() -> None:
+    jobs = _ci_jobs()
+    for job_id in _HEAVY_FULL_TIER_JOBS:
+        condition = str(jobs[job_id].get("if", ""))
+        assert "needs.changes.outputs.full_suite == 'true'" in condition, (
+            f"{job_id} is a heavy scan; it belongs to the merge_group tier, not every PR push"
+        )
+    for step_name in ("Run bandit security scan", "Security Audit (pip-audit)"):
+        step = _ci_step("lint", name=step_name)
+        assert step.get("if") == "needs.changes.outputs.full_suite == 'true'", step_name
+
+
+def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
+    step = _ci_step("tests", name="Run Python tests")
+    assert step["env"]["FULL_SUITE"] == "${{ needs.changes.outputs.full_suite }}"
+    run = step["run"]
+    assert "--cov=backend" in run
+    assert 'if [ "$FULL_SUITE" = "true" ]' in run
+    assert "not slow" in run, "the PR tier runs the fast subset"
+
+
+@pytest.mark.parametrize("job_id", ["quality-gate", "tests-required"])
+def test_required_aggregates_report_on_every_event(job_id: str) -> None:
+    from scripts.check_required_checks_drift import check_job_fails_closed
+
+    job = _ci_jobs()[job_id]
+    assert job.get("if") == "always()", f"{job_id} must run on every event"
+    assert "changes" in job["needs"], f"{job_id} must read the tier decision"
+    assert check_job_fails_closed(_CI_STANDARD.read_text(encoding="utf-8"), job_id) == []
+
+
+def _quality_gate(**env: str) -> int:
+    defaults = {
+        "CHANGES": "success",
+        "HEALTH": "success",
+        "TIER": "pr",
+        "FULL_SUITE": "false",
+        "RUN_PYTHON_TESTS": "true",
+        "RESULT_LINT": "success",
+        "RESULT_TESTS": "success",
+        "RESULT_SECURITY": "skipped",
+    }
+    code, _ = _run_step(_ci_step("quality-gate", name="Require every gated job to succeed"), {**defaults, **env})
+    return code
+
+
+def _tests_required(**env: str) -> int:
+    defaults = {
+        "CHANGES": "success",
+        "HEALTH": "success",
+        "TIER": "pr",
+        "RUN_PYTHON_TESTS": "true",
+        "TESTS": "success",
+    }
+    code, _ = _run_step(_ci_step("tests-required", name="Confirm Python test matrix"), {**defaults, **env})
+    return code
+
+
+def test_quality_gate_passes_the_pr_tier_without_heavy_scans() -> None:
+    assert _quality_gate() == 0
+
+
+def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
+    full = {"TIER": "full", "FULL_SUITE": "true"}
+    assert _quality_gate(**full, RESULT_SECURITY="success") == 0
+    assert _quality_gate(**full, RESULT_SECURITY="skipped") == 1
+    assert _quality_gate(**full, RESULT_SECURITY="failure") == 1
+
+
+def test_quality_gate_passes_docs_only_pr_and_post_merge_push() -> None:
+    skipped = {"RESULT_LINT": "skipped", "RESULT_TESTS": "success", "RESULT_SECURITY": "skipped"}
+    assert _quality_gate(**skipped, RUN_PYTHON_TESTS="false") == 0
+    assert _quality_gate(**skipped, RUN_PYTHON_TESTS="false", TIER="post-merge") == 0
+
+
+def test_quality_gate_fails_closed() -> None:
+    assert _quality_gate(CHANGES="failure", RUN_PYTHON_TESTS="") == 1
+    assert _quality_gate(HEALTH="failure") == 1
+    assert _quality_gate(RESULT_LINT="failure") == 1
+    assert _quality_gate(RESULT_LINT="skipped") == 1, "lint may only skip when the Python lane is off"
+    assert _quality_gate(RESULT_TESTS="failure") == 1
+
+
+def test_tests_required_reports_on_every_tier() -> None:
+    assert _tests_required() == 0
+    assert _tests_required(TIER="full") == 0
+    assert _tests_required(RUN_PYTHON_TESTS="false", TESTS="skipped") == 0
+    assert _tests_required(TIER="post-merge", RUN_PYTHON_TESTS="false", TESTS="skipped") == 0
+
+
+def test_tests_required_fails_closed() -> None:
+    assert _tests_required(CHANGES="failure", RUN_PYTHON_TESTS="", TESTS="skipped") == 1
+    assert _tests_required(HEALTH="failure") == 1
+    assert _tests_required(TESTS="failure") == 1
+    assert _tests_required(TESTS="skipped") == 1, "a skipped matrix only passes when the lane is off"
+    assert _tests_required(TIER="full", RUN_PYTHON_TESTS="true", TESTS="skipped") == 1
