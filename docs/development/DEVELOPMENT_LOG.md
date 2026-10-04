@@ -20,6 +20,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1863 — Staff proposals tests stop leaking real run workers
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1863
+- **Branch:** `test/staff-threads-runner-leak`
+- **PR:** see the branch
+- **Paths:** `tests/api/test_staff_proposals_api.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; proposals + threads API tests 25 passed three times in a row with no `crashed` / `closed database` log lines (before the fix, the combined pair logged them).
+- **Summary:** Three proposals tests executed a real `staff.dispatch`, whose daemon worker outlived the test and tripped `test_staff_threads_api.py`'s worktree guard (or ran a real `git worktree add` between tests). The fixture now stubs `StaffRunner.launch` and fails on any leaked `staff-run-*` thread.
+- **Next step:** Merge the PR once CI Standard passes in the merge queue.
+
 ### DL-#1871 — Spec Check covers backend; staged-only gitleaks at commit
 
 - **State:** in_review

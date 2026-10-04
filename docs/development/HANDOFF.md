@@ -1,3 +1,14 @@
+# Current handoff — staff proposals tests leak real run workers (DL-#1863, #1863)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-staff-threads-teardown`; branch `test/staff-threads-runner-leak` from `origin/main`; commit SELF; PR: see the branch. Lease: `claude` / `claude-rd-1863`.
+- **Why:** `test_staff_threads_api.py::test_mark_thread_read_and_inbox` errored at teardown in the full pre-push run ("test created a real git worktree", plus `Cannot operate on a closed database` in `StaffRunner._worker`). The worker came from `tests/api/test_staff_proposals_api.py`: three tests execute an approved `staff.dispatch` proposal (`ad-hoc`, `Repository_Management`), which called the real `StaffRunner.launch`. The daemon thread outlived the test, so it reached `_prepare_workdir` inside a later test, or between tests with the hermetic workspace patches undone, where it can clone into `~/Repositories/_staff_clones/` and run a real `git worktree add`.
+- **Change (test-only):** the proposals fixture stubs `StaffRunner.launch` (recording run ids) and fails at teardown if a test leaves a `staff-run-*` thread alive. The dispatch-flow test asserts exactly one launch.
+- **Validation:** RED: the new guard failed the three dispatch tests. GREEN: `pytest tests/api/test_staff_proposals_api.py` 10 passed. `pytest tests/api/test_staff_proposals_api.py tests/api/test_staff_threads_api.py` 25 passed ×3, with no crash log lines. Full pre-push suite results are in the PR body.
+- **Host cleanup:** `git worktree prune -v` in `~/Repositories/_staff_clones/Repository_Management` found no stray `run-866d30501c48` / `run-0ca29e8099fc` registrations (only `main` is registered).
+- **Next:** merge through the queue.
+
+---
+
 # Current handoff — detect-secrets baseline for #1873 (DL-#1871, #1871)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1873-ds`; branch `fix/1873-secrets-baseline`, cut from #1873's head (`chore/1871-gitleaks-staged`) while #1873 is in the merge queue, with `origin/main` merged in; commit SELF; PR: not created (pushed to #1873's branch only if the queue drops it, otherwise a follow-up PR).
