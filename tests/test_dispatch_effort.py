@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from ci_fix_dispatch import route_ci_fix
 from dispatch_contract import CommandEnvelope, build_envelope
@@ -129,3 +131,62 @@ def test_from_dict_restores_effort_from_field_or_payload() -> None:
 def test_from_dict_rejects_unknown_effort() -> None:
     with pytest.raises(ValueError, match="effort"):
         CommandEnvelope.from_dict(_envelope_dict(effort="ultra"))
+
+
+def test_from_dict_rejects_unsigned_effort_that_differs_from_signed_payload() -> None:
+    """Only ``payload`` is covered by the signature, so it is authoritative."""
+    env = build_envelope(
+        action="agents.dispatch.adhoc",
+        source="dashboard",
+        target="Repository_Management",
+        requested_by="op",
+        effort="low",
+    )
+    wire = env.to_dict()
+    wire["effort"] = "high"  # tampered, unsigned top-level field
+    with pytest.raises(ValueError, match="effort"):
+        CommandEnvelope.from_dict(wire)
+
+
+def test_from_dict_takes_effort_from_the_signed_payload() -> None:
+    env = build_envelope(
+        action="agents.dispatch.adhoc",
+        source="dashboard",
+        target="Repository_Management",
+        requested_by="op",
+        effort="low",
+    )
+    wire = env.to_dict()
+    wire.pop("effort", None)
+    restored = CommandEnvelope.from_dict(wire)
+    assert restored.effort == "low"
+    assert restored.verify_signature()
+
+
+def _build(**kwargs: Any) -> CommandEnvelope:
+    return build_envelope(
+        action="agents.dispatch.adhoc",
+        source="dashboard",
+        target="Repository_Management",
+        requested_by="op",
+        **kwargs,
+    )
+
+
+def test_build_envelope_takes_effort_from_the_payload_and_round_trips() -> None:
+    """A payload-only effort must not leave a mismatched top-level field."""
+    env = _build(payload={"effort": "low"})
+    assert env.effort == "low"
+    assert env.payload["effort"] == "low"
+    assert CommandEnvelope.from_dict(env.to_dict()).effort == "low"
+
+
+def test_build_envelope_rejects_conflicting_effort_and_payload_effort() -> None:
+    with pytest.raises(ValueError, match="effort"):
+        _build(payload={"effort": "low"}, effort="high")
+
+
+def test_build_envelope_defaults_effort_when_neither_is_given() -> None:
+    env = _build()
+    assert env.effort == DEFAULT_EFFORT
+    assert CommandEnvelope.from_dict(env.to_dict()).effort == DEFAULT_EFFORT
