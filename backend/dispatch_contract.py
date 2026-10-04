@@ -59,9 +59,18 @@ def build_envelope(
     on_behalf_of: str = "",
     correlation_id: str = "",
     pr_lifecycle: str = "arm_and_exit",
-    effort: str = DEFAULT_EFFORT,
+    effort: str | None = None,
 ) -> CommandEnvelope:
-    """Convenience factory — retained for backward compatibility."""
+    """Convenience factory — retained for backward compatibility.
+
+    ``effort`` (issue #1865) is signed inside ``payload``, which is
+    authoritative. It may be given as the argument, as ``payload["effort"]``,
+    or both when they agree; with neither, ``DEFAULT_EFFORT`` applies.
+
+    Postcondition: ``envelope.effort == envelope.payload["effort"]``, so
+    ``CommandEnvelope.from_dict(envelope.to_dict())`` accepts the envelope.
+    Raises: ValueError when the argument and the payload disagree.
+    """
     # Issue #331 — default correlation_id from the active request context so
     # envelopes built during an HTTP request are automatically correlated.
     if not correlation_id:
@@ -75,8 +84,11 @@ def build_envelope(
     if "pr_lifecycle" not in payload_dict:
         payload_dict["pr_lifecycle"] = pr_lifecycle
     # Issue #1865 (USE-1): effort rides in the signed payload as well.
-    effort = validate_effort(effort)
-    payload_dict.setdefault("effort", effort)
+    payload_effort = payload_dict.get("effort")
+    if effort is not None and payload_effort is not None and effort != payload_effort:
+        raise ValueError(f"effort {effort!r} does not match payload effort {payload_effort!r}")
+    effort = validate_effort(payload_effort if payload_effort is not None else effort or DEFAULT_EFFORT)
+    payload_dict["effort"] = effort
     return CommandEnvelope(
         action=action,
         source=source,
