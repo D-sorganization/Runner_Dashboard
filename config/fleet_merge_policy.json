@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
+  "description": "Fleet merge-queue and branch-protection settings policy (RM#1890, RM#1900, RD#1850). Source of truth for fleet merge configuration.",
+  "repositories": [
+    "D-sorganization/Runner_Dashboard",
+    "D-sorganization/Repository_Management",
+    "D-sorganization/UpstreamDrift",
+    "D-sorganization/AffineDrift",
+    "D-sorganization/Tools",
+    "D-sorganization/Tools_Private",
+    "D-sorganization/Gasification_Model",
+    "D-sorganization/Maxwell_Daemon"
+  ],
+  "default_branch": "main",
+  "require_branches_up_to_date": false,
+  "repo_settings": {
+    "allow_auto_merge": true,
+    "allow_squash_merge": true,
+    "delete_branch_on_merge": true
+  },
+  "merge_queue": {
+    "required": true,
+    "parameters": {
+      "check_response_timeout_minutes": 60,
+      "grouping_strategy": "ALLGREEN",
+      "max_entries_to_build": 5,
+      "max_entries_to_merge": 5,
+      "merge_method": "SQUASH",
+      "min_entries_to_merge": 1,
+      "min_entries_to_merge_wait_minutes": 5
+    }
+  },
+  "workflows": {
+    "require_merge_group_on_required_checks": true,
+    "disallowed_workflows": [
+      "Auto-Update PRs"
+    ]
+  }
+}

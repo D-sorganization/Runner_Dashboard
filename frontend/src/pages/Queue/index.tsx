@@ -18,6 +18,7 @@ import { useToast } from "../../primitives/Toaster";
 import { formatDuration } from "../../components/formatters";
 
 import { DiagnosePanel } from "./DiagnosePanel";
+import { FleetMergeSettingsPanel } from "./FleetMergeSettingsPanel";
 import { StaleCleanupPanel } from "./StaleCleanupPanel";
 import { SearchGlyph } from "../decompIcons";
 import {
@@ -380,6 +381,8 @@ export function QueueTab(p: QueueTabProps) {
           </div>
         ))}
       </div>
+
+      <FleetMergeSettingsPanel />
 
       <StaleCleanupPanel onRefresh={onRefresh} />
 

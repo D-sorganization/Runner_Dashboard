@@ -1,8 +1,8 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.298
+**Spec Version:** 2.5.299
 **Application Version:** 4.10.0 (see `VERSION`)
-**Last Updated:** 2026-09-26T00:00:00-07:00
+**Last Updated:** 2026-10-04T00:00:00-07:00
 **Status:** Active
 
 ## Change Log
@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-04 | #1850 | Implement fleet-wide merge queue, strict-off, auto-merge, and merge_group drift checker (`config/fleet_merge_policy.json`, `backend/fleet_merge_checker.py`, `scripts/check_fleet_merge_settings.py`, `GET /api/queue/merge-settings`, and `<FleetMergeSettingsPanel />`); reports configuration drift against RM#1900 / RM#1890 policy. |
 | 2026-10-03 | #1854 | `config/required_status_checks_policy.json` requires the merge queue (squash, ALLGREEN) and no up-to-date branches; `scripts/check_required_checks_drift.py` reports a missing or mis-configured `merge_queue` rule and any `strict` protection source as drift (Repository_Management#1890 / #1900). |
 | 2026-10-03 | Repository_Management#1890 | CI Standard and Anti-Phantom Merge Guard trigger on `merge_group`, so required checks report in the merge queue; a hygiene test enforces it for every required-context workflow. |
 | 2026-10-01 | #1844 | Realign line numbers in .secrets.baseline for tests/test_maxwell_contract.py following upstream OpenAPI schema drift update (#1828), restoring green CI Secrets baseline diff checks on main. |
