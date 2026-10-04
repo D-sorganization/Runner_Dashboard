@@ -1,3 +1,24 @@
+# Current handoff — detect-secrets baseline for #1873 (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1873-ds`; branch `fix/1873-secrets-baseline`, cut from #1873's head (`chore/1871-gitleaks-staged`) while #1873 is in the merge queue, with `origin/main` merged in; commit SELF; PR: not created (pushed to #1873's branch only if the queue drops it, otherwise a follow-up PR).
+- **Cause:** `detect-secrets (baseline diff)` scans the PR merge ref. `main` gained #1868's `.pre-commit-config.yaml` change after #1873 branched, so in the merged tree the pinned detect-secrets `rev` SHA sits on line 83, not the 82 #1873 recorded. No new secret-like string.
+- **Change:** `.secrets.baseline` regenerated with `detect-secrets==1.5.0` and the workflow's `--exclude-files`; only that finding's `line_number` (82 → 83) and `generated_at` changed.
+- **Validation:** the workflow's "Audit baseline integrity" step, run locally on the merged tree, failed before (`line_number 82 → 83`) and passes after ("Baseline results unchanged").
+- **Main re-merge:** latest `main` (#1872) merged again; the baseline check still passes with no line shift, and `frontend/src/lib/openapi.json` / `api-types.ts` are regenerated with `bash scripts/gen-api-client.sh` (identical to #1876). DEVELOPMENT_LOG carries a staged `No material development-log change` note.
+- **Development log:** No material development-log change — baseline metadata only; DL-#1871 is kept byte-identical across #1872 / #1873.
+- **Next:** if the queue drops #1873, push this branch to `chore/1871-gitleaks-staged`; otherwise open a follow-up PR after #1873 merges (re-run the scan first if `main` moved `.pre-commit-config.yaml` again).
+
+---
+
+# Current handoff (parallel PR) — staged-only gitleaks at commit (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871-gl`; branch `chore/1871-gitleaks-staged`; commit SELF; PR: see the branch. The Spec Check workflow half ships alone as #1872 (`ci/1871-spec-check-backend`).
+- **Change:** `.pre-commit-config.yaml` gitleaks hook runs `gitleaks protect --staged` (was `detect --source .`, a whole-history scan at every commit). `ci-secrets.yml` is unchanged and keeps its full-history `detect` scan. `.secrets.baseline` line number for the detect-secrets `rev` SHA moved 81 → 82 after the comment grew by one line.
+- **Validation:** `pytest tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py` → 155 passed (staged-only test RED first; CI full-history guard added as a regression pin). Local `gitleaks protect --staged` (v8.24.0) on this commit's staged diff scanned ~1 KB in 0.5 s, no leaks.
+- **Next:** merge through the queue.
+
+---
+
 # Current handoff — re-sync vendored run_pytest_diff (DL-#1864, Repository_Management#1929)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1929-sync`; branch `chore/1929-resync-run-pytest-diff`; commit SELF; PR: see the branch.

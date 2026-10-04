@@ -394,6 +394,24 @@ def test_pre_push_mypy_dependencies_are_installable() -> None:
     # in #1864; tests/test_run_pytest_diff.py pins the diff-scoped hook instead.
 
 
+def test_commit_stage_gitleaks_scans_staged_changes_only() -> None:
+    """#1871: commit-time gitleaks scans staged changes, not the whole repo history."""
+    config = yaml.safe_load((Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    hooks = [hook for repo in config["repos"] for hook in repo.get("hooks", [])]
+    gitleaks = next(hook for hook in hooks if hook["id"] == "gitleaks")
+    command = " ".join([gitleaks["entry"], *gitleaks.get("args", [])])
+    assert "protect --staged" in command
+    assert "detect" not in command
+    assert "--source" not in command
+
+
+def test_ci_secrets_keeps_the_full_history_gitleaks_scan() -> None:
+    text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
+    assert "fetch-depth: 0" in text
+    assert '/gitleaks" detect' in text
+    assert "--no-git" not in text
+
+
 _REQUIRED_CHECKS_POLICY = Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
 
 

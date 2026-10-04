@@ -10,6 +10,8 @@ feature, from proposal to ship. See the `development-logs` section of
 - **WIP limit:** 4
 - **Last audited:** 2026-09-28 by claude (merged-PR reconciliation; shipped entries archived)
 
+<!-- #1873: No material development-log change — main merged and the generated API snapshot regenerated; DL-#1871 is unchanged. -->
+
 ## States
 
 `proposed` → `in_progress` → `in_review` → `shipped`, with `parked`
