@@ -2635,6 +2635,12 @@ async def _startup() -> None:
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())
 
+    # Weekly agent usage report (#1865); no-op unless USAGE_REPORT_WEEKLY_ENABLED.
+    from session_telemetry import get_session_telemetry_store  # noqa: PLC0415
+    from usage_report import start_weekly_usage_report_loop  # noqa: PLC0415
+
+    start_weekly_usage_report_loop(get_session_telemetry_store())
+
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
 

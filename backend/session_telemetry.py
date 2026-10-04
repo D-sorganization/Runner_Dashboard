@@ -131,6 +131,66 @@ class SessionRecord:
         return asdict(self)
 
 
+def summarize_sessions(records: list[SessionRecord]) -> dict[str, Any]:
+    """Aggregate the RM#1889 success metrics over ``records`` (shared by every window)."""
+    merged_costs = [r.cost_usd for r in records if r.pr_merged]
+    pr_records = [r for r in records if (r.linked_pr is not None or r.wakeups_after_pr > 0 or r.cost_after_pr_usd > 0)]
+    post_pr_costs = [r.cost_after_pr_usd for r in pr_records]
+
+    wakeups_gt_3 = [r.session_id for r in pr_records if r.wakeups_after_pr > 3]
+    wakeups_gt_0 = [r.session_id for r in pr_records if r.wakeups_after_pr > 0]
+
+    env_groups: dict[str, list[int]] = {}
+    for r in records:
+        env_groups.setdefault(r.environment, []).append(r.context_size)
+
+    env_summary = {
+        env: {
+            "count": len(sizes),
+            "median": int(calculate_percentile([float(s) for s in sizes], 50)),
+            "p90": int(calculate_percentile([float(s) for s in sizes], 90)),
+            "mean": round(sum(sizes) / len(sizes), 1),
+        }
+        for env, sizes in env_groups.items()
+    }
+
+    pre_pushes = [r.pre_push_duration_s for r in records if r.pre_push_duration_s is not None]
+    docs_conflicts = [r.docs_merge_conflicts for r in records]
+
+    return {
+        "cost_per_merged_pr": {
+            "count": len(merged_costs),
+            "median_usd": round(calculate_percentile(merged_costs, 50), 2),
+            "p90_usd": round(calculate_percentile(merged_costs, 90), 2),
+        },
+        "cost_after_pr": {
+            "count": len(post_pr_costs),
+            "total_usd": round(sum(post_pr_costs), 2),
+            "median_usd": round(calculate_percentile(post_pr_costs, 50), 2),
+            "p90_usd": round(calculate_percentile(post_pr_costs, 90), 2),
+            "mean_usd": round(sum(post_pr_costs) / max(1, len(post_pr_costs)), 2),
+        },
+        "post_pr_wakeups": {
+            "total_pr_sessions": len(pr_records),
+            "sessions_gt_3_count": len(wakeups_gt_3),
+            "sessions_gt_3_ids": wakeups_gt_3,
+            "sessions_gt_0_count": len(wakeups_gt_0),
+            "sessions_gt_0_ratio": round(len(wakeups_gt_0) / max(1, len(pr_records)), 3),
+        },
+        "startup_context_by_environment": env_summary,
+        "pre_push_duration": {
+            "count": len(pre_pushes),
+            "median_s": round(calculate_percentile(pre_pushes, 50), 1),
+            "p90_s": round(calculate_percentile(pre_pushes, 90), 1),
+            "p95_s": round(calculate_percentile(pre_pushes, 95), 1),
+        },
+        "docs_merge_conflicts": {
+            "total_conflicts": sum(docs_conflicts),
+            "sessions_with_conflicts": len([c for c in docs_conflicts if c > 0]),
+        },
+    }
+
+
 class SessionTelemetryStore:
     """Thread-safe persistent store for session telemetry records."""
 
@@ -206,69 +266,27 @@ class SessionTelemetryStore:
     def get_metrics(self, window_days: int = 30) -> dict[str, Any]:
         """Aggregate metrics and 30-day trends matching RM#1889 targets."""
         records = self.list_sessions(since_days=window_days)
-
-        merged_costs = [r.cost_usd for r in records if r.pr_merged]
-        pr_records = [
-            r for r in records if (r.linked_pr is not None or r.wakeups_after_pr > 0 or r.cost_after_pr_usd > 0)
-        ]
-        post_pr_costs = [r.cost_after_pr_usd for r in pr_records]
-
-        wakeups_gt_3 = [r.session_id for r in pr_records if r.wakeups_after_pr > 3]
-        wakeups_gt_0 = [r.session_id for r in pr_records if r.wakeups_after_pr > 0]
-
-        env_groups: dict[str, list[int]] = {}
-        for r in records:
-            env_groups.setdefault(r.environment, []).append(r.context_size)
-
-        env_summary = {
-            env: {
-                "count": len(sizes),
-                "median": int(calculate_percentile([float(s) for s in sizes], 50)),
-                "p90": int(calculate_percentile([float(s) for s in sizes], 90)),
-                "mean": round(sum(sizes) / len(sizes), 1),
-            }
-            for env, sizes in env_groups.items()
-        }
-
-        pre_pushes = [r.pre_push_duration_s for r in records if r.pre_push_duration_s is not None]
-        docs_conflicts = [r.docs_merge_conflicts for r in records]
-
         return {
             "window_days": window_days,
             "total_sessions": len(records),
-            "cost_per_merged_pr": {
-                "count": len(merged_costs),
-                "median_usd": round(calculate_percentile(merged_costs, 50), 2),
-                "p90_usd": round(calculate_percentile(merged_costs, 90), 2),
-            },
-            "cost_after_pr": {
-                "count": len(post_pr_costs),
-                "total_usd": round(sum(post_pr_costs), 2),
-                "median_usd": round(calculate_percentile(post_pr_costs, 50), 2),
-                "p90_usd": round(calculate_percentile(post_pr_costs, 90), 2),
-                "mean_usd": round(sum(post_pr_costs) / max(1, len(post_pr_costs)), 2),
-            },
-            "post_pr_wakeups": {
-                "total_pr_sessions": len(pr_records),
-                "sessions_gt_3_count": len(wakeups_gt_3),
-                "sessions_gt_3_ids": wakeups_gt_3,
-                "sessions_gt_0_count": len(wakeups_gt_0),
-                "sessions_gt_0_ratio": round(len(wakeups_gt_0) / max(1, len(pr_records)), 3),
-            },
-            "startup_context_by_environment": env_summary,
-            "pre_push_duration": {
-                "count": len(pre_pushes),
-                "median_s": round(calculate_percentile(pre_pushes, 50), 1),
-                "p90_s": round(calculate_percentile(pre_pushes, 90), 1),
-                "p95_s": round(calculate_percentile(pre_pushes, 95), 1),
-            },
-            "docs_merge_conflicts": {
-                "total_conflicts": sum(docs_conflicts),
-                "sessions_with_conflicts": len([c for c in docs_conflicts if c > 0]),
-            },
+            **summarize_sessions(records),
             "trends_30d": self._build_daily_trends(records, window_days),
             "alerts": [r.to_dict() for r in records if r.is_alert],
         }
+
+    def get_metrics_window(self, *, days: int, offset_days: int = 0, now: datetime | None = None) -> dict[str, Any]:
+        """Aggregate records recorded in ``[now - offset - days, now - offset)`` (USE-1, #1865).
+
+        Precondition: ``days`` >= 1 and ``offset_days`` >= 0.
+        Postcondition: same aggregate keys as :meth:`get_metrics`, without trends.
+        """
+        if days < 1 or offset_days < 0:
+            raise ValueError("days must be >= 1 and offset_days >= 0")
+        end = (now or datetime.now(UTC)) - timedelta(days=offset_days)
+        start = end - timedelta(days=days)
+        with self._lock:
+            records = [rec for rec in self._records.values() if start.isoformat() <= rec.recorded_at < end.isoformat()]
+        return {"window_days": days, "total_sessions": len(records), **summarize_sessions(records)}
 
     def _build_daily_trends(self, records: list[SessionRecord], window_days: int) -> list[dict[str, Any]]:
         daily_buckets: dict[str, list[SessionRecord]] = {}
