@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-03 | Repository_Management#1890 | CI Standard and Anti-Phantom Merge Guard trigger on `merge_group`, so required checks report in the merge queue; a hygiene test enforces it for every required-context workflow. |
 | 2026-10-01 | #1844 | Realign line numbers in .secrets.baseline for tests/test_maxwell_contract.py following upstream OpenAPI schema drift update (#1828), restoring green CI Secrets baseline diff checks on main. |
 | 2026-10-01 | #1805 | Keep mobile Inbox, Runs, send and approval controls in an unobscured local navigation region above the global mobile navigation; Vitest component and shell layout tests verify shell bottom offsets and 44px hit-testable bounds across 320, 390 and 430px widths. |
 | 2026-10-01 | #1828 | Refresh vendored Maxwell OpenAPI snapshot from upstream Maxwell_Daemon to resolve contract drift, deriving worker contract fixtures and schema validations from the typed WorkersStatusResponse schema. |

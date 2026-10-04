@@ -18,6 +18,9 @@ on:
     # the same reason. `push` below still ignores them: post-merge CI does not
     # gate the required context. Enforced by tests/test_workflow_hygiene.py::
     # test_required_context_workflows_have_no_pull_request_path_filters.
+  # Merge queue (Repository_Management#1890): `quality-gate` and `tests` must
+  # report on the queue's merge commit. Non-PR events run full validation.
+  merge_group:
   workflow_dispatch:
     inputs:
       force_local:
