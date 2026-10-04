@@ -145,6 +145,8 @@ _AUTH_EXEMPT_PATHS = {
     "/api/client-errors",
     # Local anonymous page-view counter (issue #1302 / SC-G1)
     "/api/usage/page-view",
+    # Session telemetry ingestion across sessions and fleet hooks (issue #1849 / RD-4)
+    "/api/usage/session-telemetry",
 }
 
 # Routes that authenticate by a mechanism OTHER than a resolved operator
