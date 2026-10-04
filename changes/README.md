@@ -66,3 +66,5 @@ The modules (`scripts/changes_fragment*.py`, `development_log.py`,
 `handoff_validator.py`, `spec_changelog.py`) are vendored from Repository_Management
 `Project_Template/shared_scripts/`; re-sync them, do not fork. Runner Dashboard
 never imports them from the sibling repo at runtime.
+
+Vendored files follow upstream size: they are not split here to meet the 400-line limit, because forking them would break re-syncing. The split is tracked upstream in [Repository_Management#1938](https://github.com/D-sorganization/Repository_Management/issues/1938).

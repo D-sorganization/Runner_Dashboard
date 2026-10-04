@@ -1,7 +1,8 @@
 # Vendored from Repository_Management scripts/automerge_guard.py
-# (commit 1cfc3466cffd753e22ebd48bc964bff7ed153dfa). Re-sync from upstream; do
+# (commit dac5db339cd9a62d3a8d49f7d1aebc3e20fbd9ba; pending RM#1939). Re-sync from upstream; do
 # not fork. No local changes except ruff format at this repository's line
 # length. collate-changes.yml arms auto-merge only through this guard.
+# Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
 """Refuse to arm GitHub auto-merge on a pull request a reviewer has held back.
 
 WHY THIS EXISTS
@@ -122,6 +123,35 @@ def _gh_lines(runner: CommandRunner, args: Sequence[str]) -> list[str]:
     return [line for line in proc.stdout.splitlines() if line.strip()]
 
 
+def _head_arrival(runner: CommandRunner, repo: str, sha: str) -> str:
+    """Return the GitHub-side time the head ``sha`` reached ``repo``, or ``""``.
+
+    Pre: ``sha`` is a commit SHA of ``repo``. Post: an ISO-8601 UTC timestamp
+    assigned by GitHub, or the empty string when none can be established.
+
+    Why not the commit's ``committer.date``: the contributor writes it, so a
+    future-dated commit would postdate any reviewer disarm and let automation
+    re-arm at once. The earliest ``created_at`` among the check suites for the
+    SHA is set by GitHub when the push lands and cannot be forged. (The PR
+    timeline's ``committed`` events carry the same author-controlled date, and
+    ``head_ref_force_pushed`` covers only force-pushes.) A later suite for the
+    same SHA never moves the minimum.
+    """
+    if not sha:
+        return ""
+    lines = _gh_lines(
+        runner,
+        [
+            "api",
+            f"repos/{repo}/commits/{sha}/check-suites?per_page=100",
+            "--paginate",
+            "--jq",
+            ".check_suites[].created_at",
+        ],
+    )
+    return min(lines) if lines else ""
+
+
 def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
     """Decide whether ``repo#pr`` is held back from auto-merge.
 
@@ -178,25 +208,18 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
                 '| select((.actor.type // "User") != "Bot") | .created_at',
             ],
         )
-        head_date = ""
-        if pull.head_sha:
-            head_date = "".join(
-                _gh_lines(
-                    run,
-                    [
-                        "api",
-                        f"repos/{repo}/commits/{pull.head_sha}",
-                        "--jq",
-                        ".commit.committer.date",
-                    ],
-                )
-            ).strip()
-        if disarms and head_date:
+        arrived = _head_arrival(run, repo, pull.head_sha) if disarms else ""
+        if disarms:
             last_disarm = max(disarms)
-            if last_disarm > head_date:
+            if not arrived:
+                reasons.append(
+                    f"a reviewer disabled auto-merge at {last_disarm} and the "
+                    "server-side arrival time of the head commit is unknown"
+                )
+            elif last_disarm > arrived:
                 reasons.append(
                     f"a reviewer disabled auto-merge at {last_disarm}, after the "
-                    f"head commit ({head_date}) — no push has superseded it"
+                    f"head commit arrived ({arrived}) — no push has superseded it"
                 )
 
         # --- signal 4: unacknowledged deletion of tracked files -------------

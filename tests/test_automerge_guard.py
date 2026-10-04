@@ -41,6 +41,7 @@ class FakeGh:
         disarms: Sequence[str] = (),
         removed: Sequence[str] = (),
         head_date: str = HEAD_DATE,
+        committer_date: str = HEAD_DATE,
         merge_returncode: int = 0,
     ) -> None:
         self.pull = {
@@ -52,6 +53,7 @@ class FakeGh:
         self.disarms = list(disarms)
         self.removed = list(removed)
         self.head_date = head_date
+        self.committer_date = committer_date
         self.merge_returncode = merge_returncode
         self.calls: list[list[str]] = []
 
@@ -66,8 +68,10 @@ class FakeGh:
             )
         if "/timeline" in joined:
             return _completed("\n".join(self.disarms))
-        if "/commits/" in joined:
+        if "/check-suites" in joined:
             return _completed(self.head_date)
+        if "/commits/" in joined:
+            return _completed(self.committer_date)
         if "/files" in joined:
             return _completed("\n".join(self.removed))
         if "/pulls/" in joined:
@@ -115,6 +119,25 @@ def test_human_disarm_before_head_commit_is_not_held() -> None:
     """A push after the disarm supersedes the reviewer's decision."""
     verdict = automerge_guard.evaluate_hold("o/r", 1, runner=FakeGh(disarms=["2026-08-01T00:00:00Z"]))
     assert verdict.held is False
+
+
+def test_future_dated_head_commit_cannot_outrun_a_disarm() -> None:
+    """The committer date is contributor-controlled; arrival time is not."""
+    verdict = automerge_guard.evaluate_hold(
+        "o/r",
+        1,
+        runner=FakeGh(
+            disarms=["2026-08-14T04:14:21Z"],
+            head_date="2026-08-13T20:35:02Z",  # server time the SHA arrived
+            committer_date="2099-01-01T00:00:00Z",  # forged
+        ),
+    )
+    assert verdict.held is True
+
+
+def test_missing_arrival_time_fails_closed_when_a_disarm_exists() -> None:
+    verdict = automerge_guard.evaluate_hold("o/r", 1, runner=FakeGh(disarms=["2026-08-14T04:14:21Z"], head_date=""))
+    assert verdict.held is True
 
 
 def test_latest_disarm_wins_when_several_exist() -> None:

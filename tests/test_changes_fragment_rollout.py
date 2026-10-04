@@ -49,8 +49,8 @@ def test_collate_applies_to_the_real_spec_and_development_log(tmp_path: Path) ->
 
     after = spec_changelog.parse_changelog((root / "SPEC.md").read_text("utf-8"))
     assert len(after.rows) == len(before.rows) + 1
-    assert after.rows[-1].key == "#99999"
-    assert after.rows[-1].summary == "Fragment rollout probe"
+    assert after.rows[0].key == "#99999"
+    assert after.rows[0].summary == "Fragment rollout probe"
     assert spec_changelog.validate(after) == findings_before
     log = development_log.resolve_canonical_devlog_path(root).read_text("utf-8")
     assert "DL-#1894" in log

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # Vendored from Repository_Management Project_Template/shared_scripts/development_log.py
-# (commit 1cfc3466cffd753e22ebd48bc964bff7ed153dfa, RM-5 / Repository_Management#1894).
+# (commit dac5db339cd9a62d3a8d49f7d1aebc3e20fbd9ba; pending RM#1939, RM-5 / Repository_Management#1894).
 # Re-sync from upstream; do not fork. No local changes except ruff format at
 # this repository's line length. The sibling imports fall back to file paths,
 # so the six change-fragment modules work side by side in ``scripts/``.
+# Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
 """Canonical development-log schema validation for the repository fleet.
 
 Where `handoff_validator` answers "how do I resume the session in front of
@@ -81,7 +82,11 @@ WIP_LIMIT_HEADER = re.compile(
 # never conflict over the next serial. `DL-0001`-style serial ids are the
 # pre-#1520 form and stay valid so existing entries need no rewrite — they are
 # already unique — but new ones must not use it.
-ENTRY_HEADING = re.compile(r"^###\s+(DL-(?:#\d+|\d{4}))\s+·\s+(.+?)\s*$", re.MULTILINE)
+# The id and title are separated by a middle dot or an en/em dash; fleet logs
+# use all of them (Runner_Dashboard's canonical log uses an em dash). A plain
+# hyphen is deliberately not accepted: RM's own log has hyphen-headed entries
+# that were never validated and would surface unrelated findings.
+ENTRY_HEADING = re.compile(r"^###\s+(DL-(?:#\d+|\d{4}))\s+[·–—]\s+(.+?)\s*$", re.MULTILINE)
 LEGACY_ENTRY_ID = re.compile(r"^DL-\d{4}$")
 ISSUE_KEYED_ENTRY_ID = re.compile(r"^DL-#(\d+)$")
 FIELD_LINE = re.compile(r"^-\s+\*\*(?P<key>[A-Za-z ]+?):\*\*\s*(?P<value>.*?)\s*$")

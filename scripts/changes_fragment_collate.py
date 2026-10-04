@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # Vendored from Repository_Management Project_Template/shared_scripts/changes_fragment_collate.py
-# (commit 1cfc3466cffd753e22ebd48bc964bff7ed153dfa, RM-5 / Repository_Management#1894).
+# (commit dac5db339cd9a62d3a8d49f7d1aebc3e20fbd9ba; pending RM#1939, RM-5 / Repository_Management#1894).
 # Re-sync from upstream; do not fork. No local changes except ruff format at
 # this repository's line length. The sibling imports fall back to file paths,
 # so the six change-fragment modules work side by side in ``scripts/``.
+# Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
 """Change-fragment collation into SPEC.md and the development log (RM-5).
 
 Split out of ``changes_fragment.py``, which stays the public facade and CLI.
@@ -51,8 +52,9 @@ EMPTY_PR_VALUES = frozenset({"", "-", "n/a", "none", "not applicable", "not crea
 def apply_spec_row(text: str, *, pr: int, summary: str, today: date) -> str:
     """Return SPEC.md ``text`` with the ``#<pr>`` change-log row applied.
 
-    Appends ``| today | #pr | summary |`` when no row for the pull request
-    exists. When one does, ``summary`` is appended to it unless it already
+    Inserts ``| today | #pr | summary |`` at the top of the table (it is
+    newest-first, as ``spec_changelog.union_rows`` assumes) when no row for the
+    pull request exists. When one does, ``summary`` is appended to it unless it already
     holds it, so a re-run is a no-op and one pull request keeps one row.
     """
     changelog = spec_changelog.parse_changelog(text)
@@ -65,7 +67,7 @@ def apply_spec_row(text: str, *, pr: int, summary: str, today: date) -> str:
             rows[index] = spec_changelog.Row(row.date, row.key, f"{row.summary}; {summary}")
             break
     else:
-        rows.append(spec_changelog.Row(today.isoformat(), key, summary))
+        rows.insert(0, spec_changelog.Row(today.isoformat(), key, summary))
     result: str = spec_changelog.replace_rows(text, changelog, rows)
     return result
 

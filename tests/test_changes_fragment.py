@@ -239,7 +239,7 @@ def test_collate_creates_spec_row_and_new_devlog_entry(tmp_path: Path) -> None:
     changes_fragment.collate(root, [frag], pr=900, today=TODAY, sha=SHA)
 
     rows = spec_changelog.parse_changelog(_spec(root)).rows
-    assert rows[-1] == spec_changelog.Row("2026-10-04", "#900", "Brand new feature")
+    assert rows[0] == spec_changelog.Row("2026-10-04", "#900", "Brand new feature")
     assert "Tail text." in _spec(root)
     entries = {e.entry_id: e for e in development_log.parse_entries(_devlog(root))}
     entry = entries["DL-#88"]
@@ -318,7 +318,7 @@ def test_concurrent_fragments_never_collide(tmp_path: Path) -> None:
     changes_fragment.collate(root, [second], pr=904, today=TODAY, sha=SHA)
 
     keys = [r.key for r in spec_changelog.parse_changelog(_spec(root)).rows]
-    assert keys[-2:] == ["#903", "#904"]
+    assert keys[:2] == ["#904", "#903"]  # newest-first
     ids = {e.entry_id for e in development_log.parse_entries(_devlog(root))}
     assert {"DL-#88", "DL-#89"} <= ids
 
@@ -483,6 +483,24 @@ def test_round_trip_valid_fragment_collates_to_valid_docs(
 
     changelog = spec_changelog.parse_changelog(_spec(root))
     assert spec_changelog.validate(changelog) == []
-    assert changelog.rows[-1].key == "#920"
+    assert changelog.rows[0].key == "#920"
     assert development_log.validate_devlog_content(_devlog(root), Path("DL.md")) == []
     assert not frag.exists()
+
+
+def test_collate_matches_existing_entry_with_em_dash_heading(tmp_path: Path) -> None:
+    """An entry headed ``DL-#77 \u2014 Title`` is updated in place, never duplicated."""
+    root = _repo(tmp_path)
+    devlog = root / "docs" / "development" / "DEVELOPMENT_LOG.md"
+    devlog.write_text(DEVLOG_FIXTURE.replace("### DL-#77 · ", "### DL-#77 \u2014 "), encoding="utf-8")
+    frag = _write_fragment(root, "77-x.md", "---\nissue: 77\nsummary: Touch it\n---\n")
+
+    changes_fragment.collate(root, [frag], pr=950, today=TODAY, sha=SHA)
+
+    assert devlog.read_text(encoding="utf-8").count("DL-#77") == 1
+
+
+@pytest.mark.parametrize("sep", ["·", "\u2014", "\u2013"])
+def test_entry_heading_accepts_every_title_separator(sep: str) -> None:
+    text = DEVLOG_FIXTURE.replace("### DL-#77 · ", f"### DL-#77 {sep} ")
+    assert "DL-#77" in [e.entry_id for e in development_log.parse_entries(text)]
