@@ -11,7 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
-| 2026-10-04 | #1863 | Staff proposals API tests stub `StaffRunner.launch`: executing a `staff.dispatch` proposal no longer starts a real `staff-run-*` worker that outlived the test, crashed on a closed run store and ran `git worktree add` during later tests; the fixture now fails any test that leaves such a worker running (`tests/api/test_staff_proposals_api.py`). |
+| 2026-10-04 | #1863 | Staff tests no longer start real `staff-run-*` workers: a shared `staff_launches` fixture (`tests/conftest.py`) records `StaffRunner.launch` and fails any test that leaves such a worker running. It is used by the proposals `staff.dispatch` tests and the needs-input continuation tests, whose workers outlived them, crashed on a closed run store and ran `git worktree add` / `gh repo clone` during later tests. |
 | 2026-10-04 | #1871 | The commit-stage gitleaks pre-commit hook scans staged changes only (`gitleaks protect --staged`) instead of the whole repository history; CI Secrets keeps the full-history scan. |
 | 2026-10-04 | Repository_Management#1929 | Vendored `scripts/run_pytest_diff.py` re-synced to upstream Repository_Management (PR #1930), which now carries the collectible-test and accumulate-all-matches fixes; the "Local fix" fork is removed. Behaviour unchanged. |
 | 2026-10-04 | #1871 | Spec Check (`ci-spec-check.yml`) treats `backend/**` as source, so a backend-only PR without a SPEC.md update fails; its PR comment no longer says to bump the Spec Version (release-derived, Repository_Management#1520) and asks for one change-log row keyed by the PR. |

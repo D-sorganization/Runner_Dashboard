@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as _dt
-import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -12,7 +11,6 @@ from fastapi.testclient import TestClient
 from identity import Principal, require_principal, require_scope
 from server import app
 from staff.conversations import get_conversation_store, reset_conversation_store
-from staff.runner import StaffRunner
 from staff.thread_bus import reset_thread_bus
 
 UTC = getattr(_dt, "UTC", _dt.UTC)
@@ -27,12 +25,10 @@ TEST_APPROVER = Principal(
 )
 
 
-def _live_staff_run_threads() -> set[threading.Thread]:
-    return {t for t in threading.enumerate() if t.name.startswith("staff-run-") and t.is_alive()}
-
-
 @pytest.fixture(autouse=True)
-def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+def clean_conversations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, staff_launches: list[str]
+) -> Iterator[list[str]]:
     db_file = tmp_path / "staff_runs.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_file))
     reset_conversation_store()
@@ -42,21 +38,13 @@ def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iter
     app.dependency_overrides[require_scope("staff.read")] = lambda: TEST_APPROVER
     app.dependency_overrides[require_scope("staff.approve")] = lambda: TEST_APPROVER
 
-    # Executing a staff.dispatch proposal admits a run; record its launch instead of
-    # starting a worker that would prepare a real worktree after this test ends.
-    launched: list[str] = []
-    monkeypatch.setattr(StaffRunner, "launch", lambda _self, rec, _plan: launched.append(rec.id))
-
+    # Executing a staff.dispatch proposal launches a run; staff_launches records it (#1863).
     store = get_conversation_store()
-    already_running = _live_staff_run_threads()
-    yield launched
-    leaked = _live_staff_run_threads() - already_running
+    yield staff_launches
     app.dependency_overrides.clear()
     store.close()
     reset_conversation_store()
     reset_thread_bus()
-    # A real worker outlives the test and later runs git worktree add in another test.
-    assert not leaked, f"test started a real staff-run worker: {sorted(t.name for t in leaked)}"
 
 
 @pytest.fixture
