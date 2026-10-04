@@ -84,7 +84,7 @@ async def test_pip_cache_probe_caches_result(tmp_path: Path) -> None:
 
     orig_check = probe._check_runner_pip_cache
 
-    def wrapped_check(r_dir):
+    def wrapped_check(r_dir: Path) -> tuple[bool, str | None]:
         nonlocal call_count
         call_count += 1
         return orig_check(r_dir)
