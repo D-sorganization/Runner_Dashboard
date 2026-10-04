@@ -29,6 +29,14 @@ LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
 RUNNER_NAME="${RUNNER_NAME:-${HOSTNAME}-unknown}"
 HOME_DIR="${HOME:-/home/$USER}"
 
+# -- TMPDIR preparation (Runner_Dashboard#1895) -------------------------------
+# Self-hosted runners configure TMPDIR=<runner_dir>/_work/_tmp (via
+# configure-runner-tmpdir.sh in .env). If TMPDIR was wiped by a host cleanup,
+# recreate it before any workflow step or mktemp runs.
+if [ -n "${TMPDIR:-}" ]; then
+    mkdir -m 0755 -p "$TMPDIR" 2>/dev/null || mkdir -p "$TMPDIR" 2>/dev/null || true
+fi
+
 # -- Stale-git-lock cleanup (Runner_Dashboard#640) ---------------------------
 # Before this job's actions/checkout runs, scrub leftover lock files from a
 # prior job that was killed mid-`git config --global` (typical cause: the
