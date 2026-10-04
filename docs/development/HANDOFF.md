@@ -3,6 +3,7 @@
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1929-sync`; branch `chore/1929-resync-run-pytest-diff`; commit SELF; PR: see the branch.
 - **Change:** `scripts/run_pytest_diff.py` is re-synced from Repository_Management `shared_scripts/run_pytest_diff.py` at `48893688` (branch `fix/1929-pytest-diff-collectible`, RM PR #1930), which upstreamed this repo's two #1868 "Local fix" changes. Only the `scripts.` import and 120-column ruff format differ from upstream. Behaviour is unchanged.
 - **Validation:** `pytest tests/test_run_pytest_diff.py` → 20 passed (new no-fork test RED first against the forked copy); ruff and mypy clean.
+- **API snapshot:** `frontend/src/lib/openapi.json` / `api-types.ts` regenerated with `bash scripts/gen-api-client.sh` after merging main (identical to #1876; no-ops once #1876 lands).
 - **Next:** once RM #1930 merges, re-pin the vendored-from header to its merge SHA (one-line change).
 
 ---

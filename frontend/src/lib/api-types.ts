@@ -5083,6 +5083,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/usage/report/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Weekly Report
+         * @description Render this ISO week's usage report and create/update its comment (idempotent).
+         */
+        post: operations["post_weekly_report_api_usage_report_weekly_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/usage/session-metrics": {
         parameters: {
             query?: never;
@@ -9615,6 +9635,24 @@ export interface components {
              * @default
              */
             route: string;
+        };
+        /**
+         * WeeklyUsageReportRequest
+         * @description Body for ``POST /api/usage/report/weekly`` (USE-1, #1865).
+         */
+        WeeklyUsageReportRequest: {
+            /**
+             * Dry Run
+             * @description Render only; do not touch GitHub
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Repository
+             * @description owner/name of the repository holding the report issue
+             * @default D-sorganization/Repository_Management
+             */
+            repository: string;
         };
         /**
          * WorkRequest
@@ -16544,6 +16582,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PageViewPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_weekly_report_api_usage_report_weekly_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeeklyUsageReportRequest"];
             };
         };
         responses: {
