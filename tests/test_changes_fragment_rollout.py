@@ -86,5 +86,8 @@ def test_pre_commit_validates_staged_fragments() -> None:
 def test_agent_guidance_points_at_fragments() -> None:
     for name in ("AGENTS.md", "CLAUDE.md"):
         text = (REPO_ROOT / name).read_text("utf-8")
+        if name == "CLAUDE.md" and "@AGENTS.md" in text:
+            # RM-8: CLAUDE.md is an @AGENTS.md stub; resolve import to AGENTS.md
+            text = (REPO_ROOT / "AGENTS.md").read_text("utf-8")
         assert "changes/<issue>-<slug>.md" in text, name
         assert "scripts/changes_fragment.py new" in text, name

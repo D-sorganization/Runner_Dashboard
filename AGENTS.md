@@ -33,7 +33,8 @@ python scripts/automerge_guard.py D-sorganization/Runner_Dashboard <pr> --arm --
   say `Closes #N`.
 - **Spec Check**: all PRs run `ci-spec-check.yml`. If backend files change without
   a `SPEC.md` change row, the check fails. Apply the `spec-exempt` label to bypass.
-- Per-PR change fragments: `python scripts/changes_fragment.py new --issue N --summary "..."`.
+- Per-PR change fragments: write `changes/<issue>-<slug>.md` using
+  `python scripts/changes_fragment.py new --issue N --summary "..."`.
   Do not edit `SPEC.md`, `DEVELOPMENT_LOG.md` or `HANDOFF.md` directly.
 
 ## Repository Rules
