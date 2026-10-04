@@ -365,3 +365,37 @@ async def test_dispatch_to_issues_audit_log_has_required_fields(tmp_path: Path) 
         assert entry["forced"] is True
     finally:
         adr._ISSUE_DISPATCH_HISTORY_PATH = original
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_skips_when_premise_rejected() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=99,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix local-only-runner-guard.yml failure",
+        force=False,
+    )
+    with patch(
+        "agent_dispatch_router.evaluate_dispatch_premise",
+        return_value=type(
+            "P",
+            (),
+            {
+                "allowed": False,
+                "reason": "already_resolved_on_main",
+                "detail": "check passing on main",
+                "comment": "already resolved on main at d354634",
+                "should_close": True,
+            },
+        )(),
+    ):
+        result = await _dispatch_issues(req)
+        assert isinstance(result, BulkDispatchResponse)
+        assert result.accepted == 0
+        assert len(result.rejected) == 1
+        assert "premise_rejected" in result.rejected[0]["reason"]
+        assert "already_resolved_on_main" in result.rejected[0]["reason"]
