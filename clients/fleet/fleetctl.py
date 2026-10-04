@@ -23,7 +23,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fleet_client import FleetAPIError, FleetArgumentError, FleetClient  # noqa: E402
+from fleet_client import FleetAPIError, FleetArgumentError, FleetClient, run_doctor  # noqa: E402
 from fleet_tools import BY_CLI, COMMANDS, Command  # noqa: E402
 
 
@@ -69,7 +69,29 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_parser = sub.add_parser(command.cli, help=command.description, description=command.description)
         for name, schema in command.properties.items():
             _add_argument(cmd_parser, name, schema, positional=name in command.positional)
+    doctor = sub.add_parser(
+        "doctor",
+        help="Read-only connection diagnostics (DNS/TLS, token, scopes, version, briefing freshness).",
+        description="Diagnose the agent connection without writing anything. Exit 1 if any check fails.",
+    )
+    doctor.add_argument("--json", action="store_true", help="Emit JSON instead of text.")
+    doctor.add_argument(
+        "--with-roundtrip", action="store_true", help="Also open a Barb thread (a WRITE; off by default)."
+    )
     return parser
+
+
+def _doctor(client: FleetClient, namespace: argparse.Namespace) -> int:
+    results = run_doctor(client, with_roundtrip=namespace.with_roundtrip)
+    ok = all(result.ok for result in results)
+    if namespace.json:
+        _emit({"ok": ok, "checks": [result.to_dict() for result in results]})
+    else:
+        for result in results:
+            sys.stdout.write(f"{'PASS' if result.ok else 'FAIL'} {result.name}: {result.detail}\n")
+            if not result.ok:
+                sys.stdout.write(f"     remedy: {result.remedy}\n")
+    return 0 if ok else 1
 
 
 def _arguments(command: Command, namespace: argparse.Namespace) -> dict[str, Any]:
@@ -82,6 +104,13 @@ def _emit(payload: Any) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     namespace = build_parser().parse_args(argv)
+    if namespace.command == "doctor":
+        try:
+            client = FleetClient(namespace.url, timeout=namespace.timeout)
+        except FleetArgumentError as exc:
+            _emit({"error": "invalid_arguments", "message": str(exc)})
+            return 2
+        return _doctor(client, namespace)
     command = BY_CLI[namespace.command]
     try:
         client = FleetClient(
