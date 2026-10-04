@@ -18,7 +18,7 @@ from scripts import changes_fragment, development_log, spec_changelog
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TODAY = date(2026, 10, 4)
-SHA = "0123456789abcdef0123456789abcdef01234567"
+SHA = "0123456789abcdef0123456789abcdef01234567"  # pragma: allowlist secret
 VENDORED = (
     "changes_fragment",
     "changes_fragment_schema",
