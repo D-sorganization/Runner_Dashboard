@@ -8,6 +8,21 @@
 
 ---
 
+# Current handoff — CI-fix routing on current models, agy option (DL-#1880, #1880)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-ci-fix-routing`; branch `fix/ci-fix-routing-models` from `origin/main`; commit SELF; PR: see the branch. Lease: `claude` / `claude-rd-1880`.
+- **Change:** `route_ci_fix` (`backend/ci_fix_dispatch.py`) no longer routes to `claude-3-7-opus` / `claude-3-5-sonnet` / `gpt-5-codex`.
+  - **Escalated:** `claude-opus-5-5`.
+  - **Lint:** Codex `gpt-6-luna` (the fast/affordable model in the Codex models list; `gpt-6.1-sol` is the workhorse).
+  - **Tests/logic:** `antigravity` + `gemini-3.8-flash-high` (the fleet tier model, Repository_Management `conductor/tiers.py`) when `staff.adapters.ADAPTERS["antigravity"].unattended`, else `claude-sonnet-5-5`.
+- **Key decision:** agy is gated on the staff adapter flag rather than a new switch. agy 1.2.11 headless auto-denies shell commands without a permission bypass, so the adapter is chat-only and Repository_Management `dispatch_cli_agent` refuses agy (#1800). The route therefore resolves to Sonnet 5.5 today and switches to agy automatically when the adapter becomes unattended-capable.
+- **Validation:** RED: 5 route assertions failed on the old ids or the missing gate. GREEN: `pytest tests/api/test_ci_fix_dispatch.py tests/test_dispatch_effort.py` 38 passed; ruff and mypy clean.
+- **Not changed (filed #1881, tier:strong):** RD-1 has no trigger (no caller, and no GitHub event intake); `/api/remediation/ci-fix/dispatch` launches no agent; `CIFixLockManager` locks never expire.
+- **Spotted, not changed:** `agent_remediation/provider_registry.py` model lists (`claude-opus-4`, `gpt-5-codex`, `gemini-2.5-*`), `dispatch_routing.DEFAULT_SONNET_MODEL = "claude-sonnet-5"`, and `staff/pricing.DEFAULT_MODEL` are also stale.
+- **Next:** merge through the queue.
+
+---
+
 # Current handoff — staff proposals tests leak real run workers (DL-#1863, #1863)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-staff-threads-teardown`; branch `test/staff-threads-runner-leak` from `origin/main`; commit SELF; PR: see the branch. Lease: `claude` / `claude-rd-1863`.
@@ -51,7 +66,7 @@
 
 ---
 
-# Current handoff — Spec Check covers backend/** (DL-#1871, #1871)
+# Current handoff — Spec Check covers backend/\*\* (DL-#1871, #1871)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871`; branch `ci/1871-spec-check-backend`; commit SELF; PR: see the branch. Workflow-only change, shipped alone; the staged-only gitleaks pre-commit change is a separate PR on `chore/1871-gitleaks-staged`.
 - **Change:** `ci-spec-check.yml` adds `backend/*` (bash `[[ == ]]` globs match nested paths) to the source patterns; the PR comment drops "Bump the Spec Version" and uses the Repository_Management wording (one change-log row keyed by the PR; Spec Version is release-derived).

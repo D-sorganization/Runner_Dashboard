@@ -20,6 +20,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1880 — CI-fix routing on current models, agy option
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1880 (wiring gap tracked in #1881)
+- **Branch:** `fix/ci-fix-routing-models`
+- **PR:** see the branch
+- **Paths:** `backend/ci_fix_dispatch.py`, `tests/api/test_ci_fix_dispatch.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; `tests/api/test_ci_fix_dispatch.py` + `tests/test_dispatch_effort.py` 38 passed (route tests RED first).
+- **Summary:** `route_ci_fix` routes to Opus 5.5 (escalated), Codex `gpt-6-luna` (lint) and, for tests/logic, agy with Gemini 3.8 Flash when the staff `antigravity` adapter is unattended-capable, otherwise Sonnet 5.5. Today agy is chat-only, so the tests/logic tier routes to Sonnet 5.5.
+- **Next step:** Merge the PR through the queue.
+
 ### DL-#1863 — Staff proposals tests stop leaking real run workers
 
 - **State:** in_review
