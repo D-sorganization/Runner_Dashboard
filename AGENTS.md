@@ -39,6 +39,28 @@ authoritative context for repo decisions, and must not modify it directly.
 
 ---
 
+## Change fragments (SPEC / development log / handoff)
+
+Do **not** edit the `SPEC.md` change log, `docs/development/DEVELOPMENT_LOG.md`
+or `docs/development/HANDOFF.md` in a PR: every merge made every other open PR
+conflict on them. Write one fragment instead:
+
+```bash
+python scripts/changes_fragment.py new --issue N --summary "one line"
+# live work: add --dl-state in_review --next-step "..." --branch feat/N-x
+```
+
+This creates `changes/<issue>-<slug>.md`; `collate-changes.yml` folds it into
+the shared files after merge, keyed by the PR number. Put the handoff itself in
+the PR body. Transition: until Spec Check accepts a fragment in place of
+`SPEC.md` (the separate workflow PR for Repository_Management#1894), a PR that
+changes source still adds its one `SPEC.md` row; collation never duplicates it.
+Format and rules: [`changes/README.md`](changes/README.md)
+(Repository_Management#1894). The scripts are vendored from Repository_Management;
+re-sync, do not fork.
+
+---
+
 <!-- BEGIN FLEET-MANAGED: reasoning-engagement -->
 
 ## 🧠 Reasoning & Engagement
