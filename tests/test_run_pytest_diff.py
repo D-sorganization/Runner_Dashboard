@@ -137,3 +137,33 @@ def test_heavy_scans_do_not_run_at_pre_push(hook_id: str) -> None:
 def test_bandit_still_runs_in_ci() -> None:
     text = (REPO_ROOT / ".github" / "workflows" / "ci-standard.yml").read_text(encoding="utf-8")
     assert "bandit -r backend/" in text
+
+
+def test_conftest_change_targets_its_directory_not_the_file(tmp_path: Path) -> None:
+    """A conftest is not collectible; running it alone exits 5 (no tests)."""
+    _write(tmp_path, "tests/clients/conftest.py")
+    _write(tmp_path, "tests/clients/test_fleetctl.py")
+    assert run_pytest_diff.resolve_test_targets(["tests/clients/conftest.py"], root=tmp_path) == ["tests/clients"]
+
+
+def test_test_helper_change_targets_its_directory(tmp_path: Path) -> None:
+    _write(tmp_path, "tests/clients/fleet_fixtures.py")
+    _write(tmp_path, "tests/clients/test_fleetctl.py")
+    assert run_pytest_diff.resolve_test_targets(["tests/clients/fleet_fixtures.py"], root=tmp_path) == ["tests/clients"]
+
+
+def test_root_conftest_change_runs_the_fast_suite(tmp_path: Path) -> None:
+    _write(tmp_path, "tests/conftest.py")
+    assert run_pytest_diff.resolve_test_targets(["tests/conftest.py"], root=tmp_path) == ["tests"]
+
+
+def test_direct_match_does_not_hide_other_matching_tests(tmp_path: Path) -> None:
+    _write(tmp_path, "backend/gh_client.py")
+    _write(tmp_path, "tests/test_gh_client.py")
+    _write(tmp_path, "tests/test_gh_client_retry.py")
+    _write(tmp_path, "tests/api/test_gh_client_routes.py")
+    assert run_pytest_diff.resolve_test_targets(["backend/gh_client.py"], root=tmp_path) == [
+        "tests/api/test_gh_client_routes.py",
+        "tests/test_gh_client.py",
+        "tests/test_gh_client_retry.py",
+    ]

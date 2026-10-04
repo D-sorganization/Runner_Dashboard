@@ -2,7 +2,9 @@
 # Vendored from Repository_Management shared_scripts/run_pytest_diff.py
 # (commit ed046ebed886cda38796704aa57a06f7081e52c9).
 # Re-sync from upstream; do not fork. Local changes: imports use `scripts.`
-# instead of `shared_scripts.`, and ruff format at this repo's line length.
+# instead of `shared_scripts.`, ruff format at this repo's line length, and two
+# target-resolution fixes from the #1868 review (marked "Local fix"; to be
+# upstreamed to Repository_Management, then this copy re-synced).
 """Run diff-scoped pytest unit tests on mapped test files.
 
 Determines the scope of changed/added files between the active branch and its
@@ -54,6 +56,17 @@ def is_test_file(path_str: str) -> bool:
     if any(name.startswith(p) for p in TEST_PREFIXES) or any(name.endswith(s) for s in TEST_SUFFIXES):
         return True
     return any(part in ("tests", "test") for part in Path(normalized).parts)
+
+
+def is_collectible_test_module(path_str: str) -> bool:
+    """True only for modules pytest collects by default (``test_*.py`` / ``*_test.py``).
+
+    Local fix (Runner_Dashboard#1868 review): ``is_test_file`` also accepts any
+    file under ``tests/``, such as ``conftest.py`` or a fixture helper, which
+    pytest does not collect - running one alone exits 5 (no tests collected).
+    """
+    name = Path(path_str.replace("\\", "/")).name
+    return name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py"))
 
 
 def _candidate_test_paths(rel_path: str) -> list[str]:
@@ -113,7 +126,9 @@ def resolve_test_targets(
             continue
 
         if is_test_file(norm):
-            targets.add(norm)
+            # Local fix: a conftest or helper under tests/ is not collectible,
+            # so run the tests in its directory instead of the file itself.
+            targets.add(norm if is_collectible_test_module(norm) else Path(norm).parent.as_posix())
             continue
 
         # Source python file: search candidate test files
@@ -124,18 +139,19 @@ def resolve_test_targets(
                 targets.add(cand)
                 matched = True
 
-        if not matched:
-            # Check for glob match in standard test directories
-            for test_root in STANDARD_TEST_ROOTS:
-                tr_path = base_root / test_root
-                if tr_path.is_dir():
-                    for match in tr_path.rglob(f"test_*{Path(norm).stem}*.py"):
-                        try:
-                            rel_match = match.relative_to(base_root).as_posix()
-                            targets.add(rel_match)
-                            matched = True
-                        except ValueError:
-                            continue
+        # Local fix: always accumulate name matches in the test roots, so a
+        # direct match (tests/test_gh_client.py) does not hide related tests
+        # (tests/test_gh_client_retry.py).
+        for test_root in STANDARD_TEST_ROOTS:
+            tr_path = base_root / test_root
+            if tr_path.is_dir():
+                for match in tr_path.rglob(f"test_*{Path(norm).stem}*.py"):
+                    try:
+                        rel_match = match.relative_to(base_root).as_posix()
+                        targets.add(rel_match)
+                        matched = True
+                    except ValueError:
+                        continue
 
         if not matched:
             unmapped_python_sources.append(norm)
