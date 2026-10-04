@@ -3407,6 +3407,135 @@
         "title": "ScheduleToggleBody",
         "type": "object"
       },
+      "SessionTelemetryPayload": {
+        "description": "Session telemetry payload (issue #1849 / RD-4).",
+        "properties": {
+          "context_size": {
+            "default": 0,
+            "description": "Context tokens before first prompt",
+            "minimum": 0.0,
+            "title": "Context Size",
+            "type": "integer"
+          },
+          "cost_after_pr_usd": {
+            "default": 0.0,
+            "description": "Cost spent after PR opened",
+            "minimum": 0.0,
+            "title": "Cost After Pr Usd",
+            "type": "number"
+          },
+          "cost_usd": {
+            "default": 0.0,
+            "description": "Total session cost",
+            "minimum": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "docs_merge_conflicts": {
+            "default": 0,
+            "description": "Docs merge conflict count",
+            "minimum": 0.0,
+            "title": "Docs Merge Conflicts",
+            "type": "integer"
+          },
+          "environment": {
+            "default": "default",
+            "description": "Execution environment",
+            "maxLength": 100,
+            "title": "Environment",
+            "type": "string"
+          },
+          "linked_pr": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Linked PR",
+            "title": "Linked Pr"
+          },
+          "model": {
+            "default": "",
+            "description": "Model identifier",
+            "maxLength": 100,
+            "title": "Model",
+            "type": "string"
+          },
+          "origin": {
+            "default": "dashboard-dispatched",
+            "description": "Origin",
+            "maxLength": 100,
+            "title": "Origin",
+            "type": "string"
+          },
+          "pr_merged": {
+            "default": false,
+            "description": "Whether PR merged",
+            "title": "Pr Merged",
+            "type": "boolean"
+          },
+          "pre_push_duration_s": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pre-push hook duration in seconds",
+            "title": "Pre Push Duration S"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO timestamp of record",
+            "title": "Recorded At"
+          },
+          "session_id": {
+            "description": "Session ID",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "turns_count": {
+            "default": 0,
+            "description": "Number of turns",
+            "minimum": 0.0,
+            "title": "Turns Count",
+            "type": "integer"
+          },
+          "wakeups_after_pr": {
+            "default": 0,
+            "description": "Wake-ups after PR opened",
+            "minimum": 0.0,
+            "title": "Wakeups After Pr",
+            "type": "integer"
+          },
+          "wakeups_count": {
+            "default": 0,
+            "description": "Total wake-up count",
+            "minimum": 0.0,
+            "title": "Wakeups Count",
+            "type": "integer"
+          }
+        },
+        "required": ["session_id"],
+        "title": "SessionTelemetryPayload",
+        "type": "object"
+      },
       "SetKeyRequest": {
         "properties": {
           "key": {
@@ -15598,6 +15727,142 @@
           }
         },
         "summary": "Post Page View",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/session-metrics": {
+      "get": {
+        "operationId": "get_session_metrics_api_usage_session_metrics_get",
+        "parameters": [
+          {
+            "description": "Rolling window in days",
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "Rolling window in days",
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Session Metrics Api Usage Session Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Metrics",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/session-telemetry": {
+      "get": {
+        "operationId": "get_session_telemetry_api_usage_session_telemetry_get",
+        "parameters": [
+          {
+            "description": "Days of history to return",
+            "in": "query",
+            "name": "since_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "Days of history to return",
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Since Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Session Telemetry Api Usage Session Telemetry Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Telemetry",
+        "tags": ["usage-metrics"]
+      },
+      "post": {
+        "operationId": "post_session_telemetry_api_usage_session_telemetry_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionTelemetryPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Session Telemetry Api Usage Session Telemetry Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Session Telemetry",
         "tags": ["usage-metrics"]
       }
     },

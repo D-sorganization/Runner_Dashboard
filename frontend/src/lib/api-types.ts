@@ -5003,6 +5003,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/usage/session-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session Metrics */
+        get: operations["get_session_metrics_api_usage_session_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/usage/session-telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session Telemetry */
+        get: operations["get_session_telemetry_api_usage_session_telemetry_get"];
+        put?: never;
+        /** Post Session Telemetry */
+        post: operations["post_session_telemetry_api_usage_session_telemetry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/usage/summary": {
         parameters: {
             query?: never;
@@ -8187,6 +8222,98 @@ export interface components {
         ScheduleToggleBody: {
             /** Enabled */
             enabled: boolean;
+        };
+        /**
+         * SessionTelemetryPayload
+         * @description Session telemetry payload (issue #1849 / RD-4).
+         */
+        SessionTelemetryPayload: {
+            /**
+             * Context Size
+             * @description Context tokens before first prompt
+             * @default 0
+             */
+            context_size: number;
+            /**
+             * Cost After Pr Usd
+             * @description Cost spent after PR opened
+             * @default 0
+             */
+            cost_after_pr_usd: number;
+            /**
+             * Cost Usd
+             * @description Total session cost
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Docs Merge Conflicts
+             * @description Docs merge conflict count
+             * @default 0
+             */
+            docs_merge_conflicts: number;
+            /**
+             * Environment
+             * @description Execution environment
+             * @default default
+             */
+            environment: string;
+            /**
+             * Linked Pr
+             * @description Linked PR
+             */
+            linked_pr?: number | null;
+            /**
+             * Model
+             * @description Model identifier
+             * @default
+             */
+            model: string;
+            /**
+             * Origin
+             * @description Origin
+             * @default dashboard-dispatched
+             */
+            origin: string;
+            /**
+             * Pr Merged
+             * @description Whether PR merged
+             * @default false
+             */
+            pr_merged: boolean;
+            /**
+             * Pre Push Duration S
+             * @description Pre-push hook duration in seconds
+             */
+            pre_push_duration_s?: number | null;
+            /**
+             * Recorded At
+             * @description ISO timestamp of record
+             */
+            recorded_at?: string | null;
+            /**
+             * Session Id
+             * @description Session ID
+             */
+            session_id: string;
+            /**
+             * Turns Count
+             * @description Number of turns
+             * @default 0
+             */
+            turns_count: number;
+            /**
+             * Wakeups After Pr
+             * @description Wake-ups after PR opened
+             * @default 0
+             */
+            wakeups_after_pr: number;
+            /**
+             * Wakeups Count
+             * @description Total wake-up count
+             * @default 0
+             */
+            wakeups_count: number;
         };
         /** SetKeyRequest */
         SetKeyRequest: {
@@ -16237,6 +16364,109 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PageViewPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_metrics_api_usage_session_metrics_get: {
+        parameters: {
+            query?: {
+                /** @description Rolling window in days */
+                window_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_telemetry_api_usage_session_telemetry_get: {
+        parameters: {
+            query?: {
+                /** @description Days of history to return */
+                since_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_session_telemetry_api_usage_session_telemetry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionTelemetryPayload"];
             };
         };
         responses: {

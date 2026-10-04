@@ -359,6 +359,9 @@ describe("CodeRequestsTab", () => {
 
       // Check warning on selecting unauthenticated provider
       const providerSelect = screen.getByRole("combobox", { name: "Provider" });
+      await waitFor(() => {
+        expect(providerSelect).toHaveValue("mock_provider_alpha");
+      });
       fireEvent.change(providerSelect, { target: { value: "mock_provider_beta" } });
 
       await waitFor(() => {
