@@ -17,6 +17,16 @@
 
 ---
 
+# Current handoff (parallel PR) — pre-push parity: no bandit, diff-scoped pytest (DL-#1864, #1864)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-prepush`; branch `chore/1864-prepush-parity`; commit SELF; PR: see the branch. Separate from the CI-tier PR (`ci/1864-event-tiered-ci`).
+- **Change:** `.pre-commit-config.yaml` drops the pre-push `bandit` hook (CI Standard's lint job runs bandit) and `pytest-unit` now runs `uv run python -m scripts.run_pytest_diff`, keeping `language: system`. `scripts/run_pytest_diff.py` and `scripts/run_mypy_diff.py` are vendored from Repository_Management `shared_scripts/` at `ed046eb` (imports rewritten to `scripts.`, ruff-formatted); `python -m` avoids the RM#1912 import fault. No fallback directory: a change with no mapped test runs no pytest at pre-push.
+- **Development log:** No material development-log change — DL-#1864 (added on `ci/1864-event-tiered-ci`) already lists this branch and its paths.
+- **Validation:** `pytest tests/test_run_pytest_diff.py tests/test_workflow_hygiene.py` → 134 passed (hook-wiring tests RED first). One-file push simulation (`backend/dispatch_routing.py` → `tests/test_dispatch_routing.py`) ran in about 1 s.
+- **Next:** merge; re-sync the vendored files when Repository_Management changes `shared_scripts/run_pytest_diff.py` (e.g. #1912).
+
+---
+
 # Prior handoff — required-checks policy for the merge queue (DL-#1890)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1890-policy`; branch `ci/1890-required-checks-policy-merge-queue`; commit SELF; PR: see DL-#1890.
