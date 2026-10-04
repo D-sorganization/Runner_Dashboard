@@ -457,6 +457,141 @@
         "title": "BudgetSummary",
         "type": "object"
       },
+      "CIFixDispatchRequest": {
+        "description": "Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).",
+        "properties": {
+          "attempt_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Number"
+          },
+          "base_ref": {
+            "default": "main",
+            "maxLength": 255,
+            "title": "Base Ref",
+            "type": "string"
+          },
+          "branch": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Branch",
+            "type": "string"
+          },
+          "conflicting_files": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflicting Files"
+          },
+          "failing_tests": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failing Tests"
+          },
+          "failure_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "lint",
+                  "test",
+                  "security",
+                  "spec",
+                  "conflict",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Type"
+          },
+          "from_queue": {
+            "default": false,
+            "title": "From Queue",
+            "type": "boolean"
+          },
+          "kind": {
+            "default": "ci_failure",
+            "enum": ["ci_failure", "merge_conflict"],
+            "title": "Kind",
+            "type": "string"
+          },
+          "log_tail": {
+            "default": "",
+            "title": "Log Tail",
+            "type": "string"
+          },
+          "pr_diff": {
+            "default": "",
+            "title": "Pr Diff",
+            "type": "string"
+          },
+          "pr_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr Number",
+            "type": "integer"
+          },
+          "repo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "session_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "workflow_name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Workflow Name",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr_number"],
+        "title": "CIFixDispatchRequest",
+        "type": "object"
+      },
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
@@ -13101,8 +13236,18 @@
     },
     "/api/remediation/ci-fix/dispatch": {
       "post": {
-        "description": "Dispatch a capped CI-fix session for an open pull request.",
+        "description": "Launch a capped CI-fix session for an open pull request through the staff dispatch path.\n\n409 while another CI-fix session holds the PR; 501 when the routed provider is not\ninstalled on this node (nothing is launched and the lock is released).",
         "operationId": "dispatch_ci_fix_endpoint_api_remediation_ci_fix_dispatch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CIFixDispatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -13115,6 +13260,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -13246,6 +13401,76 @@
           }
         ],
         "summary": "Release Ci Fix Lock Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/webhook": {
+      "post": {
+        "description": "Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.",
+        "operationId": "github_ci_fix_webhook_api_remediation_ci_fix_webhook_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Hub-Signature-256",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Signature-256"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-GitHub-Event",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Github-Event",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-GitHub-Delivery",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Github-Delivery",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Github Ci Fix Webhook Api Remediation Ci Fix Webhook Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Ci Fix Webhook",
         "tags": ["remediation", "agents", "remediation", "ci-fix"]
       }
     },

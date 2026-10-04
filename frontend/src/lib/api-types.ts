@@ -3657,7 +3657,10 @@ export interface paths {
         put?: never;
         /**
          * Dispatch Ci Fix Endpoint
-         * @description Dispatch a capped CI-fix session for an open pull request.
+         * @description Launch a capped CI-fix session for an open pull request through the staff dispatch path.
+         *
+         *     409 while another CI-fix session holds the PR; 501 when the routed provider is not
+         *     installed on this node (nothing is launched and the lock is released).
          */
         post: operations["dispatch_ci_fix_endpoint_api_remediation_ci_fix_dispatch_post"];
         delete?: never;
@@ -3721,6 +3724,26 @@ export interface paths {
          * @description Release a CI-fix concurrency lock for a PR.
          */
         delete: operations["release_ci_fix_lock_endpoint_api_remediation_ci_fix_locks__repo___pr_number__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remediation/ci-fix/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Github Ci Fix Webhook
+         * @description Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.
+         */
+        post: operations["github_ci_fix_webhook_api_remediation_ci_fix_webhook_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6914,6 +6937,67 @@ export interface components {
              * @default 0
              */
             spent_usd: number;
+        };
+        /**
+         * CIFixDispatchRequest
+         * @description Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).
+         */
+        CIFixDispatchRequest: {
+            /** Attempt Number */
+            attempt_number?: number | null;
+            /**
+             * Base Ref
+             * @default main
+             */
+            base_ref: string;
+            /**
+             * Branch
+             * @default
+             */
+            branch: string;
+            /** Conflicting Files */
+            conflicting_files?: string[] | null;
+            /** Failing Tests */
+            failing_tests?: string[] | null;
+            /** Failure Type */
+            failure_type?: ("lint" | "test" | "security" | "spec" | "conflict" | "unknown") | null;
+            /**
+             * From Queue
+             * @default false
+             */
+            from_queue: boolean;
+            /**
+             * Kind
+             * @default ci_failure
+             * @enum {string}
+             */
+            kind: "ci_failure" | "merge_conflict";
+            /**
+             * Log Tail
+             * @default
+             */
+            log_tail: string;
+            /**
+             * Pr Diff
+             * @default
+             */
+            pr_diff: string;
+            /** Pr Number */
+            pr_number: number;
+            /** Repo */
+            repo: string;
+            /** Run Id */
+            run_id?: number | null;
+            /**
+             * Session Id
+             * @default
+             */
+            session_id: string;
+            /**
+             * Workflow Name
+             * @default
+             */
+            workflow_name: string;
         };
         /**
          * ChildExecutionRecord
@@ -14833,7 +14917,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CIFixDispatchRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -14844,6 +14932,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -14906,6 +15003,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_ci_fix_webhook_api_remediation_ci_fix_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Hub-Signature-256"?: string | null;
+                "X-GitHub-Event"?: string;
+                "X-GitHub-Delivery"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

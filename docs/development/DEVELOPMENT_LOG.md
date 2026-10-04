@@ -20,6 +20,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1881 — RD-1 CI-fix dispatch wired: webhook trigger, staff launch, merge-queue events
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1881 and #1879 (Repository_Management#1889)
+- **Branch:** `feat/1881-wire-ci-fix-dispatch`
+- **PR:** see the branch
+- **Paths:** `backend/ci_fix_dispatch.py`, `backend/ci_fix_events.py`, `backend/ci_fix_locks.py`, `backend/ci_fix_service.py`, `backend/routers/remediation_ci_fix.py`, `backend/staff/dispatch_service.py`, `backend/gh_client.py`, `backend/dispatch_effort.py`, `backend/middleware.py`, `tests/api/test_ci_fix_*.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; `tests/api/test_ci_fix_*.py` 53 passed (RED first), full suite green apart from 2 failures also on main; ruff, mypy, bandit clean.
+- **Summary:** A signed GitHub webhook (`workflow_run` failures incl. merge-group runs, `pull_request` `dequeued` with `CHECKS_FAILED` / `MERGE_CONFLICT`) launches one CI-fix session per PR through the staff dispatch path, behind `CI_FIX_DISPATCH_ENABLED` (default off); `/dispatch` launches too; locks end with their run or a TTL.
+- **Next step:** Merge the PR through the queue, then set `GITHUB_WEBHOOK_SECRET` and the flag on one node.
+
 ### DL-#1880 — CI-fix routing on current models, agy option
 
 - **State:** in_review

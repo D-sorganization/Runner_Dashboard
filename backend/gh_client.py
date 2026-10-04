@@ -486,6 +486,24 @@ async def get(path: str) -> Any:
     return resp.json()
 
 
+async def get_text(path: str) -> str:
+    """GET a GitHub API path whose body is plain text, such as a job log (#1881).
+
+    GitHub answers ``/actions/jobs/{id}/logs`` with a redirect to a short-lived signed
+    URL; it is followed here (httpx drops the ``Authorization`` header on the cross-origin
+    hop). No retries: callers treat a missing log as best-effort.
+
+    Raises:
+        GhAuthError, GhNotFound, GhServerError.
+    """
+    resp = await _get_client().get(path, headers=await _auth_headers(), follow_redirects=True)
+    if resp.status_code == 404:
+        raise GhNotFound(path)
+    if resp.status_code >= 400:
+        raise GhServerError(resp.status_code, path, resp.text[:500])
+    return resp.text
+
+
 async def post(path: str, *, json: Any = None) -> Any:
     """POST to a GitHub API path.
 

@@ -3,7 +3,9 @@
 Dispatches fresh, small, capped sessions on failing CI for open PRs with auto-merge armed:
 - Truncates log tail to <= 200 lines.
 - Extracts failing test names.
-- Enforces strict concurrency lock (1 CI-fix session per PR at a time).
+- Enforces strict concurrency lock (1 CI-fix session per PR at a time); a lock ends when
+  its staff run ends or after ``CI_FIX_LOCK_TTL_SECONDS`` (#1881).
+- Recovers the PR of a merge-queue run from its ``gh-readonly-queue/*`` head ref (#1879).
 - Routes lint/format to cheapest provider (< $0.50), tests/logic to tier:cli (agy, else Sonnet).
 - Escalates to tier:strong after max_same_failure_attempts (default 3).
 - Records audit entries for cost, attempt, model, and provider.
@@ -15,11 +17,11 @@ import json
 import logging
 import os
 import re
-import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ci_fix_locks import GLOBAL_CI_FIX_LOCK_MGR, CIFixLockManager
 from dispatch_effort import resolve_effort
 from time_utils import utc_now_iso
 
@@ -29,6 +31,10 @@ DEFAULT_AUDIT_PATH = (
     Path(os.environ.get("RUNNER_DASHBOARD_DATA_DIR", Path.home() / ".local" / "share" / "runner-dashboard"))
     / "ci_fix_audit.json"
 )
+
+# #1879: merge-queue runs execute on ``gh-readonly-queue/<base>/pr-<N>-<sha>`` with an empty
+# ``pull_requests``; ``<base>`` may itself contain slashes.
+QUEUE_REF_PATTERN = re.compile(r"^gh-readonly-queue/(?P<base>.+)/pr-(?P<number>\d+)-(?P<sha>[0-9a-f]{7,40})$")
 
 TEST_FAILURE_PATTERNS = (
     re.compile(r"^\s*(?:FAILED|FAIL)\s+([^\s:]+(?:::[^\s]+)?(?:\s+-\s+.*)?)$", re.MULTILINE),
@@ -68,53 +74,10 @@ class CIFixRoute:
         return asdict(self)
 
 
-class CIFixLockManager:
-    """Thread-safe concurrency lock manager for CI-fix sessions."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._active_locks: dict[tuple[str, int], dict[str, Any]] = {}
-
-    def acquire(self, repo: str, pr_number: int, session_id: str = "") -> bool:
-        """Acquire single-session concurrency lock for a PR."""
-        key = (repo.strip().lower(), pr_number)
-        with self._lock:
-            if key in self._active_locks:
-                return False
-            self._active_locks[key] = {
-                "repo": repo,
-                "pr_number": pr_number,
-                "session_id": session_id,
-                "acquired_at": utc_now_iso(),
-            }
-            return True
-
-    def release(self, repo: str, pr_number: int) -> bool:
-        """Release concurrency lock for a PR."""
-        key = (repo.strip().lower(), pr_number)
-        with self._lock:
-            return self._active_locks.pop(key, None) is not None
-
-    def is_locked(self, repo: str, pr_number: int) -> bool:
-        """Check if PR currently has an active CI-fix session."""
-        key = (repo.strip().lower(), pr_number)
-        with self._lock:
-            return key in self._active_locks
-
-    def get_lock_info(self, repo: str, pr_number: int) -> dict[str, Any] | None:
-        """Return lock metadata if locked."""
-        key = (repo.strip().lower(), pr_number)
-        with self._lock:
-            return self._active_locks.get(key)
-
-    def list_locks(self) -> list[dict[str, Any]]:
-        """Return snapshot of all active locks."""
-        with self._lock:
-            return list(self._active_locks.values())
-
-
-# Global singleton instance for application lifetime
-GLOBAL_CI_FIX_LOCK_MGR = CIFixLockManager()
+def pr_number_from_queue_ref(ref: str) -> int | None:
+    """PR number of a merge-queue head ref ``gh-readonly-queue/<base>/pr-<N>-<sha>``, else None."""
+    match = QUEUE_REF_PATTERN.match(ref or "")
+    return int(match.group("number")) if match else None
 
 
 def truncate_log_tail(log_text: str, max_lines: int = 200) -> str:
@@ -307,6 +270,10 @@ def evaluate_ci_fix_trigger(
 
     prs = event_payload.get("pull_requests", [])
     if not prs or not isinstance(prs, list):
+        queued = pr_number_from_queue_ref(str(event_payload.get("head_branch") or event_payload.get("branch") or ""))
+        # #1879: a merge-queue entry is never a draft and was queued to merge.
+        prs = [{"number": queued, "is_draft": False, "auto_merge_armed": True}] if queued else []
+    if not prs:
         return CIFixTriggerDecision(
             eligible=False,
             reason="Event is not associated with an open pull request",
@@ -367,10 +334,16 @@ def record_ci_fix_audit(
     provider: str,
     model: str,
     attempt_number: int,
-    cost_estimate: float,
+    cost_budget: float,
     audit_file: Path | None = None,
+    staff_run_id: str = "",
+    effort: str = "",
 ) -> None:
-    """Record CI-fix dispatch telemetry for cost and retry accounting."""
+    """Record CI-fix dispatch telemetry for budget and retry accounting.
+
+    ``cost_budget`` is the route's cap, not the spend (#1881); the spend is on the staff run
+    ``staff_run_id`` names.
+    """
     target_path = audit_file or DEFAULT_AUDIT_PATH
     entry = {
         "timestamp": utc_now_iso(),
@@ -382,7 +355,9 @@ def record_ci_fix_audit(
         "provider": provider,
         "model": model,
         "attempt_number": attempt_number,
-        "cost_estimate": round(cost_estimate, 4),
+        "cost_budget": round(cost_budget, 4),
+        "staff_run_id": staff_run_id,
+        "effort": effort,
     }
 
     try:
@@ -399,3 +374,23 @@ def record_ci_fix_audit(
         target_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
     except OSError as exc:
         logger.warning("Failed to write CI-fix audit log: %s", exc)
+
+
+def count_prior_attempts(repo: str, pr_number: int, workflow_name: str, audit_file: Path | None = None) -> int:
+    """How many CI-fix dispatches the audit already holds for this PR and workflow (escalation input)."""
+    target_path = audit_file or DEFAULT_AUDIT_PATH
+    try:
+        entries = json.loads(target_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(entries, list):
+        return 0
+    repo_key = repo.strip().lower()
+    return sum(
+        1
+        for e in entries
+        if isinstance(e, dict)
+        and str(e.get("repository", "")).lower() == repo_key
+        and e.get("pr_number") == pr_number
+        and e.get("workflow_name") == workflow_name
+    )
