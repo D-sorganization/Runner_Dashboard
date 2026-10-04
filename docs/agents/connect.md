@@ -12,7 +12,7 @@ Dedicated setup guides with least-privilege token minting, verification steps, a
 
 - [**Claude Code & Claude Cowork Guide**](claude.md) — MCP configuration (`claude mcp add` & `claude_desktop_config.json`), token scopes, and talking to Barb.
 - [**Codex CLI Guide**](codex.md) — `~/.codex/config.toml` MCP configuration, least-privilege token minting, and work-item tracking.
-- [**Grok Bot Guide**](grok.md) — Local-exec `curl` recipes against `/api/v1/staff`, active Barb/Orchestrator roles, and connector path notes.
+- [**Grok Bot Guide**](grok.md) — Local-exec `curl` recipes against `/api/v1/staff`, active Barb/Orchestrator roles, and remote-access notes (cloud-hosted clients are unsupported, ADR 0007).
 
 | Client         | Use it from                             | Entry point                     |
 | -------------- | --------------------------------------- | ------------------------------- |
@@ -22,6 +22,24 @@ Dedicated setup guides with least-privilege token minting, verification steps, a
 
 In the examples below, `/path/Runner_Dashboard` is a checkout of this repository on the
 agent's machine. Nothing needs to be installed.
+
+## Supported Clients and Networks
+
+The dashboard listens only on the local network or tailnet. Per
+[ADR 0007](../adr/0007-agent-client-ingress-local-only.md), cloud-hosted clients cannot reach it: there is no Funnel,
+connector or outbound relay path. A local CLI that calls a cloud model API
+(Codex CLI, Claude Code, a Grok local-exec bridge) is the **local process** row:
+the model is in the cloud, but the dashboard connection starts on your machine.
+
+| Client                   | Endpoint                                        | Transport                                | Identity / token                         | Network prerequisite                          |
+| :----------------------- | :---------------------------------------------- | :--------------------------------------- | :--------------------------------------- | :-------------------------------------------- |
+| Local process            | `http://127.0.0.1:8321`                         | HTTP, `fleetctl` / MCP stdio / `curl`    | Per-agent `svc_` bearer token            | Runs on the dashboard node or a fleet machine |
+| Enrolled remote computer | `http://<tailnet-name>:8321`                    | HTTP over the tailnet                    | Per-agent `svc_` bearer token            | Machine is enrolled in the tailnet            |
+| Desktop connector        | Local MCP server (`clients/fleet/fleet_mcp.py`) | MCP stdio to the local server, then HTTP | Per-agent `svc_` bearer token in the env | Desktop app host is on the tailnet or node    |
+| Cloud-only client        | None                                            | None                                     | None                                     | Not supported (ADR 0007)                      |
+
+A desktop connector (for example Claude Desktop or Cowork) uses the local MCP
+server on the same machine; it is not a cloud-hosted connector.
 
 ## Environment
 

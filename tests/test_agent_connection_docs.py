@@ -79,7 +79,37 @@ def test_grok_guide_contents() -> None:
     assert "barb" in lower
     assert "orchestrator" in lower
     assert "idempotency-key" in lower or "idempotency" in lower
-    assert "sc-f6" in lower or "connector" in lower or "funnel" in lower
+    # ADR 0007: cloud-hosted clients are unsupported; no Funnel/connector promise.
+    assert "0007-agent-client-ingress-local-only.md" in text
+    assert "not supported" in lower
+    assert "will route through the authenticated funnel" not in lower
+
+
+def test_agent_guides_do_not_promise_funnel_or_cloud_ingress() -> None:
+    """No agent guide promises Funnel or connector ingress (ADR 0007)."""
+    for path in (CONNECT_MD, CLAUDE_MD, CODEX_MD, GROK_MD):
+        lower = _read(path).lower()
+        assert "authenticated funnel" not in lower, f"{path.name} promises Funnel ingress"
+        assert "funnel connector" not in lower, f"{path.name} promises a connector path"
+
+
+def test_connect_md_has_supported_clients_and_networks_matrix() -> None:
+    """connect.md carries the four-row client/network matrix with cloud-only unsupported."""
+    text = _read(CONNECT_MD)
+    assert "## Supported Clients and Networks" in text
+    assert "0007-agent-client-ingress-local-only.md" in text
+    section = text.split("## Supported Clients and Networks", 1)[1].split("\n## ", 1)[0]
+    for column in ("Endpoint", "Transport", "Identity / token", "Network prerequisite"):
+        assert column in section, f"matrix missing column '{column}'"
+    rows = {
+        line.split("|")[1].strip().lower(): line.lower()
+        for line in section.splitlines()
+        if line.startswith("|") and not line.startswith("| :") and not line.startswith("| -")
+    }
+    for client in ("local process", "enrolled remote computer", "desktop connector", "cloud-only client"):
+        assert any(key.startswith(client) for key in rows), f"matrix missing row '{client}'"
+    cloud_row = next(row for key, row in rows.items() if key.startswith("cloud-only client"))
+    assert "not supported (adr 0007)" in cloud_row
 
 
 def test_connect_md_indexes_all_client_guides() -> None:
