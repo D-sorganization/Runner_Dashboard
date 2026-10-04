@@ -51,6 +51,15 @@ repos:
         types: [python]
         exclude: ^(tests/|\.github/|frontend/|deploy/)
 
+      # Per-PR change fragments (RM-5, Repository_Management#1894): a staged
+      # changes/<issue>-<slug>.md must be valid. README.md is not a fragment.
+      - id: changes-fragment
+        name: "validate change fragments"
+        entry: python scripts/changes_fragment.py validate
+        language: system
+        files: ^changes/[^/]+\.md$
+        exclude: ^changes/README\.md$
+
       - id: no-duplicate-subprocess-env
         name: "no duplicate subprocess env scrubbers"
         entry: python scripts/find-dupe-subprocess-env.py
