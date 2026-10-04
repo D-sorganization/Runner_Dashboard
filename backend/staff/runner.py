@@ -139,6 +139,7 @@ class StaffRunner:
             lease_ritual=lease,
             consolidation=dict(req.consolidation) if req.consolidation else None,
             focus=focus,
+            pr_lifecycle=req.pr_lifecycle,
         )
 
     def _resolve_role(self, req: RunRequest) -> RoleSpec:

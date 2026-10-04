@@ -29,8 +29,9 @@ RESULT_CONTRACT = (
 
 FLEET_RULES = (
     "Fleet rules: work only inside this worktree; TDD, DbC, LoD, DRY; commit with a Conventional Commits "
-    "subject; if docs/development/HANDOFF.md exists update it in the same commit; push the branch and open a "
-    "DRAFT pull request; never merge, never force-push, never touch other worktrees or host configuration; "
+    "subject; if docs/development/HANDOFF.md exists update it in the same commit; push the branch, open a "
+    "ready pull request (not draft), arm auto-merge via automerge_guard, and end session (pr_lifecycle: arm_and_exit); "
+    "never merge, never force-push, never touch other worktrees or host configuration; "
     "never take an issue or PR labelled claim:local or under another agent's live lease; before choosing an "
     "issue, skip it if an open pull request already references it (gh pr list --state open --search '<number>'); "
     "never file bulk "

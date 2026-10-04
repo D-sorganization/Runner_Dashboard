@@ -65,6 +65,12 @@ class DispatchCommand:
     ignore_budget: bool = False
     # One admitted run per operation (#1796): an Idempotency-Key reservation, or a peer's forward.
     operation_id: str = ""
+    # PR lifecycle & subscription policy (#1845 / RD-0)
+    pr_lifecycle: str = "arm_and_exit"
+    auto_fix: bool = False
+    operator_opt_in: bool = False
+    wakeups_count: int = 0
+    max_wakeups: int = 3
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -192,6 +198,25 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     if spec is not None and cmd.repo and consolidation.threshold(spec) is not None:
         decision = await asyncio.to_thread(consolidation.decide, spec, cmd.repo)  # #1213: gh + capacity I/O
 
+    if cmd.pr and (cmd.auto_fix or cmd.pr_lifecycle == "subscribed"):
+        from pr_subscription import evaluate_pr_subscription
+
+        sub_decision = evaluate_pr_subscription(
+            is_draft=False,
+            operator_opt_in=cmd.operator_opt_in,
+            wakeups_count=cmd.wakeups_count,
+            max_wakeups=cmd.max_wakeups,
+        )
+        if not sub_decision.allowed:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "pr_subscription_rejected",
+                    "reason": sub_decision.reason,
+                    "handoff_to_rd1": sub_decision.handoff_to_rd1,
+                },
+            )
+
     req = RunRequest(
         role=cmd.role,
         provider=cmd.provider,
@@ -207,6 +232,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         work_item_id=cmd.work_item_id,
         consolidation=decision,
         origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
+        pr_lifecycle=cmd.pr_lifecycle,
     )
     try:
         plan = runner.plan(req)

@@ -30,6 +30,7 @@ class RunRequest:
     # PR-consolidation decision from ``staff.consolidation.decide`` (#1213); None when not applicable.
     consolidation: dict[str, Any] | None = None
     origin_node: str = ""
+    pr_lifecycle: str = "arm_and_exit"
 
     @property
     def target_kind(self) -> str:
@@ -60,6 +61,7 @@ class RunPlan:
     thread_id: str = ""
     work_item_id: str = ""
     origin_node: str = ""
+    pr_lifecycle: str = "arm_and_exit"
 
     @property
     def strategy_mode(self) -> str:
@@ -88,5 +90,6 @@ class RunPlan:
             "focus": self.focus,
             "thread_id": self.thread_id,
             "work_item_id": self.work_item_id,
+            "pr_lifecycle": self.pr_lifecycle,
             "consolidation": dict(self.consolidation) if self.consolidation else None,
         }
