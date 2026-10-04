@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Vendored from Repository_Management shared_scripts/run_pytest_diff.py
-# (commit ed046ebed886cda38796704aa57a06f7081e52c9).
-# Re-sync from upstream; do not fork. Local changes: imports use `scripts.`
-# instead of `shared_scripts.`, ruff format at this repo's line length, and two
-# target-resolution fixes from the #1868 review (marked "Local fix"; to be
-# upstreamed to Repository_Management, then this copy re-synced).
+# (commit 48893688f96bc1b7954b5ac6aea6a34722897c39, branch
+# fix/1929-pytest-diff-collectible, Repository_Management PR #1930; re-pin to
+# the merge SHA once #1930 merges). Re-sync from upstream; do not fork.
+# Local changes: imports use `scripts.` instead of `shared_scripts.`, and ruff
+# format at this repo's line length.
 """Run diff-scoped pytest unit tests on mapped test files.
 
 Determines the scope of changed/added files between the active branch and its
@@ -59,11 +59,12 @@ def is_test_file(path_str: str) -> bool:
 
 
 def is_collectible_test_module(path_str: str) -> bool:
-    """True only for modules pytest collects by default (``test_*.py`` / ``*_test.py``).
+    """Return True only for modules pytest collects by default.
 
-    Local fix (Runner_Dashboard#1868 review): ``is_test_file`` also accepts any
-    file under ``tests/``, such as ``conftest.py`` or a fixture helper, which
-    pytest does not collect - running one alone exits 5 (no tests collected).
+    Pytest collects ``test_*.py`` and ``*_test.py``. ``is_test_file`` also
+    accepts any file under ``tests/``, such as ``conftest.py`` or a fixture
+    helper, which pytest does not collect: run alone, one exits 5 (no tests
+    collected).
     """
     name = Path(path_str.replace("\\", "/")).name
     return name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py"))
@@ -126,9 +127,13 @@ def resolve_test_targets(
             continue
 
         if is_test_file(norm):
-            # Local fix: a conftest or helper under tests/ is not collectible,
-            # so run the tests in its directory instead of the file itself.
-            targets.add(norm if is_collectible_test_module(norm) else Path(norm).parent.as_posix())
+            # A conftest or helper is not collectible, so run the tests in its
+            # directory instead; the root tests/conftest.py runs the whole
+            # (marker-filtered) fast suite.
+            if is_collectible_test_module(norm):
+                targets.add(norm)
+            else:
+                targets.add(Path(norm).parent.as_posix())
             continue
 
         # Source python file: search candidate test files
@@ -139,9 +144,9 @@ def resolve_test_targets(
                 targets.add(cand)
                 matched = True
 
-        # Local fix: always accumulate name matches in the test roots, so a
-        # direct match (tests/test_gh_client.py) does not hide related tests
-        # (tests/test_gh_client_retry.py).
+        # Always accumulate name matches in the standard test roots, so a
+        # direct match (tests/test_foo.py) does not hide related suites
+        # (tests/test_foo_retry.py).
         for test_root in STANDARD_TEST_ROOTS:
             tr_path = base_root / test_root
             if tr_path.is_dir():

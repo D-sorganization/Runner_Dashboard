@@ -1,3 +1,55 @@
+# Current handoff — staff proposals tests leak real run workers (DL-#1863, #1863)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-staff-threads-teardown`; branch `test/staff-threads-runner-leak` from `origin/main`; commit SELF; PR: see the branch. Lease: `claude` / `claude-rd-1863`.
+- **Why:** `test_staff_threads_api.py::test_mark_thread_read_and_inbox` errored at teardown in the full pre-push run ("test created a real git worktree", plus `Cannot operate on a closed database` in `StaffRunner._worker`). The worker came from `tests/api/test_staff_proposals_api.py`: three tests execute an approved `staff.dispatch` proposal (`ad-hoc`, `Repository_Management`), which called the real `StaffRunner.launch`. The daemon thread outlived the test, so it reached `_prepare_workdir` inside a later test, or between tests with the hermetic workspace patches undone, where it can clone into `~/Repositories/_staff_clones/` and run a real `git worktree add`.
+- **Second leaker (found by the full suite):** `test_staff_thread_runs.py` needs-input tests (`answer_needs_input` and the `/answer` endpoint) submitted a continuation run. Its worker ran a real `gh repo clone D-sorganization/UpstreamDrift` into `~/_staff_clones` (exit 4) and then crashed on the closed store.
+- **Change (test-only):** a shared `staff_launches` fixture in `tests/conftest.py` records `StaffRunner.launch` and fails at teardown if a test leaves a `staff-run-*` thread alive. The proposals fixture and the two needs-input tests use it and assert their launches.
+- **Validation:** RED: the new guard failed the three dispatch tests. GREEN: `pytest tests/api/test_staff_proposals_api.py` 10 passed. proposals + thread-runs + threads files 49 passed ×3 with `-W error::pytest.PytestUnhandledThreadExceptionWarning`. With the stub disabled, the guard fails all five leaking tests. The full pre-push suite on the first commit passed twice, but logged the thread-runs leak; after the fix, the full pre-push suite (`pytest tests/ -m "not slow and not integration"`) passed 3/3 with zero unhandled staff-run thread exceptions, `closed database` errors or `gh repo clone` attempts.
+- **Host cleanup:** `git worktree prune -v` in `~/Repositories/_staff_clones/Repository_Management` found no stray `run-866d30501c48` / `run-0ca29e8099fc` registrations (only `main` is registered). A stray test-made clone, `~/_staff_clones/Repository_Management`, exists outside the repos root; its 21 prunable registrations were pruned and 21 merged test `staff/ad-hoc-task-*` branches deleted. Left for the owner: the clone itself, plus `staff/ad-hoc-task-2f9534`, still checked out (clean) at `~/Repositories/_staff_worktrees/Repository_Management-run-368affe2d8f6`.
+- **Next:** merge through the queue.
+
+---
+
+# Current handoff — detect-secrets baseline for #1873 (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1873-ds`; branch `fix/1873-secrets-baseline`, cut from #1873's head (`chore/1871-gitleaks-staged`) while #1873 is in the merge queue, with `origin/main` merged in; commit SELF; PR: not created (pushed to #1873's branch only if the queue drops it, otherwise a follow-up PR).
+- **Cause:** `detect-secrets (baseline diff)` scans the PR merge ref. `main` gained #1868's `.pre-commit-config.yaml` change after #1873 branched, so in the merged tree the pinned detect-secrets `rev` SHA sits on line 83, not the 82 #1873 recorded. No new secret-like string.
+- **Change:** `.secrets.baseline` regenerated with `detect-secrets==1.5.0` and the workflow's `--exclude-files`; only that finding's `line_number` (82 → 83) and `generated_at` changed.
+- **Validation:** the workflow's "Audit baseline integrity" step, run locally on the merged tree, failed before (`line_number 82 → 83`) and passes after ("Baseline results unchanged").
+- **Main re-merge:** latest `main` (#1872) merged again; the baseline check still passes with no line shift, and `frontend/src/lib/openapi.json` / `api-types.ts` are regenerated with `bash scripts/gen-api-client.sh` (identical to #1876). DEVELOPMENT_LOG carries a staged `No material development-log change` note.
+- **Development log:** No material development-log change — baseline metadata only; DL-#1871 is kept byte-identical across #1872 / #1873.
+- **Next:** if the queue drops #1873, push this branch to `chore/1871-gitleaks-staged`; otherwise open a follow-up PR after #1873 merges (re-run the scan first if `main` moved `.pre-commit-config.yaml` again).
+
+---
+
+# Current handoff (parallel PR) — staged-only gitleaks at commit (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871-gl`; branch `chore/1871-gitleaks-staged`; commit SELF; PR: see the branch. The Spec Check workflow half ships alone as #1872 (`ci/1871-spec-check-backend`).
+- **Change:** `.pre-commit-config.yaml` gitleaks hook runs `gitleaks protect --staged` (was `detect --source .`, a whole-history scan at every commit). `ci-secrets.yml` is unchanged and keeps its full-history `detect` scan. `.secrets.baseline` line number for the detect-secrets `rev` SHA moved 81 → 82 after the comment grew by one line.
+- **Validation:** `pytest tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py` → 155 passed (staged-only test RED first; CI full-history guard added as a regression pin). Local `gitleaks protect --staged` (v8.24.0) on this commit's staged diff scanned ~1 KB in 0.5 s, no leaks.
+- **Next:** merge through the queue.
+
+---
+
+# Current handoff — re-sync vendored run_pytest_diff (DL-#1864, Repository_Management#1929)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1929-sync`; branch `chore/1929-resync-run-pytest-diff`; commit SELF; PR: see the branch.
+- **Change:** `scripts/run_pytest_diff.py` is re-synced from Repository_Management `shared_scripts/run_pytest_diff.py` at `48893688` (branch `fix/1929-pytest-diff-collectible`, RM PR #1930), which upstreamed this repo's two #1868 "Local fix" changes. Only the `scripts.` import and 120-column ruff format differ from upstream. Behaviour is unchanged.
+- **Validation:** `pytest tests/test_run_pytest_diff.py` → 20 passed (new no-fork test RED first against the forked copy); ruff and mypy clean.
+- **API snapshot:** `frontend/src/lib/openapi.json` / `api-types.ts` regenerated with `bash scripts/gen-api-client.sh` after merging main (identical to #1876; no-ops once #1876 lands).
+- **Next:** once RM #1930 merges, re-pin the vendored-from header to its merge SHA (one-line change).
+
+---
+
+# Current handoff — Spec Check covers backend/** (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871`; branch `ci/1871-spec-check-backend`; commit SELF; PR: see the branch. Workflow-only change, shipped alone; the staged-only gitleaks pre-commit change is a separate PR on `chore/1871-gitleaks-staged`.
+- **Change:** `ci-spec-check.yml` adds `backend/*` (bash `[[ == ]]` globs match nested paths) to the source patterns; the PR comment drops "Bump the Spec Version" and uses the Repository_Management wording (one change-log row keyed by the PR; Spec Version is release-derived).
+- **Validation:** `pytest tests/test_spec_check_workflow.py tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py tests/test_workflow_runner_routing.py` → 175 passed (3 new tests RED first; they execute the detection step against fixture file lists); `actionlint` clean.
+- **Next:** merge through the queue; add `changes/<issue>-*.md` fragment acceptance after Repository_Management#1922 / #1924 reach this repo.
+
+---
+
 # Current handoff — event-tiered CI Standard (DL-#1864, #1864)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-ci-tiers`; branch `ci/1864-event-tiered-ci`; commit SELF; PR: see the branch. Workflow-only change, shipped alone (pre-push parity is a separate PR on `chore/1864-prepush-parity`).
