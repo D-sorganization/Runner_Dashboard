@@ -23,9 +23,7 @@ import pytest
 import yaml
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
-_POLICY_PATH = (
-    Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
-)
+_POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
 _PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
 _PR_GROUP_TOKENS = (
     "github.ref",
@@ -84,9 +82,7 @@ def _workflow_triggers(path: Path) -> dict:
     triggers = data.get("on")
     if triggers is None and True in data:
         triggers = data[True]
-    assert isinstance(
-        triggers, dict
-    ), f"{path.name}: workflow `on:` block must be a mapping"
+    assert isinstance(triggers, dict), f"{path.name}: workflow `on:` block must be a mapping"
     return triggers
 
 
@@ -124,12 +120,8 @@ def test_workflow_has_concurrency_block(workflow_path: Path) -> None:
         f"deploy/release/repair flows)."
     )
     block = data["concurrency"]
-    assert isinstance(
-        block, dict
-    ), f"{workflow_path.name}: `concurrency:` must be a mapping with `group:`."
-    assert block.get(
-        "group"
-    ), f"{workflow_path.name}: `concurrency.group` must be a non-empty string."
+    assert isinstance(block, dict), f"{workflow_path.name}: `concurrency:` must be a mapping with `group:`."
+    assert block.get("group"), f"{workflow_path.name}: `concurrency.group` must be a non-empty string."
     assert "cancel-in-progress" in block, (
         f"{workflow_path.name}: `concurrency.cancel-in-progress` must be set "
         f"(true for fast-forward CI, false for deploy/release/repair flows)."
@@ -149,9 +141,7 @@ def test_cancel_false_allowlist_is_documented_and_current() -> None:
         "_CANCEL_FALSE_ALLOWLIST with a release/deploy/PR-write rationale."
     )
     for workflow, reason in _CANCEL_FALSE_ALLOWLIST.items():
-        assert (
-            reason and len(reason) >= 20
-        ), f"{workflow}: allowlist rationale is too thin"
+        assert reason and len(reason) >= 20, f"{workflow}: allowlist rationale is too thin"
 
 
 @pytest.mark.parametrize(
@@ -162,9 +152,7 @@ def test_cancel_false_allowlist_is_documented_and_current() -> None:
 def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> None:
     """PR workflows must cancel superseded runs unless explicitly allowlisted."""
     data = _load_workflow(workflow_path)
-    if not (
-        _has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")
-    ):
+    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
         return
     if workflow_path.name in _CANCEL_FALSE_ALLOWLIST:
         return
@@ -184,19 +172,13 @@ def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> N
 def test_pr_concurrency_groups_do_not_collapse_all_prs(workflow_path: Path) -> None:
     """PR workflow groups should distinguish PR/ref unless intentionally singleton."""
     data = _load_workflow(workflow_path)
-    if not (
-        _has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")
-    ):
+    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
         return
     if workflow_path.name in _SINGLETON_GROUP_ALLOWLIST:
         return
 
     group = str(data["concurrency"].get("group") or "")
-    assert (
-        "github.ref" in group
-        or "pull_request.number" in group
-        or "github.head_ref" in group
-    ), (
+    assert "github.ref" in group or "pull_request.number" in group or "github.head_ref" in group, (
         f"{workflow_path.name}: PR-triggered concurrency group must include "
         "github.ref, github.head_ref, or github.event.pull_request.number "
         "unless documented as a singleton."
@@ -246,16 +228,12 @@ def test_workflow_concurrency_policy_references_real_workflows() -> None:
     workflow_names = {path.name for path in _workflow_files()}
 
     for policy_name, entries in policy.items():
-        assert isinstance(
-            entries, dict
-        ), f"{policy_name} must map workflow filenames to rationale strings."
+        assert isinstance(entries, dict), f"{policy_name} must map workflow filenames to rationale strings."
         for workflow_name, rationale in entries.items():
-            assert (
-                workflow_name in workflow_names
-            ), f"{policy_name}: unknown workflow `{workflow_name}` in policy file."
-            assert (
-                isinstance(rationale, str) and rationale.strip()
-            ), f"{policy_name}: `{workflow_name}` must have a non-empty rationale."
+            assert workflow_name in workflow_names, f"{policy_name}: unknown workflow `{workflow_name}` in policy file."
+            assert isinstance(rationale, str) and rationale.strip(), (
+                f"{policy_name}: `{workflow_name}` must have a non-empty rationale."
+            )
 
 
 def test_pr_workflows_use_cancel_in_progress_true_or_documented_exception() -> None:
@@ -276,9 +254,7 @@ def test_pr_workflows_use_cancel_in_progress_true_or_documented_exception() -> N
             )
 
 
-def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons() -> (
-    None
-):
+def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons() -> None:
     """Issue #689: PR concurrency groups must not collapse unrelated PRs by accident."""
     policy = _load_concurrency_policy()
     singleton_allowlist = policy["pr_concurrency_singleton_allowlist"]
@@ -300,9 +276,7 @@ def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons()
 
 def test_ci_triage_runbook_documents_workflow_concurrency_policy() -> None:
     """Issue #689: operators need one canonical reference for concurrency rules."""
-    runbook = (
-        Path(__file__).parent.parent / "docs" / "runbooks" / "ci-failure-triage.md"
-    ).read_text(encoding="utf-8")
+    runbook = (Path(__file__).parent.parent / "docs" / "runbooks" / "ci-failure-triage.md").read_text(encoding="utf-8")
 
     assert "workflow_concurrency_policy.json" in runbook
     assert "cancel-in-progress: true" in runbook
@@ -311,9 +285,7 @@ def test_ci_triage_runbook_documents_workflow_concurrency_policy() -> None:
 
 def test_lint_workflow_references_documented_concurrency_policy() -> None:
     """Issue #689: workflow-only PRs should enforce the same exception policy in lint."""
-    lint_workflow = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(
-        encoding="utf-8"
-    )
+    lint_workflow = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(encoding="utf-8")
 
     assert "workflow_concurrency_policy.json" in lint_workflow
 
@@ -352,18 +324,14 @@ def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
 
     assert "workflow_concurrency_policy.json" in text
     for workflow in _CANCEL_FALSE_ALLOWLIST:
-        assert (
-            workflow in false_allowlist
-        ), f"{workflow} missing from workflow concurrency policy"
+        assert workflow in false_allowlist, f"{workflow} missing from workflow concurrency policy"
     for stale_exception in (
         "publish-artifacts.yml",
         "publish.yml",
         "deploy.yml",
         "nightly-publish.yml",
     ):
-        assert (
-            stale_exception not in false_allowlist
-        ), f"stale broad exception remains in policy: {stale_exception}"
+        assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
 
 
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
@@ -406,11 +374,7 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
     """Feature PR checks must include this repo's real app roots."""
     workflow = (_WORKFLOWS_DIR / "anti-phantom-merge.yml").read_text(encoding="utf-8")
     action = (
-        Path(__file__).parent.parent
-        / ".github"
-        / "actions"
-        / "verify-issue-resolution"
-        / "action.yml"
+        Path(__file__).parent.parent / ".github" / "actions" / "verify-issue-resolution" / "action.yml"
     ).read_text(encoding="utf-8")
 
     for text in (workflow, action):
@@ -421,9 +385,7 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
 
 def test_pre_push_mypy_dependencies_are_installable() -> None:
     """The mypy pre-push hook must not depend on removed or nonexistent packages."""
-    text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(
-        encoding="utf-8"
-    )
+    text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8")
 
     assert "psutil-stubs" not in text
     assert "types-psutil" in text
@@ -433,9 +395,7 @@ def test_pre_push_mypy_dependencies_are_installable() -> None:
     assert '"-ii"' in text
 
 
-_REQUIRED_CHECKS_POLICY = (
-    Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
-)
+_REQUIRED_CHECKS_POLICY = Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
 
 
 def _required_contexts() -> set[str]:
@@ -487,3 +447,28 @@ def test_required_context_workflows_have_no_pull_request_path_filters() -> None:
                 "the PR can never merge. Remove the filter (keep it on `push` "
                 "if post-merge cost matters)."
             )
+
+
+def test_required_context_workflows_run_in_the_merge_queue() -> None:
+    """Every workflow that reports a required context must trigger on merge_group.
+
+    With the merge queue enabled on ``main`` (Repository_Management#1889 /
+    #1890), GitHub waits for every required context on the ``merge_group``
+    run. A workflow without that trigger never reports there, so every queued
+    PR would wait until the queue's check timeout and then be ejected.
+    """
+    data = json.loads(_REQUIRED_CHECKS_POLICY.read_text(encoding="utf-8"))
+    sources = {entry["source_workflow"] for entry in data["required_contexts"]}
+
+    found: set[str] = set()
+    for path in sorted(_WORKFLOWS_DIR.glob("*.yml")):
+        workflow = _load_workflow(path)
+        if workflow.get("name") not in sources:
+            continue
+        found.add(workflow["name"])
+        assert _has_trigger(workflow, "merge_group"), (
+            f"{path.name} reports a required status check but has no "
+            "`merge_group:` trigger, so the merge queue would wait for it forever."
+        )
+
+    assert found == sources, f"no workflow file found for {sorted(sources - found)}"

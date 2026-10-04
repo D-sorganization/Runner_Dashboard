@@ -1,4 +1,15 @@
-# Current handoff — stats route test date-rot fix
+# Current handoff — merge_group triggers for the merge queue (DL-#1890)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1890-merge-group`
+- **Branch:** `ci/1890-merge-group-triggers` from `origin/main`; commit SELF; PR: see DL-#1890.
+- **Issue:** D-sorganization/Repository_Management#1890 (epic #1889). Workflow-only change, shipped alone.
+- **Changes:** `merge_group:` on CI Standard and Anti-Phantom Merge Guard; anti-phantom concurrency group falls back to `github.ref`; new hygiene test requires the trigger on every required-context workflow.
+- **Validation:** RED then GREEN, 148 passed (`tests/test_workflow_hygiene.py`, `tests/test_ci_config.py`).
+- **Next:** merge; then the #1900 admin pilot enables the merge queue and turns off strict up-to-date protection. `util-auto-update-prs.yml` stays until later in #1890.
+
+---
+
+# Prior handoff — stats route test date-rot fix (merged #1851)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-stats-date-bomb`; branch `fix/stats-route-test-date-bomb` from `origin/main`; commit SELF; PR: see the branch.
 - **Why:** `tests/api/test_workflow_stats_routes.py` seeded runs at a fixed `2026-09-20`; the summary endpoint reads the last 14 days, so the test began failing on 2026-10-04 UTC and blocked every pre-push and PR CI run (found while pushing the Repository_Management#1890 merge_group PR).
