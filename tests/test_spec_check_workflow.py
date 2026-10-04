@@ -191,8 +191,8 @@ def _run_comment_step(existing: list[dict]) -> list[dict]:
     return calls
 
 
-def _bot(comment_id: int, body: str) -> dict:
-    return {"id": comment_id, "body": body, "user": {"type": "Bot"}}
+def _bot(comment_id: int, body: str, login: str = "github-actions[bot]") -> dict:
+    return {"id": comment_id, "body": body, "user": {"type": "Bot", "login": login}}
 
 
 def test_comment_created_when_none_exists() -> None:
@@ -217,3 +217,21 @@ def test_non_bot_comment_is_never_edited() -> None:
     human = {"id": 3, "body": "SPEC.md Update Required?", "user": {"type": "User"}}
     calls = _run_comment_step([human])
     assert [c["op"] for c in calls] == ["create"]
+
+
+def test_other_bots_warning_text_is_never_edited() -> None:
+    """Codex P2 on #1877: only this workflow's own comment may be replaced."""
+    other = _bot(9, "Reviewer note: SPEC.md Update Required here", "codex[bot]")
+    calls = _run_comment_step([other])
+    assert [c["op"] for c in calls] == ["create"]
+
+
+def test_created_comment_carries_the_workflow_marker() -> None:
+    body = _run_comment_step([])[0]["body"]
+    assert body.startswith("<!-- spec-check:warning -->")
+
+
+def test_marked_comment_is_found_even_if_heading_changes() -> None:
+    marked = "<!-- spec-check:warning -->\nold wording"
+    calls = _run_comment_step([_bot(5, marked)])
+    assert [(c["op"], c.get("id")) for c in calls] == [("update", 5)]

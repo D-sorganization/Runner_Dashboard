@@ -92,7 +92,11 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
-            const body = `## ⚠️ SPEC.md Update Required
+            // Owned-comment marker (Codex P2 on #1877): only this workflow's
+            // comment, posted by github-actions[bot], is ever edited.
+            const MARKER = '<!-- spec-check:warning -->';
+            const body = `${MARKER}
+            ## ⚠️ SPEC.md Update Required
 
             Source files were modified in this PR but \`SPEC.md\` was not updated.
 
@@ -117,9 +121,11 @@ jobs:
               per_page: 100,
             });
 
+            // Older warnings predate the marker; match them by heading, but
+            // still only when github-actions[bot] wrote them.
             const existingComment = comments.find(c =>
-              c.body.includes('SPEC.md Update Required') &&
-              c.user.type === 'Bot'
+              c.user && c.user.login === 'github-actions[bot]' &&
+              (c.body.includes(MARKER) || c.body.includes('## ⚠️ SPEC.md Update Required'))
             );
 
             if (!existingComment) {
