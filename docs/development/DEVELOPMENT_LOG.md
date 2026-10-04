@@ -70,6 +70,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Wait for successful notifier retry with a2s event deadline; always cancel/join the background task. Preserve recovery/count and cancellation contracts; production code unchanged.
 - **Next step:** Open focused PR and collect full Linux rerun in isolated validation checkout.
 
+### DL-#1916 — One spec-check workflow per repository
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** D-sorganization/Repository_Management#1916 (epic Repository_Management#1889); Runner_Dashboard half
+- **Branch:** `ci/1916-merge-spec-check`
+- **PR:** see the branch
+- **Paths:** `.github/workflows/ci-spec-check.yml`, `.github/workflows/spec-check-enhanced.yml` (removed), `.github/workflows/local-only-runner-guard.yml`, `config/workflow_runner_routing_policy.json`, `tests/test_spec_check_workflow.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; `tests/test_spec_check_workflow.py` 13 passed (2 RED first); runner-routing, hygiene and CI config tests 163 passed; `check_workflow_runner_routing.py` 0 violations.
+- **Summary:** `spec-check-enhanced.yml` duplicated `ci-spec-check.yml` with a strict subset of its source patterns. It is deleted; the survivor keeps the "Spec Check" name, the `spec-exempt` label skip and the label triggers. Neither workflow is a required context, so the required-checks policy is unchanged.
+- **Next step:** Merge; the Repository_Management half of #1916 ships separately.
+
 ### DL-#1832 — Portable Windows validation harnesses
 
 - **State:** in_progress

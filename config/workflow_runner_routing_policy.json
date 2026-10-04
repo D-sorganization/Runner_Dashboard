@@ -36,7 +36,6 @@
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
         "lint-workflow-files.yml",
-        "spec-check-enhanced.yml",
         "taxonomy-rollout.yml",
         "Verify-Issue-Closure.yml",
         "verify-tag.yml"

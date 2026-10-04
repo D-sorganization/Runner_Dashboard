@@ -17,6 +17,16 @@
 
 ---
 
+# Current handoff (parallel PR) — one spec-check workflow (DL-#1916, Repository_Management#1916)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-spec-check`; branch `ci/1916-merge-spec-check`; commit SELF; PR: see the branch. Workflow-only change, shipped alone.
+- **Change:** removed `spec-check-enhanced.yml`; `ci-spec-check.yml` ("Spec Check") already covered every pattern (src/, tests/, config/, pyproject.toml, Cargo.toml, package.json, requirements.txt) plus CMakeLists.txt and uv.lock. Dropped the removed file from the `local-only-runner-guard.yml` allowlist and `config/workflow_runner_routing_policy.json`.
+- **Not changed:** neither workflow is a required context and neither triggers on `merge_group` (no `merge_group` trigger existed to keep); `config/required_status_checks_policy.json` is untouched.
+- **Validation:** `pytest tests/test_spec_check_workflow.py` → 13 passed (2 RED first); `pytest tests/test_workflow_runner_routing.py tests/test_workflow_hygiene.py tests/test_ci_config.py` passes; `python scripts/check_workflow_runner_routing.py` → 0 violations.
+- **Next:** merge through the queue.
+
+---
+
 # Prior handoff — merge-queue check timeout raised to 180 min (DL-#1890, Repository_Management#1900)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-timeout`; branch `ci/1900-queue-timeout-180`; commit SELF; PR #1859.
