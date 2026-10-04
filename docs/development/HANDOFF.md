@@ -1,3 +1,12 @@
+# Current handoff — merge queue pilot verification (Repository_Management#1900)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-queue-test`; branch `docs/1900-merge-queue-test-typo`; commit SELF; PR: see the branch.
+- **State:** `main` now has a repo-level merge-queue ruleset (squash, build 5, group 1–5, 5 min wait, ALLGREEN, 60 min timeout), strict up-to-date off in classic protection, `delete_branch_on_merge` on. Snapshot: Repository_Management `docs/operations/settings-snapshots/Runner_Dashboard-2026-10-03.json`.
+- **Change:** CONTRIBUTING.md documents merging through the queue. This PR is the pilot's end-to-end check. No material development-log change — docs note only; tracked under Repository_Management DL-#1900.
+- **Next:** confirm this PR merges through the queue with a `merge_group` CI run; 48h pilot watch before other repos.
+
+---
+
 # Current handoff — merge_group triggers for the merge queue (DL-#1890)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1890-merge-group`

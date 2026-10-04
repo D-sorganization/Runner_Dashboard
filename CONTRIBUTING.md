@@ -99,6 +99,11 @@ review first.
 3. **Conventional Commits**: use `feat:`, `fix:`, `chore:`, `docs:` prefixes in
    commit messages.
 4. **Branch naming**: use `feat/`, `fix/`, `chore/`, or `docs/` prefixes.
+5. **Merge through the queue**: `main` uses a GitHub merge queue (squash).
+   Arm auto-merge and end the session; the queue re-runs the required checks
+   against the latest `main` before merging. Do not rebase or update the
+   branch just because `main` moved; "up to date" is not required
+   (Repository_Management#1900).
 
 ## Code Style
 
