@@ -90,9 +90,7 @@ def check_up_to_date_protection(
         for rule in ruleset.get("rules") or []:
             params = rule.get("parameters") or {}
             if rule.get("type") == "required_status_checks" and params.get("strict_required_status_checks_policy"):
-                problems.append(
-                    f"ruleset {ruleset.get('name')!r} requires branches to be up to date (strict=true)"
-                )
+                problems.append(f"ruleset {ruleset.get('name')!r} requires branches to be up to date (strict=true)")
     return problems
 
 
@@ -193,11 +191,13 @@ def check_fleet(
     for repo in expected_repos:
         snapshot = fleet_snapshots.get(repo)
         if snapshot is None:
-            results.append({
-                "repo": repo,
-                "status": "fail",
-                "findings": [f"repository snapshot missing for {repo!r}"],
-            })
+            results.append(
+                {
+                    "repo": repo,
+                    "status": "fail",
+                    "findings": [f"repository snapshot missing for {repo!r}"],
+                }
+            )
             overall_status = "fail"
             continue
 
@@ -222,11 +222,13 @@ def format_drift_issue(repo: str, findings: list[str]) -> tuple[str, str]:
     ]
     for finding in findings:
         body_lines.append(f"- [ ] {finding}")
-    body_lines.extend([
-        "",
-        "Please align repository settings, branch rulesets, or workflow triggers as "
-        "described in D-sorganization/Repository_Management#1900.",
-    ])
+    body_lines.extend(
+        [
+            "",
+            "Please align repository settings, branch rulesets, or workflow triggers as "
+            "described in D-sorganization/Repository_Management#1900.",
+        ]
+    )
     return title, "\n".join(body_lines)
 
 

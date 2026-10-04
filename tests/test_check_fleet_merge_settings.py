@@ -289,28 +289,32 @@ def test_cli_main_snapshots(
 
     policy_file = tmp_path / "policy.json"
     policy_file.write_text(
-        json.dumps({
-            "version": 1,
-            "repositories": ["D-sorganization/Runner_Dashboard"],
-            "require_branches_up_to_date": False,
-            "repo_settings": {"allow_auto_merge": True},
-            "merge_queue": {"required": False},
-        }),
+        json.dumps(
+            {
+                "version": 1,
+                "repositories": ["D-sorganization/Runner_Dashboard"],
+                "require_branches_up_to_date": False,
+                "repo_settings": {"allow_auto_merge": True},
+                "merge_queue": {"required": False},
+            }
+        ),
         encoding="utf-8",
     )
     snapshots_dir = tmp_path / "snapshots"
     snapshots_dir.mkdir()
     rd_snapshot = snapshots_dir / "D-sorganization__Runner_Dashboard.json"
     rd_snapshot.write_text(
-        json.dumps({
-            "repo": "D-sorganization/Runner_Dashboard",
-            "repo_details": {"allow_auto_merge": True},
-            "protection": valid_protection,
-            "rulesets": valid_rulesets,
-            "workflows": {},
-            "required_workflows": [],
-            "existing_workflow_names": [],
-        }),
+        json.dumps(
+            {
+                "repo": "D-sorganization/Runner_Dashboard",
+                "repo_details": {"allow_auto_merge": True},
+                "protection": valid_protection,
+                "rulesets": valid_rulesets,
+                "workflows": {},
+                "required_workflows": [],
+                "existing_workflow_names": [],
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -319,24 +323,28 @@ def test_cli_main_snapshots(
 
     # Mutate to create drift
     rd_snapshot.write_text(
-        json.dumps({
-            "repo": "D-sorganization/Runner_Dashboard",
-            "repo_details": {"allow_auto_merge": False},
-            "protection": valid_protection,
-            "rulesets": valid_rulesets,
-            "workflows": {},
-            "required_workflows": [],
-            "existing_workflow_names": [],
-        }),
+        json.dumps(
+            {
+                "repo": "D-sorganization/Runner_Dashboard",
+                "repo_details": {"allow_auto_merge": False},
+                "protection": valid_protection,
+                "rulesets": valid_rulesets,
+                "workflows": {},
+                "required_workflows": [],
+                "existing_workflow_names": [],
+            }
+        ),
         encoding="utf-8",
     )
-    exit_code_drift = main([
-        "--policy",
-        str(policy_file),
-        "--snapshots-dir",
-        str(snapshots_dir),
-        "--format-issue",
-    ])
+    exit_code_drift = main(
+        [
+            "--policy",
+            str(policy_file),
+            "--snapshots-dir",
+            str(snapshots_dir),
+            "--format-issue",
+        ]
+    )
     assert exit_code_drift == 1
 
 
@@ -361,5 +369,3 @@ def test_get_queue_merge_settings_route(monkeypatch: pytest.MonkeyPatch, sample_
     assert response.status_code == 200
     assert response.json()["status"] == "pass"
     assert response.json()["results"][0]["repo"] == "D-sorganization/Runner_Dashboard"
-
-
