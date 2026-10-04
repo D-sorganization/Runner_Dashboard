@@ -2,6 +2,7 @@
 
 from __future__ import annotations  # noqa: E402
 
+import json  # noqa: E402
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
 from types import SimpleNamespace
@@ -399,3 +400,58 @@ async def test_dispatch_to_issues_skips_when_premise_rejected() -> None:
         assert len(result.rejected) == 1
         assert "premise_rejected" in result.rejected[0]["reason"]
         assert "already_resolved_on_main" in result.rejected[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: Path) -> None:
+    import agent_dispatch_router as adr
+
+    original = adr._ISSUE_DISPATCH_HISTORY_PATH
+    adr._ISSUE_DISPATCH_HISTORY_PATH = tmp_path / "issue_dispatch_history.json"
+    try:
+        # First dispatch: dictated fix
+        req1 = IssueDispatchRequest(
+            selection=DispatchSelection(
+                mode="single",
+                repository="D-sorganization/Runner_Dashboard",
+                number=1847,
+            ),
+            provider="claude_code_cli",
+            prompt="Update Dockerfile: change `ARG NODE_MAJOR=20` to `ARG NODE_MAJOR=22`",
+            force=False,
+        )
+        with patch(
+            "agent_dispatch_router.evaluate_dispatch_premise",
+            return_value=type("P", (), {"allowed": True, "reason": "ok", "detail": "ok"})(),
+        ):
+            res1 = await _dispatch_issues(req1)
+            assert isinstance(res1, BulkDispatchResponse)
+            assert res1.accepted == 1
+
+            history_path = adr._ISSUE_DISPATCH_HISTORY_PATH
+            assert history_path.exists()
+            history = json.loads(history_path.read_text(encoding="utf-8"))
+            assert len(history) >= 1
+            entry = history[-1]
+            assert entry["tier"] == "cli"
+            assert "haiku" in entry["model"].lower()
+            assert "dictated_fix" in entry["routing_reason"]
+
+            # Second dispatch: overlapping path on same repo -> queued!
+            req2 = IssueDispatchRequest(
+                selection=DispatchSelection(
+                    mode="single",
+                    repository="D-sorganization/Runner_Dashboard",
+                    number=1848,
+                ),
+                provider="claude_code_cli",
+                prompt="Update Dockerfile: set something else",
+                force=False,
+            )
+            res2 = await _dispatch_issues(req2)
+            assert isinstance(res2, BulkDispatchResponse)
+            assert res2.accepted == 0
+            assert len(res2.rejected) == 1
+            assert "queued_overlapping_paths" in res2.rejected[0]["reason"]
+    finally:
+        adr._ISSUE_DISPATCH_HISTORY_PATH = original

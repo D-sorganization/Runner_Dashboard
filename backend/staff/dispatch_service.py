@@ -152,6 +152,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     """
     if not cmd.dry_run and (cmd.issue or cmd.prompt):
         from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+        from dispatch_routing import dispatch_queue_manager, extract_declared_paths, resolve_model_routing
 
         premise_res = await evaluate_dispatch_premise(
             repository=cmd.repo,
@@ -171,6 +172,19 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                     "comment": premise_res.comment,
                 },
             )
+
+        if cmd.repo:
+            paths = extract_declared_paths(cmd.prompt)
+            can_run, blocker = dispatch_queue_manager.can_dispatch(cmd.repo, paths)
+            if not can_run:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "queued_overlapping_paths",
+                        "reason": f"overlapping paths with active session {blocker} on {cmd.repo}",
+                        "message": "waiting for active session PR to merge or close",
+                    },
+                )
 
     runner = get_runner()
     spec = runner.roles().get(cmd.role)
@@ -226,6 +240,8 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         "request_id": run_id,
         "run_id": run_id,
     }
+    from dispatch_routing import resolve_model_routing
+    routing = resolve_model_routing(labels=(), prompt=cmd.prompt, requested_model=cmd.model or "")
     try:
         record_audit(
             action="dispatch",
@@ -235,6 +251,9 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 "repo": plan.repo,
                 "target_ref": plan.target_ref,
                 "provider": plan.provider,
+                "tier": routing.tier,
+                "model": plan.model or routing.model,
+                "routing_reason": routing.reason,
                 "machine": runner.machine,
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),

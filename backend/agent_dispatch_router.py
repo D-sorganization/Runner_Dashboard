@@ -35,6 +35,12 @@ import dispatch_quota
 import quota_enforcement
 from dispatch_contract import DispatchAccess
 from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+from dispatch_routing import (
+    dispatch_queue_manager,
+    extract_declared_paths,
+    record_dispatch_routing_audit,
+    resolve_model_routing,
+)
 from identity import identity_manager
 from pydantic import BaseModel, Field
 from time_utils import utc_now_iso
@@ -555,7 +561,38 @@ async def dispatch_to_issues(
                         run_cmd_fn=run_cmd_fn,
                     )
                 continue
+        if not req.force:
+            declared_paths = extract_declared_paths(req.prompt)
+            attempt = dispatch_queue_manager.try_dispatch(
+                repository=repo,
+                number=num,
+                prompt=req.prompt,
+                labels=(),
+                declared_paths=declared_paths,
+                requested_model=req.model,
+            )
+            if not attempt.dispatched:
+                blocker = attempt.queued_item.blocking_session_id if attempt.queued_item else ""
+                pre_rejected.append(
+                    {
+                        "repository": repo,
+                        "number": num,
+                        "reason": f"queued_overlapping_paths: waiting for active session {blocker}",
+                    }
+                )
+                record_dispatch_routing_audit(
+                    repository=repo,
+                    number=num,
+                    decision=resolve_model_routing(labels=(), prompt=req.prompt, requested_model=req.model),
+                    status="queued",
+                    declared_paths=declared_paths,
+                    principal=req.principal,
+                )
+                continue
         filtered_targets.append((repo, num))
+
+    # ── Resolve model routing ─────────────────────────────────────────────────
+    routing = resolve_model_routing(labels=(), prompt=req.prompt, requested_model=req.model)
 
     # ── Fan-out dispatch ──────────────────────────────────────────────────────
     semaphore = asyncio.Semaphore(DISPATCH_CONCURRENCY)
@@ -567,7 +604,7 @@ async def dispatch_to_issues(
             number=num,
             provider=req.provider,
             prompt=req.prompt,
-            model=req.model,
+            model=routing.model,
             workflow_file="Agent-Issue-Action.yml",
             org=org,
             repo_root=repo_root,
@@ -621,6 +658,9 @@ async def dispatch_to_issues(
         "action": "agents.dispatch.issue",
         "access": DispatchAccess.PRIVILEGED.value,
         "provider": req.provider,
+        "tier": routing.tier,
+        "model": routing.model,
+        "routing_reason": routing.reason,
         "accepted": accepted_count,
         "rejected_count": len(rejected),
         "envelope_ids": envelope_ids,
@@ -631,6 +671,16 @@ async def dispatch_to_issues(
     # ── Record spend (Wave 3) ─────────────────────────────────────────────────
     if req.principal and accepted_count > 0:
         quota_enforcement.quota_enforcement.add_spend(req.principal, accepted_count * 0.10)
+
+    for repo, num in filtered_targets:
+        record_dispatch_routing_audit(
+            repository=repo,
+            number=num,
+            decision=routing,
+            status="dispatched" if accepted_count > 0 else "rejected",
+            declared_paths=extract_declared_paths(req.prompt),
+            principal=req.principal,
+        )
 
     await _append_history(audit_entry, _ISSUE_DISPATCH_HISTORY_PATH, _issue_dispatch_history_lock)
 
