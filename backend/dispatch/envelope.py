@@ -70,6 +70,26 @@ class DispatchConfirmation:
         )
 
 
+def _signed_effort(data: dict[str, Any]) -> str:
+    """Resolve an inbound envelope's effort from the signed payload.
+
+    Only ``payload`` is covered by the signature (issue #317), so its
+    ``effort`` is authoritative. An unsigned top-level ``effort`` may only
+    repeat that value; a mismatch means the envelope was altered in transit.
+    Envelopes that predate USE-1 carry no effort and get the default.
+
+    Precondition: ``data`` is a deserialized envelope mapping.
+    Postcondition: the returned value is a known effort level.
+    Raises: ValueError on a top-level/payload mismatch or unknown level.
+    """
+    payload = data.get("payload") or {}
+    signed = payload.get("effort") if isinstance(payload, dict) else None
+    unsigned = data.get("effort")
+    if signed is not None and unsigned is not None and unsigned != signed:
+        raise ValueError(f"envelope effort {unsigned!r} does not match the signed payload effort {signed!r}")
+    return validate_effort(signed if signed is not None else unsigned or DEFAULT_EFFORT)
+
+
 @dataclass(frozen=True, slots=True)
 class CommandEnvelope:
     """JSON-safe dispatch request sent from hub to node."""
@@ -169,8 +189,7 @@ class CommandEnvelope:
             data.get("pr_lifecycle") or (data.get("payload") or {}).get("pr_lifecycle") or "arm_and_exit"
         )
         object.__setattr__(envelope, "pr_lifecycle", pr_lifecycle)
-        effort = data.get("effort") or (data.get("payload") or {}).get("effort") or DEFAULT_EFFORT
-        object.__setattr__(envelope, "effort", validate_effort(effort))
+        object.__setattr__(envelope, "effort", _signed_effort(data))
         return envelope
 
     def verify_signature(self) -> bool:
