@@ -11,7 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
-| 2026-10-04 | #1858 | Merge-queue policy (`config/fleet_merge_policy.json`, `config/required_status_checks_policy.json`) expects `check_response_timeout_minutes: 180`, matching the fleet rulesets raised from 60 after runner saturation timed out queue entries (Repository_Management#1900). |
+| 2026-10-04 | #1859 | Merge-queue policy (`config/fleet_merge_policy.json`, `config/required_status_checks_policy.json`) expects `check_response_timeout_minutes: 180`, matching the fleet rulesets raised from 60 after runner saturation timed out queue entries (Repository_Management#1900). |
 | 2026-10-04 | #1847 | Pre-dispatch premise check: skip tasks naming checks or commands already passing on current main (commenting "already resolved on main at <sha>" and closing the item), skip when an open PR references the issue or an active `claim:*` lease exists, and log every skip in the dispatch audit (`backend/dispatch_premise.py`, `backend/agent_dispatch_router.py`, `backend/staff/dispatch_service.py`). |
 | 2026-10-04 | #1850 | Implement fleet-wide merge queue, strict-off, auto-merge, and merge_group drift checker (`config/fleet_merge_policy.json`, `backend/fleet_merge_checker.py`, `scripts/check_fleet_merge_settings.py`, `GET /api/queue/merge-settings`, and `<FleetMergeSettingsPanel />`); reports configuration drift against RM#1900 / RM#1890 policy. |
 | 2026-10-03 | #1854 | `config/required_status_checks_policy.json` requires the merge queue (squash, ALLGREEN) and no up-to-date branches; `scripts/check_required_checks_drift.py` reports a missing or mis-configured `merge_queue` rule and any `strict` protection source as drift (Repository_Management#1890 / #1900). |

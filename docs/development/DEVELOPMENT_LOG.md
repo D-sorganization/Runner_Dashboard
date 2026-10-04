@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** D-sorganization/Repository_Management#1890 (epic Repository_Management#1889; settings pilot Repository_Management#1900)
 - **Branch:** `ci/1890-merge-group-triggers` (merged as #1852); `ci/1890-required-checks-policy-merge-queue`; `ci/1900-queue-timeout-180`
-- **PR:** #1852 (merged); #1854; #1858 (timeout 180)
+- **PR:** #1852 (merged); #1854; #1859 (timeout 180)
 - **Paths:** `.github/workflows/ci-standard.yml`, `.github/workflows/anti-phantom-merge.yml`, `tests/test_workflow_hygiene.py`, `config/required_status_checks_policy.json`, `scripts/check_required_checks_drift.py`, `tests/test_required_checks_drift.py`, `tests/contracts/`
 - **Started:** 2026-10-03
 - **Last verified:** 2026-10-04 @ SELF; `tests/test_fleet_merge_checker.py` + `tests/test_required_checks_drift.py` 34 passed with the 180 min timeout; `backend/fleet_merge_checker.py` pins the GitHub API URL so bandit B310 (which blocked every pre-push) passes.
