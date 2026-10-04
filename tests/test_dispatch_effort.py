@@ -128,3 +128,33 @@ def test_from_dict_restores_effort_from_field_or_payload() -> None:
 def test_from_dict_rejects_unknown_effort() -> None:
     with pytest.raises(ValueError, match="effort"):
         CommandEnvelope.from_dict(_envelope_dict(effort="ultra"))
+
+
+def test_from_dict_rejects_unsigned_effort_that_differs_from_signed_payload() -> None:
+    """Only ``payload`` is covered by the signature, so it is authoritative."""
+    env = build_envelope(
+        action="agents.dispatch.adhoc",
+        source="dashboard",
+        target="Repository_Management",
+        requested_by="op",
+        effort="low",
+    )
+    wire = env.to_dict()
+    wire["effort"] = "high"  # tampered, unsigned top-level field
+    with pytest.raises(ValueError, match="effort"):
+        CommandEnvelope.from_dict(wire)
+
+
+def test_from_dict_takes_effort_from_the_signed_payload() -> None:
+    env = build_envelope(
+        action="agents.dispatch.adhoc",
+        source="dashboard",
+        target="Repository_Management",
+        requested_by="op",
+        effort="low",
+    )
+    wire = env.to_dict()
+    wire.pop("effort", None)
+    restored = CommandEnvelope.from_dict(wire)
+    assert restored.effort == "low"
+    assert restored.verify_signature()

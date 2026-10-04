@@ -494,10 +494,11 @@ async def post(path: str, *, json: Any = None) -> Any:
         json: Optional JSON body.
 
     Returns:
-        Parsed JSON body, or empty dict for 204.
+        Parsed JSON body (including the created resource for 201), or an
+        empty dict for 204 No Content.
     """
     resp = await _request("POST", path, json=json)
-    if resp.status_code in (201, 204):
+    if resp.status_code == 204:
         return {}
     return resp.json()
 
