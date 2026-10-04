@@ -368,3 +368,23 @@ async def test_paginate_retries_transient_5xx(monkeypatch: pytest.MonkeyPatch) -
     items = [item async for item in gh_client.paginate("/orgs/x/actions/runners")]
     assert items == [{"id": 7}]
     gh_client.clear_token_cache()
+
+
+@pytest.mark.parametrize(("status", "body", "expected"), [(201, {"number": 7}, {"number": 7}), (204, None, {})])
+async def test_post_returns_created_resource_body(
+    monkeypatch: pytest.MonkeyPatch, status: int, body: dict[str, int] | None, expected: dict[str, int]
+) -> None:
+    """A 201 Created carries the new resource; callers need e.g. its number."""
+    import gh_client
+
+    class _Resp:
+        status_code = status
+
+        def json(self) -> dict[str, int] | None:
+            return body
+
+    async def _fake_request(method: str, path: str, **_: object) -> _Resp:
+        return _Resp()
+
+    monkeypatch.setattr(gh_client, "_request", _fake_request)
+    assert await gh_client.post("/repos/o/r/issues", json={"title": "t"}) == expected
