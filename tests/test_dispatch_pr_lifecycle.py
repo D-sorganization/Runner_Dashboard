@@ -38,11 +38,21 @@ def test_from_dict_defaults_pr_lifecycle_when_nothing_signs_it() -> None:
     assert CommandEnvelope.from_dict(wire).pr_lifecycle == "arm_and_exit"
 
 
-def test_from_dict_falls_back_to_top_level_for_unsigned_legacy_envelope() -> None:
-    wire = _build().to_dict()
-    wire["payload"].pop("pr_lifecycle", None)
-    wire["pr_lifecycle"] = "subscribe"
-    assert CommandEnvelope.from_dict(wire).pr_lifecycle == "subscribe"
+@pytest.mark.parametrize("payload", [{}, {"pr_lifecycle": None}])
+def test_from_dict_ignores_unsigned_pr_lifecycle_on_legacy_envelope(payload: dict[str, object]) -> None:
+    """An interceptor cannot add a lifecycle to an envelope that never signed one."""
+    legacy = CommandEnvelope(
+        action="agents.dispatch.adhoc",
+        source="dashboard",
+        target="Repository_Management",
+        requested_by="op",
+        payload=payload,
+    )
+    wire = legacy.to_dict()
+    wire["pr_lifecycle"] = "subscribed"  # unsigned top-level injection
+    restored = CommandEnvelope.from_dict(wire)
+    assert restored.pr_lifecycle == "arm_and_exit"
+    assert restored.verify_signature()
 
 
 def test_build_envelope_round_trips_payload_only_pr_lifecycle() -> None:

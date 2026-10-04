@@ -121,16 +121,34 @@ def test_build_envelope_rejects_unknown_effort() -> None:
         )
 
 
-def test_from_dict_restores_effort_from_field_or_payload() -> None:
-    assert CommandEnvelope.from_dict(_envelope_dict(effort="high")).effort == "high"
+def test_from_dict_restores_effort_from_the_signed_payload_only() -> None:
     assert CommandEnvelope.from_dict(_envelope_dict(payload={"effort": "low"})).effort == "low"
     assert CommandEnvelope.from_dict(_envelope_dict()).effort == "medium"
-    assert CommandEnvelope.from_dict(_envelope_dict(effort="low")).to_dict()["effort"] == "low"
+    # An unsigned top-level effort is ignored (issue #1874 review).
+    assert CommandEnvelope.from_dict(_envelope_dict(effort="high")).effort == "medium"
+    assert CommandEnvelope.from_dict(_envelope_dict(effort="low")).to_dict()["effort"] == "medium"
+
+
+@pytest.mark.parametrize("payload", [{}, {"effort": None}])
+def test_from_dict_ignores_unsigned_effort_on_legacy_envelope(payload: dict[str, Any]) -> None:
+    """An interceptor cannot escalate effort on an envelope that never signed it."""
+    legacy = CommandEnvelope(
+        action="agents.dispatch.adhoc",
+        source="dashboard",
+        target="Repository_Management",
+        requested_by="op",
+        payload=payload,
+    )
+    wire = legacy.to_dict()
+    wire["effort"] = "high"  # unsigned top-level injection
+    restored = CommandEnvelope.from_dict(wire)
+    assert restored.effort == DEFAULT_EFFORT
+    assert restored.verify_signature()
 
 
 def test_from_dict_rejects_unknown_effort() -> None:
     with pytest.raises(ValueError, match="effort"):
-        CommandEnvelope.from_dict(_envelope_dict(effort="ultra"))
+        CommandEnvelope.from_dict(_envelope_dict(payload={"effort": "ultra"}))
 
 
 def test_from_dict_rejects_unsigned_effort_that_differs_from_signed_payload() -> None:
