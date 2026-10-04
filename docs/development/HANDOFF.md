@@ -2,7 +2,8 @@
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-timeout`; branch `ci/1900-queue-timeout-180`; commit SELF; PR #1858.
 - **Change:** owner raised `check_response_timeout_minutes` to 180 on every fleet merge-queue ruleset (runner pool at ~93% timed out queued checks at 60). Both policy files and their test fixtures now expect 180, so the drift checkers stay clean.
-- **Validation:** `python -m pytest tests/test_fleet_merge_checker.py tests/test_required_checks_drift.py` → 34 passed.
+- **Pre-push fix:** bandit B310 on `backend/fleet_merge_checker.py:_github_api` (from #1855) failed every push; the function now refuses any URL outside `https://api.github.com/` and carries `# nosec B310`.
+- **Validation:** `python -m pytest tests/test_fleet_merge_checker.py tests/test_required_checks_drift.py` → 34 passed; `bandit -c bandit.yaml backend/fleet_merge_checker.py` → 0 issues.
 - **Next:** merge; `config/fleet_merge_policy.json` still lists 8 of the ~41 queue-enabled repos (four use non-`main` default branches) — expanding it is a follow-up.
 
 ---

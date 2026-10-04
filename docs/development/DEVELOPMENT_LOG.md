@@ -27,7 +27,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** #1852 (merged); #1854; #1858 (timeout 180)
 - **Paths:** `.github/workflows/ci-standard.yml`, `.github/workflows/anti-phantom-merge.yml`, `tests/test_workflow_hygiene.py`, `config/required_status_checks_policy.json`, `scripts/check_required_checks_drift.py`, `tests/test_required_checks_drift.py`, `tests/contracts/`
 - **Started:** 2026-10-03
-- **Last verified:** 2026-10-04 @ SELF; `tests/test_fleet_merge_checker.py` + `tests/test_required_checks_drift.py` 34 passed with the 180 min timeout.
+- **Last verified:** 2026-10-04 @ SELF; `tests/test_fleet_merge_checker.py` + `tests/test_required_checks_drift.py` 34 passed with the 180 min timeout; `backend/fleet_merge_checker.py` pins the GitHub API URL so bandit B310 (which blocked every pre-push) passes.
 - **Summary:** Required checks report on `merge_group` (#1852). The required-checks policy now also requires the merge queue (squash, ALLGREEN, build 5, group 1–5, 5 min wait, 180 min timeout — raised from 60 on 2026-10-04 after runner saturation timed out queue entries) and `require_branches_up_to_date: false`; `check_required_checks_drift.py` reports drift on either. Settings were applied on 2026-10-04 by the #1900 pilot.
 - **Next step:** Wire `check_required_checks_drift.py --live` into the daily fleet settings drift check (#1850).
 
