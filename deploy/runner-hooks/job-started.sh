@@ -29,12 +29,16 @@ LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
 RUNNER_NAME="${RUNNER_NAME:-${HOSTNAME}-unknown}"
 HOME_DIR="${HOME:-/home/$USER}"
 
-# -- TMPDIR preparation (Runner_Dashboard#1895) -------------------------------
-# Self-hosted runners configure TMPDIR=<runner_dir>/_work/_tmp (via
-# configure-runner-tmpdir.sh in .env). If TMPDIR was wiped by a host cleanup,
-# recreate it before any workflow step or mktemp runs.
+# -- Runner scratch & cache preparation (Runner_Dashboard#1895, #1896) --------
+# Self-hosted runners configure TMPDIR=<runner_dir>/_work/_tmp and
+# PIP_CACHE_DIR=<runner_dir>/_work/_pip-cache (via configure-runner-tmpdir.sh
+# and configure-runner-pipcache.sh in .env). If either was wiped by a host
+# cleanup, recreate it before any workflow step runs.
 if [ -n "${TMPDIR:-}" ]; then
     mkdir -m 0755 -p "$TMPDIR" 2>/dev/null || mkdir -p "$TMPDIR" 2>/dev/null || true
+fi
+if [ -n "${PIP_CACHE_DIR:-}" ]; then
+    mkdir -m 0755 -p "$PIP_CACHE_DIR" 2>/dev/null || mkdir -p "$PIP_CACHE_DIR" 2>/dev/null || true
 fi
 
 # -- Stale-git-lock cleanup (Runner_Dashboard#640) ---------------------------
