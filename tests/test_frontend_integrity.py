@@ -331,14 +331,12 @@ def test_mobile_remediation_three_tap_slice_markers_present() -> None:
     assert "Preview safety plan" in content
 
 
-def test_maxwell_mobile_chat_slice_markers_present() -> None:
+def test_maxwell_mobile_chat_moved_to_staff_console() -> None:
+    # SC-G6 (#1338): Maxwell chat lives in the Staff Console; the phone page
+    # is a status/tasks/controls view with a link, not its own chat.
     content = _read_index()
-    assert "maxwellMobileChatHistory" in content
-    assert "maxwell-chat-messages" in content
-    assert "/api/maxwell/chat" in content
-    assert "which runners are blocked?" in content
-    assert "Maxwell-Daemon is unreachable. Chat history is preserved" in content
-    assert "TextDecoder" in content
+    assert "<MaxwellChat" not in content
+    assert "Chat with Maxwell in the Staff Console" in content
 
 
 def test_mobile_read_mostly_reports_assessments_feature_requests_markers_present() -> None:

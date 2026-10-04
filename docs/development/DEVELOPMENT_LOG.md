@@ -20,6 +20,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338-maxwell-mobile — SC-G6: mobile Maxwell page drops its chat
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (last SC-G6 slice; agent brief 2026-10-04)
+- **Branch:** `claude/issue-1338`
+- **PR:** see the branch
+- **Paths:** `frontend/src/pages/Maxwell/Mobile.tsx`, `frontend/src/pages/Maxwell/MaxwellChat.tsx`, `frontend/src/pages/Maxwell/mobileTypes.ts`, `frontend/src/pages/Maxwell/__tests__/Mobile.test.tsx`, `tests/test_frontend_integrity.py`, `tests/frontend/mobile/viewport_profiles.json`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; vitest `frontend/src/pages/Maxwell frontend/src/shell` 315 passed (2 new tests RED first); tsc clean; integrity/mobile-harness pytest passed.
+- **Summary:** The phone Maxwell page keeps status, tasks and daemon controls, loses its chat and sessionStorage history, and links to the Staff Console for Maxwell chat. `/api/maxwell/chat` is unchanged.
+- **Next step:** Merge the PR through the queue; then #1338 closes and epic #1353 can close.
+
 ### DL-#1880 — CI-fix routing on current models, agy option
 
 - **State:** in_review

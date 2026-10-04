@@ -93,8 +93,11 @@
     {
       "name": "Maxwell",
       "tabLabel": "Maxwell",
-      "requiredMarkers": ["maxwellMobileChatHistory", "maxwell-chat-messages"],
-      "goldenInteraction": "tap-quick-action"
+      "requiredMarkers": [
+        "Chat with Maxwell in the Staff Console",
+        "Active Tasks"
+      ],
+      "goldenInteraction": "tap-control-sheet"
     }
   ],
   "visualRegression": {
