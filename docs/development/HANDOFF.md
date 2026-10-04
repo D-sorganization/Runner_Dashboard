@@ -1,3 +1,13 @@
+# Current handoff — Spec Check updates a stale warning comment (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1872-p2`; branch `fix/1871-spec-warning-update`, cut from #1872's head while #1872 was in the merge queue, then merged with `main` after #1872 merged; commit SELF; PR: see the branch (follow-up to #1872).
+- **Change:** the "Post warning comment" step paginates the PR comments and, when a bot `SPEC.md Update Required` comment exists with a different body, PATCHes it (`issues.updateComment`); it creates one when none exists and does nothing when identical. Addresses the Codex P2 review on #1872.
+- **Validation:** `pytest tests/test_spec_check_workflow.py tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py tests/test_workflow_runner_routing.py` → 179 passed (new node-executed tests; the update case was RED first); `actionlint` clean; ruff clean.
+- **API snapshot:** `frontend/src/lib/openapi.json` / `api-types.ts` regenerated with `bash scripts/gen-api-client.sh` (identical to #1876, so it no-ops once #1876 lands).
+- **Next:** merge the follow-up PR through the queue.
+
+---
+
 # Current handoff — CI-fix routing on current models, agy option (DL-#1880, #1880)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-ci-fix-routing`; branch `fix/ci-fix-routing-models` from `origin/main`; commit SELF; PR: see the branch. Lease: `claude` / `claude-rd-1880`.
