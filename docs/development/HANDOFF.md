@@ -1,4 +1,13 @@
-# Current handoff — required-checks policy for the merge queue (DL-#1890)
+# Current handoff — merge-queue check timeout raised to 180 min (DL-#1890, Repository_Management#1900)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-timeout`; branch `ci/1900-queue-timeout-180`; commit SELF; PR #1858.
+- **Change:** owner raised `check_response_timeout_minutes` to 180 on every fleet merge-queue ruleset (runner pool at ~93% timed out queued checks at 60). Both policy files and their test fixtures now expect 180, so the drift checkers stay clean.
+- **Validation:** `python -m pytest tests/test_fleet_merge_checker.py tests/test_required_checks_drift.py` → 34 passed.
+- **Next:** merge; `config/fleet_merge_policy.json` still lists 8 of the ~41 queue-enabled repos (four use non-`main` default branches) — expanding it is a follow-up.
+
+---
+
+# Prior handoff — required-checks policy for the merge queue (DL-#1890)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1890-policy`; branch `ci/1890-required-checks-policy-merge-queue`; commit SELF; PR: see DL-#1890.
 - **Change:** policy requires the merge queue and `require_branches_up_to_date: false`; the drift checker gains `merge_queue_drift` / `up_to_date_drift`. New fixture `tests/contracts/branch_protection_snapshot_merge_queue.json`; the compliant example ruleset now carries the queue.

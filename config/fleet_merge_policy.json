@@ -22,7 +22,7 @@
   "merge_queue": {
     "required": true,
     "parameters": {
-      "check_response_timeout_minutes": 60,
+      "check_response_timeout_minutes": 180,
       "grouping_strategy": "ALLGREEN",
       "max_entries_to_build": 5,
       "max_entries_to_merge": 5,
@@ -33,8 +33,6 @@
   },
   "workflows": {
     "require_merge_group_on_required_checks": true,
-    "disallowed_workflows": [
-      "Auto-Update PRs"
-    ]
+    "disallowed_workflows": ["Auto-Update PRs"]
   }
 }
