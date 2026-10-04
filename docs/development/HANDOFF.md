@@ -18,6 +18,15 @@
 
 ---
 
+# Current handoff — Spec Check covers backend/** (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871`; branch `ci/1871-spec-check-backend`; commit SELF; PR: see the branch. Workflow-only change, shipped alone; the staged-only gitleaks pre-commit change is a separate PR on `chore/1871-gitleaks-staged`.
+- **Change:** `ci-spec-check.yml` adds `backend/*` (bash `[[ == ]]` globs match nested paths) to the source patterns; the PR comment drops "Bump the Spec Version" and uses the Repository_Management wording (one change-log row keyed by the PR; Spec Version is release-derived).
+- **Validation:** `pytest tests/test_spec_check_workflow.py tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py tests/test_workflow_runner_routing.py` → 175 passed (3 new tests RED first; they execute the detection step against fixture file lists); `actionlint` clean.
+- **Next:** merge through the queue; add `changes/<issue>-*.md` fragment acceptance after Repository_Management#1922 / #1924 reach this repo.
+
+---
+
 # Current handoff — event-tiered CI Standard (DL-#1864, #1864)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-ci-tiers`; branch `ci/1864-event-tiered-ci`; commit SELF; PR: see the branch. Workflow-only change, shipped alone (pre-push parity is a separate PR on `chore/1864-prepush-parity`).
