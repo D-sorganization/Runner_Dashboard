@@ -434,6 +434,50 @@ def test_failed_revoke_says_auto_merge_may_still_be_on() -> None:
     assert "delete boom" in result.detail
 
 
+def test_failed_revoke_flags_result_and_logs_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake = CloudGh(stored_method="merge", delete_returncode=1)
+    with caplog.at_level("ERROR"):
+        result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.auto_merge_may_be_on is True
+    assert any(r.levelname == "ERROR" and "may still be ON" in r.getMessage() for r in caplog.records)
+
+
+def test_revoked_arm_does_not_flag_may_be_on() -> None:
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=CloudGh(stored_method="merge"))
+    assert result.auto_merge_may_be_on is False
+
+
+def test_cli_surfaces_detail_and_distinct_exit_when_revoke_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = automerge_guard.ArmResult(
+        False,
+        automerge_guard.HoldVerdict(False, ()),
+        "revoke FAILED (x); auto-merge may still be ON and needs manual disarm",
+        auto_merge_may_be_on=True,
+    )
+    monkeypatch.setattr(automerge_guard, "arm_auto_merge", lambda *a, **k: result)
+    code = automerge_guard.main(["o/r", "1", "--arm"])
+    out = capsys.readouterr().out
+    assert code == automerge_guard.EXIT_ARM_MAY_BE_ON == 3
+    assert "DANGER" in out and "may still be ON" in out
+
+
+def test_cli_prints_detail_for_ordinary_unarmed_result(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = automerge_guard.ArmResult(
+        False,
+        automerge_guard.HoldVerdict(False, ()),
+        "REST route stored merge method 'merge', not the requested 'squash'; auto-merge revoked",
+    )
+    monkeypatch.setattr(automerge_guard, "arm_auto_merge", lambda *a, **k: result)
+    assert automerge_guard.main(["o/r", "1", "--arm"]) == 1
+    assert "auto-merge revoked" in capsys.readouterr().out
+
+
 def test_verified_arm_is_not_revoked() -> None:
     fake = CloudGh()
     assert automerge_guard.arm_auto_merge("o/r", 7, runner=fake).armed is True

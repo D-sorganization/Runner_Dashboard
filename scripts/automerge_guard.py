@@ -78,6 +78,10 @@ TOKEN_ENV_VARS = ("GH_TOKEN", "GITHUB_TOKEN")
 #: Exit code when ``--require-app-token`` refuses a non-App token.
 EXIT_IDENTITY_REFUSED = 2
 
+#: Exit code when an unverified REST arm could not be revoked (auto-merge may
+#: still be ON). Distinct from 1 ("held / not armed") so automation can alert.
+EXIT_ARM_MAY_BE_ON = 3
+
 
 def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
     """Run ``cmd`` and capture output. Resolved via PATH so Windows finds gh.exe."""
@@ -187,6 +191,13 @@ class ArmResult:
     armed: bool
     verdict: HoldVerdict
     detail: str = ""
+    #: True only when an unverified REST arm could not be revoked: GitHub may
+    #: still auto-merge the PR. Callers must surface this loudly.
+    auto_merge_may_be_on: bool = False
+
+    def reason(self) -> str:
+        """Why the PR is not armed: ``detail`` when set, else the hold verdict."""
+        return self.detail or self.verdict.describe()
 
 
 @dataclass
@@ -379,20 +390,24 @@ def _stored_merge_method(repo: str, pr: int, run: CommandRunner) -> str:
     return proc.stdout.strip().lower() if proc.returncode == 0 else ""
 
 
-def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> str:
+def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> tuple[str, bool]:
     """Undo a REST arm whose stored method could not be confirmed.
 
     The PUT already succeeded, so GitHub may still auto-merge the PR with the
     wrong strategy. Returns a message for ``ArmResult.detail``; a failed DELETE
-    is reported loudly because auto-merge may then still be on.
+    is reported loudly because auto-merge may then still be on. The second item
+    is True in exactly that case.
     """
     proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
     if proc.returncode == 0:
         logger.warning("Revoked unverified REST auto-merge arm on %s#%s.", repo, pr)
-        return "auto-merge revoked"
+        return "auto-merge revoked", False
     err = proc.stderr.strip() or proc.stdout.strip()
     logger.error("Could not revoke REST auto-merge arm on %s#%s: %s", repo, pr, err)
-    return f"revoke FAILED ({err}); auto-merge may still be ON and needs manual disarm"
+    return (
+        f"revoke FAILED ({err}); auto-merge may still be ON and needs manual disarm",
+        True,
+    )
 
 
 def arm_auto_merge(
@@ -446,7 +461,11 @@ def arm_auto_merge(
             if stored != strategy:
                 detail = f"REST route stored merge method {stored or 'none'!r}, not the requested {strategy!r}"
                 logger.warning("Not armed as requested on %s#%s: %s", repo, pr, detail)
-                return ArmResult(False, verdict, f"{detail}; {_revoke_rest_arm(repo, pr, run)}")
+                revoked, may_be_on = _revoke_rest_arm(repo, pr, run)
+                full = f"{detail}; {revoked}"
+                if may_be_on:
+                    logger.error("DANGER %s#%s: %s", repo, pr, full)
+                return ArmResult(False, verdict, full, auto_merge_may_be_on=may_be_on)
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Could not arm auto-merge on %s#%s: %s", repo, pr, detail)
@@ -461,7 +480,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     Without ``--arm`` this only reports. Exit code 0 means "safe to arm", 1
     means held (or, with ``--arm``, that arming did not happen), 2 means
-    ``--require-app-token`` refused a non-App token (GOV-1, #1917).
+    ``--require-app-token`` refused a non-App token (GOV-1, #1917), 3 means
+    an unverified REST arm could not be revoked (auto-merge may still be ON).
     """
     import argparse
 
@@ -493,7 +513,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if result.armed:
             print(f"armed {args.repo}#{args.pr}")
             return 0
-        print(f"NOT armed {args.repo}#{args.pr}: {result.verdict.describe()}")
+        if result.auto_merge_may_be_on:
+            print(f"DANGER NOT armed {args.repo}#{args.pr}: {result.reason()}")
+            return EXIT_ARM_MAY_BE_ON
+        print(f"NOT armed {args.repo}#{args.pr}: {result.reason()}")
         return 1
 
     verdict = evaluate_hold(args.repo, args.pr)
