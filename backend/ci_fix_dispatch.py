@@ -13,6 +13,7 @@ Dispatches fresh, small, capped sessions on failing CI for open PRs with auto-me
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -338,6 +339,7 @@ def record_ci_fix_audit(
     audit_file: Path | None = None,
     staff_run_id: str = "",
     effort: str = "",
+    failure_signature: str = "",
 ) -> None:
     """Record CI-fix dispatch telemetry for budget and retry accounting.
 
@@ -358,6 +360,7 @@ def record_ci_fix_audit(
         "cost_budget": round(cost_budget, 4),
         "staff_run_id": staff_run_id,
         "effort": effort,
+        "failure_signature": failure_signature,
     }
 
     try:
@@ -376,8 +379,18 @@ def record_ci_fix_audit(
         logger.warning("Failed to write CI-fix audit log: %s", exc)
 
 
-def count_prior_attempts(repo: str, pr_number: int, workflow_name: str, audit_file: Path | None = None) -> int:
-    """How many CI-fix dispatches the audit already holds for this PR and workflow (escalation input)."""
+def failure_signature(workflow_name: str, failing_tests: list[str], failure_type: str) -> str:
+    """Stable identity of one failure: the workflow plus its failing tests (else its type)."""
+    detail = ",".join(sorted(set(failing_tests))) or failure_type
+    return hashlib.sha256(f"{workflow_name}|{detail}".encode()).hexdigest()[:16]
+
+
+def count_consecutive_attempts(repo: str, pr_number: int, signature: str, audit_file: Path | None = None) -> int:
+    """Length of this PR's current streak of dispatches for the same failure (escalation input).
+
+    Walks the PR's audit rows newest-first and stops at the first row with another
+    signature, so a new or different failure starts a fresh streak (#1887 review).
+    """
     target_path = audit_file or DEFAULT_AUDIT_PATH
     try:
         entries = json.loads(target_path.read_text(encoding="utf-8"))
@@ -386,11 +399,15 @@ def count_prior_attempts(repo: str, pr_number: int, workflow_name: str, audit_fi
     if not isinstance(entries, list):
         return 0
     repo_key = repo.strip().lower()
-    return sum(
-        1
-        for e in entries
-        if isinstance(e, dict)
-        and str(e.get("repository", "")).lower() == repo_key
-        and e.get("pr_number") == pr_number
-        and e.get("workflow_name") == workflow_name
-    )
+    streak = 0
+    for e in reversed(entries):
+        if (
+            not isinstance(e, dict)
+            or str(e.get("repository", "")).lower() != repo_key
+            or e.get("pr_number") != pr_number
+        ):
+            continue
+        if e.get("failure_signature") != signature:
+            break
+        streak += 1
+    return streak

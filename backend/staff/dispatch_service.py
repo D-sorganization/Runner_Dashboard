@@ -74,6 +74,8 @@ class DispatchCommand:
     # RD-1 CI fixes (#1881) target a PR head, not main: the issue premise ("already passes
     # on main") and prompt path-overlap checks do not apply; the per-PR CI-fix lock guards.
     skip_premise_check: bool = False
+    # Fix an existing PR: the worktree starts from this branch instead of origin/main (#1881).
+    head_ref: str = ""
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -90,6 +92,8 @@ class DispatchCommand:
             body.pop("operation_id")  # peers on older builds never see an empty field
         if not body["skip_premise_check"]:
             body.pop("skip_premise_check")
+        if not body["head_ref"]:
+            body.pop("head_ref")
         return body
 
     def run_id(self) -> str:
@@ -238,6 +242,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         consolidation=decision,
         origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
         pr_lifecycle=cmd.pr_lifecycle,
+        head_ref=cmd.head_ref,
     )
     try:
         plan = runner.plan(req)

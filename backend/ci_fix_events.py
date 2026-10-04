@@ -8,7 +8,9 @@ Accepted events (everything else is ignored with a reason):
   to a pull request, including ``merge_group`` runs whose ``pull_requests`` is empty (the PR
   number comes from the ``gh-readonly-queue/<base>/pr-<N>-<sha>`` head ref).
   ``cancelled`` is not a failure: fleet workflows cancel superseded runs by concurrency group.
-- ``pull_request`` / ``dequeued`` with reason ``MERGE_CONFLICT`` or ``CHECKS_FAILED``.
+- ``pull_request`` / ``dequeued`` with reason ``MERGE_CONFLICT`` or ``CHECKS_FAILED``
+  (``PullRequestDequeuedEvent`` in ``@octokit/webhooks-types``; ``reason`` is a free-form
+  string there, so case, spaces and hyphens are normalised).
 
 ``check_suite`` is deliberately ignored: every Actions failure already arrives as a
 ``workflow_run``, and accepting both would double-trigger the same failure.
@@ -54,6 +56,8 @@ class CIFixEvent(BaseModel):
     # Known only when the payload carries the PR (``dequeued``); otherwise fetched.
     is_draft: bool | None = None
     pr_state: str = ""
+    # ``owner/name`` the PR head lives in; a fork head cannot be pushed to (#1887 review).
+    head_repo: str = ""
 
     @property
     def full_repo(self) -> str:
@@ -84,6 +88,14 @@ def _ref(obj: Any) -> str:
     return str(obj.get("ref") or "") if isinstance(obj, dict) else ""
 
 
+def _full_name(obj: Any) -> str:
+    return str(obj.get("full_name") or "") if isinstance(obj, dict) else ""
+
+
+def _normalise_reason(reason: Any) -> str:
+    return str(reason or "").strip().upper().replace("-", "_").replace(" ", "_")
+
+
 def _parse_workflow_run(payload: dict[str, Any], owner: str, repo: str) -> tuple[CIFixEvent | None, str]:
     if payload.get("action") != "completed":
         return None, f"workflow_run action {payload.get('action')!r} is not 'completed'"
@@ -109,6 +121,7 @@ def _parse_workflow_run(payload: dict[str, Any], owner: str, repo: str) -> tuple
         workflow_name=str(run.get("name") or ""),
         conclusion=conclusion,
         from_queue=bool(queue_match) or run.get("event") == "merge_group",
+        head_repo=_full_name(run.get("head_repository")),
     )
     return event, "accepted"
 
@@ -116,7 +129,7 @@ def _parse_workflow_run(payload: dict[str, Any], owner: str, repo: str) -> tuple
 def _parse_dequeued(payload: dict[str, Any], owner: str, repo: str) -> tuple[CIFixEvent | None, str]:
     if payload.get("action") != "dequeued":
         return None, f"pull_request action {payload.get('action')!r} is not 'dequeued'"
-    reason = str(payload.get("reason") or "").upper()
+    reason = _normalise_reason(payload.get("reason"))
     kind = DEQUEUE_KINDS.get(reason)
     pr = payload.get("pull_request") or {}
     if kind is None:
@@ -134,6 +147,7 @@ def _parse_dequeued(payload: dict[str, Any], owner: str, repo: str) -> tuple[CIF
         from_queue=True,
         is_draft=bool(pr.get("draft", False)),
         pr_state=str(pr.get("state") or ""),
+        head_repo=_full_name((pr.get("head") or {}).get("repo")),
     )
     return event, "accepted"
 

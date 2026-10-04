@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from ci_fix_events import parse_github_event, verify_github_signature
 
-SECRET = "test-webhook-secret"
+SECRET = "test-webhook-secret"  # pragma: allowlist secret
 
 
 def _sign(body: bytes, secret: str = SECRET) -> str:
@@ -62,7 +62,7 @@ def _dequeued(reason: str, *, draft: bool = False) -> dict[str, Any]:
     }
 
 
-QUEUE_REF = "gh-readonly-queue/main/pr-77-0123456789abcdef0123456789abcdef01234567"
+QUEUE_REF = f"gh-readonly-queue/main/pr-77-{'a' * 40}"
 
 
 # ─── pure parsing ────────────────────────────────────────────────────────────
@@ -121,3 +121,17 @@ def test_parse_ignores_check_suite_other_events_and_foreign_org() -> None:
     foreign = {**_workflow_run(), "repository": {**REPO, "owner": {"login": "someone-else"}}}
     event, reason = parse_github_event("workflow_run", foreign)
     assert event is None and "org" in reason
+
+
+@pytest.mark.parametrize("reason", ["merge_conflict", "Merge Conflict", "MERGE-CONFLICT"])
+def test_parse_dequeue_reason_is_normalised(reason: str) -> None:
+    """``reason`` is a free-form string in the webhook schema; spelling variants map to one kind."""
+    event, _ = parse_github_event("pull_request", _dequeued(reason))
+    assert event is not None and event.kind == "merge_conflict"
+
+
+def test_parse_dequeue_carries_head_repo_for_the_fork_guard() -> None:
+    payload = _dequeued("MERGE_CONFLICT")
+    payload["pull_request"]["head"]["repo"] = {"full_name": "someone/Runner_Dashboard"}
+    event, _ = parse_github_event("pull_request", payload)
+    assert event is not None and event.head_repo == "someone/Runner_Dashboard"

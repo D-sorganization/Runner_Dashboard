@@ -414,7 +414,7 @@ def test_acceptance_criteria_escalation_after_three_attempts() -> None:
     assert route_att3.model == "claude-opus-5-5"
 
 
-QUEUE_REF = "gh-readonly-queue/main/pr-77-0123456789abcdef0123456789abcdef01234567"
+QUEUE_REF = f"gh-readonly-queue/main/pr-77-{'a' * 40}"
 
 
 def test_evaluate_trigger_recovers_pr_from_merge_queue_ref() -> None:
@@ -448,14 +448,39 @@ def test_pr_number_from_queue_ref(ref: str, expected: int | None) -> None:
     assert pr_number_from_queue_ref(ref) == expected
 
 
-def test_count_prior_attempts(tmp_path: Path) -> None:
-    from backend.ci_fix_dispatch import count_prior_attempts
+def test_consecutive_attempts_count_only_the_same_failure_signature(tmp_path: Path) -> None:
+    """Escalation follows a streak of the same failure; a different failure restarts it (#1887 review)."""
+    from backend.ci_fix_dispatch import count_consecutive_attempts, failure_signature
 
     audit_file = tmp_path / "a.json"
-    for pr, wf in ((42, "CI"), (42, "CI"), (42, "Lint"), (43, "CI")):
+    same = failure_signature("CI", ["t.py::a"], "test")
+    other = failure_signature("CI", ["t.py::b"], "test")
+    assert same != other
+    assert failure_signature("CI", ["t.py::b", "t.py::a"], "test") == failure_signature(
+        "CI", ["t.py::a", "t.py::b"], "test"
+    )
+
+    def record(pr: int, signature: str) -> None:
         record_ci_fix_audit(
-            "Runner_Dashboard", pr, wf, 1, "test", "claude_code_cli", "m", 1, 1.0, audit_file=audit_file
+            "Runner_Dashboard",
+            pr,
+            "CI",
+            1,
+            "test",
+            "claude_code_cli",
+            "m",
+            1,
+            1.0,
+            audit_file=audit_file,
+            failure_signature=signature,
         )
-    assert count_prior_attempts("runner_dashboard", 42, "CI", audit_file=audit_file) == 2
-    assert count_prior_attempts("Runner_Dashboard", 44, "CI", audit_file=audit_file) == 0
-    assert count_prior_attempts("Runner_Dashboard", 42, "CI", audit_file=tmp_path / "missing.json") == 0
+
+    record(42, same)
+    record(42, same)
+    assert count_consecutive_attempts("runner_dashboard", 42, same, audit_file=audit_file) == 2
+    record(42, other)  # a different failure on the same PR breaks the streak
+    assert count_consecutive_attempts("Runner_Dashboard", 42, same, audit_file=audit_file) == 0
+    assert count_consecutive_attempts("Runner_Dashboard", 42, other, audit_file=audit_file) == 1
+    record(43, same)  # other PRs never count
+    assert count_consecutive_attempts("Runner_Dashboard", 42, other, audit_file=audit_file) == 1
+    assert count_consecutive_attempts("Runner_Dashboard", 42, same, audit_file=tmp_path / "missing.json") == 0

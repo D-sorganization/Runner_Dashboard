@@ -302,7 +302,7 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
 
     real_add_worktree = workspace_mod.add_worktree
 
-    def _guarded_add_worktree(checkout, worktree, branch):
+    def _guarded_add_worktree(checkout, worktree, branch, **kwargs):
         # DbC guard: fail loudly instead of silently shelling out to real
         # git if a test-created run ever resolves a worktree path outside
         # this test's own tmp_path.
@@ -313,7 +313,7 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
                 f"add_worktree() target {worktree!r} is outside the pytest tmp_path "
                 f"{tmp_path!r}; staff tests must never create real git worktrees (#1521)."
             ) from None
-        return real_add_worktree(checkout, worktree, branch)
+        return real_add_worktree(checkout, worktree, branch, **kwargs)
 
     monkeypatch.setattr(workspace_mod, "add_worktree", _guarded_add_worktree)
 

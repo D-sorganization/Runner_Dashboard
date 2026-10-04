@@ -188,11 +188,19 @@ def clone_repo(repo: str) -> Path:
     return dest
 
 
-def add_worktree(checkout: Path, worktree: Path, branch: str) -> None:
-    """``git fetch`` then ``git worktree add -b <branch> <worktree> origin/main``."""
+def add_worktree(checkout: Path, worktree: Path, branch: str, *, start_ref: str = "") -> None:
+    """``git fetch`` then ``git worktree add -b <branch> <worktree> origin/<start_ref or main>``.
+
+    ``start_ref`` names an existing remote branch (a PR head, #1881); it is fetched
+    explicitly so a blobless clone has it even when it is not in the default refspec.
+    """
     worktree.parent.mkdir(parents=True, exist_ok=True)
     _git(checkout, "fetch", "origin", "--quiet")
-    _git(checkout, "worktree", "add", "-b", branch, str(worktree), "origin/main")
+    base = "origin/main"
+    if start_ref:
+        _git(checkout, "fetch", "origin", "--quiet", f"+refs/heads/{start_ref}:refs/remotes/origin/{start_ref}")
+        base = f"origin/{start_ref}"
+    _git(checkout, "worktree", "add", "-b", branch, str(worktree), base)
 
 
 def _git(cwd: Path, *args: str) -> None:

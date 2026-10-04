@@ -21,9 +21,10 @@ from ci_fix_dispatch import (
     GLOBAL_CI_FIX_LOCK_MGR,
     build_ci_fix_prompt,
     classify_failure_type,
-    count_prior_attempts,
+    count_consecutive_attempts,
     evaluate_ci_fix_trigger,
     extract_failing_test_names,
+    failure_signature,
     pr_number_from_queue_ref,
     record_ci_fix_audit,
     route_ci_fix,
@@ -72,7 +73,8 @@ class CIFixDispatchRequest(BaseModel):
     )
     pr_number: int = Field(gt=0, validation_alias=AliasChoices("pr_number", "number"))
     kind: Literal["ci_failure", "merge_conflict"] = "ci_failure"
-    branch: str = Field(default="", max_length=255)
+    # The PR head branch the session checks out and pushes to (#1887 review): required, same repo.
+    branch: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._/-]+$")
     base_ref: str = Field(default="main", max_length=255)
     workflow_name: str = Field(default="", max_length=200)
     run_id: int | None = None
@@ -84,6 +86,19 @@ class CIFixDispatchRequest(BaseModel):
     conflicting_files: list[str] | None = None
     session_id: str = Field(default="", max_length=200)
     from_queue: bool = False
+
+
+def _pr_head_note(branch: str) -> str:
+    """Pin the session to the PR head; stored in the prompt, so a retried run keeps it."""
+    return "\n".join(
+        [
+            f"PR head: this worktree starts at `origin/{branch}`. If HEAD is not based on it, run",
+            f"`git fetch origin {branch} && git reset --hard origin/{branch}` before editing.",
+            f"Push with `git push origin HEAD:{branch}` (never force). Do not open a new pull request:",
+            "this fixes the existing one, which overrides the fleet rule to open a PR.",
+            "",
+        ]
+    )
 
 
 def build_merge_conflict_prompt(repo: str, pr_number: int, branch: str, base_ref: str) -> str:
@@ -156,7 +171,8 @@ async def _route_and_launch(
     )
     failing_tests = req.failing_tests if req.failing_tests is not None else extract_failing_test_names(log_tail)
     workflow_name = req.workflow_name or (MERGE_QUEUE_WORKFLOW if is_conflict else "")
-    attempt = req.attempt_number or count_prior_attempts(req.repo, req.pr_number, workflow_name) + 1
+    signature = failure_signature(workflow_name, failing_tests, failure_type)
+    attempt = req.attempt_number or count_consecutive_attempts(req.repo, req.pr_number, signature) + 1
     route = route_ci_fix(failure_type, attempt_number=attempt)
     if is_conflict:
         prompt = build_merge_conflict_prompt(req.repo, req.pr_number, req.branch, req.base_ref)
@@ -172,6 +188,7 @@ async def _route_and_launch(
         )
         if req.from_queue:
             prompt = f"{prompt}\n{_queue_note(req.repo, req.pr_number)}\n"
+    prompt = f"{_pr_head_note(req.branch)}\n{prompt}"
     provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
     if not available_providers().get(provider, False):
         raise CIFixLaunchUnavailableError(
@@ -189,6 +206,7 @@ async def _route_and_launch(
         machine="local",
         surface="ci_fix",
         skip_premise_check=True,
+        head_ref=req.branch,
     )
     launched = await launcher(cmd, caller)
     staff_run_id = str((launched.get("run") or {}).get("id") or "")
@@ -204,6 +222,7 @@ async def _route_and_launch(
         cost_budget=route.cost_budget,
         staff_run_id=staff_run_id,
         effort=route.effort,
+        failure_signature=signature,
     )
     log.info(
         "ci-fix: dispatched %s#%d attempt=%d route=%s run=%s",
@@ -273,6 +292,16 @@ async def _ci_failure_request(event: CIFixEvent) -> CIFixDispatchRequest | str:
             return f"cannot read PR {event.full_repo}#{event.pr_number} to rule out a draft: {exc}"
     if pr and str(pr.get("state") or "open") != "open":
         return f"PR {event.full_repo}#{event.pr_number} is not open"
+    head_obj = pr.get("head")
+    head: dict[str, Any] = head_obj if isinstance(head_obj, dict) else {}
+    head_repo = str((head.get("repo") or {}).get("full_name") or event.head_repo)
+    if head_repo and head_repo.lower() != event.full_repo.lower():
+        return f"PR {event.full_repo}#{event.pr_number} comes from fork {head_repo}; its head cannot be pushed to"
+    # A merge-group run's head is the temporary queue ref, never the PR branch.
+    fallback = "" if pr_number_from_queue_ref(event.head_branch) else event.head_branch
+    branch = str(head.get("ref") or fallback)
+    if not branch:
+        return f"cannot resolve the head branch of PR {event.full_repo}#{event.pr_number}"
     # A queued PR has merge intent by construction; elsewhere auto-merge must be armed.
     facts = {
         "number": event.pr_number,
@@ -292,12 +321,10 @@ async def _ci_failure_request(event: CIFixEvent) -> CIFixDispatchRequest | str:
     )
     if not decision.eligible:
         return decision.reason
-    head_obj = pr.get("head")
-    head: dict[str, Any] = head_obj if isinstance(head_obj, dict) else {}
     return CIFixDispatchRequest(
         repo=event.repo,
         pr_number=event.pr_number,
-        branch=str(head.get("ref") or ("" if event.from_queue else event.head_branch)),
+        branch=branch,
         base_ref=event.base_ref or "main",
         workflow_name=workflow_name,
         run_id=run_id,
@@ -311,6 +338,10 @@ def _merge_conflict_request(event: CIFixEvent) -> CIFixDispatchRequest | str:
         return "Auto-fix is disabled on draft PRs (RD-0)"
     if event.pr_state and event.pr_state != "open":
         return f"PR {event.full_repo}#{event.pr_number} is not open"
+    if event.head_repo and event.head_repo.lower() != event.full_repo.lower():
+        return f"PR {event.full_repo}#{event.pr_number} comes from fork {event.head_repo}; its head cannot be pushed to"
+    if not event.head_branch:
+        return f"cannot resolve the head branch of PR {event.full_repo}#{event.pr_number}"
     return CIFixDispatchRequest(
         repo=event.repo,
         pr_number=event.pr_number,

@@ -33,7 +33,7 @@ from routers import remediation_ci_fix
 
 from backend.server import app
 
-SECRET = "test-webhook-secret"
+SECRET = "test-webhook-secret"  # pragma: allowlist secret
 OPERATOR = Principal(id="op", type="human", name="Op", roles=["operator"], scopes=["remediation.dispatch"])
 WEBHOOK_PATH = "/api/remediation/ci-fix/webhook"
 
@@ -182,7 +182,7 @@ def _dequeued(reason: str, *, draft: bool = False) -> dict[str, Any]:
     }
 
 
-QUEUE_REF = "gh-readonly-queue/main/pr-77-0123456789abcdef0123456789abcdef01234567"
+QUEUE_REF = f"gh-readonly-queue/main/pr-77-{'a' * 40}"
 
 
 # ─── webhook route ───────────────────────────────────────────────────────────
@@ -418,7 +418,13 @@ def test_dispatch_endpoint_launches_and_attaches_run(
 ) -> None:
     resp = operator_client.post(
         "/api/remediation/ci-fix/dispatch",
-        json={"repo": "Runner_Dashboard", "pr_number": 303, "workflow_name": "Lint", "log_tail": "ruff failed"},
+        json={
+            "repo": "Runner_Dashboard",
+            "pr_number": 303,
+            "branch": "feat/x",
+            "workflow_name": "Lint",
+            "log_tail": "ruff failed",
+        },
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -440,7 +446,13 @@ def test_dispatch_endpoint_501_when_provider_missing(
     )
     resp = operator_client.post(
         "/api/remediation/ci-fix/dispatch",
-        json={"repo": "Runner_Dashboard", "pr_number": 304, "workflow_name": "Lint", "log_tail": "ruff failed"},
+        json={
+            "repo": "Runner_Dashboard",
+            "pr_number": 304,
+            "branch": "feat/x",
+            "workflow_name": "Lint",
+            "log_tail": "ruff failed",
+        },
     )
     assert resp.status_code == 501
     assert "codex" in resp.json()["detail"]
@@ -460,14 +472,99 @@ def test_dispatch_endpoint_validates_body(
 def test_dispatch_escalates_after_three_recorded_attempts(
     operator_client: TestClient, launcher: FakeLauncher, locks: CIFixLockManager, audit_file: Path
 ) -> None:
-    body = {"repo": "Runner_Dashboard", "pr_number": 305, "workflow_name": "CI Standard", "log_tail": "FAILED t.py::x"}
+    body = {
+        "repo": "Runner_Dashboard",
+        "pr_number": 305,
+        "branch": "feat/x",
+        "workflow_name": "CI Standard",
+        "log_tail": "FAILED t.py::x",
+    }
     tiers = []
-    for _ in range(3):
-        resp = operator_client.post("/api/remediation/ci-fix/dispatch", json=body)
+    for log_tail in ("FAILED t.py::x", "FAILED t.py::x", "FAILED t.py::x", "FAILED t.py::other"):
+        resp = operator_client.post("/api/remediation/ci-fix/dispatch", json={**body, "log_tail": log_tail})
         assert resp.status_code == 200, resp.text
         tiers.append(resp.json()["route"]["tier"])
         locks.release("Runner_Dashboard", 305)
-    assert tiers == ["cli", "cli", "strong"]
+    # The third consecutive identical failure escalates; a new failure starts a fresh streak.
+    assert tiers == ["cli", "cli", "strong", "cli"]
+
+
+def test_dispatch_launches_on_the_pr_head_and_pushes_to_it(
+    operator_client: TestClient, launcher: FakeLauncher, locks: CIFixLockManager, audit_file: Path
+) -> None:
+    resp = operator_client.post(
+        "/api/remediation/ci-fix/dispatch",
+        json={"repo": "Runner_Dashboard", "pr_number": 306, "branch": "feat/fix-me", "log_tail": "FAILED t.py::x"},
+    )
+    assert resp.status_code == 200, resp.text
+    cmd = launcher.commands[0]
+    assert cmd.head_ref == "feat/fix-me"
+    assert "git push origin HEAD:feat/fix-me" in cmd.prompt
+    assert "do not open a new pull request" in cmd.prompt.lower()
+
+
+@pytest.mark.parametrize("branch", ["", "bad branch;rm -rf"])
+def test_dispatch_requires_a_safe_pr_head_branch(
+    operator_client: TestClient, launcher: FakeLauncher, locks: CIFixLockManager, branch: str
+) -> None:
+    resp = operator_client.post(
+        "/api/remediation/ci-fix/dispatch", json={"repo": "Runner_Dashboard", "pr_number": 307, "branch": branch}
+    )
+    assert resp.status_code == 422
+    assert launcher.commands == []
+
+
+def test_webhook_skips_fork_prs(
+    client: TestClient,
+    webhook_env: None,
+    launcher: FakeLauncher,
+    locks: CIFixLockManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gh = FakeGitHub(
+        {
+            "/repos/D-sorganization/Runner_Dashboard/pulls/42": {
+                "number": 42,
+                "state": "open",
+                "draft": False,
+                "auto_merge": {"merge_method": "squash"},
+                "head": {"ref": "feat/x", "repo": {"full_name": "someone/Runner_Dashboard"}},
+                "base": {"ref": "main"},
+            }
+        }
+    )
+    monkeypatch.setattr(ci_fix_service, "gh_client", gh)
+    _post(client, "workflow_run", _workflow_run())
+    assert launcher.commands == []
+    assert not locks.is_locked("Runner_Dashboard", 42)
+
+
+def test_redelivery_retries_a_dispatch_that_failed(
+    client: TestClient,
+    webhook_env: None,
+    launcher: FakeLauncher,
+    locks: CIFixLockManager,
+    audit_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A delivery is recorded only once its dispatch is accepted, so a manual redelivery can retry it."""
+    monkeypatch.setattr(ci_fix_service, "gh_client", FakeGitHub({}))
+    monkeypatch.setattr(
+        ci_fix_service, "available_providers", lambda: {"claude": False, "codex": False, "antigravity": False}
+    )
+    delivery = uuid.uuid4().hex
+    assert _post(client, "pull_request", _dequeued("MERGE_CONFLICT"), delivery=delivery).json()["accepted"] is True
+    assert launcher.commands == []
+
+    monkeypatch.setattr(
+        ci_fix_service, "available_providers", lambda: dict.fromkeys(("claude", "codex", "antigravity"), True)
+    )
+    assert _post(client, "pull_request", _dequeued("MERGE_CONFLICT"), delivery=delivery).json()["accepted"] is True
+    assert len(launcher.commands) == 1
+    locks.release("Runner_Dashboard", 77)
+    replay = _post(client, "pull_request", _dequeued("MERGE_CONFLICT"), delivery=delivery).json()
+    assert replay == {"accepted": False, "reason": "replayed delivery"}
+    assert len(launcher.commands) == 1
 
 
 def test_webhook_path_is_exempt_from_operator_perimeter_only() -> None:
@@ -475,4 +572,4 @@ def test_webhook_path_is_exempt_from_operator_perimeter_only() -> None:
 
     assert is_auth_exempt(WEBHOOK_PATH)
     assert not is_auth_exempt("/api/remediation/ci-fix/dispatch")
-    assert ci_fix_events.GITHUB_WEBHOOK_SECRET_ENV == "GITHUB_WEBHOOK_SECRET"
+    assert ci_fix_events.GITHUB_WEBHOOK_SECRET_ENV == "GITHUB_WEBHOOK_SECRET"  # pragma: allowlist secret

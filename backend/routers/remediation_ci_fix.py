@@ -27,6 +27,7 @@ from ci_fix_dispatch import (
 )
 from ci_fix_events import (
     GITHUB_WEBHOOK_SECRET_ENV,
+    CIFixEvent,
     ci_fix_dispatch_enabled,
     parse_github_event,
     verify_github_signature,
@@ -64,6 +65,17 @@ def _get_replay_store() -> ReplayStore:
     return _replay_store
 
 
+async def _process_delivery(event: CIFixEvent, delivery_id: str) -> None:
+    """Dispatch, then mark the delivery done only if the dispatch was accepted (#1887 review).
+
+    A skipped or failed dispatch leaves the delivery unrecorded, so a manual GitHub
+    redelivery (same ``X-GitHub-Delivery``) can retry it.
+    """
+    result = await handle_ci_fix_event(event)
+    if delivery_id and result.get("dispatched"):
+        _get_replay_store().record(delivery_id)
+
+
 @router.post(WEBHOOK_PATH, status_code=202)
 async def github_ci_fix_webhook(
     request: Request,
@@ -87,18 +99,15 @@ async def github_ci_fix_webhook(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="Expected JSON object body")
 
-    store = _get_replay_store()
-    if x_github_delivery:
-        if store.is_replay(x_github_delivery):
-            return {"accepted": False, "reason": "replayed delivery"}
-        store.record(x_github_delivery)
+    if x_github_delivery and _get_replay_store().is_replay(x_github_delivery):
+        return {"accepted": False, "reason": "replayed delivery"}
     if not ci_fix_dispatch_enabled():
         return {"accepted": False, "reason": "CI_FIX_DISPATCH_ENABLED is off"}
 
     event, reason = parse_github_event(x_github_event, payload)
     if event is None:
         return {"accepted": False, "reason": reason}
-    background.add_task(handle_ci_fix_event, event)
+    background.add_task(_process_delivery, event, x_github_delivery)
     logger.info("ci-fix webhook: queued %s for %s#%d", event.kind, event.full_repo, event.pr_number)
     return {"accepted": True, "kind": event.kind, "repo": event.repo, "pr_number": event.pr_number}
 
