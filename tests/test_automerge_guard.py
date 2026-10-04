@@ -316,12 +316,16 @@ class CloudGh(FakeGh):
         merge_stderr: str = GRAPHQL_BLOCKED,
         rest_returncode: int = 0,
         stored_method: str | None = None,
+        verify_returncode: int = 0,
+        delete_returncode: int = 0,
         **kw: object,
     ) -> None:
         super().__init__(merge_returncode=1, **kw)  # type: ignore[arg-type]
         self.merge_stderr = merge_stderr
         self.rest_returncode = rest_returncode
         self.stored_method = stored_method
+        self.verify_returncode = verify_returncode
+        self.delete_returncode = delete_returncode
 
     def __call__(self, cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
         argv = list(cmd)
@@ -332,9 +336,16 @@ class CloudGh(FakeGh):
                 "",
             )
             stored = self.stored_method if self.stored_method is not None else requested
+            if self.verify_returncode:
+                return _completed(returncode=self.verify_returncode, stderr="get boom")
             return _completed(stdout=stored + "\n")
         if any(part.endswith("/ccr/auto_merge") for part in argv):
             self.calls.append(argv)
+            if "DELETE" in argv:
+                return _completed(
+                    returncode=self.delete_returncode,
+                    stderr="delete boom" if self.delete_returncode else "",
+                )
             return _completed(
                 returncode=self.rest_returncode,
                 stderr="rest boom" if self.rest_returncode else "",
@@ -387,6 +398,90 @@ def test_rest_fallback_verifies_the_stored_method() -> None:
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
     assert result.armed is True
     assert any(".auto_merge.merge_method" in c for c in fake.calls)
+
+
+def _delete_calls(fake: CloudGh) -> list[list[str]]:
+    return [c for c in fake.rest_calls if "DELETE" in c]
+
+
+def test_verify_mismatch_revokes_the_arm() -> None:
+    """Codex P1 on RD#1893: a PUT that stored the wrong method must be undone."""
+    fake = CloudGh(stored_method="merge")
+    result = automerge_guard.arm_auto_merge("o/r", 7, strategy="squash", runner=fake)
+    assert result.armed is False
+    deletes = _delete_calls(fake)
+    assert len(deletes) == 1
+    assert deletes[0][:4] == ["gh", "api", "-X", "DELETE"]
+    assert "repos/o/r/pulls/7/ccr/auto_merge" in deletes[0]
+    assert "revoked" in result.detail
+
+
+@pytest.mark.parametrize("case", ["get-fails", "empty"])
+def test_unverifiable_arm_is_revoked(case: str) -> None:
+    fake = CloudGh(verify_returncode=1) if case == "get-fails" else CloudGh(stored_method="")
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.armed is False
+    assert len(_delete_calls(fake)) == 1
+
+
+def test_failed_revoke_says_auto_merge_may_still_be_on() -> None:
+    fake = CloudGh(stored_method="merge", delete_returncode=1)
+    result = automerge_guard.arm_auto_merge("o/r", 7, strategy="squash", runner=fake)
+    assert result.armed is False
+    assert len(_delete_calls(fake)) == 1
+    assert "may still be ON" in result.detail
+    assert "manual" in result.detail.lower()
+    assert "delete boom" in result.detail
+
+
+def test_failed_revoke_flags_result_and_logs_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake = CloudGh(stored_method="merge", delete_returncode=1)
+    with caplog.at_level("ERROR"):
+        result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.auto_merge_may_be_on is True
+    assert any(r.levelname == "ERROR" and "may still be ON" in r.getMessage() for r in caplog.records)
+
+
+def test_revoked_arm_does_not_flag_may_be_on() -> None:
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=CloudGh(stored_method="merge"))
+    assert result.auto_merge_may_be_on is False
+
+
+def test_cli_surfaces_detail_and_distinct_exit_when_revoke_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = automerge_guard.ArmResult(
+        False,
+        automerge_guard.HoldVerdict(False, ()),
+        "revoke FAILED (x); auto-merge may still be ON and needs manual disarm",
+        auto_merge_may_be_on=True,
+    )
+    monkeypatch.setattr(automerge_guard, "arm_auto_merge", lambda *a, **k: result)
+    code = automerge_guard.main(["o/r", "1", "--arm"])
+    out = capsys.readouterr().out
+    assert code == automerge_guard.EXIT_ARM_MAY_BE_ON == 3
+    assert "DANGER" in out and "may still be ON" in out
+
+
+def test_cli_prints_detail_for_ordinary_unarmed_result(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = automerge_guard.ArmResult(
+        False,
+        automerge_guard.HoldVerdict(False, ()),
+        "REST route stored merge method 'merge', not the requested 'squash'; auto-merge revoked",
+    )
+    monkeypatch.setattr(automerge_guard, "arm_auto_merge", lambda *a, **k: result)
+    assert automerge_guard.main(["o/r", "1", "--arm"]) == 1
+    assert "auto-merge revoked" in capsys.readouterr().out
+
+
+def test_verified_arm_is_not_revoked() -> None:
+    fake = CloudGh()
+    assert automerge_guard.arm_auto_merge("o/r", 7, runner=fake).armed is True
+    assert _delete_calls(fake) == []
 
 
 def test_other_403_does_not_trigger_rest_fallback() -> None:
