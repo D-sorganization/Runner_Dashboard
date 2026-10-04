@@ -241,6 +241,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         "run_id": run_id,
     }
     from dispatch_routing import resolve_model_routing
+
     routing = resolve_model_routing(labels=(), prompt=cmd.prompt, requested_model=cmd.model or "")
     try:
         record_audit(
