@@ -34,6 +34,7 @@ import config_schema
 import dispatch_quota
 import quota_enforcement
 from dispatch_contract import DispatchAccess
+from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
 from identity import identity_manager
 from pydantic import BaseModel, Field
 from time_utils import utc_now_iso
@@ -515,7 +516,7 @@ async def dispatch_to_issues(
                     len(rejected_due_to_quota),
                 )
 
-    # ── Pickability pre-filter ────────────────────────────────────────────────
+    # ── Pickability pre-filter & premise check (RD-2 / #1847) ─────────────────
     pre_rejected: list[dict[str, Any]] = []
     filtered_targets: list[tuple[str, int]] = []
     for repo, num in targets:
@@ -529,6 +530,30 @@ async def dispatch_to_issues(
                         "reason": f"not_pickable: {not_pickable}",
                     }
                 )
+                continue
+            premise_res = await evaluate_dispatch_premise(
+                repository=repo,
+                issue_number=num,
+                prompt=req.prompt,
+                run_cmd_fn=run_cmd_fn,
+                repo_root=repo_root,
+            )
+            if not premise_res.allowed:
+                pre_rejected.append(
+                    {
+                        "repository": repo,
+                        "number": num,
+                        "reason": f"premise_rejected: {premise_res.reason} ({premise_res.detail})",
+                    }
+                )
+                await log_dispatch_skip(premise_res, repo, num)
+                if premise_res.should_close and premise_res.comment:
+                    await close_item_as_resolved_on_main(
+                        repo,
+                        num,
+                        premise_res.comment,
+                        run_cmd_fn=run_cmd_fn,
+                    )
                 continue
         filtered_targets.append((repo, num))
 

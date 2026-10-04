@@ -150,6 +150,28 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     outage starts nothing. Any refusal is an ``HTTPException`` raised before a run row
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
+    if not cmd.dry_run and (cmd.issue or cmd.prompt):
+        from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+
+        premise_res = await evaluate_dispatch_premise(
+            repository=cmd.repo,
+            issue_number=cmd.issue,
+            prompt=cmd.prompt,
+        )
+        if not premise_res.allowed:
+            await log_dispatch_skip(premise_res, cmd.repo, cmd.issue)
+            if premise_res.should_close and premise_res.comment and cmd.issue:
+                await close_item_as_resolved_on_main(cmd.repo, cmd.issue, premise_res.comment)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "premise_rejected",
+                    "reason": premise_res.reason,
+                    "message": premise_res.detail,
+                    "comment": premise_res.comment,
+                },
+            )
+
     runner = get_runner()
     spec = runner.roles().get(cmd.role)
     decision = None
