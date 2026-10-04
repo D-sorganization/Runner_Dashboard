@@ -78,7 +78,9 @@ def test_default_policy_file_exists_and_lists_expected_fleet_repos() -> None:
     assert "D-sorganization/AffineDrift" in policy["repositories"]
     assert "D-sorganization/Tools" in policy["repositories"]
     assert "D-sorganization/Tools_Private" in policy["repositories"]
-    assert len(policy["repositories"]) == 8
+    # Every active fleet repository runs the merge queue (RM#1900, 2026-10-04).
+    assert len(policy["repositories"]) == 41
+    assert "D-sorganization/Florida-Compressor" in policy["repositories"]
 
 
 def test_load_policy_missing_file_raises(tmp_path: Path) -> None:
@@ -369,3 +371,31 @@ def test_get_queue_merge_settings_route(monkeypatch: pytest.MonkeyPatch, sample_
     assert response.status_code == 200
     assert response.json()["status"] == "pass"
     assert response.json()["results"][0]["repo"] == "D-sorganization/Runner_Dashboard"
+
+
+def test_live_snapshot_reads_protection_on_the_repo_default_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import fleet_merge_checker
+
+    urls: list[str] = []
+
+    def fake_api(url: str, *, token: str | None) -> Any:
+        urls.append(url)
+        if url.endswith("/Florida-Compressor"):
+            return {"default_branch": "master"}
+        if url.endswith("/actions/workflows"):
+            return {
+                "workflows": [
+                    {"name": "Auto-Update PRs", "state": "disabled_manually"},
+                    {"name": "Old", "state": "deleted"},
+                    {"name": "CI Standard", "state": "active"},
+                ]
+            }
+        return [] if url.endswith("/rulesets") else {}
+
+    monkeypatch.setattr(fleet_merge_checker, "_github_api", fake_api)
+    snap = fleet_merge_checker.fetch_live_repo_snapshot("D-sorganization/Florida-Compressor", None)
+    assert any(u.endswith("/branches/master/protection") for u in urls)
+    # Disabled or deleted workflows cannot run, so they are not drift.
+    assert snap["existing_workflow_names"] == ["CI Standard"]

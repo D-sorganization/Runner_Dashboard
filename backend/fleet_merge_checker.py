@@ -247,11 +247,16 @@ def _github_api(url: str, *, token: str | None) -> Any:
 def fetch_live_repo_snapshot(
     repo: str,
     token: str | None,
-    default_branch: str = "main",
+    default_branch: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch live settings for a single repository via GitHub REST API."""
+    """Fetch live settings for a single repository via GitHub REST API.
+
+    Protection is read on ``default_branch`` when given, otherwise on the
+    repository's own default branch (several fleet repos do not use ``main``).
+    """
     api_root = f"https://api.github.com/repos/{repo}"
     repo_details = _github_api(api_root, token=token)
+    default_branch = default_branch or repo_details.get("default_branch") or "main"
 
     try:
         protection = _github_api(f"{api_root}/branches/{default_branch}/protection", token=token)
@@ -276,7 +281,10 @@ def fetch_live_repo_snapshot(
 
     try:
         workflows_resp = _github_api(f"{api_root}/actions/workflows", token=token)
-        existing_workflow_names = [wf.get("name", "") for wf in workflows_resp.get("workflows", [])]
+        # Disabled and deleted workflows stay listed but cannot run.
+        existing_workflow_names = [
+            wf.get("name", "") for wf in workflows_resp.get("workflows", []) if wf.get("state", "active") == "active"
+        ]
     except urllib.error.HTTPError:
         existing_workflow_names = []
 
