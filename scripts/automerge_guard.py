@@ -1,5 +1,5 @@
 # Vendored from Repository_Management scripts/automerge_guard.py
-# (commit dac5db339cd9a62d3a8d49f7d1aebc3e20fbd9ba; pending RM#1939). Re-sync from upstream; do
+# (RM main 74070855, includes RM#1937 and RM#1939). Re-sync from upstream; do
 # not fork. No local changes except ruff format at this repository's line
 # length. collate-changes.yml arms auto-merge only through this guard.
 # Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
@@ -38,9 +38,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -57,8 +58,25 @@ DELETIONS_ACK_LABEL = "deletions-acknowledged"
 #: Body opt-out, for repos where the reviewer cannot apply labels.
 DELETIONS_ACK_BODY = "deletions-acknowledged:"
 
+#: Substring of the 403 body Claude Code cloud sessions get for any GraphQL call
+#: (which ``gh pr merge --auto`` uses). Only this message selects the REST route.
+GRAPHQL_BLOCKED_MARKER = "GitHub GraphQL is not available from Claude Code sessions"
+
 #: Injected in tests so the whole module runs hermetically — no gh, no network.
 CommandRunner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
+
+
+#: GOV-1 (#1917): token prefixes. An App installation token (``ghs_``) acts as
+#: the agent's bot identity; the others act as a human user, so agent actions
+#: become indistinguishable from the owner's in audit logs and carry admin rights.
+APP_TOKEN_PREFIXES = ("ghs_",)
+USER_TOKEN_PREFIXES = ("ghp_", "github_pat_", "gho_", "ghu_")
+
+#: Environment variables gh consults, in gh's own precedence order.
+TOKEN_ENV_VARS = ("GH_TOKEN", "GITHUB_TOKEN")
+
+#: Exit code when ``--require-app-token`` refuses a non-App token.
+EXIT_IDENTITY_REFUSED = 2
 
 
 def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -72,6 +90,78 @@ def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
         errors="replace",
         check=False,
     )
+
+
+def classify_token(token: str) -> str:
+    """Classify a GitHub token by prefix without ever returning its value.
+
+    Precondition: ``token`` is a ``str`` (empty means no token).
+    Postcondition: returns one of ``"app"``, ``"user"``, ``"unknown"``, ``"none"``.
+    """
+    if not isinstance(token, str):
+        raise TypeError("token must be a str")
+    value = token.strip()
+    if not value:
+        return "none"
+    if value.startswith(APP_TOKEN_PREFIXES):
+        return "app"
+    if value.startswith(USER_TOKEN_PREFIXES):
+        return "user"
+    return "unknown"
+
+
+def active_token_kind(env: Mapping[str, str] | None = None, *, runner: CommandRunner = _default_runner) -> str:
+    """Return the kind of token gh will use: env vars first, then ``gh auth token``.
+
+    The token value stays local to this function; only its kind is returned.
+    """
+    source = os.environ if env is None else env
+    for var in TOKEN_ENV_VARS:
+        if source.get(var, "").strip():
+            return classify_token(source[var])
+    try:
+        proc = runner(["gh", "auth", "token"])
+    except OSError:
+        return "none"
+    if proc.returncode != 0:
+        return "none"
+    return classify_token(proc.stdout or "")
+
+
+_IDENTITY_WARNINGS = {
+    "user": (
+        "GOV-1: the active GitHub token is a personal/user token, not a GitHub "
+        "App installation token (ghs_). Agent actions will be attributed to a "
+        "human account. Run under the agent's App identity (#1917)."
+    ),
+    "unknown": (
+        "GOV-1: the active GitHub token type is unrecognised; cannot confirm it "
+        "is a GitHub App installation token (ghs_) (#1917)."
+    ),
+    "none": (
+        "GOV-1: no GitHub token found (GH_TOKEN, GITHUB_TOKEN or gh auth); "
+        "cannot confirm a GitHub App identity (#1917)."
+    ),
+}
+
+
+def check_token_identity(
+    *,
+    require_app_token: bool,
+    env: Mapping[str, str] | None = None,
+    runner: CommandRunner = _default_runner,
+) -> bool:
+    """Warn on stderr unless the active token is an App installation token.
+
+    Returns ``False`` only when ``require_app_token`` is set and the token is not
+    an App token; otherwise the warning is advisory and the caller proceeds.
+    The token itself is never logged.
+    """
+    kind = active_token_kind(env, runner=runner)
+    if kind == "app":
+        return True
+    logger.warning("WARNING: %s", _IDENTITY_WARNINGS[kind])
+    return not require_app_token
 
 
 @dataclass(frozen=True)
@@ -123,11 +213,12 @@ def _gh_lines(runner: CommandRunner, args: Sequence[str]) -> list[str]:
     return [line for line in proc.stdout.splitlines() if line.strip()]
 
 
-def _head_arrival(runner: CommandRunner, repo: str, sha: str) -> str:
-    """Return the GitHub-side time the head ``sha`` reached ``repo``, or ``""``.
+def _head_arrival(runner: CommandRunner, repo: str, pr: int, sha: str) -> str:
+    """Return the GitHub-side time ``sha`` became the head of ``repo#pr``, or ``""``.
 
-    Pre: ``sha`` is a commit SHA of ``repo``. Post: an ISO-8601 UTC timestamp
-    assigned by GitHub, or the empty string when none can be established.
+    Pre: ``sha`` is the head commit SHA of pull request ``pr`` in ``repo``.
+    Post: an ISO-8601 UTC timestamp assigned by GitHub, or the empty string
+    when none can be established.
 
     Why not the commit's ``committer.date``: the contributor writes it, so a
     future-dated commit would postdate any reviewer disarm and let automation
@@ -136,6 +227,12 @@ def _head_arrival(runner: CommandRunner, repo: str, sha: str) -> str:
     timeline's ``committed`` events carry the same author-controlled date, and
     ``head_ref_force_pushed`` covers only force-pushes.) A later suite for the
     same SHA never moves the minimum.
+
+    The suite time is when the SHA *first* got checks, which predates the PR if
+    a branch is reset or force-pushed to a SHA seen elsewhere. So the result is
+    ``max(earliest suite, latest head_ref_force_pushed event)``. If the timeline
+    call fails the suite time alone is used: that can only over-hold, never
+    re-arm early.
     """
     if not sha:
         return ""
@@ -149,7 +246,23 @@ def _head_arrival(runner: CommandRunner, repo: str, sha: str) -> str:
             ".check_suites[].created_at",
         ],
     )
-    return min(lines) if lines else ""
+    if not lines:
+        return ""
+    arrived = min(lines)
+    try:
+        pushes = _gh_lines(
+            runner,
+            [
+                "api",
+                f"repos/{repo}/issues/{pr}/timeline?per_page=100",
+                "--paginate",
+                "--jq",
+                '.[] | select(.event == "head_ref_force_pushed") | .created_at',
+            ],
+        )
+    except RuntimeError:
+        return arrived
+    return max([arrived, *pushes])
 
 
 def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
@@ -208,7 +321,7 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
                 '| select((.actor.type // "User") != "Bot") | .created_at',
             ],
         )
-        arrived = _head_arrival(run, repo, pull.head_sha) if disarms else ""
+        arrived = _head_arrival(run, repo, pr, pull.head_sha) if disarms else ""
         if disarms:
             last_disarm = max(disarms)
             if not arrived:
@@ -256,6 +369,16 @@ def _deletions_acknowledged(lowered_labels: set[str], body: str) -> bool:
     return False
 
 
+def _stored_merge_method(repo: str, pr: int, run: CommandRunner) -> str:
+    """Return the auto-merge method GitHub actually stored on ``repo#pr``.
+
+    Used after the REST fallback, whose route may not honour the requested
+    method (Codex review on #1937). Returns "" when it cannot be read.
+    """
+    proc = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".auto_merge.merge_method"])
+    return proc.stdout.strip().lower() if proc.returncode == 0 else ""
+
+
 def arm_auto_merge(
     repo: str,
     pr: int,
@@ -269,6 +392,14 @@ def arm_auto_merge(
     This is the ONLY sanctioned way for fleet automation to arm auto-merge.
     Calling ``gh pr merge --auto`` directly bypasses the reviewer's decision and
     is what this module exists to stop.
+
+    Preconditions: ``repo`` is ``owner/name``; ``strategy`` is squash, merge or
+    rebase. Postcondition: no arm call of any kind (GraphQL or REST) is made
+    unless :func:`evaluate_hold` returned not-held. If the GraphQL arm fails
+    with the Claude Code cloud "GraphQL is not available" 403 (and only that),
+    exactly one fallback ``PUT repos/{repo}/pulls/{pr}/ccr/auto_merge`` is made,
+    and it is reported as armed only if the merge method GitHub stored equals
+    ``strategy``.
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
@@ -280,6 +411,25 @@ def arm_auto_merge(
     if delete_branch:
         cmd.append("--delete-branch")
     proc = run(cmd)
+    if proc.returncode != 0 and GRAPHQL_BLOCKED_MARKER in (proc.stderr + proc.stdout):
+        logger.info("GraphQL blocked; arming %s#%s via the REST route.", repo, pr)
+        proc = run(
+            [
+                "gh",
+                "api",
+                "-X",
+                "PUT",
+                f"repos/{repo}/pulls/{pr}/ccr/auto_merge",
+                "-f",
+                f"merge_method={strategy}",
+            ]
+        )
+        if proc.returncode == 0:
+            stored = _stored_merge_method(repo, pr, run)
+            if stored != strategy:
+                detail = f"REST route stored merge method {stored or 'none'!r}, not the requested {strategy!r}"
+                logger.warning("Not armed as requested on %s#%s: %s", repo, pr, detail)
+                return ArmResult(False, verdict, detail)
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Could not arm auto-merge on %s#%s: %s", repo, pr, detail)
@@ -293,7 +443,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """CLI: ``automerge_guard.py <owner/repo> <pr> [--arm] [--strategy squash]``.
 
     Without ``--arm`` this only reports. Exit code 0 means "safe to arm", 1
-    means held (or, with ``--arm``, that arming did not happen).
+    means held (or, with ``--arm``, that arming did not happen), 2 means
+    ``--require-app-token`` refused a non-App token (GOV-1, #1917).
     """
     import argparse
 
@@ -303,9 +454,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--arm", action="store_true", help="arm auto-merge if not held")
     parser.add_argument("--strategy", default="squash", choices=["squash", "merge", "rebase"])
     parser.add_argument("--delete-branch", action="store_true")
+    parser.add_argument(
+        "--require-app-token",
+        action="store_true",
+        help="exit 2 unless the active token is a GitHub App installation token",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    if not check_token_identity(require_app_token=args.require_app_token):
+        return EXIT_IDENTITY_REFUSED
 
     if args.arm:
         result = arm_auto_merge(
