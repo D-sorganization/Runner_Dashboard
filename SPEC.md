@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.299
+**Spec Version:** 2.5.300
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-10-04T00:00:00-07:00
 **Status:** Active
@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-04 | #1846 | [RD-1] Event-driven CI-fix dispatch as the only CI iteration path: route lint/format to cheapest provider (< $0.50), test/logic to tier:cli, and escalate to tier:strong after 3 attempts; enforce concurrency locking of 1 active session per PR, log truncation to <= 200 lines, failing test extraction, and audit telemetry (`backend/ci_fix_dispatch.py`, `backend/routers/remediation_ci_fix.py`, `backend/routers/remediation.py`, `tests/api/test_ci_fix_dispatch.py`). |
 | 2026-10-04 | #1845 | [RD-0] Default dispatched sessions to `pr_lifecycle: "arm_and_exit"`; forbid Auto-fix and PR subscriptions on draft PRs; require explicit operator opt-in for PR subscriptions with a wake-up cap (default 3) handing off to RD-1 (`backend/pr_subscription.py`, `backend/dispatch/envelope.py`, `backend/dispatch_contract.py`, `backend/agent_dispatch_router.py`, `backend/staff/workspace.py`, `backend/staff/scheduler.py`, `backend/staff/plan.py`, `backend/staff/dispatch_service.py`, `tests/api/test_pr_subscription.py`). |
 | 2026-10-04 | #1859 | Merge-queue policy (`config/fleet_merge_policy.json`, `config/required_status_checks_policy.json`) expects `check_response_timeout_minutes: 180`, matching the fleet rulesets raised from 60 after runner saturation timed out queue entries (Repository_Management#1900). |
 | 2026-10-04 | #1849 | [RD-4] Usage metrics and session telemetry: ingest session metadata (cost, startup context tokens, turns, post-PR wake-ups and spend, environment, linked PR, merge state, pre-push hook duration, and docs merge conflicts); aggregate 30-day trends and success metrics matching Repository_Management#1889 (median/p90 cost per merged PR, post-PR spend, post-PR wake-ups, startup context per environment, pre-push duration, docs conflicts); flag post-PR alerts for sessions with >5 wake-ups or >$20 spent after PR opened (`backend/session_telemetry.py`, `backend/routers/usage_metrics.py`, `backend/routers/reports.py`, `tests/test_session_telemetry.py`). |
