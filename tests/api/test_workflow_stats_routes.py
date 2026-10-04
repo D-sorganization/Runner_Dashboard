@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -26,12 +27,16 @@ def _seed_run(
     repo: str = "alpha",
     workflow_name: str = "CI",
     conclusion: str = "success",
-    created_at: str = "2026-09-20T00:00:00+00:00",
+    created_at: str | None = None,
     duration_seconds: float = 120.0,
     queued_seconds: float = 5.0,
 ) -> None:
     import workflow_stats
 
+    # Relative to now: the summary endpoint only reads the last 14 days, so a
+    # fixed date silently ages out of the window.
+    if created_at is None:
+        created_at = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     workflow_stats.init_db(db_path)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
