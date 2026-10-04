@@ -23,7 +23,14 @@ This script has two independent checks:
    required check does NOT block merge -- this is the exact mechanism that
    let PR #1116 merge despite a failing pytest matrix leg.
 
-Both checks can run entirely offline against committed fixtures (see
+3. ``merge_queue_drift`` / ``up_to_date_drift`` -- the merge-queue model
+   (Repository_Management#1890 / #1900): an active ruleset must carry a
+   ``merge_queue`` rule with the policy's parameters, and no protection
+   source may require branches to be up to date (``strict``). The queue
+   re-tests every PR against the latest ``main``, so strictness only adds
+   churn: each merge would invalidate every other open PR.
+
+All checks can run entirely offline against committed fixtures (see
 tests/test_required_checks_drift.py and tests/contracts/*.json), or against
 live data via --live (requires GH_TOKEN with permission to read branch
 protection / rulesets, which the default GITHUB_TOKEN typically lacks).
@@ -110,6 +117,52 @@ def required_context_drift(policy: Any, protection: Any, rulesets: list[Any]) ->
     return [context for context in policy_contexts if context not in live_contexts]
 
 
+def _active(rulesets: list[Any]) -> list[Any]:
+    return [r for r in rulesets if r.get("enforcement", "active") == "active"]
+
+
+def merge_queue_drift(policy: Any, rulesets: list[Any]) -> list[str]:
+    """Problems with the merge-queue rule relative to ``policy['merge_queue']``.
+
+    Empty when the policy does not require a queue, or when an active ruleset
+    has a ``merge_queue`` rule whose parameters match every key the policy pins.
+    """
+    wanted = policy.get("merge_queue") or {}
+    if not wanted.get("required"):
+        return []
+    rules = [
+        rule
+        for ruleset in _active(rulesets)
+        for rule in ruleset.get("rules") or []
+        if rule.get("type") == "merge_queue"
+    ]
+    if not rules:
+        return ["no active ruleset requires a merge queue on the default branch"]
+    actual = rules[0].get("parameters") or {}
+    return [
+        f"merge queue {key} is {actual.get(key)!r}, policy requires {value!r}"
+        for key, value in sorted((wanted.get("parameters") or {}).items())
+        if actual.get(key) != value
+    ]
+
+
+def up_to_date_drift(policy: Any, protection: Any, rulesets: list[Any]) -> list[str]:
+    """Protection sources that require branches to be up to date when the
+    policy says they must not (``require_branches_up_to_date: false``)."""
+    if policy.get("require_branches_up_to_date", True):
+        return []
+    problems: list[str] = []
+    rsc = (protection or {}).get("required_status_checks") or {}
+    if rsc.get("strict"):
+        problems.append("classic branch protection requires branches to be up to date (strict=true)")
+    for ruleset in _active(rulesets):
+        for rule in ruleset.get("rules") or []:
+            params = rule.get("parameters") or {}
+            if rule.get("type") == "required_status_checks" and params.get("strict_required_status_checks_policy"):
+                problems.append(f"ruleset {ruleset.get('name')!r} requires branches to be up to date (strict=true)")
+    return problems
+
+
 def check_job_fails_closed(workflow_text: str, job_id: str) -> list[str]:
     """Static check: does the job that reports a required check context fail
     closed (i.e. does its own conclusion reflect its dependencies' failure
@@ -191,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
             f"required in {args.policy} but are NOT required by the live branch "
             f"protection/ruleset configuration: {sorted(missing)}"
         )
+
+    problems.extend(f"Merge-queue drift: {p}" for p in merge_queue_drift(policy, rulesets))
+    problems.extend(f"Merge-queue drift: {p}" for p in up_to_date_drift(policy, protection, rulesets))
 
     if not args.skip_fails_closed_check:
         workflow_path = Path(args.workflow)

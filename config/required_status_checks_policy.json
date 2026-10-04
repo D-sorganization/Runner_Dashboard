@@ -20,5 +20,19 @@
       "job_id": "guard",
       "reason": "PR #1118 (docs-only) merged while this check was still QUEUED. The 'guard' context is not present in either the classic branch-protection required_status_checks.contexts list or the 'Repository_Protections' ruleset's required_status_checks parameters, so GitHub never waited for it. This is the primary gap closed by issue #1119: add 'guard' to the required-status-checks list (classic protection and/or the ruleset) for the main branch."
     }
-  ]
+  ],
+  "require_branches_up_to_date": false,
+  "merge_queue": {
+    "required": true,
+    "reason": "Repository_Management#1890 / #1900: the merge queue re-tests each PR against the latest main before merging, replacing strict up-to-date protection and bulk PR branch updates. Every workflow reporting a context above must trigger on merge_group (tests/test_workflow_hygiene.py).",
+    "parameters": {
+      "merge_method": "SQUASH",
+      "max_entries_to_build": 5,
+      "min_entries_to_merge": 1,
+      "max_entries_to_merge": 5,
+      "min_entries_to_merge_wait_minutes": 5,
+      "grouping_strategy": "ALLGREEN",
+      "check_response_timeout_minutes": 60
+    }
+  }
 }

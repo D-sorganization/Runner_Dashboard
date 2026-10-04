@@ -22,6 +22,7 @@ These tests run entirely offline against committed fixtures:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -178,7 +179,7 @@ def test_main_exits_zero_on_fixed_example(capsys) -> None:
             "--policy",
             str(_POLICY),
             "--branch-protection-snapshot",
-            str(_CONTRACTS / "branch_protection_snapshot.json"),
+            str(_CONTRACTS / "branch_protection_snapshot_merge_queue.json"),
             "--rulesets-snapshot",
             str(_CONTRACTS / "rulesets_snapshot_fixed_example.json"),
             "--skip-fails-closed-check",
@@ -187,3 +188,96 @@ def test_main_exits_zero_on_fixed_example(capsys) -> None:
 
     assert rc == 0
     assert "matches policy" in capsys.readouterr().out
+
+
+# --- Merge queue (Repository_Management#1890 / #1900) ---------------------
+
+_MERGE_QUEUE_RULESET = {
+    "name": "Merge Queue (PR Fast Lane pilot, RM#1900)",
+    "enforcement": "active",
+    "rules": [
+        {
+            "type": "merge_queue",
+            "parameters": {
+                "merge_method": "SQUASH",
+                "max_entries_to_build": 5,
+                "min_entries_to_merge": 1,
+                "max_entries_to_merge": 5,
+                "min_entries_to_merge_wait_minutes": 5,
+                "grouping_strategy": "ALLGREEN",
+                "check_response_timeout_minutes": 60,
+            },
+        }
+    ],
+}
+
+
+def test_policy_requires_merge_queue_and_no_up_to_date_branches() -> None:
+    policy = drift._load_json(_POLICY)
+    assert policy["merge_queue"]["required"] is True
+    assert policy["require_branches_up_to_date"] is False
+
+
+def test_pre_pilot_snapshot_is_reported_as_merge_queue_drift() -> None:
+    """The 2026-08-25 snapshot has no merge queue and classic strict=true."""
+    policy = drift._load_json(_POLICY)
+    protection = _load("branch_protection_snapshot.json")
+    rulesets = _load("rulesets_snapshot.json")
+
+    assert drift.merge_queue_drift(policy, rulesets)
+    problems = drift.up_to_date_drift(policy, protection, rulesets)
+    assert any("classic branch protection" in p for p in problems)
+
+
+def test_pilot_settings_have_no_merge_queue_drift() -> None:
+    policy = drift._load_json(_POLICY)
+    protection = _load("branch_protection_snapshot_merge_queue.json")
+    rulesets = _load("rulesets_snapshot.json") + [_MERGE_QUEUE_RULESET]
+
+    assert drift.merge_queue_drift(policy, rulesets) == []
+    assert drift.up_to_date_drift(policy, protection, rulesets) == []
+
+
+def test_merge_queue_with_wrong_parameters_is_drift() -> None:
+    policy = drift._load_json(_POLICY)
+    ruleset = json.loads(json.dumps(_MERGE_QUEUE_RULESET))
+    ruleset["rules"][0]["parameters"]["merge_method"] = "MERGE"
+    ruleset["rules"][0]["parameters"]["grouping_strategy"] = "HEADGREEN"
+
+    problems = drift.merge_queue_drift(policy, [ruleset])
+
+    assert len(problems) == 2
+    assert any("merge_method" in p for p in problems)
+    assert any("grouping_strategy" in p for p in problems)
+
+
+def test_disabled_ruleset_does_not_count_as_a_merge_queue() -> None:
+    policy = drift._load_json(_POLICY)
+    ruleset = dict(_MERGE_QUEUE_RULESET, enforcement="disabled")
+
+    assert drift.merge_queue_drift(policy, [ruleset])
+
+
+def test_strict_ruleset_is_up_to_date_drift() -> None:
+    policy = drift._load_json(_POLICY)
+    protection = _load("branch_protection_snapshot_merge_queue.json")
+    rulesets = [
+        {
+            "name": "Strict",
+            "enforcement": "active",
+            "rules": [
+                {
+                    "type": "required_status_checks",
+                    "parameters": {
+                        "strict_required_status_checks_policy": True,
+                        "required_status_checks": [{"context": "quality-gate"}],
+                    },
+                }
+            ],
+        }
+    ]
+
+    problems = drift.up_to_date_drift(policy, protection, rulesets)
+
+    assert len(problems) == 1
+    assert "Strict" in problems[0]

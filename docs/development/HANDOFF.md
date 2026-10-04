@@ -1,4 +1,13 @@
-# Current handoff — merge queue pilot verification (Repository_Management#1900)
+# Current handoff — required-checks policy for the merge queue (DL-#1890)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1890-policy`; branch `ci/1890-required-checks-policy-merge-queue`; commit SELF; PR: see DL-#1890.
+- **Change:** policy requires the merge queue and `require_branches_up_to_date: false`; the drift checker gains `merge_queue_drift` / `up_to_date_drift`. New fixture `tests/contracts/branch_protection_snapshot_merge_queue.json`; the compliant example ruleset now carries the queue.
+- **Validation:** `tests/test_required_checks_drift.py` 16 passed; `tests/test_workflow_hygiene.py` passes. Live run: only the #1119 `guard` gap remains (`guard` is not a required context; making it one is an owner settings decision).
+- **Next:** merge; wire the live check into #1850.
+
+---
+
+# Prior handoff — merge queue pilot verification (Repository_Management#1900) — done: #1853 merged through the queue 2026-10-04, merge_group CI Standard success
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-queue-test`; branch `docs/1900-merge-queue-test-typo`; commit SELF; PR: see the branch.
 - **State:** `main` now has a repo-level merge-queue ruleset (squash, build 5, group 1–5, 5 min wait, ALLGREEN, 60 min timeout), strict up-to-date off in classic protection, `delete_branch_on_merge` on. Snapshot: Repository_Management `docs/operations/settings-snapshots/Runner_Dashboard-2026-10-03.json`.
@@ -7,7 +16,7 @@
 
 ---
 
-# Current handoff — merge_group triggers for the merge queue (DL-#1890)
+# Prior handoff — merge_group triggers for the merge queue (DL-#1890) — merged #1852
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1890-merge-group`
 - **Branch:** `ci/1890-merge-group-triggers` from `origin/main`; commit SELF; PR: see DL-#1890.
