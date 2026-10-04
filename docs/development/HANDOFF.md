@@ -1,3 +1,14 @@
+# Current handoff — SC-G6: mobile Maxwell page drops its chat (DL-#1338-maxwell-mobile)
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1338`; branch `claude/issue-1338`; commit SELF; PR: see the branch (draft).
+- **Change:** `pages/Maxwell/Mobile.tsx` loses chat state, the send handler and `<MaxwellChat>`, and gains the "Chat with Maxwell in the Staff Console" link (same target as `MaxwellPage.tsx`). `MaxwellChat.tsx`, `QUICK_CHIPS` and the sessionStorage chat helpers are deleted; `ChatBubble`, `ChatMessage` and `CODEBASE_QUICK_CHIPS` stay (used by `CodebaseChat`).
+- **Tests:** `Mobile.test.tsx` chat cases replaced by no-chat-input, link and no-chat-call cases; the integrity test and mobile viewport profile markers updated.
+- **Validation:** vitest `frontend/src/pages/Maxwell frontend/src/shell` 315 passed; `tsc -p tsconfig.app.json --noEmit` clean; `pytest tests/test_frontend_integrity.py tests/test_mobile_test_harness.py` passed.
+- **Spotted, not changed:** `storage.ts` `MAXWELL_CHAT_HISTORY` key (still cleared by `clearChatHistory`) and `.maxwell-chat-messages` CSS are now unused.
+- **Next:** merge through the queue.
+
+---
+
 # Current handoff — Spec Check updates a stale warning comment (DL-#1871, #1871)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1872-p2`; branch `fix/1871-spec-warning-update`, cut from #1872's head while #1872 was in the merge queue, then merged with `main` after #1872 merged; commit SELF; PR: see the branch (follow-up to #1872).
