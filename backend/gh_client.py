@@ -502,6 +502,22 @@ async def post(path: str, *, json: Any = None) -> Any:
     return resp.json()
 
 
+async def patch(path: str, *, json: Any = None) -> Any:
+    """PATCH a GitHub API path (e.g. edit an issue comment, #1865).
+
+    Args:
+        path: Relative API path.
+        json: Optional JSON body.
+
+    Returns:
+        Parsed JSON body, or empty dict for 204.
+    """
+    resp = await _request("PATCH", path, json=json)
+    if resp.status_code == 204:
+        return {}
+    return resp.json()
+
+
 async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
     """Yield all items from a paginated GitHub list endpoint.
 

@@ -26,6 +26,16 @@
 
 ---
 
+# Current handoff (parallel PR) — USE-1: effort per dispatch kind, epic expansion, weekly usage report (DL-#1865, #1865)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-use1`; branch `feat/1865-effort-usage-report`; commit SELF; PR: see the branch.
+- **Change:** `dispatch_effort.resolve_effort(kind, override)` (unknown → medium; explicit override validated). `CommandEnvelope.effort` validated in `__post_init__`/`from_dict`; `build_envelope(effort=)` puts it in the signed payload. `CIFixRoute.effort` (lint low, test medium, escalated high). PR/issue dispatch requests take `dispatch_kind` + optional `effort` and pass both as workflow inputs and in the audit history. `expand_epic_children` issue dispatches route to tier:cli (Sonnet) with `epic_expansion.render_expansion_prompt`, whose child template links `cli_tier_task.md`, `pr-lifecycle.md` and `AGENT_TIER_ROUTING.md` instead of repeating them. `usage_report` renders `SessionTelemetryStore.get_metrics_window` (this week vs previous week) and `post_weekly_usage_report` finds-or-creates the `usage-report` issue "Weekly agent usage report" in Repository_Management and creates/updates one comment per ISO week (marker `<!-- usage-report:week=YYYY-Www -->`). `POST /api/usage/report/weekly` (admin scope, `dry_run`) and an opt-in 6-hourly loop (`USAGE_REPORT_WEEKLY_ENABLED=1` on one node) run it. `gh_client.patch` added.
+- **Not done / follow-ups:** RM's `Agent-PR-Action.yml` / `Agent-Issue-Action.yml` do not exist in Repository_Management today, so no launcher consumes the `effort` input yet; merge-queue wait/timeouts are rendered as "not reported" until a source exists; the issue is not created yet (first run creates it) and pinning is manual (GraphQL-only).
+- **Validation:** `pytest tests/test_dispatch_effort.py tests/test_epic_expansion.py tests/test_agent_dispatch_router.py` → 49 passed (effort/router tests RED first); `pytest tests/test_usage_report.py tests/api/test_usage_report_routes.py tests/test_session_telemetry.py tests/test_usage_metrics.py` passes; `ruff check backend/ clients/`, `ruff format --check`, `mypy backend/` clean.
+- **Next:** merge; enable the loop on the hub node and pin the issue.
+
+---
+
 # Prior handoff — merge queue pilot verification (Repository_Management#1900) — done: #1853 merged through the queue 2026-10-04, merge_group CI Standard success
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-queue-test`; branch `docs/1900-merge-queue-test-typo`; commit SELF; PR: see the branch.

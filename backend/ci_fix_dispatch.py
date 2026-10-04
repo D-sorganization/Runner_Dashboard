@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from dispatch_effort import resolve_effort
 from time_utils import utc_now_iso
 
 logger = logging.getLogger("dashboard.ci_fix_dispatch")
@@ -60,6 +61,8 @@ class CIFixRoute:
     cost_budget: float
     escalated: bool = False
     reason: str = ""
+    # USE-1 (#1865): reasoning effort for the launched session.
+    effort: str = "medium"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -166,6 +169,7 @@ def route_ci_fix(
             cost_budget=5.00,
             escalated=True,
             reason=f"Escalated to strong tier after {attempt_number} consecutive attempts",
+            effort=resolve_effort("ci_fix:escalated"),
         )
 
     if failure_type == "lint":
@@ -176,6 +180,7 @@ def route_ci_fix(
             cost_budget=0.40,
             escalated=False,
             reason="Routed to cheap tier for narrow lint/format fix",
+            effort=resolve_effort("ci_fix:lint"),
         )
 
     return CIFixRoute(
@@ -185,6 +190,7 @@ def route_ci_fix(
         cost_budget=1.50,
         escalated=False,
         reason="Routed to standard CLI tier for test/logic fix",
+        effort=resolve_effort(f"ci_fix:{failure_type}"),
     )
 
 
