@@ -59,6 +59,12 @@ jobs:
             if [[ "$file" == "SPEC.md" ]]; then
               SPEC_CHANGED=true
             fi
+            # A per-PR change fragment (RM-5, Repository_Management#1894) stands
+            # in for the SPEC.md edit: collate-changes.yml writes the PR-keyed
+            # row after merge. changes/README.md is not a fragment.
+            if [[ "$file" =~ ^changes/[0-9]+(-[a-z0-9-]+)?\.md$ ]]; then
+              SPEC_CHANGED=true
+            fi
 
             # Check if source files were modified
             # Add or remove patterns as appropriate for your repo
@@ -108,8 +114,11 @@ jobs:
               (\`scripts/bump_spec_version.py\`). See Repository_Management#1520.
 
             **To resolve:**
-            1. Update \`SPEC.md\` to reflect your changes, OR
-            2. Add the \`spec-exempt\` label if this PR genuinely doesn't affect the spec (e.g., pure refactor with no behavior change)
+            1. Add a change fragment \`changes/<issue>-<slug>.md\`
+               (\`python scripts/changes_fragment.py new --issue N --summary "..."\`);
+               after merge it becomes the PR-keyed change-log row, OR
+            2. Update \`SPEC.md\` to reflect your changes, OR
+            3. Add the \`spec-exempt\` label if this PR genuinely doesn't affect the spec (e.g., pure refactor with no behavior change)
 
             *This check is enforced by the spec-check CI workflow.*`;
 
@@ -149,7 +158,7 @@ jobs:
         shell: bash
         run: |
           echo "::error::Source files changed but SPEC.md was not updated."
-          echo "Update SPEC.md or add the 'spec-exempt' label to bypass."
+          echo "Add a changes/<issue>-<slug>.md fragment, update SPEC.md, or add the 'spec-exempt' label to bypass."
           exit 1
 
       - name: Spec check passed
