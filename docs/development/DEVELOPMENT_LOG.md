@@ -23,11 +23,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **State:** in_progress
 - **Owner:** claude
 - **Issue:** D-sorganization/Repository_Management#1890 (epic Repository_Management#1889; settings pilot Repository_Management#1900)
-- **Branch:** `ci/1890-merge-group-triggers` (merged as #1852); `ci/1890-required-checks-policy-merge-queue`; `ci/1900-queue-timeout-180`
-- **PR:** #1852 (merged); #1854; #1859 (timeout 180)
-- **Paths:** `.github/workflows/ci-standard.yml`, `.github/workflows/anti-phantom-merge.yml`, `tests/test_workflow_hygiene.py`, `config/required_status_checks_policy.json`, `scripts/check_required_checks_drift.py`, `tests/test_required_checks_drift.py`, `tests/contracts/`
+- **Branch:** `ci/1890-merge-group-triggers` (merged as #1852); `ci/1890-required-checks-policy-merge-queue`; `ci/1900-queue-timeout-180`; `ci/1900-fleet-merge-policy-all-repos`
+- **PR:** #1852 (merged); #1854; #1859 (timeout 180); #1862 (all 41 repos)
+- **Paths:** `.github/workflows/ci-standard.yml`, `.github/workflows/anti-phantom-merge.yml`, `tests/test_workflow_hygiene.py`, `config/required_status_checks_policy.json`, `scripts/check_required_checks_drift.py`, `tests/test_required_checks_drift.py`, `tests/contracts/`, `config/fleet_merge_policy.json`, `backend/fleet_merge_checker.py`, `tests/test_fleet_merge_checker.py`
 - **Started:** 2026-10-03
-- **Last verified:** 2026-10-04 @ SELF; `tests/test_fleet_merge_checker.py` + `tests/test_required_checks_drift.py` 34 passed with the 180 min timeout; `backend/fleet_merge_checker.py` pins the GitHub API URL so bandit B310 (which blocked every pre-push) passes.
+- **Last verified:** 2026-10-04 @ SELF; `config/fleet_merge_policy.json` lists all 41 queue-enabled repositories; the live snapshot reads protection on each repo's own default branch and ignores disabled/deleted workflows; 35 passed in `tests/test_fleet_merge_checker.py` + `tests/test_required_checks_drift.py`.
 - **Summary:** Required checks report on `merge_group` (#1852). The required-checks policy now also requires the merge queue (squash, ALLGREEN, build 5, group 1–5, 5 min wait, 180 min timeout — raised from 60 on 2026-10-04 after runner saturation timed out queue entries) and `require_branches_up_to_date: false`; `check_required_checks_drift.py` reports drift on either. Settings were applied on 2026-10-04 by the #1900 pilot.
 - **Next step:** Wire `check_required_checks_drift.py --live` into the daily fleet settings drift check (#1850).
 

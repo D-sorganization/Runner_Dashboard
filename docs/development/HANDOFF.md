@@ -1,4 +1,13 @@
-# Current handoff — merge-queue check timeout raised to 180 min (DL-#1890, Repository_Management#1900)
+# Current handoff — fleet merge policy covers all 41 queue repos (DL-#1890, Repository_Management#1900)
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-fleet-policy`; branch `ci/1900-fleet-merge-policy-all-repos`; commit SELF; PR #1862.
+- **Change:** `config/fleet_merge_policy.json` lists every merge-queue repository (41, rollout of 2026-10-04). `fetch_live_repo_snapshot` resolves protection on the repo's own default branch (Florida-Compressor/Controls `master`, Florida-Superheater `feat/superheater-feed-design`, half-ton-controls `initial-import`) and treats only `active` workflows as present, so disabled or deleted Auto-Update PRs workflows are not drift.
+- **Validation:** `python -m pytest tests/test_fleet_merge_checker.py tests/test_required_checks_drift.py` → 35 passed (two new/changed tests RED first).
+- **Next:** merge; run `python scripts/check_fleet_merge_settings.py` live once to confirm a clean fleet.
+
+---
+
+# Prior handoff — merge-queue check timeout raised to 180 min (DL-#1890, Repository_Management#1900)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-timeout`; branch `ci/1900-queue-timeout-180`; commit SELF; PR #1859.
 - **Change:** owner raised `check_response_timeout_minutes` to 180 on every fleet merge-queue ruleset (runner pool at ~93% timed out queued checks at 60). Both policy files and their test fixtures now expect 180, so the drift checkers stay clean.
