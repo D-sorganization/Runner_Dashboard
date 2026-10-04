@@ -4,6 +4,7 @@
 - **Cause:** `detect-secrets (baseline diff)` scans the PR merge ref. `main` gained #1868's `.pre-commit-config.yaml` change after #1873 branched, so in the merged tree the pinned detect-secrets `rev` SHA sits on line 83, not the 82 #1873 recorded. No new secret-like string.
 - **Change:** `.secrets.baseline` regenerated with `detect-secrets==1.5.0` and the workflow's `--exclude-files`; only that finding's `line_number` (82 → 83) and `generated_at` changed.
 - **Validation:** the workflow's "Audit baseline integrity" step, run locally on the merged tree, failed before (`line_number 82 → 83`) and passes after ("Baseline results unchanged").
+- **Main re-merge:** latest `main` (#1872) merged again; the baseline check still passes with no line shift, and `frontend/src/lib/openapi.json` / `api-types.ts` are regenerated with `bash scripts/gen-api-client.sh` (identical to #1876). DEVELOPMENT_LOG carries a staged `No material development-log change` note.
 - **Development log:** No material development-log change — baseline metadata only; DL-#1871 is kept byte-identical across #1872 / #1873.
 - **Next:** if the queue drops #1873, push this branch to `chore/1871-gitleaks-staged`; otherwise open a follow-up PR after #1873 merges (re-run the scan first if `main` moved `.pre-commit-config.yaml` again).
 
