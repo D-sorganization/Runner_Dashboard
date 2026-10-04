@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-04 | #1874 | Envelope `effort` and `pr_lifecycle` ignore an unsigned top-level value when the signed `payload` does not carry the field (legacy envelopes get the default), so an interceptor cannot set them while `verify_signature()` still passes; `_signed_field` applies the rule once. |
 | 2026-10-04 | #1874 | Dispatch `pr_lifecycle` is read from the signed `payload` like `effort`: `CommandEnvelope.from_dict` rejects an unsigned top-level `pr_lifecycle` that differs from the signed one, `build_envelope` raises on a conflicting argument/payload pair and keeps top-level equal to the payload; both fields share one `_signed_field` helper. |
 | 2026-10-04 | #1865 | Dispatch `effort` is read from the signed `payload`: `CommandEnvelope.from_dict` rejects an unsigned top-level `effort` that differs from the signed one; `gh_client.post` returns the created resource body for 201 (only 204 maps to `{}`), so the weekly usage report records the comment id it creates (`backend/dispatch/envelope.py`, `backend/gh_client.py`). |
 | 2026-10-04 | #1880 | RD-1 CI-fix routing uses current models: escalation → Claude Opus 5.5 (`claude-opus-5-5`), lint/format → Codex `gpt-6-luna`, tests/logic → agy with Gemini 3.8 Flash (`gemini-3.8-flash-high`) when the staff `antigravity` adapter can run unattended, else Claude Sonnet 5.5 (`claude-sonnet-5-5`) (`backend/ci_fix_dispatch.py`, `tests/api/test_ci_fix_dispatch.py`). |
