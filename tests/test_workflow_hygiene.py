@@ -390,9 +390,8 @@ def test_pre_push_mypy_dependencies_are_installable() -> None:
     assert "psutil-stubs" not in text
     assert "types-psutil" in text
     assert "language: system" in text
-    assert '"tests/"' in text
-    assert '"-ll"' in text
-    assert '"-ii"' in text
+    # The bandit and full-suite pytest arguments once pinned here left pre-push
+    # in #1864; tests/test_run_pytest_diff.py pins the diff-scoped hook instead.
 
 
 _REQUIRED_CHECKS_POLICY = Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
