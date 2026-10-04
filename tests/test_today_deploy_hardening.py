@@ -170,6 +170,22 @@ def test_job_completed_hook_removes_the_lockfile() -> None:
     assert "rm -f " in src and "$LOCK_FILE" in src
 
 
+# ─── Issue #1895: runner TMPDIR recreation and cleanup exclusion ────────────
+
+
+def test_job_started_hook_recreates_tmpdir() -> None:
+    """job-started.sh must recreate $TMPDIR if set before every job (Runner_Dashboard#1895)."""
+    src = _read(_DEPLOY / "runner-hooks" / "job-started.sh")
+    assert "TMPDIR:-" in src
+    assert 'mkdir -m 0755 -p "$TMPDIR"' in src or 'mkdir -p "$TMPDIR"' in src
+
+
+def test_cleanup_runner_workdir_excludes_tmpdir() -> None:
+    """cleanup_runner_workdir must exclude _tmp from deletion (Runner_Dashboard#1895)."""
+    src = _read(_DEPLOY / "runner-cleanup.sh")
+    assert "! -name '_tmp'" in src
+
+
 # ─── PR #667: deploy-host.sh single-command entrypoint ───────────────────────
 
 

@@ -317,6 +317,8 @@ cleanup_runner_workdir() {
         ! -name '_PipelineMapping' \
         ! -name '_temp' \
         ! -name '_tool' \
+        ! -name '_tmp' \
+        ! -name '_pip-cache' \
         -mtime +"$RUNNER_WORK_DAYS" \
         -print0 | while IFS= read -r -d '' path; do
             delete_path "$path"
