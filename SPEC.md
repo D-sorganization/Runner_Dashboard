@@ -11,6 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
+| 2026-10-04 | #1871 | Spec Check edits its existing bot `SPEC.md Update Required` comment in place when the warning text has changed (creates one when none exists, no-op when identical), so stale wording such as "bump the Spec Version" does not linger on open PRs (Codex review on #1872). |
 | 2026-10-04 | #1871 | Spec Check (`ci-spec-check.yml`) treats `backend/**` as source, so a backend-only PR without a SPEC.md update fails; its PR comment no longer says to bump the Spec Version (release-derived, Repository_Management#1520) and asks for one change-log row keyed by the PR. |
 | 2026-10-04 | #1864 | CI Standard is event-tiered: a `changes` job picks the tier per event — `pull_request` runs lint, format, type check and fast tests (no coverage, bandit, pip-audit or security-scan); `merge_group` runs the full suite; `push` to main runs no duplicate heavy jobs. The docs-only scope detector runs on `pull_request` only and fails closed on a truncated file listing; `quality-gate` and `tests` report and fail closed on every event (Repository_Management#1915). |
 | 2026-10-04 | #1862 | `config/fleet_merge_policy.json` covers all 41 merge-queue repositories; `fetch_live_repo_snapshot` reads branch protection on each repository's own default branch (four do not use `main`) and counts only active workflows toward `disallowed_workflows` (Repository_Management#1900). |

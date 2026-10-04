@@ -1,3 +1,12 @@
+# Current handoff — Spec Check updates a stale warning comment (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1872-p2`; branch `fix/1871-spec-warning-update`, cut from #1872's head while #1872 is in the merge queue; commit SELF; PR: not created (follow-up PR to open after #1872 merges).
+- **Change:** the "Post warning comment" step paginates the PR comments and, when a bot `SPEC.md Update Required` comment exists with a different body, PATCHes it (`issues.updateComment`); it creates one when none exists and does nothing when identical. Addresses the Codex P2 review on #1872.
+- **Validation:** `pytest tests/test_spec_check_workflow.py tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py tests/test_workflow_runner_routing.py` → 179 passed (new node-executed tests; the update case was RED first); `actionlint` clean; ruff clean.
+- **Next:** open the follow-up PR from `fix/1871-spec-warning-update` once #1872 merges.
+
+---
+
 # Current handoff — Spec Check covers backend/** (DL-#1871, #1871)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871`; branch `ci/1871-spec-check-backend`; commit SELF; PR: see the branch. Workflow-only change, shipped alone; the staged-only gitleaks pre-commit change is a separate PR on `chore/1871-gitleaks-staged`.

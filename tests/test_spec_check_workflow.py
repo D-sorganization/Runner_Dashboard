@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -146,3 +147,73 @@ def test_comment_does_not_tell_authors_to_bump_spec_version() -> None:
     assert "Bump the Spec Version" not in script
     assert "Do NOT bump the \\`Spec Version\\` field" in script
     assert "change-log row keyed by this PR" in script
+
+
+# Codex P2 on #1872: a stale bot warning must be edited, not left in place.
+_NODE_HARNESS = r"""
+const script = require('fs').readFileSync(process.argv[2], 'utf8');
+const existing = JSON.parse(process.argv[3]);
+const calls = [];
+const github = {
+  rest: { issues: {
+    listComments: async () => ({ data: existing }),
+    createComment: async (a) => { calls.push({ op: 'create', body: a.body }); },
+    updateComment: async (a) => { calls.push({ op: 'update', id: a.comment_id, body: a.body }); },
+  } },
+  paginate: async (fn, args) => (await fn(args)).data,
+};
+const context = { repo: { owner: 'o', repo: 'r' }, issue: { number: 1 } };
+const run = new Function('github', 'context', `return (async () => {${script}})();`);
+run(github, context).then(() => console.log(JSON.stringify(calls)));
+"""
+
+
+def _run_comment_step(existing: list[dict]) -> list[dict]:
+    """Execute the comment step's script under node with a stubbed ``github``."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    with tempfile.TemporaryDirectory() as tmp:
+        script = Path(tmp) / "script.js"
+        script.write_text(_comment_script(), encoding="utf-8")
+        harness = Path(tmp) / "harness.js"
+        harness.write_text(_NODE_HARNESS, encoding="utf-8")
+        result = subprocess.run(
+            [node, str(harness), str(script), json.dumps(existing)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    assert result.returncode == 0, result.stderr
+    calls = json.loads(result.stdout)
+    assert isinstance(calls, list)
+    return calls
+
+
+def _bot(comment_id: int, body: str) -> dict:
+    return {"id": comment_id, "body": body, "user": {"type": "Bot"}}
+
+
+def test_comment_created_when_none_exists() -> None:
+    calls = _run_comment_step([])
+    assert [c["op"] for c in calls] == ["create"]
+    assert "SPEC.md Update Required" in calls[0]["body"]
+
+
+def test_stale_bot_comment_is_updated_in_place() -> None:
+    stale = "## ⚠️ SPEC.md Update Required\n\n- Bump the Spec Version"
+    calls = _run_comment_step([_bot(7, stale)])
+    assert [(c["op"], c.get("id")) for c in calls] == [("update", 7)]
+    assert "Bump the Spec Version" not in calls[0]["body"]
+
+
+def test_identical_bot_comment_is_left_alone() -> None:
+    body = _run_comment_step([])[0]["body"]
+    assert _run_comment_step([_bot(7, body)]) == []
+
+
+def test_non_bot_comment_is_never_edited() -> None:
+    human = {"id": 3, "body": "SPEC.md Update Required?", "user": {"type": "User"}}
+    calls = _run_comment_step([human])
+    assert [c["op"] for c in calls] == ["create"]
