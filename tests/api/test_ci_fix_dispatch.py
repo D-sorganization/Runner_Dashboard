@@ -180,21 +180,47 @@ def test_route_ci_fix_lint_to_cheapest() -> None:
         attempt_number=1,
         max_attempts=3,
     )
-    assert route.provider in ("codex_cli", "gemini_cli")
+    assert route.provider == "codex_cli"
+    assert route.model == "gpt-6-luna"
     assert route.tier == "cheap"
     assert route.cost_budget <= 0.50
     assert route.escalated is False
 
 
-def test_route_ci_fix_test_to_cli_tier() -> None:
+def test_route_ci_fix_test_prefers_agy_gemini_flash_when_unattended(monkeypatch: pytest.MonkeyPatch) -> None:
+    """tier:cli prefers agy with Gemini 3.8 Flash once agy can run unattended (#1880)."""
+    monkeypatch.setattr("backend.ci_fix_dispatch._agy_runs_unattended", lambda: True)
+    route = route_ci_fix(
+        failure_type="test",
+        attempt_number=1,
+        max_attempts=3,
+    )
+    assert route.provider == "antigravity"
+    assert route.model == "gemini-3.8-flash-high"
+    assert route.tier == "cli"
+    assert route.escalated is False
+
+
+def test_route_ci_fix_test_falls_back_to_sonnet_while_agy_is_chat_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("backend.ci_fix_dispatch._agy_runs_unattended", lambda: False)
     route = route_ci_fix(
         failure_type="test",
         attempt_number=1,
         max_attempts=3,
     )
     assert route.provider == "claude_code_cli"
+    assert route.model == "claude-sonnet-5-5"
     assert route.tier == "cli"
-    assert route.escalated is False
+    assert "agy" in route.reason
+
+
+def test_agy_gate_reads_the_staff_adapter() -> None:
+    """The gate is the staff antigravity adapter's ``unattended`` flag, not a second switch."""
+    from staff.adapters import ADAPTERS
+
+    from backend.ci_fix_dispatch import _agy_runs_unattended
+
+    assert _agy_runs_unattended() is ADAPTERS["antigravity"].unattended
 
 
 def test_route_ci_fix_escalation_after_cap() -> None:
@@ -205,6 +231,8 @@ def test_route_ci_fix_escalation_after_cap() -> None:
     )
     assert route.escalated is True
     assert route.tier == "strong"
+    assert route.provider == "claude_code_cli"
+    assert route.model == "claude-opus-5-5"
     assert "escalated" in route.reason.lower()
 
 
@@ -351,4 +379,4 @@ def test_acceptance_criteria_escalation_after_three_attempts() -> None:
     route_att3 = route_ci_fix(failure_type="test", attempt_number=3, max_attempts=3)
     assert route_att3.escalated is True
     assert route_att3.tier == "strong"
-    assert route_att3.model == "claude-3-7-opus"
+    assert route_att3.model == "claude-opus-5-5"
