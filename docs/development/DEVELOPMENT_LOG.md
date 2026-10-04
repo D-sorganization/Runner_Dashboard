@@ -70,6 +70,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Failed release scan reported seven Debian and two Python fixable HIGH findings. Verified official Debian security replacements OpenSSL3.5.7-1~deb13u3/PCRE2 10.46-1~deb13u3 and PyPI urllib3 2.8.0. Only urllib3 changed in the Python graph; generated hashes match publisher. Preserve base digest/runtime bounds/scan gates; no production mutation. Second Gemini review found an overstated test docstring, corrected.
 - **Next step:** Open focused PR, pass required exact-head checks and guarded merge; synchronize release PR #1835 afterward. Preserve unrelated pending deployment approvals.
 
+### DL-#1865 — Effort per dispatch kind, epic expansion on tier:cli, weekly usage report
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1865 (epic Repository_Management#1889)
+- **Branch:** `feat/1865-effort-usage-report`
+- **PR:** see the branch
+- **Paths:** `backend/dispatch_effort.py`, `backend/epic_expansion.py`, `backend/usage_report.py`, `backend/agent_dispatch_router.py`, `backend/ci_fix_dispatch.py`, `backend/dispatch/envelope.py`, `backend/dispatch_contract.py`, `backend/session_telemetry.py`, `backend/routers/usage_metrics.py`, `backend/gh_client.py`, `backend/server.py`, `tests/test_dispatch_effort.py`, `tests/test_epic_expansion.py`, `tests/test_usage_report.py`, `tests/api/test_usage_report_routes.py`, `tests/test_agent_dispatch_router.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; 49 passed in dispatch effort/epic/router tests and 14 in usage report tests; ruff, ruff format and mypy `backend/` clean.
+- **Summary:** Every dispatch kind resolves a reasoning effort (unknown → medium) that rides on the envelope, CI-fix routes and the dispatch workflow inputs. `expand_epic_children` routes epic expansion to tier:cli/Sonnet at low effort with a template that links the fleet rules. The weekly usage report renders RD-4 telemetry (this week vs last week) and creates or updates one comment per ISO week on the `usage-report` issue in Repository_Management.
+- **Next step:** After merge, set `USAGE_REPORT_WEEKLY_ENABLED=1` on the hub node, run `POST /api/usage/report/weekly` once, and pin the created issue.
+
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 
 - **State:** in_progress

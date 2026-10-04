@@ -2,7 +2,8 @@
 # Runner Dashboard Pre-commit Configuration
 # =============================================================================
 # Fast checks on every commit (<15 seconds)
-# Slower checks (mypy, bandit, pytest) on pre-push only
+# Slower checks (mypy, diff-scoped pytest) on pre-push only; bandit and
+# pip-audit run in CI Standard only (issue #1864)
 #
 # Installation:
 #   pip install pre-commit
@@ -117,42 +118,21 @@ repos:
         files: ^backend/
         exclude: ^(frontend/|deploy/|docs/|backend/__init__\.py$)
 
-  # Bandit - Python security scanning (pre-push only)
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.7
-    hooks:
-      - id: bandit
-        name: "bandit (Python security)"
-        stages: [pre-push]
-        args:
-          [
-            "-c",
-            "bandit.yaml",
-            "-r",
-            "backend/",
-            "-ll",
-            "-ii",
-            "-x",
-            "tests/,.github/",
-          ]
-        pass_filenames: false
-        types: [python]
-
-  # Pytest - Python unit tests (pre-push only)
+  # Pytest - Python unit tests (pre-push only, diff-scoped, issue #1864)
+  # Runs only the tests mapped from the changed files, via
+  # scripts/run_pytest_diff.py (vendored from Repository_Management
+  # shared_scripts/, RM#1891). A change with no mapped test runs nothing here;
+  # CI Standard runs the suite. Bandit and other heavy scans run in CI only.
   - repo: local
     hooks:
       - id: pytest-unit
-        name: "pytest (Python tests)"
+        name: "pytest (diff-scoped Python tests)"
         stages: [pre-push]
-        entry: uv run pytest
+        entry: uv run python -m scripts.run_pytest_diff
         args:
           [
-            "tests/",
-            "-x",
-            "-q",
-            "--tb=short",
-            "-m",
-            "not slow and not integration",
+            "--pytest-args",
+            "-x -q --tb=short -m 'not slow and not integration'",
           ]
         # ``language: system`` runs pytest from the user's activated venv
         # (or PATH-resolved pytest). The previous config used
@@ -196,4 +176,4 @@ ci:
   autofix_prs: true
   autoupdate_branch: "main"
   autoupdate_commit_msg: "chore: update pre-commit hooks"
-  skip: [pytest-unit, bandit, mypy]
+  skip: [pytest-unit, mypy]
