@@ -146,3 +146,33 @@ def test_comment_does_not_tell_authors_to_bump_spec_version() -> None:
     assert "Bump the Spec Version" not in script
     assert "Do NOT bump the \\`Spec Version\\` field" in script
     assert "change-log row keyed by this PR" in script
+
+
+# Repository_Management#1894 (RM-5): a per-PR change fragment stands in for the
+# SPEC.md edit; collate-changes.yml writes the PR-keyed row after merge.
+@pytest.mark.parametrize("fragment", ["changes/1894.md", "changes/1894-rd-fragments.md"])
+def test_change_fragment_satisfies_the_spec_check(fragment: str) -> None:
+    outputs = _detect(["backend/server.py", fragment])
+    assert outputs["spec_changed"] == "true"
+    assert outputs["needs_update"] == "false"
+
+
+@pytest.mark.parametrize(
+    "not_a_fragment",
+    [
+        "changes/README.md",
+        "changes/notes.md",
+        "changes/Not-Lowercase.md",
+        "changes/1894-x.txt",
+        "changes/sub/1894-x.md",
+        "docs/changes/1894-x.md",
+    ],
+)
+def test_only_a_real_change_fragment_stands_in_for_spec(not_a_fragment: str) -> None:
+    assert _detect(["backend/server.py", not_a_fragment])["needs_update"] == "true"
+
+
+def test_warning_comment_offers_the_fragment() -> None:
+    script = _comment_script()
+    assert "changes/<issue>-<slug>.md" in script
+    assert "scripts/changes_fragment.py new" in script
