@@ -34,13 +34,16 @@ import config_schema
 import dispatch_quota
 import quota_enforcement
 from dispatch_contract import DispatchAccess
+from dispatch_effort import EXPAND_EPIC_CHILDREN, Effort, normalize_dispatch_kind, resolve_effort
 from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
 from dispatch_routing import (
+    ModelRoutingDecision,
     dispatch_queue_manager,
     extract_declared_paths,
     record_dispatch_routing_audit,
     resolve_model_routing,
 )
+from epic_expansion import expansion_routing, render_expansion_prompt
 from identity import identity_manager
 from pydantic import BaseModel, Field
 from time_utils import utc_now_iso
@@ -65,6 +68,9 @@ _issue_dispatch_history_lock: asyncio.Lock = asyncio.Lock()
 
 DISPATCH_CONCURRENCY = 4
 MAX_ALL_TARGETS = 100
+# Dispatch kinds are flat identifiers such as ``implementation`` or
+# ``ci_fix:lint`` (USE-1, #1865); they select the reasoning effort.
+DISPATCH_KIND_PATTERN = r"^[A-Za-z_]{1,40}(:[A-Za-z_]{1,40})?$"
 
 # ─── Pydantic models ──────────────────────────────────────────────────────────
 
@@ -94,6 +100,8 @@ class PRDispatchRequest(BaseModel):
     principal: str = Field(default="", max_length=200)
     confirmation: DispatchConfirmationBody = Field(default_factory=DispatchConfirmationBody)
     pr_lifecycle: str = Field(default="arm_and_exit", max_length=50)
+    dispatch_kind: str = Field(default="pr", pattern=DISPATCH_KIND_PATTERN)
+    effort: Effort | None = None
     auto_fix: bool = Field(default=False)
     operator_opt_in: bool = Field(default=False)
     wakeups_count: int = Field(default=0, ge=0)
@@ -108,6 +116,8 @@ class IssueDispatchRequest(BaseModel):
     principal: str = Field(default="", max_length=200)
     force: bool = False
     confirmation: DispatchConfirmationBody = Field(default_factory=DispatchConfirmationBody)
+    dispatch_kind: str = Field(default="implementation", pattern=DISPATCH_KIND_PATTERN)
+    effort: Effort | None = None
 
 
 class RejectedTarget(BaseModel):
@@ -373,6 +383,10 @@ async def dispatch_to_prs(
                     len(rejected_due_to_quota),
                 )
 
+    # ── Effort per dispatch kind (USE-1, #1865) ───────────────────────────────
+    dispatch_kind = normalize_dispatch_kind(req.dispatch_kind)
+    effort = resolve_effort(dispatch_kind, req.effort)
+
     # ── Fan-out dispatch ──────────────────────────────────────────────────────
     semaphore = asyncio.Semaphore(DISPATCH_CONCURRENCY)
     tasks = [
@@ -388,7 +402,7 @@ async def dispatch_to_prs(
             repo_root=repo_root,
             run_cmd_fn=run_cmd_fn,
             semaphore=semaphore,
-            extra_inputs={"pr_lifecycle": req.pr_lifecycle},
+            extra_inputs={"pr_lifecycle": req.pr_lifecycle, "dispatch_kind": dispatch_kind, "effort": effort},
         )
         for repo, num in targets
     ]
@@ -436,6 +450,8 @@ async def dispatch_to_prs(
         "action": "agents.dispatch.pr",
         "access": DispatchAccess.PRIVILEGED.value,
         "provider": req.provider,
+        "dispatch_kind": dispatch_kind,
+        "effort": effort,
         "accepted": accepted_count,
         "rejected_count": len(rejected),
         "envelope_ids": envelope_ids,
@@ -465,6 +481,20 @@ def _check_issue_pickable(repository: str, number: int) -> str | None:
     if number <= 0:
         return "invalid issue number"
     return None  # default: assume pickable (no live API call here)
+
+
+def _issue_routing(req: IssueDispatchRequest, dispatch_kind: str) -> ModelRoutingDecision:
+    """Model routing for an issue dispatch; ``expand_epic_children`` is tier:cli."""
+    if dispatch_kind == EXPAND_EPIC_CHILDREN:
+        return expansion_routing(req.model)
+    return resolve_model_routing(labels=(), prompt=req.prompt, requested_model=req.model)
+
+
+def _issue_prompt(req: IssueDispatchRequest, dispatch_kind: str, repository: str, number: int) -> str:
+    """Per-target prompt; an epic expansion wraps the operator note in its template."""
+    if dispatch_kind == EXPAND_EPIC_CHILDREN:
+        return render_expansion_prompt(repository=repository, epic_number=number, operator_note=req.prompt)
+    return req.prompt
 
 
 async def dispatch_to_issues(
@@ -614,19 +644,22 @@ async def dispatch_to_issues(
                 continue
         filtered_targets.append((repo, num))
 
-    # ── Resolve model routing ─────────────────────────────────────────────────
-    routing = resolve_model_routing(labels=(), prompt=req.prompt, requested_model=req.model)
+    # ── Resolve model routing and effort (RD-3 #1848, USE-1 #1865) ────────────
+    dispatch_kind = normalize_dispatch_kind(req.dispatch_kind)
+    effort = resolve_effort(dispatch_kind, req.effort)
+    routing = _issue_routing(req, dispatch_kind)
 
     # ── Fan-out dispatch ──────────────────────────────────────────────────────
     semaphore = asyncio.Semaphore(DISPATCH_CONCURRENCY)
     extra = {"forced": "true"} if req.force else {}
+    extra.update({"dispatch_kind": dispatch_kind, "effort": effort})
     tasks = [
         _dispatch_one(
             kind="issue",
             full_repository=repo,
             number=num,
             provider=req.provider,
-            prompt=req.prompt,
+            prompt=_issue_prompt(req, dispatch_kind, repo, num),
             model=routing.model,
             workflow_file="Agent-Issue-Action.yml",
             org=org,
@@ -681,6 +714,8 @@ async def dispatch_to_issues(
         "action": "agents.dispatch.issue",
         "access": DispatchAccess.PRIVILEGED.value,
         "provider": req.provider,
+        "dispatch_kind": dispatch_kind,
+        "effort": effort,
         "tier": routing.tier,
         "model": routing.model,
         "routing_reason": routing.reason,

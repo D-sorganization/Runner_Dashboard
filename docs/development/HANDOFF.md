@@ -55,12 +55,34 @@
 
 ---
 
+# Current handoff (parallel PR) — pre-push parity: no bandit, diff-scoped pytest (DL-#1864, #1864)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-prepush`; branch `chore/1864-prepush-parity`; commit SELF; PR: see the branch. Separate from the CI-tier PR (`ci/1864-event-tiered-ci`).
+- **Change:** `.pre-commit-config.yaml` drops the pre-push `bandit` hook (CI Standard's lint job runs bandit) and `pytest-unit` now runs `uv run python -m scripts.run_pytest_diff`, keeping `language: system`. `scripts/run_pytest_diff.py` and `scripts/run_mypy_diff.py` are vendored from Repository_Management `shared_scripts/` at `ed046eb` (imports rewritten to `scripts.`, ruff-formatted); `python -m` avoids the RM#1912 import fault. No fallback directory: a change with no mapped test runs no pytest at pre-push.
+- **Development log:** No material development-log change — DL-#1864 (added on `ci/1864-event-tiered-ci`) already lists this branch and its paths.
+- **Validation:** `pytest tests/test_run_pytest_diff.py tests/test_workflow_hygiene.py` → 134 passed (hook-wiring tests RED first). One-file push simulation (`backend/dispatch_routing.py` → `tests/test_dispatch_routing.py`) ran in about 1 s.
+- **Review fixes (#1868, Codex):** `run_pytest_diff` now targets only collectible `test_*.py`/`*_test.py` modules — a changed `conftest.py` or test helper runs its directory (`tests/` for the root conftest) — and always accumulates name matches, so `backend/gh_client.py` runs `tests/test_gh_client.py` and `tests/test_gh_client_retry.py`. Both are marked `Local fix` in the vendored file; Repository_Management `shared_scripts/run_pytest_diff.py` has the same two defects and needs the upstream fix before the next re-sync. 19 passed in `tests/test_run_pytest_diff.py` (4 new, RED first).
+- **Secrets baseline:** `.secrets.baseline` refreshed with `detect-secrets==1.5.0 scan --baseline` (CI's command); the only change is the already-audited `.pre-commit-config.yaml` detect-secrets rev SHA moving from line 81 to 82.
+- **Next:** merge; re-sync the vendored files when Repository_Management changes `shared_scripts/run_pytest_diff.py` (e.g. #1912).
+
+---
+
 # Prior handoff — required-checks policy for the merge queue (DL-#1890)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1890-policy`; branch `ci/1890-required-checks-policy-merge-queue`; commit SELF; PR: see DL-#1890.
 - **Change:** policy requires the merge queue and `require_branches_up_to_date: false`; the drift checker gains `merge_queue_drift` / `up_to_date_drift`. New fixture `tests/contracts/branch_protection_snapshot_merge_queue.json`; the compliant example ruleset now carries the queue.
 - **Validation:** `tests/test_required_checks_drift.py` 16 passed; `tests/test_workflow_hygiene.py` passes. Live run: only the #1119 `guard` gap remains (`guard` is not a required context; making it one is an owner settings decision).
 - **Next:** merge; wire the live check into #1850.
+
+---
+
+# Current handoff (parallel PR) — USE-1: effort per dispatch kind, epic expansion, weekly usage report (DL-#1865, #1865)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-use1`; branch `feat/1865-effort-usage-report`; commit SELF; PR: see the branch.
+- **Change:** `dispatch_effort.resolve_effort(kind, override)` (unknown → medium; explicit override validated). `CommandEnvelope.effort` validated in `__post_init__`/`from_dict`; `build_envelope(effort=)` puts it in the signed payload. `CIFixRoute.effort` (lint low, test medium, escalated high). PR/issue dispatch requests take `dispatch_kind` + optional `effort` and pass both as workflow inputs and in the audit history. `expand_epic_children` issue dispatches route to tier:cli (Sonnet) with `epic_expansion.render_expansion_prompt`, whose child template links `cli_tier_task.md`, `pr-lifecycle.md` and `AGENT_TIER_ROUTING.md` instead of repeating them. `usage_report` renders `SessionTelemetryStore.get_metrics_window` (this week vs previous week) and `post_weekly_usage_report` finds-or-creates the `usage-report` issue "Weekly agent usage report" in Repository_Management and creates/updates one comment per ISO week (marker `<!-- usage-report:week=YYYY-Www -->`). `POST /api/usage/report/weekly` (admin scope, `dry_run`) and an opt-in 6-hourly loop (`USAGE_REPORT_WEEKLY_ENABLED=1` on one node) run it. `gh_client.patch` added.
+- **Not done / follow-ups:** RM's `Agent-PR-Action.yml` / `Agent-Issue-Action.yml` do not exist in Repository_Management today, so no launcher consumes the `effort` input yet; merge-queue wait/timeouts are rendered as "not reported" until a source exists; the issue is not created yet (first run creates it) and pinning is manual (GraphQL-only).
+- **Validation:** `pytest tests/test_dispatch_effort.py tests/test_epic_expansion.py tests/test_agent_dispatch_router.py` → 49 passed (effort/router tests RED first); `pytest tests/test_usage_report.py tests/api/test_usage_report_routes.py tests/test_session_telemetry.py tests/test_usage_metrics.py` passes; `ruff check backend/ clients/`, `ruff format --check`, `mypy backend/` clean.
+- **Next:** merge; enable the loop on the hub node and pin the issue.
 
 ---
 

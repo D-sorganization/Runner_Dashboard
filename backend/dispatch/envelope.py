@@ -12,6 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 from dispatch.signing import _hash_payload, _load_signing_secret, _sign_envelope_payload, _verify_envelope_signature
+from dispatch_effort import DEFAULT_EFFORT, validate_effort
 from time_utils import utc_now_iso
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -97,8 +98,12 @@ class CommandEnvelope:
     signature_authentic: bool = field(default=False, compare=False)
     # Issue #1845 (RD-0): default pr_lifecycle to "arm_and_exit"
     pr_lifecycle: str = "arm_and_exit"
+    # Issue #1865 (USE-1): reasoning effort for the launched session.
+    effort: str = DEFAULT_EFFORT
 
     def __post_init__(self) -> None:
+        # DbC: an envelope never carries an effort the providers do not know.
+        validate_effort(self.effort)
         if not self.signature:
             secret = _load_signing_secret()
             sig = _sign_envelope_payload(
@@ -164,6 +169,8 @@ class CommandEnvelope:
             data.get("pr_lifecycle") or (data.get("payload") or {}).get("pr_lifecycle") or "arm_and_exit"
         )
         object.__setattr__(envelope, "pr_lifecycle", pr_lifecycle)
+        effort = data.get("effort") or (data.get("payload") or {}).get("effort") or DEFAULT_EFFORT
+        object.__setattr__(envelope, "effort", validate_effort(effort))
         return envelope
 
     def verify_signature(self) -> bool:
