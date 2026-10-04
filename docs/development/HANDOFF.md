@@ -1,3 +1,13 @@
+# Current handoff — event-tiered CI Standard (DL-#1864, #1864)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-ci-tiers`; branch `ci/1864-event-tiered-ci`; commit SELF; PR: see the branch. Workflow-only change, shipped alone (pre-push parity is a separate PR on `chore/1864-prepush-parity`).
+- **Change:** new `changes` job in `ci-standard.yml` outputs `tier` / `full_suite` / `run_python_tests`. `pull_request` = lint, format, mypy, fast tests (no coverage/bandit/pip-audit/security-scan); `merge_group` and `workflow_dispatch` = full suite; `push` = no heavy jobs. The python-scope detector moved from `ci-health-check` into `changes`, runs on `pull_request` only, and fails closed when the files API returns a full page (100). `quality-gate` and `tests-required` read `needs.changes.result` and fail closed; nothing may skip in the full tier.
+- **Key decision:** the coverage floor (`fail_under = 60`) is now enforced only in `merge_group`, where coverage is measured; the queue is the authoritative gate.
+- **Validation:** `pytest tests/test_workflow_hygiene.py tests/test_ci_config.py tests/test_required_checks_drift.py tests/test_mypy_override_ratchet.py tests/test_fleet_merge_checker.py` → 206 passed (new tier tests RED first; they execute the tier, quality-gate and tests-required bash under each event). Pre-existing: `scripts/check_local_only_workflows.py` fails identically on `main` (hosted-runner allowlist lives in `local-only-runner-guard.yml`).
+- **Next:** merge through the queue; confirm the first `merge_group` run shows security-scan and coverage, and a docs-only PR's required checks finish in under 3 min.
+
+---
+
 # Current handoff — fleet merge policy covers all 41 queue repos (DL-#1890, Repository_Management#1900)
 
 - **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-1900-fleet-policy`; branch `ci/1900-fleet-merge-policy-all-repos`; commit SELF; PR #1862.
