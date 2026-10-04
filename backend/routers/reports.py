@@ -62,7 +62,20 @@ async def list_reports() -> dict:
                     "chart_filename": (f"assessment_scores_{date_str}.png" if chart_path.exists() else None),
                 }
             )
-    return {"reports": reports, "reports_dir": str(reports_dir), "total": len(reports)}
+    session_metrics = None
+    try:
+        from session_telemetry import get_session_telemetry_store
+
+        session_metrics = get_session_telemetry_store().get_metrics(window_days=30)
+    except Exception as e:
+        log.warning("Could not compute session metrics for reports: %s", e)
+
+    return {
+        "reports": reports,
+        "reports_dir": str(reports_dir),
+        "total": len(reports),
+        "session_metrics": session_metrics,
+    }
 
 
 @router.get("/api/reports/{date}")
