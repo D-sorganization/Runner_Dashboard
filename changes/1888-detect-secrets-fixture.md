@@ -1,6 +1,6 @@
 ---
 issue: 1888
-summary: "Mark the fixture SHA in test_changes_fragment_rollout.py with the allowlist pragma so detect-secrets is green again"
+summary: "Mark the fixture SHA in both changes_fragment test files with the allowlist pragma and refresh the stale baseline line number so detect-secrets is green again"
 dl_state: "shipped"
 next_step: "None; the fix ships with this PR"
 title: "Allowlist fixture SHA for detect-secrets"

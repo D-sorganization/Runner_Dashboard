@@ -20,7 +20,7 @@ import pytest
 from scripts import changes_fragment, development_log, spec_changelog
 
 TODAY = date(2026, 10, 4)
-SHA = "0123456789abcdef0123456789abcdef01234567"
+SHA = "0123456789abcdef0123456789abcdef01234567"  # pragma: allowlist secret
 
 SPEC_FIXTURE = """# Spec
 
