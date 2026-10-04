@@ -1,3 +1,13 @@
+# Current handoff — stats route test date-rot fix
+
+- **Repository / worktree:** Runner_Dashboard, `_worktrees/RD-stats-date-bomb`; branch `fix/stats-route-test-date-bomb` from `origin/main`; commit SELF; PR: see the branch.
+- **Why:** `tests/api/test_workflow_stats_routes.py` seeded runs at a fixed `2026-09-20`; the summary endpoint reads the last 14 days, so the test began failing on 2026-10-04 UTC and blocked every pre-push and PR CI run (found while pushing the Repository_Management#1890 merge_group PR).
+- **Change:** the seed defaults to one day before now. Test-only; no runtime change. No material development-log change — test-only date-rot fix with no feature entry.
+- **Validation:** `pytest tests/api/test_workflow_stats_routes.py`: 11 passed.
+- **Next:** merge; then rebase and push `ci/1890-merge-group-triggers`.
+
+---
+
 # Current handoff — container scan repair (DL-#1840)
 
 - Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/codex-1840`, branch `fix/issue-1840-container-security`, issue #1840, PR #1841, lease session codex-rd-overnight-1840. Production unchanged; peer checkout preserved.
@@ -32,6 +42,7 @@
 - Next: open #1832 PR after Linux validation; collect full Linux result; prepare coherent patch release and production prerequisites.
 
 ---
+
 # Current handoff — Maxwell Contract Drift gets a Python (DL-#1826)
 
 - **Repository / worktree:** Runner_Dashboard, `_wt/rd-maxwell-drift-python`
