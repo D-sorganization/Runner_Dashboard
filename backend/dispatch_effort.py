@@ -5,6 +5,7 @@ that model should think. A lint fix or a templated issue body does not need the
 effort a design task does, so every dispatch kind maps to one of three levels:
 
 - ``ci_fix:lint`` -> low, ``ci_fix:test`` -> medium,
+- ``ci_fix:conflict`` -> low (merge main into a dequeued PR, #1879),
 - ``implementation`` -> medium, ``design`` -> high,
 - ``expand_epic_children`` -> low (templated, well-specified writing).
 
@@ -28,6 +29,7 @@ DISPATCH_KIND_EFFORT: Final[Mapping[str, Effort]] = MappingProxyType(
     {
         "ci_fix:lint": "low",
         "ci_fix:test": "medium",
+        "ci_fix:conflict": "low",
         "ci_fix:escalated": "high",
         "implementation": "medium",
         "pr": "medium",

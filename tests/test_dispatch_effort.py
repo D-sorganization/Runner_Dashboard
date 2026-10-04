@@ -22,6 +22,7 @@ from dispatch_effort import (
     [
         ("ci_fix:lint", "low"),
         ("ci_fix:test", "medium"),
+        ("ci_fix:conflict", "low"),
         ("implementation", "medium"),
         ("design", "high"),
         (EXPAND_EPIC_CHILDREN, "low"),

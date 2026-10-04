@@ -279,8 +279,10 @@ def test_record_ci_fix_audit(tmp_path: Path) -> None:
         provider="codex_cli",
         model="gpt-5-codex",
         attempt_number=1,
-        cost_estimate=0.15,
+        cost_budget=0.15,
         audit_file=audit_file,
+        staff_run_id="run-abc",
+        effort="low",
     )
     assert audit_file.is_file()
     import json
@@ -288,7 +290,12 @@ def test_record_ci_fix_audit(tmp_path: Path) -> None:
     entries = json.loads(audit_file.read_text(encoding="utf-8"))
     assert len(entries) == 1
     assert entries[0]["pr_number"] == 42
-    assert entries[0]["cost_estimate"] == 0.15
+    # #1881: the recorded figure is the route's budget, not the spend; the spend lives on
+    # the staff run the entry names.
+    assert entries[0]["cost_budget"] == 0.15
+    assert "cost_estimate" not in entries[0]
+    assert entries[0]["staff_run_id"] == "run-abc"
+    assert entries[0]["effort"] == "low"
 
 
 def test_remediation_ci_fix_api_endpoints(client: TestClient) -> None:
@@ -319,7 +326,30 @@ def test_remediation_ci_fix_api_endpoints(client: TestClient) -> None:
     assert data["route"]["tier"] in ("cheap", "cli", "strong")
 
 
-def test_remediation_ci_fix_dispatch_lifecycle(client: TestClient) -> None:
+def test_remediation_ci_fix_dispatch_lifecycle(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import ci_fix_dispatch as bare_dispatch
+    import ci_fix_service
+
+    launched: list[object] = []
+
+    async def fake_launch(cmd: object, caller: Principal) -> dict:
+        launched.append(cmd)
+        return {"dry_run": False, "run": {"id": f"run-l{len(launched)}"}}
+
+    monkeypatch.setattr(ci_fix_service, "dispatch_staff_run", fake_launch)
+    monkeypatch.setattr(
+        ci_fix_service, "available_providers", lambda: {"claude": True, "codex": True, "antigravity": True}
+    )
+    monkeypatch.setattr(bare_dispatch, "DEFAULT_AUDIT_PATH", tmp_path / "audit.json")
+    # Fake run ids are not in the staff store, so isolate the lock from the run-liveness probe.
+    from ci_fix_locks import CIFixLockManager as BareLockManager
+    from routers import remediation_ci_fix
+
+    isolated = BareLockManager()
+    monkeypatch.setattr(ci_fix_service, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
+    monkeypatch.setattr(remediation_ci_fix, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
     dispatch_payload = {
         "repo": "Runner_Dashboard",
         "pr_number": 202,
@@ -343,6 +373,8 @@ def test_remediation_ci_fix_dispatch_lifecycle(client: TestClient) -> None:
     assert res_data["route"]["tier"] == "cheap"
     assert res_data["route"]["cost_budget"] < 0.50
     assert "python -m scripts.pre_pr" in res_data["prompt"]
+    assert res_data["staff_run_id"] == "run-l1"
+    assert len(launched) == 1
 
     # 2. Concurrency Lock: Dispatching second concurrent session on same PR -> 409 Conflict
     resp_conflict = client.post("/api/remediation/ci-fix/dispatch", json=dispatch_payload)
@@ -380,3 +412,75 @@ def test_acceptance_criteria_escalation_after_three_attempts() -> None:
     assert route_att3.escalated is True
     assert route_att3.tier == "strong"
     assert route_att3.model == "claude-opus-5-5"
+
+
+QUEUE_REF = f"gh-readonly-queue/main/pr-77-{'a' * 40}"
+
+
+def test_evaluate_trigger_recovers_pr_from_merge_queue_ref() -> None:
+    """#1879: merge_group runs carry ``pull_requests: []``; the PR comes from the queue ref."""
+    event = {
+        "conclusion": "failure",
+        "workflow_name": "CI Standard",
+        "run_id": 1,
+        "repository": "Runner_Dashboard",
+        "head_branch": QUEUE_REF,
+        "pull_requests": [],
+    }
+    decision = evaluate_ci_fix_trigger(event, lock_manager=CIFixLockManager())
+    assert decision.eligible is True, decision.reason
+    assert decision.pr_number == 77
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected"),
+    [
+        (QUEUE_REF, 77),
+        ("gh-readonly-queue/release/2.0/pr-5-abc1234", 5),
+        ("feat/pr-77-abc", None),
+        ("gh-readonly-queue/main/pr-x-abc", None),
+        ("", None),
+    ],
+)
+def test_pr_number_from_queue_ref(ref: str, expected: int | None) -> None:
+    from backend.ci_fix_dispatch import pr_number_from_queue_ref
+
+    assert pr_number_from_queue_ref(ref) == expected
+
+
+def test_consecutive_attempts_count_only_the_same_failure_signature(tmp_path: Path) -> None:
+    """Escalation follows a streak of the same failure; a different failure restarts it (#1887 review)."""
+    from backend.ci_fix_dispatch import count_consecutive_attempts, failure_signature
+
+    audit_file = tmp_path / "a.json"
+    same = failure_signature("CI", ["t.py::a"], "test")
+    other = failure_signature("CI", ["t.py::b"], "test")
+    assert same != other
+    assert failure_signature("CI", ["t.py::b", "t.py::a"], "test") == failure_signature(
+        "CI", ["t.py::a", "t.py::b"], "test"
+    )
+
+    def record(pr: int, signature: str) -> None:
+        record_ci_fix_audit(
+            "Runner_Dashboard",
+            pr,
+            "CI",
+            1,
+            "test",
+            "claude_code_cli",
+            "m",
+            1,
+            1.0,
+            audit_file=audit_file,
+            failure_signature=signature,
+        )
+
+    record(42, same)
+    record(42, same)
+    assert count_consecutive_attempts("runner_dashboard", 42, same, audit_file=audit_file) == 2
+    record(42, other)  # a different failure on the same PR breaks the streak
+    assert count_consecutive_attempts("Runner_Dashboard", 42, same, audit_file=audit_file) == 0
+    assert count_consecutive_attempts("Runner_Dashboard", 42, other, audit_file=audit_file) == 1
+    record(43, same)  # other PRs never count
+    assert count_consecutive_attempts("Runner_Dashboard", 42, other, audit_file=audit_file) == 1
+    assert count_consecutive_attempts("Runner_Dashboard", 42, same, audit_file=tmp_path / "missing.json") == 0
