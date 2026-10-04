@@ -7,6 +7,7 @@ without touching the running dashboard service.
 from __future__ import annotations
 
 import datetime as _dt_mod
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from uuid import uuid4
@@ -70,24 +71,30 @@ class DispatchConfirmation:
         )
 
 
-def _signed_effort(data: dict[str, Any]) -> str:
-    """Resolve an inbound envelope's effort from the signed payload.
+def _signed_field(
+    data: dict[str, Any],
+    key: str,
+    validate: Callable[[Any], str],
+    default: str,
+) -> str:
+    """Resolve an inbound envelope field from the signed payload.
 
-    Only ``payload`` is covered by the signature (issue #317), so its
-    ``effort`` is authoritative. An unsigned top-level ``effort`` may only
+    Only ``payload`` is covered by the signature (issue #317), so
+    ``payload[key]`` is authoritative. An unsigned top-level ``key`` may only
     repeat that value; a mismatch means the envelope was altered in transit.
-    Envelopes that predate USE-1 carry no effort and get the default.
+    When the payload does not sign the field (envelopes that predate it), the
+    top-level value and then ``default`` apply.
 
     Precondition: ``data`` is a deserialized envelope mapping.
-    Postcondition: the returned value is a known effort level.
-    Raises: ValueError on a top-level/payload mismatch or unknown level.
+    Postcondition: the returned value has passed ``validate``.
+    Raises: ValueError on a top-level/payload mismatch or a rejected value.
     """
     payload = data.get("payload") or {}
-    signed = payload.get("effort") if isinstance(payload, dict) else None
-    unsigned = data.get("effort")
+    signed = payload.get(key) if isinstance(payload, dict) else None
+    unsigned = data.get(key)
     if signed is not None and unsigned is not None and unsigned != signed:
-        raise ValueError(f"envelope effort {unsigned!r} does not match the signed payload effort {signed!r}")
-    return validate_effort(signed if signed is not None else unsigned or DEFAULT_EFFORT)
+        raise ValueError(f"envelope {key} {unsigned!r} does not match the signed payload {key} {signed!r}")
+    return validate(signed if signed is not None else unsigned or default)
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,11 +192,8 @@ class CommandEnvelope:
         object.__setattr__(envelope, "on_behalf_of", str(data.get("on_behalf_of", "")))
         object.__setattr__(envelope, "correlation_id", str(data.get("correlation_id", "")))
         object.__setattr__(envelope, "signature_authentic", bool(wire_signature))
-        pr_lifecycle = str(
-            data.get("pr_lifecycle") or (data.get("payload") or {}).get("pr_lifecycle") or "arm_and_exit"
-        )
-        object.__setattr__(envelope, "pr_lifecycle", pr_lifecycle)
-        object.__setattr__(envelope, "effort", _signed_effort(data))
+        object.__setattr__(envelope, "pr_lifecycle", _signed_field(data, "pr_lifecycle", str, "arm_and_exit"))
+        object.__setattr__(envelope, "effort", _signed_field(data, "effort", validate_effort, DEFAULT_EFFORT))
         return envelope
 
     def verify_signature(self) -> bool:
