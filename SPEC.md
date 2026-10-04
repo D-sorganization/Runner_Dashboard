@@ -11,7 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
-| 2026-10-04 | #1802 | Read-only `fleetctl doctor` (step 1 of BR-09): DNS/TLS, token validity, scopes, schema-version compatibility and briefing freshness checks as pure functions in `clients/fleet/fleet_client.py`; Barb round-trip only behind `--with-roundtrip`. |
+| 2026-10-04 | #1900 | Read-only `fleetctl doctor` (step 1 of BR-09): DNS/TLS, token validity, scopes, schema-version compatibility and briefing freshness checks as pure functions in `clients/fleet/fleet_client.py`; Barb round-trip only behind `--with-roundtrip`. |
 | 2026-10-04 | #1338 | Mobile Maxwell page drops its own chat and links to the Staff Console (last SC-G6 slice). |
 | 2026-10-04 | #1871 | Spec Check edits its existing bot `SPEC.md Update Required` comment in place when the warning text has changed (creates one when none exists, no-op when identical), so stale wording such as "bump the Spec Version" does not linger on open PRs (Codex review on #1872). |
 | 2026-10-04 | #1874 | Envelope `effort` and `pr_lifecycle` ignore an unsigned top-level value when the signed `payload` does not carry the field (legacy envelopes get the default), so an interceptor cannot set them while `verify_signature()` still passes; `_signed_field` applies the rule once. |
