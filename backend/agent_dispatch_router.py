@@ -93,6 +93,11 @@ class PRDispatchRequest(BaseModel):
     model: str = Field(default="", max_length=200)
     principal: str = Field(default="", max_length=200)
     confirmation: DispatchConfirmationBody = Field(default_factory=DispatchConfirmationBody)
+    pr_lifecycle: str = Field(default="arm_and_exit", max_length=50)
+    auto_fix: bool = Field(default=False)
+    operator_opt_in: bool = Field(default=False)
+    wakeups_count: int = Field(default=0, ge=0)
+    max_wakeups: int = Field(default=3, ge=1)
 
 
 class IssueDispatchRequest(BaseModel):
@@ -332,6 +337,23 @@ async def dispatch_to_prs(
         return {"error": targets_or_err, "status_code": 422}
     targets = targets_or_err
 
+    # ── PR lifecycle & Auto-fix subscription guard (#1845 / RD-0) ─────────────
+    if req.auto_fix or req.pr_lifecycle == "subscribed":
+        from pr_subscription import evaluate_pr_subscription
+
+        decision = evaluate_pr_subscription(
+            is_draft=False,
+            operator_opt_in=req.operator_opt_in,
+            wakeups_count=req.wakeups_count,
+            max_wakeups=req.max_wakeups,
+        )
+        if not decision.allowed:
+            return {
+                "error": decision.reason,
+                "status_code": 422,
+                "handoff_to_rd1": decision.handoff_to_rd1,
+            }
+
     # Wave 3: Quota truncation (Fair Sharing)
     rejected_due_to_quota: list[tuple[str, int]] = []
     if req.principal:
@@ -366,6 +388,7 @@ async def dispatch_to_prs(
             repo_root=repo_root,
             run_cmd_fn=run_cmd_fn,
             semaphore=semaphore,
+            extra_inputs={"pr_lifecycle": req.pr_lifecycle},
         )
         for repo, num in targets
     ]

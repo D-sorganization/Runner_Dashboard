@@ -57,6 +57,7 @@ def build_envelope(
     principal: str = "",
     on_behalf_of: str = "",
     correlation_id: str = "",
+    pr_lifecycle: str = "arm_and_exit",
 ) -> CommandEnvelope:
     """Convenience factory — retained for backward compatibility."""
     # Issue #331 — default correlation_id from the active request context so
@@ -68,17 +69,21 @@ def build_envelope(
             correlation_id = current_request_id()
         except ImportError:
             pass
+    payload_dict = _ensure_dict(payload)
+    if "pr_lifecycle" not in payload_dict:
+        payload_dict["pr_lifecycle"] = pr_lifecycle
     return CommandEnvelope(
         action=action,
         source=source,
         target=target,
         requested_by=requested_by,
         reason=reason,
-        payload=_ensure_dict(payload),
+        payload=payload_dict,
         confirmation=confirmation,
         principal=principal,
         on_behalf_of=on_behalf_of,
         correlation_id=correlation_id,
+        pr_lifecycle=pr_lifecycle,
     )
 
 

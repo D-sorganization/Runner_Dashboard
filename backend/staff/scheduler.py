@@ -41,8 +41,8 @@ log = logging.getLogger("dashboard.staff.scheduler")
 STATE_FILE = "staff_schedule_state.json"
 SCHEDULED_PROMPT = (
     "Scheduled {title} pass on {repo}. Follow your playbook for this repository: pick the highest-value items you "
-    "can finish safely in this one run and ship them as a single draft pull request. If nothing qualifies, open no "
-    "PR and say why in the STAFF_RESULT line."
+    "can finish safely in this one run and ship them as a ready pull request armed with automerge_guard (pr_lifecycle: "
+    "arm_and_exit). If nothing qualifies, open no PR and say why in the STAFF_RESULT line."
 )
 
 

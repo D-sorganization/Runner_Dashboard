@@ -95,6 +95,8 @@ class CommandEnvelope:
     # arrived with no signature, which must never have one minted on the
     # caller's behalf. ``validate_envelope_crypto`` rejects such envelopes.
     signature_authentic: bool = field(default=False, compare=False)
+    # Issue #1845 (RD-0): default pr_lifecycle to "arm_and_exit"
+    pr_lifecycle: str = "arm_and_exit"
 
     def __post_init__(self) -> None:
         if not self.signature:
@@ -158,6 +160,10 @@ class CommandEnvelope:
         object.__setattr__(envelope, "on_behalf_of", str(data.get("on_behalf_of", "")))
         object.__setattr__(envelope, "correlation_id", str(data.get("correlation_id", "")))
         object.__setattr__(envelope, "signature_authentic", bool(wire_signature))
+        pr_lifecycle = str(
+            data.get("pr_lifecycle") or (data.get("payload") or {}).get("pr_lifecycle") or "arm_and_exit"
+        )
+        object.__setattr__(envelope, "pr_lifecycle", pr_lifecycle)
         return envelope
 
     def verify_signature(self) -> bool:
