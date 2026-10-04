@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1871 — Spec Check covers backend; staged-only gitleaks at commit
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1871 (epic Repository_Management#1889)
+- **Branch:** `ci/1871-spec-check-backend`; `chore/1871-gitleaks-staged`
+- **PR:** see the branches (workflow change ships alone; the pre-commit change is a separate PR)
+- **Paths:** `.github/workflows/ci-spec-check.yml`, `tests/test_spec_check_workflow.py`, `.pre-commit-config.yaml`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; Spec Check detection step executed against fixture file lists; new tests RED then GREEN; 175 passed in `tests/test_spec_check_workflow.py` + `tests/test_workflow_hygiene.py` + `tests/test_workflow_action_pinning.py` + `tests/test_workflow_runner_routing.py`; actionlint clean.
+- **Summary:** Spec Check treats `backend/**` as source, so a backend-only PR without a SPEC.md update fails; its PR comment asks for one change-log row keyed by the PR and says never to bump the release-derived Spec Version (Repository_Management#1520). The commit-stage gitleaks hook scans staged changes only; CI Secrets keeps the full-history scan.
+- **Next step:** Accept a `changes/<issue>-*.md` fragment in Spec Check once Repository_Management#1922 / #1924 land and the fleet sync reaches this repository.
+
 ### DL-#1890 — Merge queue replaces strict up-to-date protection
 
 - **State:** in_progress
@@ -56,6 +69,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-30 @ SELF; RED four security assertions; GREEN63Windows hardening tests,71Linux hardening/HTTP tests with isolated frozen dependencies, ruff lint/format, real Docker build/hash enforcement and Trivy0.70 HIGH/CRITICAL ignore-unfixed scan exit0.
 - **Summary:** Failed release scan reported seven Debian and two Python fixable HIGH findings. Verified official Debian security replacements OpenSSL3.5.7-1~deb13u3/PCRE2 10.46-1~deb13u3 and PyPI urllib3 2.8.0. Only urllib3 changed in the Python graph; generated hashes match publisher. Preserve base digest/runtime bounds/scan gates; no production mutation. Second Gemini review found an overstated test docstring, corrected.
 - **Next step:** Open focused PR, pass required exact-head checks and guarded merge; synchronize release PR #1835 afterward. Preserve unrelated pending deployment approvals.
+
+### DL-#1865 — Effort per dispatch kind, epic expansion on tier:cli, weekly usage report
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1865 (epic Repository_Management#1889)
+- **Branch:** `feat/1865-effort-usage-report`
+- **PR:** see the branch
+- **Paths:** `backend/dispatch_effort.py`, `backend/epic_expansion.py`, `backend/usage_report.py`, `backend/agent_dispatch_router.py`, `backend/ci_fix_dispatch.py`, `backend/dispatch/envelope.py`, `backend/dispatch_contract.py`, `backend/session_telemetry.py`, `backend/routers/usage_metrics.py`, `backend/gh_client.py`, `backend/server.py`, `tests/test_dispatch_effort.py`, `tests/test_epic_expansion.py`, `tests/test_usage_report.py`, `tests/api/test_usage_report_routes.py`, `tests/test_agent_dispatch_router.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; 49 passed in dispatch effort/epic/router tests and 14 in usage report tests; ruff, ruff format and mypy `backend/` clean.
+- **Summary:** Every dispatch kind resolves a reasoning effort (unknown → medium) that rides on the envelope, CI-fix routes and the dispatch workflow inputs. `expand_epic_children` routes epic expansion to tier:cli/Sonnet at low effort with a template that links the fleet rules. The weekly usage report renders RD-4 telemetry (this week vs last week) and creates or updates one comment per ISO week on the `usage-report` issue in Repository_Management.
+- **Next step:** After merge, set `USAGE_REPORT_WEEKLY_ENABLED=1` on the hub node, run `POST /api/usage/report/weekly` once, and pin the created issue.
 
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 

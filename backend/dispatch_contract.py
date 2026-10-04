@@ -43,6 +43,7 @@ from dispatch.signing import (  # noqa: F401
     _validate_timestamp_freshness,
     _verify_envelope_signature,
 )
+from dispatch_effort import DEFAULT_EFFORT, validate_effort
 
 
 def build_envelope(
@@ -58,6 +59,7 @@ def build_envelope(
     on_behalf_of: str = "",
     correlation_id: str = "",
     pr_lifecycle: str = "arm_and_exit",
+    effort: str = DEFAULT_EFFORT,
 ) -> CommandEnvelope:
     """Convenience factory — retained for backward compatibility."""
     # Issue #331 — default correlation_id from the active request context so
@@ -72,6 +74,9 @@ def build_envelope(
     payload_dict = _ensure_dict(payload)
     if "pr_lifecycle" not in payload_dict:
         payload_dict["pr_lifecycle"] = pr_lifecycle
+    # Issue #1865 (USE-1): effort rides in the signed payload as well.
+    effort = validate_effort(effort)
+    payload_dict.setdefault("effort", effort)
     return CommandEnvelope(
         action=action,
         source=source,
@@ -84,6 +89,7 @@ def build_envelope(
         on_behalf_of=on_behalf_of,
         correlation_id=correlation_id,
         pr_lifecycle=pr_lifecycle,
+        effort=effort,
     )
 
 

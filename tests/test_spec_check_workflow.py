@@ -125,3 +125,24 @@ def test_survivor_fails_when_spec_is_stale() -> None:
     step = next(s for s in job["steps"] if s.get("name") == "Fail if spec is stale")
     assert step["if"] == "steps.check.outputs.needs_update == 'true'"
     assert "exit 1" in step["run"]
+
+
+# Runner_Dashboard#1871: backend changes must update SPEC.md (CLAUDE.md, Spec Check).
+@pytest.mark.parametrize("path", ["backend/server.py", "backend/routers/fleet.py"])
+def test_backend_change_needs_spec_update(path: str) -> None:
+    assert _detect([path])["needs_update"] == "true"
+    assert _detect([path, "SPEC.md"])["needs_update"] == "false"
+
+
+def _comment_script() -> str:
+    job = _load(_SPEC_CHECK)["jobs"]["spec-freshness"]
+    step = next(s for s in job["steps"] if s.get("name") == "Post warning comment")
+    return str(step["with"]["script"])
+
+
+def test_comment_does_not_tell_authors_to_bump_spec_version() -> None:
+    """Spec Version is release-derived (Repository_Management#1520)."""
+    script = _comment_script()
+    assert "Bump the Spec Version" not in script
+    assert "Do NOT bump the \\`Spec Version\\` field" in script
+    assert "change-log row keyed by this PR" in script

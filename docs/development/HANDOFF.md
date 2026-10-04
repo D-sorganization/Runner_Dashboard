@@ -7,6 +7,15 @@
 
 ---
 
+# Current handoff — Spec Check covers backend/** (DL-#1871, #1871)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-1871`; branch `ci/1871-spec-check-backend`; commit SELF; PR: see the branch. Workflow-only change, shipped alone; the staged-only gitleaks pre-commit change is a separate PR on `chore/1871-gitleaks-staged`.
+- **Change:** `ci-spec-check.yml` adds `backend/*` (bash `[[ == ]]` globs match nested paths) to the source patterns; the PR comment drops "Bump the Spec Version" and uses the Repository_Management wording (one change-log row keyed by the PR; Spec Version is release-derived).
+- **Validation:** `pytest tests/test_spec_check_workflow.py tests/test_workflow_hygiene.py tests/test_workflow_action_pinning.py tests/test_workflow_runner_routing.py` → 175 passed (3 new tests RED first; they execute the detection step against fixture file lists); `actionlint` clean.
+- **Next:** merge through the queue; add `changes/<issue>-*.md` fragment acceptance after Repository_Management#1922 / #1924 reach this repo.
+
+---
+
 # Current handoff — event-tiered CI Standard (DL-#1864, #1864)
 
 - **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-ci-tiers`; branch `ci/1864-event-tiered-ci`; commit SELF; PR: see the branch. Workflow-only change, shipped alone (pre-push parity is a separate PR on `chore/1864-prepush-parity`).
@@ -64,6 +73,16 @@
 - **Change:** policy requires the merge queue and `require_branches_up_to_date: false`; the drift checker gains `merge_queue_drift` / `up_to_date_drift`. New fixture `tests/contracts/branch_protection_snapshot_merge_queue.json`; the compliant example ruleset now carries the queue.
 - **Validation:** `tests/test_required_checks_drift.py` 16 passed; `tests/test_workflow_hygiene.py` passes. Live run: only the #1119 `guard` gap remains (`guard` is not a required context; making it one is an owner settings decision).
 - **Next:** merge; wire the live check into #1850.
+
+---
+
+# Current handoff (parallel PR) — USE-1: effort per dispatch kind, epic expansion, weekly usage report (DL-#1865, #1865)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-use1`; branch `feat/1865-effort-usage-report`; commit SELF; PR: see the branch.
+- **Change:** `dispatch_effort.resolve_effort(kind, override)` (unknown → medium; explicit override validated). `CommandEnvelope.effort` validated in `__post_init__`/`from_dict`; `build_envelope(effort=)` puts it in the signed payload. `CIFixRoute.effort` (lint low, test medium, escalated high). PR/issue dispatch requests take `dispatch_kind` + optional `effort` and pass both as workflow inputs and in the audit history. `expand_epic_children` issue dispatches route to tier:cli (Sonnet) with `epic_expansion.render_expansion_prompt`, whose child template links `cli_tier_task.md`, `pr-lifecycle.md` and `AGENT_TIER_ROUTING.md` instead of repeating them. `usage_report` renders `SessionTelemetryStore.get_metrics_window` (this week vs previous week) and `post_weekly_usage_report` finds-or-creates the `usage-report` issue "Weekly agent usage report" in Repository_Management and creates/updates one comment per ISO week (marker `<!-- usage-report:week=YYYY-Www -->`). `POST /api/usage/report/weekly` (admin scope, `dry_run`) and an opt-in 6-hourly loop (`USAGE_REPORT_WEEKLY_ENABLED=1` on one node) run it. `gh_client.patch` added.
+- **Not done / follow-ups:** RM's `Agent-PR-Action.yml` / `Agent-Issue-Action.yml` do not exist in Repository_Management today, so no launcher consumes the `effort` input yet; merge-queue wait/timeouts are rendered as "not reported" until a source exists; the issue is not created yet (first run creates it) and pinning is manual (GraphQL-only).
+- **Validation:** `pytest tests/test_dispatch_effort.py tests/test_epic_expansion.py tests/test_agent_dispatch_router.py` → 49 passed (effort/router tests RED first); `pytest tests/test_usage_report.py tests/api/test_usage_report_routes.py tests/test_session_telemetry.py tests/test_usage_metrics.py` passes; `ruff check backend/ clients/`, `ruff format --check`, `mypy backend/` clean.
+- **Next:** merge; enable the loop on the hub node and pin the issue.
 
 ---
 
