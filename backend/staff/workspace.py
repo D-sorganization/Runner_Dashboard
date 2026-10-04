@@ -203,6 +203,14 @@ def add_worktree(checkout: Path, worktree: Path, branch: str, *, start_ref: str 
     _git(checkout, "worktree", "add", "-b", branch, str(worktree), base)
 
 
+def add_run_worktree(checkout: Path, worktree: Path, branch: str, head_ref: str = "") -> None:
+    """A run's worktree: from the PR head when the run fixes an existing PR (#1881), else origin/main."""
+    if head_ref:
+        add_worktree(checkout, worktree, branch, start_ref=head_ref)
+    else:
+        add_worktree(checkout, worktree, branch)
+
+
 def _git(cwd: Path, *args: str) -> None:
     subprocess.run(
         ["git", *args],

@@ -27,7 +27,7 @@ from ci_fix_dispatch import QUEUE_REF_PATTERN, pr_number_from_queue_ref
 from dashboard_config import ORG
 from pydantic import BaseModel, ConfigDict, Field
 
-GITHUB_WEBHOOK_SECRET_ENV = "GITHUB_WEBHOOK_SECRET"
+GITHUB_WEBHOOK_SECRET_ENV = "GITHUB_WEBHOOK_SECRET"  # pragma: allowlist secret (env var name)
 CI_FIX_ENABLED_ENV = "CI_FIX_DISPATCH_ENABLED"
 FAILED_CONCLUSIONS = ("failure", "timed_out")
 DEQUEUE_KINDS: dict[str, Literal["merge_conflict", "queue_checks_failed"]] = {

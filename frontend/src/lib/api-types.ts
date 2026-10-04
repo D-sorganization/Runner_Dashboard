@@ -6950,10 +6950,7 @@ export interface components {
              * @default main
              */
             base_ref: string;
-            /**
-             * Branch
-             * @default
-             */
+            /** Branch */
             branch: string;
             /** Conflicting Files */
             conflicting_files?: string[] | null;

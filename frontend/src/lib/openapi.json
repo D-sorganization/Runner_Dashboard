@@ -479,8 +479,9 @@
             "type": "string"
           },
           "branch": {
-            "default": "",
-            "maxLength": 255,
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._/-]+$",
             "title": "Branch",
             "type": "string"
           },
@@ -588,7 +589,7 @@
             "type": "string"
           }
         },
-        "required": ["repo", "pr_number"],
+        "required": ["repo", "pr_number", "branch"],
         "title": "CIFixDispatchRequest",
         "type": "object"
       },
