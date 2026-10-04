@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   pull_request_target:
     types: [labeled, unlabeled]
+  # Merge queue (Repository_Management#1890). The guard already ran on the PR,
+  # so `guard` is skipped here; a skipped job satisfies the queue's check.
+  merge_group:
 
 permissions:
   contents: read
@@ -12,7 +15,7 @@ permissions:
   issues: read
 
 concurrency:
-  group: anti-phantom-${{ github.event.pull_request.number }}-${{ github.event_name }}
+  group: anti-phantom-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:

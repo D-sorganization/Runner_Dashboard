@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1890 — Required-check workflows run in the merge queue
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** D-sorganization/Repository_Management#1890 (epic Repository_Management#1889)
+- **Branch:** `ci/1890-merge-group-triggers` from `origin/main`
+- **PR:** see the PR for this branch
+- **Paths:** `.github/workflows/ci-standard.yml`, `.github/workflows/anti-phantom-merge.yml`, `tests/test_workflow_hygiene.py`
+- **Started:** 2026-10-03
+- **Last verified:** 2026-10-03 @ SELF; RED new merge-queue hygiene test, GREEN 148 passed in `tests/test_workflow_hygiene.py` and `tests/test_ci_config.py`.
+- **Summary:** Adds `merge_group:` to the workflows that report required checks (`quality-gate`, `tests`, `guard`). Prerequisite for enabling the merge queue on `main` (Repository_Management#1900). `guard` is skipped in the queue (it already ran on the PR); its concurrency group falls back to `github.ref` so queue runs do not cancel each other.
+- **Next step:** After merge, the admin session enables the merge queue on `main` (Repository_Management#1900 pilot).
+
 ### DL-#1840 — Refresh vulnerable container security pins
 
 - **State:** in_review
@@ -69,9 +82,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-30 @ SELF; RED fails 8322 != 8080; GREEN 60 template/config/registry tests pass; ruff lint/format pass; SPEC freshness CI identified the missing changelog, now added for PR #1831.
 - **Summary:** Copying the template previously overrode corrected runtime defaults with a pool dashboard port. Align the example to Maxwell's 8080 listener. TDD executed; Gemini draft reviewed against exact runtime source.
 - **Next step:** Released source awaits a new qualified deployment; main merge is `9755f69c`.
-
-
-
 
 ### DL-#1826 — Maxwell Contract Drift has no Python on self-hosted runners
 
