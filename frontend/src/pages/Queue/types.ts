@@ -46,6 +46,17 @@ export interface InlineMessage {
   text: string;
 }
 
+export interface FleetMergeRepoResult {
+  repo: string;
+  status: "pass" | "fail";
+  findings: string[];
+}
+
+export interface FleetMergeSettingsPayload {
+  status: "pass" | "fail";
+  results: FleetMergeRepoResult[];
+}
+
 // ── Stale cleanup ──────────────────────────────────────────────────────────
 
 export const STALE_REASONS = [

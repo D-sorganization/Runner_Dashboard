@@ -3548,6 +3548,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/queue/merge-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Queue Merge Settings
+         * @description Return fleet-wide merge queue and branch protection drift status (RD#1850).
+         */
+        get: operations["get_queue_merge_settings_api_queue_merge_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/queue/purge-stale": {
         parameters: {
             query?: never;
@@ -14418,6 +14438,28 @@ export interface operations {
         };
     };
     diagnose_queue_api_queue_diagnose_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_queue_merge_settings_api_queue_merge_settings_get: {
         parameters: {
             query?: never;
             header?: never;

@@ -12618,6 +12618,33 @@
         "summary": "Diagnose Queue"
       }
     },
+    "/api/queue/merge-settings": {
+      "get": {
+        "description": "Return fleet-wide merge queue and branch protection drift status (RD#1850).",
+        "operationId": "get_queue_merge_settings_api_queue_merge_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Queue Merge Settings Api Queue Merge Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Queue Merge Settings",
+        "tags": ["queue"]
+      }
+    },
     "/api/queue/purge-stale": {
       "post": {
         "description": "Cancel stale queued workflow runs.\n\nBy default this mutating endpoint only purges stale PR runs whose PR head\nhas advanced beyond the queued run's head SHA.",
