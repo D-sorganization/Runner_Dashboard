@@ -62,10 +62,12 @@ async def dispatch_ci_fix_endpoint(
 
     repo = str(body.get("repo") or body.get("repository") or "").strip()
     pr_num_raw = body.get("pr_number") or body.get("number")
-    try:
-        pr_number = int(pr_num_raw)
-    except (TypeError, ValueError):
-        pr_number = 0
+    pr_number = 0
+    if pr_num_raw is not None:
+        try:
+            pr_number = int(pr_num_raw)
+        except (TypeError, ValueError):
+            pr_number = 0
 
     if not repo or pr_number <= 0:
         raise HTTPException(status_code=400, detail="Valid repo and pr_number are required")
@@ -82,17 +84,21 @@ async def dispatch_ci_fix_endpoint(
     log_tail = str(body.get("log_tail") or "")
     pr_diff = str(body.get("pr_diff") or "")
     branch = str(body.get("branch") or "")
-    run_id = body.get("run_id")
-    if run_id is not None:
+    run_id_raw = body.get("run_id")
+    run_id: int | None = None
+    if run_id_raw is not None:
         try:
-            run_id = int(run_id)
+            run_id = int(run_id_raw)
         except (TypeError, ValueError):
             run_id = None
 
-    try:
-        attempt_number = int(body.get("attempt_number", 1))
-    except (TypeError, ValueError):
-        attempt_number = 1
+    attempt_raw = body.get("attempt_number", 1)
+    attempt_number = 1
+    if attempt_raw is not None:
+        try:
+            attempt_number = int(attempt_raw)
+        except (TypeError, ValueError):
+            attempt_number = 1
 
     failure_type = body.get("failure_type")
     if not failure_type:

@@ -13078,6 +13078,156 @@
         "tags": ["queue"]
       }
     },
+    "/api/remediation/ci-fix/dispatch": {
+      "post": {
+        "description": "Dispatch a capped CI-fix session for an open pull request.",
+        "operationId": "dispatch_ci_fix_endpoint_api_remediation_ci_fix_dispatch_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dispatch Ci Fix Endpoint Api Remediation Ci Fix Dispatch Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Dispatch Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/evaluate": {
+      "post": {
+        "description": "Evaluate whether an incoming event payload warrants an automated CI-fix session.",
+        "operationId": "evaluate_ci_fix_endpoint_api_remediation_ci_fix_evaluate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Ci Fix Endpoint Api Remediation Ci Fix Evaluate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Evaluate Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/locks": {
+      "get": {
+        "description": "List all active CI-fix PR concurrency locks.",
+        "operationId": "list_ci_fix_locks_endpoint_api_remediation_ci_fix_locks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Ci Fix Locks Endpoint Api Remediation Ci Fix Locks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Ci Fix Locks Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/locks/{repo}/{pr_number}": {
+      "delete": {
+        "description": "Release a CI-fix concurrency lock for a PR.",
+        "operationId": "release_ci_fix_lock_endpoint_api_remediation_ci_fix_locks__repo___pr_number__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pr_number",
+            "required": true,
+            "schema": {
+              "title": "Pr Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Release Ci Fix Lock Endpoint Api Remediation Ci Fix Locks  Repo   Pr Number  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release Ci Fix Lock Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
     "/api/reports": {
       "get": {
         "description": "List available daily progress reports.",
