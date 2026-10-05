@@ -1,11 +1,11 @@
-# Vendored from D-sorganization/Tools scripts/fork_pr_runner_guard.py @ aadd9336c964 (Tools PR #5427).
-# The canonical copy is moving to Repository_Management (RM#1989); re-sync from there once it lands.
-# No rule changes; only ruff format at this repository's line length.
+# Vendored from D-sorganization/Repository_Management scripts/fork_pr_runner_guard.py (RM#1990 @ 32b97cfe).
+# Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line length.
 """Reject workflow jobs that can run fork pull-request code on self-hosted runners.
 
-Tools is a public repository whose CI runs on ``d-sorg-fleet``, self-hosted
-runners on maintainer hardware (issue #4464). A fork pull request must never
-land on that fleet. This checker enforces two rules over
+Public fleet repositories run CI on ``d-sorg-fleet``, self-hosted runners on
+maintainer hardware (Tools#4464). A fork pull request must never land on that
+fleet. Canonical here (Repository_Management#1989), ported from Tools#5427 and
+vendored to the other fleet repositories. This checker enforces two rules over
 ``.github/workflows/*.yml``:
 
 1. **Fork PR code stays off the fleet.** In a workflow triggered by an event
@@ -33,7 +33,7 @@ reusable-workflow calls are treated as self-hosted (fail closed).
 
 The check reads expressions textually and does not evaluate them. It is a
 defence in depth, not a sandbox: on ``pull_request`` a fork can edit the
-workflow file itself, so the repository settings listed in issue #4464
+workflow file itself, so the repository settings listed in Tools#4464
 (approval for all outside collaborators, runner-group access) remain the
 primary control.
 """
@@ -278,10 +278,11 @@ def job_violations(
         )
     if events & BASE_CONTEXT_TRIGGERS:
         aliases = _head_ref_aliases(workflow, job)
+        privileged = ", ".join(sorted(events & BASE_CONTEXT_TRIGGERS))
         for step in _head_checkout_steps(job, aliases):
             violations.append(
                 f"{wf_name}::{job_id}: step '{step}' checks out PR head code on a "
-                f"self-hosted runner under {', '.join(sorted(events & BASE_CONTEXT_TRIGGERS))}; "
+                f"self-hosted runner under {privileged}; "
                 f"restrict it to {PULL_REQUEST_ONLY} or drop the head ref"
             )
     return violations
@@ -306,11 +307,24 @@ def find_violations(workflow_dir: Path) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the checker as a CLI.
+
+    Preconditions: --workflows-dir (alias --workflows) names a directory.
+    Postconditions: returns 0 when no job breaks a rule, else 1 after logging
+    one ::error:: line per violation.
+    """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--workflows", type=Path, default=Path(".github") / "workflows")
+    parser.add_argument(
+        "--workflows-dir",
+        "--workflows",
+        dest="workflows_dir",
+        type=Path,
+        default=Path(".github") / "workflows",
+        help="Directory of workflow files (default: .github/workflows).",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    violations = find_violations(args.workflows)
+    violations = find_violations(args.workflows_dir)
     for violation in violations:
         LOG.error("::error::%s", violation)
     if violations:
