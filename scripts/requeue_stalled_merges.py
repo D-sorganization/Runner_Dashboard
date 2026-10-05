@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Vendored from Repository_Management scripts/requeue_stalled_merges.py
-# (RM commit 16bdb7b3; RM#2027). Re-sync from upstream; do not fork.
+# (RM commit 8073b05d; RM#2027, RM#2029, RM#2033). Re-sync from upstream; do not fork.
 # No local changes except ruff format at this repository's line length.
 # Imports automerge_guard by path, so it must sit beside scripts/automerge_guard.py.
 """Enqueue green, armed PRs that the merge queue never picked up (#2018).
@@ -27,8 +27,15 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import automerge_guard  # noqa: E402
+# Expose this directory only while importing the guard. A lasting sys.path
+# entry would shadow any same-named top-level package for the rest of the
+# process (UpstreamDrift's scripts/motion_capture hid src/motion_capture).
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+sys.path.insert(0, _SCRIPT_DIR)
+try:
+    import automerge_guard  # noqa: E402
+finally:
+    sys.path.remove(_SCRIPT_DIR)
 
 logger = logging.getLogger("requeue_stalled_merges")
 
