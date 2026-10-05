@@ -1,3 +1,12 @@
+# Current handoff — re-sync vendored automerge_guard from Repository_Management#2002 (#1910)
+
+- **Repository / worktree:** Runner_Dashboard, `/home/user/wt/rd-guard-2001`; branch `fix/resync-automerge-guard-2001`; commit SELF; PR: see the branch.
+- **Change:** `scripts/automerge_guard.py` re-vendored from Repository_Management main 47650389 (RM#2002): arm verification trusts the merge method echoed in the PUT response, so an arm that enqueues immediately (auto_merge reads null while queued) is no longer revoked. Only ruff format at line length 120 and the provenance header differ from upstream. Four RM#2001 tests ported into `tests/test_automerge_guard.py`. No material development-log change — vendored re-sync with no feature entry.
+- **Validation:** `pytest tests/test_automerge_guard.py` 90 passed; related guard tests 21 passed; `ruff check`/`ruff format --check` clean; `scripts/changes_fragment.py validate` 15 valid.
+- **Next:** merge through the queue.
+
+---
+
 # Current handoff — SC-G6: mobile Maxwell page drops its chat (DL-#1338-maxwell-mobile)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1338`; branch `claude/issue-1338`; commit SELF; PR: see the branch (draft).
