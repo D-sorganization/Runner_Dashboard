@@ -1,7 +1,8 @@
 # Vendored from Repository_Management scripts/automerge_guard.py
-# (RM PR #1981, RM commit 9b177e21; merge-queue aware, includes RM#1937, RM#1939 and the
-# RM#1968 follow-up). Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line
-# length. collate-changes.yml arms auto-merge only through this guard.
+# (RM PR #2002, RM commit 47650389; merge-queue aware, includes RM#1937, RM#1939, the
+# RM#1968 follow-up and RM#2001 PUT-body verification). Re-sync from upstream; do not fork.
+# No local changes except ruff format at this repository's line length.
+# collate-changes.yml arms auto-merge only through this guard.
 # Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
 """Refuse to arm GitHub auto-merge on a pull request a reviewer has held back.
 
@@ -415,6 +416,26 @@ def _stored_merge_method(repo: str, pr: int, run: CommandRunner) -> str:
     return proc.stdout.strip().lower() if proc.returncode == 0 else ""
 
 
+def _put_body_merge_method(body: str) -> str | None:
+    """Return the merge method the REST arm PUT reports it stored (#2001).
+
+    The PUT response (``{"enabled": true, "merge_method": "squash"}``) is
+    authoritative and, unlike a later read of the PR, is not blanked when the
+    arm enqueues an already-green PR. Returns "" when the body reports the arm
+    disabled (forcing a mismatch, so the arm is revoked), and ``None`` when the
+    body is not that JSON object, in which case the caller reads the PR.
+    """
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict) or "merge_method" not in data:
+        return None
+    if data.get("enabled") is not True:
+        return ""
+    return str(data["merge_method"]).strip().lower()
+
+
 def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> tuple[str, bool]:
     """Undo a REST arm whose stored method could not be confirmed.
 
@@ -618,7 +639,8 @@ def arm_auto_merge(
             ]
         )
         if proc.returncode == 0:
-            stored = _stored_merge_method(repo, pr, run)
+            reported = _put_body_merge_method(proc.stdout)
+            stored = reported if reported is not None else _stored_merge_method(repo, pr, run)
             if stored != strategy:
                 detail = f"REST route stored merge method {stored or 'none'!r}, not the requested {strategy!r}"
                 logger.warning("Not armed as requested on %s#%s: %s", repo, pr, detail)

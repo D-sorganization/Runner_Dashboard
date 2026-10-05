@@ -324,9 +324,11 @@ class CloudGh(FakeGh):
         stored_method: str | None = None,
         verify_returncode: int = 0,
         delete_returncode: int = 0,
+        put_body: str = "",
         **kw: object,
     ) -> None:
         super().__init__(merge_returncode=1, **kw)  # type: ignore[arg-type]
+        self.put_body = put_body
         self.merge_stderr = merge_stderr
         self.rest_returncode = rest_returncode
         self.stored_method = stored_method
@@ -354,6 +356,7 @@ class CloudGh(FakeGh):
                 )
             return _completed(
                 returncode=self.rest_returncode,
+                stdout="" if self.rest_returncode else self.put_body,
                 stderr="rest boom" if self.rest_returncode else "",
             )
         if "pr" in argv and "merge" in argv:
@@ -401,6 +404,37 @@ def test_rest_fallback_refuses_when_route_stores_a_different_method() -> None:
 
 def test_rest_fallback_verifies_the_stored_method() -> None:
     fake = CloudGh()
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.armed is True
+    assert any(".auto_merge.merge_method" in c for c in fake.calls)
+
+
+def test_put_body_confirms_arm_even_when_pr_read_shows_it_queued() -> None:
+    """RM#2001: arming a clean PR enqueues it, so the PR read shows auto_merge null."""
+    body = '{"enabled":true,"merge_method":"squash"}'
+    fake = CloudGh(put_body=body, stored_method="")
+    result = automerge_guard.arm_auto_merge("o/r", 7, strategy="squash", runner=fake)
+    assert result.armed is True
+    assert not [c for c in fake.rest_calls if "DELETE" in c]
+
+
+def test_put_body_with_a_different_method_is_still_revoked() -> None:
+    fake = CloudGh(put_body='{"enabled":true,"merge_method":"merge"}')
+    result = automerge_guard.arm_auto_merge("o/r", 7, strategy="squash", runner=fake)
+    assert result.armed is False
+    assert len([c for c in fake.rest_calls if "DELETE" in c]) == 1
+    assert "'merge'" in result.detail
+
+
+def test_put_body_reporting_disabled_is_revoked() -> None:
+    fake = CloudGh(put_body='{"enabled":false,"merge_method":"squash"}')
+    result = automerge_guard.arm_auto_merge("o/r", 7, strategy="squash", runner=fake)
+    assert result.armed is False
+    assert len([c for c in fake.rest_calls if "DELETE" in c]) == 1
+
+
+def test_unparseable_put_body_falls_back_to_reading_the_pr() -> None:
+    fake = CloudGh(put_body="not json")
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
     assert result.armed is True
     assert any(".auto_merge.merge_method" in c for c in fake.calls)
