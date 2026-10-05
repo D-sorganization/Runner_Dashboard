@@ -132,54 +132,51 @@ See [Grok Bot Guide](grok.md) for `curl` recipes for threads, messages, and work
 
 ## MCP Tools Reference
 
-The fleet MCP server provides 27 tools covering coordination, priorities, staff dispatch, conversations, work items, approvals, and board proposals:
+The fleet MCP server provides the tools below (generated from `COMMANDS` in `clients/fleet/fleet_tools.py`; run `python -m scripts.render_fleet_tools_table --write` after changing it):
 
-### Coordination & Priorities
+<!-- prettier-ignore-start -->
+<!-- BEGIN GENERATED: fleet-tools -->
 
-| Tool                      | Endpoint                                  | Purpose                                                                      |
-| ------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------- |
-| `fleet_briefing`          | `GET /api/coordination/briefing`          | Combined briefing: priorities, directives, holds, active sessions, and rules |
-| `fleet_sessions`          | `GET /api/coordination/sessions`          | List active peer sessions and presence                                       |
-| `fleet_inbox`             | `GET /api/coordination/inbox`             | Read unread peer messages for this session                                   |
-| `fleet_register_presence` | `POST /api/coordination/presence`         | Announce working status (issue, branch, paths)                               |
-| `fleet_release_presence`  | `POST /api/coordination/presence/release` | Clear session presence upon completion                                       |
-| `fleet_send_message`      | `POST /api/coordination/messages`         | Send a peer coordination message                                             |
-| `fleet_ack_message`       | `POST /api/coordination/messages/ack`     | Acknowledge receipt of a coordination message                                |
-| `fleet_check_claim`       | `GET /api/coordination/claims`            | Check if an issue or task is currently claimed                               |
-| `fleet_claim_issue`       | `POST /api/coordination/claims`           | Acquire coordination claim on an issue                                       |
-| `fleet_release_claim`     | `POST /api/coordination/claims/release`   | Release claim upon PR creation or task end                                   |
-| `fleet_priorities`        | `GET /api/priorities`                     | Read fleet priorities ranked list                                            |
-| `fleet_directives`        | `GET /api/priorities/directives`          | Read operator standing directives                                            |
+| MCP tool                  | CLI subcommand               | Description                                                                                                                                                                                       | Required args                                                                                             |
+| ------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `fleet_briefing`          | `fleetctl briefing`          | START HERE before any work: priorities, directives, holds, who is working in the repo, staff runs, claim hints and the fleet rules - one call.                                                    | -                                                                                                         |
+| `fleet_sessions`          | `fleetctl sessions`          | Active agent sessions (all vendors, from the coordination board) plus in-flight staff runs.                                                                                                       | -                                                                                                         |
+| `fleet_inbox`             | `fleetctl inbox`             | Messages addressed to your session and detected path/issue conflicts.                                                                                                                             | -                                                                                                         |
+| `fleet_register_presence` | `fleetctl register-presence` | Announce what you are working on (repo, issue, branch, paths) so other agents avoid collisions.                                                                                                   | `repo`, `issue`, `branch`                                                                                 |
+| `fleet_release_presence`  | `fleetctl release-presence`  | Remove your presence entry when you finish.                                                                                                                                                       | `repo`                                                                                                    |
+| `fleet_send_message`      | `fleetctl send-message`      | Send a coordination message to another session, or to every session in the repo with to='*' (posted to the fleet board). Register presence first: the board drops messages from unknown sessions. | `repo`, `to`, `text`                                                                                      |
+| `fleet_ack_message`       | `fleetctl ack`               | Acknowledge a message from your inbox (confirms receipt, not agreement) so it stops being re-delivered.                                                                                           | `repo`, `message_id`                                                                                      |
+| `fleet_check_claim`       | `fleetctl check-claim`       | Check whether an issue is leased by another agent: {held, agent, reason, expires_at}.                                                                                                             | `repo`, `issue`                                                                                           |
+| `fleet_claim_issue`       | `fleetctl claim`             | Lease an issue before working on it. Fails with status 409 when another agent holds it - pick other work.                                                                                         | `repo`, `issue`                                                                                           |
+| `fleet_release_claim`     | `fleetctl release-claim`     | Release your lease on an issue (after the PR is opened, or when abandoning).                                                                                                                      | `repo`, `issue`                                                                                           |
+| `fleet_priorities`        | `fleetctl priorities`        | Current board-meeting priorities (ranked active items, deferred, disagreements), directives, portfolios.                                                                                          | -                                                                                                         |
+| -                         | `fleetctl meetings`          | List board-meeting dates and which files each has.                                                                                                                                                | -                                                                                                         |
+| -                         | `fleetctl meeting`           | One board meeting: parsed consensus plus raw packet/instructions markdown.                                                                                                                        | `date`                                                                                                    |
+| `fleet_directives`        | `fleetctl directives`        | Operator directives: short, active focus statements that override default prioritisation.                                                                                                         | -                                                                                                         |
+| -                         | `fleetctl set-directives`    | Replace the operator directive list (operator credentials: priorities.write; set_by is the caller).                                                                                               | `directives`                                                                                              |
+| `fleet_staff_summary`     | `fleetctl staff-summary`     | Staff Hub summary: roles, in-flight runs, today's counts and spend.                                                                                                                               | -                                                                                                         |
+| `fleet_staff_roster`      | `fleetctl staff-roster`      | Staff roles (name, purpose, providers, schedule) available for dispatch.                                                                                                                          | -                                                                                                         |
+| -                         | `fleetctl staff-board`       | Fleet staff board (per machine).                                                                                                                                                                  | -                                                                                                         |
+| -                         | `fleetctl staff-runs`        | Recent staff runs.                                                                                                                                                                                | -                                                                                                         |
+| `fleet_run_status`        | `fleetctl run`               | One staff run with its recent events.                                                                                                                                                             | `run_id`                                                                                                  |
+| -                         | `fleetctl schedule`          | Staff schedule: run windows, next runs, budgets.                                                                                                                                                  | -                                                                                                         |
+| -                         | `fleetctl holds`             | Operator holds (work that must not be started).                                                                                                                                                   | -                                                                                                         |
+| -                         | `fleetctl usage`             | Staff usage/spend.                                                                                                                                                                                | -                                                                                                         |
+| `fleet_dispatch_role`     | `fleetctl dispatch`          | Dispatch a staff role run (or preview it with dry_run). One of issue, pr or prompt is required.                                                                                                   | `role`                                                                                                    |
+| `staff_run_cancel`        | `fleetctl cancel`            | Cancel a staff run.                                                                                                                                                                               | `run_id`                                                                                                  |
+| `staff_threads_list`      | `fleetctl staff-threads`     | List conversation threads with optional participant, status, unread, cursor.                                                                                                                      | -                                                                                                         |
+| `staff_thread_open`       | `fleetctl thread-open`       | Open a conversation thread with a staff role (default 'auto' routes to Barb).                                                                                                                     | -                                                                                                         |
+| `staff_message_send`      | `fleetctl message-send`      | Send an idempotent message to a conversation thread.                                                                                                                                              | `thread_id`, `body`                                                                                       |
+| `staff_thread_read`       | `fleetctl thread-read`       | Read messages and details from a conversation thread since a sequence number.                                                                                                                     | `thread_id`                                                                                               |
+| `staff_thread_wait`       | `fleetctl thread-wait`       | Long-poll up to timeout seconds (max 60) for a reply in a conversation thread.                                                                                                                    | `thread_id`                                                                                               |
+| `staff_work_items`        | `fleetctl work-items`        | List and filter tracked work items across the fleet.                                                                                                                                              | -                                                                                                         |
+| `staff_approvals_list`    | `fleetctl approvals`         | List action proposals awaiting review or in terminal states.                                                                                                                                      | -                                                                                                         |
+| `staff_approval_decide`   | `fleetctl approval-decide`   | Decide (approve or deny) an action proposal (requires staff.approve scope).                                                                                                                       | `proposal_id`, `decision`                                                                                 |
+| `submit_proposal`         | `fleetctl submit-proposal`   | Submit a proposal to the Board (stored in Repository_Management labelled board:proposal).                                                                                                         | `title`, `target_repos`, `problem`, `evidence`, `options_considered`, `lean`, `estimated_cost`, `urgency` |
+| `list_proposals`          | `fleetctl list-proposals`    | List board proposals with decision labels, meeting consensus links, and outcome badges.                                                                                                           | -                                                                                                         |
 
-### Staff Management & Dispatch
-
-| Tool                  | Endpoint                                  | Purpose                                             |
-| --------------------- | ----------------------------------------- | --------------------------------------------------- |
-| `fleet_staff_summary` | `GET /api/staff/summary`                  | Hub summary: in-flight runs, attention items, spend |
-| `fleet_staff_roster`  | `GET /api/staff/roster`                   | Available staff roles, active count, and providers  |
-| `fleet_run_status`    | `GET /api/staff/runs/{run_id}`            | Inspect status, events, and results of a staff run  |
-| `fleet_dispatch_role` | `POST /api/staff/{role}/run`              | Dispatch a staff role run                           |
-| `staff_run_cancel`    | `POST /api/v1/staff/runs/{run_id}/cancel` | Terminate an in-flight staff run                    |
-
-### Staff Conversations & Action Approvals (SC-F4)
-
-| Tool                    | Endpoint                                            | Purpose                                                     |
-| ----------------------- | --------------------------------------------------- | ----------------------------------------------------------- |
-| `staff_threads_list`    | `GET /api/v1/staff/threads`                         | List threads with role/unread filters and cursor pagination |
-| `staff_thread_open`     | `POST /api/v1/staff/threads`                        | Open a thread with Barb (`auto`) or a named role            |
-| `staff_message_send`    | `POST /api/v1/staff/threads/{thread_id}/messages`   | Send an idempotent message turn to a thread                 |
-| `staff_thread_read`     | `GET /api/v1/staff/threads/{thread_id}`             | Retrieve thread detail and messages since `since_seq`       |
-| `staff_thread_wait`     | `POST /api/v1/staff/threads/{thread_id}/wait`       | Long-poll up to 60s for role replies                        |
-| `staff_work_items`      | `GET /api/v1/staff/work-items`                      | Query tracked work items (`mine`, `waiting_on_me`, etc.)    |
-| `staff_approvals_list`  | `GET /api/v1/staff/proposals`                       | Inspect pending and decided action proposals                |
-| `staff_approval_decide` | `POST /api/v1/staff/proposals/{proposal_id}/decide` | Approve or deny a proposal with rationale                   |
-
-### Board Proposals (CR-7)
-
-| Tool              | Endpoint              | Purpose                                             |
-| ----------------- | --------------------- | --------------------------------------------------- |
-| `submit_proposal` | `POST /api/proposals` | Submit a suggestion to the Board (issue in RM)      |
-| `list_proposals`  | `GET /api/proposals`  | Query open or decided board proposals and decisions |
+<!-- END GENERATED: fleet-tools -->
+<!-- prettier-ignore-end -->
 
 `fleetctl --help` lists every CLI subcommand. The CLI and the MCP server are generated from one table in `clients/fleet/fleet_tools.py`.
 
