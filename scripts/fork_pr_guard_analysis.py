@@ -1,4 +1,4 @@
-# Vendored from D-sorganization/Repository_Management scripts/fork_pr_guard_analysis.py (RM#1996 @ 46aecb2e).
+# Vendored from D-sorganization/Repository_Management scripts/fork_pr_guard_analysis.py (RM#2006 @ c79aec82).
 # Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line length.
 """Condition and head-checkout analysis for ``fork_pr_runner_guard`` (RM#1996).
 
@@ -41,11 +41,6 @@ SAME_REPO_CONDITIONS = (
     "github.event.pull_request.head.repo.full_name == github.repository",
     "github.event.workflow_run.head_repository.full_name == github.repository",
 )
-
-#: Text that reads as a shell command able to fetch or check out code: any git
-#: invocation (``git -C d ...``, ``git clone``, ``git pull``), ``gh pr checkout``,
-#: ``gh repo clone``, and ``curl``/``wget`` downloads.
-HEAD_SINK_COMMAND = re.compile(r"\bgit\b|\bgh\s+(?:pr\s+checkout|repo\s+clone)\b|\b(?:curl|wget)\b")
 
 #: ``ctx['key']`` / ``ctx["key"]`` property access in a GitHub expression.
 _BRACKET_PROPERTY = re.compile(r"\[\s*['\"]([A-Za-z_][\w-]*)['\"]\s*\]")
@@ -138,15 +133,29 @@ def _strings(value: Any) -> Iterable[str]:
             yield from _strings(item)
 
 
-def head_ref_aliases(*scopes: Any) -> set[str]:
-    """Return env names, across ``scopes``, whose value reads the PR head."""
-    names: set[str] = set()
+def head_ref_aliases(*scopes: Any, known: Iterable[str] = ()) -> set[str]:
+    """Return env names, across ``scopes``, whose value reads the PR head.
+
+    Precondition: ``scopes`` are ordered outermost first (workflow, job, step).
+    A name is an alias when its value references a head literal, a ``known``
+    alias, or an alias from an *enclosing* scope (``HEAD`` -> ``REF:
+    ${{ env.HEAD }}`` one level down). Entries of one ``env`` map never resolve
+    against each other: GitHub evaluates ``env.X`` inside an env map against
+    the enclosing scopes only. An inner scope that redefines an outer alias
+    does not clear it (fail-closed).
+    Postcondition: the result contains every name in ``known``.
+    """
+    names: set[str] = {str(n) for n in known}
     for scope in scopes:
         env = scope.get("env") if isinstance(scope, dict) else None
-        for name, value in env.items() if isinstance(env, dict) else ():
-            text = dotted("\n".join(_strings(value)))
-            if any(p.search(text) for p in HEAD_REF_PATTERNS):
-                names.add(str(name))
+        if not isinstance(env, dict):
+            continue
+        patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(n) for n in names)]
+        names |= {
+            str(name)
+            for name, value in env.items()
+            if any(p.search(dotted("\n".join(_strings(value)))) for p in patterns)
+        }
     return names
 
 
@@ -193,38 +202,49 @@ def _checkout_action_reads_head(inputs: Any, patterns: Sequence[re.Pattern[str]]
     """
     if not isinstance(inputs, dict):
         return False
-    text = dotted("\n".join(_strings([inputs.get("ref"), inputs.get("repository")])))
+    # The runner upper-cases input keys (INPUT_REF), so ``REF:`` is ``ref:``.
+    named = {str(key).lower(): value for key, value in inputs.items()}
+    text = dotted("\n".join(_strings([named.get("ref"), named.get("repository")])))
     return any(pattern.search(text) for pattern in patterns)
 
 
-def _run_step_checks_out_head(run: str, step_text: str, patterns: Sequence[re.Pattern[str]]) -> bool:
-    """True when a ``run:`` step reads the head AND invokes a fetching command.
+def _is_checkout_action(uses: Any) -> bool:
+    """True only for ``actions/checkout`` itself (any ref, any letter case).
 
-    Precondition: ``step_text`` is the step's dotted text (``run`` and ``env``).
-    Postcondition: the head and the command are correlated per step, never per
-    line, so ``REF=...`` on one line and ``git checkout "$REF"`` on another
-    still count. A head ref handed to a script that runs no git/gh/curl/wget in
-    that step is data.
+    Owner/repo in ``uses:`` are case-insensitive on GitHub. A prefix match would
+    also exempt look-alikes such as ``actions/checkout-wrapper``, which get no
+    per-input allowlist.
     """
-    if HEAD_SINK_COMMAND.search(run) is None:
+    if not isinstance(uses, str):
         return False
-    return any(pattern.search(step_text) for pattern in patterns)
+    return uses.split("@", 1)[0].strip().lower() == "actions/checkout"
 
 
-def _step_checks_out_head(step: dict[str, Any], patterns: Sequence[re.Pattern[str]]) -> bool:
-    """Return whether one step checks out the PR head.
+# Step keys that never hand data to the command or action: ``if`` is a gate
+# (handled by the caller) and ``name`` is display text. Every other key,
+# known or not, is scanned (fail-closed).
+_INERT_STEP_KEYS = frozenset({"if", "name"})
 
-    Postcondition: only ``actions/checkout`` inputs and ``run:`` steps matching
-    :data:`HEAD_SINK_COMMAND` count; a head ref handed to any other step is data.
+
+def _step_checks_out_head(step: dict[str, Any], aliases: set[str]) -> bool:
+    """Return whether one step reads the PR head (fail-closed).
+
+    Postcondition: an ``actions/checkout`` step counts only when its ``ref`` or
+    ``repository`` input names the head (``token``/``path`` are not code). Any
+    other step that reads the head anywhere (``run``, ``env``, action inputs)
+    counts: a helper script or action handed the head can fetch and execute it,
+    so no command is trusted as data-only. A job-level same-repo condition is
+    the sanctioned exemption.
     """
-    uses, run = step.get("uses"), step.get("run")
-    if isinstance(uses, str) and uses.startswith("actions/checkout"):
+    # Step-level env aliases (``env: REF: <head>`` or ``REF: ${{ env.HEAD }}``)
+    # read the head as surely as workflow- or job-level ones do.
+    step_aliases = head_ref_aliases(step, known=aliases)
+    patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(a) for a in step_aliases)]
+    if _is_checkout_action(step.get("uses")):
         return _checkout_action_reads_head(step.get("with"), patterns)
-    if isinstance(run, str):
-        fields = {k: v for k, v in step.items() if k != "if"}
-        text = dotted("\n".join(_strings(fields)))
-        return _run_step_checks_out_head(dotted(run), text, patterns)
-    return False
+    fields = {k: v for k, v in step.items() if k not in _INERT_STEP_KEYS}
+    text = dotted("\n".join(_strings(fields)))
+    return any(pattern.search(text) for pattern in patterns)
 
 
 def head_checkout_steps(job: dict[str, Any], aliases: set[str]) -> list[str]:
@@ -233,7 +253,6 @@ def head_checkout_steps(job: dict[str, Any], aliases: set[str]) -> list[str]:
     ``aliases`` are workflow- or job-level env names that hold a head ref; a
     step that references one reads the head as surely as a literal does.
     """
-    patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(a) for a in aliases)]
     found: list[str] = []
     steps = job.get("steps")
     for index, step in enumerate(steps if isinstance(steps, list) else []):
@@ -241,7 +260,7 @@ def head_checkout_steps(job: dict[str, Any], aliases: set[str]) -> list[str]:
             continue
         if requires_conjunct(step.get("if"), PULL_REQUEST_ONLY):
             continue
-        if _step_checks_out_head(step, patterns):
+        if _step_checks_out_head(step, aliases):
             found.append(str(step.get("name") or step.get("uses") or f"#{index}"))
     return found
 

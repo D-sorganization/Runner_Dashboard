@@ -1,4 +1,4 @@
-# Vendored from D-sorganization/Repository_Management scripts/fork_pr_runner_guard.py (RM#1996 @ 46aecb2e).
+# Vendored from D-sorganization/Repository_Management scripts/fork_pr_runner_guard.py (RM#2003 @ 3854595b).
 # Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line length.
 """Reject workflow jobs that can run fork pull-request code on self-hosted runners.
 
@@ -58,7 +58,6 @@ import yaml
 
 try:
     from scripts.fork_pr_guard_analysis import (
-        HEAD_SINK_COMMAND,
         PULL_REQUEST_ONLY,
         SAME_REPO_CONDITIONS,
         dotted,
@@ -72,7 +71,6 @@ try:
     )
 except ImportError:  # executed as a file: scripts/ is on sys.path
     from fork_pr_guard_analysis import (
-        HEAD_SINK_COMMAND,
         PULL_REQUEST_ONLY,
         SAME_REPO_CONDITIONS,
         dotted,
@@ -86,7 +84,6 @@ except ImportError:  # executed as a file: scripts/ is on sys.path
     )
 
 __all__ = [
-    "HEAD_SINK_COMMAND",
     "PULL_REQUEST_ONLY",
     "SAME_REPO_CONDITIONS",
     "dotted",

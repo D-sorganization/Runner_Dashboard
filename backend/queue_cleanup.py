@@ -313,8 +313,23 @@ async def fetch_pr_details(org: str, repo: str, pr_number: int) -> dict | None:
     )
 
 
+MERGE_QUEUE_BRANCH_PREFIX = "gh-readonly-queue/"
+
+
+def is_merge_queue_run(event: str, branch: str) -> bool:
+    """Return True for merge-queue runs (``merge_group`` event or queue branch).
+
+    Cancelling one cancels the required check, so GitHub dequeues the PR with
+    CI_FAILURE and disarms auto-merge (issue #1915). Such runs are never
+    cancellable by any queue canceller.
+    """
+    return event == "merge_group" or bool(branch) and branch.startswith(MERGE_QUEUE_BRANCH_PREFIX)
+
+
 def is_protected_target(branch: str, event: str, workflow: str) -> bool:
-    """Check if the run targets main, release, tags, or scheduled maintenance."""
+    """Check if the run targets main, release, tags, merge queue, or scheduled maintenance."""
+    if is_merge_queue_run(event, branch):
+        return True
     if branch in ("main", "master", "release"):
         return True
     if event == "release" or (branch and (branch.startswith("v") or "/" in branch and "tags" in branch)):
@@ -354,11 +369,14 @@ async def _queued_stale_for_repo(
     if in_progress_data and "workflow_runs" in in_progress_data:
         runs.extend(in_progress_data["workflow_runs"])
 
-    # Deduplicate runs by id
+    # Deduplicate runs by id. Merge-queue runs are dropped here so no
+    # classification path (unroutable, PR, branch) can ever cancel them (#1915).
     seen_ids = set()
     unique_runs = []
     for r in runs:
         rid = r.get("id")
+        if is_merge_queue_run(r.get("event") or "", r.get("head_branch") or ""):
+            continue
         if rid is not None and rid not in seen_ids:
             seen_ids.add(rid)
             unique_runs.append(r)
