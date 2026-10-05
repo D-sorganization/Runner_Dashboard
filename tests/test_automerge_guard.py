@@ -410,7 +410,11 @@ def test_rest_fallback_verifies_the_stored_method() -> None:
 
 
 def test_put_body_confirms_arm_even_when_pr_read_shows_it_queued() -> None:
-    """RM#2001: arming a clean PR enqueues it, so the PR read shows auto_merge null."""
+    """#2001: arming a clean PR enqueues it, so the PR read shows auto_merge null.
+
+    The PUT response reports what GitHub stored; trusting it must not revoke
+    (and so dequeue) a correct arm.
+    """
     body = '{"enabled":true,"merge_method":"squash"}'
     fake = CloudGh(put_body=body, stored_method="")
     result = automerge_guard.arm_auto_merge("o/r", 7, strategy="squash", runner=fake)
@@ -987,3 +991,46 @@ def _patched_merged_result(*, merged: bool):  # type: ignore[no-untyped-def]
         merged=merged,
     )
     return lambda *a, **k: result
+
+
+# --------------------------------------------------------------------------
+# enqueue_stalled_pr (#2018): re-enqueue a green, armed PR the queue missed
+# --------------------------------------------------------------------------
+
+
+def test_stalled_pr_on_queue_base_is_enqueued_once_at_the_verified_head() -> None:
+    fake = CleanGh(queue=True)
+    result = automerge_guard.enqueue_stalled_pr("o/r", 7, runner=fake)
+    assert result.armed is True
+    assert "enqueued" in result.detail
+    gql = _graphql_calls(fake)
+    assert len(gql) == 1
+    assert f"oid={HEAD_SHA}" in gql[0] and "id=PR_node7" in gql[0]
+    assert fake.direct_calls == []
+    assert not fake.armed  # no `gh pr merge --auto` round trip
+
+
+def test_stalled_pr_that_is_held_is_never_enqueued() -> None:
+    fake = CleanGh(queue=True, labels=["do-not-merge"])
+    result = automerge_guard.enqueue_stalled_pr("o/r", 7, runner=fake)
+    assert result.armed is False
+    assert result.detail == "held"
+    assert _graphql_calls(fake) == []
+    assert fake.direct_calls == []
+
+
+def test_stalled_pr_without_a_merge_queue_is_left_alone() -> None:
+    fake = CleanGh(queue=False)
+    result = automerge_guard.enqueue_stalled_pr("o/r", 7, runner=fake)
+    assert result.armed is False and result.merged is False
+    assert "no merge queue" in result.detail
+    assert _graphql_calls(fake) == []
+    assert fake.direct_calls == []
+
+
+def test_stalled_pr_enqueue_failure_is_reported_not_retried() -> None:
+    fake = CleanGh(queue=True, graphql_fail=True)
+    result = automerge_guard.enqueue_stalled_pr("o/r", 7, runner=fake)
+    assert result.armed is False
+    assert len(_graphql_calls(fake)) == 1
+    assert fake.direct_calls == []

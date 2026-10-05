@@ -1,6 +1,6 @@
 # Vendored from Repository_Management scripts/automerge_guard.py
-# (RM PR #2002, RM commit 47650389; merge-queue aware, includes RM#1937, RM#1939, the
-# RM#1968 follow-up and RM#2001 PUT-body verification). Re-sync from upstream; do not fork.
+# (RM commit 16bdb7b3; merge-queue aware, includes RM#1937, RM#1939, the RM#1968 follow-up,
+# RM#2001 PUT-body verification and RM#2027 enqueue_stalled_pr). Re-sync from upstream; do not fork.
 # No local changes except ruff format at this repository's line length.
 # collate-changes.yml arms auto-merge only through this guard.
 # Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
@@ -660,6 +660,35 @@ def arm_auto_merge(
 
     logger.info("Auto-merge armed on %s#%s (%s).", repo, pr, strategy)
     return ArmResult(True, verdict, "armed")
+
+
+def enqueue_stalled_pr(
+    repo: str,
+    pr: int,
+    *,
+    strategy: str = "squash",
+    runner: CommandRunner | None = None,
+) -> ArmResult:
+    """Enqueue a green, already-armed PR that the merge queue never picked up.
+
+    GitHub sometimes leaves a PR armed while its checks run, then never adds it
+    to the merge queue once they pass (#2018). Re-arming is what unsticks it;
+    this does the same thing directly with one ``enqueuePullRequest`` pinned to
+    the verified head SHA.
+
+    Preconditions: the caller has seen auto-merge armed and the PR clean.
+    Postconditions: nothing is enqueued unless :func:`evaluate_hold` returned
+    not-held AND the base branch has a merge queue; a base without a queue is
+    left alone (never merged directly); at most one GraphQL call is made.
+    """
+    run = runner or _default_runner
+    verdict = evaluate_hold(repo, pr, runner=run)
+    if verdict.held:
+        logger.warning("Refusing to enqueue %s#%s: %s", repo, pr, verdict.describe())
+        return ArmResult(False, verdict, "held")
+    if not _base_has_merge_queue(repo, verdict.base_ref, run):
+        return ArmResult(False, verdict, "base has no merge queue; left as is")
+    return _enqueue_clean_pr(repo, pr, strategy, verdict, run)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
