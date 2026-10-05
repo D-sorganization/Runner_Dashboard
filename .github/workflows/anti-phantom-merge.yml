@@ -22,16 +22,26 @@ jobs:
   guard:
     timeout-minutes: 60
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      github.event.pull_request.base.ref == 'main' &&
-      (github.event_name == 'pull_request' ||
-       github.event.label.name == 'phantom-guard-override') || github.event.pull_request.base.ref == 'master'
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event.pull_request.base.ref == 'main' && (github.event_name == 'pull_request' || github.event.label.name == 'phantom-guard-override') || github.event.pull_request.base.ref == 'master')
     steps:
+      # Never check out PR head code on pull_request_target: that event runs in
+      # the base-repo security context (RM#1989). Label events get the base ref.
       - name: Checkout PR head with full history
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout base ref on label events
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Anti-phantom guard
         env:

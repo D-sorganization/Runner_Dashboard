@@ -40,7 +40,11 @@ concurrency:
 jobs:
   pick-runner:
     name: Select reversible CI runner
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet') }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet') }}
     timeout-minutes: 5
     outputs:
       runner: ${{ steps.select.outputs.runner }}
@@ -53,7 +57,15 @@ jobs:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
+          FORK_PR: ${{ github.event.pull_request &&
+            github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
+          if [ "$FORK_PR" = "true" ]; then
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "mode=hosted" >> "$GITHUB_OUTPUT"
+            echo "Fork PR - never routed to the self-hosted fleet (RM#1989)"
+            exit 0
+          fi
           if [ "$FORCE_LOCAL" = "true" ] || [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
             echo "runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
             echo "mode=local" >> "$GITHUB_OUTPUT"
@@ -80,7 +92,11 @@ jobs:
   changes:
     name: Decide CI tier
     needs: [pick-runner]
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     outputs:
       tier: ${{ steps.tier.outputs.tier }}
@@ -185,7 +201,11 @@ jobs:
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
     needs: [pick-runner, changes]
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -308,7 +328,11 @@ jobs:
   lint:
     needs: [pick-runner, changes, ci-health-check]
     if: needs.changes.outputs.run_python_tests == 'true'
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 25
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -460,7 +484,11 @@ jobs:
     needs: [pick-runner, changes, ci-health-check]
     # Heavy scan: full tier only (merge_group / workflow_dispatch, issue #1864).
     if: needs.changes.outputs.run_python_tests == 'true' && needs.changes.outputs.full_suite == 'true'
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -505,7 +533,11 @@ jobs:
       - lint
       - pick-runner
     if: needs.changes.outputs.run_python_tests == 'true'
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -581,7 +613,11 @@ jobs:
       - tests
       - pick-runner
     if: always()
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
       - name: Confirm Python test matrix
@@ -630,7 +666,11 @@ jobs:
   quality-gate:
     needs: [pick-runner, changes, ci-health-check, lint, tests-required, security-scan]
     if: always()
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
       - name: Require every gated job to succeed

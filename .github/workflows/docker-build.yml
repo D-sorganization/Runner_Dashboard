@@ -33,6 +33,10 @@ concurrency:
 
 jobs:
   docker-build-scan:
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, d-sorg-fleet-docker]
     timeout-minutes: 40
     steps:
@@ -84,7 +88,11 @@ jobs:
   publish-sarif:
     name: Publish Trivy SARIF
     needs: docker-build-scan
-    if: always() && needs.docker-build-scan.result != 'cancelled'
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (always() && needs.docker-build-scan.result != 'cancelled')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:

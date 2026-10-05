@@ -16,6 +16,10 @@ concurrency:
 
 jobs:
   frontend-scope:
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     name: Determine frontend validation scope
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
@@ -95,7 +99,11 @@ jobs:
   typecheck:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
-    if: needs.frontend-scope.outputs.run_api_contract == 'true'
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (needs.frontend-scope.outputs.run_api_contract == 'true')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
@@ -136,7 +144,11 @@ jobs:
   vitest:
     name: Vitest + Coverage
     needs: frontend-scope
-    if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 15
     steps:
@@ -169,7 +181,11 @@ jobs:
   perf-budget:
     name: Frontend perf budget (real bundle)
     needs: frontend-scope
-    if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
@@ -204,7 +220,11 @@ jobs:
     needs:
       - frontend-scope
       - vitest
-    if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -293,7 +313,11 @@ jobs:
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 20
     needs: frontend-scope
-    if: needs.frontend-scope.outputs.run_staff_e2e == 'true'
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (needs.frontend-scope.outputs.run_staff_e2e == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
