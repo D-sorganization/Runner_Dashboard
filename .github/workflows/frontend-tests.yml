@@ -16,12 +16,9 @@ concurrency:
 
 jobs:
   frontend-scope:
-    # Fork PRs never run on the self-hosted fleet (RM#1989).
-    if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
-    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
@@ -99,12 +96,10 @@ jobs:
   typecheck:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
-    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
       (needs.frontend-scope.outputs.run_api_contract == 'true')
-    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -144,12 +139,10 @@ jobs:
   vitest:
     name: Vitest + Coverage
     needs: frontend-scope
-    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -181,12 +174,10 @@ jobs:
   perf-budget:
     name: Frontend perf budget (real bundle)
     needs: frontend-scope
-    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -215,15 +206,13 @@ jobs:
 
   playwright-e2e:
     name: Playwright E2E smoke tests
-    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 20
     needs:
       - frontend-scope
       - vitest
-    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -310,13 +299,11 @@ jobs:
   staff-console-e2e:
     # Staff Console flows against the real backend with fake provider CLIs (#1341).
     name: Staff Console e2e (fake providers)
-    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 20
     needs: frontend-scope
-    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
       (needs.frontend-scope.outputs.run_staff_e2e == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -11,6 +11,7 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
+import yaml
 
 from scripts import fork_pr_runner_guard as guard
 
@@ -29,6 +30,33 @@ GUARD_IF = (
 def _violations(tmp_path: Path, text: str) -> list[str]:
     (tmp_path / "wf.yml").write_text(dedent(text), encoding="utf-8")
     return guard.find_violations(tmp_path)
+
+
+def _jobs(workflow: str) -> dict[str, dict]:
+    return yaml.safe_load((WORKFLOWS / workflow).read_text(encoding="utf-8"))["jobs"]
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job"),
+    [("anti-phantom-merge.yml", "guard")]
+    + [
+        ("frontend-tests.yml", name)
+        for name in (
+            "frontend-scope",
+            "typecheck",
+            "vitest",
+            "perf-budget",
+            "playwright-e2e",
+            "staff-console-e2e",
+        )
+    ],
+)
+def test_merge_policy_and_validation_jobs_route_fork_prs_not_skip(workflow: str, job: str) -> None:
+    """Merge-policy and code-validation jobs run fork PRs on a hosted runner."""
+    spec = _jobs(workflow)[job]
+    assert guard.fork_routed(spec), f"{workflow}:{job} must start runs-on with the fork route"
+    assert not guard.requires_conjunct(spec.get("if"), guard.SAME_REPO_GUARD)
+    assert "head.repo.full_name == github.repository" not in str(spec.get("if", ""))
 
 
 def test_no_workflow_runs_fork_pr_code_on_self_hosted() -> None:
