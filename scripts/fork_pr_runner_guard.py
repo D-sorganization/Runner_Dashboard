@@ -1,4 +1,4 @@
-# Vendored from D-sorganization/Repository_Management scripts/fork_pr_runner_guard.py (RM#1990 @ 32b97cfe).
+# Vendored from D-sorganization/Repository_Management scripts/fork_pr_runner_guard.py (RM#1990 @ 1a5c39b3).
 # Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line length.
 """Reject workflow jobs that can run fork pull-request code on self-hosted runners.
 
@@ -26,6 +26,10 @@ vendored to the other fleet repositories. This checker enforces two rules over
    ``workflow_run`` (which run the base branch's workflow with base-repository
    credentials), a self-hosted job must not check out or fetch the PR head,
    unless that step is restricted to ``github.event_name == 'pull_request'``.
+   ``workflow_call`` is privileged here too: a callee inherits its caller's
+   event, and a ``workflow_run`` caller passes the job guard. A reusable-
+   workflow call under these events must not pass a head ref in ``with:``.
+   Bracket property access (``head['sha']``) is read as dotted access.
 
 A job counts as self-hosted unless every ``runs-on`` value is a literal
 GitHub-hosted label. Expressions, matrix references, runner groups and
@@ -91,6 +95,18 @@ HEAD_REF_PATTERNS = (
     re.compile(r"pull/(\$\{\{[^}]*\}\}|[^\s/]+)/(head|merge)"),
     re.compile(r"gh\s+pr\s+checkout"),
 )
+
+
+#: ``ctx['key']`` / ``ctx["key"]`` property access in a GitHub expression.
+_BRACKET_PROPERTY = re.compile(r"\[\s*['\"]([A-Za-z_][\w-]*)['\"]\s*\]")
+
+
+def dotted(text: str) -> str:
+    """Rewrite bracket property access as dots, so ``head['sha']`` reads ``head.sha``.
+
+    Postcondition: dotted-only text is returned unchanged.
+    """
+    return _BRACKET_PROPERTY.sub(r".\1", text)
 
 
 def normalize(expression: str) -> str:
@@ -220,7 +236,8 @@ def _head_ref_aliases(*scopes: Any) -> set[str]:
     for scope in scopes:
         env = scope.get("env") if isinstance(scope, dict) else None
         for name, value in env.items() if isinstance(env, dict) else ():
-            if any(p.search("\n".join(_strings(value))) for p in HEAD_REF_PATTERNS):
+            text = dotted("\n".join(_strings(value)))
+            if any(p.search(text) for p in HEAD_REF_PATTERNS):
                 names.add(str(name))
     return names
 
@@ -248,10 +265,24 @@ def _head_checkout_steps(job: dict[str, Any], aliases: set[str]) -> list[str]:
             continue
         if requires_conjunct(step.get("if"), PULL_REQUEST_ONLY):
             continue
-        text = "\n".join(_strings({k: v for k, v in step.items() if k != "if"}))
+        fields = {k: v for k, v in step.items() if k != "if"}
+        text = dotted("\n".join(_strings(fields)))
         if any(pattern.search(text) for pattern in patterns):
             found.append(str(step.get("name") or step.get("uses") or f"#{index}"))
     return found
+
+
+def _passes_head_ref(job: dict[str, Any], aliases: set[str]) -> bool:
+    """Return whether a reusable-workflow call hands the PR head to its callee.
+
+    A ``uses:`` job has no steps of its own; the callee may check out whatever
+    ref its inputs name, so a head ref in ``with:`` is a head checkout.
+    """
+    if not isinstance(job.get("uses"), str):
+        return False
+    patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(a) for a in aliases)]
+    text = dotted("\n".join(_strings(job.get("with", {}))))
+    return any(pattern.search(text) for pattern in patterns)
 
 
 def job_violations(
@@ -276,9 +307,16 @@ def job_violations(
             f"'({SAME_REPO_GUARD}) && ...' to the job if:, or start runs-on with "
             f"'{' && '.join(FORK_ROUTE_CONJUNCTS)} && <hosted label> || ...'"
         )
-    if events & BASE_CONTEXT_TRIGGERS:
+    privileged_events = events & (BASE_CONTEXT_TRIGGERS | {"workflow_call"})
+    if privileged_events:
         aliases = _head_ref_aliases(workflow, job)
-        privileged = ", ".join(sorted(events & BASE_CONTEXT_TRIGGERS))
+        privileged = ", ".join(sorted(privileged_events))
+        if _passes_head_ref(job, aliases):
+            violations.append(
+                f"{wf_name}::{job_id}: passes a PR head ref to a reusable workflow "
+                f"under {privileged}; the callee can check it out on a "
+                f"self-hosted runner"
+            )
         for step in _head_checkout_steps(job, aliases):
             violations.append(
                 f"{wf_name}::{job_id}: step '{step}' checks out PR head code on a "
