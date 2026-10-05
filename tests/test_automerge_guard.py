@@ -64,7 +64,13 @@ class FakeGh:
             "draft": draft,
             "labels": [{"name": name} for name in labels],
             "body": body,
-            "head": {"sha": HEAD_SHA},
+            "head": {
+                "sha": HEAD_SHA,
+                "ref": "feat/x",
+                "repo": {"full_name": "o/r"},
+            },
+            "base": {"ref": "main", "repo": {"full_name": "o/r"}},
+            "node_id": "PR_node7",
         }
         self.disarms = list(disarms)
         self.removed = list(removed)
@@ -666,3 +672,284 @@ def test_cli_user_token_without_flag_warns_but_proceeds(
     assert "personal/user token" in caplog.text
     captured = capsys.readouterr()
     assert FAKE_CLASSIC_PAT not in captured.out + captured.err + caplog.text
+
+
+# --------------------------------------------------------------------------
+# #1968: arming refused because the PR is already clean -> merge directly
+# --------------------------------------------------------------------------
+
+CLEAN_STATUS_422 = "gh: Pull request is in clean status, so auto-merge cannot be enabled (HTTP 422)"
+
+
+class CleanGh(CloudGh):
+    """CloudGh whose arm PUT is refused, and which serves the direct merge."""
+
+    def __init__(
+        self,
+        *,
+        arm_stderr: str = CLEAN_STATUS_422,
+        direct_returncode: int = 0,
+        direct_stderr: str = "",
+        merged: str = "true",
+        queue: bool = False,
+        rules_fail: bool = False,
+        graphql_fail: bool = False,
+        queue_on_later_page: bool = False,
+        later_page_fails: bool = False,
+        ref_delete_returncode: int = 0,
+        **kw: object,
+    ) -> None:
+        super().__init__(rest_returncode=1, **kw)
+        self.queue_on_later_page = queue_on_later_page
+        self.later_page_fails = later_page_fails
+        self.ref_delete_returncode = ref_delete_returncode
+        self.queue = queue
+        self.rules_fail = rules_fail
+        self.graphql_fail = graphql_fail
+        self.arm_stderr = arm_stderr
+        self.direct_returncode = direct_returncode
+        self.direct_stderr = direct_stderr
+        self.merged = merged
+
+    def __call__(self, cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        argv = list(cmd)
+        if any(p.endswith("/ccr/auto_merge") for p in argv) and "PUT" in argv:
+            self.calls.append(argv)
+            return _completed(returncode=1, stderr=self.arm_stderr)
+        if any("/rules/branches/main" in p for p in argv):
+            self.calls.append(argv)
+            if self.rules_fail:
+                return _completed(returncode=1, stderr="rules boom")
+            # Like real gh: --paginate + --jq flattens every page to lines.
+            paged = "--paginate" in argv and "per_page=100" in " ".join(argv)
+            types = ["deletion"]
+            if self.queue:
+                types.append("merge_queue")
+            if self.queue_on_later_page:
+                if not paged:
+                    return _completed(stdout=json.dumps([{"type": "deletion"}]))
+                if self.later_page_fails:
+                    return _completed(returncode=1, stderr="page 2 boom")
+                types.append("merge_queue")
+            return _completed(stdout="\n".join(types) + "\n")
+        if any("/git/refs/heads/" in p for p in argv):
+            self.calls.append(argv)
+            return _completed(
+                returncode=self.ref_delete_returncode,
+                stderr="ref boom" if self.ref_delete_returncode else "",
+            )
+        if "graphql" in argv:
+            self.calls.append(argv)
+            return _completed(
+                returncode=1 if self.graphql_fail else 0,
+                stderr=GRAPHQL_BLOCKED if self.graphql_fail else "",
+                stdout="" if self.graphql_fail else "{}",
+            )
+        if any(p.endswith("/pulls/7/merge") for p in argv):
+            self.calls.append(argv)
+            return _completed(returncode=self.direct_returncode, stderr=self.direct_stderr)
+        if "--jq" in argv and ".merged" in argv:
+            self.calls.append(argv)
+            return _completed(stdout=self.merged + "\n")
+        return super().__call__(cmd)
+
+    @property
+    def direct_calls(self) -> list[list[str]]:
+        return [c for c in self.calls if any(p.endswith("/pulls/7/merge") for p in c)]
+
+
+def test_clean_status_422_merges_directly_with_sha_and_method() -> None:
+    fake = CleanGh()
+    result = automerge_guard.arm_auto_merge("o/r", 7, strategy="rebase", runner=fake)
+    assert result.armed is False
+    assert result.merged is True
+    assert "already clean" in result.detail
+    assert len(fake.direct_calls) == 1
+    call = fake.direct_calls[0]
+    assert call[:4] == ["gh", "api", "-X", "PUT"]
+    assert "merge_method=rebase" in call
+    assert f"sha={HEAD_SHA}" in call
+    assert not any("admin" in part for part in call)
+
+
+def test_clean_status_merge_is_verified_via_merged_flag() -> None:
+    fake = CleanGh(merged="false")
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert "merged" in result.reason() and "not" in result.reason()
+    assert len(fake.direct_calls) == 1
+
+
+@pytest.mark.parametrize("status", ["405", "409", "422"])
+def test_clean_status_merge_refused_reports_reason_without_retry(status: str) -> None:
+    fake = CleanGh(direct_returncode=1, direct_stderr=f"Head branch was modified (HTTP {status})")
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert result.armed is False
+    assert "Head branch was modified" in result.detail
+    assert len(fake.direct_calls) == 1
+    assert len(fake.rest_calls) == 1
+
+
+def test_other_422_keeps_current_behaviour() -> None:
+    fake = CleanGh(arm_stderr="Auto merge is not allowed for this repository (422)")
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert result.armed is False
+    assert "not allowed" in result.detail
+    assert fake.direct_calls == []
+
+
+def test_held_pr_is_never_merged_directly() -> None:
+    fake = CleanGh(removed=["a.py"])
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert fake.direct_calls == []
+
+
+ENQUEUE_HINT = "gh pr merge 7 --repo o/r --squash"
+
+
+def _graphql_calls(fake: CleanGh) -> list[list[str]]:
+    return [c for c in fake.calls if "graphql" in c]
+
+
+def test_queue_present_enqueues_with_expected_head_and_never_puts_merge() -> None:
+    fake = CleanGh(queue=True)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.armed is True
+    assert result.merged is False
+    assert "enqueued" in result.detail
+    gql = _graphql_calls(fake)
+    assert len(gql) == 1
+    text = " ".join(gql[0])
+    assert "enqueuePullRequest" in text and "expectedHeadOid" in text
+    assert f"oid={HEAD_SHA}" in gql[0] and "id=PR_node7" in gql[0]
+    assert fake.direct_calls == []
+
+
+def test_queue_present_graphql_failure_never_direct_merges() -> None:
+    fake = CleanGh(queue=True, graphql_fail=True)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.armed is False and result.merged is False
+    assert ENQUEUE_HINT in result.detail
+    assert fake.direct_calls == []
+    assert len(_graphql_calls(fake)) == 1
+
+
+def test_rules_lookup_failure_is_treated_as_queue_present() -> None:
+    fake = CleanGh(rules_fail=True)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert fake.direct_calls == []
+    assert len(_graphql_calls(fake)) == 1
+
+
+def test_no_queue_uses_direct_merge_path() -> None:
+    fake = CleanGh(queue=False)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is True
+    assert _graphql_calls(fake) == []
+
+
+def test_enqueue_hint_names_the_repo() -> None:
+    fake = CleanGh(queue=True, graphql_fail=True)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert "gh pr merge 7 --repo o/r --squash" in result.detail
+
+
+def test_rules_lookup_is_paginated_at_100() -> None:
+    fake = CleanGh(queue_on_later_page=True)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False, "a queue on page 2 must not be missed"
+    assert fake.direct_calls == []
+    assert len(_graphql_calls(fake)) == 1
+
+
+def test_rules_later_page_failure_fails_closed() -> None:
+    fake = CleanGh(queue_on_later_page=True, later_page_fails=True)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert fake.direct_calls == []
+
+
+def _ref_deletes(fake: CleanGh) -> list[list[str]]:
+    return [c for c in fake.calls if any("/git/refs/heads/" in p for p in c)]
+
+
+def test_clean_fallback_honours_delete_branch() -> None:
+    fake = CleanGh()
+    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
+    assert result.merged is True
+    deletes = _ref_deletes(fake)
+    assert len(deletes) == 1
+    assert deletes[0] == [
+        "gh",
+        "api",
+        "-X",
+        "DELETE",
+        "repos/o/r/git/refs/heads/feat/x",
+    ]
+
+
+def test_clean_fallback_percent_encodes_the_head_ref() -> None:
+    # `gh api` treats `#` as a URL fragment: an unencoded `feat#one` would send
+    # DELETE .../heads/feat and delete an unrelated branch. `/` stays literal.
+    fake = CleanGh()
+    fake.pull["head"]["ref"] = "feat/x#one?y%z"  # type: ignore[index]
+    automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
+    deletes = _ref_deletes(fake)
+    assert len(deletes) == 1
+    assert deletes[0][-1] == "repos/o/r/git/refs/heads/feat/x%23one%3Fy%25z"
+
+
+def test_clean_fallback_does_not_delete_without_the_flag() -> None:
+    fake = CleanGh()
+    automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert _ref_deletes(fake) == []
+
+
+def test_clean_fallback_never_deletes_a_fork_branch() -> None:
+    fake = CleanGh()
+    fake.pull["head"]["repo"] = {"full_name": "fork/r"}  # type: ignore[index]
+    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
+    assert result.merged is True
+    assert _ref_deletes(fake) == []
+
+
+def test_clean_fallback_delete_failure_warns_but_stays_merged() -> None:
+    fake = CleanGh(ref_delete_returncode=1)
+    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
+    assert result.merged is True
+    assert "branch not deleted" in result.detail
+
+
+def test_clean_fallback_does_not_delete_when_merge_unverified() -> None:
+    fake = CleanGh(merged="false")
+    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
+    assert result.merged is False
+    assert _ref_deletes(fake) == []
+
+
+def test_cli_reports_merged_and_exits_zero(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(automerge_guard, "arm_auto_merge", _patched_merged_result(merged=True))
+    assert automerge_guard.main(["o/r", "7", "--arm"]) == 0
+    assert "merged o/r#7 (squash; PR was already clean)" in capsys.readouterr().out
+
+
+def test_cli_refused_clean_merge_exits_nonzero_with_reason(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(automerge_guard, "arm_auto_merge", _patched_merged_result(merged=False))
+    assert automerge_guard.main(["o/r", "7", "--arm"]) == 1
+    assert "merge queue required" in capsys.readouterr().out
+
+
+def _patched_merged_result(*, merged: bool):  # type: ignore[no-untyped-def]
+    result = automerge_guard.ArmResult(
+        False,
+        automerge_guard.HoldVerdict(False, ()),
+        "" if merged else "PR was already clean but direct merge refused: merge queue required",
+        merged=merged,
+    )
+    return lambda *a, **k: result

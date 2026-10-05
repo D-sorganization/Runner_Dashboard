@@ -1,6 +1,6 @@
 # Vendored from Repository_Management scripts/automerge_guard.py
-# (RM PR #1956, on top of RM main 74070855; includes RM#1937 and RM#1939). Re-sync from upstream; do
-# not fork. No local changes except ruff format at this repository's line
+# (RM PR #1981, RM commit 9b177e21; merge-queue aware, includes RM#1937, RM#1939 and the
+# RM#1968 follow-up). Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line
 # length. collate-changes.yml arms auto-merge only through this guard.
 # Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
 """Refuse to arm GitHub auto-merge on a pull request a reviewer has held back.
@@ -43,6 +43,7 @@ import shutil
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,15 @@ class HoldVerdict:
     #: Populated on evaluation failure. A verdict that could not be computed is
     #: treated as HELD, so a broken token or a rate limit never opens the gate.
     error: str | None = None
+    #: Head SHA the verdict was computed against; a direct merge is pinned to it.
+    head_sha: str = ""
+    #: Base branch and GraphQL node id of the PR, for queue-aware fallbacks.
+    base_ref: str = ""
+    node_id: str = ""
+    #: Head branch name, and whether it lives in the base repo (a fork's branch
+    #: must never be deleted via the base repo's refs).
+    head_ref: str = ""
+    head_in_base_repo: bool = False
 
     def describe(self) -> str:
         if not self.held:
@@ -194,6 +204,9 @@ class ArmResult:
     #: True only when an unverified REST arm could not be revoked: GitHub may
     #: still auto-merge the PR. Callers must surface this loudly.
     auto_merge_may_be_on: bool = False
+    #: True only when the PR was already clean, arming was refused, and the
+    #: guard merged it directly (#1968) and verified ``merged`` is true.
+    merged: bool = False
 
     def reason(self) -> str:
         """Why the PR is not armed: ``detail`` when set, else the hold verdict."""
@@ -365,7 +378,19 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
         # Fail closed. An unknown state is not a licence to arm.
         return HoldVerdict(True, (), error=str(exc))
 
-    return HoldVerdict(bool(reasons), tuple(reasons))
+    head = raw.get("head") or {}
+    head_repo = str((head.get("repo") or {}).get("full_name") or "").lower()
+    base_repo = str(((raw.get("base") or {}).get("repo") or {}).get("full_name") or "")
+    base_repo = base_repo.lower()
+    return HoldVerdict(
+        bool(reasons),
+        tuple(reasons),
+        head_sha=pull.head_sha,
+        base_ref=str((raw.get("base") or {}).get("ref") or ""),
+        node_id=str(raw.get("node_id") or ""),
+        head_ref=str(head.get("ref") or ""),
+        head_in_base_repo=bool(head_repo) and head_repo == base_repo,
+    )
 
 
 def _deletions_acknowledged(lowered_labels: set[str], body: str) -> bool:
@@ -410,6 +435,137 @@ def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> tuple[str, bool]
     )
 
 
+#: Substring of the 422 GitHub returns when arming a PR that is already mergeable.
+CLEAN_STATUS_MARKER = "clean status"
+
+
+ENQUEUE_MUTATION = (
+    "mutation($id: ID!, $oid: GitObjectID!) { enqueuePullRequest(input: "
+    "{pullRequestId: $id, expectedHeadOid: $oid}) { mergeQueueEntry { id } } }"
+)
+
+
+def _base_has_merge_queue(repo: str, base: str, run: CommandRunner) -> bool:
+    """True if ``base`` carries a ``merge_queue`` rule. Fails closed: any error
+    (or an empty base) reads as "queue present"."""
+    if not base:
+        return True
+    try:
+        # Paginated: a rule list longer than one page must not hide the queue.
+        # Any failure on any page raises, so "no queue" needs every page.
+        types = _gh_lines(
+            run,
+            [
+                "api",
+                f"repos/{repo}/rules/branches/{base}?per_page=100",
+                "--paginate",
+                "--jq",
+                ".[].type",
+            ],
+        )
+    except (RuntimeError, OSError):
+        return True
+    return "merge_queue" in {t.strip() for t in types}
+
+
+def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, run: CommandRunner) -> ArmResult:
+    """Enqueue an already-clean PR on a merge-queue base via one GraphQL call.
+
+    Never falls back to ``PUT /merge``: that route cannot honour a merge queue.
+    """
+    hint = (
+        f"PR is already clean and the base uses a merge queue; enqueue it with "
+        f"`gh pr merge {pr} --repo {repo} --{strategy}` (without any admin bypass)"
+    )
+    if not (verdict.node_id and verdict.head_sha):
+        return ArmResult(False, verdict, hint)
+    proc = run(
+        [
+            "gh",
+            "api",
+            "graphql",
+            "-f",
+            f"query={ENQUEUE_MUTATION}",
+            "-f",
+            f"id={verdict.node_id}",
+            "-f",
+            f"oid={verdict.head_sha}",
+        ]
+    )
+    if proc.returncode != 0:
+        err = proc.stderr.strip() or proc.stdout.strip()
+        logger.warning("Enqueue of clean %s#%s failed: %s", repo, pr, err)
+        return ArmResult(False, verdict, f"{hint} (enqueue failed: {err})")
+    logger.info("Enqueued clean %s#%s in the merge queue.", repo, pr)
+    return ArmResult(True, verdict, "enqueued in merge queue (PR was already clean)")
+
+
+def _merge_clean_pr(
+    repo: str,
+    pr: int,
+    strategy: str,
+    sha: str,
+    verdict: HoldVerdict,
+    run: CommandRunner,
+    delete_branch: bool = False,
+) -> ArmResult:
+    """Merge an already-clean ``repo#pr`` directly, pinned to the verified head.
+
+    Pre: arming was refused with the clean-status 422 and ``verdict`` is
+    not-held. Post: exactly one ``PUT .../merge`` (never an admin merge, never
+    retried) with ``sha`` so a newer push is not merged; reported as merged only
+    if a follow-up read shows ``merged`` is true. With ``delete_branch``, the head
+    ref is then deleted via REST, only for a same-repo head; a failed deletion
+    is a warning appended to the detail and never un-merges the result.
+    """
+    if not sha:
+        return ArmResult(False, verdict, "PR was already clean but the verified head SHA is unknown")
+    proc = run(
+        [
+            "gh",
+            "api",
+            "-X",
+            "PUT",
+            f"repos/{repo}/pulls/{pr}/merge",
+            "-f",
+            f"merge_method={strategy}",
+            "-f",
+            f"sha={sha}",
+        ]
+    )
+    if proc.returncode != 0:
+        err = proc.stderr.strip() or proc.stdout.strip()
+        logger.warning("Direct merge of clean %s#%s refused: %s", repo, pr, err)
+        return ArmResult(False, verdict, f"PR was already clean but direct merge refused: {err}")
+    check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
+    if check.returncode != 0 or check.stdout.strip().lower() != "true":
+        return ArmResult(
+            False,
+            verdict,
+            "PR was already clean; merge call succeeded but PR is not merged (could not verify the merged flag)",
+        )
+    logger.info("Merged clean %s#%s directly (%s).", repo, pr, strategy)
+    detail = "merged (PR was already clean)"
+    if delete_branch:
+        detail += _delete_head_branch(repo, verdict, run)
+    return ArmResult(False, verdict, detail, merged=True)
+
+
+def _delete_head_branch(repo: str, verdict: HoldVerdict, run: CommandRunner) -> str:
+    """Delete the merged PR's head ref; return a detail suffix ("" on success)."""
+    if not (verdict.head_ref and verdict.head_in_base_repo):
+        return "; branch not deleted (head is not a branch of this repo)"
+    # Percent-encode the ref (keeping "/"): `gh api` reads a raw "#" as a URL
+    # fragment, so `feat#one` would otherwise delete an unrelated `feat`.
+    ref = quote(verdict.head_ref, safe="/")
+    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/refs/heads/{ref}"])
+    if proc.returncode != 0:
+        err = proc.stderr.strip() or proc.stdout.strip()
+        logger.warning("Merged %s but could not delete %s: %s", repo, verdict.head_ref, err)
+        return f"; branch not deleted: {err}"
+    return ""
+
+
 def arm_auto_merge(
     repo: str,
     pr: int,
@@ -431,7 +587,12 @@ def arm_auto_merge(
     exactly one fallback ``PUT repos/{repo}/pulls/{pr}/ccr/auto_merge`` is made,
     and it is reported as armed only if the merge method GitHub stored equals
     ``strategy``; otherwise the arm is revoked with a ``DELETE`` on the same
-    route, and a failed revoke is reported in the detail.
+    route, and a failed revoke is reported in the detail. If that PUT is refused
+    with the "clean status" 422 (PR already mergeable), one direct
+    ``PUT .../merge`` pinned to the verified head SHA is made instead (#1968),
+    unless the base branch has a merge queue (or that cannot be determined), in
+    which case one GraphQL ``enqueuePullRequest`` is attempted and never a
+    direct merge.
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
@@ -466,6 +627,10 @@ def arm_auto_merge(
                 if may_be_on:
                     logger.error("DANGER %s#%s: %s", repo, pr, full)
                 return ArmResult(False, verdict, full, auto_merge_may_be_on=may_be_on)
+        elif CLEAN_STATUS_MARKER in (proc.stderr + proc.stdout).lower():
+            if _base_has_merge_queue(repo, verdict.base_ref, run):
+                return _enqueue_clean_pr(repo, pr, strategy, verdict, run)
+            return _merge_clean_pr(repo, pr, strategy, verdict.head_sha, verdict, run, delete_branch)
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Could not arm auto-merge on %s#%s: %s", repo, pr, detail)
@@ -512,6 +677,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if result.armed:
             print(f"armed {args.repo}#{args.pr}")
+            return 0
+        if result.merged:
+            print(f"merged {args.repo}#{args.pr} ({args.strategy}; PR was already clean)")
             return 0
         if result.auto_merge_may_be_on:
             print(f"DANGER NOT armed {args.repo}#{args.pr}: {result.reason()}")
