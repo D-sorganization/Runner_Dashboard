@@ -732,7 +732,7 @@ class CleanGh(CloudGh):
                     return _completed(returncode=1, stderr="page 2 boom")
                 types.append("merge_queue")
             return _completed(stdout="\n".join(types) + "\n")
-        if any(p.endswith("/git/refs/heads/feat/x") for p in argv):
+        if any("/git/refs/heads/" in p for p in argv):
             self.calls.append(argv)
             return _completed(
                 returncode=self.ref_delete_returncode,
@@ -890,6 +890,17 @@ def test_clean_fallback_honours_delete_branch() -> None:
         "DELETE",
         "repos/o/r/git/refs/heads/feat/x",
     ]
+
+
+def test_clean_fallback_percent_encodes_the_head_ref() -> None:
+    # `gh api` treats `#` as a URL fragment: an unencoded `feat#one` would send
+    # DELETE .../heads/feat and delete an unrelated branch. `/` stays literal.
+    fake = CleanGh()
+    fake.pull["head"]["ref"] = "feat/x#one?y%z"  # type: ignore[index]
+    automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
+    deletes = _ref_deletes(fake)
+    assert len(deletes) == 1
+    assert deletes[0][-1] == "repos/o/r/git/refs/heads/feat/x%23one%3Fy%25z"
 
 
 def test_clean_fallback_does_not_delete_without_the_flag() -> None:

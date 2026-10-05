@@ -1,5 +1,5 @@
 # Vendored from Repository_Management scripts/automerge_guard.py
-# (RM PR #1981, RM commit c4666f52; merge-queue aware, includes RM#1937, RM#1939 and the
+# (RM PR #1981, RM commit 9b177e21; merge-queue aware, includes RM#1937, RM#1939 and the
 # RM#1968 follow-up). Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line
 # length. collate-changes.yml arms auto-merge only through this guard.
 # Vendored files follow upstream size; any line-length split happens in RM (RM#1938).
@@ -43,6 +43,7 @@ import shutil
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -554,7 +555,10 @@ def _delete_head_branch(repo: str, verdict: HoldVerdict, run: CommandRunner) -> 
     """Delete the merged PR's head ref; return a detail suffix ("" on success)."""
     if not (verdict.head_ref and verdict.head_in_base_repo):
         return "; branch not deleted (head is not a branch of this repo)"
-    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/refs/heads/{verdict.head_ref}"])
+    # Percent-encode the ref (keeping "/"): `gh api` reads a raw "#" as a URL
+    # fragment, so `feat#one` would otherwise delete an unrelated `feat`.
+    ref = quote(verdict.head_ref, safe="/")
+    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/refs/heads/{ref}"])
     if proc.returncode != 0:
         err = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Merged %s but could not delete %s: %s", repo, verdict.head_ref, err)
