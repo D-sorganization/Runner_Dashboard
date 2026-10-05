@@ -1,4 +1,4 @@
-# Vendored from D-sorganization/Repository_Management scripts/fork_pr_guard_analysis.py (RM#2003 @ 3854595b).
+# Vendored from D-sorganization/Repository_Management scripts/fork_pr_guard_analysis.py (RM#2006 @ c79aec82).
 # Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line length.
 """Condition and head-checkout analysis for ``fork_pr_runner_guard`` (RM#1996).
 
@@ -136,25 +136,26 @@ def _strings(value: Any) -> Iterable[str]:
 def head_ref_aliases(*scopes: Any, known: Iterable[str] = ()) -> set[str]:
     """Return env names, across ``scopes``, whose value reads the PR head.
 
-    Resolution is transitive (fail-closed): a name whose value references a
-    head literal, a ``known`` alias, or any alias found so far (``HEAD`` ->
-    ``REF: ${{ env.HEAD }}`` -> ...) is an alias too, iterated to a fixpoint.
+    Precondition: ``scopes`` are ordered outermost first (workflow, job, step).
+    A name is an alias when its value references a head literal, a ``known``
+    alias, or an alias from an *enclosing* scope (``HEAD`` -> ``REF:
+    ${{ env.HEAD }}`` one level down). Entries of one ``env`` map never resolve
+    against each other: GitHub evaluates ``env.X`` inside an env map against
+    the enclosing scopes only. An inner scope that redefines an outer alias
+    does not clear it (fail-closed).
     Postcondition: the result contains every name in ``known``.
     """
     names: set[str] = {str(n) for n in known}
-    entries: list[tuple[str, str]] = []
     for scope in scopes:
         env = scope.get("env") if isinstance(scope, dict) else None
-        for name, value in env.items() if isinstance(env, dict) else ():
-            entries.append((str(name), dotted("\n".join(_strings(value)))))
-    changed = True
-    while changed:
-        changed = False
+        if not isinstance(env, dict):
+            continue
         patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(n) for n in names)]
-        for name, text in entries:
-            if name not in names and any(p.search(text) for p in patterns):
-                names.add(name)
-                changed = True
+        names |= {
+            str(name)
+            for name, value in env.items()
+            if any(p.search(dotted("\n".join(_strings(value)))) for p in patterns)
+        }
     return names
 
 
@@ -219,6 +220,12 @@ def _is_checkout_action(uses: Any) -> bool:
     return uses.split("@", 1)[0].strip().lower() == "actions/checkout"
 
 
+# Step keys that never hand data to the command or action: ``if`` is a gate
+# (handled by the caller) and ``name`` is display text. Every other key,
+# known or not, is scanned (fail-closed).
+_INERT_STEP_KEYS = frozenset({"if", "name"})
+
+
 def _step_checks_out_head(step: dict[str, Any], aliases: set[str]) -> bool:
     """Return whether one step reads the PR head (fail-closed).
 
@@ -235,7 +242,7 @@ def _step_checks_out_head(step: dict[str, Any], aliases: set[str]) -> bool:
     patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(a) for a in step_aliases)]
     if _is_checkout_action(step.get("uses")):
         return _checkout_action_reads_head(step.get("with"), patterns)
-    fields = {k: v for k, v in step.items() if k != "if"}
+    fields = {k: v for k, v in step.items() if k not in _INERT_STEP_KEYS}
     text = dotted("\n".join(_strings(fields)))
     return any(pattern.search(text) for pattern in patterns)
 

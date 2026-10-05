@@ -601,15 +601,66 @@ def test_job_alias_chained_from_workflow_alias_is_rejected(tmp_path: Path) -> No
     assert len(_violations(tmp_path, text)) == 1
 
 
-def test_multi_hop_step_alias_chain_is_rejected(tmp_path: Path) -> None:
-    """A -> B -> REF within one step still resolves to the head."""
+def test_multi_hop_alias_chain_across_scopes_is_rejected(tmp_path: Path) -> None:
+    """A (workflow) -> B (job) -> REF (step) -> checkout ref reads the head."""
+    text = (
+        "on: workflow_run\n"
+        "env:\n  A: ${{ github.event.workflow_run.head_branch }}\n"
+        "jobs:\n  t:\n    runs-on: d-sorg-fleet\n"
+        "    env:\n      B: ${{ env.A }}\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v4\n"
+        "        env:\n          REF: ${{ env.B }}\n"
+        "        with:\n          ref: ${{ env.REF }}\n"
+    )
+    assert len(_violations(tmp_path, text)) == 1
+
+
+def test_sibling_entries_of_one_env_map_do_not_chain(tmp_path: Path) -> None:
+    """Codex P2 on RD#1911: ``env.X`` in an env map reads enclosing scopes only.
+
+    GitHub does not let an ``env`` entry reference a sibling in the same map,
+    so ``REF: ${{ env.A }}`` beside ``A: <head>`` resolves against the job and
+    workflow (where A is unset), and the checkout uses the base ref.
+    """
     body = (
         "    runs-on: d-sorg-fleet\n    steps:\n"
         "      - uses: actions/checkout@v4\n"
         "        env:\n"
-        "          REF: ${{ env.B }}\n"
-        "          B: ${{ env.A }}\n"
         "          A: ${{ github.event.workflow_run.head_branch }}\n"
+        "          REF: ${{ env.A }}\n"
         "        with:\n          ref: ${{ env.REF }}\n"
+    )
+    assert _violations(tmp_path, _workflow_run_job(None, body)) == []
+
+
+def test_sibling_job_env_entries_do_not_chain(tmp_path: Path) -> None:
+    """The scope rule holds for a job-level map as well as a step-level one."""
+    body = (
+        "    runs-on: d-sorg-fleet\n"
+        "    env:\n"
+        "      A: ${{ github.event.workflow_run.head_branch }}\n"
+        "      REF: ${{ env.A }}\n"
+        "    steps:\n" + _CHAINED_CHECKOUT
+    )
+    assert _violations(tmp_path, _workflow_run_job(None, body)) == []
+
+
+def test_head_ref_only_in_step_name_is_allowed(tmp_path: Path) -> None:
+    """Codex P2 on RD#1911: a step ``name:`` is display text, not data."""
+    body = (
+        "    runs-on: d-sorg-fleet\n    steps:\n"
+        "      - name: Report ${{ github.event.workflow_run.head_branch }}\n"
+        "        run: echo safe\n"
+    )
+    assert _violations(tmp_path, _workflow_run_job(None, body)) == []
+
+
+def test_head_ref_in_run_is_still_rejected_beside_a_name(tmp_path: Path) -> None:
+    """Dropping ``name:`` from the scan never exempts the step's command."""
+    body = (
+        "    runs-on: d-sorg-fleet\n    steps:\n"
+        "      - name: Report ${{ github.event.workflow_run.head_branch }}\n"
+        "        run: ./ci.sh ${{ github.event.workflow_run.head_branch }}\n"
     )
     assert len(_violations(tmp_path, _workflow_run_job(None, body))) == 1
