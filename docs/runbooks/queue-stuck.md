@@ -75,6 +75,13 @@ a superseded run will never proceed regardless of runner availability, while an
 unsatisfiable label run would proceed if a matching runner came online.
 Use `dry_run=true` to preview which category each run falls into before purging.
 
+**Merge-queue runs are exempt.** Runs with `event == merge_group` or a
+`gh-readonly-queue/...` branch are never listed or cancelled by any queue
+canceller (`/api/queue/stale`, `/api/queue/purge-stale`, `reap_queued_jobs.py`,
+staff `queue_purge_stale`). Cancelling one cancels the required check, so GitHub
+dequeues the PR with `CI_FAILURE` and disarms auto-merge (#1915). If a queue run
+is stuck, fix runner capacity; do not cancel it.
+
 ## Mitigation
 
 Always preview before cancellation.
