@@ -118,3 +118,33 @@ def test_staff_queue_purge_stale_cannot_cancel_merge_queue_runs() -> None:
     # through queue_cleanup.find_stale_runs, which never returns merge-queue runs.
     with pytest.raises(maintenance.MaintenanceNotWiredError):
         maintenance._purge_stale_queue(None, 60, 10)
+
+
+def test_reaper_aborts_before_purge_when_candidates_include_merge_queue(monkeypatch) -> None:
+    import importlib.util
+    import io
+    import json
+    import sys
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "reap_queued_jobs_abort", Path(__file__).resolve().parents[1] / "scripts" / "reap_queued_jobs.py"
+    )
+    assert spec and spec.loader
+    reaper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reaper)
+
+    calls: list[str] = []
+
+    def fake_urlopen(req, timeout=0):
+        calls.append(req.full_url)
+        body = {"stale_count": 1, "runs": [{"run_id": 1, "branch": QUEUE_BRANCH}]}
+        return io.BytesIO(json.dumps(body).encode())
+
+    monkeypatch.setattr(reaper.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(sys, "argv", ["reap", "--dry-run", "false"])
+    monkeypatch.delenv("QUEUED_JOB_REAPER_DISABLED", raising=False)
+    with pytest.raises(SystemExit) as exc:
+        reaper.main()
+    assert exc.value.code == 1
+    assert all("purge-stale" not in url for url in calls)

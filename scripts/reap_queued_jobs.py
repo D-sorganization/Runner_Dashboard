@@ -137,6 +137,17 @@ def main() -> None:
         logger.error("Unexpected error fetching stale queue: %s", e)
         sys.exit(1)
 
+    # Abort before the mutating POST if the server proposes a merge-queue run (#1915);
+    # filtering after the purge would be too late to stop the cancellation.
+    queue_candidates = [r for r in stale_data.get("runs", []) if len(select_cancellable([r])) == 0]
+    if queue_candidates:
+        logger.error(
+            "Stale list contains %d merge-queue run(s) (e.g. %s); refusing to purge",
+            len(queue_candidates),
+            queue_candidates[0].get("run_id"),
+        )
+        sys.exit(1)
+
     stale_count = stale_data.get("stale_count", 0)
     logger.info("Stale runs found: %d", stale_count)
 
