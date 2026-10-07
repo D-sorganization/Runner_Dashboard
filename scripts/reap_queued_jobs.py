@@ -14,6 +14,14 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+# Reuse the backend's merge-queue predicate (#1915) instead of copying it.
+_BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+
+from queue_cleanup import is_merge_queue_run  # noqa: E402
 
 # Configure logging according to standards
 logging.basicConfig(
@@ -26,6 +34,20 @@ def str_to_bool(val: str | bool) -> bool:
     if isinstance(val, bool):
         return val
     return val.lower() in ("true", "1", "yes")
+
+
+def select_cancellable(runs: list[dict]) -> list[dict]:
+    """Drop merge-queue runs; they are never cancellable (#1915).
+
+    The server already excludes them, so a hit here means a server regression.
+    """
+    kept: list[dict] = []
+    for run in runs:
+        if is_merge_queue_run(str(run.get("event") or ""), str(run.get("branch") or "")):
+            logger.warning("Ignoring merge-queue run %s; never cancellable", run.get("run_id"))
+            continue
+        kept.append(run)
+    return kept
 
 
 def main() -> None:
@@ -151,7 +173,7 @@ def main() -> None:
         sys.exit(1)
 
     # 5. Process results
-    cancelled_runs = purge_data.get("runs", [])
+    cancelled_runs = select_cancellable(purge_data.get("runs", []))
     cancelled_count = purge_data.get("cancelled_count", 0)
     errors = purge_data.get("errors", [])
 

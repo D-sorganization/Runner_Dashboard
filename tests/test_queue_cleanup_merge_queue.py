@@ -79,3 +79,42 @@ def test_ordinary_stale_feature_run_still_flagged(monkeypatch) -> None:
     ]
     out = _scan(monkeypatch, runs, [])
     assert [r.run_id for r in out] == [8]
+
+
+# --- classify_stale_run / reaper / staff cancellers (#1915) ---------------------
+
+
+@pytest.mark.parametrize(
+    ("branch", "event"), [(QUEUE_BRANCH, ""), ("feature/x", "merge_group"), (QUEUE_BRANCH, "merge_group")]
+)
+def test_classify_stale_run_keeps_merge_queue_runs(branch: str, event: str) -> None:
+    reason, safe = qc.classify_stale_run(branch, age_minutes=600, event=event)
+    assert reason == qc.StaleReason.PROTECTED_MERGE_QUEUE.value
+    assert safe is False
+
+
+def test_reaper_selection_drops_merge_queue_runs() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "reap_queued_jobs", Path(__file__).resolve().parents[1] / "scripts" / "reap_queued_jobs.py"
+    )
+    assert spec and spec.loader
+    reaper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reaper)
+
+    runs = [
+        {"run_id": 1, "branch": QUEUE_BRANCH, "event": "merge_group", "safe_to_cancel": True},
+        {"run_id": 2, "branch": "feature/x", "event": "push", "safe_to_cancel": True},
+    ]
+    assert [r["run_id"] for r in reaper.select_cancellable(runs)] == [2]
+
+
+def test_staff_queue_purge_stale_cannot_cancel_merge_queue_runs() -> None:
+    from staff import maintenance
+
+    # The staff action is not wired to a canceller; if it is ever wired it must go
+    # through queue_cleanup.find_stale_runs, which never returns merge-queue runs.
+    with pytest.raises(maintenance.MaintenanceNotWiredError):
+        maintenance._purge_stale_queue(None, 60, 10)
