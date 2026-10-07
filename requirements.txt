@@ -69,7 +69,7 @@ pydantic==2.13.3
     #   runner-dashboard
 pydantic-core==2.46.3
     # via pydantic
-pyjwt==2.14.0
+pyjwt==2.15.0
     # via runner-dashboard
 python-dotenv==1.2.2
     # via uvicorn
@@ -100,7 +100,7 @@ typing-inspection==0.4.2
     #   pydantic
 tzdata==2026.4
     # via runner-dashboard
-urllib3==2.7.0
+urllib3==2.8.0
     # via requests
 uvicorn==0.46.0
     # via runner-dashboard
