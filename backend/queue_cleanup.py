@@ -59,6 +59,7 @@ class StaleReason(StrEnum):
     SUPERSEDED_PR_HEAD = "superseded_pr_head"
     CLOSED_OR_DELETED_REF = "closed_or_deleted_ref"
     ABANDONED_AGENT = "abandoned-agent-run"
+    PROTECTED_MERGE_QUEUE = "protected_merge_queue"
     STALE_FEATURE_BRANCH = "stale-feature-branch"
     OFFLINE_RUNNER_OR_LAG = "offline-runner-or-lag"
     STALE_MAIN_BRANCH = "stale-main-branch-queue"
@@ -115,7 +116,7 @@ def _is_agent_actor(actor: str | None) -> bool:
     return login.endswith("[bot]") or login in _AGENT_ACTOR_LOGINS
 
 
-def classify_stale_run(branch: str, age_minutes: int, actor: str | None = None) -> tuple[str, bool]:
+def classify_stale_run(branch: str, age_minutes: int, actor: str | None = None, event: str = "") -> tuple[str, bool]:
     """Determine the reason and safety status of a stale run.
 
     Agent-run classification (``safe_to_cancel=True``) requires BOTH an
@@ -124,7 +125,13 @@ def classify_stale_run(branch: str, age_minutes: int, actor: str | None = None) 
     branch is treated as an ordinary feature branch and is NOT auto-cancellable
     on the agent reason. When the actor is unknown (``None``), branch shape alone
     decides — preserving prior behaviour for callers that cannot supply an actor.
+
+    Merge-queue runs (``merge_group`` event or ``gh-readonly-queue/`` branch) are
+    always kept (``safe_to_cancel=False``): cancelling one dequeues the PR (#1915).
     """
+    if is_merge_queue_run(event, branch):
+        return StaleReason.PROTECTED_MERGE_QUEUE.value, False
+
     if branch in ("main", "master", "release"):
         if age_minutes > 360:
             return StaleReason.OFFLINE_RUNNER_OR_LAG.value, True
@@ -597,7 +604,9 @@ async def _queued_stale_for_repo(
         actor_obj = run.get("triggering_actor") or run.get("actor") or {}
         actor_login = actor_obj.get("login") if isinstance(actor_obj, dict) else None
 
-        run_reason, safe_to_cancel = classify_stale_run(branch, age_minutes, actor=actor_login)
+        run_reason, safe_to_cancel = classify_stale_run(
+            branch, age_minutes, actor=actor_login, event=run.get("event") or ""
+        )
         if status == "in_progress":
             safe_to_cancel = False
 

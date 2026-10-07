@@ -31,6 +31,12 @@ stuck in `queued` or `in_progress` long past their normal duration.
 - Busy but current-head jobs are not stale. Leave them alone unless an operator
   has confirmed the run is not required.
 
+- **Merge-queue runs are exempt.** Runs with `event == merge_group` or a
+  `gh-readonly-queue/...` branch are never stale and never cancellable by
+  `/api/queue/purge-stale`, `scripts/reap_queued_jobs.py` or staff
+  `queue_purge_stale` (shared predicate `queue_cleanup.is_merge_queue_run`,
+  #1915). Cancelling one fails the required check and GitHub dequeues the PR.
+
 Do not cancel current-head required checks, release/tag workflows, deployment
 workflows, or running jobs as part of routine queue cleanup.
 
