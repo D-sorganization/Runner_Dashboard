@@ -210,6 +210,7 @@ def handle_post_execution_retry(
             lease_ritual=plan.lease_ritual,
             consolidation=plan.consolidation,
             focus=plan.focus,
+            head_ref=plan.head_ref,
         )
         attempt_rec = RunRecord(
             id=attempt_id,
@@ -274,6 +275,7 @@ def handle_post_execution_retry(
                     lease_ritual=plan.lease_ritual,
                     consolidation=plan.consolidation,
                     focus=plan.focus,
+                    head_ref=plan.head_ref,
                 )
                 fallback_rec = RunRecord(
                     id=attempt_id,

@@ -70,7 +70,11 @@ if isinstance(val_props, dict):
 out.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 
-npx prettier --parser json --write "$TMP_SNAPSHOT"
+if [ -f "$ROOT_DIR/node_modules/prettier/bin/prettier.cjs" ]; then
+  node "$ROOT_DIR/node_modules/prettier/bin/prettier.cjs" --parser json --write "$TMP_SNAPSHOT"
+else
+  npx prettier --parser json --write "$TMP_SNAPSHOT"
+fi
 if [ -f "$ROOT_DIR/node_modules/openapi-typescript/bin/cli.js" ]; then
   node "$ROOT_DIR/node_modules/openapi-typescript/bin/cli.js" "$TMP_SNAPSHOT" --output "$TMP_TYPES"
 else

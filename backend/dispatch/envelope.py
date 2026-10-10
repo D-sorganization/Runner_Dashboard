@@ -7,12 +7,17 @@ without touching the running dashboard service.
 from __future__ import annotations
 
 import datetime as _dt_mod
+import logging
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from uuid import uuid4
 
 from dispatch.signing import _hash_payload, _load_signing_secret, _sign_envelope_payload, _verify_envelope_signature
+from dispatch_effort import DEFAULT_EFFORT, validate_effort
 from time_utils import utc_now_iso
+
+log = logging.getLogger("dashboard")
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
@@ -69,6 +74,38 @@ class DispatchConfirmation:
         )
 
 
+def _signed_field(
+    data: dict[str, Any],
+    key: str,
+    validate: Callable[[Any], str],
+    default: str,
+) -> str:
+    """Resolve an inbound envelope field from the signed payload.
+
+    Only ``payload`` is covered by the signature (issue #317), so a non-null
+    ``payload[key]`` is authoritative. An unsigned top-level ``key`` may only
+    repeat that value; a mismatch means the envelope was altered in transit.
+    When the payload does not sign the field (envelopes that predate it), any
+    unsigned top-level value is dropped and ``default`` applies: it cannot be
+    trusted, and honouring it would let an interceptor change runtime
+    behaviour while ``verify_signature()`` still passes.
+
+    Precondition: ``data`` is a deserialized envelope mapping.
+    Postcondition: the returned value has passed ``validate``.
+    Raises: ValueError on a top-level/payload mismatch or a rejected value.
+    """
+    payload = data.get("payload") or {}
+    signed = payload.get(key) if isinstance(payload, dict) else None
+    unsigned = data.get(key)
+    if signed is None:
+        if unsigned is not None:
+            log.warning("ignoring unsigned top-level envelope %s %r; payload does not sign it", key, unsigned)
+        return validate(default)
+    if unsigned is not None and unsigned != signed:
+        raise ValueError(f"envelope {key} {unsigned!r} does not match the signed payload {key} {signed!r}")
+    return validate(signed)
+
+
 @dataclass(frozen=True, slots=True)
 class CommandEnvelope:
     """JSON-safe dispatch request sent from hub to node."""
@@ -95,8 +132,14 @@ class CommandEnvelope:
     # arrived with no signature, which must never have one minted on the
     # caller's behalf. ``validate_envelope_crypto`` rejects such envelopes.
     signature_authentic: bool = field(default=False, compare=False)
+    # Issue #1845 (RD-0): default pr_lifecycle to "arm_and_exit"
+    pr_lifecycle: str = "arm_and_exit"
+    # Issue #1865 (USE-1): reasoning effort for the launched session.
+    effort: str = DEFAULT_EFFORT
 
     def __post_init__(self) -> None:
+        # DbC: an envelope never carries an effort the providers do not know.
+        validate_effort(self.effort)
         if not self.signature:
             secret = _load_signing_secret()
             sig = _sign_envelope_payload(
@@ -158,6 +201,8 @@ class CommandEnvelope:
         object.__setattr__(envelope, "on_behalf_of", str(data.get("on_behalf_of", "")))
         object.__setattr__(envelope, "correlation_id", str(data.get("correlation_id", "")))
         object.__setattr__(envelope, "signature_authentic", bool(wire_signature))
+        object.__setattr__(envelope, "pr_lifecycle", _signed_field(data, "pr_lifecycle", str, "arm_and_exit"))
+        object.__setattr__(envelope, "effort", _signed_field(data, "effort", validate_effort, DEFAULT_EFFORT))
         return envelope
 
     def verify_signature(self) -> bool:

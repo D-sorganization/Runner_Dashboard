@@ -117,7 +117,7 @@ def test_compose_prompt_code_read_only() -> None:
         branch="staff/barb-123",
     )
     assert READ_ONLY_FLEET_RULES in prompt_ro
-    assert "DRAFT pull request" not in prompt_ro
+    assert "arm_and_exit" not in prompt_ro
     assert "You are in a read-only working copy." in prompt_ro
 
     role_normal = RoleSpec(
@@ -133,7 +133,7 @@ def test_compose_prompt_code_read_only() -> None:
         branch="staff/night-watch-123",
     )
     assert FLEET_RULES in prompt_normal
-    assert "DRAFT pull request" in prompt_normal
+    assert "arm_and_exit" in prompt_normal
     assert "You are in an isolated git worktree on branch staff/night-watch-123." in prompt_normal
 
 
@@ -153,7 +153,7 @@ def test_staff_runner_plan_code_read_only(tmp_path: Path) -> None:
     plan = runner.plan(RunRequest(role="barb", prompt="check status", repo="UpstreamDrift"))
     allowed_tools = plan.argv[plan.argv.index("--allowedTools") + 1].split(",")
     assert "Edit" not in allowed_tools
-    assert "DRAFT pull request" not in plan.prompt
+    assert "arm_and_exit" not in plan.prompt
     assert READ_ONLY_FLEET_RULES in plan.prompt
 
 

@@ -69,6 +69,9 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
 from .remediation_bulk import (  # noqa: E402
     router as bulk_router,
 )
+from .remediation_ci_fix import (  # noqa: E402
+    router as ci_fix_router,
+)
 
 # Import server lazy imports below if needed
 
@@ -76,6 +79,7 @@ log = logging.getLogger("dashboard.remediation")
 router = APIRouter(tags=["remediation", "agents"])
 router.include_router(bulk_router)
 router.include_router(retired_router)
+router.include_router(ci_fix_router)
 
 
 @router.get("/api/agent-remediation/config")

@@ -46,6 +46,7 @@ _MODEL_SCHEMAS: dict[str, type[BaseModel]] = {
     "TaskDetail": mc.MaxwellTaskDetailResponse,
     "CostSummary": mc.MaxwellCostResponse,
     "DispatchResponse": mc.MaxwellDispatchResponse,
+    "WorkersStatusResponse": mc.MaxwellWorkersResponse,
 }
 
 _DRIFT_DISCRIMINATORS = {
@@ -57,6 +58,7 @@ _DRIFT_DISCRIMINATORS = {
     "TaskListResponse": "total",
     "TaskSummary": "status",
     "VersionResponse": "contract",
+    "WorkersStatusResponse": "worker_count",
 }
 
 

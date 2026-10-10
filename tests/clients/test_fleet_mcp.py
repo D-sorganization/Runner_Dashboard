@@ -182,3 +182,47 @@ def test_staff_tools_mcp_flow(fake_api: Any) -> None:
         "/api/v1/staff/proposals",
         "/api/v1/staff/proposals/prop_1/decide",
     ]
+
+
+# --- generated connect.md tool table (#1802 step 2) ---
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+_FLEET_DIR = _REPO_ROOT / "clients" / "fleet"
+if str(_FLEET_DIR) not in sys.path:
+    sys.path.insert(0, str(_FLEET_DIR))
+
+from fleet_tools import COMMANDS, Command  # noqa: E402
+
+from scripts.render_fleet_tools_table import (  # noqa: E402
+    BEGIN_MARKER,
+    CONNECT_MD,
+    END_MARKER,
+    render_table,
+    splice,
+)
+
+
+def test_render_table_rows_derive_from_command_fields() -> None:
+    cmds = (
+        Command(cli="alpha", method="a", description="Does a | b.", tool="fleet_alpha", required=("repo", "issue")),
+        Command(cli="beta", method="b", description="CLI only."),
+    )
+    lines = [[c.strip() for c in ln.strip("|").split(" | ")] for ln in render_table(cmds).splitlines()]
+    assert lines[0][0] == "MCP tool" and set(lines[1][0]) == {"-"}
+    assert lines[2] == ["`fleet_alpha`", "`fleetctl alpha`", "Does a \\| b.", "`repo`, `issue`"]
+    assert lines[3] == ["-", "`fleetctl beta`", "CLI only.", "-"]
+
+
+def test_splice_replaces_only_the_marked_block() -> None:
+    doc = f"before\n{BEGIN_MARKER}\nold\n{END_MARKER}\nafter\n"
+    assert splice(doc, "NEW") == f"before\n{BEGIN_MARKER}\n\nNEW\n\n{END_MARKER}\nafter\n"
+    with pytest.raises(ValueError):
+        splice("no markers", "NEW")
+
+
+def test_connect_md_tool_table_matches_commands() -> None:
+    """Drift test: regenerate with ``python -m scripts.render_fleet_tools_table --write``."""
+    text = CONNECT_MD.read_text(encoding="utf-8")
+    assert splice(text, render_table(COMMANDS)) == text

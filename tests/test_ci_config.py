@@ -332,7 +332,8 @@ def test_requirements_audit_ignore_has_policy_header() -> None:
 #
 # `quality-gate` is the only required status check in the "Repository_Protections"
 # ruleset, and it — along with security-scan, tests, and tests-required — is
-# gated on `ci-health-check.outputs.run_python_tests`. Any path the detector
+# gated on `changes.outputs.run_python_tests` (issue #1864 moved the detector
+# from ci-health-check into the `changes` job). Any path the detector
 # fails to recognise therefore merges with zero test signal. PR #1092 merged a
 # new regression test that never executed in CI for exactly this reason.
 # ---------------------------------------------------------------------------
@@ -354,16 +355,16 @@ SCOPE_PREFIX_NOUNS = {
 PYTHON_GATED_JOBS = ("lint", "security-scan", "tests")
 
 
-def _ci_health_steps() -> list[dict]:
+def _scope_steps() -> list[dict]:
     data = _workflow_yaml(CI_WORKFLOW)
-    return data["jobs"]["ci-health-check"]["steps"]
+    return data["jobs"]["changes"]["steps"]
 
 
 def _step_by(key: str, value: str) -> dict:
-    for step in _ci_health_steps():
+    for step in _scope_steps():
         if step.get(key) == value:
             return step
-    raise AssertionError(f"ci-health-check has no step with {key}={value!r}")
+    raise AssertionError(f"changes job has no step with {key}={value!r}")
 
 
 def _scope_detector_source() -> str:

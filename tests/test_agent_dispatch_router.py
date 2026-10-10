@@ -2,6 +2,7 @@
 
 from __future__ import annotations  # noqa: E402
 
+import json  # noqa: E402
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
 from types import SimpleNamespace
@@ -365,3 +366,181 @@ async def test_dispatch_to_issues_audit_log_has_required_fields(tmp_path: Path) 
         assert entry["forced"] is True
     finally:
         adr._ISSUE_DISPATCH_HISTORY_PATH = original
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_skips_when_premise_rejected() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=99,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix local-only-runner-guard.yml failure",
+        force=False,
+    )
+    with patch(
+        "agent_dispatch_router.evaluate_dispatch_premise",
+        return_value=type(
+            "P",
+            (),
+            {
+                "allowed": False,
+                "reason": "already_resolved_on_main",
+                "detail": "check passing on main",
+                "comment": "already resolved on main at d354634",
+                "should_close": True,
+            },
+        )(),
+    ):
+        result = await _dispatch_issues(req)
+        assert isinstance(result, BulkDispatchResponse)
+        assert result.accepted == 0
+        assert len(result.rejected) == 1
+        assert "premise_rejected" in result.rejected[0]["reason"]
+        assert "already_resolved_on_main" in result.rejected[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: Path) -> None:
+    import agent_dispatch_router as adr
+
+    original = adr._ISSUE_DISPATCH_HISTORY_PATH
+    adr._ISSUE_DISPATCH_HISTORY_PATH = tmp_path / "issue_dispatch_history.json"
+    try:
+        # First dispatch: dictated fix
+        req1 = IssueDispatchRequest(
+            selection=DispatchSelection(
+                mode="single",
+                repository="D-sorganization/Runner_Dashboard",
+                number=1847,
+            ),
+            provider="claude_code_cli",
+            prompt="Update Dockerfile: change `ARG NODE_MAJOR=20` to `ARG NODE_MAJOR=22`",
+            force=False,
+        )
+        with patch(
+            "agent_dispatch_router.evaluate_dispatch_premise",
+            return_value=type("P", (), {"allowed": True, "reason": "ok", "detail": "ok"})(),
+        ):
+            res1 = await _dispatch_issues(req1)
+            assert isinstance(res1, BulkDispatchResponse)
+            assert res1.accepted == 1
+
+            history_path = adr._ISSUE_DISPATCH_HISTORY_PATH
+            assert history_path.exists()
+            history = json.loads(history_path.read_text(encoding="utf-8"))
+            assert len(history) >= 1
+            entry = history[-1]
+            assert entry["tier"] == "cli"
+            assert "haiku" in entry["model"].lower()
+            assert "dictated_fix" in entry["routing_reason"]
+
+            # Second dispatch: overlapping path on same repo -> queued!
+            req2 = IssueDispatchRequest(
+                selection=DispatchSelection(
+                    mode="single",
+                    repository="D-sorganization/Runner_Dashboard",
+                    number=1848,
+                ),
+                provider="claude_code_cli",
+                prompt="Update Dockerfile: set something else",
+                force=False,
+            )
+            res2 = await _dispatch_issues(req2)
+            assert isinstance(res2, BulkDispatchResponse)
+            assert res2.accepted == 0
+            assert len(res2.rejected) == 1
+            assert "queued_overlapping_paths" in res2.rejected[0]["reason"]
+    finally:
+        adr._ISSUE_DISPATCH_HISTORY_PATH = original
+
+
+# ─── USE-1 (#1865): effort per dispatch kind and expand_epic_children ────────
+
+
+def _capturing_run_cmd(captured: list[dict]) -> AsyncMock:
+    async def _run(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
+        captured.append(json.loads(Path(cmd[cmd.index("--input") + 1]).read_text(encoding="utf-8")))
+        return 0, "", ""
+
+    return AsyncMock(side_effect=_run)
+
+
+def test_dispatch_requests_validate_effort_and_kind() -> None:
+    from pydantic import ValidationError
+
+    selection = DispatchSelection(mode="single", repository="D-sorganization/Runner_Dashboard", number=1)
+    assert IssueDispatchRequest(selection=selection).dispatch_kind == "implementation"
+    assert PRDispatchRequest(selection=selection).dispatch_kind == "pr"
+    assert IssueDispatchRequest(selection=selection).effort is None
+    with pytest.raises(ValidationError):
+        IssueDispatchRequest(selection=selection, effort="extreme")
+    with pytest.raises(ValidationError):
+        PRDispatchRequest(selection=selection, dispatch_kind="rm -rf /")
+
+
+@pytest.mark.asyncio
+async def test_pr_dispatch_passes_effort_for_its_kind(tmp_path: Path) -> None:
+    import agent_dispatch_router as adr
+
+    captured: list[dict] = []
+    req = PRDispatchRequest(
+        selection=DispatchSelection(mode="single", repository="D-sorganization/Runner_Dashboard", number=7),
+        dispatch_kind="ci_fix:lint",
+    )
+    with patch.object(adr, "_PR_DISPATCH_HISTORY_PATH", tmp_path / "pr.json"):
+        res = await _dispatch_prs(req, run_cmd_fn=_capturing_run_cmd(captured))
+    assert isinstance(res, BulkDispatchResponse) and res.accepted == 1
+    inputs = captured[0]["inputs"]
+    assert inputs["effort"] == "low"
+    assert inputs["dispatch_kind"] == "ci_fix:lint"
+    history = json.loads((tmp_path / "pr.json").read_text(encoding="utf-8"))
+    assert history[-1]["effort"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_issue_dispatch_explicit_effort_overrides_kind(tmp_path: Path) -> None:
+    import agent_dispatch_router as adr
+
+    captured: list[dict] = []
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(mode="single", repository="D-sorganization/Runner_Dashboard", number=9),
+        prompt="Implement the thing",
+        effort="high",
+        force=True,
+    )
+    with patch.object(adr, "_ISSUE_DISPATCH_HISTORY_PATH", tmp_path / "issue.json"):
+        res = await _dispatch_issues(req, run_cmd_fn=_capturing_run_cmd(captured))
+    assert isinstance(res, BulkDispatchResponse) and res.accepted == 1
+    assert captured[0]["inputs"]["effort"] == "high"
+    assert captured[0]["inputs"]["dispatch_kind"] == "implementation"
+
+
+@pytest.mark.asyncio
+async def test_expand_epic_children_routes_to_cli_sonnet_with_template_prompt(tmp_path: Path) -> None:
+    import agent_dispatch_router as adr
+    from epic_expansion import SHARED_RULE_LINKS
+
+    captured: list[dict] = []
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(mode="single", repository="D-sorganization/Repository_Management", number=1889),
+        prompt="Split by repository.",
+        dispatch_kind="expand_epic_children",
+        force=True,
+    )
+    with patch.object(adr, "_ISSUE_DISPATCH_HISTORY_PATH", tmp_path / "issue.json"):
+        res = await _dispatch_issues(req, run_cmd_fn=_capturing_run_cmd(captured))
+    assert isinstance(res, BulkDispatchResponse) and res.accepted == 1
+    inputs = captured[0]["inputs"]
+    assert "sonnet" in inputs["model"]
+    assert inputs["effort"] == "low"
+    assert inputs["dispatch_kind"] == "expand_epic_children"
+    assert "D-sorganization/Repository_Management#1889" in inputs["prompt"]
+    assert "Split by repository." in inputs["prompt"]
+    for url in SHARED_RULE_LINKS.values():
+        assert url in inputs["prompt"]
+    entry = json.loads((tmp_path / "issue.json").read_text(encoding="utf-8"))[-1]
+    assert entry["tier"] == "cli"
+    assert entry["dispatch_kind"] == "expand_epic_children"

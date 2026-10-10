@@ -14,6 +14,14 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+# Reuse the backend's merge-queue predicate (#1915) instead of copying it.
+_BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+
+from queue_cleanup import is_merge_queue_run  # noqa: E402
 
 # Configure logging according to standards
 logging.basicConfig(
@@ -26,6 +34,20 @@ def str_to_bool(val: str | bool) -> bool:
     if isinstance(val, bool):
         return val
     return val.lower() in ("true", "1", "yes")
+
+
+def select_cancellable(runs: list[dict]) -> list[dict]:
+    """Drop merge-queue runs; they are never cancellable (#1915).
+
+    The server already excludes them, so a hit here means a server regression.
+    """
+    kept: list[dict] = []
+    for run in runs:
+        if is_merge_queue_run(str(run.get("event") or ""), str(run.get("branch") or "")):
+            logger.warning("Ignoring merge-queue run %s; never cancellable", run.get("run_id"))
+            continue
+        kept.append(run)
+    return kept
 
 
 def main() -> None:
@@ -115,6 +137,17 @@ def main() -> None:
         logger.error("Unexpected error fetching stale queue: %s", e)
         sys.exit(1)
 
+    # Abort before the mutating POST if the server proposes a merge-queue run (#1915);
+    # filtering after the purge would be too late to stop the cancellation.
+    queue_candidates = [r for r in stale_data.get("runs", []) if len(select_cancellable([r])) == 0]
+    if queue_candidates:
+        logger.error(
+            "Stale list contains %d merge-queue run(s) (e.g. %s); refusing to purge",
+            len(queue_candidates),
+            queue_candidates[0].get("run_id"),
+        )
+        sys.exit(1)
+
     stale_count = stale_data.get("stale_count", 0)
     logger.info("Stale runs found: %d", stale_count)
 
@@ -151,7 +184,7 @@ def main() -> None:
         sys.exit(1)
 
     # 5. Process results
-    cancelled_runs = purge_data.get("runs", [])
+    cancelled_runs = select_cancellable(purge_data.get("runs", []))
     cancelled_count = purge_data.get("cancelled_count", 0)
     errors = purge_data.get("errors", [])
 

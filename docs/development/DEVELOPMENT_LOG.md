@@ -10,6 +10,8 @@ feature, from proposal to ship. See the `development-logs` section of
 - **WIP limit:** 4
 - **Last audited:** 2026-09-28 by claude (merged-PR reconciliation; shipped entries archived)
 
+<!-- #1873: No material development-log change — main merged and the generated API snapshot regenerated; DL-#1871 is unchanged. -->
+
 ## States
 
 `proposed` → `in_progress` → `in_review` → `shipped`, with `parked`
@@ -17,6 +19,84 @@ reachable from any live state and `abandoned` from `parked`.
 `shipped` never returns to `in_progress`; open a new entry instead.
 
 ## Active
+
+### DL-#1338-maxwell-mobile — SC-G6: mobile Maxwell page drops its chat
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (last SC-G6 slice; agent brief 2026-10-04)
+- **Branch:** `claude/issue-1338`
+- **PR:** see the branch
+- **Paths:** `frontend/src/pages/Maxwell/Mobile.tsx`, `frontend/src/pages/Maxwell/MaxwellChat.tsx`, `frontend/src/pages/Maxwell/mobileTypes.ts`, `frontend/src/pages/Maxwell/__tests__/Mobile.test.tsx`, `tests/test_frontend_integrity.py`, `tests/frontend/mobile/viewport_profiles.json`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; vitest `frontend/src/pages/Maxwell frontend/src/shell` 315 passed (2 new tests RED first); tsc clean; integrity/mobile-harness pytest passed.
+- **Summary:** The phone Maxwell page keeps status, tasks and daemon controls, loses its chat and sessionStorage history, and links to the Staff Console for Maxwell chat. `/api/maxwell/chat` is unchanged.
+- **Next step:** Merge the PR through the queue; then #1338 closes and epic #1353 can close.
+
+### DL-#1880 — CI-fix routing on current models, agy option
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1880 (wiring gap tracked in #1881)
+- **Branch:** `fix/ci-fix-routing-models`
+- **PR:** see the branch
+- **Paths:** `backend/ci_fix_dispatch.py`, `tests/api/test_ci_fix_dispatch.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; `tests/api/test_ci_fix_dispatch.py` + `tests/test_dispatch_effort.py` 38 passed (route tests RED first).
+- **Summary:** `route_ci_fix` routes to Opus 5.5 (escalated), Codex `gpt-6-luna` (lint) and, for tests/logic, agy with Gemini 3.8 Flash when the staff `antigravity` adapter is unattended-capable, otherwise Sonnet 5.5. Today agy is chat-only, so the tests/logic tier routes to Sonnet 5.5.
+- **Next step:** Merge the PR through the queue.
+
+### DL-#1863 — Staff proposals tests stop leaking real run workers
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1863
+- **Branch:** `test/staff-threads-runner-leak`
+- **PR:** see the branch
+- **Paths:** `tests/conftest.py`, `tests/api/test_staff_proposals_api.py`, `tests/api/test_staff_thread_runs.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; proposals, thread-runs and threads API tests 49 passed three times with unhandled thread exceptions as errors. With the stub disabled, the guard fails all five leaking tests.
+- **Summary:** Five tests started real `staff-run-*` workers that outlived them: three proposals tests executing `staff.dispatch`, and two needs-input continuation tests in `test_staff_thread_runs.py`. The workers tripped `test_staff_threads_api.py`'s worktree guard, or ran `git worktree add` / `gh repo clone` between tests. A shared `staff_launches` fixture records `StaffRunner.launch` and fails on any leaked worker.
+- **Next step:** Merge the PR once CI Standard passes in the merge queue.
+
+### DL-#1871 — Spec Check covers backend; staged-only gitleaks at commit
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1871 (epic Repository_Management#1889)
+- **Branch:** `ci/1871-spec-check-backend`; `chore/1871-gitleaks-staged`; `fix/1871-spec-warning-update`
+- **PR:** see the branches (workflow change ships alone; the pre-commit change is a separate PR)
+- **Paths:** `.github/workflows/ci-spec-check.yml`, `tests/test_spec_check_workflow.py`, `.pre-commit-config.yaml`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; follow-up branch `fix/1871-spec-warning-update` makes the warning step edit a stale bot comment in place; its comment script executed under node with a stubbed `github` (create / update / no-op / never edit a human comment), update test RED then GREEN; 179 passed in `tests/test_spec_check_workflow.py` + `tests/test_workflow_hygiene.py` + `tests/test_workflow_action_pinning.py` + `tests/test_workflow_runner_routing.py`; actionlint clean.
+- **Summary:** Spec Check treats `backend/**` as source, so a backend-only PR without a SPEC.md update fails; its PR comment asks for one change-log row keyed by the PR and says never to bump the release-derived Spec Version (Repository_Management#1520). The commit-stage gitleaks hook scans staged changes only; CI Secrets keeps the full-history scan.
+- **Next step:** Accept a `changes/<issue>-*.md` fragment in Spec Check once Repository_Management#1922 / #1924 land and the fleet sync reaches this repository.
+
+### DL-#1890 — Merge queue replaces strict up-to-date protection
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** D-sorganization/Repository_Management#1890 (epic Repository_Management#1889; settings pilot Repository_Management#1900)
+- **Branch:** `ci/1890-merge-group-triggers` (merged as #1852); `ci/1890-required-checks-policy-merge-queue`; `ci/1900-queue-timeout-180`; `ci/1900-fleet-merge-policy-all-repos`
+- **PR:** #1852 (merged); #1854; #1859 (timeout 180); #1862 (all 41 repos)
+- **Paths:** `.github/workflows/ci-standard.yml`, `.github/workflows/anti-phantom-merge.yml`, `tests/test_workflow_hygiene.py`, `config/required_status_checks_policy.json`, `scripts/check_required_checks_drift.py`, `tests/test_required_checks_drift.py`, `tests/contracts/`, `config/fleet_merge_policy.json`, `backend/fleet_merge_checker.py`, `tests/test_fleet_merge_checker.py`
+- **Started:** 2026-10-03
+- **Last verified:** 2026-10-04 @ SELF; `config/fleet_merge_policy.json` lists all 41 queue-enabled repositories; the live snapshot reads protection on each repo's own default branch and ignores disabled/deleted workflows; 35 passed in `tests/test_fleet_merge_checker.py` + `tests/test_required_checks_drift.py`.
+- **Summary:** Required checks report on `merge_group` (#1852). The required-checks policy now also requires the merge queue (squash, ALLGREEN, build 5, group 1–5, 5 min wait, 180 min timeout — raised from 60 on 2026-10-04 after runner saturation timed out queue entries) and `require_branches_up_to_date: false`; `check_required_checks_drift.py` reports drift on either. Settings were applied on 2026-10-04 by the #1900 pilot.
+- **Next step:** Wire `check_required_checks_drift.py --live` into the daily fleet settings drift check (#1850).
+
+### DL-#1864 — Event-tiered CI Standard and fleet pre-push parity
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1864 (epic Repository_Management#1889; RM sibling Repository_Management#1915)
+- **Branch:** `ci/1864-event-tiered-ci`; `chore/1864-prepush-parity` (merged as #1868); `chore/1929-resync-run-pytest-diff`
+- **PR:** see the branches (CI tiers and pre-push parity ship as separate PRs)
+- **Paths:** `.github/workflows/ci-standard.yml`, `tests/test_workflow_hygiene.py`, `tests/test_ci_config.py`, `.pre-commit-config.yaml`, `scripts/run_pytest_diff.py`, `scripts/run_mypy_diff.py`, `tests/test_run_pytest_diff.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; vendored `scripts/run_pytest_diff.py` re-synced to Repository_Management PR #1930 (`48893688`), "Local fix" fork removed; no-fork test RED then GREEN; 20 passed in `tests/test_run_pytest_diff.py`.
+- **Summary:** `ci-standard.yml` runs the full suite once, in `merge_group`. `pull_request` gets lint/format/type check and fast tests; `push` to main runs only the cheap `ci-health-check`. A `changes` job owns the tier and the docs-only detector (PR only, fail closed). Pre-push drops bandit and runs diff-scoped pytest vendored from Repository_Management `shared_scripts/run_pytest_diff.py`.
+- **Next step:** After both PRs merge, compare one merge_group run time against the PR-tier run time on a code PR and record it on #1864.
 
 ### DL-#1840 — Refresh vulnerable container security pins
 
@@ -44,6 +124,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Synchronize patch metadata and record truthful reviewed fixes since older production. No production mutation. Existing type generation remains identical except schema info version.
 - **Next step:** Collect exact-head Docker CI (71f2f933 job110212483375 now running; backend/frontend passed); obtain physical-device acceptance, root/protected-environment approval, #1838 standby inventory recovery and #1839 root-owned Python policy acceptance. Official 3.12.14 candidate checksum, pinned provenance and archive paths verified without installation; details in preflight. Keep release draft until acceptance.
 
+### DL-#1865 — Effort per dispatch kind, epic expansion on tier:cli, weekly usage report
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1865 (epic Repository_Management#1889)
+- **Branch:** `feat/1865-effort-usage-report`
+- **PR:** see the branch
+- **Paths:** `backend/dispatch_effort.py`, `backend/epic_expansion.py`, `backend/usage_report.py`, `backend/agent_dispatch_router.py`, `backend/ci_fix_dispatch.py`, `backend/dispatch/envelope.py`, `backend/dispatch_contract.py`, `backend/session_telemetry.py`, `backend/routers/usage_metrics.py`, `backend/gh_client.py`, `backend/server.py`, `tests/test_dispatch_effort.py`, `tests/test_epic_expansion.py`, `tests/test_usage_report.py`, `tests/api/test_usage_report_routes.py`, `tests/test_agent_dispatch_router.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; 49 passed in dispatch effort/epic/router tests and 14 in usage report tests; ruff, ruff format and mypy `backend/` clean.
+- **Summary:** Every dispatch kind resolves a reasoning effort (unknown → medium) that rides on the envelope, CI-fix routes and the dispatch workflow inputs. `expand_epic_children` routes epic expansion to tier:cli/Sonnet at low effort with a template that links the fleet rules. The weekly usage report renders RD-4 telemetry (this week vs last week) and creates or updates one comment per ISO week on the `usage-report` issue in Repository_Management.
+- **Next step:** After merge, set `USAGE_REPORT_WEEKLY_ENABLED=1` on the hub node, run `POST /api/usage/report/weekly` once, and pin the created issue.
+
 ### DL-#1836 — Observe systemd watchdog recovery explicitly
 
 - **State:** shipped
@@ -56,6 +149,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-30 @ SELF; RED full Linux suite5605cases has one failure; controlled300ms logging delay reproduces it; GREEN same delayed reproduction passes, Linux10watchdog tests pass, Windows9pass/1platformskip; ruff lint/format pass.
 - **Summary:** Wait for successful notifier retry with a2s event deadline; always cancel/join the background task. Preserve recovery/count and cancellation contracts; production code unchanged.
 - **Next step:** Shipped at f6dffd96; full Linux rerun passes5606cases with0failures/errors and80skipped/xfail; source awaits release.
+
+### DL-#1916 — One spec-check workflow per repository
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** D-sorganization/Repository_Management#1916 (epic Repository_Management#1889); Runner_Dashboard half
+- **Branch:** `ci/1916-merge-spec-check`
+- **PR:** see the branch
+- **Paths:** `.github/workflows/ci-spec-check.yml`, `.github/workflows/spec-check-enhanced.yml` (removed), `.github/workflows/local-only-runner-guard.yml`, `config/workflow_runner_routing_policy.json`, `tests/test_spec_check_workflow.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; `tests/test_spec_check_workflow.py` 13 passed (2 RED first); runner-routing, hygiene and CI config tests 163 passed; `check_workflow_runner_routing.py` 0 violations.
+- **Summary:** `spec-check-enhanced.yml` duplicated `ci-spec-check.yml` with a strict subset of its source patterns. It is deleted; the survivor keeps the "Spec Check" name, the `spec-exempt` label skip and the label triggers. Neither workflow is a required context, so the required-checks policy is unchanged.
+- **Next step:** Merge; the Repository_Management half of #1916 ships separately.
 
 ### DL-#1832 — Portable Windows validation harnesses
 
@@ -82,9 +188,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-30 @ SELF; RED fails 8322 != 8080; GREEN 60 template/config/registry tests pass; ruff lint/format pass; SPEC freshness CI identified the missing changelog, now added for PR #1831.
 - **Summary:** Copying the template previously overrode corrected runtime defaults with a pool dashboard port. Align the example to Maxwell's 8080 listener. TDD executed; Gemini draft reviewed against exact runtime source.
 - **Next step:** Released source awaits a new qualified deployment; main merge is `9755f69c`.
-
-
-
 
 ### DL-#1826 — Maxwell Contract Drift has no Python on self-hosted runners
 

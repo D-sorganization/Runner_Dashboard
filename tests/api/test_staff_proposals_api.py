@@ -26,7 +26,9 @@ TEST_APPROVER = Principal(
 
 
 @pytest.fixture(autouse=True)
-def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def clean_conversations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, staff_launches: list[str]
+) -> Iterator[list[str]]:
     db_file = tmp_path / "staff_runs.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_file))
     reset_conversation_store()
@@ -36,8 +38,9 @@ def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iter
     app.dependency_overrides[require_scope("staff.read")] = lambda: TEST_APPROVER
     app.dependency_overrides[require_scope("staff.approve")] = lambda: TEST_APPROVER
 
+    # Executing a staff.dispatch proposal launches a run; staff_launches records it (#1863).
     store = get_conversation_store()
-    yield
+    yield staff_launches
     app.dependency_overrides.clear()
     store.close()
     reset_conversation_store()
@@ -141,7 +144,7 @@ def test_list_and_get_actions_endpoints(client: TestClient) -> None:
     assert res_unknown.status_code == 404
 
 
-def test_create_and_execute_staff_dispatch_flow(client: TestClient) -> None:
+def test_create_and_execute_staff_dispatch_flow(client: TestClient, clean_conversations: list[str]) -> None:
     store = get_conversation_store()
     th = store.create_thread(title="Dispatch Flow", kind="direct", participants=["barb", "user"])
     msg = store.add_message(
@@ -185,6 +188,7 @@ def test_create_and_execute_staff_dispatch_flow(client: TestClient) -> None:
     kinds = [m.kind for m in msgs]
     assert "action_result" in kinds
     assert "run_card" in kinds
+    assert len(clean_conversations) == 1, "dispatch must launch exactly one (stubbed) run"
 
 
 def test_execute_proposal_permission_denial(client: TestClient) -> None:

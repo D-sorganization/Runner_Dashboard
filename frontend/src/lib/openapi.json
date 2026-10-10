@@ -457,6 +457,142 @@
         "title": "BudgetSummary",
         "type": "object"
       },
+      "CIFixDispatchRequest": {
+        "description": "Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).",
+        "properties": {
+          "attempt_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Number"
+          },
+          "base_ref": {
+            "default": "main",
+            "maxLength": 255,
+            "title": "Base Ref",
+            "type": "string"
+          },
+          "branch": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._/-]+$",
+            "title": "Branch",
+            "type": "string"
+          },
+          "conflicting_files": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflicting Files"
+          },
+          "failing_tests": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failing Tests"
+          },
+          "failure_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "lint",
+                  "test",
+                  "security",
+                  "spec",
+                  "conflict",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Type"
+          },
+          "from_queue": {
+            "default": false,
+            "title": "From Queue",
+            "type": "boolean"
+          },
+          "kind": {
+            "default": "ci_failure",
+            "enum": ["ci_failure", "merge_conflict"],
+            "title": "Kind",
+            "type": "string"
+          },
+          "log_tail": {
+            "default": "",
+            "title": "Log Tail",
+            "type": "string"
+          },
+          "pr_diff": {
+            "default": "",
+            "title": "Pr Diff",
+            "type": "string"
+          },
+          "pr_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr Number",
+            "type": "integer"
+          },
+          "repo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "session_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "workflow_name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Workflow Name",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr_number", "branch"],
+        "title": "CIFixDispatchRequest",
+        "type": "object"
+      },
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
@@ -3407,6 +3543,135 @@
         "title": "ScheduleToggleBody",
         "type": "object"
       },
+      "SessionTelemetryPayload": {
+        "description": "Session telemetry payload (issue #1849 / RD-4).",
+        "properties": {
+          "context_size": {
+            "default": 0,
+            "description": "Context tokens before first prompt",
+            "minimum": 0.0,
+            "title": "Context Size",
+            "type": "integer"
+          },
+          "cost_after_pr_usd": {
+            "default": 0.0,
+            "description": "Cost spent after PR opened",
+            "minimum": 0.0,
+            "title": "Cost After Pr Usd",
+            "type": "number"
+          },
+          "cost_usd": {
+            "default": 0.0,
+            "description": "Total session cost",
+            "minimum": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "docs_merge_conflicts": {
+            "default": 0,
+            "description": "Docs merge conflict count",
+            "minimum": 0.0,
+            "title": "Docs Merge Conflicts",
+            "type": "integer"
+          },
+          "environment": {
+            "default": "default",
+            "description": "Execution environment",
+            "maxLength": 100,
+            "title": "Environment",
+            "type": "string"
+          },
+          "linked_pr": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Linked PR",
+            "title": "Linked Pr"
+          },
+          "model": {
+            "default": "",
+            "description": "Model identifier",
+            "maxLength": 100,
+            "title": "Model",
+            "type": "string"
+          },
+          "origin": {
+            "default": "dashboard-dispatched",
+            "description": "Origin",
+            "maxLength": 100,
+            "title": "Origin",
+            "type": "string"
+          },
+          "pr_merged": {
+            "default": false,
+            "description": "Whether PR merged",
+            "title": "Pr Merged",
+            "type": "boolean"
+          },
+          "pre_push_duration_s": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pre-push hook duration in seconds",
+            "title": "Pre Push Duration S"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO timestamp of record",
+            "title": "Recorded At"
+          },
+          "session_id": {
+            "description": "Session ID",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "turns_count": {
+            "default": 0,
+            "description": "Number of turns",
+            "minimum": 0.0,
+            "title": "Turns Count",
+            "type": "integer"
+          },
+          "wakeups_after_pr": {
+            "default": 0,
+            "description": "Wake-ups after PR opened",
+            "minimum": 0.0,
+            "title": "Wakeups After Pr",
+            "type": "integer"
+          },
+          "wakeups_count": {
+            "default": 0,
+            "description": "Total wake-up count",
+            "minimum": 0.0,
+            "title": "Wakeups Count",
+            "type": "integer"
+          }
+        },
+        "required": ["session_id"],
+        "title": "SessionTelemetryPayload",
+        "type": "object"
+      },
       "SetKeyRequest": {
         "properties": {
           "key": {
@@ -5655,6 +5920,27 @@
         },
         "required": ["metrics"],
         "title": "WebVitalsPayload",
+        "type": "object"
+      },
+      "WeeklyUsageReportRequest": {
+        "description": "Body for ``POST /api/usage/report/weekly`` (USE-1, #1865).",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Render only; do not touch GitHub",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "repository": {
+            "default": "D-sorganization/Repository_Management",
+            "description": "owner/name of the repository holding the report issue",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            "title": "Repository",
+            "type": "string"
+          }
+        },
+        "title": "WeeklyUsageReportRequest",
         "type": "object"
       },
       "WorkRequest": {
@@ -12618,6 +12904,33 @@
         "summary": "Diagnose Queue"
       }
     },
+    "/api/queue/merge-settings": {
+      "get": {
+        "description": "Return fleet-wide merge queue and branch protection drift status (RD#1850).",
+        "operationId": "get_queue_merge_settings_api_queue_merge_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Queue Merge Settings Api Queue Merge Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Queue Merge Settings",
+        "tags": ["queue"]
+      }
+    },
     "/api/queue/purge-stale": {
       "post": {
         "description": "Cancel stale queued workflow runs.\n\nBy default this mutating endpoint only purges stale PR runs whose PR head\nhas advanced beyond the queued run's head SHA.",
@@ -12920,6 +13233,246 @@
         ],
         "summary": "Get Queue Status",
         "tags": ["queue"]
+      }
+    },
+    "/api/remediation/ci-fix/dispatch": {
+      "post": {
+        "description": "Launch a capped CI-fix session for an open pull request through the staff dispatch path.\n\n409 while another CI-fix session holds the PR; 501 when the routed provider is not\ninstalled on this node (nothing is launched and the lock is released).",
+        "operationId": "dispatch_ci_fix_endpoint_api_remediation_ci_fix_dispatch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CIFixDispatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dispatch Ci Fix Endpoint Api Remediation Ci Fix Dispatch Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Dispatch Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/evaluate": {
+      "post": {
+        "description": "Evaluate whether an incoming event payload warrants an automated CI-fix session.",
+        "operationId": "evaluate_ci_fix_endpoint_api_remediation_ci_fix_evaluate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Ci Fix Endpoint Api Remediation Ci Fix Evaluate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Evaluate Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/locks": {
+      "get": {
+        "description": "List all active CI-fix PR concurrency locks.",
+        "operationId": "list_ci_fix_locks_endpoint_api_remediation_ci_fix_locks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Ci Fix Locks Endpoint Api Remediation Ci Fix Locks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Ci Fix Locks Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/locks/{repo}/{pr_number}": {
+      "delete": {
+        "description": "Release a CI-fix concurrency lock for a PR.",
+        "operationId": "release_ci_fix_lock_endpoint_api_remediation_ci_fix_locks__repo___pr_number__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pr_number",
+            "required": true,
+            "schema": {
+              "title": "Pr Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Release Ci Fix Lock Endpoint Api Remediation Ci Fix Locks  Repo   Pr Number  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release Ci Fix Lock Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/webhook": {
+      "post": {
+        "description": "Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.",
+        "operationId": "github_ci_fix_webhook_api_remediation_ci_fix_webhook_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Hub-Signature-256",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Signature-256"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-GitHub-Event",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Github-Event",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-GitHub-Delivery",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Github-Delivery",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Github Ci Fix Webhook Api Remediation Ci Fix Webhook Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Ci Fix Webhook",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
       }
     },
     "/api/reports": {
@@ -15571,6 +16124,192 @@
           }
         },
         "summary": "Post Page View",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/report/weekly": {
+      "post": {
+        "description": "Render this ISO week's usage report and create/update its comment (idempotent).",
+        "operationId": "post_weekly_report_api_usage_report_weekly_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeeklyUsageReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Weekly Report Api Usage Report Weekly Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Weekly Report",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/session-metrics": {
+      "get": {
+        "operationId": "get_session_metrics_api_usage_session_metrics_get",
+        "parameters": [
+          {
+            "description": "Rolling window in days",
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "Rolling window in days",
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Session Metrics Api Usage Session Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Metrics",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/session-telemetry": {
+      "get": {
+        "operationId": "get_session_telemetry_api_usage_session_telemetry_get",
+        "parameters": [
+          {
+            "description": "Days of history to return",
+            "in": "query",
+            "name": "since_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "Days of history to return",
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Since Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Session Telemetry Api Usage Session Telemetry Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Telemetry",
+        "tags": ["usage-metrics"]
+      },
+      "post": {
+        "operationId": "post_session_telemetry_api_usage_session_telemetry_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionTelemetryPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Session Telemetry Api Usage Session Telemetry Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Session Telemetry",
         "tags": ["usage-metrics"]
       }
     },

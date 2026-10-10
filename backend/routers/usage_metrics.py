@@ -15,8 +15,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from gh_client import GhClientError
+from identity import Principal, require_scope
 from pydantic import BaseModel, Field
+from session_telemetry import SessionTelemetryStore, get_session_telemetry_store
+from usage_report import DEFAULT_REPORT_REPOSITORY, GhIssueCommentClient, build_weekly_report, post_weekly_usage_report
 
 log = logging.getLogger("dashboard.usage_metrics")
 
@@ -65,6 +69,26 @@ class PageViewPayload(BaseModel):
 
     tab_id: str = Field(..., min_length=1, max_length=100, description="Nav item identifier")
     pathname: str | None = Field(default=None, max_length=200, description="Browser path")
+
+
+class SessionTelemetryPayload(BaseModel):
+    """Session telemetry payload (issue #1849 / RD-4)."""
+
+    session_id: str = Field(..., min_length=1, max_length=200, description="Session ID")
+    cost_usd: float = Field(default=0.0, ge=0.0, description="Total session cost")
+    context_size: int = Field(default=0, ge=0, description="Context tokens before first prompt")
+    environment: str = Field(default="default", max_length=100, description="Execution environment")
+    turns_count: int = Field(default=0, ge=0, description="Number of turns")
+    wakeups_count: int = Field(default=0, ge=0, description="Total wake-up count")
+    wakeups_after_pr: int = Field(default=0, ge=0, description="Wake-ups after PR opened")
+    cost_after_pr_usd: float = Field(default=0.0, ge=0.0, description="Cost spent after PR opened")
+    origin: str = Field(default="dashboard-dispatched", max_length=100, description="Origin")
+    linked_pr: int | None = Field(default=None, ge=1, description="Linked PR")
+    pr_merged: bool = Field(default=False, description="Whether PR merged")
+    model: str = Field(default="", max_length=100, description="Model identifier")
+    pre_push_duration_s: float | None = Field(default=None, ge=0.0, description="Pre-push hook duration in seconds")
+    docs_merge_conflicts: int = Field(default=0, ge=0, description="Docs merge conflict count")
+    recorded_at: str | None = Field(default=None, description="ISO timestamp of record")
 
 
 class UsageTracker:
@@ -231,11 +255,26 @@ class UsageTracker:
 _GLOBAL_TRACKER = UsageTracker()
 
 
+class WeeklyUsageReportRequest(BaseModel):
+    """Body for ``POST /api/usage/report/weekly`` (USE-1, #1865)."""
+
+    repository: str = Field(
+        default=DEFAULT_REPORT_REPOSITORY,
+        pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+        max_length=200,
+        description="owner/name of the repository holding the report issue",
+    )
+    dry_run: bool = Field(default=False, description="Render only; do not touch GitHub")
+
+
 def get_usage_tracker() -> UsageTracker:
     return _GLOBAL_TRACKER
 
 
-def create_usage_metrics_router(tracker: UsageTracker | None = None) -> APIRouter:
+def create_usage_metrics_router(
+    tracker: UsageTracker | None = None,
+    telemetry_store: SessionTelemetryStore | None = None,
+) -> APIRouter:
     r = APIRouter(tags=["usage-metrics"])
 
     @r.post("/api/usage/page-view")
@@ -250,13 +289,56 @@ def create_usage_metrics_router(tracker: UsageTracker | None = None) -> APIRoute
     @r.get("/api/usage/summary")
     async def get_usage_summary() -> dict[str, Any]:
         active_tracker = tracker if tracker is not None else get_usage_tracker()
-        return active_tracker.get_summary()
+        active_store = telemetry_store if telemetry_store is not None else get_session_telemetry_store()
+        summary_data = active_tracker.get_summary()
+        summary_data["session_metrics"] = active_store.get_metrics(window_days=30)
+        return summary_data
 
     @r.get("/api/usage/table")
     async def get_usage_table() -> Response:
         active_tracker = tracker if tracker is not None else get_usage_tracker()
         table_md = active_tracker.get_markdown_table()
         return Response(content=table_md, media_type="text/markdown")
+
+    @r.post("/api/usage/session-telemetry")
+    async def post_session_telemetry(payload: SessionTelemetryPayload) -> dict[str, Any]:
+        active_store = telemetry_store if telemetry_store is not None else get_session_telemetry_store()
+        rec = active_store.record_session(payload.model_dump())
+        return rec.to_dict()
+
+    @r.get("/api/usage/session-telemetry")
+    async def get_session_telemetry(
+        since_days: int = Query(default=30, ge=1, le=365, description="Days of history to return"),
+    ) -> list[dict[str, Any]]:
+        active_store = telemetry_store if telemetry_store is not None else get_session_telemetry_store()
+        records = active_store.list_sessions(since_days=since_days)
+        return [r.to_dict() for r in records]
+
+    @r.get("/api/usage/session-metrics")
+    async def get_session_metrics(
+        window_days: int = Query(default=30, ge=1, le=365, description="Rolling window in days"),
+    ) -> dict[str, Any]:
+        active_store = telemetry_store if telemetry_store is not None else get_session_telemetry_store()
+        return active_store.get_metrics(window_days=window_days)
+
+    @r.post("/api/usage/report/weekly")
+    async def post_weekly_report(
+        payload: WeeklyUsageReportRequest,
+        _auth: Principal = Depends(require_scope("admin")),  # noqa: B008
+    ) -> dict[str, Any]:
+        """Render this ISO week's usage report and create/update its comment (idempotent)."""
+        active_store = telemetry_store if telemetry_store is not None else get_session_telemetry_store()
+        week, body = build_weekly_report(active_store)
+        if payload.dry_run:
+            return {"dry_run": True, "week": week, "body": body}
+        try:
+            result = await post_weekly_usage_report(
+                GhIssueCommentClient(), week=week, body=body, repository=payload.repository
+            )
+        except GhClientError as exc:
+            log.warning("weekly usage report post failed: %s", exc)
+            raise HTTPException(status_code=502, detail="GitHub rejected the usage report update") from exc
+        return {"dry_run": False, **result.to_dict()}
 
     return r
 

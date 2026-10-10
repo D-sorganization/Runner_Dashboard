@@ -5,11 +5,8 @@
  * Covers:
  * 1. Renders the daemon status pill.
  * 2. Shows active tasks from GET /api/maxwell/tasks.
- * 3. Sends a chat message via POST /api/maxwell/chat (issue #648: Chat component
- *    is fully wired to the Maxwell-Daemon chat service; these tests verify the
- *    full round-trip from user input → POST /api/maxwell/chat → rendered response).
+ * 3. No chat input; a link points to the Staff Console for Maxwell chat (#1338).
  * 4. Control sheet opens when the settings button is pressed.
- * 5. Chat is gracefully disabled when the daemon is unreachable (issue #648).
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -42,8 +39,6 @@ const MOCK_TASKS = {
 
 const MOCK_VERSION = { daemon: "1.4.2", contract: "1.4.2" };
 
-const MOCK_CHAT_RESPONSE = { response: "Fleet is healthy. 8 runners online." };
-
 // ---------------------------------------------------------------------------
 // Fetch mock helper
 // ---------------------------------------------------------------------------
@@ -52,7 +47,6 @@ function setupFetch({
   statusOk = true,
   tasksOk = true,
   versionOk = true,
-  chatOk = true,
   controlOk = true,
   statusData = MOCK_STATUS as object,
   tasksData = MOCK_TASKS as object,
@@ -60,7 +54,6 @@ function setupFetch({
   statusOk?: boolean;
   tasksOk?: boolean;
   versionOk?: boolean;
-  chatOk?: boolean;
   controlOk?: boolean;
   statusData?: object;
   tasksData?: object;
@@ -86,15 +79,6 @@ function setupFetch({
         status: versionOk ? 200 : 500,
         json: () => Promise.resolve(MOCK_VERSION),
       } as Response);
-    }
-    if (url.includes("/api/maxwell/chat") && options?.method === "POST") {
-      return Promise.resolve({
-        ok: chatOk,
-        status: chatOk ? 200 : 500,
-        // No streaming body in tests — fall through to JSON fallback
-        body: null,
-        json: () => Promise.resolve(chatOk ? MOCK_CHAT_RESPONSE : { detail: "Daemon error" }),
-      } as unknown as Response);
     }
     if (url.includes("/api/maxwell/control") && options?.method === "POST") {
       return Promise.resolve({
@@ -135,15 +119,6 @@ describe("MaxwellMobile", () => {
         removeEventListener: vi.fn(),
         dispatchEvent: vi.fn(),
       })),
-    });
-
-    // Stub sessionStorage
-    const store: Record<string, string> = {};
-    vi.stubGlobal("sessionStorage", {
-      getItem: (k: string) => store[k] ?? null,
-      setItem: (k: string, v: string) => { store[k] = v; },
-      removeItem: (k: string) => { delete store[k]; },
-      clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
     });
   });
 
@@ -233,176 +208,44 @@ describe("MaxwellMobile", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 3. Chat interface
+  // 3. Chat lives in the Staff Console (SC-G6 / #1338)
   // -------------------------------------------------------------------------
 
-  it("renders the chat textarea and send button", async () => {
+  it("has no chat input or send button", async () => {
     setupFetch();
     render(<MaxwellMobile />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/message maxwell/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/maxwell daemon status: running/i)).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /send message to maxwell/i })).toBeInTheDocument();
+
+    expect(screen.queryByLabelText(/message maxwell/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /send message to maxwell/i })).not.toBeInTheDocument();
   });
 
-  it("send button is disabled when input is empty", async () => {
+  it("links to the Staff Console for Maxwell chat", async () => {
     setupFetch();
     render(<MaxwellMobile />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /send message to maxwell/i })).toBeDisabled();
+    const link = await screen.findByRole("link", {
+      name: /chat with maxwell in the staff console/i,
     });
+    expect(link).toHaveAttribute("href", "/");
   });
 
-  it("sends a chat message and shows the response", async () => {
+  it("never calls the chat endpoint", async () => {
     const fetchMock = setupFetch();
     render(<MaxwellMobile />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/message maxwell/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/maxwell daemon status: running/i)).toBeInTheDocument();
     });
 
-    const textarea = screen.getByLabelText(/message maxwell/i);
-    fireEvent.change(textarea, { target: { value: "status" } });
-
-    const sendBtn = screen.getByRole("button", { name: /send message to maxwell/i });
-
-    await act(async () => {
-      fireEvent.click(sendBtn);
-    });
-
-    // User message should appear (there may be multiple "status" texts — chip and bubble)
-    await waitFor(() => {
-      const bubbles = screen.getAllByText("status");
-      expect(bubbles.length).toBeGreaterThanOrEqual(1);
-    });
-
-    // POST should have been called
     const chatCalls = (fetchMock.mock.calls as [string, RequestInit?][]).filter(
-      ([url, opts]) => url.includes("/api/maxwell/chat") && opts?.method === "POST",
+      ([url]) => url.includes("/api/maxwell/chat"),
     );
-    expect(chatCalls).toHaveLength(1);
-
-    const body = JSON.parse(chatCalls[0][1]!.body as string);
-    expect(body.message).toBe("status");
-  });
-
-  it("shows chat response after sending", async () => {
-    setupFetch();
-    render(<MaxwellMobile />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/message maxwell/i)).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText(/message maxwell/i), { target: { value: "status" } });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /send message to maxwell/i }));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Fleet is healthy/i)).toBeInTheDocument();
-    });
-  });
-
-  it("quick-action chips trigger chat when clicked", async () => {
-    const fetchMock = setupFetch();
-    render(<MaxwellMobile />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /ask maxwell: status/i })).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /ask maxwell: status/i }));
-    });
-
-    await waitFor(() => {
-      const chatCalls = (fetchMock.mock.calls as [string, RequestInit?][]).filter(
-        ([url, opts]) => url.includes("/api/maxwell/chat") && opts?.method === "POST",
-      );
-      expect(chatCalls).toHaveLength(1);
-    });
-  });
-
-  // issue #648: Chat component wired-up verification — daemon-unreachable state
-  // The issue reported the Chat as "non-functional". The component IS wired;
-  // these tests verify graceful degradation when Maxwell-Daemon is offline so
-  // operators understand why chat is disabled rather than seeing a broken UI.
-
-  it("chat composer is disabled when daemon is unreachable", async () => {
-    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
-    render(<MaxwellMobile />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/message maxwell/i)).toBeInTheDocument();
-    });
-
-    const textarea = screen.getByLabelText(/message maxwell/i);
-    expect(textarea).toBeDisabled();
-
-    const sendBtn = screen.getByRole("button", { name: /send message to maxwell/i });
-    expect(sendBtn).toBeDisabled();
-  });
-
-  it("shows a retry button when daemon is unreachable", async () => {
-    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
-    render(<MaxwellMobile />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /retry maxwell connection/i })).toBeInTheDocument();
-    });
-  });
-
-  it("shows placeholder text explaining why chat is disabled when daemon is unreachable", async () => {
-    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
-    render(<MaxwellMobile />);
-
-    await waitFor(() => {
-      const textarea = screen.getByLabelText(/message maxwell/i);
-      expect(textarea).toHaveAttribute(
-        "placeholder",
-        expect.stringMatching(/daemon unreachable/i),
-      );
-    });
-  });
-
-  it("shows unreachable hint in empty chat history when daemon is offline", async () => {
-    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
-    render(<MaxwellMobile />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(/no chat messages yet/i),
-      ).toBeInTheDocument();
-    });
-
-    expect(
-      screen.getByLabelText(/no chat messages yet/i),
-    ).toHaveTextContent(/unreachable/i);
-  });
-
-  it("chat POST surfaces error message in the history when daemon returns an error", async () => {
-    setupFetch({ chatOk: false });
-    render(<MaxwellMobile />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/message maxwell/i)).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText(/message maxwell/i), {
-      target: { value: "fleet status" },
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /send message to maxwell/i }));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Maxwell-Daemon is unreachable/i)).toBeInTheDocument();
-    });
+    expect(chatCalls).toHaveLength(0);
   });
 
   // -------------------------------------------------------------------------

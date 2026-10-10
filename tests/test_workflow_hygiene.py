@@ -23,9 +23,7 @@ import pytest
 import yaml
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
-_POLICY_PATH = (
-    Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
-)
+_POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
 _PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
 _PR_GROUP_TOKENS = (
     "github.ref",
@@ -84,9 +82,7 @@ def _workflow_triggers(path: Path) -> dict:
     triggers = data.get("on")
     if triggers is None and True in data:
         triggers = data[True]
-    assert isinstance(
-        triggers, dict
-    ), f"{path.name}: workflow `on:` block must be a mapping"
+    assert isinstance(triggers, dict), f"{path.name}: workflow `on:` block must be a mapping"
     return triggers
 
 
@@ -124,12 +120,8 @@ def test_workflow_has_concurrency_block(workflow_path: Path) -> None:
         f"deploy/release/repair flows)."
     )
     block = data["concurrency"]
-    assert isinstance(
-        block, dict
-    ), f"{workflow_path.name}: `concurrency:` must be a mapping with `group:`."
-    assert block.get(
-        "group"
-    ), f"{workflow_path.name}: `concurrency.group` must be a non-empty string."
+    assert isinstance(block, dict), f"{workflow_path.name}: `concurrency:` must be a mapping with `group:`."
+    assert block.get("group"), f"{workflow_path.name}: `concurrency.group` must be a non-empty string."
     assert "cancel-in-progress" in block, (
         f"{workflow_path.name}: `concurrency.cancel-in-progress` must be set "
         f"(true for fast-forward CI, false for deploy/release/repair flows)."
@@ -149,9 +141,7 @@ def test_cancel_false_allowlist_is_documented_and_current() -> None:
         "_CANCEL_FALSE_ALLOWLIST with a release/deploy/PR-write rationale."
     )
     for workflow, reason in _CANCEL_FALSE_ALLOWLIST.items():
-        assert (
-            reason and len(reason) >= 20
-        ), f"{workflow}: allowlist rationale is too thin"
+        assert reason and len(reason) >= 20, f"{workflow}: allowlist rationale is too thin"
 
 
 @pytest.mark.parametrize(
@@ -162,9 +152,7 @@ def test_cancel_false_allowlist_is_documented_and_current() -> None:
 def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> None:
     """PR workflows must cancel superseded runs unless explicitly allowlisted."""
     data = _load_workflow(workflow_path)
-    if not (
-        _has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")
-    ):
+    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
         return
     if workflow_path.name in _CANCEL_FALSE_ALLOWLIST:
         return
@@ -184,19 +172,13 @@ def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> N
 def test_pr_concurrency_groups_do_not_collapse_all_prs(workflow_path: Path) -> None:
     """PR workflow groups should distinguish PR/ref unless intentionally singleton."""
     data = _load_workflow(workflow_path)
-    if not (
-        _has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")
-    ):
+    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
         return
     if workflow_path.name in _SINGLETON_GROUP_ALLOWLIST:
         return
 
     group = str(data["concurrency"].get("group") or "")
-    assert (
-        "github.ref" in group
-        or "pull_request.number" in group
-        or "github.head_ref" in group
-    ), (
+    assert "github.ref" in group or "pull_request.number" in group or "github.head_ref" in group, (
         f"{workflow_path.name}: PR-triggered concurrency group must include "
         "github.ref, github.head_ref, or github.event.pull_request.number "
         "unless documented as a singleton."
@@ -246,16 +228,12 @@ def test_workflow_concurrency_policy_references_real_workflows() -> None:
     workflow_names = {path.name for path in _workflow_files()}
 
     for policy_name, entries in policy.items():
-        assert isinstance(
-            entries, dict
-        ), f"{policy_name} must map workflow filenames to rationale strings."
+        assert isinstance(entries, dict), f"{policy_name} must map workflow filenames to rationale strings."
         for workflow_name, rationale in entries.items():
-            assert (
-                workflow_name in workflow_names
-            ), f"{policy_name}: unknown workflow `{workflow_name}` in policy file."
-            assert (
-                isinstance(rationale, str) and rationale.strip()
-            ), f"{policy_name}: `{workflow_name}` must have a non-empty rationale."
+            assert workflow_name in workflow_names, f"{policy_name}: unknown workflow `{workflow_name}` in policy file."
+            assert isinstance(rationale, str) and rationale.strip(), (
+                f"{policy_name}: `{workflow_name}` must have a non-empty rationale."
+            )
 
 
 def test_pr_workflows_use_cancel_in_progress_true_or_documented_exception() -> None:
@@ -276,9 +254,7 @@ def test_pr_workflows_use_cancel_in_progress_true_or_documented_exception() -> N
             )
 
 
-def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons() -> (
-    None
-):
+def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons() -> None:
     """Issue #689: PR concurrency groups must not collapse unrelated PRs by accident."""
     policy = _load_concurrency_policy()
     singleton_allowlist = policy["pr_concurrency_singleton_allowlist"]
@@ -300,9 +276,7 @@ def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons()
 
 def test_ci_triage_runbook_documents_workflow_concurrency_policy() -> None:
     """Issue #689: operators need one canonical reference for concurrency rules."""
-    runbook = (
-        Path(__file__).parent.parent / "docs" / "runbooks" / "ci-failure-triage.md"
-    ).read_text(encoding="utf-8")
+    runbook = (Path(__file__).parent.parent / "docs" / "runbooks" / "ci-failure-triage.md").read_text(encoding="utf-8")
 
     assert "workflow_concurrency_policy.json" in runbook
     assert "cancel-in-progress: true" in runbook
@@ -311,9 +285,7 @@ def test_ci_triage_runbook_documents_workflow_concurrency_policy() -> None:
 
 def test_lint_workflow_references_documented_concurrency_policy() -> None:
     """Issue #689: workflow-only PRs should enforce the same exception policy in lint."""
-    lint_workflow = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(
-        encoding="utf-8"
-    )
+    lint_workflow = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(encoding="utf-8")
 
     assert "workflow_concurrency_policy.json" in lint_workflow
 
@@ -352,18 +324,14 @@ def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
 
     assert "workflow_concurrency_policy.json" in text
     for workflow in _CANCEL_FALSE_ALLOWLIST:
-        assert (
-            workflow in false_allowlist
-        ), f"{workflow} missing from workflow concurrency policy"
+        assert workflow in false_allowlist, f"{workflow} missing from workflow concurrency policy"
     for stale_exception in (
         "publish-artifacts.yml",
         "publish.yml",
         "deploy.yml",
         "nightly-publish.yml",
     ):
-        assert (
-            stale_exception not in false_allowlist
-        ), f"stale broad exception remains in policy: {stale_exception}"
+        assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
 
 
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
@@ -406,11 +374,7 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
     """Feature PR checks must include this repo's real app roots."""
     workflow = (_WORKFLOWS_DIR / "anti-phantom-merge.yml").read_text(encoding="utf-8")
     action = (
-        Path(__file__).parent.parent
-        / ".github"
-        / "actions"
-        / "verify-issue-resolution"
-        / "action.yml"
+        Path(__file__).parent.parent / ".github" / "actions" / "verify-issue-resolution" / "action.yml"
     ).read_text(encoding="utf-8")
 
     for text in (workflow, action):
@@ -421,21 +385,34 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
 
 def test_pre_push_mypy_dependencies_are_installable() -> None:
     """The mypy pre-push hook must not depend on removed or nonexistent packages."""
-    text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(
-        encoding="utf-8"
-    )
+    text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8")
 
     assert "psutil-stubs" not in text
     assert "types-psutil" in text
     assert "language: system" in text
-    assert '"tests/"' in text
-    assert '"-ll"' in text
-    assert '"-ii"' in text
+    # The bandit and full-suite pytest arguments once pinned here left pre-push
+    # in #1864; tests/test_run_pytest_diff.py pins the diff-scoped hook instead.
 
 
-_REQUIRED_CHECKS_POLICY = (
-    Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
-)
+def test_commit_stage_gitleaks_scans_staged_changes_only() -> None:
+    """#1871: commit-time gitleaks scans staged changes, not the whole repo history."""
+    config = yaml.safe_load((Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    hooks = [hook for repo in config["repos"] for hook in repo.get("hooks", [])]
+    gitleaks = next(hook for hook in hooks if hook["id"] == "gitleaks")
+    command = " ".join([gitleaks["entry"], *gitleaks.get("args", [])])
+    assert "protect --staged" in command
+    assert "detect" not in command
+    assert "--source" not in command
+
+
+def test_ci_secrets_keeps_the_full_history_gitleaks_scan() -> None:
+    text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
+    assert "fetch-depth: 0" in text
+    assert '/gitleaks" detect' in text
+    assert "--no-git" not in text
+
+
+_REQUIRED_CHECKS_POLICY = Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
 
 
 def _required_contexts() -> set[str]:
@@ -487,3 +464,249 @@ def test_required_context_workflows_have_no_pull_request_path_filters() -> None:
                 "the PR can never merge. Remove the filter (keep it on `push` "
                 "if post-merge cost matters)."
             )
+
+
+def test_required_context_workflows_run_in_the_merge_queue() -> None:
+    """Every workflow that reports a required context must trigger on merge_group.
+
+    With the merge queue enabled on ``main`` (Repository_Management#1889 /
+    #1890), GitHub waits for every required context on the ``merge_group``
+    run. A workflow without that trigger never reports there, so every queued
+    PR would wait until the queue's check timeout and then be ejected.
+    """
+    data = json.loads(_REQUIRED_CHECKS_POLICY.read_text(encoding="utf-8"))
+    sources = {entry["source_workflow"] for entry in data["required_contexts"]}
+
+    found: set[str] = set()
+    for path in sorted(_WORKFLOWS_DIR.glob("*.yml")):
+        workflow = _load_workflow(path)
+        if workflow.get("name") not in sources:
+            continue
+        found.add(workflow["name"])
+        assert _has_trigger(workflow, "merge_group"), (
+            f"{path.name} reports a required status check but has no "
+            "`merge_group:` trigger, so the merge queue would wait for it forever."
+        )
+
+    assert found == sources, f"no workflow file found for {sorted(sources - found)}"
+
+
+# ---------------------------------------------------------------------------
+# Event-tiered CI Standard (issue #1864, sibling of Repository_Management#1915)
+#
+# pull_request  -> PR tier: lint, format, type check and fast tests.
+# merge_group   -> full tier: everything (the authoritative gate).
+# push to main  -> post-merge tier: no duplicate heavy jobs; the squash commit
+#                  is the tree the merge queue already tested.
+# A `changes` job decides the tier and, on pull_request only, whether the PR
+# touches any Python surface (the docs-only fast path). `quality-gate` and
+# `tests-required` report on every event and fail closed.
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+
+_CI_STANDARD = _WORKFLOWS_DIR / "ci-standard.yml"
+_HEAVY_FULL_TIER_JOBS = ("security-scan",)
+_PYTHON_LANE_JOBS = ("lint", "tests")
+
+
+def _ci_jobs() -> dict:
+    jobs = _load_workflow(_CI_STANDARD)["jobs"]
+    assert isinstance(jobs, dict)
+    return jobs
+
+
+def _ci_step(job_id: str, *, name: str | None = None, step_id: str | None = None) -> dict:
+    for step in _ci_jobs()[job_id]["steps"]:
+        if name is not None and step.get("name") == name:
+            return step
+        if step_id is not None and step.get("id") == step_id:
+            return step
+    raise AssertionError(f"ci-standard.yml job {job_id!r} has no step name={name!r} id={step_id!r}")
+
+
+def _run_step(step: dict, env: dict[str, str]) -> tuple[int, dict[str, str]]:
+    """Execute a workflow `run:` script under bash the way Actions does.
+
+    Returns the exit code and whatever the script appended to $GITHUB_OUTPUT.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        output_path = Path(tmp) / "github_output"
+        output_path.write_text("", encoding="utf-8")
+        full_env = {"PATH": os.environ.get("PATH", ""), "GITHUB_OUTPUT": str(output_path), **env}
+        result = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
+            env=full_env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        outputs: dict[str, str] = {}
+        for line in output_path.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                outputs[key] = value
+    return result.returncode, outputs
+
+
+def _tier_for(event_name: str) -> dict[str, str]:
+    code, outputs = _run_step(_ci_step("changes", step_id="tier"), {"EVENT_NAME": event_name})
+    assert code == 0, f"tier step failed for {event_name}"
+    return outputs
+
+
+def test_ci_standard_keeps_every_trigger() -> None:
+    """The tiers depend on all three events still reaching the workflow."""
+    data = _load_workflow(_CI_STANDARD)
+    for event in ("pull_request", "merge_group", "push", "workflow_dispatch"):
+        assert _has_trigger(data, event), f"ci-standard.yml lost its `{event}` trigger"
+
+
+def test_changes_job_runs_on_every_event() -> None:
+    """The tier decision must exist on every event, or downstream gates go blind."""
+    changes = _ci_jobs()["changes"]
+    assert "if" not in changes, "`changes` must not be conditional; every gate reads its outputs"
+    outputs = changes["outputs"]
+    for key in ("tier", "full_suite", "run_python_tests"):
+        assert key in outputs, f"`changes` must output {key!r}"
+
+
+@pytest.mark.parametrize(
+    ("event_name", "tier", "full_suite", "run_python_tests"),
+    [
+        ("pull_request", "pr", "false", None),  # decided by the scope detector
+        ("merge_group", "full", "true", "true"),
+        ("workflow_dispatch", "full", "true", "true"),
+        ("push", "post-merge", "false", "false"),
+        ("schedule", "full", "true", "true"),  # unknown events fail safe to full
+    ],
+)
+def test_tier_per_event(event_name: str, tier: str, full_suite: str, run_python_tests: str | None) -> None:
+    outputs = _tier_for(event_name)
+    assert outputs.get("tier") == tier
+    assert outputs.get("full_suite") == full_suite
+    assert outputs.get("run_python_tests") == run_python_tests
+
+
+def test_docs_only_scope_detector_runs_on_pull_request_only() -> None:
+    """The docs-only fast path is a PR optimisation; queue groups can mix PRs."""
+    scope = _ci_step("changes", step_id="python-scope")
+    assert scope.get("if") == "github.event_name == 'pull_request'", (
+        "the docs-only detector must never run (and so never skip) outside pull_request"
+    )
+    assert _tier_for("merge_group")["run_python_tests"] == "true", "merge_group must never skip the Python lane"
+
+
+def test_scope_detector_fails_closed_on_truncated_file_listing() -> None:
+    """The files API returns at most 100 entries per page; a truncated list is not proof of docs-only."""
+    scope = _ci_step("changes", step_id="python-scope")["run"]
+    assert "len(files) >= 100" in scope
+
+
+def test_python_lane_jobs_gate_on_changes_job() -> None:
+    jobs = _ci_jobs()
+    for job_id in _PYTHON_LANE_JOBS:
+        condition = str(jobs[job_id].get("if", ""))
+        assert "needs.changes.outputs.run_python_tests == 'true'" in condition, job_id
+        assert "changes" in jobs[job_id]["needs"], job_id
+
+
+def test_heavy_jobs_run_only_in_the_full_tier() -> None:
+    jobs = _ci_jobs()
+    for job_id in _HEAVY_FULL_TIER_JOBS:
+        condition = str(jobs[job_id].get("if", ""))
+        assert "needs.changes.outputs.full_suite == 'true'" in condition, (
+            f"{job_id} is a heavy scan; it belongs to the merge_group tier, not every PR push"
+        )
+    for step_name in ("Run bandit security scan", "Security Audit (pip-audit)"):
+        step = _ci_step("lint", name=step_name)
+        assert step.get("if") == "needs.changes.outputs.full_suite == 'true'", step_name
+
+
+def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
+    step = _ci_step("tests", name="Run Python tests")
+    assert step["env"]["FULL_SUITE"] == "${{ needs.changes.outputs.full_suite }}"
+    run = step["run"]
+    assert "--cov=backend" in run
+    assert 'if [ "$FULL_SUITE" = "true" ]' in run
+    assert "not slow" in run, "the PR tier runs the fast subset"
+
+
+@pytest.mark.parametrize("job_id", ["quality-gate", "tests-required"])
+def test_required_aggregates_report_on_every_event(job_id: str) -> None:
+    from scripts.check_required_checks_drift import check_job_fails_closed
+
+    job = _ci_jobs()[job_id]
+    assert job.get("if") == "always()", f"{job_id} must run on every event"
+    assert "changes" in job["needs"], f"{job_id} must read the tier decision"
+    assert check_job_fails_closed(_CI_STANDARD.read_text(encoding="utf-8"), job_id) == []
+
+
+def _quality_gate(**env: str) -> int:
+    defaults = {
+        "CHANGES": "success",
+        "HEALTH": "success",
+        "TIER": "pr",
+        "FULL_SUITE": "false",
+        "RUN_PYTHON_TESTS": "true",
+        "RESULT_LINT": "success",
+        "RESULT_TESTS": "success",
+        "RESULT_SECURITY": "skipped",
+    }
+    code, _ = _run_step(_ci_step("quality-gate", name="Require every gated job to succeed"), {**defaults, **env})
+    return code
+
+
+def _tests_required(**env: str) -> int:
+    defaults = {
+        "CHANGES": "success",
+        "HEALTH": "success",
+        "TIER": "pr",
+        "RUN_PYTHON_TESTS": "true",
+        "TESTS": "success",
+    }
+    code, _ = _run_step(_ci_step("tests-required", name="Confirm Python test matrix"), {**defaults, **env})
+    return code
+
+
+def test_quality_gate_passes_the_pr_tier_without_heavy_scans() -> None:
+    assert _quality_gate() == 0
+
+
+def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
+    full = {"TIER": "full", "FULL_SUITE": "true"}
+    assert _quality_gate(**full, RESULT_SECURITY="success") == 0
+    assert _quality_gate(**full, RESULT_SECURITY="skipped") == 1
+    assert _quality_gate(**full, RESULT_SECURITY="failure") == 1
+
+
+def test_quality_gate_passes_docs_only_pr_and_post_merge_push() -> None:
+    skipped = {"RESULT_LINT": "skipped", "RESULT_TESTS": "success", "RESULT_SECURITY": "skipped"}
+    assert _quality_gate(**skipped, RUN_PYTHON_TESTS="false") == 0
+    assert _quality_gate(**skipped, RUN_PYTHON_TESTS="false", TIER="post-merge") == 0
+
+
+def test_quality_gate_fails_closed() -> None:
+    assert _quality_gate(CHANGES="failure", RUN_PYTHON_TESTS="") == 1
+    assert _quality_gate(HEALTH="failure") == 1
+    assert _quality_gate(RESULT_LINT="failure") == 1
+    assert _quality_gate(RESULT_LINT="skipped") == 1, "lint may only skip when the Python lane is off"
+    assert _quality_gate(RESULT_TESTS="failure") == 1
+
+
+def test_tests_required_reports_on_every_tier() -> None:
+    assert _tests_required() == 0
+    assert _tests_required(TIER="full") == 0
+    assert _tests_required(RUN_PYTHON_TESTS="false", TESTS="skipped") == 0
+    assert _tests_required(TIER="post-merge", RUN_PYTHON_TESTS="false", TESTS="skipped") == 0
+
+
+def test_tests_required_fails_closed() -> None:
+    assert _tests_required(CHANGES="failure", RUN_PYTHON_TESTS="", TESTS="skipped") == 1
+    assert _tests_required(HEALTH="failure") == 1
+    assert _tests_required(TESTS="failure") == 1
+    assert _tests_required(TESTS="skipped") == 1, "a skipped matrix only passes when the lane is off"
+    assert _tests_required(TIER="full", RUN_PYTHON_TESTS="true", TESTS="skipped") == 1

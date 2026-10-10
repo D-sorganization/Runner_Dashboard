@@ -18,9 +18,9 @@ In the fleet topology, **Barb** is the single front door:
 - **Barb (Front Door, Intake & Routing):** Handles work requests, status inquiries, role auto-selection, and conversational routing.
 - _Note:_ The Orchestrator role is retired and folded into Barb (Repository_Management#1733).
 
-### Remote Ingress & Connector Path (SC-F6)
+### Remote Ingress (ADR 0007: local-only)
 
-Direct connections use the local network or Tailscale address (`http://deskcomputer:8321`). For cloud-hosted Grok instances outside the private network, remote ingress will route through the authenticated Funnel connector path (tracked in SC-F6, Issue #1335). The API request and response envelopes remain identical.
+Direct connections use the local network or Tailscale address (`http://deskcomputer:8321`). **Cloud-hosted Grok instances outside the private network are not supported** ([ADR 0007](../adr/0007-agent-client-ingress-local-only.md)): the dashboard has no Funnel, connector or outbound relay path. Grok connects through its local-exec tool on a fleet machine, over the tailnet; that is a local process calling a cloud model, not cloud ingress. See [Supported Clients and Networks](connect.md#supported-clients-and-networks). Any future cloud ingress is a separate Board decision.
 
 ---
 

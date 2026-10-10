@@ -139,6 +139,8 @@ class StaffRunner:
             lease_ritual=lease,
             consolidation=dict(req.consolidation) if req.consolidation else None,
             focus=focus,
+            pr_lifecycle=req.pr_lifecycle,
+            head_ref=req.head_ref,
         )
 
     def _resolve_role(self, req: RunRequest) -> RoleSpec:
@@ -290,7 +292,7 @@ class StaffRunner:
             store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
             checkout = workspace.clone_repo(plan.repo)
         worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
-        workspace.add_worktree(checkout, worktree, plan.branch)
+        workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
         store.update_run(rec.id, workdir=str(worktree))
         store.append_event(rec.id, "worktree", f"{worktree} on {plan.branch}")
         return worktree

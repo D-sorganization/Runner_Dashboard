@@ -34,6 +34,16 @@ import config_schema
 import dispatch_quota
 import quota_enforcement
 from dispatch_contract import DispatchAccess
+from dispatch_effort import EXPAND_EPIC_CHILDREN, Effort, normalize_dispatch_kind, resolve_effort
+from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+from dispatch_routing import (
+    ModelRoutingDecision,
+    dispatch_queue_manager,
+    extract_declared_paths,
+    record_dispatch_routing_audit,
+    resolve_model_routing,
+)
+from epic_expansion import expansion_routing, render_expansion_prompt
 from identity import identity_manager
 from pydantic import BaseModel, Field
 from time_utils import utc_now_iso
@@ -58,6 +68,9 @@ _issue_dispatch_history_lock: asyncio.Lock = asyncio.Lock()
 
 DISPATCH_CONCURRENCY = 4
 MAX_ALL_TARGETS = 100
+# Dispatch kinds are flat identifiers such as ``implementation`` or
+# ``ci_fix:lint`` (USE-1, #1865); they select the reasoning effort.
+DISPATCH_KIND_PATTERN = r"^[A-Za-z_]{1,40}(:[A-Za-z_]{1,40})?$"
 
 # ─── Pydantic models ──────────────────────────────────────────────────────────
 
@@ -86,6 +99,13 @@ class PRDispatchRequest(BaseModel):
     model: str = Field(default="", max_length=200)
     principal: str = Field(default="", max_length=200)
     confirmation: DispatchConfirmationBody = Field(default_factory=DispatchConfirmationBody)
+    pr_lifecycle: str = Field(default="arm_and_exit", max_length=50)
+    dispatch_kind: str = Field(default="pr", pattern=DISPATCH_KIND_PATTERN)
+    effort: Effort | None = None
+    auto_fix: bool = Field(default=False)
+    operator_opt_in: bool = Field(default=False)
+    wakeups_count: int = Field(default=0, ge=0)
+    max_wakeups: int = Field(default=3, ge=1)
 
 
 class IssueDispatchRequest(BaseModel):
@@ -96,6 +116,8 @@ class IssueDispatchRequest(BaseModel):
     principal: str = Field(default="", max_length=200)
     force: bool = False
     confirmation: DispatchConfirmationBody = Field(default_factory=DispatchConfirmationBody)
+    dispatch_kind: str = Field(default="implementation", pattern=DISPATCH_KIND_PATTERN)
+    effort: Effort | None = None
 
 
 class RejectedTarget(BaseModel):
@@ -325,6 +347,23 @@ async def dispatch_to_prs(
         return {"error": targets_or_err, "status_code": 422}
     targets = targets_or_err
 
+    # ── PR lifecycle & Auto-fix subscription guard (#1845 / RD-0) ─────────────
+    if req.auto_fix or req.pr_lifecycle == "subscribed":
+        from pr_subscription import evaluate_pr_subscription
+
+        decision = evaluate_pr_subscription(
+            is_draft=False,
+            operator_opt_in=req.operator_opt_in,
+            wakeups_count=req.wakeups_count,
+            max_wakeups=req.max_wakeups,
+        )
+        if not decision.allowed:
+            return {
+                "error": decision.reason,
+                "status_code": 422,
+                "handoff_to_rd1": decision.handoff_to_rd1,
+            }
+
     # Wave 3: Quota truncation (Fair Sharing)
     rejected_due_to_quota: list[tuple[str, int]] = []
     if req.principal:
@@ -344,6 +383,10 @@ async def dispatch_to_prs(
                     len(rejected_due_to_quota),
                 )
 
+    # ── Effort per dispatch kind (USE-1, #1865) ───────────────────────────────
+    dispatch_kind = normalize_dispatch_kind(req.dispatch_kind)
+    effort = resolve_effort(dispatch_kind, req.effort)
+
     # ── Fan-out dispatch ──────────────────────────────────────────────────────
     semaphore = asyncio.Semaphore(DISPATCH_CONCURRENCY)
     tasks = [
@@ -359,6 +402,7 @@ async def dispatch_to_prs(
             repo_root=repo_root,
             run_cmd_fn=run_cmd_fn,
             semaphore=semaphore,
+            extra_inputs={"pr_lifecycle": req.pr_lifecycle, "dispatch_kind": dispatch_kind, "effort": effort},
         )
         for repo, num in targets
     ]
@@ -406,6 +450,8 @@ async def dispatch_to_prs(
         "action": "agents.dispatch.pr",
         "access": DispatchAccess.PRIVILEGED.value,
         "provider": req.provider,
+        "dispatch_kind": dispatch_kind,
+        "effort": effort,
         "accepted": accepted_count,
         "rejected_count": len(rejected),
         "envelope_ids": envelope_ids,
@@ -435,6 +481,20 @@ def _check_issue_pickable(repository: str, number: int) -> str | None:
     if number <= 0:
         return "invalid issue number"
     return None  # default: assume pickable (no live API call here)
+
+
+def _issue_routing(req: IssueDispatchRequest, dispatch_kind: str) -> ModelRoutingDecision:
+    """Model routing for an issue dispatch; ``expand_epic_children`` is tier:cli."""
+    if dispatch_kind == EXPAND_EPIC_CHILDREN:
+        return expansion_routing(req.model)
+    return resolve_model_routing(labels=(), prompt=req.prompt, requested_model=req.model)
+
+
+def _issue_prompt(req: IssueDispatchRequest, dispatch_kind: str, repository: str, number: int) -> str:
+    """Per-target prompt; an epic expansion wraps the operator note in its template."""
+    if dispatch_kind == EXPAND_EPIC_CHILDREN:
+        return render_expansion_prompt(repository=repository, epic_number=number, operator_note=req.prompt)
+    return req.prompt
 
 
 async def dispatch_to_issues(
@@ -515,7 +575,7 @@ async def dispatch_to_issues(
                     len(rejected_due_to_quota),
                 )
 
-    # ── Pickability pre-filter ────────────────────────────────────────────────
+    # ── Pickability pre-filter & premise check (RD-2 / #1847) ─────────────────
     pre_rejected: list[dict[str, Any]] = []
     filtered_targets: list[tuple[str, int]] = []
     for repo, num in targets:
@@ -530,19 +590,77 @@ async def dispatch_to_issues(
                     }
                 )
                 continue
+            premise_res = await evaluate_dispatch_premise(
+                repository=repo,
+                issue_number=num,
+                prompt=req.prompt,
+                run_cmd_fn=run_cmd_fn,
+                repo_root=repo_root,
+            )
+            if not premise_res.allowed:
+                pre_rejected.append(
+                    {
+                        "repository": repo,
+                        "number": num,
+                        "reason": f"premise_rejected: {premise_res.reason} ({premise_res.detail})",
+                    }
+                )
+                await log_dispatch_skip(premise_res, repo, num)
+                if premise_res.should_close and premise_res.comment:
+                    await close_item_as_resolved_on_main(
+                        repo,
+                        num,
+                        premise_res.comment,
+                        run_cmd_fn=run_cmd_fn,
+                    )
+                continue
+        if not req.force:
+            declared_paths = extract_declared_paths(req.prompt)
+            attempt = dispatch_queue_manager.try_dispatch(
+                repository=repo,
+                number=num,
+                prompt=req.prompt,
+                labels=(),
+                declared_paths=declared_paths,
+                requested_model=req.model,
+            )
+            if not attempt.dispatched:
+                blocker = attempt.queued_item.blocking_session_id if attempt.queued_item else ""
+                pre_rejected.append(
+                    {
+                        "repository": repo,
+                        "number": num,
+                        "reason": f"queued_overlapping_paths: waiting for active session {blocker}",
+                    }
+                )
+                record_dispatch_routing_audit(
+                    repository=repo,
+                    number=num,
+                    decision=resolve_model_routing(labels=(), prompt=req.prompt, requested_model=req.model),
+                    status="queued",
+                    declared_paths=declared_paths,
+                    principal=req.principal,
+                )
+                continue
         filtered_targets.append((repo, num))
+
+    # ── Resolve model routing and effort (RD-3 #1848, USE-1 #1865) ────────────
+    dispatch_kind = normalize_dispatch_kind(req.dispatch_kind)
+    effort = resolve_effort(dispatch_kind, req.effort)
+    routing = _issue_routing(req, dispatch_kind)
 
     # ── Fan-out dispatch ──────────────────────────────────────────────────────
     semaphore = asyncio.Semaphore(DISPATCH_CONCURRENCY)
     extra = {"forced": "true"} if req.force else {}
+    extra.update({"dispatch_kind": dispatch_kind, "effort": effort})
     tasks = [
         _dispatch_one(
             kind="issue",
             full_repository=repo,
             number=num,
             provider=req.provider,
-            prompt=req.prompt,
-            model=req.model,
+            prompt=_issue_prompt(req, dispatch_kind, repo, num),
+            model=routing.model,
             workflow_file="Agent-Issue-Action.yml",
             org=org,
             repo_root=repo_root,
@@ -596,6 +714,11 @@ async def dispatch_to_issues(
         "action": "agents.dispatch.issue",
         "access": DispatchAccess.PRIVILEGED.value,
         "provider": req.provider,
+        "dispatch_kind": dispatch_kind,
+        "effort": effort,
+        "tier": routing.tier,
+        "model": routing.model,
+        "routing_reason": routing.reason,
         "accepted": accepted_count,
         "rejected_count": len(rejected),
         "envelope_ids": envelope_ids,
@@ -606,6 +729,16 @@ async def dispatch_to_issues(
     # ── Record spend (Wave 3) ─────────────────────────────────────────────────
     if req.principal and accepted_count > 0:
         quota_enforcement.quota_enforcement.add_spend(req.principal, accepted_count * 0.10)
+
+    for repo, num in filtered_targets:
+        record_dispatch_routing_audit(
+            repository=repo,
+            number=num,
+            decision=routing,
+            status="dispatched" if accepted_count > 0 else "rejected",
+            declared_paths=extract_declared_paths(req.prompt),
+            principal=req.principal,
+        )
 
     await _append_history(audit_entry, _ISSUE_DISPATCH_HISTORY_PATH, _issue_dispatch_history_lock)
 
