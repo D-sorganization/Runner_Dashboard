@@ -156,6 +156,12 @@
   z-index: 10;
 }
 
+/* Inside the mobile shell the console already ends above the fixed bottom nav
+   (#1805), which also owns the safe area, so local tabs need no extra inset. */
+.mobile-shell__content .staff-mobile__tabs {
+  padding-bottom: 8px;
+}
+
 .staff-mobile__tab {
   flex: 1;
   min-height: 44px;
@@ -399,6 +405,12 @@
   background-color: var(--bg-tertiary, #21262d);
   border-top: 1px solid var(--border, #30363d);
   border-bottom: 1px solid var(--border, #30363d);
+}
+
+/* Inside the mobile shell the console already ends above the fixed bottom nav
+   (#1805), which also owns the safe area, so thumb actions need no extra inset. */
+.mobile-shell__content .staff-mobile__thumb-actions {
+  padding-bottom: 8px;
 }
 
 .staff-mobile__thumb-btn {

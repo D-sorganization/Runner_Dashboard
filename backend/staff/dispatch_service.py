@@ -65,6 +65,17 @@ class DispatchCommand:
     ignore_budget: bool = False
     # One admitted run per operation (#1796): an Idempotency-Key reservation, or a peer's forward.
     operation_id: str = ""
+    # PR lifecycle & subscription policy (#1845 / RD-0)
+    pr_lifecycle: str = "arm_and_exit"
+    auto_fix: bool = False
+    operator_opt_in: bool = False
+    wakeups_count: int = 0
+    max_wakeups: int = 3
+    # RD-1 CI fixes (#1881) target a PR head, not main: the issue premise ("already passes
+    # on main") and prompt path-overlap checks do not apply; the per-PR CI-fix lock guards.
+    skip_premise_check: bool = False
+    # Fix an existing PR: the worktree starts from this branch instead of origin/main (#1881).
+    head_ref: str = ""
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -79,6 +90,10 @@ class DispatchCommand:
             body.pop(key)
         if not body["operation_id"]:
             body.pop("operation_id")  # peers on older builds never see an empty field
+        if not body["skip_premise_check"]:
+            body.pop("skip_premise_check")
+        if not body["head_ref"]:
+            body.pop("head_ref")
         return body
 
     def run_id(self) -> str:
@@ -150,11 +165,66 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     outage starts nothing. Any refusal is an ``HTTPException`` raised before a run row
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
+    if not cmd.dry_run and not cmd.skip_premise_check and (cmd.issue or cmd.prompt):
+        from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+        from dispatch_routing import dispatch_queue_manager, extract_declared_paths, resolve_model_routing
+
+        premise_res = await evaluate_dispatch_premise(
+            repository=cmd.repo,
+            issue_number=cmd.issue,
+            prompt=cmd.prompt,
+        )
+        if not premise_res.allowed:
+            await log_dispatch_skip(premise_res, cmd.repo, cmd.issue)
+            if premise_res.should_close and premise_res.comment and cmd.issue:
+                await close_item_as_resolved_on_main(cmd.repo, cmd.issue, premise_res.comment)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "premise_rejected",
+                    "reason": premise_res.reason,
+                    "message": premise_res.detail,
+                    "comment": premise_res.comment,
+                },
+            )
+
+        if cmd.repo:
+            paths = extract_declared_paths(cmd.prompt)
+            can_run, blocker = dispatch_queue_manager.can_dispatch(cmd.repo, paths)
+            if not can_run:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "queued_overlapping_paths",
+                        "reason": f"overlapping paths with active session {blocker} on {cmd.repo}",
+                        "message": "waiting for active session PR to merge or close",
+                    },
+                )
+
     runner = get_runner()
     spec = runner.roles().get(cmd.role)
     decision = None
     if spec is not None and cmd.repo and consolidation.threshold(spec) is not None:
         decision = await asyncio.to_thread(consolidation.decide, spec, cmd.repo)  # #1213: gh + capacity I/O
+
+    if cmd.pr and (cmd.auto_fix or cmd.pr_lifecycle == "subscribed"):
+        from pr_subscription import evaluate_pr_subscription
+
+        sub_decision = evaluate_pr_subscription(
+            is_draft=False,
+            operator_opt_in=cmd.operator_opt_in,
+            wakeups_count=cmd.wakeups_count,
+            max_wakeups=cmd.max_wakeups,
+        )
+        if not sub_decision.allowed:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "pr_subscription_rejected",
+                    "reason": sub_decision.reason,
+                    "handoff_to_rd1": sub_decision.handoff_to_rd1,
+                },
+            )
 
     req = RunRequest(
         role=cmd.role,
@@ -171,6 +241,8 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         work_item_id=cmd.work_item_id,
         consolidation=decision,
         origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
+        pr_lifecycle=cmd.pr_lifecycle,
+        head_ref=cmd.head_ref,
     )
     try:
         plan = runner.plan(req)
@@ -204,6 +276,9 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         "request_id": run_id,
         "run_id": run_id,
     }
+    from dispatch_routing import resolve_model_routing
+
+    routing = resolve_model_routing(labels=(), prompt=cmd.prompt, requested_model=cmd.model or "")
     try:
         record_audit(
             action="dispatch",
@@ -213,6 +288,9 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 "repo": plan.repo,
                 "target_ref": plan.target_ref,
                 "provider": plan.provider,
+                "tier": routing.tier,
+                "model": plan.model or routing.model,
+                "routing_reason": routing.reason,
                 "machine": runner.machine,
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),

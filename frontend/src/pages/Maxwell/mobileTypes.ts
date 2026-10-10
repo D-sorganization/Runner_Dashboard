@@ -30,14 +30,6 @@ export interface ChatMessage {
 
 export type ControlAction = "start" | "stop" | "restart";
 
-export const CHAT_STORE_KEY = "maxwellMobileChatHistory";
-export const MAX_HISTORY = 40;
-export const QUICK_CHIPS = [
-  "status",
-  "summarize last hour",
-  "which runners are blocked?",
-];
-
 /**
  * Codebase-flavored quick-chips for the in-app Q&A assistant (issue #838).
  * These prompt the daemon's agentic codebase tools (read_file/grep_files/…)
@@ -104,23 +96,4 @@ export function statusDotColor(status: string): string {
   if (s === "running") return "var(--accent-green)";
   if (s === "error") return "var(--accent-red)";
   return "var(--accent-yellow)";
-}
-
-export function loadChatHistory(): ChatMessage[] {
-  try {
-    return JSON.parse(sessionStorage.getItem(CHAT_STORE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-export function saveChatHistory(messages: ChatMessage[]): void {
-  try {
-    sessionStorage.setItem(
-      CHAT_STORE_KEY,
-      JSON.stringify(messages.slice(-MAX_HISTORY)),
-    );
-  } catch {
-    // sessionStorage may be unavailable in some contexts
-  }
 }

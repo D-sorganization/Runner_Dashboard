@@ -31,6 +31,12 @@ stuck in `queued` or `in_progress` long past their normal duration.
 - Busy but current-head jobs are not stale. Leave them alone unless an operator
   has confirmed the run is not required.
 
+- **Merge-queue runs are exempt.** Runs with `event == merge_group` or a
+  `gh-readonly-queue/...` branch are never stale and never cancellable by
+  `/api/queue/purge-stale`, `scripts/reap_queued_jobs.py` or staff
+  `queue_purge_stale` (shared predicate `queue_cleanup.is_merge_queue_run`,
+  #1915). Cancelling one fails the required check and GitHub dequeues the PR.
+
 Do not cancel current-head required checks, release/tag workflows, deployment
 workflows, or running jobs as part of routine queue cleanup.
 
@@ -74,6 +80,13 @@ Superseded PR-head runs differ from unsatisfiable runner label runs:
 a superseded run will never proceed regardless of runner availability, while an
 unsatisfiable label run would proceed if a matching runner came online.
 Use `dry_run=true` to preview which category each run falls into before purging.
+
+**Merge-queue runs are exempt.** Runs with `event == merge_group` or a
+`gh-readonly-queue/...` branch are never listed or cancelled by any queue
+canceller (`/api/queue/stale`, `/api/queue/purge-stale`, `reap_queued_jobs.py`,
+staff `queue_purge_stale`). Cancelling one cancels the required check, so GitHub
+dequeues the PR with `CI_FAILURE` and disarms auto-merge (#1915). If a queue run
+is stuck, fix runner capacity; do not cancel it.
 
 ## Mitigation
 

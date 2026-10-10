@@ -388,8 +388,11 @@ def test_default_session_is_agent_host_date() -> None:
     import fleet_client as fc  # noqa: PLC0415
 
     day = dt.date(2026, 9, 23)
-    assert fc.default_session("claude", "DeskComputer.tail1234.ts.net", day) == "claude-DeskComputer-20260923"
-    assert fc.default_session("codex", "my host!", day) == "codex-my-host--20260923"
+    assert (
+        fc.default_session("claude", "DeskComputer.tail1234.ts.net", day, "ab12cd")
+        == "claude-DeskComputer-20260923-ab12cd"
+    )
+    assert fc.default_session("codex", "my host!", day, "ab12cd") == "codex-my-host--20260923-ab12cd"
     long = fc.default_session("grok", "h" * 300, day)
     assert len(long) <= 128 and long.startswith("grok-") and fc.PATTERNS.session.match(long)
 

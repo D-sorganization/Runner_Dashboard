@@ -4,6 +4,7 @@
 # ---------------------------------------------------------------------------
 import os  # noqa: E402
 import tempfile  # noqa: E402
+import threading  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # Backend singletons resolve their state directories during test collection.
@@ -301,7 +302,7 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
 
     real_add_worktree = workspace_mod.add_worktree
 
-    def _guarded_add_worktree(checkout, worktree, branch):
+    def _guarded_add_worktree(checkout, worktree, branch, **kwargs):
         # DbC guard: fail loudly instead of silently shelling out to real
         # git if a test-created run ever resolves a worktree path outside
         # this test's own tmp_path.
@@ -312,7 +313,7 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
                 f"add_worktree() target {worktree!r} is outside the pytest tmp_path "
                 f"{tmp_path!r}; staff tests must never create real git worktrees (#1521)."
             ) from None
-        return real_add_worktree(checkout, worktree, branch)
+        return real_add_worktree(checkout, worktree, branch, **kwargs)
 
     monkeypatch.setattr(workspace_mod, "add_worktree", _guarded_add_worktree)
 
@@ -338,3 +339,26 @@ def _cleanup_stores_session_teardown():
 def _staff_verification_off(monkeypatch):
     """Finished test runs never ask GitHub for their PR (#1516); verification tests opt in."""
     monkeypatch.setenv("STAFF_VERIFY_MODE", "off")
+
+
+def _live_staff_run_threads() -> set[threading.Thread]:
+    return {t for t in threading.enumerate() if t.name.startswith("staff-run-") and t.is_alive()}
+
+
+@pytest.fixture
+def staff_launches(monkeypatch):
+    """Record ``StaffRunner.launch`` instead of starting a real worker (#1863).
+
+    A real ``staff-run-*`` worker outlives the test that submitted it, then
+    prepares a worktree (or runs ``gh repo clone``) during a later test or
+    between tests, and crashes on that test's closed run store. Yields the
+    launched run ids; fails the test if a staff-run worker it started is alive.
+    """
+    from staff.runner import StaffRunner  # noqa: PLC0415
+
+    launched: list[str] = []
+    monkeypatch.setattr(StaffRunner, "launch", lambda _self, rec, _plan: launched.append(rec.id))
+    already_running = _live_staff_run_threads()
+    yield launched
+    leaked = _live_staff_run_threads() - already_running
+    assert not leaked, f"test started a real staff-run worker: {sorted(t.name for t in leaked)}"

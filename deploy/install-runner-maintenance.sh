@@ -33,6 +33,14 @@ sudo install -m 0755 "${SCRIPT_DIR}/runner-corruption-scan.sh" /usr/local/bin/ru
 # Operator break-glass from #661 — drains, heals, and restarts every
 # actions.runner.*.service on the host.
 sudo install -m 0755 "${SCRIPT_DIR}/heal-host.sh" /usr/local/bin/heal-host
+sudo install -m 0755 "${SCRIPT_DIR}/configure-runner-tmpdir.sh" /usr/local/bin/configure-runner-tmpdir
+sudo install -m 0755 "${SCRIPT_DIR}/configure-runner-pipcache.sh" /usr/local/bin/configure-runner-pipcache
+if [[ -x "${SCRIPT_DIR}/configure-runner-tmpdir.sh" ]]; then
+    sudo RUNNER_USER="${RUNNER_USER}" "${SCRIPT_DIR}/configure-runner-tmpdir.sh" || true
+fi
+if [[ -x "${SCRIPT_DIR}/configure-runner-pipcache.sh" ]]; then
+    sudo RUNNER_USER="${RUNNER_USER}" "${SCRIPT_DIR}/configure-runner-pipcache.sh" || true
+fi
 # Prune stale cargo/env source statements from shell profiles (#1159)
 if [[ -f "${SCRIPT_DIR}/clean-stale-shell-profiles.sh" ]]; then
     sudo install -m 0755 "${SCRIPT_DIR}/clean-stale-shell-profiles.sh" /usr/local/bin/clean-stale-shell-profiles

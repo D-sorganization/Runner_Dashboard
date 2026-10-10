@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import json
 import os
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from fleet_validators import (
@@ -44,10 +49,13 @@ from fleet_validators import (
     _text,
     _validate_directive,
     default_session,
+    short_host,
 )
 
 __all__ = [
     "BROADCAST",
+    "CLIENT_ENVELOPE_VERSION",
+    "CheckResult",
     "DEFAULT_URL",
     "FleetAPIError",
     "FleetArgumentError",
@@ -55,9 +63,11 @@ __all__ = [
     "LIMITS",
     "PATTERNS",
     "PROPOSAL_DECISIONS",
+    "REQUIRED_SCOPES",
     "RUN_STATUSES",
     "USAGE_GROUPS",
     "default_session",
+    "run_doctor",
 ]
 
 DEFAULT_URL = "http://127.0.0.1:8321"
@@ -92,7 +102,14 @@ class FleetClient:
         self._configured_session = _opt(
             PATTERNS.session, session if session is not None else (os.environ.get("FLEET_SESSION") or None), "session"
         )
+        self._session_source = "argument" if session is not None else "env" if self._configured_session else "derived"
+        self._derived: dict[str, str] = {}
         self.session = self._session(None) if (self._configured_session or self.agent) else None
+
+    def identity(self) -> dict[str, str | None]:
+        """Who this client acts as: principal agent, host and session, each reported separately."""
+        source = self._session_source
+        return {"agent": self.agent, "host": short_host(), "session": self.session, "session_source": source}
 
     # ------------------------------------------------------------------ transport
 
@@ -152,7 +169,7 @@ class FleetClient:
                 raise FleetAPIError(0, {"error": "unreachable", "url": self.base_url, "reason": str(reason)}) from None
 
     def _session(self, session: str | None, agent: str | None = None) -> str:
-        return _resolve_session(self._configured_session, session, agent or self.agent)
+        return _resolve_session(self._configured_session, session, agent or self.agent, self._derived)
 
     def _agent(self, agent: str | None) -> str | None:
         return _opt(PATTERNS.agent, agent if agent is not None else self.agent, "agent")
@@ -540,3 +557,200 @@ class FleetClient:
     def get_proposal(self, number: int) -> Any:
         """Get detail and secretary comments for proposal ``number``."""
         return self.request("GET", f"/api/proposals/{_positive_int(number, 'number')}")
+
+
+# ---------------------------------------------------------------------- doctor (#1802)
+# Read-only connection diagnostics. Each check is a pure function of its inputs (injectable
+# resolver / TLS probe / clock) returning a CheckResult; only ``run_doctor`` talks to the
+# server, and it issues GET requests only unless ``with_roundtrip`` is set.
+
+CLIENT_ENVELOPE_VERSION = 1
+REQUIRED_SCOPES = ("staff.read", "staff.chat", "coordination.write")
+BRIEFING_MAX_AGE_SECONDS = 300.0
+ROUNDTRIP_ROLE = "barb"
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    """Outcome of one doctor check. ``remedy`` is empty when ``ok``."""
+
+    name: str
+    ok: bool
+    detail: str
+    remedy: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _pass(name: str, detail: str) -> CheckResult:
+    return CheckResult(name, True, detail)
+
+
+def _fail(name: str, detail: str, remedy: str) -> CheckResult:
+    return CheckResult(name, False, detail, remedy)
+
+
+def _tls_handshake(host: str, port: int) -> None:
+    context = ssl.create_default_context()
+    with socket.create_connection((host, port), timeout=5) as sock:
+        with context.wrap_socket(sock, server_hostname=host):
+            return
+
+
+def check_dns_tls(
+    base_url: str,
+    *,
+    resolver: Callable[[str, int], Any] = socket.getaddrinfo,
+    tls_probe: Callable[[str, int], None] = _tls_handshake,
+) -> CheckResult:
+    """Resolve the host and, for https, complete a verified TLS handshake."""
+    parsed = urllib.parse.urlparse(base_url)
+    host = parsed.hostname or ""
+    secure = parsed.scheme == "https"
+    port = parsed.port or (443 if secure else 80)
+    try:
+        resolver(host, port)
+    except OSError as exc:
+        return _fail(
+            "dns-tls",
+            f"DNS lookup failed for {host}: {exc}",
+            "Check FLEET_API_URL for typos; verify Tailscale / private DNS is connected.",
+        )
+    if not secure:
+        return _pass("dns-tls", f"{host} resolves (plain http, no TLS)")
+    try:
+        tls_probe(host, port)
+    except OSError as exc:
+        return _fail(
+            "dns-tls",
+            f"TLS handshake with {host}:{port} failed: {exc}",
+            "Check the server certificate (expiry, hostname, trust chain); do not disable verification.",
+        )
+    return _pass("dns-tls", f"{host} resolves and TLS handshake verified")
+
+
+def _api_failure(name: str, exc: FleetAPIError) -> CheckResult:
+    if exc.status == 0:
+        return _fail(name, f"server unreachable: {exc.body}", "Check connectivity and that the dashboard is running.")
+    if exc.status == 404:
+        return _fail(name, "endpoint not found (HTTP 404)", "Server is older than this client; upgrade it.")
+    return _fail(name, f"HTTP {exc.status}: {exc.to_envelope()['message']}", "Inspect the dashboard logs.")
+
+
+def check_token(client: FleetClient) -> tuple[CheckResult, dict[str, Any] | None]:
+    """Validate the bearer token against ``/api/auth/me``; return the principal on success."""
+    if not client.token:
+        return (
+            _fail("token", "FLEET_API_TOKEN is not set", "Export FLEET_API_TOKEN=svc_... (docs/agents/connect.md)."),
+            None,
+        )
+    try:
+        principal = client.request("GET", "/api/auth/me")
+    except FleetAPIError as exc:
+        if exc.status == 401:
+            return (
+                _fail(
+                    "token",
+                    "token rejected (HTTP 401): it is revoked, expired or invalid",
+                    "Mint a new token (docs/agents/connect.md) and re-export FLEET_API_TOKEN.",
+                ),
+                None,
+            )
+        if exc.status == 403:
+            return _fail("token", "token forbidden (HTTP 403)", "Grant the principal a role in principals.yml."), None
+        return _api_failure("token", exc), None
+    if not isinstance(principal, dict):
+        return _fail("token", "unexpected /api/auth/me response", "Check FLEET_API_URL points at the dashboard."), None
+    return _pass("token", f"authenticated as {principal.get('id', 'unknown')}"), principal
+
+
+def check_scopes(principal: dict[str, Any] | None, required: tuple[str, ...] = REQUIRED_SCOPES) -> CheckResult:
+    """Fail naming every required scope the principal lacks."""
+    if principal is None:
+        return _fail("scopes", "no authenticated principal to inspect", "Fix the token check first.")
+    granted = set(principal.get("scopes") or [])
+    missing = [scope for scope in required if scope not in granted]
+    if missing:
+        return _fail(
+            "scopes",
+            f"missing scopes: {', '.join(missing)}",
+            "Add the scopes to the principal in principals.yml and restart the dashboard.",
+        )
+    return _pass("scopes", f"all required scopes granted ({', '.join(required)})")
+
+
+def check_version(payload: Any) -> CheckResult:
+    """Check the server's dispatch-envelope range includes this client's version."""
+    envelope = payload.get("envelope") if isinstance(payload, dict) else None
+    if not isinstance(envelope, dict) or "min" not in envelope or "max" not in envelope:
+        return _fail("version", "/api/version response has no envelope range", "Upgrade the dashboard server.")
+    low, high = envelope["min"], envelope["max"]
+    if not (low <= CLIENT_ENVELOPE_VERSION <= high):
+        return _fail(
+            "version",
+            f"incompatible schema: server supports envelope {low}-{high}, client speaks {CLIENT_ENVELOPE_VERSION}",
+            "Upgrade the fleet client (git pull clients/fleet) or the dashboard so the ranges overlap.",
+        )
+    return _pass("version", f"envelope {CLIENT_ENVELOPE_VERSION} within server range {low}-{high}")
+
+
+def check_briefing_freshness(
+    briefing: Any, *, now: datetime | None = None, max_age_seconds: float = BRIEFING_MAX_AGE_SECONDS
+) -> CheckResult:
+    """Fail when the briefing has no parsable ``generated_at`` or is older than the limit."""
+    stamp = briefing.get("generated_at") if isinstance(briefing, dict) else None
+    try:
+        generated = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return _fail("briefing", f"briefing generated_at unparsable: {stamp!r}", "Upgrade the dashboard server.")
+    if generated.tzinfo is None:
+        generated = generated.replace(tzinfo=timezone.utc)  # noqa: UP017 - py3.10 stdlib clients
+    age = ((now or datetime.now(timezone.utc)) - generated).total_seconds()  # noqa: UP017
+    if age > max_age_seconds:
+        return _fail(
+            "briefing",
+            f"briefing is stale: generated {age:.0f}s ago (limit {max_age_seconds:.0f}s)",
+            "Check the dashboard clock and briefing cache; restart the dashboard if it persists.",
+        )
+    return _pass("briefing", f"briefing generated {max(age, 0):.0f}s ago")
+
+
+def check_roundtrip(client: FleetClient) -> CheckResult:
+    """Opt-in only: opens a thread with Barb (a write). Never run by default."""
+    try:
+        thread = client.staff_thread_open(
+            role=ROUNDTRIP_ROLE, title="fleetctl doctor round-trip", initial_message="fleetctl doctor ping"
+        )
+    except FleetAPIError as exc:
+        return _api_failure("roundtrip", exc)
+    if not (isinstance(thread, dict) and thread.get("id")):
+        return _fail("roundtrip", "Barb thread opened without an id", "Check the staff chat service.")
+    return _pass("roundtrip", f"opened Barb thread {thread['id']}")
+
+
+def _fetch(name: str, client: FleetClient, path: str) -> tuple[CheckResult | None, Any]:
+    try:
+        return None, client.request("GET", path)
+    except FleetAPIError as exc:
+        return _api_failure(name, exc), None
+
+
+def run_doctor(client: FleetClient, *, now: datetime | None = None, with_roundtrip: bool = False) -> list[CheckResult]:
+    """Run every check; GET-only unless ``with_roundtrip``. Stops early if the server is unreachable."""
+    dns_tls = check_dns_tls(client.base_url)
+    if not dns_tls.ok:
+        return [dns_tls]
+    failure, _ = _fetch("reachability", client, "/api/health")
+    if failure is not None:
+        return [dns_tls, failure]
+    results = [dns_tls, _pass("reachability", f"{client.base_url} answered /api/health")]
+    token_result, principal = check_token(client)
+    results += [token_result, check_scopes(principal)]
+    version_failure, version = _fetch("version", client, "/api/version")
+    results.append(version_failure or check_version(version))
+    brief_failure, briefing = _fetch("briefing", client, "/api/coordination/briefing")
+    results.append(brief_failure or check_briefing_freshness(briefing, now=now))
+    if with_roundtrip:
+        results.append(check_roundtrip(client))
+    return results

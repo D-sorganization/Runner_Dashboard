@@ -423,6 +423,51 @@ async def get_queue_status(request: Request) -> dict:
     return annotate_runs_with_timing(raw)
 
 
+_FLEET_MERGE_CACHE_TTL = 60.0
+
+
+@router.get("/api/queue/merge-settings", dependencies=[Depends(require_fleet_peer)])
+async def get_queue_merge_settings(request: Request) -> dict:
+    """Return fleet-wide merge queue and branch protection drift status (RD#1850)."""
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+
+    cached = cache_get("fleet:merge_settings", _FLEET_MERGE_CACHE_TTL)
+    if cached is not None and isinstance(cached, dict):
+        return cached
+
+    from dashboard_config import REPO_ROOT
+    from fleet_merge_checker import (
+        DEFAULT_POLICY_PATH,
+        check_fleet,
+        fetch_live_repo_snapshot,
+        load_policy,
+    )
+
+    policy_path = REPO_ROOT / DEFAULT_POLICY_PATH
+    if not policy_path.is_file():
+        policy_path = DEFAULT_POLICY_PATH
+
+    policy = load_policy(policy_path)
+    token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
+    fleet_snapshots: dict[str, dict] = {}
+    for repo in policy.get("repositories", []):
+        try:
+            fleet_snapshots[repo] = fetch_live_repo_snapshot(repo, token)
+        except Exception as exc:
+            fleet_snapshots[repo] = {
+                "repo": repo,
+                "repo_details": {},
+                "protection": {},
+                "rulesets": [],
+                "findings": [f"API fetch failed: {exc}"],
+            }
+
+    report = check_fleet(policy, fleet_snapshots)
+    cache_set("fleet:merge_settings", report)
+    return report
+
+
 @router.get("/api/queue/stale", dependencies=[Depends(require_fleet_peer)])
 async def get_stale_queue_runs(
     request: Request,

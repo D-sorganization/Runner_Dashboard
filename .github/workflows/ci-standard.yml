@@ -18,6 +18,9 @@ on:
     # the same reason. `push` below still ignores them: post-merge CI does not
     # gate the required context. Enforced by tests/test_workflow_hygiene.py::
     # test_required_context_workflows_have_no_pull_request_path_filters.
+  # Merge queue (Repository_Management#1890): `quality-gate` and `tests` must
+  # report on the queue's merge commit. Non-PR events run full validation.
+  merge_group:
   workflow_dispatch:
     inputs:
       force_local:
@@ -37,7 +40,11 @@ concurrency:
 jobs:
   pick-runner:
     name: Select reversible CI runner
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet') }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet') }}
     timeout-minutes: 5
     outputs:
       runner: ${{ steps.select.outputs.runner }}
@@ -50,7 +57,15 @@ jobs:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
+          FORK_PR: ${{ github.event.pull_request &&
+            github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
+          if [ "$FORK_PR" = "true" ]; then
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "mode=hosted" >> "$GITHUB_OUTPUT"
+            echo "Fork PR - never routed to the self-hosted fleet (RM#1989)"
+            exit 0
+          fi
           if [ "$FORCE_LOCAL" = "true" ] || [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
             echo "runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
             echo "mode=local" >> "$GITHUB_OUTPUT"
@@ -59,13 +74,139 @@ jobs:
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
           fi
 
+  # ── Event tier + docs-only fast path (issue #1864, RM#1915) ─────────────
+  # Decides how much of this workflow an event needs:
+  #   pull_request -> tier=pr: lint, format, type check and fast tests. The
+  #                   scope detector below may also skip the Python lane when
+  #                   the PR touches no Python surface (docs-only fast path).
+  #   merge_group  -> tier=full: the whole suite, heavy scans and coverage.
+  #                   Never skipped: a queue group can mix several PRs.
+  #   push (main)  -> tier=post-merge: no duplicate heavy jobs. Main only
+  #                   moves through the merge queue with squash merges, so the
+  #                   pushed tree is the one merge_group already validated.
+  #                   ci-health-check (pins, line cap) still runs as a cheap
+  #                   post-merge sanity check.
+  #   anything else (workflow_dispatch, ...) -> tier=full (fail safe).
+  # quality-gate and tests-required read these outputs and report on every
+  # event; a failed `changes` job fails both (tests/test_workflow_hygiene.py).
+  changes:
+    name: Decide CI tier
+    needs: [pick-runner]
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    timeout-minutes: 5
+    outputs:
+      tier: ${{ steps.tier.outputs.tier }}
+      full_suite: ${{ steps.tier.outputs.full_suite }}
+      run_python_tests: ${{ steps.python-scope.outputs.run_python_tests || steps.tier.outputs.run_python_tests }}
+    steps:
+      - id: tier
+        name: Select CI tier for this event
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request)
+              # run_python_tests comes from the python-scope step below.
+              echo "tier=pr" >> "$GITHUB_OUTPUT"
+              echo "full_suite=false" >> "$GITHUB_OUTPUT"
+              ;;
+            push)
+              echo "tier=post-merge" >> "$GITHUB_OUTPUT"
+              echo "full_suite=false" >> "$GITHUB_OUTPUT"
+              echo "run_python_tests=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "tier=full" >> "$GITHUB_OUTPUT"
+              echo "full_suite=true" >> "$GITHUB_OUTPUT"
+              echo "run_python_tests=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+          echo "event=$EVENT_NAME"
+      - name: Determine Python validation scope
+        id: python-scope
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          for py in python3.12 python3.11 python3 python; do
+            if command -v "$py" >/dev/null 2>&1; then
+              PYTHON_BIN="$py"
+              break
+            fi
+          done
+          if [ -z "${PYTHON_BIN:-}" ]; then
+            echo "::error::No Python interpreter available for PR scope detection."
+            exit 1
+          fi
+
+          "$PYTHON_BIN" - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          import sys
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          pr_number = os.environ["PR_NUMBER"]
+          token = os.environ["GH_TOKEN"]
+          url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files?per_page=100"
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              files = [item["filename"] for item in json.load(response)]
+
+          # One page holds at most 100 files. A truncated listing is not proof
+          # that the PR is docs-only, so fail closed and run the Python lane.
+          truncated = len(files) >= 100
+
+          # Keep in sync with the "Report skipped Python validation" step below
+          # and with SCOPE_PREFIX_NOUNS in tests/test_ci_config.py. Every job
+          # gated on run_python_tests (quality-gate — the sole required status
+          # check — plus security-scan, tests, tests-required) is skipped when
+          # this predicate is false, so a missing prefix means a PR merges with
+          # no test signal at all.
+          prefixes = ("backend/", "clients/", "deploy/", "tests/")
+          exact = {
+              "pyproject.toml",
+              "uv.lock",
+              "requirements.txt",
+              "requirements-audit-ignore.txt",
+              "bandit.yaml",
+              ".pre-commit-config.yaml",
+          }
+          run_python = truncated or any(
+              path.startswith(prefixes)
+              or path in exact
+              for path in files
+          )
+          print(f"run_python_tests={'true' if run_python else 'false'}")
+          print(f"changed_file_count={len(files)}", file=sys.stderr)
+          EOF
+      - name: Report skipped Python validation
+        if: github.event_name == 'pull_request' && steps.python-scope.outputs.run_python_tests != 'true'
+        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, clients, deploy, tests, or Python dependency policy files."
+
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
-    needs: [pick-runner]
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    needs: [pick-runner, changes]
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 10
-    outputs:
-      run_python_tests: ${{ steps.python-scope.outputs.run_python_tests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify clean working tree
@@ -150,80 +291,8 @@ jobs:
             exit 1
           fi
           echo "All source files â‰¤ 500 lines."
-      - name: Determine Python validation scope
-        id: python-scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "run_python_tests=true" >> "$GITHUB_OUTPUT"
-            echo "Non-PR event: full Python validation required."
-            exit 0
-          fi
-
-          for py in python3.12 python3.11 python3 python; do
-            if command -v "$py" >/dev/null 2>&1; then
-              PYTHON_BIN="$py"
-              break
-            fi
-          done
-          if [ -z "${PYTHON_BIN:-}" ]; then
-            echo "::error::No Python interpreter available for PR scope detection."
-            exit 1
-          fi
-
-          "$PYTHON_BIN" - <<'EOF' >> "$GITHUB_OUTPUT"
-          import json
-          import os
-          import sys
-          import urllib.request
-
-          repo = os.environ["REPOSITORY"]
-          pr_number = os.environ["PR_NUMBER"]
-          token = os.environ["GH_TOKEN"]
-          url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files?per_page=100"
-          request = urllib.request.Request(
-              url,
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {token}",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
-          )
-          with urllib.request.urlopen(request, timeout=20) as response:
-              files = [item["filename"] for item in json.load(response)]
-
-          # Keep in sync with the "Report skipped Python validation" step below
-          # and with SCOPE_PREFIX_NOUNS in tests/test_ci_config.py. Every job
-          # gated on run_python_tests (quality-gate — the sole required status
-          # check — plus security-scan, tests, tests-required) is skipped when
-          # this predicate is false, so a missing prefix means a PR merges with
-          # no test signal at all.
-          prefixes = ("backend/", "clients/", "deploy/", "tests/")
-          exact = {
-              "pyproject.toml",
-              "uv.lock",
-              "requirements.txt",
-              "requirements-audit-ignore.txt",
-              "bandit.yaml",
-              ".pre-commit-config.yaml",
-          }
-          run_python = any(
-              path.startswith(prefixes)
-              or path in exact
-              for path in files
-          )
-          print(f"run_python_tests={'true' if run_python else 'false'}")
-          print(f"changed_file_count={len(files)}", file=sys.stderr)
-          EOF
-      - name: Report skipped Python validation
-        if: steps.python-scope.outputs.run_python_tests != 'true'
-        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, clients, deploy, tests, or Python dependency policy files."
       - name: Bootstrap environment
-        if: steps.python-scope.outputs.run_python_tests == 'true'
+        if: needs.changes.outputs.run_python_tests == 'true'
         run: |
           for py in python3.11 python3.12 python3.10 python3 python; do
             if command -v "$py" &>/dev/null; then
@@ -245,7 +314,7 @@ jobs:
           fi
           echo "$RUNNER_TEMP/health-venv/bin" >> "$GITHUB_PATH"
       - name: Fail-fast check â€” pytest can collect tests
-        if: steps.python-scope.outputs.run_python_tests == 'true'
+        if: needs.changes.outputs.run_python_tests == 'true'
         run: |
           if [ -f .venv/bin/activate ]; then
             source .venv/bin/activate
@@ -257,9 +326,13 @@ jobs:
           fi
 
   lint:
-    needs: [pick-runner, ci-health-check]
-    if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    needs: [pick-runner, changes, ci-health-check]
+    if: needs.changes.outputs.run_python_tests == 'true'
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 25
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -340,6 +413,8 @@ jobs:
           # Agent clients (#1228) are stdlib-only scripts, checked as their own module set.
           mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
       - name: Run bandit security scan
+        # Full tier only (merge_group / workflow_dispatch, issue #1864).
+        if: needs.changes.outputs.full_suite == 'true'
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
         # MEDIUM findings are allow-listed in bandit.yaml with rationale per finding.
         # Exits non-zero on HIGH; MEDIUM/LOW are suppressed via config.
@@ -351,7 +426,7 @@ jobs:
         # continue-on-error here so the job fails on HIGH findings.
 
       - name: Upload bandit report
-        if: always()
+        if: always() && needs.changes.outputs.full_suite == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.3.0
         with:
           name: bandit-security-report
@@ -378,6 +453,8 @@ jobs:
           fi
           echo "Documentation freshness check passed."
       - name: Security Audit (pip-audit)
+        # Full tier only (merge_group / workflow_dispatch, issue #1864).
+        if: needs.changes.outputs.full_suite == 'true'
         # Blocking for CRITICAL/HIGH CVEs.
         # Known LOW/MEDIUM CVEs are allow-listed in requirements-audit-ignore.txt
         # with rationale and expiry date per entry.
@@ -404,9 +481,14 @@ jobs:
           fi
 
   security-scan:
-    needs: [pick-runner, ci-health-check]
-    if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    needs: [pick-runner, changes, ci-health-check]
+    # Heavy scan: full tier only (merge_group / workflow_dispatch, issue #1864).
+    if: needs.changes.outputs.run_python_tests == 'true' && needs.changes.outputs.full_suite == 'true'
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -446,11 +528,16 @@ jobs:
 
   tests:
     needs:
+      - changes
       - ci-health-check
       - lint
       - pick-runner
-    if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    if: needs.changes.outputs.run_python_tests == 'true'
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -483,19 +570,26 @@ jobs:
             pip install -r requirements.txt
             echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
           fi
-      - name: Run Python tests with coverage (issue #342)
+      - name: Run Python tests
         env:
           PYTHONPATH: backend
+          FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
+        # Full tier (merge_group): whole suite with coverage (issue #342); the
+        # coverage floor is enforced there. PR tier: the fast subset without
+        # coverage instrumentation (issue #1864).
         run: |
-          if [ -d tests/ ]; then
+          if [ ! -d tests/ ]; then
+            echo "No tests directory found â€” skipping"
+            exit 0
+          fi
+          if [ "$FULL_SUITE" = "true" ]; then
             pip install pytest-cov==6.1.1 --quiet
             pytest tests/ --tb=short -n auto -m "not integration and not playwright" \
               --cov=backend --cov-report=xml --cov-report=term-missing
           else
-            echo "No tests directory found â€” skipping"
-            exit 0
+            pytest tests/ --tb=short -n auto -m "not integration and not playwright and not slow"
           fi
       - name: Upload coverage artifact
         if: always() && hashFiles('coverage.xml') != ''
@@ -514,28 +608,44 @@ jobs:
   tests-required:
     name: tests
     needs:
+      - changes
       - ci-health-check
       - tests
       - pick-runner
     if: always()
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
       - name: Confirm Python test matrix
         shell: bash
         env:
+          CHANGES: ${{ needs.changes.result }}
+          TIER: ${{ needs.changes.outputs.tier }}
           HEALTH: ${{ needs.ci-health-check.result }}
-          RUN_PYTHON_TESTS: ${{ needs.ci-health-check.outputs.run_python_tests }}
+          RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
         run: |
-          echo "ci-health-check: $HEALTH (run_python_tests=$RUN_PYTHON_TESTS)"
+          echo "changes: $CHANGES (tier=$TIER, run_python_tests=$RUN_PYTHON_TESTS)"
+          echo "ci-health-check: $HEALTH"
           echo "tests: $TESTS"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::changes reported '$CHANGES'; cannot trust the tier decision."
+            exit 1
+          fi
           if [ "$HEALTH" != "success" ]; then
             echo "::error::ci-health-check reported '$HEALTH'; cannot trust the Python scope decision."
             exit 1
           fi
-          if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$TESTS" = "skipped" ]; then
-            echo "PR touches no Python surface; test matrix intentionally skipped."
+          if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$TIER" != "full" ] && [ "$TESTS" = "skipped" ]; then
+            if [ "$TIER" = "post-merge" ]; then
+              echo "Push to main: the merge queue already ran the full suite on this tree."
+            else
+              echo "PR touches no Python surface; test matrix intentionally skipped."
+            fi
             exit 0
           fi
           if [ "$TESTS" != "success" ]; then
@@ -554,22 +664,34 @@ jobs:
   #
   # `if: always()` is load-bearing for the same reason.
   quality-gate:
-    needs: [pick-runner, ci-health-check, lint, tests-required, security-scan]
+    needs: [pick-runner, changes, ci-health-check, lint, tests-required, security-scan]
     if: always()
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
       - name: Require every gated job to succeed
         shell: bash
         env:
+          CHANGES: ${{ needs.changes.result }}
+          TIER: ${{ needs.changes.outputs.tier }}
+          FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
           HEALTH: ${{ needs.ci-health-check.result }}
-          RUN_PYTHON_TESTS: ${{ needs.ci-health-check.outputs.run_python_tests }}
+          RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TESTS: ${{ needs.tests-required.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
         run: |
           failed=0
-          echo "ci-health-check: $HEALTH (run_python_tests=$RUN_PYTHON_TESTS)"
+          echo "changes: $CHANGES (tier=$TIER, full_suite=$FULL_SUITE, run_python_tests=$RUN_PYTHON_TESTS)"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::changes reported '$CHANGES', expected 'success'."
+            failed=1
+          fi
+          echo "ci-health-check: $HEALTH"
           if [ "$HEALTH" != "success" ]; then
             echo "::error::ci-health-check reported '$HEALTH', expected 'success'."
             failed=1
@@ -581,11 +703,19 @@ jobs:
             if [ "$result" = "success" ]; then
               continue
             fi
-            # lint and security-scan skip by design on non-Python PRs;
-            # tests-required always runs and encodes that rule itself.
-            if [ "$result" = "skipped" ] && [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$job" != "tests" ]; then
-              echo "::notice::$job skipped: PR touches no Python surface."
-              continue
+            # Nothing may skip in the full tier. Otherwise lint and
+            # security-scan skip by design when the Python lane is off
+            # (docs-only PR, post-merge push); tests-required always runs and
+            # encodes that rule itself.
+            if [ "$result" = "skipped" ] && [ "$TIER" != "full" ]; then
+              if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$job" != "tests" ]; then
+                echo "::notice::$job skipped: Python lane is off for tier '$TIER'."
+                continue
+              fi
+              if [ "$job" = "security-scan" ] && [ "$FULL_SUITE" != "true" ]; then
+                echo "::notice::security-scan skipped: heavy scans run in the merge_group tier."
+                continue
+              fi
             fi
             echo "::error::$job reported '$result', expected 'success'."
             failed=1

@@ -140,11 +140,16 @@ _AUTH_EXEMPT_PATHS = {
     # Webhook receiver health probe — config status only, no sensitive data;
     # consumed by external uptime monitors that present no operator credential.
     "/api/linear/webhook/health",
+    # GitHub webhook for RD-1 CI-fix dispatch (#1881): authenticated by its own
+    # X-Hub-Signature-256 check against GITHUB_WEBHOOK_SECRET, fail closed when unset.
+    "/api/remediation/ci-fix/webhook",
     # Client error beacon (issue #1292): reports React/tab crashes so they appear in
     # the event log without operator intervention. Rate-limited by the handler.
     "/api/client-errors",
     # Local anonymous page-view counter (issue #1302 / SC-G1)
     "/api/usage/page-view",
+    # Session telemetry ingestion across sessions and fleet hooks (issue #1849 / RD-4)
+    "/api/usage/session-telemetry",
 }
 
 # Routes that authenticate by a mechanism OTHER than a resolved operator

@@ -5,10 +5,13 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from staff import consolidation
+
+_SAFE_BRANCH = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,13 @@ class RunRequest:
     # PR-consolidation decision from ``staff.consolidation.decide`` (#1213); None when not applicable.
     consolidation: dict[str, Any] | None = None
     origin_node: str = ""
+    pr_lifecycle: str = "arm_and_exit"
+    # Existing branch the worktree starts from instead of origin/main (RD-1 CI fixes, #1881).
+    head_ref: str = ""
+
+    def __post_init__(self) -> None:
+        if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
+            raise ValueError("head_ref must be a safe branch name of the target repo")
 
     @property
     def target_kind(self) -> str:
@@ -60,6 +70,8 @@ class RunPlan:
     thread_id: str = ""
     work_item_id: str = ""
     origin_node: str = ""
+    pr_lifecycle: str = "arm_and_exit"
+    head_ref: str = ""
 
     @property
     def strategy_mode(self) -> str:
@@ -88,5 +100,7 @@ class RunPlan:
             "focus": self.focus,
             "thread_id": self.thread_id,
             "work_item_id": self.work_item_id,
+            "pr_lifecycle": self.pr_lifecycle,
+            "head_ref": self.head_ref,
             "consolidation": dict(self.consolidation) if self.consolidation else None,
         }

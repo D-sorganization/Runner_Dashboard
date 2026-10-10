@@ -29,8 +29,9 @@ RESULT_CONTRACT = (
 
 FLEET_RULES = (
     "Fleet rules: work only inside this worktree; TDD, DbC, LoD, DRY; commit with a Conventional Commits "
-    "subject; if docs/development/HANDOFF.md exists update it in the same commit; push the branch and open a "
-    "DRAFT pull request; never merge, never force-push, never touch other worktrees or host configuration; "
+    "subject; if docs/development/HANDOFF.md exists update it in the same commit; push the branch, open a "
+    "ready pull request (not draft), arm auto-merge via automerge_guard, and end session (pr_lifecycle: arm_and_exit); "
+    "never merge, never force-push, never touch other worktrees or host configuration; "
     "never take an issue or PR labelled claim:local or under another agent's live lease; before choosing an "
     "issue, skip it if an open pull request already references it (gh pr list --state open --search '<number>'); "
     "never file bulk "
@@ -187,11 +188,27 @@ def clone_repo(repo: str) -> Path:
     return dest
 
 
-def add_worktree(checkout: Path, worktree: Path, branch: str) -> None:
-    """``git fetch`` then ``git worktree add -b <branch> <worktree> origin/main``."""
+def add_worktree(checkout: Path, worktree: Path, branch: str, *, start_ref: str = "") -> None:
+    """``git fetch`` then ``git worktree add -b <branch> <worktree> origin/<start_ref or main>``.
+
+    ``start_ref`` names an existing remote branch (a PR head, #1881); it is fetched
+    explicitly so a blobless clone has it even when it is not in the default refspec.
+    """
     worktree.parent.mkdir(parents=True, exist_ok=True)
     _git(checkout, "fetch", "origin", "--quiet")
-    _git(checkout, "worktree", "add", "-b", branch, str(worktree), "origin/main")
+    base = "origin/main"
+    if start_ref:
+        _git(checkout, "fetch", "origin", "--quiet", f"+refs/heads/{start_ref}:refs/remotes/origin/{start_ref}")
+        base = f"origin/{start_ref}"
+    _git(checkout, "worktree", "add", "-b", branch, str(worktree), base)
+
+
+def add_run_worktree(checkout: Path, worktree: Path, branch: str, head_ref: str = "") -> None:
+    """A run's worktree: from the PR head when the run fixes an existing PR (#1881), else origin/main."""
+    if head_ref:
+        add_worktree(checkout, worktree, branch, start_ref=head_ref)
+    else:
+        add_worktree(checkout, worktree, branch)
 
 
 def _git(cwd: Path, *args: str) -> None:

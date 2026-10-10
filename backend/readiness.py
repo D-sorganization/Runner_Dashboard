@@ -22,6 +22,7 @@ import logging
 import os
 import shutil
 import time
+from pathlib import Path
 from typing import Final, Literal, Protocol, runtime_checkable
 
 log = logging.getLogger("dashboard.readiness")
@@ -278,6 +279,101 @@ class RunnerHealthProbe:
         return "degraded", summary
 
 
+class RunnerPipCacheProbe:
+    """Check that each local runner's PIP_CACHE_DIR is writable (issue #1896).
+
+    Concurrent jobs on a shared pip cache collide, raising FileNotFoundError
+    or causing pip to disable the cache with ownership/permission warnings.
+    Each runner must have a writable, dedicated pip cache
+    (typically `<runner>/_work/_pip-cache`).
+    """
+
+    name = "runner_pip_cache"
+
+    def __init__(
+        self,
+        runner_root: Path | str | None = None,
+        cache_ttl_seconds: float = 5.0,
+    ) -> None:
+        from pathlib import Path
+
+        assert cache_ttl_seconds >= 0.0, "cache_ttl_seconds must be >= 0"
+        self._runner_root = (
+            Path(runner_root)
+            if runner_root
+            else Path(os.environ.get("RUNNER_BASE_DIR", str(Path.home() / "actions-runners")))
+        )
+        self._cache_ttl = cache_ttl_seconds
+        self._cached: tuple[float, ProbeStatus, str | None] | None = None
+
+    async def check(self) -> tuple[ProbeStatus, str | None]:
+        if self._cache_ttl > 0 and self._cached is not None:
+            ts, status, detail = self._cached
+            if (time.monotonic() - ts) < self._cache_ttl:
+                return status, detail
+
+        status, detail = await asyncio.to_thread(self._check_all_runners)
+        self._cached = (time.monotonic(), status, detail)
+        return status, detail
+
+    def _discover_runners(self) -> list[Path]:
+        if not self._runner_root.is_dir():
+            return []
+        runners: list[Path] = []
+        for child in sorted(self._runner_root.iterdir()):
+            if not child.is_dir():
+                continue
+            if child.name.startswith("runner-") or (child / "run.sh").exists() or (child / "bin").is_dir():
+                runners.append(child)
+        return runners
+
+    def _resolve_pip_cache(self, runner_dir: Path) -> Path:
+        env_file = runner_dir / ".env"
+        if env_file.is_file():
+            try:
+                for line in env_file.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("PIP_CACHE_DIR="):
+                        val = line.split("=", 1)[1].strip()
+                        if val:
+                            return Path(val)
+            except Exception:  # noqa: BLE001
+                pass
+        return runner_dir / "_work" / "_pip-cache"
+
+    def _check_path_writable(self, path: Path) -> tuple[bool, str | None]:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe_file = path / f".probe_write_{os.getpid()}"
+            probe_file.write_text("ok", encoding="utf-8")
+            probe_file.unlink(missing_ok=True)
+            return True, None
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
+
+    def _check_runner_pip_cache(self, runner_dir: Path) -> tuple[bool, str | None]:
+        cache_path = self._resolve_pip_cache(runner_dir)
+        writable, err = self._check_path_writable(cache_path)
+        if not writable:
+            return False, f"{runner_dir.name} ({cache_path}: {err})"
+        return True, None
+
+    def _check_all_runners(self) -> tuple[ProbeStatus, str | None]:
+        runners = self._discover_runners()
+        if not runners:
+            return "ok", None
+
+        unwritable: list[str] = []
+        for runner_dir in runners:
+            ok, err_detail = self._check_runner_pip_cache(runner_dir)
+            if not ok and err_detail:
+                unwritable.append(err_detail)
+
+        if unwritable:
+            return "down", f"runner pip cache unwritable on {len(unwritable)} runner(s): {', '.join(unwritable)}"
+
+        return "ok", None
+
+
 # ---------------------------------------------------------------------------
 # Aggregate
 # ---------------------------------------------------------------------------
@@ -288,6 +384,7 @@ _DEFAULT_PROBES: list[Probe] = [
     LeaseDbProbe(),
     PushDbProbe(),
     RunnerHealthProbe(),
+    RunnerPipCacheProbe(),
 ]
 
 

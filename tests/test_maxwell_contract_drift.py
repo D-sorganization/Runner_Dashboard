@@ -52,3 +52,15 @@ def test_main_returns_one_on_drift_without_issue_token(tmp_path: Path, capsys, m
     stderr = capsys.readouterr().err
     assert "differs from upstream" in stderr
     assert "cannot record drift issue" in stderr
+
+
+def test_workflow_sets_up_python_before_running_the_script() -> None:
+    """#1826: self-hosted runners have no ``python`` on PATH (exit 127)."""
+    workflow = Path(__file__).parent.parent / ".github" / "workflows" / "maxwell-contract-drift.yml"
+    text = workflow.read_text(encoding="utf-8")
+
+    setup = text.find("uses: actions/setup-python@")
+    run = text.find("python scripts/check_maxwell_contract_drift.py")
+    assert setup != -1, "compare job must install Python with actions/setup-python"
+    assert run != -1
+    assert setup < run

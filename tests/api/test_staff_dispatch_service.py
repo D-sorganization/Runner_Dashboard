@@ -239,3 +239,42 @@ def test_verifier_reports_the_runs_output_verification(
 
     assert verified is ok, message
     assert fragment in message
+
+
+@pytest.mark.asyncio
+async def test_dispatch_staff_run_skips_when_premise_rejected():
+    """RD-2 / #1847: dispatch_staff_run refuses dispatch when premise is rejected."""
+    from unittest.mock import patch
+
+    from fastapi import HTTPException
+    from staff.dispatch_service import DispatchCommand, dispatch_staff_run
+
+    cmd = DispatchCommand(
+        role="code-reviewer",
+        requested_by="operator",
+        repo="D-sorganization/Runner_Dashboard",
+        issue=42,
+        prompt="Fix local-only-runner-guard.yml failure",
+    )
+    caller = Principal(id="operator", type="user", name="Operator")
+    with patch(
+        "dispatch_premise.evaluate_dispatch_premise",
+        return_value=type(
+            "P",
+            (),
+            {
+                "allowed": False,
+                "reason": "already_resolved_on_main",
+                "detail": "check passing on main",
+                "comment": "already resolved on main at d354634",
+                "should_close": True,
+            },
+        )(),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await dispatch_staff_run(cmd, caller)
+        assert exc_info.value.status_code == 409
+        detail = exc_info.value.detail
+        assert isinstance(detail, dict)
+        assert detail["code"] == "premise_rejected"
+        assert detail["reason"] == "already_resolved_on_main"

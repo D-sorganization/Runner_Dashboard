@@ -10,6 +10,8 @@ feature, from proposal to ship. See the `development-logs` section of
 - **WIP limit:** 4
 - **Last audited:** 2026-09-28 by claude (merged-PR reconciliation; shipped entries archived)
 
+<!-- #1873: No material development-log change — main merged and the generated API snapshot regenerated; DL-#1871 is unchanged. -->
+
 ## States
 
 `proposed` → `in_progress` → `in_review` → `shipped`, with `parked`
@@ -18,9 +20,217 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1797 — follow-up retries launch through retry.py (BR-03)
+### DL-#1338-maxwell-mobile — SC-G6: mobile Maxwell page drops its chat
 
 - **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (last SC-G6 slice; agent brief 2026-10-04)
+- **Branch:** `claude/issue-1338`
+- **PR:** see the branch
+- **Paths:** `frontend/src/pages/Maxwell/Mobile.tsx`, `frontend/src/pages/Maxwell/MaxwellChat.tsx`, `frontend/src/pages/Maxwell/mobileTypes.ts`, `frontend/src/pages/Maxwell/__tests__/Mobile.test.tsx`, `tests/test_frontend_integrity.py`, `tests/frontend/mobile/viewport_profiles.json`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; vitest `frontend/src/pages/Maxwell frontend/src/shell` 315 passed (2 new tests RED first); tsc clean; integrity/mobile-harness pytest passed.
+- **Summary:** The phone Maxwell page keeps status, tasks and daemon controls, loses its chat and sessionStorage history, and links to the Staff Console for Maxwell chat. `/api/maxwell/chat` is unchanged.
+- **Next step:** Merge the PR through the queue; then #1338 closes and epic #1353 can close.
+
+### DL-#1880 — CI-fix routing on current models, agy option
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1880 (wiring gap tracked in #1881)
+- **Branch:** `fix/ci-fix-routing-models`
+- **PR:** see the branch
+- **Paths:** `backend/ci_fix_dispatch.py`, `tests/api/test_ci_fix_dispatch.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; `tests/api/test_ci_fix_dispatch.py` + `tests/test_dispatch_effort.py` 38 passed (route tests RED first).
+- **Summary:** `route_ci_fix` routes to Opus 5.5 (escalated), Codex `gpt-6-luna` (lint) and, for tests/logic, agy with Gemini 3.8 Flash when the staff `antigravity` adapter is unattended-capable, otherwise Sonnet 5.5. Today agy is chat-only, so the tests/logic tier routes to Sonnet 5.5.
+- **Next step:** Merge the PR through the queue.
+
+### DL-#1863 — Staff proposals tests stop leaking real run workers
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1863
+- **Branch:** `test/staff-threads-runner-leak`
+- **PR:** see the branch
+- **Paths:** `tests/conftest.py`, `tests/api/test_staff_proposals_api.py`, `tests/api/test_staff_thread_runs.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; proposals, thread-runs and threads API tests 49 passed three times with unhandled thread exceptions as errors. With the stub disabled, the guard fails all five leaking tests.
+- **Summary:** Five tests started real `staff-run-*` workers that outlived them: three proposals tests executing `staff.dispatch`, and two needs-input continuation tests in `test_staff_thread_runs.py`. The workers tripped `test_staff_threads_api.py`'s worktree guard, or ran `git worktree add` / `gh repo clone` between tests. A shared `staff_launches` fixture records `StaffRunner.launch` and fails on any leaked worker.
+- **Next step:** Merge the PR once CI Standard passes in the merge queue.
+
+### DL-#1871 — Spec Check covers backend; staged-only gitleaks at commit
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1871 (epic Repository_Management#1889)
+- **Branch:** `ci/1871-spec-check-backend`; `chore/1871-gitleaks-staged`; `fix/1871-spec-warning-update`
+- **PR:** see the branches (workflow change ships alone; the pre-commit change is a separate PR)
+- **Paths:** `.github/workflows/ci-spec-check.yml`, `tests/test_spec_check_workflow.py`, `.pre-commit-config.yaml`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; follow-up branch `fix/1871-spec-warning-update` makes the warning step edit a stale bot comment in place; its comment script executed under node with a stubbed `github` (create / update / no-op / never edit a human comment), update test RED then GREEN; 179 passed in `tests/test_spec_check_workflow.py` + `tests/test_workflow_hygiene.py` + `tests/test_workflow_action_pinning.py` + `tests/test_workflow_runner_routing.py`; actionlint clean.
+- **Summary:** Spec Check treats `backend/**` as source, so a backend-only PR without a SPEC.md update fails; its PR comment asks for one change-log row keyed by the PR and says never to bump the release-derived Spec Version (Repository_Management#1520). The commit-stage gitleaks hook scans staged changes only; CI Secrets keeps the full-history scan.
+- **Next step:** Accept a `changes/<issue>-*.md` fragment in Spec Check once Repository_Management#1922 / #1924 land and the fleet sync reaches this repository.
+
+### DL-#1890 — Merge queue replaces strict up-to-date protection
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** D-sorganization/Repository_Management#1890 (epic Repository_Management#1889; settings pilot Repository_Management#1900)
+- **Branch:** `ci/1890-merge-group-triggers` (merged as #1852); `ci/1890-required-checks-policy-merge-queue`; `ci/1900-queue-timeout-180`; `ci/1900-fleet-merge-policy-all-repos`
+- **PR:** #1852 (merged); #1854; #1859 (timeout 180); #1862 (all 41 repos)
+- **Paths:** `.github/workflows/ci-standard.yml`, `.github/workflows/anti-phantom-merge.yml`, `tests/test_workflow_hygiene.py`, `config/required_status_checks_policy.json`, `scripts/check_required_checks_drift.py`, `tests/test_required_checks_drift.py`, `tests/contracts/`, `config/fleet_merge_policy.json`, `backend/fleet_merge_checker.py`, `tests/test_fleet_merge_checker.py`
+- **Started:** 2026-10-03
+- **Last verified:** 2026-10-04 @ SELF; `config/fleet_merge_policy.json` lists all 41 queue-enabled repositories; the live snapshot reads protection on each repo's own default branch and ignores disabled/deleted workflows; 35 passed in `tests/test_fleet_merge_checker.py` + `tests/test_required_checks_drift.py`.
+- **Summary:** Required checks report on `merge_group` (#1852). The required-checks policy now also requires the merge queue (squash, ALLGREEN, build 5, group 1–5, 5 min wait, 180 min timeout — raised from 60 on 2026-10-04 after runner saturation timed out queue entries) and `require_branches_up_to_date: false`; `check_required_checks_drift.py` reports drift on either. Settings were applied on 2026-10-04 by the #1900 pilot.
+- **Next step:** Wire `check_required_checks_drift.py --live` into the daily fleet settings drift check (#1850).
+
+### DL-#1864 — Event-tiered CI Standard and fleet pre-push parity
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1864 (epic Repository_Management#1889; RM sibling Repository_Management#1915)
+- **Branch:** `ci/1864-event-tiered-ci`; `chore/1864-prepush-parity` (merged as #1868); `chore/1929-resync-run-pytest-diff`
+- **PR:** see the branches (CI tiers and pre-push parity ship as separate PRs)
+- **Paths:** `.github/workflows/ci-standard.yml`, `tests/test_workflow_hygiene.py`, `tests/test_ci_config.py`, `.pre-commit-config.yaml`, `scripts/run_pytest_diff.py`, `scripts/run_mypy_diff.py`, `tests/test_run_pytest_diff.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; vendored `scripts/run_pytest_diff.py` re-synced to Repository_Management PR #1930 (`48893688`), "Local fix" fork removed; no-fork test RED then GREEN; 20 passed in `tests/test_run_pytest_diff.py`.
+- **Summary:** `ci-standard.yml` runs the full suite once, in `merge_group`. `pull_request` gets lint/format/type check and fast tests; `push` to main runs only the cheap `ci-health-check`. A `changes` job owns the tier and the docs-only detector (PR only, fail closed). Pre-push drops bandit and runs diff-scoped pytest vendored from Repository_Management `shared_scripts/run_pytest_diff.py`.
+- **Next step:** After both PRs merge, compare one merge_group run time against the PR-tier run time on a code PR and record it on #1864.
+
+### DL-#1840 — Refresh vulnerable container security pins
+
+- **State:** in_review
+- **Owner:** codex (Gemini 3.8 Flash source-fed CLI draft and review)
+- **Issue:** #1840
+- **Branch:** `fix/issue-1840-container-security` from `origin/main` (`f6dffd96`)
+- **PR:** #1841
+- **Paths:** `Dockerfile`, `uv.lock`, `requirements.lock.txt`, `tests/test_deploy_hardening.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED four security assertions; GREEN63Windows hardening tests,71Linux hardening/HTTP tests with isolated frozen dependencies, ruff lint/format, real Docker build/hash enforcement and Trivy0.70 HIGH/CRITICAL ignore-unfixed scan exit0.
+- **Summary:** Failed release scan reported seven Debian and two Python fixable HIGH findings. Verified official Debian security replacements OpenSSL3.5.7-1~deb13u3/PCRE2 10.46-1~deb13u3 and PyPI urllib3 2.8.0. Only urllib3 changed in the Python graph; generated hashes match publisher. Preserve base digest/runtime bounds/scan gates; no production mutation. Second Gemini review found an overstated test docstring, corrected.
+- **Next step:** Open focused PR, pass required exact-head checks and guarded merge; synchronize release PR #1835 afterward. Preserve unrelated pending deployment approvals.
+
+### DL-#1865 — Effort per dispatch kind, epic expansion on tier:cli, weekly usage report
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1865 (epic Repository_Management#1889)
+- **Branch:** `feat/1865-effort-usage-report`
+- **PR:** see the branch
+- **Paths:** `backend/dispatch_effort.py`, `backend/epic_expansion.py`, `backend/usage_report.py`, `backend/agent_dispatch_router.py`, `backend/ci_fix_dispatch.py`, `backend/dispatch/envelope.py`, `backend/dispatch_contract.py`, `backend/session_telemetry.py`, `backend/routers/usage_metrics.py`, `backend/gh_client.py`, `backend/server.py`, `tests/test_dispatch_effort.py`, `tests/test_epic_expansion.py`, `tests/test_usage_report.py`, `tests/api/test_usage_report_routes.py`, `tests/test_agent_dispatch_router.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; 49 passed in dispatch effort/epic/router tests and 14 in usage report tests; ruff, ruff format and mypy `backend/` clean.
+- **Summary:** Every dispatch kind resolves a reasoning effort (unknown → medium) that rides on the envelope, CI-fix routes and the dispatch workflow inputs. `expand_epic_children` routes epic expansion to tier:cli/Sonnet at low effort with a template that links the fleet rules. The weekly usage report renders RD-4 telemetry (this week vs last week) and creates or updates one comment per ISO week on the `usage-report` issue in Repository_Management.
+- **Next step:** After merge, set `USAGE_REPORT_WEEKLY_ENABLED=1` on the hub node, run `POST /api/usage/report/weekly` once, and pin the created issue.
+
+### DL-#1836 — Observe systemd watchdog recovery explicitly
+
+- **State:** in_progress
+- **Owner:** codex (Gemini 3.8 Flash drafted fix via agy CLI)
+- **Issue:** #1836
+- **Branch:** `test/issue-1836-watchdog-recovery` from `origin/main` (`b6cee8df`)
+- **PR:** not created
+- **Paths:** `tests/test_systemd_watchdog.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED full Linux suite5605cases has one failure; controlled300ms logging delay reproduces it; GREEN same delayed reproduction passes, Linux10watchdog tests pass, Windows9pass/1platformskip; ruff lint/format pass.
+- **Summary:** Wait for successful notifier retry with a2s event deadline; always cancel/join the background task. Preserve recovery/count and cancellation contracts; production code unchanged.
+- **Next step:** Open focused PR and collect full Linux rerun in isolated validation checkout.
+
+### DL-#1916 — One spec-check workflow per repository
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** D-sorganization/Repository_Management#1916 (epic Repository_Management#1889); Runner_Dashboard half
+- **Branch:** `ci/1916-merge-spec-check`
+- **PR:** see the branch
+- **Paths:** `.github/workflows/ci-spec-check.yml`, `.github/workflows/spec-check-enhanced.yml` (removed), `.github/workflows/local-only-runner-guard.yml`, `config/workflow_runner_routing_policy.json`, `tests/test_spec_check_workflow.py`
+- **Started:** 2026-10-04
+- **Last verified:** 2026-10-04 @ SELF; `tests/test_spec_check_workflow.py` 13 passed (2 RED first); runner-routing, hygiene and CI config tests 163 passed; `check_workflow_runner_routing.py` 0 violations.
+- **Summary:** `spec-check-enhanced.yml` duplicated `ci-spec-check.yml` with a strict subset of its source patterns. It is deleted; the survivor keeps the "Spec Check" name, the `spec-exempt` label skip and the label triggers. Neither workflow is a required context, so the required-checks policy is unchanged.
+- **Next step:** Merge; the Repository_Management half of #1916 ships separately.
+
+### DL-#1832 — Portable Windows validation harnesses
+
+- **State:** in_progress
+- **Owner:** codex (Gemini 3.8 Flash drafts and review)
+- **Issue:** #1832
+- **Branch:** `fix/issue-1832-windows-validation` from `origin/main` (`9755f69c`)
+- **PR:** not created
+- **Paths:** `tests/deploy/test_wait_healthy.py`, `tests/test_reap_wsl_leaked_chrome.py`, `tests/unit/test_staff_watchdog.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED targeted baseline exits 1 with Windows shell/startup failures; GREEN all 20 targeted tests pass on Windows; standalone reaper tests and ruff lint/format pass. Linux targeted: 19 passed, one cross-environment Git-index skip (passed Windows).
+- **Summary:** Reuse the existing compatible Bash discovery/path helper; permit two Python interpreter startups before testing idle process-tree termination and poll boundedly for descendant death. No production timeout change.
+- **Next step:** Finish Linux validation, open focused PR, then collect full Linux suite and prepare qualified release.
+
+### DL-#1830 — Fresh setup uses the Maxwell daemon listener
+
+- **State:** shipped
+- **Owner:** codex (Gemini 3.8 Flash draft and review)
+- **Issue:** #1830
+- **Branch:** `fix/issue-1830-maxwell-template`
+- **PR:** #1831 (merged)
+- **Paths:** `.env.example`, `tests/test_env_template.py`, `SPEC.md`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ SELF; RED fails 8322 != 8080; GREEN 60 template/config/registry tests pass; ruff lint/format pass; SPEC freshness CI identified the missing changelog, now added for PR #1831.
+- **Summary:** Copying the template previously overrode corrected runtime defaults with a pool dashboard port. Align the example to Maxwell's 8080 listener. TDD executed; Gemini draft reviewed against exact runtime source.
+- **Next step:** Released source awaits a new qualified deployment; main merge is `9755f69c`.
+
+### DL-#1826 — Maxwell Contract Drift has no Python on self-hosted runners
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1826
+- **Branch:** `fix/maxwell-contract-drift-python` from `origin/main` (`d86c7732`)
+- **PR:** #1827
+- **Paths:** `.github/workflows/maxwell-contract-drift.yml`, `tests/test_maxwell_contract_drift.py`
+- **Started:** 2026-09-30
+- **Last verified:** 2026-09-30 @ `d86c7732` (RED: the new workflow test fails on main; GREEN: 160 passed across the drift, action-pinning, runner-routing, workflow-hygiene, scheduled-workflow and SPEC change-log tests)
+- **Summary:** The daily `compare` job ran `python scripts/check_maxwell_contract_drift.py` with no setup step, and the `d-sorg-fleet` runners have no `python` on PATH, so it exited 127 every day since at least 2026-09-25 (run 36692266598). The job now installs Python 3.11 with the repo's pinned `actions/setup-python` SHA before the step; a test asserts the order.
+- **Next step:** Pass CI, merge PR #1827, and confirm with a `workflow_dispatch` run.
+
+### DL-#1776 — Board-accepted RD review items BR-01..18: turnover of the remainder
+
+- **State:** parked
+- **Owner:** unassigned (was claude; turned over 2026-09-30)
+- **Issue:** #1776 (Codex review PR with 18 draft items); Board 2026-09-29 (RM#1874, archive RM#1875) accepted them as #1795–#1811
+- **Branch:** not applicable (tracker; each item has its own entry and branch)
+- **PR:** not applicable
+- **Paths:** `docs/development/HANDOFF.md`, `docs/development/DEVELOPMENT_LOG.md`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-30 @ `d86c773` (no open claude PRs or `claim:claude` issues; issue states read from GitHub)
+- **Summary:** Shipped: BR-01 #1795, BR-02 #1796, BR-03 #1797, BR-04 #1798, BR-05 #1799 and BR-11 #1804, plus #1819 (stale OpenAPI snapshot, and backend-only PRs now run `generate-api:check`). BR-12 #1805 merged as PR #1813 and stays open only for physical-device checks (200% zoom, native keyboard, phone safe areas, screen reader) that an agent cannot do. BR-08 is deferred to the 2026-10-25 freeze. BR-06/07/09/10/13/14/15/16/17/18 (#1800–#1803, #1806–#1811) are `judgement:design`: per CLAUDE.md nobody implements them until two agents post design opinions, the opinions converge and the owner relabels them `judgement:objective`. Owner decisions pending: BR-06 availability objectives; whether a Held role blocks or only warns on manual dispatch (BR-11); provider sign-in state needs BR-09 #1802.
+- **Next step:** Post a structured design opinion on #1800 (BR-06), the first design-gated item.
+
+### DL-#1799 — unique default fleet session per client (BR-05)
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1799 (Board 2026-09-29, RD review PR #1776 item BR-05)
+- **Branch:** `fix/unique-agent-session-1799` from `origin/main` (`6458d3c`)
+- **PR:** PR #1821, merged
+- **Paths:** `clients/fleet/fleet_validators.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleetctl.py`, `clients/fleet/fleet_mcp.py`, `docs/agents/connect.md`, `tests/clients/test_fleet_session_identity.py`, `tests/clients/test_fleet_client.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `6458d3c` (RED: 6 of 9 new tests fail on main; GREEN: `tests/clients` and `tests/api/test_coordination_api.py` pass; ruff clean)
+- **Summary:** `default_session` derived `<agent>-<host>-<YYYYMMDD>`, so two Codex sessions on one computer on one day shared presence, mailbox attribution and release. It now appends a random 6-hex suffix; `FleetClient` mints it once per agent and caches it, so one client (and one MCP server process) keeps its session across calls. An explicit `FLEET_SESSION` / `--as-session` / per-call `session` still wins and is the resume path. `fleetctl` prints a derived session on stderr as an `export FLEET_SESSION=...` hint. `FleetClient.identity()` reports agent (principal), host, session and session source separately; staff run ids stay separate on `/api/staff/runs`.
+- **Next step:** None; merged as PR #1821 (`6909c69`).
+
+### DL-#1798 — fair follow-up sweep with durable claims (BR-04)
+
+- **State:** shipped
+- **Owner:** claude
+- **Issue:** #1798 (Board 2026-09-29, RD review PR #1776 item BR-04; depends on BR-03 #1797)
+- **Branch:** `fix/followup-fair-sweep-1798` from `origin/main` (`932d4b8`)
+- **PR:** PR #1825, merged
+- **Paths:** `backend/staff/followup.py`, `backend/staff/followup_ledger.py`, `backend/staff/work_items.py`, `backend/staff/decision_sla.py`, `backend/staff/conversations.py`, `backend/staff/conversation_proposals.py`, `backend/routers/staff_followup.py`, `tests/api/test_staff_followup_fair_sweep.py`
+- **Started:** 2026-09-29
+- **Last verified:** 2026-09-29 @ `911a81b` (RED: all 7 new tests fail on the BR-03 base; GREEN: 7 passed; 1161 passed, 1 skipped in the staff/followup/decision/work-item/proposal/conversation/inbox selection of `tests/api` and `tests/unit`; ruff and mypy clean)
+- **Summary:** The sweep read `list_work_items(limit=100)` (newest first), so an overdue item behind 100 newer ones was never checked; debounce, history and counters were process dictionaries; the decision scan stopped at the newest 500 pending proposals. The sweep now walks `WorkItemStore.list_active_page` (earliest deadline first, keyset cursor) and claims each target in `FollowupLedger` with one conditional UPSERT on `followup_checks.next_check_at`, releasing it when no action was needed. Records persist in `followup_records`; the digest counts retries and reroutes from them. `overdue_decisions` pages every pending deadline through `list_proposals(after_deadline=...)`. `SweepBacklog` reports active, overdue, oldest due age, overdue decisions and duration.
+- **Next step:** None; merged as PR #1825 (`1755822`).
+
+### DL-#1797 — follow-up retries launch through retry.py (BR-03)
+
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1797 (Board 2026-09-29, RD review PR #1776 item BR-03; depends on BR-01 #1795 and BR-02 #1796)
 - **Branch:** `fix/followup-retry-launch-1797` from `origin/main` (`6458d3c`, BR-01 and BR-02 merged)
@@ -29,33 +239,33 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `1b84dff` (GREEN: 9 retry-launch tests, 30 followup and retry tests; 1208 passed in the staff/retry/followup/dispatch/runner/idempotency selection of `tests/api` and `tests/unit`; ruff clean)
 - **Summary:** The follow-up engine wrote a `queued` retry row and linked it, but no worker consumed it; the scheduler then treated it as active work. `launch_retry(runner, failed, source, holds, allow_classes)` re-reads the run and applies `should_retry` (class, attempts, budget) and the schedule holds. It inserts `{root}-a{n}` with the original's thread, work-item and origin links, then starts the worker through `runner.launch`. A second claimant gets `already claimed`. The follow-up engine takes injectable `runner`/`holds`, cancels and fails a stalled original first, allows the `stalled` class on that path only, links the attempt, records `retry_pending` when another path owns it, and escalates with the refusal reason otherwise. `handle_post_execution_retry` uses the same deterministic ids and now copies provenance.
-- **Next step:** Merge PR #1818; then rebase BR-04 (#1798) onto main and open its PR.
+- **Next step:** None; merged as PR #1818 (`932d4b8`).
 
 ### DL-#1804 — Staff Console role readiness and context from real data (BR-11)
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1804 (Board 2026-09-29, RD review PR #1776 item BR-11; BR-09 #1802 capability contract not built)
 - **Branch:** `fix/role-readiness-1804` from `origin/main` (`6458d3ca`)
-- **PR:** not created
+- **PR:** PR #1822, merged
 - **Paths:** `frontend/src/pages/StaffConsole/` (`roleContextApi.ts`, `roleDetail.ts`, `useRoleContext.ts`, `ContextReadiness.tsx`, `MobileContextDrawer.tsx`, `ContextPane.tsx`, `Desktop.tsx`, `Mobile.tsx`, `RosterRow.tsx`, `rosterUtils.ts`, `useStaffConsole.ts`, `contextTypes.ts`, `types.ts`, CSS), `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/pages/StaffConsole/__tests__/roleReadiness.test.tsx`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 @ `6458d3ca` + working tree (RED: 9/9 new mounted-path tests failed on base; GREEN: 359 passed across `frontend/src/pages/StaffConsole`, `frontend/src/pages/Staff` and `frontend/src/hooks`; `npm run typecheck` and changed-file ESLint clean)
 - **Summary:** The roster and context pane show only readiness the backend reported. Provider installation, schedule enabled/hold/next fire, board offline nodes, role runs and work items, and thread-linked runs and work items load through the staff React Query layer from existing routes. Roles read Held, Unavailable (no provider installed), Status unknown or Idle (installed provider) distinctly; loading or a failed source is never shown as ready. The schedule switch persists via `PUT /roles/{role}/schedule` with rollback, or is disabled with its reason. Sign-in state is not reported by the backend and awaits BR-09.
-- **Next step:** Push `fix/role-readiness-1804` and open the PR.
+- **Next step:** None; merged as PR #1822 (`de107fc`).
 
-### DL-#1819 — regenerate the stale OpenAPI snapshot on main
+### DL-#1819 — stale OpenAPI snapshot on main, and the check backend-only PRs skipped
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1819
-- **Branch:** `fix/openapi-snapshot-regen` from `origin/main` (`6458d3c`)
-- **PR:** not created
-- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`
+- **Branch:** `ci/api-contract-on-backend-prs-1819` from `origin/main` (`2cef164`); the snapshot regeneration shipped as PR #1820
+- **PR:** PRs #1820 (snapshot) and #1823 (workflow), merged
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `.github/workflows/frontend-tests.yml`, `tests/frontend/test_api_generation_contract.py`
 - **Started:** 2026-09-29
-- **Last verified:** 2026-09-29 @ `6458d3c` (`npm run generate-api:check` passes after regeneration; `npm run typecheck` clean)
-- **Summary:** `Frontend Tests / TypeScript typecheck (tsc)` failed on every push to main since #1812, because #1812, #1814 and #1817 changed backend models and routes without regenerating the snapshot, and the PR frontend scope skipped `generate-api:check` for backend-only diffs. This regenerates the snapshot and types only. Running the check on backend-only PRs is the follow-up named in #1819 and needs a workflow change, which ships alone.
-- **Next step:** Open the PR, mark it ready and arm auto-merge.
+- **Last verified:** 2026-09-29 @ `2cef164` (RED: the new workflow-contract test fails on main; GREEN: `tests/frontend/test_api_generation_contract.py`, `tests/test_frontend_typecheck_gate.py` and the workflow hygiene/pinning tests pass)
+- **Summary:** #1812, #1814 and #1817 changed backend models and routes without regenerating `frontend/src/lib/openapi.json`, and main's `Frontend Tests / TypeScript typecheck (tsc)` then failed on every push. PR #1820 regenerated the snapshot and types. The cause was `frontend-scope` skipping the `typecheck` job (which runs `generate-api:check`) for backend-only diffs; it now emits `run_api_contract` (frontend changes, any `backend/` change, and non-PR events) and gates `typecheck` on it.
+- **Next step:** None; merged as PRs #1820 (snapshot) and #1823 (workflow) (`d86c773`).
 
 ### DL-#1796 — dispatch admission and audit before the worker starts (BR-02)
 
@@ -85,16 +295,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1787 — one route for agents to queue suggestions and draft PRs for the Board
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1787
 - **Branch:** `feat/board-queue-route-1787`
-- **PR:** #1812
+- **PR:** PR #1812, merged
 - **Paths:** `backend/proposals/`, `backend/staff/board_queue.py`, `backend/staff/groups.py`, `backend/staff/action_executors.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleet_tools.py`
 - **Started:** 2026-09-29
 - **Last verified:** 2026-09-29 (RED: new tests failed on main; GREEN: 398 passed, 1 skipped across `tests/clients`, the proposals store/routes, board-queue, board-convene, staff groups/actions/reply-contract, owner-request and code-request suites; `ruff check`/`ruff format` clean)
 - **Summary:** Proposals carry an optional `pull_request` (`owner/repo#N`) in the form's linked field. `board.convene` with `include_queue` gives the seats every open `board:proposal` item with its own text, seat-only, and asks for one disposition per proposal. Built after the 2026-09-29 Board sessions, where seats given only a summary table guessed item content and misnumbered items.
-- **Next step:** Open the PR, merge it, deploy to Desk, and ask Barb to take the open proposals to the Board.
+- **Next step:** None; merged as PR #1812 (`9974b7f`).
 
 ### DL-#1805 — mobile Staff Console tabs sit under the shell's bottom nav (BR-12)
 

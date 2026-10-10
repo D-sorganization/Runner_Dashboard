@@ -347,7 +347,7 @@ def test_plan_validates_role_provider_and_target(staff: runner_mod.StaffRunner) 
         staff.plan(runner_mod.RunRequest(role="night-watch", provider="fake"))
     plan = staff.plan(runner_mod.RunRequest(role="night-watch", provider="fake", prompt="sweep"))
     assert plan.provider == "fake" and plan.argv[0] == sys.executable
-    assert "Night Watch" in plan.prompt and "DRAFT pull request" in plan.prompt
+    assert "Night Watch" in plan.prompt and "arm_and_exit" in plan.prompt
     assert plan.branch.startswith("staff/night-watch-task-")
     assert plan.lease_ritual is False
 

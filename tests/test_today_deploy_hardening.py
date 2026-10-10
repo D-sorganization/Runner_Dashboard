@@ -170,6 +170,32 @@ def test_job_completed_hook_removes_the_lockfile() -> None:
     assert "rm -f " in src and "$LOCK_FILE" in src
 
 
+# ─── Issues #1895 & #1896: runner TMPDIR and PIP_CACHE_DIR lifecycle ───────
+
+
+def test_job_started_hook_recreates_scratch_and_cache() -> None:
+    """job-started.sh must recreate $TMPDIR and $PIP_CACHE_DIR if set (#1895, #1896)."""
+    src = _read(_DEPLOY / "runner-hooks" / "job-started.sh")
+    assert "TMPDIR:-" in src
+    assert "PIP_CACHE_DIR:-" in src
+    assert 'mkdir -m 0755 -p "$TMPDIR"' in src or 'mkdir -p "$TMPDIR"' in src
+    assert 'mkdir -m 0755 -p "$PIP_CACHE_DIR"' in src or 'mkdir -p "$PIP_CACHE_DIR"' in src
+
+
+def test_cleanup_runner_workdir_excludes_scratch_and_cache() -> None:
+    """cleanup_runner_workdir must exclude _tmp and _pip-cache from deletion (#1895, #1896)."""
+    src = _read(_DEPLOY / "runner-cleanup.sh")
+    assert "! -name '_tmp'" in src
+    assert "! -name '_pip-cache'" in src
+
+
+def test_configure_runner_pipcache_script_structure() -> None:
+    """configure-runner-pipcache.sh must set PIP_CACHE_DIR in runner .env (#1896)."""
+    src = _read(_DEPLOY / "configure-runner-pipcache.sh")
+    assert "PIP_CACHE_DIR=" in src
+    assert 'RUNNER_PIPCACHE_SUBDIR="${RUNNER_PIPCACHE_SUBDIR:-_work/_pip-cache}"' in src
+
+
 # ─── PR #667: deploy-host.sh single-command entrypoint ───────────────────────
 
 

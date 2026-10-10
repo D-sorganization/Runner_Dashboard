@@ -3548,6 +3548,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/queue/merge-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Queue Merge Settings
+         * @description Return fleet-wide merge queue and branch protection drift status (RD#1850).
+         */
+        get: operations["get_queue_merge_settings_api_queue_merge_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/queue/purge-stale": {
         parameters: {
             query?: never;
@@ -3620,6 +3640,109 @@ export interface paths {
         get: operations["get_queue_status_api_queue_status_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remediation/ci-fix/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Ci Fix Endpoint
+         * @description Launch a capped CI-fix session for an open pull request through the staff dispatch path.
+         *
+         *     409 while another CI-fix session holds the PR; 501 when the routed provider is not
+         *     installed on this node (nothing is launched and the lock is released).
+         */
+        post: operations["dispatch_ci_fix_endpoint_api_remediation_ci_fix_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remediation/ci-fix/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Ci Fix Endpoint
+         * @description Evaluate whether an incoming event payload warrants an automated CI-fix session.
+         */
+        post: operations["evaluate_ci_fix_endpoint_api_remediation_ci_fix_evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remediation/ci-fix/locks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ci Fix Locks Endpoint
+         * @description List all active CI-fix PR concurrency locks.
+         */
+        get: operations["list_ci_fix_locks_endpoint_api_remediation_ci_fix_locks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remediation/ci-fix/locks/{repo}/{pr_number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Release Ci Fix Lock Endpoint
+         * @description Release a CI-fix concurrency lock for a PR.
+         */
+        delete: operations["release_ci_fix_lock_endpoint_api_remediation_ci_fix_locks__repo___pr_number__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remediation/ci-fix/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Github Ci Fix Webhook
+         * @description Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.
+         */
+        post: operations["github_ci_fix_webhook_api_remediation_ci_fix_webhook_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4977,6 +5100,61 @@ export interface paths {
         put?: never;
         /** Post Page View */
         post: operations["post_page_view_api_usage_page_view_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/usage/report/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Weekly Report
+         * @description Render this ISO week's usage report and create/update its comment (idempotent).
+         */
+        post: operations["post_weekly_report_api_usage_report_weekly_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/usage/session-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session Metrics */
+        get: operations["get_session_metrics_api_usage_session_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/usage/session-telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session Telemetry */
+        get: operations["get_session_telemetry_api_usage_session_telemetry_get"];
+        put?: never;
+        /** Post Session Telemetry */
+        post: operations["post_session_telemetry_api_usage_session_telemetry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6761,6 +6939,64 @@ export interface components {
             spent_usd: number;
         };
         /**
+         * CIFixDispatchRequest
+         * @description Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).
+         */
+        CIFixDispatchRequest: {
+            /** Attempt Number */
+            attempt_number?: number | null;
+            /**
+             * Base Ref
+             * @default main
+             */
+            base_ref: string;
+            /** Branch */
+            branch: string;
+            /** Conflicting Files */
+            conflicting_files?: string[] | null;
+            /** Failing Tests */
+            failing_tests?: string[] | null;
+            /** Failure Type */
+            failure_type?: ("lint" | "test" | "security" | "spec" | "conflict" | "unknown") | null;
+            /**
+             * From Queue
+             * @default false
+             */
+            from_queue: boolean;
+            /**
+             * Kind
+             * @default ci_failure
+             * @enum {string}
+             */
+            kind: "ci_failure" | "merge_conflict";
+            /**
+             * Log Tail
+             * @default
+             */
+            log_tail: string;
+            /**
+             * Pr Diff
+             * @default
+             */
+            pr_diff: string;
+            /** Pr Number */
+            pr_number: number;
+            /** Repo */
+            repo: string;
+            /** Run Id */
+            run_id?: number | null;
+            /**
+             * Session Id
+             * @default
+             */
+            session_id: string;
+            /**
+             * Workflow Name
+             * @default
+             */
+            workflow_name: string;
+        };
+        /**
          * ChildExecutionRecord
          * @description Runtime tracking record for one planned child issue.
          */
@@ -8168,6 +8404,98 @@ export interface components {
             /** Enabled */
             enabled: boolean;
         };
+        /**
+         * SessionTelemetryPayload
+         * @description Session telemetry payload (issue #1849 / RD-4).
+         */
+        SessionTelemetryPayload: {
+            /**
+             * Context Size
+             * @description Context tokens before first prompt
+             * @default 0
+             */
+            context_size: number;
+            /**
+             * Cost After Pr Usd
+             * @description Cost spent after PR opened
+             * @default 0
+             */
+            cost_after_pr_usd: number;
+            /**
+             * Cost Usd
+             * @description Total session cost
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Docs Merge Conflicts
+             * @description Docs merge conflict count
+             * @default 0
+             */
+            docs_merge_conflicts: number;
+            /**
+             * Environment
+             * @description Execution environment
+             * @default default
+             */
+            environment: string;
+            /**
+             * Linked Pr
+             * @description Linked PR
+             */
+            linked_pr?: number | null;
+            /**
+             * Model
+             * @description Model identifier
+             * @default
+             */
+            model: string;
+            /**
+             * Origin
+             * @description Origin
+             * @default dashboard-dispatched
+             */
+            origin: string;
+            /**
+             * Pr Merged
+             * @description Whether PR merged
+             * @default false
+             */
+            pr_merged: boolean;
+            /**
+             * Pre Push Duration S
+             * @description Pre-push hook duration in seconds
+             */
+            pre_push_duration_s?: number | null;
+            /**
+             * Recorded At
+             * @description ISO timestamp of record
+             */
+            recorded_at?: string | null;
+            /**
+             * Session Id
+             * @description Session ID
+             */
+            session_id: string;
+            /**
+             * Turns Count
+             * @description Number of turns
+             * @default 0
+             */
+            turns_count: number;
+            /**
+             * Wakeups After Pr
+             * @description Wake-ups after PR opened
+             * @default 0
+             */
+            wakeups_after_pr: number;
+            /**
+             * Wakeups Count
+             * @description Total wake-up count
+             * @default 0
+             */
+            wakeups_count: number;
+        };
         /** SetKeyRequest */
         SetKeyRequest: {
             /**
@@ -9388,6 +9716,24 @@ export interface components {
              * @default
              */
             route: string;
+        };
+        /**
+         * WeeklyUsageReportRequest
+         * @description Body for ``POST /api/usage/report/weekly`` (USE-1, #1865).
+         */
+        WeeklyUsageReportRequest: {
+            /**
+             * Dry Run
+             * @description Render only; do not touch GitHub
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Repository
+             * @description owner/name of the repository holding the report issue
+             * @default D-sorganization/Repository_Management
+             */
+            repository: string;
         };
         /**
          * WorkRequest
@@ -14439,6 +14785,28 @@ export interface operations {
             };
         };
     };
+    get_queue_merge_settings_api_queue_merge_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     purge_stale_queue_runs_api_queue_purge_stale_post: {
         parameters: {
             query?: {
@@ -14535,6 +14903,154 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    dispatch_ci_fix_endpoint_api_remediation_ci_fix_dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CIFixDispatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_ci_fix_endpoint_api_remediation_ci_fix_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_ci_fix_locks_endpoint_api_remediation_ci_fix_locks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    release_ci_fix_lock_endpoint_api_remediation_ci_fix_locks__repo___pr_number__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                pr_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_ci_fix_webhook_api_remediation_ci_fix_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Hub-Signature-256"?: string | null;
+                "X-GitHub-Event"?: string;
+                "X-GitHub-Delivery"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -16195,6 +16711,144 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PageViewPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_weekly_report_api_usage_report_weekly_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeeklyUsageReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_metrics_api_usage_session_metrics_get: {
+        parameters: {
+            query?: {
+                /** @description Rolling window in days */
+                window_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_telemetry_api_usage_session_telemetry_get: {
+        parameters: {
+            query?: {
+                /** @description Days of history to return */
+                since_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_session_telemetry_api_usage_session_telemetry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionTelemetryPayload"];
             };
         };
         responses: {
