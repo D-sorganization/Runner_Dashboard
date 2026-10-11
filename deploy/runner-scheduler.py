@@ -10,6 +10,7 @@ import platform
 import re
 import subprocess
 import sys
+import time as time_module
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from pathlib import Path
@@ -26,6 +27,11 @@ STATE_PATH = Path(os.environ.get("RUNNER_SCHEDULER_STATE", "/var/lib/runner-sche
 RUNNER_BUSY_LOCK_DIR = Path(os.environ.get("RUNNER_BUSY_LOCK_DIR", "/var/run/runner-busy"))
 RUNNER_PICKUP_MAX_AGE_SECONDS = int(os.environ.get("RUNNER_PICKUP_MAX_AGE_SECONDS", "30"))
 RUNNER_BUSY_LOCK_MAX_AGE_SECONDS = int(os.environ.get("RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", "86400"))
+# A Worker log written this recently means a job is (or was just) executing.
+RUNNER_DIAG_MAX_AGE_SECONDS = int(os.environ.get("RUNNER_DIAG_MAX_AGE_SECONDS", "120"))
+# Pause between the two idle confirmations made immediately before a stop.
+STOP_RECHECK_DELAY_SECONDS = float(os.environ.get("RUNNER_STOP_RECHECK_DELAY_SECONDS", "3"))
+PROC_ROOT = Path("/proc")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
@@ -148,28 +154,88 @@ def runner_busy_via_pickup(workdir: Path) -> bool:
     return _recent_path_is_busy(pickup, RUNNER_PICKUP_MAX_AGE_SECONDS)
 
 
-def runner_busy_via_lock(workdir: Path) -> bool:
+def runner_names(workdir: Path, unit: str | None = None) -> list[str]:
+    """Names a job-start hook may key its lockfile on.
+
+    ``job-started.sh`` writes ``${RUNNER_NAME}.lock`` where RUNNER_NAME is the
+    *registered* runner name (``.runner`` agentName, also the unit's last dotted
+    segment), not the workdir basename. Accept every spelling (#1921).
+    """
+    names = [workdir.name]
+    try:
+        # The runner writes .runner with a UTF-8 BOM.
+        data = json.loads((workdir / ".runner").read_text(encoding="utf-8-sig"))
+        agent = data.get("agentName") if isinstance(data, dict) else None
+        if isinstance(agent, str) and agent:
+            names.append(agent)
+    except (OSError, ValueError):
+        pass
+    if unit:
+        suffix = unit.removesuffix(".service").rsplit(".", 1)[-1]
+        if suffix:
+            names.append(suffix)
+    return list(dict.fromkeys(names))
+
+
+def runner_busy_via_lock(workdir: Path, unit: str | None = None) -> bool:
     """Detect a job-start hook marker for the runner."""
-    lock = RUNNER_BUSY_LOCK_DIR / f"{workdir.name}.lock"
-    return _recent_path_is_busy(lock, RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
+    return any(
+        _recent_path_is_busy(RUNNER_BUSY_LOCK_DIR / f"{name}.lock", RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
+        for name in runner_names(workdir, unit)
+    )
+
+
+def runner_busy_via_diag(workdir: Path) -> bool:
+    """Detect a recently written Worker log (job executing, or finished seconds ago)."""
+    diag = workdir / "_diag"
+    try:
+        logs = list(diag.glob("Worker_*.log"))
+    except OSError:
+        return True
+    return any(_recent_path_is_busy(log, RUNNER_DIAG_MAX_AGE_SECONDS) for log in logs)
+
+
+def _proc_cmdlines() -> list[str]:
+    """Command lines of all processes, read from /proc (independent of ps/tty width)."""
+    lines: list[str] = []
+    try:
+        entries = list(PROC_ROOT.iterdir())
+    except OSError:
+        return lines
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue  # process exited mid-scan
+        if raw:
+            lines.append(raw.replace(b"\x00", b" ").decode("utf-8", "replace").strip())
+    return lines
 
 
 def runner_busy_via_process(workdir: Path) -> bool:
     """Detect legacy, self-updated, or reparented workers from the global table."""
     try:
-        result = run_cmd(["ps", "-eo", "args="])
+        result = run_cmd(["ps", "-eo", "args=", "-ww"])
     except (OSError, subprocess.SubprocessError):
         return True
     if result.returncode != 0:
         return True
     normalized_root = str(workdir).replace("\\", "/")
     pattern = re.compile(rf"{re.escape(normalized_root)}/bin(?:\.[^/\s]+)?/Runner\.Worker(?:\s|$)")
-    return any(pattern.search(line.replace("\\", "/")) is not None for line in result.stdout.splitlines())
+    lines = result.stdout.splitlines() + _proc_cmdlines()
+    return any(pattern.search(line.replace("\\", "/")) is not None for line in lines)
 
 
-def runner_busy(workdir: Path) -> bool:
+def runner_busy(workdir: Path, unit: str | None = None) -> bool:
     """Return busy when any independent job signal is positive or unreadable."""
-    return runner_busy_via_pickup(workdir) or runner_busy_via_lock(workdir) or runner_busy_via_process(workdir)
+    return (
+        runner_busy_via_pickup(workdir)
+        or runner_busy_via_lock(workdir, unit)
+        or runner_busy_via_diag(workdir)
+        or runner_busy_via_process(workdir)
+    )
 
 
 def runner_num(unit: str, workdir: Path | None) -> int | None:
@@ -203,10 +269,19 @@ def list_units() -> list[RunnerUnit]:
                 unit=name,
                 workdir=workdir,
                 active=active,
-                busy=runner_busy(workdir),
+                busy=runner_busy(workdir, unit=name),
             )
         )
     return sorted(units, key=lambda item: item.num)
+
+
+def _confirmed_idle(unit: RunnerUnit, settle: bool) -> bool:
+    if runner_busy(unit.workdir, unit=unit.unit):
+        return False
+    if settle and STOP_RECHECK_DELAY_SECONDS > 0:
+        time_module.sleep(STOP_RECHECK_DELAY_SECONDS)
+        return not runner_busy(unit.workdir, unit=unit.unit)
+    return True
 
 
 def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list[dict]:
@@ -219,9 +294,18 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
             if not dry_run:
                 run_cmd(["systemctl", "start", unit.unit])
     if len(active) > desired:
-        idle_active = [unit for unit in active if not unit.busy]
-        for unit in sorted(idle_active, key=lambda item: item.num, reverse=True)[: len(active) - desired]:
+        needed = len(active) - desired
+        stopped = 0
+        for unit in sorted((u for u in active if not u.busy), key=lambda item: item.num, reverse=True):
+            if stopped >= needed:
+                break
+            # The snapshot is seconds old (list_units issues several systemctl
+            # calls per unit); a job may have been assigned since. Confirm idle
+            # twice, spaced out, immediately before killing the listener (#1921).
+            if not _confirmed_idle(unit, settle=not dry_run):
+                continue
             actions.append({"runner": unit.num, "unit": unit.unit, "action": "stop"})
+            stopped += 1
             if not dry_run:
                 run_cmd(["systemctl", "stop", unit.unit])
                 run_cmd(["systemctl", "reset-failed", unit.unit])
