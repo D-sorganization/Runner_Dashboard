@@ -27,7 +27,6 @@ if [[ ! -f "${SCHEDULE_CONFIG}" ]]; then
     install -m 0644 "${PROJECT_ROOT}/config/runner-schedule.json" "${SCHEDULE_CONFIG}"
 fi
 
-sudo install -m 0755 "${SCRIPT_DIR}/runner-cleanup.sh" /usr/local/bin/runner-cleanup
 sudo install -m 0755 "${SCRIPT_DIR}/runner-scheduler.py" /usr/local/bin/runner-scheduler
 sudo install -m 0755 "${SCRIPT_DIR}/runner-corruption-scan.sh" /usr/local/bin/runner-corruption-scan
 # Fleet memory policy (RM #2071): drop page cache above THRESH% so WSL returns
@@ -102,72 +101,12 @@ SUDOERS
 sudo chmod 0440 "${SCHEDULER_SUDOERS}"
 sudo visudo -cf "${SCHEDULER_SUDOERS}" > /dev/null
 
-sudo tee /etc/systemd/system/runner-cleanup.service > /dev/null <<SERVICE
-[Unit]
-Description=Clean stale GitHub runner, Docker, and WSL cache data
-After=docker.service
-Wants=docker.service
-
-[Service]
-Type=oneshot
-User=root
-Environment=RUNNER_ROOT=${RUNNER_ROOT}
-Environment=RUNNER_ROOTS=${RUNNER_ROOTS}
-Environment=RUNNER_USER=${RUNNER_USER}
-Environment=RUNNER_WORK_DAYS=3
-Environment=RUNNER_TEMP_DAYS=1
-Environment=TOOL_CACHE_DAYS=21
-Environment=DOCKER_PRUNE_UNTIL=168h
-Environment=PRUNE_DOCKER_VOLUMES=0
-ExecStart=/usr/local/bin/runner-cleanup
-SERVICE
-
-sudo tee /etc/systemd/system/runner-cleanup.timer > /dev/null <<'TIMER'
-[Unit]
-Description=Run GitHub runner cleanup daily
-
-[Timer]
-OnCalendar=*-*-* 04:20:00
-RandomizedDelaySec=30m
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-TIMER
-
-# Disk guard: a lightweight, runner-safe pass that reclaims docker + journal +
-# fstrim ONLY (never bounces runner units), going aggressive on docker when the
-# filesystem crosses DISK_PRESSURE_PERCENT. Runs hourly so docker bloat is
-# reclaimed long before the disk fills between daily full cleanups. This is the
-# control that prevents recurrence of the 2026-05-29 nvme disk-full outage.
-sudo tee /etc/systemd/system/runner-disk-guard.service > /dev/null <<SERVICE
-[Unit]
-Description=Reclaim Docker/journal disk space under pressure (runner-safe)
-After=docker.service
-Wants=docker.service
-
-[Service]
-Type=oneshot
-User=root
-Environment=RUNNER_ROOT=${RUNNER_ROOT}
-Environment=RUNNER_ROOTS=${RUNNER_ROOTS}
-Environment=RUNNER_USER=${RUNNER_USER}
-Environment=DISK_PRESSURE_PERCENT=85
-ExecStart=/usr/local/bin/runner-cleanup --disk-guard
-SERVICE
-
-sudo tee /etc/systemd/system/runner-disk-guard.timer > /dev/null <<'TIMER'
-[Unit]
-Description=Run runner disk guard hourly
-
-[Timer]
-OnCalendar=hourly
-RandomizedDelaySec=5m
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-TIMER
+# Storage GC (runner-cleanup binary + runner-cleanup / runner-disk-guard
+# service+timer pairs) has exactly one owner: install-storage-gc.sh (#1925).
+# It installs, neutralises ExecStart-override drop-ins, enables both timers and
+# exits non-zero unless its own --verify passes. Never re-define those units here.
+sudo env RUNNER_USER="${RUNNER_USER}" RUNNER_ROOTS="${RUNNER_ROOTS}" \
+    bash "${SCRIPT_DIR}/install-storage-gc.sh" --profile runner
 
 sudo tee /etc/systemd/system/runner-scheduler.service > /dev/null <<SERVICE
 [Unit]
@@ -269,7 +208,7 @@ Environment=TEXTFILE_COLLECTOR_DIR=${TEXTFILE_COLLECTOR_DIR}
 CONF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now runner-cleanup.timer runner-disk-guard.timer runner-scheduler.timer runner-corruption-scan.timer runner-hooks-restore.timer wsl-cache-trim.timer
+sudo systemctl enable --now runner-scheduler.timer runner-corruption-scan.timer runner-hooks-restore.timer wsl-cache-trim.timer
 
 # Apply (or re-apply) the per-unit drop-ins from #664. Idempotent.
 # Passes the installed hook dir explicitly so the drop-ins reference the

@@ -70,6 +70,12 @@ DISK_GUARD="${DISK_GUARD:-0}"
 # litter set are never touched, and the default age comfortably exceeds any
 # healthy install's lifetime.
 TMP_DIR="${TMP_DIR:-/tmp}"
+# Workstation profile (#1925, install-storage-gc.sh --profile workstation):
+# on a host with a logged-in user, /tmp/tmp* belongs to running apps, not to
+# CI jobs, and stopped containers are user state. These gates let the same
+# script serve both kinds of host; runner defaults are unchanged.
+CLEANUP_TMP="${CLEANUP_TMP:-1}"
+PRUNE_DOCKER_CONTAINERS="${PRUNE_DOCKER_CONTAINERS:-1}"
 TMP_LITTER_HOURS="${TMP_LITTER_HOURS:-6}"
 TMP_PRESSURE_PERCENT="${TMP_PRESSURE_PERCENT:-75}"
 # Per-runner scratch (Repository_Management#1489 durable fix): jobs whose
@@ -114,7 +120,7 @@ Usage: runner-cleanup.sh [--compact-vhd] [--compact-vhd-only]
 
 Environment overrides: RUNNER_ROOT, RUNNER_USER, LOG_DIR, RUNNER_WORK_DAYS,
 RUNNER_TEMP_DAYS, TOOL_CACHE_DAYS, DOCKER_PRUNE_UNTIL, DOCKER_DANGLING_UNTIL,
-RUSTUP_TMP_HOURS, JOURNAL_MAX_SIZE,
+RUSTUP_TMP_HOURS, JOURNAL_MAX_SIZE, CLEANUP_TMP, PRUNE_DOCKER_CONTAINERS,
 DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
 PRUNE_ORPHAN_BUILDX_STATE,
 DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
@@ -431,12 +437,13 @@ cleanup_docker() {
         log "docker unavailable; skipping docker cleanup"
         return 0
     fi
+    local prune_containers="${PRUNE_DOCKER_CONTAINERS:-1}"
     if [[ "$DOCKER_AGGRESSIVE" == "1" ]]; then
         # Disk pressure: reclaim everything reclaimable, ignoring age windows.
         # `prune` only ever removes STOPPED containers, UNUSED images, DANGLING
         # volumes, and idle build cache, so running jobs / in-use volumes /
         # active buildx builders are never touched.
-        run docker container prune --force
+        if [[ "$prune_containers" == "1" ]]; then run docker container prune --force; fi
         run docker builder prune --all --force
         # buildx builders keep their own cache pools; prune those too when the
         # buildx plugin is present (the moby/buildkit builder containers on this
@@ -447,7 +454,7 @@ cleanup_docker() {
         run docker image prune --all --force
         run docker volume prune --force
     else
-        run docker container prune --force --filter "until=72h"
+        if [[ "$prune_containers" == "1" ]]; then run docker container prune --force --filter "until=72h"; fi
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
         run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
@@ -490,7 +497,8 @@ tmp_litter_age_min() {
     local used
     used="$(tmp_used_percent)"
     if [[ -n "$used" && "$used" -ge "$TMP_PRESSURE_PERCENT" ]]; then
-        log "tmp pressure detected (${used}% >= ${TMP_PRESSURE_PERCENT}% on ${TMP_DIR}); lowering litter age window to 30m"
+        # stderr: callers capture stdout as the age value (2026-10-11 #1925).
+        log >&2 "tmp pressure detected (${used}% >= ${TMP_PRESSURE_PERCENT}% on ${TMP_DIR}); lowering litter age window to 30m"
         age_min=30
     fi
     printf '%s' "$age_min"
@@ -558,6 +566,10 @@ cleanup_tmp() {
     # Only ever removes entries matching the known CI litter patterns,
     # aged past the window (see cleanup_litter_in).
     local age_min used
+    if [[ "${CLEANUP_TMP:-1}" != "1" ]]; then
+        log "tmp GC disabled (CLEANUP_TMP=${CLEANUP_TMP})"
+        return 0
+    fi
     used="$(tmp_used_percent)"
     age_min="$(tmp_litter_age_min)"
     cleanup_litter_in "$TMP_DIR" "$age_min"

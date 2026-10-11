@@ -71,14 +71,14 @@ def _extract(text: str, name: str) -> str:
     return text[start : text.index("\n}\n", start) + 3]
 
 
-def _run_litter_gc(tmp_path: Path, target: Path, *, used_percent: int = 10) -> None:
+def _run_litter_gc(tmp_path: Path, target: Path, *, used_percent: int = 10, real_log: bool = False) -> None:
     """Source cleanup_litter_in/tmp_litter_age_min from the real script with
     host helpers stubbed, then run cleanup_tmp against *target*."""
     text = CLEANUP.read_text(encoding="utf-8")
     harness = "\n".join(
         [
             "set -euo pipefail",
-            "log() { :; }",
+            _extract(text, "log") if real_log else "log() { :; }",
             'run() { "$@"; }',
             f"tmp_used_percent() {{ echo {used_percent}; }}",
             f'TMP_DIR="{as_bash_path(target)}"',
@@ -138,6 +138,18 @@ def test_pressure_tightens_the_window_to_30_minutes(tmp_path: Path) -> None:
     _seed(target, ("pip-install-new",), age_hours=0.1)
     _run_litter_gc(tmp_path, target, used_percent=80)
     assert sorted(p.name for p in target.iterdir()) == ["pip-install-new"]
+
+
+def test_pressure_log_line_does_not_corrupt_the_age_window(tmp_path: Path) -> None:
+    """2026-10-11, ControlTower: with /tmp at 76% the pressure notice was
+    written to stdout inside ``$(tmp_litter_age_min)``, so ``find -mmin``
+    received the log line instead of ``30`` and the disk guard failed at the
+    exact moment it was needed. Uses the script's real ``log``."""
+    target = tmp_path / "tmp"
+    target.mkdir()
+    _seed(target, ("pip-install-old",), age_hours=1)
+    _run_litter_gc(tmp_path, target, used_percent=80, real_log=True)
+    assert list(target.iterdir()) == []
 
 
 def test_gc_never_recurses_below_the_top_level(tmp_path: Path) -> None:
