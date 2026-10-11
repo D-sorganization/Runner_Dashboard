@@ -112,6 +112,15 @@ class RunRecord:
         return d
 
 
+_RUN_FIELDS = frozenset(RunRecord.__dataclass_fields__)
+
+
+def _run_from_row(row: sqlite3.Row) -> RunRecord:
+    """Build a run from a ``runs`` row, ignoring columns that are not part of the record
+    (``card_version`` is storage-only, #1800), so the API shape is unchanged."""
+    return RunRecord(**{k: row[k] for k in row.keys() if k in _RUN_FIELDS})
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
     id TEXT PRIMARY KEY,
@@ -185,6 +194,8 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("verification_detail", "TEXT NOT NULL DEFAULT ''"),
     ("pr_number", "INTEGER"),
     ("origin_node", "TEXT NOT NULL DEFAULT ''"),
+    # Per-run monotonic run-card version counter for Barb authority dedupe (#1800, BR-06).
+    ("card_version", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")
@@ -219,6 +230,19 @@ class RunStore:
                 self._conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")  # noqa: S608
         self._conn.execute("CREATE INDEX IF NOT EXISTS runs_thread_idx ON runs(thread_id)")
 
+    def next_card_version(self, run_id: str) -> int:
+        """Atomically bump and return the run's run-card version (1, 2, 3, ...).
+
+        Pre: the run exists (``KeyError`` otherwise). Post: strictly greater than any value returned before.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "UPDATE runs SET card_version = card_version + 1 WHERE id = ? RETURNING card_version", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            return int(row[0])
+
     def columns(self) -> set[str]:
         """Column names currently present on the ``runs`` table (for migration tests)."""
         with self._lock:
@@ -251,7 +275,7 @@ class RunStore:
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
             row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
-        return RunRecord(**dict(row)) if row else None
+        return _run_from_row(row) if row else None
 
     def list_runs(
         self,
@@ -280,7 +304,7 @@ class RunStore:
                 f"SELECT * FROM runs {where} ORDER BY created_at DESC LIMIT ?",  # noqa: S608
                 (*params, int(limit)),
             ).fetchall()
-        return [RunRecord(**dict(r)) for r in rows]
+        return [_run_from_row(r) for r in rows]
 
     def list_runs_for_target(self, *, role: str, repo: str, target_ref: str) -> list[RunRecord]:
         """Every run (retries included) of ``role`` against one repo target, oldest first.
@@ -293,7 +317,7 @@ class RunStore:
                 "SELECT * FROM runs WHERE role = ? AND repo = ? AND target_ref = ? ORDER BY created_at",
                 (role, repo, target_ref),
             ).fetchall()
-        return [RunRecord(**dict(r)) for r in rows]
+        return [_run_from_row(r) for r in rows]
 
     def list_runs_for_thread(self, thread_id: str) -> list[RunRecord]:
         if not thread_id:
@@ -303,7 +327,7 @@ class RunStore:
                 "SELECT * FROM runs WHERE thread_id = ? ORDER BY created_at ASC",
                 (thread_id,),
             ).fetchall()
-        return [RunRecord(**dict(r)) for r in rows]
+        return [_run_from_row(r) for r in rows]
 
     def get_attempts(self, run_id: str) -> list[RunRecord]:
         """Return all attempts linked to a run (the root run and its retries)."""
@@ -316,7 +340,7 @@ class RunStore:
                 "SELECT * FROM runs WHERE id = ? OR retry_of = ? ORDER BY attempt ASC",
                 (root, root),
             ).fetchall()
-        return [RunRecord(**dict(r)) for r in rows]
+        return [_run_from_row(r) for r in rows]
 
     def get_pending_retries(self, machine: str | None = None) -> list[RunRecord]:
         """Return runs with status='queued' that have next_attempt_at populated."""
@@ -335,7 +359,7 @@ class RunStore:
                 f"SELECT * FROM runs {where} ORDER BY next_attempt_at ASC",  # noqa: S608
                 params,
             ).fetchall()
-        return [RunRecord(**dict(r)) for r in rows]
+        return [_run_from_row(r) for r in rows]
 
     def runs_awaiting_verification(self, *, machine: str, since: str, limit: int) -> list[RunRecord]:
         """Finished runs of ``machine`` that ended at/after ``since`` and are unchecked or unverified (#1516)."""
@@ -346,7 +370,7 @@ class RunStore:
                 "AND verification IN ('', 'unverified') ORDER BY ended_at LIMIT ?",
                 (machine, since, *ACTIVE_STATUSES, int(limit)),
             ).fetchall()
-        return [RunRecord(**dict(r)) for r in rows]
+        return [_run_from_row(r) for r in rows]
 
     def active_runs(self) -> list[RunRecord]:
         marks = ", ".join("?" for _ in ACTIVE_STATUSES)
@@ -355,7 +379,7 @@ class RunStore:
                 f"SELECT * FROM runs WHERE status IN ({marks}) ORDER BY created_at",
                 ACTIVE_STATUSES,
             ).fetchall()  # noqa: S608
-        return [RunRecord(**dict(r)) for r in rows]
+        return [_run_from_row(r) for r in rows]
 
     def spend_since(self, since_iso: str) -> dict[str, float]:
         """Cost per provider for runs created at/after ``since_iso`` plus a total."""
