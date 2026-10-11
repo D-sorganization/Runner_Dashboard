@@ -152,14 +152,14 @@ class ConversationStore:
             result = decide(conn, run_id=run_id, version=ver, status=status, message_id=message_id)
             if result.outcome is not ApplyOutcome.APPLIED:
                 return self.get_message(message_id), result
-            card_meta = {**meta, "card_version": ver}
-            msg = self.update_message(message_id, body_md=body_md, meta=card_meta) or self.add_message(
+            # The version lives only in run_card_versions: card meta keeps its existing API shape.
+            msg = self.update_message(message_id, body_md=body_md, meta=meta) or self.add_message(
                 thread_id=thread_id,
                 author_kind=author_kind,
                 author=author,
                 kind="run_card",
                 body_md=body_md,
-                meta=card_meta,
+                meta=meta,
                 run_id=run_id,
                 delivery="complete",
                 message_id=message_id,

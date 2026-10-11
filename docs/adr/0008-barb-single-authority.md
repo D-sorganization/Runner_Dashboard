@@ -41,3 +41,13 @@ PR 2 wires the relay, the replica write proxy, `/authority` and `/outbox`, and t
 snapshot lock is free). PR 3 adds the manual-failover runbook and script and closes #1800. #1809 builds on the
 outbox and the per-run version (event revisions); #1810 builds on authority-side reservations sent through
 `AuthorityClient`.
+
+## Deferred to PR 2 (from the PR #1935 review; recorded, not fixed in PR 1)
+
+- `barb_receipts` has no pruning, so it grows without bound.
+- `synchronous=FULL` is set only on the `ConversationStore` connection; `RunStore` and `StaffAuditStore` stay at the default.
+- There is no persisted epoch fence: the epoch comes from configuration, so a restarted old authority is not refused by stored state.
+- `runs.card_version` and `RunStore.next_card_version` are unused until PR 2 wires the relay.
+- `bounds_from_env` raises a bare `ValueError` on a malformed `BARB_OUTBOX_*` value.
+- Enqueueing the same key with a different payload silently keeps the old entry id.
+- `backup_database` copies the main database file and ignores the WAL.

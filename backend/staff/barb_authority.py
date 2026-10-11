@@ -154,7 +154,9 @@ class AuthorityClient:
             status, data = self._transport(url, body, headers)
         except OSError as exc:
             raise AuthorityUnavailable(f"{self._config.node} unreachable: {exc}") from exc
-        code = str((data or {}).get("code") or "")
+        if not isinstance(data, dict):
+            raise AuthorityRejected(f"{self._config.node} returned a non-object body (HTTP {status})")
+        code = str(data.get("code") or "")
         if 200 <= status < 300:
             return DeliveryOutcome.DELIVERED
         if status == 409 and code == "stale_version":

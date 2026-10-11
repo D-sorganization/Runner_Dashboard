@@ -57,6 +57,12 @@ def drain_once(outbox: OutboxStore, client: _Poster, *, limit: int = 50, now: fl
             log.error("barb outbox: %s %s v%d dead-lettered: %s", e.kind, e.run_id, e.version, exc)
             outbox.mark_dead(e.outbox_id, str(exc))
             dead += 1
+        except Exception as exc:  # noqa: BLE001 - nothing may leave a key stuck in 'delivering'
+            log.exception("barb outbox: unexpected error delivering %s %s v%d", e.kind, e.run_id, e.version)
+            outbox.mark_retry(e.outbox_id, f"unexpected: {exc}", now=at)
+            outbox.release([c.outbox_id for c in claimed[i + 1 :]])
+            retried += 1
+            break
         else:
             outbox.mark_delivered(e.outbox_id, now=at)
             delivered += 1
