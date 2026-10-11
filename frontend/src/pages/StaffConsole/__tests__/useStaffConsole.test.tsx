@@ -337,12 +337,19 @@ describe("useStaffConsole", () => {
 
     let ok: boolean | undefined;
     await act(async () => {
-      ok = await result.current.approveProposal("prop-1");
+      ok = await result.current.approveProposal("prop-1", undefined, "h".repeat(64));
     });
 
     // #1547: the card re-enables when the decision is refused.
     expect(ok).toBe(false);
-    expect(api.decideActionProposal).toHaveBeenCalledWith("prop-1", "approved", expect.any(String));
+    expect(api.decideActionProposal).toHaveBeenCalledWith(
+      "prop-1",
+      "approved",
+      expect.any(String),
+      true,
+      undefined,
+      "h".repeat(64),
+    );
     expect(result.current.error).toEqual({ kind: "decision", message: "403 missing staff.approve" });
   });
 

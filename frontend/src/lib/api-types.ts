@@ -5650,7 +5650,10 @@ export interface paths {
         };
         /**
          * Get Proposal
-         * @description Get single action proposal by ID.
+         * @description Get single action proposal by ID, with the caller's approval preview (#1807).
+         *
+         *     ``can_approve``/``denial_reason`` are per viewer and read-only: they grant nothing, and
+         *     execution re-evaluates authority. ``params_hash`` is what decide/execute must echo.
          */
         get: operations["get_proposal_api_v1_staff_proposals__proposal_id__get"];
         put?: never;
@@ -7279,6 +7282,11 @@ export interface components {
              * @default false
              */
             execute: boolean;
+            /**
+             * Params Hash
+             * @description Hash of the action and parameters the approver reviewed (GET /proposals/{id}). Required to approve (428 params_hash_required); 409 params_changed when it no longer matches (#1807)
+             */
+            params_hash?: string | null;
             /**
              * Reason
              * @description Reason for the decision
@@ -17711,7 +17719,10 @@ export interface operations {
     };
     execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Hash the approver reviewed; required (428), 409 when stale (#1807) */
+                params_hash?: string | null;
+            };
             header?: never;
             path: {
                 proposal_id: string;

@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from identity import Principal
-from staff.actions import ACTION_REGISTRY, execute_proposal
+from staff.actions import ACTION_REGISTRY, execute_proposal, stored_params_hash
 from staff.audit import record_audit
 from staff.conversation_models import SILENT_APPROVE_RISKS, ActionProposalRecord
 from staff.conversations import ConversationStore
@@ -77,7 +77,13 @@ def _approve(store: ConversationStore, prop: ActionProposalRecord) -> DecisionOu
     if action is None or risk not in SILENT_APPROVE_RISKS:
         return DecisionOutcome(prop.id, "approve", "refused", f"action {prop.action!r} is risk {risk!r}")
     try:
-        result = execute_proposal(prop.id, approver=_barb_approver(action.required_scope), store=store, approve=True)
+        result = execute_proposal(
+            prop.id,
+            approver=_barb_approver(action.required_scope),
+            store=store,
+            approve=True,
+            params_hash=stored_params_hash(store, prop.id),  # no preview: hash the stored params (#1807)
+        )
     except Exception as exc:  # noqa: BLE001 - a policy refusal leaves the proposal with the owner
         return DecisionOutcome(prop.id, "approve", "refused", str(exc))
     if result.success:

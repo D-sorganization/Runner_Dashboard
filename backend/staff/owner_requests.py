@@ -17,7 +17,7 @@ from functools import partial
 
 import anyio
 from identity import Principal, principal_has_scope
-from staff.actions import ACTION_REGISTRY, ActionRiskClass, execute_proposal
+from staff.actions import ACTION_REGISTRY, ActionRiskClass, execute_proposal, stored_params_hash
 from staff.conversations import ConversationStore
 from staff.proposal_cards import MessagePublisher, refresh_proposal_card
 
@@ -47,7 +47,15 @@ async def run_for_requester(
     terminal execution state; on ``False`` a policy check refused it, exactly as it would
     refuse a tap, and the refusal is logged. Either way the card shows the current state.
     """
-    run = partial(execute_proposal, proposal_id, approver=requester, store=store, approve=True)
+    # No preview in this path: the hash is computed server-side from the stored proposal (#1807).
+    run = partial(
+        execute_proposal,
+        proposal_id,
+        approver=requester,
+        store=store,
+        approve=True,
+        params_hash=stored_params_hash(store, proposal_id),
+    )
     try:
         # Executors such as board.convene block on the event loop (run_on_loop), so run off it.
         await anyio.to_thread.run_sync(run)

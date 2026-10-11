@@ -13,16 +13,20 @@ from pydantic import BaseModel, Field
 from routers.staff_threads import _get_store_or_503
 from staff.actions import (
     ACTION_REGISTRY,
+    ParamsHashMismatchError,
+    ParamsHashRequiredError,
     ProposalExpiredError,
     ProposalNotApprovedError,
     ProposalReplayError,
     RolePermissionDeniedError,
     execute_proposal,
     registered_risk,
+    verify_params_hash,
 )
 from staff.conversations import ConversationsUnavailableError
 from staff.pagination import paginate_items
 from staff.proposal_cards import refresh_proposal_card
+from staff.proposal_preview import build_proposal_preview
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.proposals")
@@ -61,14 +65,34 @@ class DecideProposalRequest(BaseModel):
         default=False,
         description="Whether to execute the action immediately upon approval",
     )
+    params_hash: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Hash of the action and parameters the approver reviewed (GET /proposals/{id}). "
+            "Required to approve (428 params_hash_required); 409 params_changed when it no longer matches (#1807)"
+        ),
+    )
 
 
-async def _execute_off_loop(proposal_id: str, caller: Principal, store: Any) -> Any:
+async def _execute_off_loop(proposal_id: str, caller: Principal, store: Any, reviewed_hash: str | None) -> Any:
     """Run the synchronous executor in a worker thread so it never blocks the event loop
     and can reach loop-bound clients through anyio.from_thread (#1448)."""
     return await anyio.to_thread.run_sync(
-        partial(execute_proposal, proposal_id=proposal_id, approver=caller, store=store)
+        partial(
+            execute_proposal, proposal_id=proposal_id, approver=caller, store=store, params_hash=reviewed_hash or ""
+        )
     )
+
+
+def _require_reviewed_hash(prop: Any, reviewed_hash: str | None) -> None:
+    """428 when no reviewed hash was sent, 409 when it is stale; both BEFORE any state change (#1807)."""
+    try:
+        verify_params_hash(prop, reviewed_hash)
+    except ParamsHashRequiredError as exc:
+        raise HTTPException(status_code=428, detail={"code": "params_hash_required", "message": str(exc)}) from exc
+    except ParamsHashMismatchError as exc:
+        raise HTTPException(status_code=409, detail={"code": "params_changed", "message": str(exc)}) from exc
 
 
 # ─── Actions Catalogue Endpoints ─────────────────────────────────────────────
@@ -187,15 +211,19 @@ async def create_proposal(
 )
 async def get_proposal(
     proposal_id: str,
-    _caller: Principal = Depends(require_scope("staff.read")),  # noqa: B008
+    caller: Principal = Depends(require_scope("staff.read")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Get single action proposal by ID."""
+    """Get single action proposal by ID, with the caller's approval preview (#1807).
+
+    ``can_approve``/``denial_reason`` are per viewer and read-only: they grant nothing, and
+    execution re-evaluates authority. ``params_hash`` is what decide/execute must echo.
+    """
     store = _get_store_or_503()
     try:
         prop = store.get_proposal(proposal_id)
         if not prop:
             raise HTTPException(status_code=404, detail="proposal not found")
-        return prop.to_dict()
+        return {**prop.to_dict(), **build_proposal_preview(store, prop, caller)}
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -230,6 +258,8 @@ async def decide_proposal(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot decide proposal in state '{prop.state}' (must be 'proposed' or 'failed')",
             )
+        if body.decision == "approved":
+            _require_reviewed_hash(prop, body.params_hash)
         updated = store.decide_proposal(
             proposal_id=proposal_id,
             state=body.decision,
@@ -238,13 +268,15 @@ async def decide_proposal(
         )
 
         if body.decision == "approved" and body.execute:
-            res = await _execute_off_loop(proposal_id, caller, store)
+            res = await _execute_off_loop(proposal_id, caller, store, body.params_hash)
             refreshed = store.get_proposal(proposal_id)
             d = refreshed.to_dict() if refreshed else updated.to_dict()
             d["execution_result"] = res.to_dict()
             return d
 
         return updated.to_dict()
+    except (ParamsHashRequiredError, ParamsHashMismatchError) as exc:  # lost a race after the pre-check
+        raise HTTPException(status_code=409, detail={"code": "params_changed", "message": str(exc)}) from exc
     except ProposalExpiredError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RolePermissionDeniedError as exc:
@@ -265,6 +297,9 @@ async def decide_proposal(
 )
 async def execute_approved_proposal(
     proposal_id: str,
+    params_hash: str | None = Query(
+        default=None, max_length=64, description="Hash the approver reviewed; required (428), 409 when stale (#1807)"
+    ),
     caller: Principal = Depends(require_scope("staff.approve")),  # noqa: B008
 ) -> dict[str, Any]:
     """Execute an ``approved`` proposal through the action registry (409 for any other live state)."""
@@ -279,12 +314,15 @@ async def execute_approved_proposal(
             detail=f"Proposal {proposal_id} in state '{prop.state}' cannot be executed",
         )
 
+    _require_reviewed_hash(prop, params_hash)
     try:
-        res = await _execute_off_loop(proposal_id, caller, store)
+        res = await _execute_off_loop(proposal_id, caller, store, params_hash)
         refreshed = store.get_proposal(proposal_id)
         d = refreshed.to_dict() if refreshed else prop.to_dict()
         d["execution_result"] = res.to_dict()
         return d
+    except (ParamsHashRequiredError, ParamsHashMismatchError) as exc:  # lost a race after the pre-check
+        raise HTTPException(status_code=409, detail={"code": "params_changed", "message": str(exc)}) from exc
     except ProposalExpiredError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RolePermissionDeniedError as exc:

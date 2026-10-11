@@ -37,6 +37,8 @@ from staff.roles import RoleSpec
 from staff.runner import StaffRunner, reset_runner
 from staff.store import reset_store
 
+from tests.staff_proposal_hash import reviewed_hash
+
 UTC = getattr(_dt, "UTC", _dt.UTC)
 datetime = _dt.datetime
 
@@ -308,7 +310,7 @@ def test_proposal_expiry_24h() -> None:
     assert is_proposal_expired(expired_prop)
 
     with pytest.raises(ProposalExpiredError, match="expired"):
-        execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
+        execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True, params_hash=reviewed_hash(prop.id))
 
     refreshed = store.get_proposal(prop.id)
     assert refreshed is not None
@@ -333,7 +335,7 @@ def test_proposal_replay_protection() -> None:
 
     # Cannot execute denied proposal
     with pytest.raises(ProposalReplayError, match="denied"):
-        execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
+        execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True, params_hash=reviewed_hash(prop.id))
 
     # Expired proposal cannot be executed
     prop2 = store.create_proposal(
@@ -346,7 +348,9 @@ def test_proposal_replay_protection() -> None:
     )
     store.transition_proposal_state(prop2.id, "expired", reason="expired")
     with pytest.raises(ProposalReplayError, match="expired"):
-        execute_proposal(prop2.id, approver=TEST_APPROVER, store=store, approve=True)
+        execute_proposal(
+            prop2.id, approver=TEST_APPROVER, store=store, approve=True, params_hash=reviewed_hash(prop2.id)
+        )
 
 
 def test_execute_staff_dispatch_success_and_thread_messages() -> None:
@@ -364,7 +368,14 @@ def test_execute_staff_dispatch_success_and_thread_messages() -> None:
 
     async def off_loop() -> ActionResult:  # as the proposal routes run it (#1448, #1487)
         return await anyio.to_thread.run_sync(
-            partial(execute_proposal, prop.id, approver=TEST_APPROVER, store=store, approve=True)
+            partial(
+                execute_proposal,
+                prop.id,
+                approver=TEST_APPROVER,
+                store=store,
+                approve=True,
+                params_hash=reviewed_hash(prop.id),
+            )
         )
 
     result = anyio.run(off_loop)
@@ -420,7 +431,9 @@ def test_executor_failure_marks_proposal_failed_and_permits_retry() -> None:
         principal="barb",
     )
 
-    result1 = execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
+    result1 = execute_proposal(
+        prop.id, approver=TEST_APPROVER, store=store, approve=True, params_hash=reviewed_hash(prop.id)
+    )
     assert result1.success is False
     assert result1.failure_class == "service_unavailable"
 
@@ -440,7 +453,7 @@ def test_executor_failure_marks_proposal_failed_and_permits_retry() -> None:
 
     # A failed proposal only runs again after an explicit retry decision (#1485).
     store.decide_proposal(prop.id, "approved", decided_by="operator", reason="retry")
-    result2 = execute_proposal(prop.id, approver=TEST_APPROVER, store=store)
+    result2 = execute_proposal(prop.id, approver=TEST_APPROVER, store=store, params_hash=reviewed_hash(prop.id))
     assert result2.success is True
     updated2 = store.get_proposal(prop.id)
     assert updated2 is not None
@@ -476,7 +489,9 @@ def test_verifier_mismatch_fails_action() -> None:
         principal="barb",
     )
 
-    res = execute_proposal(prop.id, approver=TEST_APPROVER, store=store, approve=True)
+    res = execute_proposal(
+        prop.id, approver=TEST_APPROVER, store=store, approve=True, params_hash=reviewed_hash(prop.id)
+    )
     assert res.success is False
     assert res.verification_ok is False
     assert "mismatch" in (res.error or "").lower()
@@ -499,7 +514,9 @@ def test_staff_hold_and_unhold_lifecycle() -> None:
         principal="barb",
     )
 
-    res_hold = execute_proposal(hold_prop.id, approver=TEST_OWNER, store=store, approve=True)
+    res_hold = execute_proposal(
+        hold_prop.id, approver=TEST_OWNER, store=store, approve=True, params_hash=reviewed_hash(hold_prop.id)
+    )
     assert res_hold.success is True
     assert res_hold.verification_ok is True
 
@@ -518,7 +535,9 @@ def test_staff_hold_and_unhold_lifecycle() -> None:
         principal="barb",
     )
 
-    res_unhold = execute_proposal(unhold_prop.id, approver=TEST_OWNER, store=store, approve=True)
+    res_unhold = execute_proposal(
+        unhold_prop.id, approver=TEST_OWNER, store=store, approve=True, params_hash=reviewed_hash(unhold_prop.id)
+    )
     assert res_unhold.success is True
     assert res_unhold.verification_ok is True
 
@@ -563,7 +582,14 @@ def test_code_request_update_draft_and_triage() -> None:
         risk="medium",
         principal="barb",
     )
-    res_draft = _in_worker(execute_proposal, prop_draft.id, approver=TEST_OWNER, store=store, approve=True)
+    res_draft = _in_worker(
+        execute_proposal,
+        prop_draft.id,
+        approver=TEST_OWNER,
+        store=store,
+        approve=True,
+        params_hash=reviewed_hash(prop_draft.id),
+    )
     assert res_draft.success is True, res_draft.error
     assert res_draft.result["id"] == "cr-up-draft"
     assert res_draft.result["prompt"] == "Updated PRD draft"
@@ -580,7 +606,14 @@ def test_code_request_update_draft_and_triage() -> None:
         risk="medium",
         principal="barb",
     )
-    res_triage = _in_worker(execute_proposal, prop_triage.id, approver=TEST_OWNER, store=store, approve=True)
+    res_triage = _in_worker(
+        execute_proposal,
+        prop_triage.id,
+        approver=TEST_OWNER,
+        store=store,
+        approve=True,
+        params_hash=reviewed_hash(prop_triage.id),
+    )
     assert res_triage.success is True, res_triage.error
     assert res_triage.result["prompt"] == "Updated PRD triage"
 
@@ -600,7 +633,9 @@ def test_code_request_update_rejects_extra_field() -> None:
         risk="medium",
         principal="barb",
     )
-    res = _in_worker(execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True)
+    res = _in_worker(
+        execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True, params_hash=reviewed_hash(prop.id)
+    )
     assert res.success is False
     assert res.failure_class == "invalid_params"
 
@@ -620,7 +655,9 @@ def test_code_request_update_rejects_non_draft_triage_state() -> None:
         risk="medium",
         principal="barb",
     )
-    res = _in_worker(execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True)
+    res = _in_worker(
+        execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True, params_hash=reviewed_hash(prop.id)
+    )
     assert res.success is False
     assert res.failure_class == "invalid_state"
     assert "planning" in (res.error or "").lower()
@@ -637,7 +674,9 @@ def test_code_request_update_rejects_unknown_id() -> None:
         risk="medium",
         principal="barb",
     )
-    res = _in_worker(execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True)
+    res = _in_worker(
+        execute_proposal, prop.id, approver=TEST_OWNER, store=store, approve=True, params_hash=reviewed_hash(prop.id)
+    )
     assert res.success is False
     assert res.failure_class == "not_found"
     assert "cr-nonexistent-404" in (res.error or "")
@@ -670,7 +709,7 @@ def test_code_request_update_role_permission_denial() -> None:
         principal="intern_bot",
     )
     with pytest.raises(RolePermissionDeniedError, match="not permitted"):
-        execute_proposal(prop.id, approver=TEST_OWNER, store=store, approve=True)
+        execute_proposal(prop.id, approver=TEST_OWNER, store=store, approve=True, params_hash=reviewed_hash(prop.id))
 
 
 def test_code_request_update_outside_a_worker_thread_is_bridge_unavailable() -> None:

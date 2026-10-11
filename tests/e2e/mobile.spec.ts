@@ -233,6 +233,20 @@ async function mockStaffApi(page: import("@playwright/test").Page): Promise<void
     });
   });
 
+  // The viewer's own approval preview (#1807): the card enables Approve once it arrives.
+  await page.route("**/api/v1/staff/proposals/prop-123", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "prop-123",
+        can_approve: true,
+        denial_reason: null,
+        params_hash: "a".repeat(64),
+      }),
+    });
+  });
+
   await page.route("**/api/v1/staff/proposals/prop-123/decide", async (route) => {
     await route.fulfill({
       status: 200,

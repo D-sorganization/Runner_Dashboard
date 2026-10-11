@@ -13,6 +13,8 @@ from server import app
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.thread_bus import reset_thread_bus
 
+from tests.staff_proposal_hash import hash_query, reviewed_hash
+
 UTC = getattr(_dt, "UTC", _dt.UTC)
 datetime = _dt.datetime
 
@@ -96,7 +98,7 @@ def test_list_and_decide_proposals_endpoints(client: TestClient) -> None:
     # Valid decision: approve
     ok_decide = client.post(
         f"/api/v1/staff/proposals/{prop.id}/decide",
-        json={"decision": "approved", "reason": "looks safe"},
+        json={"decision": "approved", "params_hash": reviewed_hash(prop.id), "reason": "looks safe"},
         headers=headers,
     )
     assert ok_decide.status_code == 200, ok_decide.text
@@ -174,7 +176,12 @@ def test_create_and_execute_staff_dispatch_flow(client: TestClient, clean_conver
     # User approves and requests execution
     decide_res = client.post(
         f"/api/v1/staff/proposals/{prop_id}/decide",
-        json={"decision": "approved", "reason": "approved by operator", "execute": True},
+        json={
+            "decision": "approved",
+            "params_hash": reviewed_hash(prop_id),
+            "reason": "approved by operator",
+            "execute": True,
+        },
         headers=headers,
     )
     assert decide_res.status_code == 200, decide_res.text
@@ -215,7 +222,7 @@ def test_execute_proposal_permission_denial(client: TestClient) -> None:
     # Approve without execute first
     ok_decide = client.post(
         f"/api/v1/staff/proposals/{prop.id}/decide",
-        json={"decision": "approved", "reason": "ok", "execute": False},
+        json={"decision": "approved", "params_hash": reviewed_hash(prop.id), "reason": "ok", "execute": False},
         headers=headers,
     )
     assert ok_decide.status_code == 200
@@ -223,6 +230,7 @@ def test_execute_proposal_permission_denial(client: TestClient) -> None:
     # Execute directly -> fails with 403 because role lacks permission
     exec_res = client.post(
         f"/api/v1/staff/proposals/{prop.id}/execute",
+        params=hash_query(prop.id),
         headers=headers,
     )
     assert exec_res.status_code == 403
@@ -249,7 +257,7 @@ def test_execute_proposal_expiry_and_replay_protection(client: TestClient) -> No
     # Attempting to decide/execute expired proposal returns 400
     res_exp = client.post(
         f"/api/v1/staff/proposals/{prop.id}/decide",
-        json={"decision": "approved", "reason": "too late", "execute": True},
+        json={"decision": "approved", "params_hash": reviewed_hash(prop.id), "reason": "too late", "execute": True},
         headers=headers,
     )
     assert res_exp.status_code == 400
@@ -304,7 +312,7 @@ def test_approve_and_execute_marks_the_card_executed(client: TestClient) -> None
 
     res = client.post(
         f"/api/v1/staff/proposals/{prop_id}/decide",
-        json={"decision": "approved", "execute": True},
+        json={"decision": "approved", "params_hash": reviewed_hash(prop_id), "execute": True},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
 
@@ -318,10 +326,14 @@ def test_execute_route_rewrites_the_card(client: TestClient) -> None:
         "staff.dispatch", {"role": "ad-hoc", "repo": "Repository_Management", "prompt": "verify issues"}
     )
     headers = {"X-Requested-With": "XMLHttpRequest"}
-    client.post(f"/api/v1/staff/proposals/{prop_id}/decide", json={"decision": "approved"}, headers=headers)
+    client.post(
+        f"/api/v1/staff/proposals/{prop_id}/decide",
+        json={"decision": "approved", "params_hash": reviewed_hash(prop_id)},
+        headers=headers,
+    )
     assert _card(message_id)["status"] == "approved"
 
-    res = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", headers=headers)
+    res = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", params=hash_query(prop_id), headers=headers)
 
     assert res.status_code == 200, res.text
     assert _card(message_id)["status"] == "executed"

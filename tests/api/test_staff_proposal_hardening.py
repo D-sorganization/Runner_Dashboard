@@ -28,6 +28,8 @@ from staff.actions import (
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.thread_bus import reset_thread_bus
 
+from tests.staff_proposal_hash import hash_query, reviewed_hash
+
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 
 APPROVER = Principal(
@@ -189,7 +191,7 @@ def _proposal(action: str = "test.noop", params: dict[str, object] | None = None
 @pytest.mark.unit
 def test_execute_route_refuses_a_proposal_that_was_never_decided(client: TestClient) -> None:
     prop_id = _proposal()
-    resp = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", headers=_XHR)
+    resp = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", params=hash_query(prop_id), headers=_XHR)
     assert resp.status_code == 409, resp.text
     assert NOOP_CALLS == []
     assert get_conversation_store().get_proposal(prop_id).state == "proposed"  # type: ignore[union-attr]
@@ -199,7 +201,7 @@ def test_execute_route_refuses_a_proposal_that_was_never_decided(client: TestCli
 def test_execute_proposal_refuses_proposed_without_an_approval() -> None:
     prop_id = _proposal()
     with pytest.raises(ProposalReplayError, match="approved"):
-        execute_proposal(prop_id, approver=APPROVER)
+        execute_proposal(prop_id, approver=APPROVER, params_hash=reviewed_hash(prop_id))
     assert NOOP_CALLS == []
 
 
@@ -211,15 +213,18 @@ def test_failed_proposal_needs_an_explicit_retry_decision(client: TestClient) ->
     store.transition_proposal_state(prop_id, "executing")
     store.transition_proposal_state(prop_id, "failed", reason="upstream down")
 
-    assert client.post(f"/api/v1/staff/proposals/{prop_id}/execute", headers=_XHR).status_code == 409
+    assert (
+        client.post(f"/api/v1/staff/proposals/{prop_id}/execute", params=hash_query(prop_id), headers=_XHR).status_code
+        == 409
+    )
     retry = client.post(
         f"/api/v1/staff/proposals/{prop_id}/decide",
-        json={"decision": "approved", "reason": "retry", "execute": False},
+        json={"decision": "approved", "params_hash": reviewed_hash(prop_id), "reason": "retry", "execute": False},
         headers=_XHR,
     )
     assert retry.status_code == 200, retry.text
     assert retry.json()["state"] == "approved"
-    done = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", headers=_XHR)
+    done = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", params=hash_query(prop_id), headers=_XHR)
     assert done.status_code == 200, done.text
     assert done.json()["state"] == "done" and len(NOOP_CALLS) == 1
 
@@ -229,7 +234,9 @@ def test_execute_enforces_the_action_required_scope() -> None:
     prop_id = _proposal("staff.dispatch", {"role": "ad-hoc", "prompt": "hi"})
     with patch("staff.action_executors.execute_staff_dispatch") as executor:
         with pytest.raises(PermissionError, match="staff.dispatch"):
-            execute_proposal(prop_id, approver=APPROVER_WITHOUT_DISPATCH, approve=True)
+            execute_proposal(
+                prop_id, approver=APPROVER_WITHOUT_DISPATCH, approve=True, params_hash=reviewed_hash(prop_id)
+            )
     executor.assert_not_called()
 
 
@@ -237,7 +244,7 @@ def test_execute_enforces_the_action_required_scope() -> None:
 def test_result_is_not_posted_to_a_thread_that_does_not_exist() -> None:
     store = get_conversation_store()
     prop = store.create_proposal(message_id="msg_x", thread_id="th_ghost", action="test.noop", params={}, risk="low")
-    res = execute_proposal(prop.id, approver=APPROVER, approve=True)
+    res = execute_proposal(prop.id, approver=APPROVER, approve=True, params_hash=reviewed_hash(prop.id))
     assert res.success and NOOP_CALLS == [{}]
     assert store.list_messages("th_ghost") == []
 
@@ -257,12 +264,17 @@ def test_execute_route_accepts_a_decide_capable_role_preset(client: TestClient) 
     prop_id = _proposal()
     decided = client.post(
         f"/api/v1/staff/proposals/{prop_id}/decide",
-        json={"decision": "approved", "reason": "desk approval", "execute": False},
+        json={
+            "decision": "approved",
+            "params_hash": reviewed_hash(prop_id),
+            "reason": "desk approval",
+            "execute": False,
+        },
         headers=_XHR,
     )
     assert decided.status_code == 200, decided.text
     assert decided.json()["state"] == "approved"
 
-    done = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", headers=_XHR)
+    done = client.post(f"/api/v1/staff/proposals/{prop_id}/execute", params=hash_query(prop_id), headers=_XHR)
     assert done.status_code == 200, done.text
     assert done.json()["state"] == "done" and len(NOOP_CALLS) == 1

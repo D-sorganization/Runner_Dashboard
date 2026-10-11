@@ -30,6 +30,7 @@ const threadApi = vi.hoisted(() => ({
   fetchThreadMessages: vi.fn(),
   fetchRoster: vi.fn(),
   fetchRuns: vi.fn(),
+  getActionProposal: vi.fn(),
 }));
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
@@ -284,6 +285,7 @@ describe("Mobile Staff Console Layout Ownership (#1805 / BR-12)", () => {
     });
 
     it("renders send and approval controls in thread view with hit-testable targets", async () => {
+      threadApi.getActionProposal.mockResolvedValue({ id: "x", can_approve: true, denial_reason: null, params_hash: "e".repeat(64) });
       const onApprove = vi.fn();
       const onDeny = vi.fn();
       const onSend = vi.fn().mockResolvedValue({ ok: true });
@@ -329,8 +331,9 @@ describe("Mobile Staff Console Layout Ownership (#1805 / BR-12)", () => {
       expect(approveBtn).toBeVisible();
       expect(denyBtn).toBeVisible();
 
+      await waitFor(() => expect(approveBtn).toBeEnabled());
       fireEvent.click(approveBtn);
-      expect(onApprove).toHaveBeenCalledWith("prop-101", { host: "ControlTower" });
+      expect(onApprove).toHaveBeenCalledWith("prop-101", { host: "ControlTower" }, "e".repeat(64));
     });
   });
 });

@@ -91,6 +91,14 @@
   flex-wrap: wrap;
 }
 
+.staff-action-card__reason {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 .staff-action-card__btn {
   border-radius: var(--radius-sm, 6px);
   padding: 6px 14px;

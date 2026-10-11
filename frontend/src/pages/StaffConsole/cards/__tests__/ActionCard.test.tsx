@@ -53,7 +53,7 @@ describe("ActionCard", () => {
     fireEvent.click(approveBtn);
 
     expect(handleApprove).toHaveBeenCalledTimes(1);
-    expect(handleApprove).toHaveBeenCalledWith("prop-123", MOCK_PROPOSAL.params);
+    expect(handleApprove).toHaveBeenCalledWith("prop-123", MOCK_PROPOSAL.params, undefined);
   });
 
   it("re-enables its buttons when the approval is refused (#1547)", async () => {
@@ -172,6 +172,66 @@ describe("ActionCard", () => {
     render(<ActionCard proposal={routedProposal} />);
 
     expect(screen.getByText(/routed via barb to maintenance/i)).toBeInTheDocument();
+  });
+
+  describe("approval authority preview (#1807)", () => {
+    const HASH = "a".repeat(64);
+
+    it("disables both buttons and shows the reason when can_approve is false", () => {
+      const onApprove = vi.fn();
+      const onDeny = vi.fn();
+      render(
+        <ActionCard
+          proposal={{ ...MOCK_PROPOSAL, can_approve: false, denial_reason: "Requires owner approval", params_hash: HASH }}
+          onApprove={onApprove}
+          onDeny={onDeny}
+        />,
+      );
+
+      const approve = screen.getByRole("button", { name: /approve/i });
+      const deny = screen.getByRole("button", { name: /deny/i });
+      expect(approve).toBeDisabled();
+      expect(deny).toBeDisabled();
+      const reason = screen.getByTestId("approval-denial-reason");
+      expect(reason).toHaveTextContent("Requires owner approval");
+      expect(approve).toHaveAttribute("aria-describedby", reason.id);
+      expect(deny).toHaveAttribute("aria-describedby", reason.id);
+      expect(approve).toHaveAttribute("title", "Requires owner approval");
+
+      fireEvent.click(approve);
+      fireEvent.click(deny);
+      expect(onApprove).not.toHaveBeenCalled();
+      expect(onDeny).not.toHaveBeenCalled();
+    });
+
+    it("falls back to a generic reason when the server gave none", () => {
+      render(<ActionCard proposal={{ ...MOCK_PROPOSAL, can_approve: false }} />);
+      expect(screen.getByTestId("approval-denial-reason")).toHaveTextContent(/not allowed to approve/i);
+    });
+
+    it("keeps the buttons enabled when can_approve is true and passes the reviewed hash", () => {
+      const onApprove = vi.fn();
+      render(
+        <ActionCard
+          proposal={{ ...MOCK_PROPOSAL, can_approve: true, denial_reason: null, params_hash: HASH }}
+          onApprove={onApprove}
+        />,
+      );
+      expect(screen.queryByTestId("approval-denial-reason")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+      expect(onApprove).toHaveBeenCalledWith("prop-123", MOCK_PROPOSAL.params, HASH);
+    });
+
+    it("leaves the buttons as they were when nothing was previewed", () => {
+      render(<ActionCard proposal={MOCK_PROPOSAL} />);
+      expect(screen.getByRole("button", { name: /approve/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /deny/i })).toBeEnabled();
+    });
+
+    it("waits for a pending preview before enabling the buttons", () => {
+      render(<ActionCard proposal={MOCK_PROPOSAL} previewPending />);
+      expect(screen.getByRole("button", { name: /approve/i })).toBeDisabled();
+    });
   });
 });
 

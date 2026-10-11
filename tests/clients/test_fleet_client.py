@@ -169,11 +169,19 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
     ),
     (
         "staff_approval_decide",
-        {"proposal_id": "prop_1", "decision": "approved"},
+        {"proposal_id": "prop_1", "decision": "approved", "params_hash": "a" * 64},
         "POST",
         "/api/v1/staff/proposals/prop_1/decide",
         {},
-        {"decision": "approved", "reason": ""},
+        {"decision": "approved", "reason": "", "params_hash": "a" * 64},
+    ),
+    (
+        "staff_approval_decide",
+        {"proposal_id": "prop_1", "decision": "denied"},
+        "POST",
+        "/api/v1/staff/proposals/prop_1/decide",
+        {},
+        {"decision": "denied", "reason": ""},
     ),
 ]
 
@@ -356,6 +364,7 @@ BAD_CALLS: list[tuple[str, dict[str, Any]]] = [
     ("staff_thread_read", {"thread_id": "../bad"}),
     ("staff_work_items", {"limit": 0}),
     ("staff_approval_decide", {"proposal_id": "p-1", "decision": "maybe"}),
+    ("staff_approval_decide", {"proposal_id": "p-1", "decision": "approved", "params_hash": "not-a-hash"}),
 ]
 
 
@@ -461,3 +470,19 @@ def test_idempotent_retry(client: FleetClient, fake_api: Any) -> None:
     with pytest.raises(FleetAPIError):
         client.cancel("run-1")
     assert len(fake_api.requests) == 1
+
+
+def test_approving_previews_the_proposal_and_echoes_its_hash(client: FleetClient, fake_api: Any) -> None:
+    """#1807: an approve without an explicit hash binds to the hash the server previews."""
+    fake_api.respond("GET", "/api/v1/staff/proposals/prop_1", 200, {"params_hash": "b" * 64})
+    client.staff_approval_decide("prop_1", "approved")
+    get_rec, post_rec = fake_api.requests[-2:]
+    assert (get_rec.method, get_rec.path) == ("GET", "/api/v1/staff/proposals/prop_1")
+    assert post_rec.body == {"decision": "approved", "reason": "", "params_hash": "b" * 64}
+
+
+def test_approving_without_a_server_hash_sends_nothing(client: FleetClient, fake_api: Any) -> None:
+    fake_api.respond("GET", "/api/v1/staff/proposals/prop_1", 200, {"id": "prop_1"})
+    with pytest.raises(FleetArgumentError):
+        client.staff_approval_decide("prop_1", "approved")
+    assert all(r.method == "GET" for r in fake_api.requests)

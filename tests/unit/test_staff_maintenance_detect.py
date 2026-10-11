@@ -27,6 +27,8 @@ from staff.maintenance_detect import (
     detect_wedged_listener,
 )
 
+from tests.staff_proposal_hash import reviewed_hash
+
 UTC = getattr(_dt, "UTC", _dt.UTC)
 TEST_OPERATOR = Principal(id="operator-1", name="Operator", type="human", roles=["operator", "owner"])
 
@@ -293,7 +295,9 @@ def test_simulated_wedged_listener_restarted_and_verified() -> None:
         patch("staff.maintenance._get_runner_state", return_value={"busy": False, "status": "online"}),
         patch("staff.maintenance._run_service_command", return_value=(0, "restarted", "")),
     ):
-        res = execute_proposal(proposal["id"], approver=TEST_OPERATOR, approve=True)
+        res = execute_proposal(
+            proposal["id"], approver=TEST_OPERATOR, approve=True, params_hash=reviewed_hash(proposal["id"])
+        )
 
     assert res.success is True
     assert res.verification_ok is True

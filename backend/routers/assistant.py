@@ -345,13 +345,20 @@ async def execute_action(
 
     if prop_rec_id:
         try:
-            from staff.actions import execute_proposal
+            from staff.actions import execute_proposal, stored_params_hash
             from staff.conversations import get_conversation_store
 
             c_store = get_conversation_store()
             # Worker thread: never block the loop; lets GitHub-backed actions bridge back (#1448).
             await anyio.to_thread.run_sync(
-                partial(execute_proposal, prop_rec_id, approver=principal, store=c_store, approve=True)
+                partial(
+                    execute_proposal,
+                    prop_rec_id,
+                    approver=principal,
+                    store=c_store,
+                    approve=True,
+                    params_hash=stored_params_hash(c_store, prop_rec_id),  # operator approved this record
+                )
             )
         except Exception as _sync_err:  # noqa: BLE001
             log.warning("Assistant action execute could not sync to conversation store: %s", _sync_err)

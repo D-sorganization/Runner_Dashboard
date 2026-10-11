@@ -255,9 +255,13 @@ export function useStaffConsole({
   );
 
   const decide = useCallback(
-    async (proposalId: string, decision: "approved" | "denied"): Promise<boolean> => {
+    async (proposalId: string, decision: "approved" | "denied", paramsHash?: string): Promise<boolean> => {
       try {
-        await decideActionProposal(proposalId, decision, `${decision} in the Staff Console`);
+        if (decision === "approved" && !paramsHash) {
+          // The server refuses an approval that does not name the parameters reviewed (#1807).
+          throw new Error("The reviewed parameters are not loaded yet; reload the card and try again");
+        }
+        await decideActionProposal(proposalId, decision, `${decision} in the Staff Console`, true, undefined, paramsHash);
         return true;
       } catch (err) {
         report("decision", err);
@@ -268,9 +272,9 @@ export function useStaffConsole({
   );
 
   const approveProposal = useCallback(
-    async (proposalId: string, params?: Record<string, unknown>) => {
-      if (onApproveProposal) return (await onApproveProposal(proposalId, params)) !== false;
-      return decide(proposalId, "approved");
+    async (proposalId: string, params?: Record<string, unknown>, paramsHash?: string) => {
+      if (onApproveProposal) return (await onApproveProposal(proposalId, params, paramsHash)) !== false;
+      return decide(proposalId, "approved", paramsHash);
     },
     [onApproveProposal, decide],
   );

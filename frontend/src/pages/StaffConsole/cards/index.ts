@@ -5,6 +5,7 @@
  */
 export * from "./cardTypes";
 export * from "./ActionCard";
+export * from "./ProposalActionCard";
 export * from "./RunCard";
 export * from "./HandoffCard";
 export * from "./ReviewCard";

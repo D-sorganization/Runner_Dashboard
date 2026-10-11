@@ -20,6 +20,8 @@ from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.maintenance import execute_maintenance, reset_maintenance_cooldowns, verify_maintenance
 from staff.maintenance_policy import MaintenancePreconditionError
 
+from tests.staff_proposal_hash import reviewed_hash
+
 RUNBOOK = "docs/runbooks/wsl-vhdx-compaction.md"
 REQUEST = "maintenance.vhdx_compaction_request"
 OWNER = Principal(
@@ -114,7 +116,7 @@ def test_request_without_a_host_is_refused() -> None:
 def test_a_non_owner_cannot_approve_the_request() -> None:
     prop_id = _propose({"host": "desk"})
     with pytest.raises(PermissionError, match="requires owner approval"):
-        execute_proposal(prop_id, approver=APPROVER, approve=True)
+        execute_proposal(prop_id, approver=APPROVER, approve=True, params_hash=reviewed_hash(prop_id))
     prop = get_conversation_store().get_proposal(prop_id)
     assert prop is not None and prop.state == "proposed"
 
@@ -122,7 +124,7 @@ def test_a_non_owner_cannot_approve_the_request() -> None:
 def test_owner_approval_records_the_request() -> None:
     prop_id = _propose({"host": "desk"})
     with patch("staff.maintenance._vacuum_db") as vacuum:
-        res = execute_proposal(prop_id, approver=OWNER, approve=True)
+        res = execute_proposal(prop_id, approver=OWNER, approve=True, params_hash=reviewed_hash(prop_id))
     vacuum.assert_not_called()
     assert res.success is True
     assert res.result["status"] == "compaction_requested"

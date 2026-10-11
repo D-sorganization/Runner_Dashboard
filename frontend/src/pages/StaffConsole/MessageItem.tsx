@@ -15,7 +15,6 @@ import { panelMeta } from "./panelTurn";
 import { PanelTurnCard } from "./PanelTurnCard";
 import { PanelConsensusCard } from "./PanelConsensusCard";
 import {
-  ActionCard,
   type ActionProposalData,
   type ActionRiskLevel,
   ErrorCard,
@@ -24,6 +23,7 @@ import {
   type ProposalApproveHandler,
   type ProposalDenyHandler,
   type ProposalStatus,
+  ProposalActionCard,
   ReviewCard,
   type ReviewCardData,
   type ReviewVerdict,
@@ -172,7 +172,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         };
 
       return (
-        <ActionCard
+        <ProposalActionCard
           proposal={proposal}
           onApprove={onApproveProposal}
           onDeny={onDenyProposal}

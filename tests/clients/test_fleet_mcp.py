@@ -168,7 +168,11 @@ def test_staff_tools_mcp_flow(fake_api: Any) -> None:
             _call(5, "staff_run_cancel", {"run_id": "run-905"}),
             _call(6, "staff_work_items", {"limit": 10, "overdue": True}),
             _call(7, "staff_approvals_list", {"limit": 5}),
-            _call(8, "staff_approval_decide", {"proposal_id": "prop_1", "decision": "approved"}),
+            _call(
+                8,
+                "staff_approval_decide",
+                {"proposal_id": "prop_1", "decision": "approved", "params_hash": "a" * 64},
+            ),
         ],
     )
     assert all(r["result"]["isError"] is False for r in responses[1:])

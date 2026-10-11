@@ -349,11 +349,26 @@ class FleetClient:
         }
         return self.request("GET", "/api/v1/staff/proposals", params=params)
 
-    def staff_approval_decide(self, proposal_id: str, decision: str, reason: str | None = None) -> Any:
+    def staff_approval_decide(
+        self, proposal_id: str, decision: str, reason: str | None = None, params_hash: str | None = None
+    ) -> Any:
+        """Approve or deny a proposal. Approving echoes the reviewed ``params_hash`` (#1807).
+
+        Without an explicit ``params_hash`` the client previews the proposal (GET) and echoes the
+        hash the server reports, binding the approval to the parameters as stored right now.
+        """
         pid = _match(PATTERNS.ident, proposal_id, "proposal_id")
         _check(decision in PROPOSAL_DECISIONS, f"decision must be one of {PROPOSAL_DECISIONS}")
-        body = {"decision": decision, "reason": _opt_text(reason, "reason", LIMITS.max_reason) or ""}
+        body: dict[str, Any] = {"decision": decision, "reason": _opt_text(reason, "reason", LIMITS.max_reason) or ""}
+        if decision == "approved":
+            body["params_hash"] = _opt(PATTERNS.sha256_hex, params_hash, "params_hash") or self._previewed_hash(pid)
         return self.request("POST", f"/api/v1/staff/proposals/{pid}/decide", body=body)
+
+    def _previewed_hash(self, pid: str) -> str:
+        preview = self.request("GET", f"/api/v1/staff/proposals/{pid}")
+        reviewed = preview.get("params_hash") if isinstance(preview, dict) else None
+        _check(isinstance(reviewed, str) and bool(reviewed), "server returned no params_hash to approve against")
+        return str(reviewed)
 
     # ------------------------------------------------------------------ coordination
 

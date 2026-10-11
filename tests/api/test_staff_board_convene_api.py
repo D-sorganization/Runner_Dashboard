@@ -23,6 +23,8 @@ from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.groups import SeatReply, SeatSpec, reset_group_runner_override, set_group_runner_override
 from staff.thread_bus import reset_thread_bus
 
+from tests.staff_proposal_hash import hash_query, reviewed_hash
+
 TEST_OPERATOR = Principal(
     id="operator-user",
     type="human",
@@ -103,7 +105,7 @@ def test_board_convene_requires_decision_before_execution(client: TestClient) ->
     proposal_id = prop_resp.json()["id"]
     assert prop_resp.json()["risk"] == "medium"
 
-    exec_resp = client.post(f"/api/v1/staff/proposals/{proposal_id}/execute")
+    exec_resp = client.post(f"/api/v1/staff/proposals/{proposal_id}/execute", params=hash_query(proposal_id))
     assert exec_resp.status_code == 409
 
 
@@ -138,7 +140,12 @@ async def test_board_convene_approved_creates_thread_and_starts_group_turn(clien
 
     decide_resp = client.post(
         f"/api/v1/staff/proposals/{proposal_id}/decide",
-        json={"decision": "approved", "reason": "owner approved", "execute": True},
+        json={
+            "decision": "approved",
+            "params_hash": reviewed_hash(proposal_id),
+            "reason": "owner approved",
+            "execute": True,
+        },
     )
     assert decide_resp.status_code == 200
     data = decide_resp.json()
@@ -197,7 +204,12 @@ def test_board_convene_missing_question_is_invalid_params(client: TestClient) ->
 
     decide_resp = client.post(
         f"/api/v1/staff/proposals/{proposal_id}/decide",
-        json={"decision": "approved", "reason": "owner approved", "execute": True},
+        json={
+            "decision": "approved",
+            "params_hash": reviewed_hash(proposal_id),
+            "reason": "owner approved",
+            "execute": True,
+        },
     )
     assert decide_resp.status_code == 200
     data = decide_resp.json()
@@ -240,7 +252,12 @@ async def test_board_convene_include_queue_gives_seats_every_open_proposal(clien
     with patch("proposals.service.list_proposals", new=AsyncMock(return_value=queue)) as listed:
         data = client.post(
             f"/api/v1/staff/proposals/{proposal_id}/decide",
-            json={"decision": "approved", "reason": "owner", "execute": True},
+            json={
+                "decision": "approved",
+                "params_hash": reviewed_hash(proposal_id),
+                "reason": "owner",
+                "execute": True,
+            },
         ).json()
         assert data["state"] == "done", data
         for _ in range(30):
@@ -269,7 +286,12 @@ def test_board_convene_include_queue_fails_when_the_queue_cannot_be_read(client:
     with patch("proposals.service.list_proposals", new=AsyncMock(side_effect=RuntimeError("GitHub down"))):
         data = client.post(
             f"/api/v1/staff/proposals/{proposal_id}/decide",
-            json={"decision": "approved", "reason": "owner", "execute": True},
+            json={
+                "decision": "approved",
+                "params_hash": reviewed_hash(proposal_id),
+                "reason": "owner",
+                "execute": True,
+            },
         ).json()
     assert data["execution_result"]["success"] is False
     assert "proposal queue" in data["execution_result"]["error"]
