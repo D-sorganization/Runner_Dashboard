@@ -335,3 +335,166 @@ def test_apply_capacity_falls_back_to_next_idle_runner_when_first_candidate_turn
     actions = runner_scheduler.apply_capacity(units, desired=2, dry_run=False)
 
     assert [a["runner"] for a in actions] == [2]
+
+
+# --- Drain watcher (#1929): scale down under sustained load ------------------
+
+
+class _Clock:
+    """Fake monotonic clock; ``sleep`` advances it so the drain loop terminates."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _drain_env(monkeypatch, tmp_path: Path, worker_running):
+    """Wire the drain loop to a fake clock, recorded commands and a worker oracle.
+
+    ``worker_running(runner_num, now)`` says whether that runner has a live job.
+    """
+    clock = _Clock()
+    commands: list[list[str]] = []
+    monkeypatch.setattr(runner_scheduler.time_module, "sleep", clock.sleep)
+    monkeypatch.setattr(runner_scheduler.time_module, "monotonic", clock.monotonic)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
+
+    def busy(workdir: Path, unit: str | None = None) -> bool:
+        return worker_running(int(workdir.name.split("-")[-1]), clock.now)
+
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda workdir: busy(workdir))
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda workdir, unit=None: False)
+    return clock, commands
+
+
+def _stops(commands: list[list[str]]) -> list[str]:
+    return [cmd[2] for cmd in commands if cmd[:2] == ["systemctl", "stop"]]
+
+
+def test_drain_stops_runner_that_is_between_jobs_even_when_tick_saw_all_busy(monkeypatch, tmp_path: Path) -> None:
+    """The #1929 race: every runner is busy at the tick, but one gaps between jobs."""
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2, 3, 4)]
+    # Runner 4 has a ~5 s gap between jobs starting at t=20; the others never gap.
+    clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: not (num == 4 and 20 <= now < 25))
+
+    actions = runner_scheduler.drain_surplus(units, desired=3, dry_run=False)
+
+    assert [a["runner"] for a in actions] == [4]
+    assert actions[0]["action"] == "stop"
+    assert _stops(commands) == [units[3].unit]
+
+
+def test_drain_never_stops_a_runner_that_stays_busy(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: True)
+
+    actions = runner_scheduler.drain_surplus(units, desired=0, dry_run=False)
+
+    assert actions == []
+    assert _stops(commands) == []
+    assert clock.now <= runner_scheduler.DRAIN_MAX_SECONDS + runner_scheduler.DRAIN_POLL_SECONDS
+
+
+def test_drain_requires_two_consecutive_idle_checks(monkeypatch, tmp_path: Path) -> None:
+    """A job that appears between the two checks (listener got it, worker forked) vetoes the stop."""
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    calls = {"n": 0}
+
+    def flapping(num: int, now: float) -> bool:
+        if num != 2:
+            return True
+        calls["n"] += 1
+        return calls["n"] % 2 == 0  # idle on first look, busy on the confirm look
+
+    _clock, commands = _drain_env(monkeypatch, tmp_path, flapping)
+
+    actions = runner_scheduler.drain_surplus(units, desired=1, dry_run=False)
+
+    assert actions == []
+    assert _stops(commands) == []
+
+
+def test_drain_never_goes_below_desired(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2, 3, 4)]
+    _clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: False)
+
+    actions = runner_scheduler.drain_surplus(units, desired=2, dry_run=False)
+
+    assert sorted(a["runner"] for a in actions) == [3, 4]
+    assert len(_stops(commands)) == 2
+
+
+def test_drain_can_reach_zero_for_maintenance(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    _clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: False)
+
+    actions = runner_scheduler.drain_surplus(units, desired=0, dry_run=False)
+
+    assert sorted(a["runner"] for a in actions) == [1, 2]
+
+
+def test_drain_is_a_noop_without_surplus_and_in_dry_run(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path) for n in (1, 2)]
+    clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: False)
+
+    assert runner_scheduler.drain_surplus(units, desired=2, dry_run=False) == []
+    assert runner_scheduler.drain_surplus(units, desired=0, dry_run=True) == []
+    assert commands == []
+    assert clock.now == 0
+
+
+def test_drain_disabled_when_budget_is_zero(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path) for n in (1, 2)]
+    _clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: False)
+    monkeypatch.setattr(runner_scheduler, "DRAIN_MAX_SECONDS", 0)
+
+    assert runner_scheduler.drain_surplus(units, desired=0, dry_run=False) == []
+    assert commands == []
+
+
+def test_drain_ignores_inactive_runners(monkeypatch, tmp_path: Path) -> None:
+    inactive = runner_scheduler.RunnerUnit(
+        num=9, unit="actions.runner.example.runner-9.service", workdir=tmp_path / "runner-9", active=False, busy=False
+    )
+    units = [_active_unit(1, tmp_path), inactive]
+    _clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: False)
+
+    assert runner_scheduler.drain_surplus(units, desired=1, dry_run=False) == []
+    assert _stops(commands) == []
+
+
+def test_main_drains_surplus_left_by_the_tick_pass(monkeypatch, tmp_path: Path, capsys) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    config = {"enabled": True, "default_count": 1, "schedules": []}
+    monkeypatch.setattr(runner_scheduler, "load_config", lambda: config)
+    monkeypatch.setattr(runner_scheduler, "list_units", lambda: units)
+    monkeypatch.setattr(runner_scheduler, "apply_capacity", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        runner_scheduler,
+        "build_state",
+        lambda *_a, **_k: {
+            "desired": 1,
+            "reason": "x",
+            "installed": 2,
+            "online": 2,
+            "busy": 2,
+            "idle": 0,
+            "offline": 0,
+        },
+    )
+    monkeypatch.setattr(runner_scheduler, "write_state", lambda _s: None)
+    drained: list[tuple] = []
+    monkeypatch.setattr(
+        runner_scheduler,
+        "drain_surplus",
+        lambda u, desired, dry_run: drained.append((len(u), desired, dry_run)) or [],
+    )
+    monkeypatch.setattr(sys, "argv", ["runner-scheduler", "--apply"])
+
+    assert runner_scheduler.main() == 0
+    assert drained == [(2, 1, False)]

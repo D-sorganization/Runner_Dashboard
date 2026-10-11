@@ -230,6 +230,22 @@ ensure_runner_hardening() {
 }
 ensure_runner_hardening
 
+# ── Refresh host-level maintenance assets (idempotent, #1927) ────────────────
+# The installed /usr/local/bin/runner-scheduler (and the wsl-cache-trim assets)
+# are only written by install-runner-maintenance.sh. Without this step a host
+# kept current by routine updates keeps its first-provisioned scheduler, which
+# for pre-#1922 builds stops busy runners mid-job. Reinstalls only on content
+# drift, skips qualified-release hosts, and never restarts a runner.
+refresh_maintenance_assets() {
+    local refresh; refresh="$(dirname "$0")/refresh-maintenance-assets.sh"
+    [[ -f "$refresh" ]] || { warn "refresh-maintenance-assets.sh not found; skipping"; return 0; }
+    if dry_run "bash $refresh"; then
+        return 0
+    fi
+    bash "$refresh" || warn "Maintenance asset refresh failed (needs passwordless sudo) — run: sudo -n bash $refresh"
+}
+refresh_maintenance_assets
+
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {
     curl -fsS --max-time 10 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1
