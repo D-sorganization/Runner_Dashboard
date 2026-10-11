@@ -338,6 +338,7 @@ tar -xzf "${ARTIFACT_COPY}" --no-same-owner --no-same-permissions -C "${STAGE_DI
 verify_root_only_tree "${STAGE_DIR}"
 validate_artifact_metadata "${STAGE_DIR}" "${RELEASE_VERSION}" "${RELEASE_COMMIT}"
 validate_local_runner_inventory "${TRANSACTION_DIR}/local-inventory-before.json"
+select_root_scheduler_python
 journal_event "preflight-qualified"
 
 record_rollback_baseline

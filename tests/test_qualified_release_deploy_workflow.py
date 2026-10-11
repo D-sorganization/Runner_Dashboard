@@ -294,3 +294,17 @@ def test_evidence_is_redacted_and_uploaded_even_on_failure() -> None:
     assert "write_redacted_evidence" in transaction
     for forbidden in ("GH_TOKEN", "GITHUB_TOKEN", "EnvironmentFile", "journalctl"):
         assert forbidden not in transaction
+
+
+def test_scheduler_python_is_selected_by_the_vetted_selector_before_mutation() -> None:
+    """#1839: the scheduler venv is seeded only from a selector-approved root Python 3.12."""
+    transaction = TRANSACTION.read_text(encoding="utf-8")
+    runtime = RUNTIME_LIBRARY.read_text(encoding="utf-8")
+    bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+
+    assert transaction.index("select_root_scheduler_python") < transaction.index("begin_mutation")
+    assert "root_python_selector.py" in bootstrap
+    assert "root_python_selector.py" in runtime
+    assert '"${SCHEDULER_PYTHON}" -m venv --copies --without-pip' in runtime
+    assert "/usr/bin/python3 -m venv" not in runtime
+    assert "system scheduler authority is not Python 3.12" not in runtime
