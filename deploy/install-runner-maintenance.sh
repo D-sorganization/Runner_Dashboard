@@ -29,6 +29,11 @@ fi
 
 sudo install -m 0755 "${SCRIPT_DIR}/runner-scheduler.py" /usr/local/bin/runner-scheduler
 sudo install -m 0755 "${SCRIPT_DIR}/runner-corruption-scan.sh" /usr/local/bin/runner-corruption-scan
+# Fleet memory policy (RM #2071): drop page cache above THRESH% so WSL returns
+# memory to Windows even while CI keeps the VM busy. Script is /usr/local/sbin
+# (root-only), units are copied verbatim from deploy/.
+sudo -n install -m 0755 "${SCRIPT_DIR}/wsl-cache-trim" /usr/local/sbin/wsl-cache-trim
+sudo -n install -m 0644 "${SCRIPT_DIR}/wsl-cache-trim.service" "${SCRIPT_DIR}/wsl-cache-trim.timer" /etc/systemd/system/
 # Operator break-glass from #661 — drains, heals, and restarts every
 # actions.runner.*.service on the host.
 sudo install -m 0755 "${SCRIPT_DIR}/heal-host.sh" /usr/local/bin/heal-host
@@ -203,7 +208,7 @@ Environment=TEXTFILE_COLLECTOR_DIR=${TEXTFILE_COLLECTOR_DIR}
 CONF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now runner-scheduler.timer runner-corruption-scan.timer runner-hooks-restore.timer
+sudo systemctl enable --now runner-scheduler.timer runner-corruption-scan.timer runner-hooks-restore.timer wsl-cache-trim.timer
 
 # Apply (or re-apply) the per-unit drop-ins from #664. Idempotent.
 # Passes the installed hook dir explicitly so the drop-ins reference the
@@ -215,7 +220,7 @@ if [[ -x "${SCRIPT_DIR}/migrate-runner-units.sh" ]]; then
 fi
 
 echo "Installed:"
-systemctl list-timers runner-cleanup.timer runner-disk-guard.timer runner-scheduler.timer runner-corruption-scan.timer --all
+systemctl list-timers runner-cleanup.timer runner-disk-guard.timer runner-scheduler.timer runner-corruption-scan.timer wsl-cache-trim.timer --all
 echo ""
 echo "Binaries:"
 ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan /usr/local/bin/runner-hooks-restore /usr/local/bin/clean-stale-shell-profiles /usr/local/bin/clean-gitconfig-token-rewrites "${HOOK_INSTALL_DIR}"/ 2>/dev/null | grep -v '^total' || true
