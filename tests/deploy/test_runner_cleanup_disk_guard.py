@@ -67,7 +67,8 @@ class TestAggressiveDockerUnderPressure:
         the routine path must prune them on a much shorter window than build
         cache, without touching tagged images (no --all)."""
         assert 'DOCKER_DANGLING_UNTIL="${DOCKER_DANGLING_UNTIL:-6h}"' in cleanup_text
-        routine = cleanup_text[cleanup_text.index("    else\n        run docker container prune") :]
+        anchor = '    else\n        if [[ "$prune_containers" == "1" ]]; then run docker container prune'
+        routine = cleanup_text[cleanup_text.index(anchor) :]
         routine = routine[: routine.index("\n    fi\n")]
         assert 'docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"' in routine
         assert "docker image prune --all" not in routine
@@ -118,20 +119,20 @@ class TestDiskGuardMode:
         assert "journalctl --vacuum-size" in guard_block
 
 
-class TestInstallerShipsDiskGuardTimer:
-    def test_service_runs_disk_guard(self, installer_text: str) -> None:
-        assert "runner-disk-guard.service" in installer_text
-        assert "/usr/local/bin/runner-cleanup --disk-guard" in installer_text
+class TestInstallerDelegatesStorageGc:
+    """The disk-guard service/timer are owned by install-storage-gc.sh (#1925);
+    their content and enablement are tested behaviourally in
+    test_install_storage_gc.py. Here: the maintenance installer must delegate,
+    never carry a second copy that can drift."""
 
-    def test_timer_is_hourly(self, installer_text: str) -> None:
-        assert "runner-disk-guard.timer" in installer_text
-        guard_timer_idx = installer_text.index("runner-disk-guard.timer")
-        # the timer heredoc with OnCalendar=hourly should appear near it
-        assert "OnCalendar=hourly" in installer_text[guard_timer_idx : guard_timer_idx + 600]
+    def test_delegates_to_the_single_owner(self, installer_text: str) -> None:
+        assert 'install-storage-gc.sh" --profile runner' in installer_text
 
-    def test_timer_is_enabled(self, installer_text: str) -> None:
-        enable_lines = [ln for ln in installer_text.splitlines() if "enable --now" in ln]
-        assert any("runner-disk-guard.timer" in ln for ln in enable_lines), "runner-disk-guard.timer must be enabled"
+    def test_does_not_redefine_storage_gc_units(self, installer_text: str) -> None:
+        assert "ExecStart=/usr/local/bin/runner-cleanup" not in installer_text
+        assert "/etc/systemd/system/runner-disk-guard" not in installer_text
+        assert "/etc/systemd/system/runner-cleanup.service >" not in installer_text
+        assert 'runner-cleanup.sh" /usr/local/bin/runner-cleanup' not in installer_text
 
 
 class TestInstallerUsesGovernedSchedulerPython:
