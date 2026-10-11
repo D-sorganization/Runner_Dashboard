@@ -67,9 +67,17 @@ tracked by that commit. It makes no service changes. It installs:
 - `/usr/local/lib/runner-dashboard/qualified-release-lib.sh` (root:root, 0644);
 - `/usr/local/lib/runner-dashboard/qualified-release-runtime-lib.sh`
   (root:root, 0644);
+- `/usr/local/lib/runner-dashboard/root_python_selector.py` (root:root, 0644);
 - the canonical OGLaptop schedule under `/usr/local/share`;
 - a root-only transaction/rollback store and runner-owned 0700 inbox; and
 - one sudoers command with no wildcard arguments.
+
+**Scheduler interpreter (#1839).** Preflight, before any mutation, runs the selector, which accepts
+only a root-owned, non-group/other-writable `python3.12` (`/usr/bin/python3.12`, then
+`/usr/local/bin/python3.12`, then `/usr/bin/python3` if it is 3.12) whose whole path and realpath are
+root-owned. User-owned runtimes (`~/.local`, pyenv, uv, venvs) and Python 3.14 are rejected and the
+deployment stops before touching the host. On a host without one (for example OGLaptop with only
+3.14), an operator must root-install a vetted Python 3.12, then redeploy.
 
 The helper accepts its closed-schema request on stdin. Sudoers does not grant a
 shell, systemctl, install, file-copy, command argument, or script-path surface.

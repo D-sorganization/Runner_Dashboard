@@ -16,6 +16,22 @@ verify_root_only_tree() {
         || fail "tree contains a group/other-writable path"
 }
 
+# Root-owned selector (#1839); installed by the bootstrap and run by whatever
+# /usr/bin/python3 exists, because it only selects and never seeds the runtime.
+QUALIFIED_PYTHON_SELECTOR="/usr/local/lib/runner-dashboard/root_python_selector.py"
+
+# Preflight (before any mutation): choose the root-owned Python 3.12 that seeds
+# the scheduler venv. Fails closed; never falls back to 3.14 or a user runtime.
+select_root_scheduler_python() {
+    verify_root_authority_file "${QUALIFIED_PYTHON_SELECTOR}"
+    local -a explicit=()
+    [[ -z "${QUALIFIED_SCHEDULER_PYTHON:-}" ]] || explicit=(--python "${QUALIFIED_SCHEDULER_PYTHON}")
+    SCHEDULER_PYTHON="$(/usr/bin/python3 "${QUALIFIED_PYTHON_SELECTOR}" ${explicit[@]+"${explicit[@]}"})" \
+        || fail "no root-owned Python 3.12 is available; root-install a vetted Python 3.12 and redeploy"
+    [[ "${SCHEDULER_PYTHON}" == /* ]] || fail "scheduler interpreter selection is not an absolute path"
+    journal_event "scheduler-python-selected"
+}
+
 verify_root_owned_scheduler_runtime() {
     verify_root_only_tree "${QUALIFIED_SCHEDULER_RELEASE}"
     [[ -z "$(find "${QUALIFIED_SCHEDULER_RELEASE}" -type l -print -quit)" ]] \
@@ -34,11 +50,10 @@ verify_root_owned_scheduler_runtime() {
 
 install_root_owned_scheduler_runtime() {
     local candidate="${TRANSACTION_DIR}/scheduler-release"
-    [[ "$(/usr/bin/python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" == "3.12" ]] \
-        || fail "system scheduler authority is not Python 3.12"
+    [[ -n "${SCHEDULER_PYTHON:-}" ]] || fail "scheduler interpreter was not selected during preflight"
     install -d -o root -g root -m 0755 "${QUALIFIED_RELEASE_ROOT}"
     install -d -o root -g root -m 0700 "${candidate}"
-    /usr/bin/python3 -m venv --copies --without-pip "${candidate}/runtime"
+    "${SCHEDULER_PYTHON}" -m venv --copies --without-pip "${candidate}/runtime"
     install -o root -g root -m 0555 "${STAGE_DIR}/deploy/runner-scheduler.py" \
         "${candidate}/runner-scheduler.py"
     chown -hR root:root "${candidate}"
