@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import platform
 import re
@@ -37,7 +38,12 @@ STOP_RECHECK_DELAY_SECONDS = float(os.environ.get("RUNNER_STOP_RECHECK_DELAY_SEC
 DRAIN_MAX_SECONDS = float(os.environ.get("RUNNER_DRAIN_MAX_SECONDS", "240"))
 DRAIN_POLL_SECONDS = float(os.environ.get("RUNNER_DRAIN_POLL_SECONDS", "2"))
 DRAIN_CONFIRM_SECONDS = float(os.environ.get("RUNNER_DRAIN_CONFIRM_SECONDS", "1"))
+# Maintenance hold (#1929 item 3): while this flag exists every tick targets 0
+# runners, so a drain is not undone by the next scheduled start.
+MAINTENANCE_PATH = Path(os.environ.get("RUNNER_MAINTENANCE_FLAG", "/var/lib/runner-scheduler/maintenance.json"))
+MAINTENANCE_DRAIN_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_MAINTENANCE_DRAIN_TIMEOUT_SECONDS", "3600"))
 PROC_ROOT = Path("/proc")
+log = logging.getLogger("runner-scheduler")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
@@ -290,6 +296,39 @@ def _confirmed_idle(unit: RunnerUnit, settle: bool) -> bool:
     return True
 
 
+def _worker_absent(unit: RunnerUnit) -> bool:
+    """True when neither a Runner.Worker process nor a job lock exists for the runner."""
+    return not (runner_busy_via_process(unit.workdir) or runner_busy_via_lock(unit.workdir, unit.unit))
+
+
+def stop_runner_safely(unit: RunnerUnit) -> bool:
+    """Stop an idle runner without a window in which a job can be assigned (#1929).
+
+    Checking idle and then stopping leaves milliseconds in which the listener can
+    accept a job. Freeze the whole unit first (a stopped listener cannot pick up or
+    fork a job), re-verify no Worker exists, and only then stop; ``systemctl stop``
+    follows SIGTERM with SIGCONT. A job seen after the freeze thaws the unit and
+    vetoes the stop; the unit is thawed on every path except a successful
+    stop (including errors). Fails closed if the freeze fails. Returns True only when the
+    stop was issued.
+    """
+    if run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGSTOP", unit.unit]).returncode != 0:
+        log.warning("could not freeze %s; not stopping it", unit.unit)
+        return False
+    stopped = False
+    try:
+        if not _worker_absent(unit):
+            return False
+        stopped = run_cmd(["systemctl", "stop", unit.unit]).returncode == 0
+    finally:
+        if not stopped:
+            # Every path except a successful stop must leave the unit running.
+            run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit])
+    if stopped:
+        run_cmd(["systemctl", "reset-failed", unit.unit])
+    return stopped
+
+
 def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list[dict]:
     actions: list[dict] = []
     desired = max(0, min(desired, len(units)))
@@ -310,11 +349,10 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
             # twice, spaced out, immediately before killing the listener (#1921).
             if not _confirmed_idle(unit, settle=not dry_run):
                 continue
+            if not dry_run and not stop_runner_safely(unit):
+                continue
             actions.append({"runner": unit.num, "unit": unit.unit, "action": "stop"})
             stopped += 1
-            if not dry_run:
-                run_cmd(["systemctl", "stop", unit.unit])
-                run_cmd(["systemctl", "reset-failed", unit.unit])
     return actions
 
 
@@ -338,32 +376,82 @@ def _between_jobs(unit: RunnerUnit) -> bool:
     return idle()
 
 
-def drain_surplus(units: list[RunnerUnit], desired: int, dry_run: bool) -> list[dict]:
+def drain_surplus(units: list[RunnerUnit], desired: int, dry_run: bool, max_seconds: float | None = None) -> list[dict]:
     """Stop surplus runners the moment they gap between jobs (#1929).
 
     Contract: never stops a runner with a live Worker/lock, and never leaves
     fewer than ``desired`` active runners. Returns the stop actions taken.
     """
-    if dry_run or DRAIN_MAX_SECONDS <= 0:
+    budget = DRAIN_MAX_SECONDS if max_seconds is None else max_seconds
+    if dry_run or budget <= 0:
         return []
     desired = max(0, desired)
     remaining = sorted((u for u in units if u.active), key=lambda item: item.num, reverse=True)
     actions: list[dict] = []
-    deadline = time_module.monotonic() + DRAIN_MAX_SECONDS
+    deadline = time_module.monotonic() + budget
     while len(remaining) > desired and time_module.monotonic() < deadline:
         for unit in list(remaining):
             if len(remaining) <= desired:
                 break
             if not _between_jobs(unit):
                 continue
-            assert len(remaining) > desired, "drain must not go below the desired runner count"
+            assert len(remaining) > desired, "drain must not go below the desired runner count"  # noqa: S101
+            if not stop_runner_safely(unit):
+                continue
             remaining.remove(unit)
             actions.append({"runner": unit.num, "unit": unit.unit, "action": "stop", "mode": "drain"})
-            run_cmd(["systemctl", "stop", unit.unit])
-            run_cmd(["systemctl", "reset-failed", unit.unit])
         if len(remaining) > desired:
             time_module.sleep(DRAIN_POLL_SECONDS)
     return actions
+
+
+def maintenance_active() -> bool:
+    return MAINTENANCE_PATH.exists()
+
+
+def set_maintenance(active: bool) -> None:
+    if active:
+        MAINTENANCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        MAINTENANCE_PATH.write_text(
+            json.dumps({"since": datetime.now(UTC).isoformat(), "host": platform.node()}) + "\n", encoding="utf-8"
+        )
+    else:
+        MAINTENANCE_PATH.unlink(missing_ok=True)
+
+
+def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
+    """Desired runner count; an active maintenance hold overrides everything with 0."""
+    if maintenance_active():
+        return 0, "maintenance-drain"
+    return desired_capacity(
+        config,
+        target,
+        target_source="cli: --target" if target is not None else None,
+    )
+
+
+def run_maintenance_drain(units: list[RunnerUnit], timeout: float) -> dict:
+    """Hold at 0 runners and drain fast; report whether the host is fully idle.
+
+    The hold stays in place until ``--resume`` (or a drained reboot), so the next
+    tick does not restart what was just stopped.
+    """
+    set_maintenance(True)
+    active = [unit for unit in units if unit.active]
+    actions = drain_surplus(active, 0, dry_run=False, max_seconds=timeout)
+    stopped = {action["unit"] for action in actions}
+    remaining = [unit for unit in active if unit.unit not in stopped]
+    return {"drained": not remaining, "remaining": len(remaining), "actions": actions}
+
+
+def reboot_if_drained(report: dict) -> bool:
+    """Reboot the host only when the drain finished with no runner left; never otherwise."""
+    if not report.get("drained") or report.get("remaining", 1) != 0:
+        log.warning("reboot refused: %s runner(s) still active", report.get("remaining"))
+        return False
+    set_maintenance(False)  # runners must come back after the boot
+    run_cmd(["systemctl", "reboot"])
+    return True
 
 
 def build_state(config: dict, desired: int, reason: str, actions: list[dict]) -> dict:
@@ -415,21 +503,42 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="show planned actions")
     parser.add_argument("--json", action="store_true", help="print state as JSON")
     parser.add_argument("--target", type=int, help="override scheduled desired count")
+    parser.add_argument("--drain", action="store_true", help="maintenance: hold at 0 runners, drain, report")
+    parser.add_argument("--reboot", action="store_true", help="with --drain: reboot once fully drained")
+    parser.add_argument("--resume", action="store_true", help="clear the maintenance hold")
+    parser.add_argument("--drain-timeout", type=float, default=MAINTENANCE_DRAIN_TIMEOUT_SECONDS)
     args = parser.parse_args()
+    if args.reboot and not args.drain:
+        parser.error("--reboot requires --drain")
+    if args.drain and args.resume:
+        parser.error("--drain and --resume are mutually exclusive")
 
     config = load_config()
-    desired, reason = desired_capacity(
-        config,
-        args.target,
-        target_source="cli: --target" if args.target is not None else None,
-    )
-    units = list_units()
     dry_run = args.dry_run or not args.apply
-    actions = apply_capacity(units, desired, dry_run=dry_run)
-    stopped = {action["unit"] for action in actions if action["action"] == "stop"}
-    remaining = [replace(unit, active=False) if unit.unit in stopped else unit for unit in units]
-    actions += drain_surplus(remaining, desired, dry_run=dry_run)
+    if args.resume and not dry_run:
+        set_maintenance(False)
+    units = list_units()
+    maintenance_report: dict | None = None
+    if args.drain and not dry_run:
+        maintenance_report = run_maintenance_drain(units, timeout=args.drain_timeout)
+        actions = maintenance_report["actions"]
+        desired, reason = 0, "maintenance-drain"
+        if args.reboot:
+            maintenance_report["reboot"] = reboot_if_drained(maintenance_report)
+    else:
+        desired, reason = effective_capacity(config, args.target)
+        actions = apply_capacity(units, desired, dry_run=dry_run)
+        stopped = {action["unit"] for action in actions if action["action"] == "stop"}
+        remaining = [replace(unit, active=False) if unit.unit in stopped else unit for unit in units]
+        actions += drain_surplus(remaining, desired, dry_run=dry_run)
     state = build_state(config, desired, reason, actions)
+    rebooting = bool(maintenance_report and maintenance_report.get("reboot"))
+    if maintenance_report is not None or maintenance_active():
+        state["maintenance"] = {
+            "active": maintenance_active() or rebooting,
+            "drained": state["online"] == 0,
+            "rebooting": rebooting,
+        }
     if args.apply and not args.dry_run:
         write_state(state)
     if args.json:

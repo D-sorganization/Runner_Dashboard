@@ -498,3 +498,220 @@ def test_main_drains_surplus_left_by_the_tick_pass(monkeypatch, tmp_path: Path, 
 
     assert runner_scheduler.main() == 0
     assert drained == [(2, 1, False)]
+
+
+# --- #1929 residual: a job assigned between the idle check and the stop ------
+
+
+def _freezes(commands: list[list[str]]) -> list[str]:
+    return [cmd[-1] for cmd in commands if cmd[:2] == ["systemctl", "kill"] and "--signal=SIGSTOP" in cmd]
+
+
+def _thaws(commands: list[list[str]]) -> list[str]:
+    return [cmd[-1] for cmd in commands if cmd[:2] == ["systemctl", "kill"] and "--signal=SIGCONT" in cmd]
+
+
+def test_stop_never_lands_on_a_job_assigned_after_the_idle_checks(monkeypatch, tmp_path: Path) -> None:
+    """Deterministic repro: idle on both drain looks, then a job lands before the stop.
+
+    The listener must be frozen, re-verified idle, and only then stopped; a job
+    that appears in the window thaws the listener and vetoes the stop.
+    """
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    looks = {"n": 0}
+
+    def late_job(num: int, now: float) -> bool:
+        if num != 2:
+            return True
+        looks["n"] += 1
+        return looks["n"] >= 3  # looks 1 and 2 idle, the job lands right after
+
+    clock, commands = _drain_env(monkeypatch, tmp_path, late_job)
+    monkeypatch.setattr(runner_scheduler, "DRAIN_MAX_SECONDS", 3)
+
+    actions = runner_scheduler.drain_surplus(units, desired=1, dry_run=False)
+
+    assert actions == []
+    assert _stops(commands) == []
+    assert _freezes(commands) == [units[1].unit]
+    assert _thaws(commands) == [units[1].unit]
+
+
+def test_stop_is_preceded_by_freeze_and_runner_idle_at_stop_time(monkeypatch, tmp_path: Path) -> None:
+    """DbC: when a stop is issued the whole unit is frozen first and no job is running."""
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: num == 1)
+    stop_context: list[tuple[bool, bool]] = []
+    real_run = runner_scheduler.run_cmd
+
+    def spying(cmd, **kw):
+        if cmd[:2] == ["systemctl", "stop"]:
+            frozen = ["systemctl", "kill", "--kill-who=all", "--signal=SIGSTOP", cmd[2]] in commands
+            stop_context.append((frozen, runner_scheduler.runner_busy_via_process(units[1].workdir)))
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", spying)
+
+    actions = runner_scheduler.drain_surplus(units, desired=1, dry_run=False)
+
+    assert [a["runner"] for a in actions] == [2]
+    assert _stops(commands) == [units[1].unit]
+    assert stop_context == [(True, False)]
+
+
+def test_stop_fails_closed_when_the_listener_cannot_be_frozen(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: num == 1)
+    monkeypatch.setattr(runner_scheduler, "DRAIN_MAX_SECONDS", 3)
+
+    def failing_freeze(cmd, **_k):
+        commands.append(cmd)
+        return _process_result(returncode=1 if "--signal=SIGSTOP" in cmd else 0)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", failing_freeze)
+
+    assert runner_scheduler.drain_surplus(units, desired=1, dry_run=False) == []
+    assert _stops(commands) == []
+
+
+def test_unit_is_thawed_when_the_recheck_raises(monkeypatch, tmp_path: Path) -> None:
+    """A frozen unit must never be left frozen if verification blows up."""
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
+
+    def boom(_workdir):
+        raise OSError("proc unreadable")
+
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", boom)
+
+    try:
+        result = runner_scheduler.stop_runner_safely(unit)
+    except OSError:
+        result = False
+
+    assert result is False
+    assert _thaws(commands) == [unit.unit]
+    assert _stops(commands) == []
+
+
+def test_unit_is_thawed_when_systemctl_stop_fails(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+
+    def run(cmd, **_k):
+        commands.append(cmd)
+        return _process_result(returncode=1 if cmd[:2] == ["systemctl", "stop"] else 0)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+    assert _thaws(commands) == [unit.unit]
+
+
+def test_successful_stop_is_not_followed_by_a_thaw(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert _thaws(commands) == []
+
+
+def test_tick_stop_also_freezes_and_reverifies(monkeypatch, tmp_path: Path) -> None:
+    """apply_capacity shares the same guarded stop (DRY)."""
+    units = [_active_unit(1, tmp_path), _active_unit(2, tmp_path)]
+    looks = {"n": 0}
+
+    def late_job(num: int, now: float) -> bool:
+        if num != 2:
+            return False
+        looks["n"] += 1
+        return looks["n"] >= 3
+
+    clock, commands = _drain_env(monkeypatch, tmp_path, late_job)
+    monkeypatch.setattr(runner_scheduler, "runner_busy", lambda workdir, unit=None: late_job(int(workdir.name[-1]), 0))
+
+    actions = runner_scheduler.apply_capacity(units, desired=1, dry_run=False)
+
+    assert units[1].unit not in _stops(commands)
+    assert _thaws(commands) == [units[1].unit]
+    assert [a["runner"] for a in actions] == [1]  # the genuinely idle runner covers the surplus
+
+
+# --- #1929 item 3: maintenance drain (target 0, drain fast, report, reboot) ---
+
+
+def _maintenance_env(monkeypatch, tmp_path: Path, worker_running):
+    clock, commands = _drain_env(monkeypatch, tmp_path, worker_running)
+    monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
+    return clock, commands
+
+
+def test_maintenance_hold_forces_desired_zero_on_later_ticks(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
+    config = {"enabled": True, "default_count": 4, "schedules": []}
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")
+
+    runner_scheduler.set_maintenance(True)
+
+    assert runner_scheduler.effective_capacity(config, None) == (0, "maintenance-drain")
+    runner_scheduler.set_maintenance(False)
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")
+
+
+def test_run_maintenance_drain_stops_all_and_reports_drained(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2, 3)]
+    _clock, commands = _maintenance_env(monkeypatch, tmp_path, lambda num, now: now < 6 * num)
+
+    report = runner_scheduler.run_maintenance_drain(units, timeout=120)
+
+    assert report["drained"] is True
+    assert report["remaining"] == 0
+    assert sorted(_stops(commands)) == sorted(u.unit for u in units)
+    assert runner_scheduler.maintenance_active() is True  # hold stays until --resume
+
+
+def test_run_maintenance_drain_reports_not_drained_when_jobs_outlast_timeout(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    _clock, commands = _maintenance_env(monkeypatch, tmp_path, lambda num, now: num == 1)
+
+    report = runner_scheduler.run_maintenance_drain(units, timeout=30)
+
+    assert report["drained"] is False
+    assert report["remaining"] == 1
+    assert _stops(commands) == [units[1].unit]
+
+
+def test_reboot_refused_unless_fully_drained(monkeypatch, tmp_path: Path) -> None:
+    _clock, commands = _maintenance_env(monkeypatch, tmp_path, lambda num, now: True)
+
+    assert runner_scheduler.reboot_if_drained({"drained": False, "remaining": 1}) is False
+    assert not any(cmd[:2] == ["systemctl", "reboot"] for cmd in commands)
+
+
+def test_reboot_issued_and_hold_cleared_when_drained(monkeypatch, tmp_path: Path) -> None:
+    _clock, commands = _maintenance_env(monkeypatch, tmp_path, lambda num, now: False)
+    runner_scheduler.set_maintenance(True)
+
+    assert runner_scheduler.reboot_if_drained({"drained": True, "remaining": 0}) is True
+    assert ["systemctl", "reboot"] in commands
+    assert runner_scheduler.maintenance_active() is False  # runners return after boot
+
+
+def test_main_resume_clears_hold(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
+    runner_scheduler.set_maintenance(True)
+    config = {"enabled": True, "default_count": 1, "schedules": []}
+    monkeypatch.setattr(runner_scheduler, "load_config", lambda: config)
+    monkeypatch.setattr(runner_scheduler, "list_units", lambda: [])
+    monkeypatch.setattr(runner_scheduler, "write_state", lambda _s: None)
+    monkeypatch.setattr(sys, "argv", ["runner-scheduler", "--apply", "--resume"])
+
+    assert runner_scheduler.main() == 0
+    assert runner_scheduler.maintenance_active() is False
