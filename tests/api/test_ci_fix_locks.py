@@ -70,7 +70,9 @@ def test_exactly_one_process_wins_a_concurrent_acquire(tmp_path) -> None:
     """Separate OS processes racing for one PR: exactly one acquires (WORKERS>1, #1887 review)."""
     import multiprocessing
 
-    ctx = multiprocessing.get_context("fork")
+    # The lock is SQLite/file based, so "spawn" exercises it as faithfully as
+    # "fork" and works on every platform (Windows has no "fork" context).
+    ctx = multiprocessing.get_context("spawn")
     results = ctx.Queue()
     procs = [ctx.Process(target=_race_acquire, args=(str(tmp_path / "locks.db"), results)) for _ in range(6)]
     for proc in procs:
