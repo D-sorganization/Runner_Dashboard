@@ -13,6 +13,7 @@
 #   6. All actions.runner.*.service units active
 #   7. Hook lockfile dir exists and is writable for the runner user
 #   8. Drop-ins from deploy/migrate-runner-units.sh are present on every unit
+#   9. Installed runner-scheduler / wsl-cache-trim match this revision (#1927)
 #
 # Usage:
 #   bash deploy/deploy-check.sh
@@ -191,6 +192,16 @@ elif (( DROPIN_COUNT >= TOTAL )); then
     record "dropins" PASS "$DROPIN_COUNT drop-in(s) for $TOTAL unit(s)"
 else
     record "dropins" FAIL "only $DROPIN_COUNT drop-in(s) for $TOTAL unit(s) — run deploy/migrate-runner-units.sh"
+fi
+
+# ── 9. Host maintenance assets match the deployed revision (#1927) ──────────
+REFRESH_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/refresh-maintenance-assets.sh"
+if [[ ! -f "$REFRESH_SCRIPT" ]]; then
+    record "maintenance_assets" WARN "refresh-maintenance-assets.sh not found"
+elif DRIFT_OUT=$(bash "$REFRESH_SCRIPT" --check 2>&1); then
+    record "maintenance_assets" PASS "installed runner-scheduler / wsl-cache-trim match this revision (or are release-managed)"
+else
+    record "maintenance_assets" FAIL "stale host asset(s): $(printf '%s' "$DRIFT_OUT" | grep DRIFT | paste -sd ';' -) — run deploy/update-deployed.sh"
 fi
 
 # ── reporting ────────────────────────────────────────────────────────────────

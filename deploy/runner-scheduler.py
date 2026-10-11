@@ -11,7 +11,7 @@ import re
 import subprocess
 import sys
 import time as time_module
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -31,6 +31,12 @@ RUNNER_BUSY_LOCK_MAX_AGE_SECONDS = int(os.environ.get("RUNNER_BUSY_LOCK_MAX_AGE_
 RUNNER_DIAG_MAX_AGE_SECONDS = int(os.environ.get("RUNNER_DIAG_MAX_AGE_SECONDS", "120"))
 # Pause between the two idle confirmations made immediately before a stop.
 STOP_RECHECK_DELAY_SECONDS = float(os.environ.get("RUNNER_STOP_RECHECK_DELAY_SECONDS", "3"))
+# Drain watcher (#1929): under sustained load every runner is "busy" at each
+# 5-minute tick, so surplus runners are polled at short intervals for the gap
+# between two jobs. Budget stays below the tick; 0 disables the watcher.
+DRAIN_MAX_SECONDS = float(os.environ.get("RUNNER_DRAIN_MAX_SECONDS", "240"))
+DRAIN_POLL_SECONDS = float(os.environ.get("RUNNER_DRAIN_POLL_SECONDS", "2"))
+DRAIN_CONFIRM_SECONDS = float(os.environ.get("RUNNER_DRAIN_CONFIRM_SECONDS", "1"))
 PROC_ROOT = Path("/proc")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
@@ -312,6 +318,54 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
     return actions
 
 
+def _between_jobs(unit: RunnerUnit) -> bool:
+    """True when the runner has no Worker process and no job lock, on two looks.
+
+    The tick-time ``runner_busy`` also counts the pickup and Worker-log signals,
+    which stay positive for 30-120 s after a job ends. Under a deep queue the
+    next job starts well inside that window, so they would veto every drain.
+    The Worker process is the authoritative "job is executing" signal; the
+    second look, spaced ``DRAIN_CONFIRM_SECONDS`` later, covers a job assigned
+    between the first look and the stop.
+    """
+
+    def idle() -> bool:
+        return not (runner_busy_via_process(unit.workdir) or runner_busy_via_lock(unit.workdir, unit.unit))
+
+    if not idle():
+        return False
+    time_module.sleep(DRAIN_CONFIRM_SECONDS)
+    return idle()
+
+
+def drain_surplus(units: list[RunnerUnit], desired: int, dry_run: bool) -> list[dict]:
+    """Stop surplus runners the moment they gap between jobs (#1929).
+
+    Contract: never stops a runner with a live Worker/lock, and never leaves
+    fewer than ``desired`` active runners. Returns the stop actions taken.
+    """
+    if dry_run or DRAIN_MAX_SECONDS <= 0:
+        return []
+    desired = max(0, desired)
+    remaining = sorted((u for u in units if u.active), key=lambda item: item.num, reverse=True)
+    actions: list[dict] = []
+    deadline = time_module.monotonic() + DRAIN_MAX_SECONDS
+    while len(remaining) > desired and time_module.monotonic() < deadline:
+        for unit in list(remaining):
+            if len(remaining) <= desired:
+                break
+            if not _between_jobs(unit):
+                continue
+            assert len(remaining) > desired, "drain must not go below the desired runner count"
+            remaining.remove(unit)
+            actions.append({"runner": unit.num, "unit": unit.unit, "action": "stop", "mode": "drain"})
+            run_cmd(["systemctl", "stop", unit.unit])
+            run_cmd(["systemctl", "reset-failed", unit.unit])
+        if len(remaining) > desired:
+            time_module.sleep(DRAIN_POLL_SECONDS)
+    return actions
+
+
 def build_state(config: dict, desired: int, reason: str, actions: list[dict]) -> dict:
     units = list_units()
     active = [unit for unit in units if unit.active]
@@ -370,7 +424,11 @@ def main() -> int:
         target_source="cli: --target" if args.target is not None else None,
     )
     units = list_units()
-    actions = apply_capacity(units, desired, dry_run=(args.dry_run or not args.apply))
+    dry_run = args.dry_run or not args.apply
+    actions = apply_capacity(units, desired, dry_run=dry_run)
+    stopped = {action["unit"] for action in actions if action["action"] == "stop"}
+    remaining = [replace(unit, active=False) if unit.unit in stopped else unit for unit in units]
+    actions += drain_surplus(remaining, desired, dry_run=dry_run)
     state = build_state(config, desired, reason, actions)
     if args.apply and not args.dry_run:
         write_state(state)
