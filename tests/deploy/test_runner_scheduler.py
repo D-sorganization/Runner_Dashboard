@@ -574,6 +574,54 @@ def test_stop_fails_closed_when_the_listener_cannot_be_frozen(monkeypatch, tmp_p
     assert _stops(commands) == []
 
 
+def test_unit_is_thawed_when_the_recheck_raises(monkeypatch, tmp_path: Path) -> None:
+    """A frozen unit must never be left frozen if verification blows up."""
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
+
+    def boom(_workdir):
+        raise OSError("proc unreadable")
+
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", boom)
+
+    try:
+        result = runner_scheduler.stop_runner_safely(unit)
+    except OSError:
+        result = False
+
+    assert result is False
+    assert _thaws(commands) == [unit.unit]
+    assert _stops(commands) == []
+
+
+def test_unit_is_thawed_when_systemctl_stop_fails(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+
+    def run(cmd, **_k):
+        commands.append(cmd)
+        return _process_result(returncode=1 if cmd[:2] == ["systemctl", "stop"] else 0)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+    assert _thaws(commands) == [unit.unit]
+
+
+def test_successful_stop_is_not_followed_by_a_thaw(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert _thaws(commands) == []
+
+
 def test_tick_stop_also_freezes_and_reverifies(monkeypatch, tmp_path: Path) -> None:
     """apply_capacity shares the same guarded stop (DRY)."""
     units = [_active_unit(1, tmp_path), _active_unit(2, tmp_path)]

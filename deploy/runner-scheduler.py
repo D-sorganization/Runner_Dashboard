@@ -308,19 +308,25 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
     accept a job. Freeze the whole unit first (a stopped listener cannot pick up or
     fork a job), re-verify no Worker exists, and only then stop; ``systemctl stop``
     follows SIGTERM with SIGCONT. A job seen after the freeze thaws the unit and
-    vetoes the stop. Fails closed if the freeze fails. Returns True only when the
+    vetoes the stop; the unit is thawed on every path except a successful
+    stop (including errors). Fails closed if the freeze fails. Returns True only when the
     stop was issued.
     """
     if run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGSTOP", unit.unit]).returncode != 0:
         log.warning("could not freeze %s; not stopping it", unit.unit)
         return False
-    if not _worker_absent(unit):
-        run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit])
-        return False
-    assert _worker_absent(unit), "stop must never target a runner with a live job"  # noqa: S101
-    run_cmd(["systemctl", "stop", unit.unit])
-    run_cmd(["systemctl", "reset-failed", unit.unit])
-    return True
+    stopped = False
+    try:
+        if not _worker_absent(unit):
+            return False
+        stopped = run_cmd(["systemctl", "stop", unit.unit]).returncode == 0
+    finally:
+        if not stopped:
+            # Every path except a successful stop must leave the unit running.
+            run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit])
+    if stopped:
+        run_cmd(["systemctl", "reset-failed", unit.unit])
+    return stopped
 
 
 def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list[dict]:
