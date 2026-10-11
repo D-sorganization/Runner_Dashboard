@@ -1,0 +1,30 @@
+#!/bin/sh
+# Drop Linux page cache when it exceeds THRESH% of RAM so WSL hands the memory
+# back to Windows (free page reporting). autoMemoryReclaim only fires when the
+# VM is idle, which CI runners never are. Fleet policy: RM #2071.
+#
+# Paths are env-overridable so tests can run without root:
+#   MEMINFO, DROP_CACHES, COMPACT_MEMORY, THRESH
+THRESH=${THRESH:-30}
+MEMINFO=${MEMINFO:-/proc/meminfo}
+DROP_CACHES=${DROP_CACHES:-/proc/sys/vm/drop_caches}
+COMPACT_MEMORY=${COMPACT_MEMORY:-/proc/sys/vm/compact_memory}
+total=$(awk '/^MemTotal:/{print $2}' "$MEMINFO")
+cached=$(awk '/^Cached:/{print $2}' "$MEMINFO")
+if [ -z "$total" ] || [ -z "$cached" ] || [ "$total" -le 0 ]; then
+  echo "wsl-cache-trim: cannot read MemTotal/Cached from $MEMINFO" >&2
+  exit 1
+fi
+pct=$((cached * 100 / total))
+if [ "$pct" -ge "$THRESH" ]; then
+  sync
+  echo 1 > "$DROP_CACHES"
+  echo 1 > "$COMPACT_MEMORY" 2>/dev/null || true
+  after=$(awk '/^Cached:/{print $2}' "$MEMINFO")
+  msg="cache ${pct}% -> $((after * 100 / total))% (threshold ${THRESH}%)"
+  if command -v logger >/dev/null 2>&1; then
+    logger -t wsl-cache-trim "$msg" || true
+  else
+    echo "wsl-cache-trim: $msg"
+  fi
+fi

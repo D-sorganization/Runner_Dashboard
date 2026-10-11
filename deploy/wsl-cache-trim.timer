@@ -1,0 +1,11 @@
+[Unit]
+Description=Trim WSL page cache every 15 minutes
+Documentation=https://github.com/D-sorganization/Repository_Management/issues/2071
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

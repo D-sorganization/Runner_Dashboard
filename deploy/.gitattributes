@@ -5,3 +5,7 @@
 #  `/usr/bin/env: 'python3\r'` exit 127 — *.py must be LF too.)
 *.sh text eol=lf
 *.py text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+wsl-cache-trim text eol=lf
+*.ps1 text eol=lf

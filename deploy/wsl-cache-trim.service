@@ -1,0 +1,11 @@
+[Unit]
+Description=Trim WSL page cache so memory returns to Windows
+Documentation=https://github.com/D-sorganization/Repository_Management/issues/2071
+
+[Service]
+Type=oneshot
+User=root
+Nice=10
+# THRESH (percent of MemTotal held as Cached) defaults to 30 in the script;
+# override with a drop-in: Environment=THRESH=40
+ExecStart=/usr/local/sbin/wsl-cache-trim
