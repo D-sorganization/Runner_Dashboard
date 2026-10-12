@@ -2221,6 +2221,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fleet Maintenance
+         * @description Drain (optionally reboot) or resume this machine's runners. Progress: GET /api/fleet/schedule.
+         */
+        post: operations["fleet_maintenance_api_fleet_maintenance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/nodes": {
         parameters: {
             query?: never;
@@ -12983,6 +13003,28 @@ export interface operations {
         };
     };
     get_fleet_identity_api_fleet_identity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    fleet_maintenance_api_fleet_maintenance_post: {
         parameters: {
             query?: never;
             header?: never;

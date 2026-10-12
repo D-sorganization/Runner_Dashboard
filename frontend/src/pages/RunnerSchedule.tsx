@@ -21,6 +21,7 @@ import { legacyFetch } from "../lib/api";
 import { Badge } from "../primitives/Badge";
 import { EmptyState } from "../primitives/EmptyState";
 import { TouchButton } from "../primitives/TouchButton";
+import { FleetMaintenancePanel } from "./FleetMaintenancePanel";
 import { ClockGlyph, PlayGlyph, RefreshGlyph } from "./decompIcons";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ interface ScheduleState {
   available?: boolean;
   error?: string;
   timestamp?: string | number;
+  maintenance?: { active?: boolean; drained?: boolean; rebooting?: boolean };
 }
 
 export interface RunnerScheduleData {
@@ -150,6 +152,10 @@ export function RunnerSchedulePage(): React.ReactElement {
         loading={loading}
         onRefresh={() => refresh()}
         onSave={save}
+      />
+      <FleetMaintenancePanel
+        maintenance={data.state?.maintenance}
+        onChanged={() => refresh()}
       />
     </div>
   );
