@@ -105,9 +105,10 @@ def _require_decide_authority(
 ) -> ApprovalAuthority:
     """403 (coded, audited, nothing changed) unless ``caller`` may decide ``prop``: the preview's verdict (#1942).
 
-    A denial of a stale proposal still passes the authority checks but is not blocked by expiry.
+    A denial runs the same caller-authority checks but is not blocked by expiry or by the proposing
+    role's permission (rejecting an improper proposal must always be possible).
     """
-    verdict = evaluate_caller_authority(store, prop, caller, ignore_expiry=decision == "denied")
+    verdict = evaluate_caller_authority(store, prop, caller, for_denial=decision == "denied")
     if verdict.allowed:
         return verdict
     status_code = status.HTTP_400_BAD_REQUEST if verdict.code == CODE_EXPIRED else status.HTTP_403_FORBIDDEN

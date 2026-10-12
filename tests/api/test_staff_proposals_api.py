@@ -239,6 +239,28 @@ def test_execute_proposal_permission_denial(client: TestClient) -> None:
     assert exec_res.status_code == 403
 
 
+def test_improper_role_proposal_can_still_be_denied(client: TestClient) -> None:
+    """Approval is refused for a non-permitted proposing role, but rejecting it must work (#1942)."""
+    store = get_conversation_store()
+    th = store.create_thread(title="Restricted Deny", kind="direct", participants=["bot", "user"])
+    msg = store.add_message(thread_id=th.id, author_kind="role", author="restricted_bot", body_md="stop it")
+    prop = store.create_proposal(
+        message_id=msg.id,
+        thread_id=th.id,
+        action="maintenance.runner_stop",
+        params={"runner_name": "oglaptop", "proposing_role": "restricted_bot"},
+        risk="high",
+        principal="restricted_bot",
+    )
+    resp = client.post(
+        f"/api/v1/staff/proposals/{prop.id}/decide",
+        json={"decision": "denied", "reason": "improper role"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 200
+    assert store.get_proposal(prop.id).state == "denied"
+
+
 def test_execute_proposal_expiry_and_replay_protection(client: TestClient) -> None:
     store = get_conversation_store()
     th = store.create_thread(title="Replay Flow", kind="direct", participants=["barb", "user"])

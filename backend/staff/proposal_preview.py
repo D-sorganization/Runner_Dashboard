@@ -20,18 +20,23 @@ if TYPE_CHECKING:
 
 
 def evaluate_caller_authority(
-    store: ConversationStore, prop: ActionProposalRecord, caller: Principal, *, ignore_expiry: bool = False
+    store: ConversationStore, prop: ActionProposalRecord, caller: Principal, *, for_denial: bool = False
 ) -> ApprovalAuthority:
-    """The ONE verdict on whether ``caller`` may decide ``prop``; preview and decide both call it (#1942)."""
+    """The ONE verdict on whether ``caller`` may decide ``prop``; preview and decide both call it (#1942).
+
+    ``for_denial`` keeps every check on the CALLER's authority but drops the gates that only make
+    approving unsafe (expiry, a proposing role not permitted to invoke the action): an authorized
+    caller must always be able to reject a stale or improper proposal.
+    """
     action = ACTION_REGISTRY.get(prop.action)
     role = proposing_role_of(store, prop)
     return evaluate_approval_authority(
         action,
         prop,
         caller,
-        role_permitted=not role or check_role_permission(action, role),
+        role_permitted=for_denial or not role or check_role_permission(action, role),
         proposing_role=role,
-        ignore_expiry=ignore_expiry,
+        ignore_expiry=for_denial,
     )
 
 
