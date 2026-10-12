@@ -11,6 +11,7 @@ from agent_remediation import (  # noqa: E402
     _attempts_for_provider,
     build_failure_fingerprint,
     classify_workflow_type,
+    is_runner_state_failure,
     load_policy,
     plan_dispatch,
 )
@@ -435,3 +436,147 @@ def test_disabled_provider_is_never_selected_even_if_policy_lists_it() -> None:
 
     assert decision.accepted is True
     assert decision.provider_id == "claude_code_cli"
+
+
+# ---------------------------------------------------------------------------
+# Runner-state / toolchain missing failure classification tests (#1945)
+# ---------------------------------------------------------------------------
+
+
+def test_classify_failure_rustc_vanished_returns_runner_state() -> None:
+    """A missing rustc toolchain binary mid-build is classified as runner_state, not test (#1945)."""
+    # OpenSim_Models#385 / RM#2021 case: 'Rust Gate' fails with rustc (never executed)
+    ctx = FailureContext(
+        repository="OpenSim_Models",
+        workflow_name="Rust Gate",
+        branch="main",
+        failure_reason=(
+            "could not execute process "
+            "`/home/dieterolson/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc` (never executed)"
+        ),
+        log_excerpt="Caused by: No such file or directory (os error 2)\nerror: could not parse/generate dep info",
+    )
+    rule = classify_failure(ctx)
+    assert isinstance(rule, WorkflowTypeRule)
+    assert rule.workflow_type == "runner_state"
+    assert rule.dispatch_mode == "manual"
+    assert "Runner State" in rule.label or "runner_state" in rule.workflow_type
+
+
+def test_classify_failure_runner_state_overrides_test_workflow_name() -> None:
+    """Runner-state corruption in CI Standard must NOT be triaged as a code test failure (#1945)."""
+    ctx = FailureContext(
+        repository="Gasification_Model",
+        workflow_name="CI Standard",
+        branch="fix/something",
+        failure_reason="could not execute process .../rustc (never executed) ... No such file or directory",
+        log_excerpt="running pytest tests\nerror: could not execute process `.../rustc` (never executed)",
+    )
+    rule = classify_failure(ctx)
+    assert rule.workflow_type == "runner_state"
+    assert rule.workflow_type != "test"
+    assert rule.dispatch_mode == "manual"
+
+
+def test_classify_failure_toolchain_binary_missing_returns_runner_state() -> None:
+    """Label 'toolchain binary missing' directly maps to runner_state failure (#1945)."""
+    ctx = FailureContext(
+        repository="Tools",
+        workflow_name="ci standard",
+        branch="main",
+        failure_reason="toolchain binary missing",
+    )
+    rule = classify_failure(ctx)
+    assert rule.workflow_type == "runner_state"
+    assert rule.dispatch_mode == "manual"
+
+
+def test_classify_failure_cargo_missing_returns_runner_state() -> None:
+    """FileNotFoundError: 'cargo' mid-run is classified as runner_state (#1945, RM#2021)."""
+    ctx = FailureContext(
+        repository="Gasification_Model",
+        workflow_name="tests-rust-backed",
+        branch="main",
+        failure_reason="FileNotFoundError: 'cargo'",
+    )
+    rule = classify_failure(ctx)
+    assert rule.workflow_type == "runner_state"
+    assert rule.dispatch_mode == "manual"
+
+
+def test_classify_failure_rustc_not_in_path_returns_runner_state() -> None:
+    """maturin rustc not in PATH error is classified as runner_state (#1945, RM#2021)."""
+    ctx = FailureContext(
+        repository="Gasification_Model",
+        workflow_name="tests-rust-backed",
+        branch="main",
+        failure_reason="maturin failed",
+        log_excerpt="Caused by: rustc, the rust compiler, is not installed or not in PATH.",
+    )
+    rule = classify_failure(ctx)
+    assert rule.workflow_type == "runner_state"
+    assert rule.dispatch_mode == "manual"
+
+
+def test_is_runner_state_failure_helper() -> None:
+    """is_runner_state_failure detects runner-state and toolchain missing patterns (#1945)."""
+    assert is_runner_state_failure("toolchain binary missing")
+    assert is_runner_state_failure("rustc (never executed) No such file or directory")
+    assert is_runner_state_failure("could not execute process /path/to/rustc (never executed)")
+    assert is_runner_state_failure("Caused by: No such file or directory (os error 2)")
+    assert is_runner_state_failure("rustc, the rust compiler, is not installed or not in PATH")
+    assert is_runner_state_failure("FileNotFoundError: 'cargo'")
+    assert is_runner_state_failure("FileNotFoundError: 'rustc'")
+    assert not is_runner_state_failure("AssertionError: test failed on line 42")
+    assert not is_runner_state_failure("SyntaxError: invalid syntax")
+
+
+def test_plan_dispatch_runner_state_rejected_for_automatic_dispatch() -> None:
+    """Runner-state failures are rejected for automatic code-repair dispatch (#1945)."""
+    policy = load_policy()
+    ctx = FailureContext(
+        repository="OpenSim_Models",
+        workflow_name="CI Standard",
+        branch="main",
+        failure_reason="could not execute process `/home/.../rustc` (never executed)",
+        log_excerpt="Caused by: No such file or directory (os error 2)",
+    )
+    availability = _make_availability("codex_cli", "claude_code_cli", "jules_api")
+    decision = plan_dispatch(
+        ctx,
+        policy=policy,
+        availability=availability,
+        attempts=[],
+        dispatch_origin="automatic",
+    )
+    assert decision.accepted is False
+    assert decision.workflow_type == "runner_state"
+    assert "Runner State / Infra" in decision.reason or "runner_state" in decision.reason.lower()
+
+
+def test_check_toolchain_health_detects_missing_binary() -> None:
+    """check_toolchain_health detects when a toolchain binary vanishes or is missing (#1945)."""
+    from routers.runner_helpers import check_toolchain_health
+
+    def fake_lookup(name: str) -> str | None:
+        if name == "cargo":
+            return "/fake/bin/cargo"
+        return None  # rustc vanished
+
+    report = check_toolchain_health(binaries=("rustc", "cargo"), custom_lookup=fake_lookup)
+    assert report["healthy"] is False
+    assert report["status"] == "degraded"
+    assert "rustc" in report["missing"]
+    assert any("toolchain binary missing: 'rustc'" in issue for issue in report["issues"])
+
+
+def test_runner_health_check_reflects_toolchain_issues() -> None:
+    """runner_health_check marks runner degraded when toolchain issues are reported (#1945)."""
+    from routers.runner_helpers import runner_health_check
+
+    runner = {"id": 1, "name": "runner-1", "status": "online", "labels": [{"name": "linux"}]}
+    system_metrics = {"toolchain_issues": ["toolchain binary missing: 'rustc' not found in PATH"]}
+
+    result = runner_health_check(runner, system_metrics=system_metrics)
+    assert result["status"] == "degraded"
+    assert any("toolchain binary missing: 'rustc'" in issue for issue in result["issues"])

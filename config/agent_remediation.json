@@ -26,6 +26,26 @@
     "cline"
   ],
   "workflow_type_rules": {
+    "runner_state": {
+      "label": "Runner State / Infra",
+      "match_terms": [
+        "toolchain binary missing",
+        "rustc (never executed) no such file or directory",
+        "rustc (never executed)",
+        "rustc, the rust compiler, is not installed",
+        "(never executed)",
+        "no such file or directory (os error 2)",
+        "could not execute process",
+        "filenotfounderror: 'cargo'",
+        "filenotfounderror: 'rustc'",
+        "runner-state failure",
+        "runner-state",
+        "runner_state"
+      ],
+      "dispatch_mode": "manual",
+      "provider_id": "",
+      "notes": "Runner-state and toolchain corruption requires runner maintenance rather than code changes."
+    },
     "lint": {
       "label": "Lint / Formatting",
       "match_terms": [

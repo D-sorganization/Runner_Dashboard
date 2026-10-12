@@ -207,10 +207,52 @@ def runner_health_check(runner: dict | GhRunner, system_metrics: dict | None = N
     if not labels:
         issues.append("no labels assigned")
 
+    if system_metrics and isinstance(system_metrics, dict):
+        tc_issues = system_metrics.get("toolchain_issues") or system_metrics.get("issues") or []
+        if isinstance(tc_issues, (list, tuple)):
+            for issue in tc_issues:
+                issues.append(str(issue))
+                if health_status == "healthy":
+                    health_status = "degraded"
+
     return {
         "runner_id": runner_id,
         "runner_name": runner_name,
         "status": health_status,
         "issues": issues,
         "last_check": _dt_mod.datetime.now(UTC).isoformat(),
+    }
+
+
+def check_toolchain_health(
+    binaries: tuple[str, ...] = ("rustc", "cargo"),
+    *,
+    custom_lookup: Any = None,
+) -> dict[str, Any]:
+    """Check availability and executability of required toolchain binaries (#1945).
+
+    Surfaces runner-state issues like 'toolchain binary missing' or 'rustc (never executed)'
+    when toolchain binaries have vanished mid-build or cannot be executed (os error 2).
+    """
+    import shutil
+
+    lookup = custom_lookup or shutil.which
+    issues: list[str] = []
+    missing: list[str] = []
+
+    for binary in binaries:
+        path = lookup(binary)
+        if not path:
+            msg = f"toolchain binary missing: '{binary}' not found in PATH"
+            issues.append(msg)
+            missing.append(binary)
+
+    status = "healthy" if not issues else "degraded"
+    return {
+        "status": status,
+        "healthy": len(issues) == 0,
+        "issues": issues,
+        "missing": missing,
+        "checked": list(binaries),
+        "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
     }
