@@ -44,12 +44,12 @@ outbox and the per-run version (event revisions); #1810 builds on authority-side
 
 ## Deferred to PR 2 (from the PR #1935 review; recorded, not fixed in PR 1)
 
-- `barb_receipts` has no pruning, so it grows without bound.
-- `synchronous=FULL` is set only on the `ConversationStore` connection; `RunStore` and `StaffAuditStore` stay at the default.
+- ~~`barb_receipts` has no pruning, so it grows without bound.~~ Fixed: `prune_barb_receipts` runs a bounded batch every 64 applied updates (`BARB_RECEIPT_MAX_ROWS`, `BARB_RECEIPT_MAX_AGE_DAYS`) and never removes the newest-version receipt of a run, so dedupe and stale rejection are unchanged (`tests/unit/test_barb_durability.py`).
+- ~~`synchronous=FULL` is set only on the `ConversationStore` connection; `RunStore` and `StaffAuditStore` stay at the default.~~ Fixed: all three stores set `synchronous=FULL`.
 - There is no persisted epoch fence: the epoch comes from configuration, so a restarted old authority is not refused by stored state.
 - `runs.card_version` and `RunStore.next_card_version` are unused until PR 2 wires the relay.
-- `bounds_from_env` raises a bare `ValueError` on a malformed `BARB_OUTBOX_*` value.
-- Enqueueing the same key with a different payload silently keeps the old entry id.
+- ~~`bounds_from_env` raises a bare `ValueError` on a malformed `BARB_OUTBOX_*` value.~~ Fixed: it raises `BarbConfigError` (a `ValueError` subclass) naming the variable and value.
+- ~~Enqueueing the same key with a different payload silently keeps the old entry id.~~ Fixed: an identical replay stays idempotent; a different payload raises `OutboxConflictError` (I2: a `(run_id, version)` is one event).
 - ~~`backup_database` copies the main database file and ignores the WAL.~~ Fixed: it now uses the SQLite online
   backup API, so a backup of a live authority keeps WAL-resident IDs and receipts
   (`tests/unit/test_barb_backup_restore.py`).

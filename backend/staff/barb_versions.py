@@ -13,15 +13,22 @@ Contract (the invariants are enforced here and in ``ConversationStore.apply_run_
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
+from staff.barb_db import env_positive_int
 from staff.store import _now
 
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 RECEIPT_KIND_RUN_CARD = "run_card"
+DEFAULT_RECEIPT_MAX_ROWS = 100_000
+DEFAULT_RECEIPT_MAX_AGE_DAYS = 30
+DEFAULT_RECEIPT_PRUNE_BATCH = 500
 
 
 class ApplyOutcome(str, Enum):
@@ -135,3 +142,60 @@ def record_applied(
         (receipt_id, RECEIPT_KIND_RUN_CARD, receipt_ref(run_id, version), thread_id, seq, epoch, now),
     )
     return receipt_id
+
+
+def receipt_limits_from_env(environ: Mapping[str, str] | None = None) -> tuple[int, float]:
+    """``(max_rows, max_age_seconds)`` from ``BARB_RECEIPT_MAX_ROWS`` / ``BARB_RECEIPT_MAX_AGE_DAYS``.
+
+    Post: raises :class:`~staff.barb_db.BarbConfigError` on a malformed value. A max age of ``0`` is allowed.
+    """
+    env = os.environ if environ is None else environ
+    raw_age = (env.get("BARB_RECEIPT_MAX_AGE_DAYS") or "").strip()
+    if raw_age == "0":
+        days = 0
+    else:
+        days = env_positive_int(env, "BARB_RECEIPT_MAX_AGE_DAYS", DEFAULT_RECEIPT_MAX_AGE_DAYS)
+    return env_positive_int(env, "BARB_RECEIPT_MAX_ROWS", DEFAULT_RECEIPT_MAX_ROWS), days * 86400.0
+
+
+_NOT_HEAD = (
+    "kind = ? AND NOT EXISTS (SELECT 1 FROM run_card_versions v "
+    "WHERE barb_receipts.ref_id = v.run_id || ':' || v.version)"
+)
+
+
+def prune_receipts(
+    conn: sqlite3.Connection,
+    *,
+    max_rows: int,
+    max_age_seconds: float,
+    batch: int = DEFAULT_RECEIPT_PRUNE_BATCH,
+    now: datetime | None = None,
+) -> int:
+    """Delete at most ``batch`` superseded run-card receipts; returns how many. Caller holds the transaction.
+
+    A receipt is *needed* only while it is the newest version of its run: ``decide`` answers a replay of an
+    older version ``STALE`` without consulting receipts, but answers a replay of the newest one
+    ``DUPLICATE`` with that receipt id. So the newest-version receipt of every run is never pruned; a
+    superseded one goes once it is older than ``max_age_seconds`` or when more than ``max_rows`` superseded
+    receipts exist (oldest first).
+    """
+    if max_rows < 0 or max_age_seconds < 0 or batch < 1:
+        raise ValueError("max_rows and max_age_seconds must be >= 0 and batch >= 1")
+    cutoff = ((now or datetime.now(UTC)) - timedelta(seconds=max_age_seconds)).isoformat().replace("+00:00", "Z")
+    removed = conn.execute(
+        "DELETE FROM barb_receipts WHERE receipt_id IN (SELECT receipt_id FROM barb_receipts "  # noqa: S608
+        f"WHERE {_NOT_HEAD} AND committed_at <= ? ORDER BY committed_at LIMIT ?)",
+        (RECEIPT_KIND_RUN_CARD, cutoff, batch),
+    ).rowcount
+    row = conn.execute(
+        f"SELECT COUNT(*) AS n FROM barb_receipts WHERE {_NOT_HEAD}", (RECEIPT_KIND_RUN_CARD,)
+    ).fetchone()  # noqa: S608
+    excess = int(row["n"]) - max_rows
+    if excess > 0 and removed < batch:
+        removed += conn.execute(
+            "DELETE FROM barb_receipts WHERE receipt_id IN (SELECT receipt_id FROM barb_receipts "  # noqa: S608
+            f"WHERE {_NOT_HEAD} ORDER BY committed_at LIMIT ?)",
+            (RECEIPT_KIND_RUN_CARD, min(excess, batch - removed)),
+        ).rowcount
+    return removed

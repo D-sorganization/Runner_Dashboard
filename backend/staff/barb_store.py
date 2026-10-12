@@ -17,17 +17,22 @@ from typing import TYPE_CHECKING, Any
 from staff.barb_db import immediate_txn
 from staff.barb_outbox import OutboxStore, bounds_from_env
 from staff.barb_versions import (
+    DEFAULT_RECEIPT_PRUNE_BATCH,
     ApplyOutcome,
     ApplyResult,
     check_epoch,
     current_version,
     decide,
+    prune_receipts,
+    receipt_limits_from_env,
     record_applied,
 )
 from staff.conversation_models import MessageRecord
 from staff.store import RUN_STATUSES
 
 __all__ = ["BarbAuthorityMixin"]
+
+RECEIPT_PRUNE_EVERY = 64  # applied updates between automatic bounded receipt prunes
 
 
 class BarbAuthorityMixin:
@@ -78,6 +83,24 @@ class BarbAuthorityMixin:
             clock=clock,
             rng=rng,
         )
+
+    def prune_barb_receipts(
+        self, *, max_rows: int | None = None, max_age_seconds: float | None = None, batch: int | None = None
+    ) -> int:
+        """Bounded prune of superseded receipts (limits default from ``BARB_RECEIPT_*``); returns rows removed.
+
+        Post: the newest-version receipt of every run is kept, so dedupe and stale rejection are unchanged.
+        """
+        self._ensure_available()
+        env_rows, env_age = receipt_limits_from_env()
+        size = DEFAULT_RECEIPT_PRUNE_BATCH if batch is None else batch
+        with immediate_txn(self._conn, self._lock) as conn:
+            return prune_receipts(
+                conn,
+                max_rows=env_rows if max_rows is None else max_rows,
+                max_age_seconds=env_age if max_age_seconds is None else max_age_seconds,
+                batch=size,
+            )
 
     def apply_run_card_update(
         self,
@@ -134,4 +157,8 @@ class BarbAuthorityMixin:
                 seq=msg.seq,
                 epoch=authority_epoch,
             )
+            self._applied_since_prune = getattr(self, "_applied_since_prune", 0) + 1
+            if self._applied_since_prune >= RECEIPT_PRUNE_EVERY:
+                self._applied_since_prune = 0
+                self.prune_barb_receipts()
             return msg, ApplyResult(ApplyOutcome.APPLIED, ver, receipt)
