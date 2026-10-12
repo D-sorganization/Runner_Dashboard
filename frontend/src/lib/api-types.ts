@@ -5049,6 +5049,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/host-memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Host Memory Health Route
+         * @description Host memory health (RM #2071): commit, vmmemWSL vs cap, cache-trim, kernel pool.
+         */
+        get: operations["get_host_memory_health_route_api_system_host_memory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tests/ci-results": {
         parameters: {
             query?: never;
@@ -16702,6 +16722,28 @@ export interface operations {
         };
     };
     get_system_metrics_api_system_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_host_memory_health_route_api_system_host_memory_get: {
         parameters: {
             query?: never;
             header?: never;

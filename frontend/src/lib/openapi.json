@@ -16081,6 +16081,28 @@
         "tags": ["system"]
       }
     },
+    "/api/system/host-memory": {
+      "get": {
+        "description": "Host memory health (RM #2071): commit, vmmemWSL vs cap, cache-trim, kernel pool.",
+        "operationId": "get_host_memory_health_route_api_system_host_memory_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Memory Health Route Api System Host Memory Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Host Memory Health Route",
+        "tags": ["system"]
+      }
+    },
     "/api/tests/ci-results": {
       "get": {
         "description": "Return recent ci-standard workflow runs for key fleet repos.",
