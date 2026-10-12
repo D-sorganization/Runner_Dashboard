@@ -194,6 +194,7 @@ class RunStore:
         with first_touch_lock(self.path), self._lock:
             self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=FULL")  # RPO = 0 (#1800): fsync every commit
             self._conn.executescript(_SCHEMA)
             self._migrate()
         self._seq: dict[str, int] = {}

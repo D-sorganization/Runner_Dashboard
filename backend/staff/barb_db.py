@@ -4,8 +4,26 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+
+
+class BarbConfigError(ValueError):
+    """A ``BARB_*`` environment value is malformed (names the variable and the bad value)."""
+
+
+def env_positive_int(env: Mapping[str, str], name: str, default: int) -> int:
+    """A positive int from ``env[name]`` (blank or absent = ``default``); else :class:`BarbConfigError`."""
+    raw = (env.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise BarbConfigError(f"{name}={raw!r} is not an integer") from None
+    if value < 1:
+        raise BarbConfigError(f"{name}={raw!r} must be >= 1")
+    return value
 
 
 @contextmanager
