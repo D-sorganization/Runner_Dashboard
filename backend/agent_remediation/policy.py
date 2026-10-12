@@ -32,7 +32,29 @@ DEFAULT_PROVIDER_ORDER = (
     "cline",
     "maxwell",
 )
+RUNNER_STATE_MATCH_TERMS: tuple[str, ...] = (
+    "toolchain binary missing",
+    "rustc (never executed) no such file or directory",
+    "rustc (never executed)",
+    "rustc, the rust compiler, is not installed",
+    "(never executed)",
+    "no such file or directory (os error 2)",
+    "could not execute process",
+    "filenotfounderror: 'cargo'",
+    "filenotfounderror: 'rustc'",
+    "runner-state failure",
+    "runner-state",
+    "runner_state",
+)
 DEFAULT_WORKFLOW_TYPE_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "workflow_type": "runner_state",
+        "label": "Runner State / Infra",
+        "match_terms": RUNNER_STATE_MATCH_TERMS,
+        "dispatch_mode": "manual",
+        "provider_id": "",
+        "notes": "Runner-state and toolchain corruption requires runner maintenance rather than code changes.",
+    },
     {
         "workflow_type": "lint",
         "label": "Lint / Formatting",
@@ -334,10 +356,40 @@ def save_policy(
     return resolved
 
 
+def is_runner_state_failure(context_or_text: FailureContext | str) -> bool:
+    """Check if a failure context or log text indicates runner-state corruption (#1945)."""
+    if isinstance(context_or_text, FailureContext):
+        text = " ".join(
+            (
+                context_or_text.workflow_name,
+                context_or_text.failure_reason,
+                context_or_text.log_excerpt,
+            )
+        )
+    else:
+        text = str(context_or_text)
+    lower = text.lower()
+    return any(term.lower() in lower for term in RUNNER_STATE_MATCH_TERMS)
+
+
 def classify_workflow_type(
     context: FailureContext,
     policy: RemediationPolicy,
 ) -> WorkflowTypeRule:
+    # Runner-state / missing toolchain failures take precedence over generic
+    # workflow names (e.g. 'CI Standard' or 'Rust Gate') so that infrastructure
+    # corruption is surfaced as infra and not re-triaged as code (#1945).
+    if is_runner_state_failure(context):
+        if "runner_state" in policy.workflow_type_rules:
+            return policy.workflow_type_rules["runner_state"]
+        return WorkflowTypeRule(
+            workflow_type="runner_state",
+            label="Runner State / Infra",
+            match_terms=RUNNER_STATE_MATCH_TERMS,
+            dispatch_mode="manual",
+            notes="Runner-state and toolchain corruption requires runner maintenance rather than code changes.",
+        )
+
     haystack = " ".join(
         (
             context.workflow_name,
