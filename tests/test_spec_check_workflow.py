@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from bash_host import as_bash_path, require_bash
 
 _ROOT = Path(__file__).resolve().parent.parent
 _WORKFLOWS = _ROOT / ".github" / "workflows"
@@ -59,15 +60,22 @@ def _detect(files: list[str]) -> dict[str, str]:
         fake_git = tmp_path / "git"
         fake_git.write_text('#!/usr/bin/env bash\nprintf "%s\\n" $FAKE_FILES\n', encoding="utf-8")
         fake_git.chmod(0o755)
+        # Git for Windows' bash puts /mingw64/bin (the real git) ahead of PATH, so a PATH shim
+        # is shadowed there. A BASH_ENV function wins on every host without touching the script.
+        bash_env = tmp_path / "bash_env.sh"
+        bash_env.write_text(
+            f'git() {{ "{as_bash_path(fake_git)}" "$@"; }}' + chr(10), encoding="utf-8", newline=chr(10)
+        )
         output = tmp_path / "out"
         output.write_text("", encoding="utf-8")
         env = {
             "PATH": f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}",
             "GITHUB_OUTPUT": str(output),
             "FAKE_FILES": " ".join(files),
+            "BASH_ENV": as_bash_path(bash_env),
         }
         result = subprocess.run(
-            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+            [require_bash(), "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
             env=env,
             capture_output=True,
             text=True,
@@ -182,6 +190,7 @@ def _run_comment_step(existing: list[dict]) -> list[dict]:
             [node, str(harness), str(script), json.dumps(existing)],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # node emits UTF-8 (the comment body has emoji); Windows defaults to cp1252
             check=False,
             timeout=30,
         )

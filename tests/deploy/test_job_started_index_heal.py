@@ -37,6 +37,7 @@ import time
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 _REPO = Path(__file__).resolve().parent.parent.parent
 _HOOK = _REPO / "deploy" / "runner-hooks" / "job-started.sh"
@@ -99,11 +100,7 @@ def _poison_stat_cache(repo: Path) -> None:
 
 
 def _stat_dirty_paths(repo: Path) -> list[str]:
-    return [
-        line
-        for line in _git(repo, "diff-files", "--name-only").stdout.splitlines()
-        if line
-    ]
+    return [line for line in _git(repo, "diff-files", "--name-only").stdout.splitlines() if line]
 
 
 def _run_hook(workspace: Path, env_extra: dict[str, str] | None = None) -> int:
@@ -118,7 +115,7 @@ def _run_hook(workspace: Path, env_extra: dict[str, str] | None = None) -> int:
     )
     env.update(env_extra or {})
     return subprocess.run(
-        ["bash", str(_HOOK)], env=env, capture_output=True, text=True, check=False
+        [find_bash() or "bash", str(_HOOK)], env=env, capture_output=True, text=True, check=False
     ).returncode
 
 
@@ -129,9 +126,7 @@ def test_hook_restores_index_stat_cache_after_ctime_bump(tmp_path: Path) -> None
     assert _stat_dirty_paths(repo) == [], "fixture must start with a valid stat cache"
 
     _poison_stat_cache(repo)
-    assert _stat_dirty_paths(repo), (
-        "fixture failed to invalidate the stat cache; the rest of this test is vacuous"
-    )
+    assert _stat_dirty_paths(repo), "fixture failed to invalidate the stat cache; the rest of this test is vacuous"
     # Content is untouched, which is why `git status` never repairs the index.
     assert _git(repo, "status", "--porcelain").stdout.strip() == ""
 
@@ -160,9 +155,7 @@ def test_hook_ignores_workspaces_outside_a_runner_work_tree(tmp_path: Path) -> N
     assert _stat_dirty_paths(outside), "fixture failed to invalidate the stat cache"
 
     assert _run_hook(outside) == 0
-    assert _stat_dirty_paths(outside), (
-        "hook must not touch git state outside a runner _work tree"
-    )
+    assert _stat_dirty_paths(outside), "hook must not touch git state outside a runner _work tree"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
@@ -236,10 +229,6 @@ def test_hook_never_chowns_or_chmods_the_workspace() -> None:
     job instead of once in a while.
     """
     src = _HOOK.read_text(encoding="utf-8")
-    executable = "\n".join(
-        line for line in src.splitlines() if not line.lstrip().startswith("#")
-    )
+    executable = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith("#"))
     for forbidden in ("chown -R", "chmod -R", "chown --recursive", "chmod --recursive"):
-        assert forbidden not in executable, (
-            f"job-started.sh must never run `{forbidden}` on a workspace (#9443)"
-        )
+        assert forbidden not in executable, f"job-started.sh must never run `{forbidden}` on a workspace (#9443)"

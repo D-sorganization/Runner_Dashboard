@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from bash_host import require_bash
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 _POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
@@ -537,7 +538,7 @@ def _run_step(step: dict, env: dict[str, str]) -> tuple[int, dict[str, str]]:
         output_path.write_text("", encoding="utf-8")
         full_env = {"PATH": os.environ.get("PATH", ""), "GITHUB_OUTPUT": str(output_path), **env}
         result = subprocess.run(
-            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
+            [require_bash(), "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
             env=full_env,
             capture_output=True,
             text=True,

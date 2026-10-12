@@ -139,3 +139,12 @@ def as_bash_path(path: Path) -> str:
     if BASH is None:
         return path.as_posix()
     return _translate(str(path), BASH)
+
+
+def require_bash() -> str:
+    """Resolved bash for in-process use, or skip the calling test when none exists."""
+    import pytest
+
+    if BASH is None:
+        pytest.skip(SKIP_REASON)
+    return BASH
