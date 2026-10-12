@@ -15,6 +15,7 @@ from typing import Any
 
 from staff import conversation_proposals as _proposals
 from staff.audit import StaffAuditStore, record_audit
+from staff.barb_store import BarbAuthorityMixin
 from staff.conversation_migrations import CORE_MIGRATIONS, run_migrations
 from staff.conversation_models import (
     MESSAGE_AUTHOR_KINDS,
@@ -56,7 +57,7 @@ __all__ = [
 log = logging.getLogger("dashboard.staff.conversations")
 
 
-class ConversationStore:
+class ConversationStore(BarbAuthorityMixin):
     """Thread-safe, SQLite WAL-backed conversation and action proposal store."""
 
     MIGRATIONS: list[tuple[int, str, str]] = CORE_MIGRATIONS
@@ -73,6 +74,8 @@ class ConversationStore:
             with self._lock:
                 self._conn.execute("PRAGMA busy_timeout = 30000")
                 self._conn.execute("PRAGMA journal_mode=WAL")
+                # RPO = 0 (#1800): an acknowledged commit must survive power loss, so fsync every commit.
+                self._conn.execute("PRAGMA synchronous=FULL")
                 self.status = run_migrations(self._conn, self.path, self.MIGRATIONS)
 
     def _ensure_available(self) -> None:
