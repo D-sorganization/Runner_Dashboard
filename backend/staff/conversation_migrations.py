@@ -77,10 +77,60 @@ ALTER TABLE action_proposals ADD COLUMN decide_by TEXT;
 ALTER TABLE action_proposals ADD COLUMN default_if_silent TEXT NOT NULL DEFAULT '';
 """
 
+# Barb single-authority delivery (#1800, BR-06). Additive: old code ignores these tables.
+_MIGRATION_4_SQL = """
+CREATE TABLE IF NOT EXISTS barb_outbox (
+    outbox_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT '',
+    version INTEGER NOT NULL,
+    terminal INTEGER NOT NULL DEFAULT 0,
+    payload TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at REAL NOT NULL DEFAULT 0,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    delivered_at REAL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS barb_outbox_key_idx ON barb_outbox(kind, thread_id, run_id, version);
+CREATE INDEX IF NOT EXISTS barb_outbox_due_idx ON barb_outbox(status, next_attempt_at);
+"""
+
+_MIGRATION_5_SQL = """
+CREATE TABLE IF NOT EXISTS run_card_versions (
+    run_id TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL DEFAULT '',
+    epoch INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+"""
+
+_MIGRATION_6_SQL = """
+CREATE TABLE IF NOT EXISTS barb_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    ref_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL DEFAULT '',
+    seq INTEGER NOT NULL DEFAULT 0,
+    epoch INTEGER NOT NULL DEFAULT 0,
+    committed_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS barb_receipts_ref_idx ON barb_receipts(kind, ref_id);
+"""
+
 CORE_MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "conversations_core_tables", _MIGRATION_1_SQL),
     (2, "threads_meta_column", _MIGRATION_2_SQL),
     (3, "action_proposals_decision_sla", _MIGRATION_3_SQL),
+    (4, "barb_outbox", _MIGRATION_4_SQL),
+    (5, "run_card_versions", _MIGRATION_5_SQL),
+    (6, "barb_receipts", _MIGRATION_6_SQL),
 ]
 
 

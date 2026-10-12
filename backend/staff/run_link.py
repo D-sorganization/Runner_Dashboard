@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from staff.barb_versions import ApplyOutcome
 from staff.conversation_models import MessageRecord
 from staff.conversations import get_conversation_store
 from staff.plan import RunRequest
@@ -107,6 +108,8 @@ def post_run_card(
     summary: str | None = None,
     store: Any = None,
     bus: Any = None,
+    version: int | None = None,
+    epoch: int | None = None,
 ) -> MessageRecord | None:
     """Post the run's card in its thread, or rewrite it on a later status (#1547).
 
@@ -139,30 +142,21 @@ def post_run_card(
 
     msg_id = run_card_id(run.id)
     try:
-        existing = conv_store.get_message(msg_id)
-        if existing and existing.meta:
-            existing_status = existing.meta.get("status")
-            if existing_status in (
-                "succeeded",
-                "failed",
-                "cancelled",
-            ) and status not in (
-                "succeeded",
-                "failed",
-                "cancelled",
-            ):
-                return existing
-        saved = conv_store.update_message(msg_id, body_md=body_md, meta=meta) or conv_store.add_message(
+        # One atomic, version-gated upsert: a late/duplicate update can never regress a terminal
+        # card (#1800); a rejected update is not published.
+        saved, result = conv_store.apply_run_card_update(
             thread_id=thread_id,
-            author_kind="role",
-            author=run.role,
-            kind="run_card",
+            run_id=run.id,
+            message_id=msg_id,
+            status=status,
+            version=version,
+            epoch=epoch,
             body_md=body_md,
             meta=meta,
-            run_id=run.id,
-            delivery="complete",
-            message_id=msg_id,
+            author=run.role,
         )
+        if result.outcome is not ApplyOutcome.APPLIED or saved is None:
+            return saved
         event_bus.publish_message_sync(thread_id, saved.to_dict())
         return saved
     except Exception as exc:  # noqa: BLE001
