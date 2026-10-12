@@ -62,6 +62,10 @@ class ApprovalAuthority:
         if self.allowed == bool(self.reason):
             raise ValueError("ApprovalAuthority.reason must be non-empty exactly when the verdict is a denial")
 
+    def to_audit(self) -> dict[str, Any]:
+        """Param-free record of the verdict, stored with the decision it authorised (#1942)."""
+        return {"allowed": self.allowed, "code": self.code}
+
 
 def _deny(code: str, reason: str) -> ApprovalAuthority:
     return ApprovalAuthority(allowed=False, reason=reason, code=code)
@@ -105,14 +109,17 @@ def evaluate_approval_authority(
     include_state: bool = True,
     role_permitted: bool = True,
     proposing_role: str = "",
+    ignore_expiry: bool = False,
 ) -> ApprovalAuthority:
     """Whether ``approver`` may approve ``prop`` right now, and if not, why (fixed, param-free reasons).
 
     ``include_state`` adds the "still decidable" gate; ``execute_proposal`` enforces state itself with
     typed errors, so ``check_approval_policy`` passes ``False``. ``role_permitted`` carries the
     proposing-role verdict (``staff.actions.check_role_permission``), computed by the caller.
+    ``ignore_expiry`` lets a DENIAL of a stale proposal through the same authority checks (denying is
+    always safe to do late; approving is not).
     """
-    if is_proposal_expired(prop):
+    if not ignore_expiry and is_proposal_expired(prop):
         return _deny(CODE_EXPIRED, f"Proposal {prop.id} has expired (exceeded 24h TTL)")
     if include_state and prop.state not in DECIDABLE_STATES:
         return _deny(CODE_TERMINAL, f"Proposal {prop.id} is '{prop.state}' and can no longer be approved")

@@ -219,15 +219,18 @@ def test_execute_proposal_permission_denial(client: TestClient) -> None:
     )
 
     headers = {"X-Requested-With": "XMLHttpRequest"}
-    # Approve without execute first
-    ok_decide = client.post(
+    # Decide refuses up front (#1942): the preview's role verdict applies to the recorded approval too
+    refused = client.post(
         f"/api/v1/staff/proposals/{prop.id}/decide",
         json={"decision": "approved", "params_hash": reviewed_hash(prop.id), "reason": "ok", "execute": False},
         headers=headers,
     )
-    assert ok_decide.status_code == 200
+    assert refused.status_code == 403
+    assert refused.json()["error"]["code"] == "role_not_permitted"
+    assert store.get_proposal(prop.id).state == "proposed"
 
-    # Execute directly -> fails with 403 because role lacks permission
+    # An approval that bypassed the route (internal/legacy) still cannot execute: 403 on the role
+    store.decide_proposal(prop.id, "approved", decided_by="legacy")
     exec_res = client.post(
         f"/api/v1/staff/proposals/{prop.id}/execute",
         params=hash_query(prop.id),

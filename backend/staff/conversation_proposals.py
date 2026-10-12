@@ -238,6 +238,7 @@ def decide_proposal(
     decided_by: str,
     reason: str = "",
     audit_store: StaffAuditStore | None = None,
+    authority: dict[str, Any] | None = None,
 ) -> ActionProposalRecord:
     assert state in (
         "approved",
@@ -266,7 +267,7 @@ def decide_proposal(
         surface="thread",
         thread_id=prop.thread_id,
         outcome="success",
-        detail={"reason": reason, "previous_state": prop.state},
+        detail={"reason": reason, "previous_state": prop.state, **({"authority": authority} if authority else {})},
         fail_closed=True,
         store=audit_store,
     )

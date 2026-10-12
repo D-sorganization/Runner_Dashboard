@@ -12,11 +12,27 @@ from typing import TYPE_CHECKING, Any
 
 from identity import Principal
 from staff.actions import ACTION_REGISTRY, check_role_permission, compute_params_hash, proposing_role_of
-from staff.approval_authority import evaluate_approval_authority
+from staff.approval_authority import ApprovalAuthority, evaluate_approval_authority
 
 if TYPE_CHECKING:
     from staff.conversation_models import ActionProposalRecord
     from staff.conversations import ConversationStore
+
+
+def evaluate_caller_authority(
+    store: ConversationStore, prop: ActionProposalRecord, caller: Principal, *, ignore_expiry: bool = False
+) -> ApprovalAuthority:
+    """The ONE verdict on whether ``caller`` may decide ``prop``; preview and decide both call it (#1942)."""
+    action = ACTION_REGISTRY.get(prop.action)
+    role = proposing_role_of(store, prop)
+    return evaluate_approval_authority(
+        action,
+        prop,
+        caller,
+        role_permitted=not role or check_role_permission(action, role),
+        proposing_role=role,
+        ignore_expiry=ignore_expiry,
+    )
 
 
 def build_proposal_preview(store: ConversationStore, prop: ActionProposalRecord, caller: Principal) -> dict[str, Any]:
@@ -26,15 +42,7 @@ def build_proposal_preview(store: ConversationStore, prop: ActionProposalRecord,
     iff ``can_approve``. Raises :class:`ParamsHashUnavailableError` (no partial preview) when the
     params cannot be hashed. No state is read for write and nothing is changed.
     """
-    action = ACTION_REGISTRY.get(prop.action)
-    role = proposing_role_of(store, prop)
-    verdict = evaluate_approval_authority(
-        action,
-        prop,
-        caller,
-        role_permitted=not role or check_role_permission(action, role),
-        proposing_role=role,
-    )
+    verdict = evaluate_caller_authority(store, prop, caller)
     return {
         "can_approve": verdict.allowed,
         "denial_reason": None if verdict.allowed else verdict.reason,
