@@ -16,8 +16,9 @@ import json
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import Enum
+
+from staff.store import _now
 
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 RECEIPT_KIND_RUN_CARD = "run_card"
@@ -42,10 +43,6 @@ class ApplyResult:
     outcome: ApplyOutcome
     version: int  # the version stored after this call (the current one for DUPLICATE/STALE)
     receipt_id: str | None = None
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def check_epoch(request_epoch: int | None, authority_epoch: int) -> None:
