@@ -6,27 +6,16 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import sqlite3
 import threading
 import time
 import uuid
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from staff import conversation_proposals as _proposals
 from staff.audit import StaffAuditStore, record_audit
-from staff.barb_db import immediate_txn
-from staff.barb_outbox import OutboxStore, bounds_from_env
-from staff.barb_versions import (
-    ApplyOutcome,
-    ApplyResult,
-    check_epoch,
-    current_version,
-    decide,
-    record_applied,
-)
+from staff.barb_store import BarbAuthorityMixin
 from staff.conversation_migrations import CORE_MIGRATIONS, run_migrations
 from staff.conversation_models import (
     MESSAGE_AUTHOR_KINDS,
@@ -44,7 +33,7 @@ from staff.conversation_models import (
     _now,
 )
 from staff.redaction import redact_sensitive_content, redact_value
-from staff.store import RUN_STATUSES, default_db_path, first_touch_lock
+from staff.store import default_db_path, first_touch_lock
 
 __all__ = [
     "MESSAGE_AUTHOR_KINDS",
@@ -68,7 +57,7 @@ __all__ = [
 log = logging.getLogger("dashboard.staff.conversations")
 
 
-class ConversationStore:
+class ConversationStore(BarbAuthorityMixin):
     """Thread-safe, SQLite WAL-backed conversation and action proposal store."""
 
     MIGRATIONS: list[tuple[int, str, str]] = CORE_MIGRATIONS
@@ -94,87 +83,6 @@ class ConversationStore:
             raise ConversationsUnavailableError(
                 self.status.banner_message or "Conversation store is disabled due to migration failure."
             )
-
-    # ── BARB AUTHORITY (#1800, BR-06) ────────────────────────────────────────
-
-    def barb_outbox(
-        self,
-        *,
-        max_entries: int | None = None,
-        max_bytes: int | None = None,
-        max_entry_bytes: int | None = None,
-        clock: Callable[[], float] = time.time,
-        rng: random.Random | None = None,
-    ) -> OutboxStore:
-        """The node's bounded delivery outbox (bounds default from ``BARB_OUTBOX_*``)."""
-        self._ensure_available()
-        env_entries, env_bytes, env_entry = bounds_from_env()
-        return OutboxStore(
-            self._conn,
-            self._lock,
-            max_entries=max_entries if max_entries is not None else env_entries,
-            max_bytes=max_bytes if max_bytes is not None else env_bytes,
-            max_entry_bytes=max_entry_bytes if max_entry_bytes is not None else env_entry,
-            clock=clock,
-            rng=rng,
-        )
-
-    def apply_run_card_update(
-        self,
-        *,
-        thread_id: str,
-        run_id: str,
-        message_id: str,
-        status: str,
-        version: int | None,
-        body_md: str,
-        meta: dict[str, Any],
-        author: str,
-        epoch: int | None = None,
-        authority_epoch: int = 0,
-        author_kind: str = "role",
-    ) -> tuple[MessageRecord | None, ApplyResult]:
-        """Idempotent, version-gated upsert of a run card (replaces read-then-write in ``post_run_card``).
-
-        Pre: ``status`` is a run status; ``version`` is ``>= 1`` (``None`` = next local version); a given
-        ``epoch`` equals ``authority_epoch`` (else :class:`StaleEpochError`, nothing written).
-        Post: the card message, version row and receipt commit atomically, or not at all. APPLIED
-        returns the new card; DUPLICATE/STALE leave state untouched and return the stored card.
-        """
-        self._ensure_available()
-        if status not in RUN_STATUSES:
-            raise ValueError(f"invalid run status {status!r}")
-        if version is not None and version < 1:
-            raise ValueError("version must be >= 1")
-        check_epoch(epoch, authority_epoch)
-        with immediate_txn(self._conn, self._lock) as conn:
-            ver = version if version is not None else current_version(conn, run_id) + 1
-            result = decide(conn, run_id=run_id, version=ver, status=status, message_id=message_id)
-            if result.outcome is not ApplyOutcome.APPLIED:
-                return self.get_message(message_id), result
-            # The version lives only in run_card_versions: card meta keeps its existing API shape.
-            msg = self.update_message(message_id, body_md=body_md, meta=meta) or self.add_message(
-                thread_id=thread_id,
-                author_kind=author_kind,
-                author=author,
-                kind="run_card",
-                body_md=body_md,
-                meta=meta,
-                run_id=run_id,
-                delivery="complete",
-                message_id=message_id,
-            )
-            receipt = record_applied(
-                conn,
-                run_id=run_id,
-                version=ver,
-                status=status,
-                message_id=message_id,
-                thread_id=thread_id,
-                seq=msg.seq,
-                epoch=authority_epoch,
-            )
-            return msg, ApplyResult(ApplyOutcome.APPLIED, ver, receipt)
 
     # ── THREADS ──────────────────────────────────────────────────────────────
 
