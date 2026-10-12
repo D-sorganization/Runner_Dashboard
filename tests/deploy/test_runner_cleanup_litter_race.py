@@ -22,6 +22,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 _REPO = Path(__file__).resolve().parent.parent.parent
 _SCRIPT = _REPO / "deploy" / "runner-cleanup.sh"
@@ -51,9 +52,7 @@ def _harness(body: str, fake_find: str | None = None) -> subprocess.CompletedPro
         """
     )
     script = "\n".join([preamble, fake_find or "", function, body])
-    return subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, check=False
-    )
+    return subprocess.run([find_bash() or "bash", "-c", script], capture_output=True, text=True, check=False)
 
 
 def test_vanished_entry_does_not_fail_the_pass(tmp_path: Path) -> None:
@@ -82,9 +81,7 @@ def test_permission_denied_still_fails(tmp_path: Path) -> None:
         }
         """
     )
-    result = _harness(
-        f'cleanup_litter_in "{tmp_path}" 360 || echo "rc=$?"', fake_find
-    )
+    result = _harness(f'cleanup_litter_in "{tmp_path}" 360 || echo "rc=$?"', fake_find)
     assert "rc=1" in result.stdout, result.stdout + result.stderr
     assert "Permission denied" in result.stderr
 
@@ -99,9 +96,7 @@ def test_mixed_output_fails_on_the_real_fault(tmp_path: Path) -> None:
         }
         """
     )
-    result = _harness(
-        f'cleanup_litter_in "{tmp_path}" 360 || echo "rc=$?"', fake_find
-    )
+    result = _harness(f'cleanup_litter_in "{tmp_path}" 360 || echo "rc=$?"', fake_find)
     assert "rc=1" in result.stdout
 
 
@@ -143,8 +138,6 @@ def test_dry_run_makes_no_changes(tmp_path: Path) -> None:
             f'cleanup_litter_in "{tmp_path}" 360; echo "rc=$?"',
         ]
     )
-    result = subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, check=False
-    )
+    result = subprocess.run([find_bash() or "bash", "-c", script], capture_output=True, text=True, check=False)
     assert "rc=0" in result.stdout
     assert aged.exists(), "dry-run must not delete anything"
