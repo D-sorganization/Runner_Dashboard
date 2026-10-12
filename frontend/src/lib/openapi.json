@@ -17733,7 +17733,7 @@
     },
     "/api/v1/staff/proposals/{proposal_id}/decide": {
       "post": {
-        "description": "Decide (approve or deny) an action proposal, optionally executing immediately.\n\nA ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).",
+        "description": "Decide (approve or deny) an action proposal, optionally executing immediately.\n\nA ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).\nThe caller's approval authority is evaluated server-side by the same function as the\nGET preview (403 with a coded error when denied, before any state change) and recorded in\nthe audit trail with the decision (#1942).",
         "operationId": "decide_proposal_api_v1_staff_proposals__proposal_id__decide_post",
         "parameters": [
           {

@@ -5698,6 +5698,9 @@ export interface paths {
          * @description Decide (approve or deny) an action proposal, optionally executing immediately.
          *
          *     A ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).
+         *     The caller's approval authority is evaluated server-side by the same function as the
+         *     GET preview (403 with a coded error when denied, before any state change) and recorded in
+         *     the audit trail with the decision (#1942).
          */
         post: operations["decide_proposal_api_v1_staff_proposals__proposal_id__decide_post"];
         delete?: never;

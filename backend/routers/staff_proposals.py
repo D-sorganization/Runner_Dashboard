@@ -24,10 +24,12 @@ from staff.actions import (
     registered_risk,
     verify_params_hash,
 )
+from staff.approval_authority import CODE_EXPIRED, ApprovalAuthority
+from staff.audit import record_audit
 from staff.conversations import ConversationsUnavailableError
 from staff.pagination import paginate_items
 from staff.proposal_cards import refresh_proposal_card
-from staff.proposal_preview import build_proposal_preview
+from staff.proposal_preview import build_proposal_preview, evaluate_caller_authority
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.proposals")
@@ -96,6 +98,31 @@ def _require_reviewed_hash(prop: Any, reviewed_hash: str | None) -> None:
         raise HTTPException(status_code=409, detail={"code": "params_changed", "message": str(exc)}) from exc
     except ParamsHashUnavailableError as exc:
         raise HTTPException(status_code=422, detail={"code": "hash_unavailable", "message": str(exc)}) from exc
+
+
+def _require_decide_authority(
+    store: Any, prop: Any, caller: Principal, caller_id: str, decision: str
+) -> ApprovalAuthority:
+    """403 (coded, audited, nothing changed) unless ``caller`` may decide ``prop``: the preview's verdict (#1942).
+
+    A denial runs the same caller-authority checks but is not blocked by expiry or by the proposing
+    role's permission (rejecting an improper proposal must always be possible).
+    """
+    verdict = evaluate_caller_authority(store, prop, caller, for_denial=decision == "denied")
+    if verdict.allowed:
+        return verdict
+    status_code = status.HTTP_400_BAD_REQUEST if verdict.code == CODE_EXPIRED else status.HTTP_403_FORBIDDEN
+    record_audit(
+        action="proposal_decide_refused",
+        target=prop.id,
+        principal=caller_id,
+        surface="thread",
+        thread_id=prop.thread_id,
+        outcome="denied",
+        detail={"decision": decision, "authority": verdict.to_audit()},
+        fail_closed=False,
+    )
+    raise HTTPException(status_code=status_code, detail={"code": verdict.code, "message": verdict.reason})
 
 
 # ─── Actions Catalogue Endpoints ─────────────────────────────────────────────
@@ -245,6 +272,9 @@ async def decide_proposal(
     """Decide (approve or deny) an action proposal, optionally executing immediately.
 
     A ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).
+    The caller's approval authority is evaluated server-side by the same function as the
+    GET preview (403 with a coded error when denied, before any state change) and recorded in
+    the audit trail with the decision (#1942).
     """
     if body.decision not in ("approved", "denied"):
         raise HTTPException(
@@ -263,6 +293,7 @@ async def decide_proposal(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot decide proposal in state '{prop.state}' (must be 'proposed' or 'failed')",
             )
+        verdict = _require_decide_authority(store, prop, caller, caller_id, body.decision)
         if body.decision == "approved":
             _require_reviewed_hash(prop, body.params_hash)
         updated = store.decide_proposal(
@@ -270,6 +301,7 @@ async def decide_proposal(
             state=body.decision,
             decided_by=caller_id,
             reason=body.reason,
+            authority=verdict.to_audit(),
         )
 
         if body.decision == "approved" and body.execute:
