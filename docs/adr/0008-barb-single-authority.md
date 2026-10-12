@@ -50,4 +50,6 @@ outbox and the per-run version (event revisions); #1810 builds on authority-side
 - `runs.card_version` and `RunStore.next_card_version` are unused until PR 2 wires the relay.
 - `bounds_from_env` raises a bare `ValueError` on a malformed `BARB_OUTBOX_*` value.
 - Enqueueing the same key with a different payload silently keeps the old entry id.
-- `backup_database` copies the main database file and ignores the WAL.
+- ~~`backup_database` copies the main database file and ignores the WAL.~~ Fixed: it now uses the SQLite online
+  backup API, so a backup of a live authority keeps WAL-resident IDs and receipts
+  (`tests/unit/test_barb_backup_restore.py`).
