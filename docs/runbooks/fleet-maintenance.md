@@ -47,7 +47,16 @@ Cmnd_Alias RUNNER_MAINT = \
 
 Without this file the endpoint returns `500` (`sudo: a password is required`)
 and nothing runs. Keep the scheduler binary root-owned and not writable by the
-dashboard user, or the grant is equivalent to root.
+dashboard user, or the grant is equivalent to root. The same applies to the
+schedule config file and its directory: the scheduler reads them as root, so a
+dashboard-writable config lets that user steer a root process. The state file is
+written by the scheduler; keep it root-owned too and give the dashboard read
+access only.
+
+`DASHBOARD_LOOPBACK_AUTH=1` grants loopback callers an admin principal, so on a
+host with that flag any local process can call this endpoint (including
+`reboot`). Browser pages cannot: the global CSRF check requires the
+`X-Requested-With` header, which forces a CORS preflight.
 
 ## Audit
 
