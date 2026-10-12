@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createThread, decideActionProposal, postThreadMessage } from "../staffApi";
+import { createThread, decideActionProposal, getActionProposal, postThreadMessage } from "../staffApi";
 
 describe("staffApi request bodies", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -40,5 +40,16 @@ describe("staffApi request bodies", () => {
   it("decideActionProposal sends the decision as an object", async () => {
     await decideActionProposal("prop_1", "approved", "ok");
     expect(sentBody()).toEqual({ decision: "approved", reason: "ok", execute: true });
+  });
+
+  it("decideActionProposal echoes the reviewed params_hash (#1807)", async () => {
+    await decideActionProposal("prop_1", "approved", "ok", true, undefined, "c".repeat(64));
+    expect(sentBody()).toEqual({ decision: "approved", reason: "ok", execute: true, params_hash: "c".repeat(64) });
+  });
+
+  it("getActionProposal reads the preview of the caller with a GET", async () => {
+    await getActionProposal("prop_1");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/proposals/prop_1");
+    expect((fetchMock.mock.calls[0][1] as RequestInit | undefined)?.method ?? "GET").toBe("GET");
   });
 });

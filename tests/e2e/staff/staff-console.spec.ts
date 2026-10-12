@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
-import { requesterHeaders } from "./identity";
+import { requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
 // The console banner, not an error card from an earlier turn.
@@ -220,15 +220,24 @@ test.describe("proposals", () => {
   test.describe("as a viewer", () => {
     test.use({ principal: "viewer" });
 
-    test("an approval without staff.approve is refused and the card stays actionable", async ({ page, browser }) => {
+    test("a viewer sees Approve disabled with the reason, and a forced approval is still refused (#1807)", async ({ page, browser }) => {
       const id = await proposeAsRequester(browser);
 
       await openThread(page, BARB);
       const card = page.locator(`[data-proposal-id="${id}"]`);
-      await card.getByRole("button", { name: "Approve" }).click();
 
-      await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
-      await expect(card.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+      await expect(card.getByTestId("approval-denial-reason")).toBeVisible();
+      await expect(card.getByRole("button", { name: /^Approve$/ })).toBeDisabled();
+      await expect(card.getByRole("button", { name: /^Deny$/ })).toBeDisabled();
+
+      // The preview is advisory: bypassing the UI is still refused server-side and changes nothing.
+      const forced = await page.request.post(`/api/v1/staff/proposals/${id}/decide`, {
+        headers: { ...viewerHeaders, "X-Requested-With": "XMLHttpRequest" },
+        data: { decision: "approved", execute: true, params_hash: "0".repeat(64) },
+      });
+      expect(forced.status()).toBe(403);
+      await page.reload();
+      await expect(page.locator(`[data-proposal-id="${id}"]`).getByRole("button", { name: /^Approve$/ })).toBeVisible();
     });
   });
 });

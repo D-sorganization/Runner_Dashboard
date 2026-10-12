@@ -7,6 +7,12 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+const api = vi.hoisted(() => ({ getActionProposal: vi.fn() }));
+vi.mock("../../Staff/staffApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
+  ...api,
+}));
+
 import { Thread } from "../Thread";
 import type { ThreadMessage, ThreadInfo } from "../threadTypes";
 
@@ -169,7 +175,8 @@ describe("Thread Component", () => {
     expect(screen.getByText(/Run claude login on host DeskComputer./i)).toBeInTheDocument();
   });
 
-  it("renders embedded action proposal card and handles approval", () => {
+  it("renders embedded action proposal card and handles approval", async () => {
+    api.getActionProposal.mockResolvedValue({ id: "x", can_approve: true, denial_reason: null, params_hash: "e".repeat(64) });
     const handleApprove = vi.fn();
     const proposalMessages: ThreadMessage[] = [
       ...MOCK_MESSAGES,
@@ -206,9 +213,10 @@ describe("Thread Component", () => {
 
     expect(screen.getByText("maintenance.runner_restart")).toBeInTheDocument();
     const approveBtn = screen.getByRole("button", { name: /approve/i });
+    await waitFor(() => expect(approveBtn).toBeEnabled());
     fireEvent.click(approveBtn);
 
-    expect(handleApprove).toHaveBeenCalledWith("prop-456", undefined);
+    expect(handleApprove).toHaveBeenCalledWith("prop-456", undefined, "e".repeat(64));
   });
 
   it("renders embedded run card and handles cancellation", () => {

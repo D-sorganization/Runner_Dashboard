@@ -8,6 +8,8 @@ export interface ActionCardProps {
   onApprove?: ProposalApproveHandler;
   onDeny?: ProposalDenyHandler;
   className?: string;
+  /** True while the viewer's approval preview is loading: the buttons wait for it (#1807). */
+  previewPending?: boolean;
 }
 
 function getRiskBadgeColor(risk: ActionRiskLevel): { bg: string; text: string; border: string } {
@@ -31,6 +33,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
   onApprove,
   onDeny,
   className = "",
+  previewPending = false,
 }) => {
   const [showParams, setShowParams] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -46,6 +49,15 @@ export const ActionCard: React.FC<ActionCardProps> = ({
 
   const riskColors = getRiskBadgeColor(proposal.risk_level);
 
+  // Advisory preview only (#1807): the server re-evaluates authority on every decision, so a
+  // missing preview (`undefined`) leaves the buttons as they were and never grants anything.
+  const authorityDenied = proposal.can_approve === false;
+  const denialReason = authorityDenied
+    ? proposal.denial_reason || "You are not allowed to approve this action."
+    : null;
+  const reasonId = `staff-action-card-reason-${proposal.id}`;
+  const locked = hasSubmitted || authorityDenied || previewPending;
+
   const reenableIfRefused = (outcome: void | Promise<boolean | void>) => {
     void Promise.resolve(outcome).then((ok) => {
       if (ok === false) setHasSubmitted(false);
@@ -53,13 +65,13 @@ export const ActionCard: React.FC<ActionCardProps> = ({
   };
 
   const handleApproveClick = () => {
-    if (hasSubmitted || isExpired || isDecided) return;
+    if (locked || isExpired || isDecided) return;
     setHasSubmitted(true);
-    reenableIfRefused(onApprove?.(proposal.id, proposal.params));
+    reenableIfRefused(onApprove?.(proposal.id, proposal.params, proposal.params_hash ?? undefined));
   };
 
   const handleDenyClick = () => {
-    if (hasSubmitted || isExpired || isDecided) return;
+    if (locked || isExpired || isDecided) return;
     setHasSubmitted(true);
     reenableIfRefused(onDeny?.(proposal.id));
   };
@@ -249,11 +261,24 @@ export const ActionCard: React.FC<ActionCardProps> = ({
       {/* Actions (Approve / Deny) */}
       {!isDecided && !isExpired && (
         <div className="staff-action-card__actions">
+          {denialReason && (
+            <p
+              id={reasonId}
+              role="note"
+              data-testid="approval-denial-reason"
+              className="staff-action-card__reason"
+            >
+              {denialReason}
+            </p>
+          )}
           <button
             type="button"
             className="staff-action-card__btn staff-action-card__btn--approve"
             onClick={handleApproveClick}
-            disabled={hasSubmitted}
+            disabled={locked}
+            aria-disabled={locked}
+            aria-describedby={denialReason ? reasonId : undefined}
+            title={denialReason ?? undefined}
           >
             {hasSubmitted ? "Executing…" : "Approve"}
           </button>
@@ -261,7 +286,10 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             type="button"
             className="staff-action-card__btn staff-action-card__btn--deny"
             onClick={handleDenyClick}
-            disabled={hasSubmitted}
+            disabled={locked}
+            aria-disabled={locked}
+            aria-describedby={denialReason ? reasonId : undefined}
+            title={denialReason ?? undefined}
           >
             Deny
           </button>

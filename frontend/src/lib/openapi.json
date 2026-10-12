@@ -1211,6 +1211,19 @@
             "title": "Execute",
             "type": "boolean"
           },
+          "params_hash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hash of the action and parameters the approver reviewed (GET /proposals/{id}). Required to approve (428 params_hash_required); 409 params_changed when it no longer matches (#1807)",
+            "title": "Params Hash"
+          },
           "reason": {
             "default": "",
             "description": "Reason for the decision",
@@ -17613,7 +17626,7 @@
     },
     "/api/v1/staff/proposals/{proposal_id}": {
       "get": {
-        "description": "Get single action proposal by ID.",
+        "description": "Get single action proposal by ID, with the caller's approval preview (#1807).\n\n``can_approve``/``denial_reason`` are per viewer and read-only: they grant nothing, and\nexecution re-evaluates authority. ``params_hash`` is what decide/execute must echo.",
         "operationId": "get_proposal_api_v1_staff_proposals__proposal_id__get",
         "parameters": [
           {
@@ -17735,6 +17748,25 @@
             "schema": {
               "title": "Proposal Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Hash the approver reviewed; required (428), 409 when stale (#1807)",
+            "in": "query",
+            "name": "params_hash",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Hash the approver reviewed; required (428), 409 when stale (#1807)",
+              "title": "Params Hash"
             }
           }
         ],

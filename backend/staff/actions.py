@@ -13,15 +13,24 @@ Provides:
 from __future__ import annotations
 
 import datetime as _dt
+import hmac
 import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from identity import Principal, format_caller, principal_has_scope
+from identity import Principal, format_caller
 from staff.action_executors import BOARD_PROPOSAL_ROLE, CODE_REQUEST_OWNER_ROLE, register_standard_actions
-from staff.conversation_models import PROPOSAL_TTL_SECONDS, ActionProposalRecord
+from staff.approval_authority import (  # noqa: F401 - is_owner / is_proposal_expired stay importable from here
+    ActionRiskClass,
+    ApprovalAuthority,
+    evaluate_approval_authority,
+    is_owner,
+    is_proposal_expired,
+    params_hash,
+)
+from staff.conversation_models import ActionProposalRecord
 from staff.conversations import get_conversation_store
 from staff.maintenance import register_maintenance_actions
 from staff.roles import RoleSpec, load_roles
@@ -34,15 +43,6 @@ if TYPE_CHECKING:
 UTC = getattr(_dt, "UTC", _dt.UTC)
 datetime = _dt.datetime
 log = logging.getLogger("dashboard.staff.actions")
-
-
-class ActionRiskClass:
-    READ = "read"
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-    OWNER_ONLY = "owner-only"
 
 
 class ActionError(Exception):
@@ -59,6 +59,18 @@ class ProposalReplayError(ActionError):
 
 class ProposalNotApprovedError(ProposalReplayError):
     """Raised when execution is requested for a proposal that has no approved decision."""
+
+
+class ParamsHashRequiredError(ActionError):
+    """Raised when an approval or execution carries no reviewed-parameter hash (HTTP 428)."""
+
+
+class ParamsHashMismatchError(ActionError):
+    """Raised when the reviewed-parameter hash differs from the stored proposal's (HTTP 409)."""
+
+
+class ParamsHashUnavailableError(ActionError):
+    """Raised when a proposal's parameters cannot be canonically hashed (HTTP 422)."""
 
 
 class RolePermissionDeniedError(ActionError):
@@ -155,33 +167,6 @@ def registered_risk(action_name: str) -> str:
     return action.risk_class if action else ActionRiskClass.HIGH
 
 
-def is_proposal_expired(prop: ActionProposalRecord, ttl_seconds: int = PROPOSAL_TTL_SECONDS) -> bool:
-    """Return True if the proposal is older than ttl_seconds."""
-    try:
-        created = datetime.fromisoformat(prop.created_at.replace("Z", "+00:00"))
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=UTC)
-        age = (datetime.now(UTC) - created).total_seconds()
-        return age > ttl_seconds
-    except Exception:
-        return False
-
-
-def is_owner(principal: Principal | None) -> bool:
-    """Return True if principal has owner/admin privileges."""
-    if not principal:
-        return False
-    roles = {r.lower() for r in (principal.roles or [])}
-    scopes = {s.lower() for s in (principal.scopes or [])}
-    if "owner" in roles or "admin" in roles:
-        return True
-    if "owner" in scopes or "admin" in scopes:
-        return True
-    if principal.id.lower() in ("owner", "operator") or principal.name.lower() in ("owner", "operator"):
-        return True
-    return False
-
-
 def can_auto_execute(action: ActionDefinition, role_name: str, caller: Principal | None) -> bool:
     """Check if action can auto-execute without human approval (read/low only)."""
     return action.risk_class in (ActionRiskClass.READ, ActionRiskClass.LOW)
@@ -192,22 +177,18 @@ def check_approval_policy(
     prop: ActionProposalRecord,
     approver: Principal,
 ) -> None:
-    """Enforce risk-based approval policy gates."""
-    if is_proposal_expired(prop):
-        raise ProposalExpiredError(f"Proposal {prop.id} has expired (exceeded 24h TTL)")
+    """Enforce risk-based approval policy gates (thin wrapper over the shared evaluator, #1807)."""
+    verdict = evaluate_approval_authority(action, prop, approver, include_state=False)
+    if verdict.allowed:
+        return
+    raise_for_denial(verdict)
 
-    risk = action.risk_class if action else prop.risk
-    if risk in (ActionRiskClass.HIGH, ActionRiskClass.CRITICAL, ActionRiskClass.OWNER_ONLY):
-        if not is_owner(approver):
-            raise PermissionError(f"Action '{prop.action}' has risk '{risk}' and requires owner approval")
 
-    # Issue #1789: decide-capable roles approve via their preset scopes, exactly like
-    # the routes' require_scope does; principals without an explicit scope or a preset
-    # granting "staff.approve" stay fail-closed.
-    if not is_owner(approver) and not principal_has_scope(approver, "staff.approve"):
-        raise PermissionError(f"Principal '{approver.id}' lacks 'staff.approve' scope")
-    if action and not is_owner(approver) and not principal_has_scope(approver, action.required_scope):
-        raise PermissionError(f"Principal '{approver.id}' lacks '{action.required_scope}' required by '{action.name}'")
+def raise_for_denial(verdict: ApprovalAuthority) -> None:
+    """Raise the exception type execution has always used for ``verdict`` (a denial)."""
+    if verdict.code == "expired":
+        raise ProposalExpiredError(verdict.reason)
+    raise PermissionError(verdict.reason)
 
 
 _MAINTENANCE_ACTIONS = frozenset(
@@ -315,25 +296,68 @@ def _post_result(s: ConversationStore, thread_id: str, *, body_md: str, meta: di
     get_thread_bus().publish_message_sync(thread_id, msg.to_dict())
 
 
+def proposing_role_of(s: ConversationStore, prop: ActionProposalRecord) -> str:
+    """The role that proposed ``prop`` ("" when a human or unknown); shared by execution and the preview."""
+    proposing_role = str(prop.params.get("proposing_role") or "")
+    if not proposing_role and prop.message_id:
+        msg = s.get_message(prop.message_id)
+        if msg and msg.author_kind == "role":
+            proposing_role = msg.author
+    return proposing_role
+
+
+def stored_params_hash(s: ConversationStore, proposal_id: str) -> str:
+    """The canonical hash of the STORED proposal, for internal callers that approve without a preview.
+
+    Same function as the preview's (``params_hash``); it never skips the check, it computes the
+    expected value server-side. Pre: the proposal exists.
+    """
+    prop = s.get_proposal(proposal_id)
+    if prop is None:
+        raise ProposalReplayError(f"Proposal {proposal_id} not found")
+    return compute_params_hash(prop)
+
+
+def compute_params_hash(prop: ActionProposalRecord) -> str:
+    """Hash of ``prop``'s action and params; :class:`ParamsHashUnavailableError` when they cannot be serialised."""
+    try:
+        return params_hash(prop.action, prop.params)
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ParamsHashUnavailableError(f"Proposal {prop.id}: parameters cannot be hashed ({exc})") from exc
+
+
+def verify_params_hash(prop: ActionProposalRecord, reviewed_hash: str | None) -> None:
+    """Raise unless ``reviewed_hash`` is the hash of ``prop``'s stored action and params (no state change)."""
+    if not reviewed_hash:
+        raise ParamsHashRequiredError(f"Proposal {prop.id}: params_hash is required to approve or execute")
+    if not hmac.compare_digest(reviewed_hash.encode(), compute_params_hash(prop).encode()):
+        raise ParamsHashMismatchError(f"Proposal {prop.id}: parameters changed since they were reviewed")
+
+
 def execute_proposal(
     proposal_id: str,
     approver: Principal,
     store: ConversationStore | None = None,
     audit_store: StaffAuditStore | None = None,
     approve: bool = False,
+    *,
+    params_hash: str,
 ) -> ActionResult:
     """Execute a proposal with policy checks, verifier, and audit trails.
 
     Pre: the proposal is ``approved`` — or ``proposed`` with ``approve=True``, which records
     ``approver``'s decision once every policy check has passed. A ``failed`` proposal needs an
     explicit retry decision first. Otherwise :class:`ProposalNotApprovedError` is raised and
-    nothing runs.
+    nothing runs. ``params_hash`` (required, #1807) is the hash the reviewer saw; it is verified
+    against the stored proposal before any state change (:class:`ParamsHashRequiredError` /
+    :class:`ParamsHashMismatchError`). Internal callers pass :func:`stored_params_hash`.
     """
     s = store or get_conversation_store()
     a_store = audit_store or getattr(s, "_audit_store", None)
     prop = s.get_proposal(proposal_id)
     if not prop:
         raise ProposalReplayError(f"Proposal {proposal_id} not found")
+    verify_params_hash(prop, params_hash)
 
     if is_proposal_expired(prop):
         if prop.state == "proposed":
@@ -367,11 +391,7 @@ def execute_proposal(
             failure_class="unknown_action",
         )
 
-    proposing_role = str(prop.params.get("proposing_role") or "")
-    if not proposing_role and prop.message_id:
-        msg = s.get_message(prop.message_id)
-        if msg and msg.author_kind == "role":
-            proposing_role = msg.author
+    proposing_role = proposing_role_of(s, prop)
     if proposing_role and not check_role_permission(action_def, proposing_role):
         s.transition_proposal_state(
             proposal_id,

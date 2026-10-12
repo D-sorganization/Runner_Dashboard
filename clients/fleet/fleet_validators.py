@@ -23,6 +23,7 @@ class _Patterns:
     message_id: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
     role: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
     ident: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,119}$")
+    sha256_hex: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")
     date: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
     iso: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ][0-9:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$")
 

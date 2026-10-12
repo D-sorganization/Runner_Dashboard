@@ -27,6 +27,8 @@ export type ProposalStatus =
 export type ProposalApproveHandler = (
   proposalId: string,
   params?: Record<string, unknown>,
+  /** Hash of the parameters the approver reviewed; the server refuses an approval without it (#1807). */
+  paramsHash?: string,
 ) => void | Promise<boolean | void>;
 export type ProposalDenyHandler = (proposalId: string) => void | Promise<boolean | void>;
 
@@ -46,6 +48,13 @@ export interface ActionProposalData {
   dry_run?: boolean | { planned_steps?: string[]; [key: string]: unknown } | null;
   verification_message?: string | null;
   routed_role?: string | null;
+  /**
+   * Per-viewer approval preview (#1807). Advisory only: the server re-evaluates authority at
+   * execution. `undefined` means "not previewed", never "allowed".
+   */
+  can_approve?: boolean;
+  denial_reason?: string | null;
+  params_hash?: string | null;
 }
 
 export type RunStatus =

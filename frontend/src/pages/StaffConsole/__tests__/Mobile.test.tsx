@@ -23,6 +23,7 @@ const threadApi = vi.hoisted(() => ({
   fetchThreadMessages: vi.fn(),
   fetchRoster: vi.fn(),
   fetchRuns: vi.fn(),
+  getActionProposal: vi.fn(),
 }));
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
@@ -281,6 +282,7 @@ describe("StaffConsoleMobile (SC-D8)", () => {
   });
 
   it("renders thumb-reachable Approve / Deny actions for action proposals", async () => {
+    threadApi.getActionProposal.mockResolvedValue({ id: "x", can_approve: true, denial_reason: null, params_hash: "e".repeat(64) });
     const onApproveProposal = vi.fn();
     const onDenyProposal = vi.fn();
 
@@ -301,8 +303,9 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(approveBtn).toBeInTheDocument();
     expect(denyBtn).toBeInTheDocument();
 
+    await waitFor(() => expect(approveBtn).toBeEnabled());
     fireEvent.click(approveBtn);
-    expect(onApproveProposal).toHaveBeenCalledWith("prop-999", { host: "ControlTower" });
+    expect(onApproveProposal).toHaveBeenCalledWith("prop-999", { host: "ControlTower" }, "e".repeat(64));
   });
 
   it("opens thread view directly when ?thread=<id> is present in the URL", () => {

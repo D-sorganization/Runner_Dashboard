@@ -26,6 +26,13 @@ from fastapi.responses import JSONResponse
 from gh_utils import gh_api
 from identity import Principal, require_scope
 from security import validate_owner_repo_format, validate_repo_slug
+from staff.actions import (
+    ActionError,
+    ParamsHashMismatchError,
+    ParamsHashRequiredError,
+    ParamsHashUnavailableError,
+)
+from staff.conversations import ConversationsUnavailableError
 from system_utils import run_cmd
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -338,23 +345,38 @@ async def execute_action(
             "execution_time_ms": 0,
         }
 
-    action_record["approved"] = True
-    action_record["approved_at"] = datetime.now(UTC).isoformat()
-    action_record["approved_by"] = "operator"
-    action_record["operator_notes"] = req.operator_notes
-
     if prop_rec_id:
+        # Fail closed (#1807): a hash that cannot be verified, or no longer matches, stops the
+        # action before the legacy in-memory record is marked approved or anything runs.
         try:
-            from staff.actions import execute_proposal
+            from staff.actions import execute_proposal, stored_params_hash
             from staff.conversations import get_conversation_store
 
             c_store = get_conversation_store()
             # Worker thread: never block the loop; lets GitHub-backed actions bridge back (#1448).
             await anyio.to_thread.run_sync(
-                partial(execute_proposal, prop_rec_id, approver=principal, store=c_store, approve=True)
+                partial(
+                    execute_proposal,
+                    prop_rec_id,
+                    approver=principal,
+                    store=c_store,
+                    approve=True,
+                    params_hash=stored_params_hash(c_store, prop_rec_id),  # operator approved this record
+                )
             )
-        except Exception as _sync_err:  # noqa: BLE001
+        except ParamsHashRequiredError as exc:
+            raise HTTPException(status_code=428, detail={"code": "params_hash_required", "message": str(exc)}) from exc
+        except ParamsHashMismatchError as exc:
+            raise HTTPException(status_code=409, detail={"code": "params_changed", "message": str(exc)}) from exc
+        except ParamsHashUnavailableError as exc:
+            raise HTTPException(status_code=422, detail={"code": "hash_unavailable", "message": str(exc)}) from exc
+        except (ActionError, PermissionError, ConversationsUnavailableError) as _sync_err:
             log.warning("Assistant action execute could not sync to conversation store: %s", _sync_err)
+
+    action_record["approved"] = True
+    action_record["approved_at"] = datetime.now(UTC).isoformat()
+    action_record["approved_by"] = "operator"
+    action_record["operator_notes"] = req.operator_notes
 
     proposal = action_record["proposal"]
     action_type = proposal.get("action_type", "unknown")

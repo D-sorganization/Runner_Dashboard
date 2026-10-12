@@ -28,6 +28,8 @@ from staff.conversations import (
 from staff.groups import SeatReply, SeatSpec, reset_group_runner_override, set_group_runner_override
 from staff.thread_bus import reset_thread_bus
 
+from tests.staff_proposal_hash import hash_query, reviewed_hash
+
 TEST_OPERATOR = Principal(
     id="operator-user",
     type="human",
@@ -247,11 +249,11 @@ async def test_group_turn_e2e_and_proposal_creation(client: TestClient) -> None:
     # 4. Approve and execute proposal ("make this a proposal")
     decide_resp = client.post(
         f"/api/v1/staff/proposals/{board_prop.id}/decide",
-        json={"decision": "approved", "reason": "Approved by owner"},
+        json={"decision": "approved", "params_hash": reviewed_hash(board_prop.id), "reason": "Approved by owner"},
     )
     assert decide_resp.status_code == 200
 
-    exec_resp = client.post(f"/api/v1/staff/proposals/{board_prop.id}/execute")
+    exec_resp = client.post(f"/api/v1/staff/proposals/{board_prop.id}/execute", params=hash_query(board_prop.id))
     assert exec_resp.status_code == 200
     data = exec_resp.json()
     assert data["state"] == "done"

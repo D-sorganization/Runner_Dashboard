@@ -441,6 +441,10 @@ COMMANDS: tuple[Command, ...] = (
                 "description": "Decision: 'approved' or 'denied'.",
             },
             "reason": {"type": "string", "description": "Optional rationale for the decision."},
+            "params_hash": {
+                "type": "string",
+                "description": "Hash of the reviewed parameters (proposal preview). Omitted: fetched from the server.",
+            },
         },
         required=("proposal_id", "decision"),
         tool="staff_approval_decide",

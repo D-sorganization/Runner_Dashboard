@@ -17,6 +17,8 @@ from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.maintenance import reset_maintenance_cooldowns
 from staff.thread_bus import reset_thread_bus
 
+from tests.staff_proposal_hash import reviewed_hash
+
 UTC = getattr(_dt, "UTC", _dt.UTC)
 
 TEST_OPERATOR = Principal(
@@ -174,6 +176,7 @@ def test_api_detect_stalled_high_risk_creates_proposal_for_approval(
         json={
             "decision": "approved",
             "execute": True,
+            "params_hash": reviewed_hash(prop["id"]),
             "reason": "Decommission dead runner",
         },
         headers={"X-Requested-With": "XMLHttpRequest"},

@@ -13,6 +13,8 @@ from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.maintenance import reset_maintenance_cooldowns
 from staff.thread_bus import reset_thread_bus
 
+from tests.staff_proposal_hash import reviewed_hash
+
 TEST_OPERATOR = Principal(
     id="operator-user",
     type="human",
@@ -99,7 +101,12 @@ def test_maintenance_proposal_create_and_dry_run_api(client: TestClient) -> None
     # Decide with immediate execution of dry_run
     decide_res = client.post(
         f"/api/v1/staff/proposals/{prop_id}/decide",
-        json={"decision": "approved", "reason": "operator dry-run approval", "execute": True},
+        json={
+            "decision": "approved",
+            "params_hash": reviewed_hash(prop_id),
+            "reason": "operator dry-run approval",
+            "execute": True,
+        },
         headers=headers,
     )
     assert decide_res.status_code == 200, decide_res.text
@@ -139,7 +146,12 @@ def test_maintenance_blast_radius_rejection_api(client: TestClient) -> None:
     # Approving and executing records failure due to blast-radius limit
     decide_res = client.post(
         f"/api/v1/staff/proposals/{prop_id}/decide",
-        json={"decision": "approved", "reason": "operator approval", "execute": True},
+        json={
+            "decision": "approved",
+            "params_hash": reviewed_hash(prop_id),
+            "reason": "operator approval",
+            "execute": True,
+        },
         headers=headers,
     )
     assert decide_res.status_code == 200

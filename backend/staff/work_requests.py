@@ -31,6 +31,7 @@ from staff.actions import (
     execute_proposal,
     is_owner,
     registered_risk,
+    stored_params_hash,
 )
 
 if TYPE_CHECKING:
@@ -387,7 +388,9 @@ def submit_request(
         return RequestOutcome("approval_required", 202, {**base, "state": "approval_required", "approval": str(exc)})
 
     try:
-        res = execute_proposal(prop.id, approver=caller, store=store, approve=True)
+        res = execute_proposal(
+            prop.id, approver=caller, store=store, approve=True, params_hash=stored_params_hash(store, prop.id)
+        )
     except (ActionError, PermissionError) as exc:
         res = ActionResult(success=False, error=str(exc), failure_class="permission_denied")
     if not res.success:
