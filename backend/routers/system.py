@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import platform
@@ -276,3 +277,11 @@ async def get_system_metrics() -> dict[str, Any]:
         host_memory_gb=_host_memory_gb,
         get_runner_capacity_snapshot=_get_runner_capacity_snapshot,
     )
+
+
+@router.get("/api/system/host-memory")
+async def get_host_memory_health_route() -> dict[str, Any]:
+    """Host memory health (RM #2071): commit, vmmemWSL vs cap, cache-trim, kernel pool."""
+    from host_memory import get_host_memory_health
+
+    return await asyncio.to_thread(get_host_memory_health)
