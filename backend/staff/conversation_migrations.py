@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 import sqlite3
 import time
 from pathlib import Path
@@ -135,7 +134,16 @@ CORE_MIGRATIONS: list[tuple[int, str, str]] = [
 
 
 def backup_database(db_path: Path) -> Path | None:
-    """Create a timestamped backup before running schema migrations."""
+    """Create a timestamped, self-contained backup (e.g. before running schema migrations).
+
+    Uses SQLite's online backup API rather than a file copy: the authority runs in WAL mode, so committed
+    rows (thread IDs, run-card versions, receipts) can live only in the ``-wal`` sidecar until a checkpoint,
+    and copying the main file alone would silently drop them (#1800, BR-06: restoring the authority must
+    preserve IDs and receipts).
+
+    Post: returns the path of a single consistent database file holding every committed row, or ``None``
+    (nothing to back up, or the backup failed; a failed backup leaves no partial file behind).
+    """
     if not db_path.exists() or db_path.stat().st_size == 0:
         return None
     now_ts = int(time.time())
@@ -145,12 +153,26 @@ def backup_database(db_path: Path) -> Path | None:
         counter += 1
         backup_path = db_path.parent / f"{db_path.name}.bak.{now_ts}_{counter}"
     try:
-        shutil.copy2(db_path, backup_path)
-        log.info("Backed up database to %s before migration", backup_path)
-        return backup_path
-    except Exception as exc:
+        _online_backup(db_path, backup_path)
+    except (sqlite3.Error, OSError) as exc:
         log.warning("Failed to create database backup before migration: %s", exc)
+        backup_path.unlink(missing_ok=True)
         return None
+    log.info("Backed up database to %s before migration", backup_path)
+    return backup_path
+
+
+def _online_backup(db_path: Path, backup_path: Path) -> None:
+    """Copy ``db_path`` (including WAL-resident commits) into a new database file at ``backup_path``."""
+    src = sqlite3.connect(db_path)
+    try:
+        dst = sqlite3.connect(backup_path)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
 
 
 def run_migrations(
