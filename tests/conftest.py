@@ -55,6 +55,11 @@ clients_dir = str(REPO_ROOT / "clients" / "fleet")
 if clients_dir not in sys.path:
     sys.path.insert(0, clients_dir)
 
+# Shared bash resolver (#1939): top-level tests import ``bash_host`` by module name.
+deploy_tests_dir = str(REPO_ROOT / "tests" / "deploy")
+if deploy_tests_dir not in sys.path:
+    sys.path.insert(0, deploy_tests_dir)
+
 import pytest  # noqa: E402
 
 
