@@ -10461,6 +10461,36 @@
         "tags": ["orchestration", "orchestration"]
       }
     },
+    "/api/fleet/maintenance": {
+      "post": {
+        "description": "Drain (optionally reboot) or resume this machine's runners. Progress: GET /api/fleet/schedule.",
+        "operationId": "fleet_maintenance_api_fleet_maintenance_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Fleet Maintenance Api Fleet Maintenance Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Fleet Maintenance",
+        "tags": ["orchestration", "orchestration"]
+      }
+    },
     "/api/fleet/nodes": {
       "get": {
         "description": "Aggregate system metrics + health from all fleet nodes.",

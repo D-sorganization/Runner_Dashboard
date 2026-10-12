@@ -52,6 +52,17 @@ def set_dependencies(
     _runner_base_dir = runner_base_dir
 
 
+def scheduler_paths() -> tuple[str, Path, Path, Path]:
+    """Return ``(scheduler_bin, config, state, runner_root)`` as wired from server config.
+
+    Single source of truth for the scheduler locations so privileged callers
+    (the maintenance routes) never re-resolve them, and never take them from a request.
+    """
+    if _runner_schedule_config is None or _runner_scheduler_state is None or _runner_base_dir is None:
+        raise RuntimeError("scheduler paths not configured; set_dependencies() was not called")
+    return _runner_scheduler_bin, _runner_schedule_config, _runner_scheduler_state, _runner_base_dir
+
+
 @router.get("/api/fleet/schedule")
 async def get_runner_schedule() -> dict:
     """Return this machine's local runner capacity schedule and live state."""
