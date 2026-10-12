@@ -12,10 +12,12 @@ import { ApiClientError, apiRequest } from "../../lib/api";
 import type { components } from "../../lib/api-types";
 import type { ThreadInfo, ThreadMessage } from "../StaffConsole/threadTypes";
 import type { BriefingResponse, InboxAggregate } from "./inboxTypes";
+import { STAFF_BASE } from "./staffBase";
 
 export { ApiClientError };
 export type { BriefingResponse, InboxAggregate };
 export * from "./quotaApi";
+export * from "./proposalApi";
 
 // ── Shapes (derived directly from OpenAPI generated schemas) ───────────────────
 
@@ -108,7 +110,7 @@ export interface StaffRequestResponse {
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
-export const STAFF_BASE = "/api/v1/staff";
+export { STAFF_BASE };
 
 function generateIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -471,32 +473,4 @@ export function createThread(
   signal?: AbortSignal,
 ): Promise<ThreadInfo> {
   return apiRequest<ThreadInfo>(`${STAFF_BASE}/threads`, { method: "POST", body, signal });
-}
-
-/** The calling principal's read-only approval preview of a proposal (#1807). */
-export interface ProposalPreview {
-  id: string;
-  can_approve: boolean;
-  denial_reason: string | null;
-  params_hash: string;
-}
-
-export function getActionProposal(proposalId: string, signal?: AbortSignal): Promise<ProposalPreview> {
-  return apiRequest<ProposalPreview>(`${STAFF_BASE}/proposals/${encodeURIComponent(proposalId)}`, { signal });
-}
-
-/** Approving requires `paramsHash`, the hash the approver reviewed; the server answers 428/409 otherwise. */
-export function decideActionProposal(
-  proposalId: string,
-  decision: "approved" | "denied",
-  reason?: string,
-  execute: boolean = true,
-  signal?: AbortSignal,
-  paramsHash?: string,
-): Promise<unknown> {
-  return apiRequest<unknown>(`${STAFF_BASE}/proposals/${encodeURIComponent(proposalId)}/decide`, {
-    method: "POST",
-    body: { decision, reason, execute, ...(paramsHash ? { params_hash: paramsHash } : {}) },
-    signal,
-  });
 }
