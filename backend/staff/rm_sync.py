@@ -21,6 +21,8 @@ from staff.store import _config_dir
 log = logging.getLogger("dashboard.staff.rm_sync")
 INTERVAL_SECONDS = 15 * 60
 GIT_TIMEOUT_SECONDS = 60
+# The timer writes status every ~15 minutes; keep roughly a day of history.
+BACKUP_KEEP = 96
 
 
 def _state_path() -> Path:
@@ -57,6 +59,17 @@ def _write(path: Path, state: dict[str, Any]) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     os.replace(temporary, path)
+    _prune_backups(path)
+
+
+def _prune_backups(path: Path) -> None:
+    """Keep the newest BACKUP_KEEP status backups; stamps sort chronologically."""
+    backups = sorted(path.parent.glob(f"{path.name}.bak-*"))
+    for stale in backups[:-BACKUP_KEEP]:
+        try:
+            stale.unlink()
+        except OSError as exc:
+            log.warning("could not prune RM status backup %s: %s", stale.name, exc)
 
 
 def source_status(root: Path | None = None, *, state_path: Path | None = None) -> dict[str, Any]:

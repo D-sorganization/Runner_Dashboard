@@ -99,3 +99,24 @@ def test_status_does_not_report_state_from_another_clone(repo):
     _, clone, state = repo
     state.write_text(json.dumps({"root": "another-node", "commit": "wrong"}))
     assert source_status(clone, state_path=state)["commit"] is None
+
+
+def test_status_backups_are_pruned_to_newest_keep(tmp_path):
+    from staff.rm_sync import BACKUP_KEEP, _write
+
+    state = tmp_path / "rm_source_status.json"
+    # Simulate the unbounded history a long-running node already accumulated.
+    stale = [state.with_name(f"{state.name}.bak-2026-10-01-0000{i:02d}-000000") for i in range(BACKUP_KEEP + 5)]
+    for path in stale:
+        path.write_text("{}", encoding="utf-8")
+    unrelated = tmp_path / "other.json.bak-2026-10-01-000000-000000"
+    unrelated.write_text("{}", encoding="utf-8")
+
+    for n in range(3):
+        _write(state, {"checked_at": n})
+
+    backups = sorted(tmp_path.glob(f"{state.name}.bak-*"))
+    assert len(backups) == BACKUP_KEEP
+    assert stale[-1] in backups and stale[0] not in backups
+    assert json.loads(state.read_text(encoding="utf-8")) == {"checked_at": 2}
+    assert unrelated.exists()
