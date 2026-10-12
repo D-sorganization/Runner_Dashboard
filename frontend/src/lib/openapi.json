@@ -2914,6 +2914,19 @@
             "title": "Branch",
             "type": "string"
           },
+          "epoch": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Authority epoch the sender believes is current; a mismatch is fenced.",
+            "title": "Epoch"
+          },
           "error": {
             "anyOf": [
               {
@@ -3008,6 +3021,19 @@
             "maxLength": 120,
             "title": "Target Ref",
             "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-run card version; the authority dedupes on (run_id, version).",
+            "title": "Version"
           }
         },
         "required": ["run_id", "role", "status"],
@@ -16544,6 +16570,36 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/barb/status": {
+      "get": {
+        "description": "Role (unset/authority/replica), epoch, outbox depth and whether delivery is degraded.",
+        "operationId": "get_barb_status_api_v1_staff_barb_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Barb Status Api V1 Staff Barb Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Barb authority role, epoch and outbox depth",
+        "tags": ["staff-barb"]
+      }
+    },
     "/api/v1/staff/board": {
       "get": {
         "operationId": "board_v1_api_v1_staff_board_get",
@@ -19308,14 +19364,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Relay Thread Run Card Api V1 Staff Threads  Thread Id  Relay Card Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "stale_version or stale_authority_epoch"
           },
           "422": {
             "content": {
@@ -19326,6 +19381,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "description": "not_authority"
           }
         },
         "security": [

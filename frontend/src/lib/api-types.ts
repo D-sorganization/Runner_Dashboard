@@ -5252,6 +5252,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/barb/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Barb authority role, epoch and outbox depth
+         * @description Role (unset/authority/replica), epoch, outbox depth and whether delivery is degraded.
+         */
+        get: operations["get_barb_status_api_v1_staff_barb_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/board": {
         parameters: {
             query?: never;
@@ -8121,6 +8141,11 @@ export interface components {
              * @default
              */
             branch: string;
+            /**
+             * Epoch
+             * @description Authority epoch the sender believes is current; a mismatch is fenced.
+             */
+            epoch?: number | null;
             /** Error */
             error?: string | null;
             /** Failure Class */
@@ -8159,6 +8184,11 @@ export interface components {
              * @default
              */
             target_ref: string;
+            /**
+             * Version
+             * @description Per-run card version; the authority dedupes on (run_id, version).
+             */
+            version?: number | null;
         };
         /**
          * ReleaseBody
@@ -17013,6 +17043,28 @@ export interface operations {
             };
         };
     };
+    get_barb_status_api_v1_staff_barb_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     board_v1_api_v1_staff_board_get: {
         parameters: {
             query?: {
@@ -18616,10 +18668,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
                 };
+            };
+            /** @description stale_version or stale_authority_epoch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18629,6 +18686,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description not_authority */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
