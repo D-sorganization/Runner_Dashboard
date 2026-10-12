@@ -284,3 +284,9 @@ class RelayRunCardRequest(BaseModel):
     failure_class: str | None = None
     body_md: str | None = None
     meta: dict[str, Any] | None = None
+    version: int | None = Field(
+        default=None, ge=1, description="Per-run card version; the authority dedupes on (run_id, version)."
+    )
+    epoch: int | None = Field(
+        default=None, ge=1, description="Authority epoch the sender believes is current; a mismatch is fenced."
+    )

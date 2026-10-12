@@ -708,6 +708,7 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 
 # Fleet Staff Hub (epic #1192): named AI staff roles run as local CLI subprocesses.
 from routers import staff as _staff_router  # noqa: E402
+from routers import staff_barb as _staff_barb_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
@@ -727,6 +728,7 @@ app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
 app.include_router(_staff_export_router.router, prefix="/api/v1/staff")  # Thread export & retention (issue #1490)
 app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
+app.include_router(_staff_barb_router.router, prefix="/api/v1/staff")  # Barb authority status (issue #1800)
 app.include_router(_staff_panels_router.router, prefix="/api/v1/staff")  # Expert panels (issue #1634)
 app.include_router(_staff_routing_router.router, prefix="/api/v1/staff")  # Barb routing (#1315)
 app.include_router(_staff_work_items_router.router, prefix="/api/v1/staff")  # Work-item ledger (issue #1316)
@@ -2647,6 +2649,11 @@ async def _startup() -> None:
     # A1: periodic systemd watchdog heartbeat. No-op outside systemd
     # (when _sd_notify is None or WATCHDOG_USEC is unset).
     asyncio.create_task(_systemd_watchdog_loop())
+
+    # Barb replica outbox delivery loop; no-op unless BARB_AUTHORITY_* names another node (#1800)
+    from staff.barb_runtime import drain_loop as _barb_drain_loop  # noqa: PLC0415
+
+    asyncio.create_task(_barb_drain_loop())
 
     # Pre-warm fleet context snapshots off-loop on startup (#1768)
     from staff.chat_fleet_context import warm_fleet_context_snapshots

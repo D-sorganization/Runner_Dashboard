@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from staff.barb_versions import ApplyOutcome
+from staff.barb_runtime import enqueue_run_card, get_authority_config, relay_payload
+from staff.barb_versions import ApplyOutcome, ApplyResult
 from staff.conversation_models import MessageRecord
 from staff.conversations import get_conversation_store
 from staff.plan import RunRequest
@@ -100,7 +101,7 @@ def format_run_card_body(
     return "\n".join(lines)
 
 
-def post_run_card(
+def post_run_card_checked(
     run: RunRecord,
     status: str,
     text: str = "",
@@ -110,15 +111,16 @@ def post_run_card(
     bus: Any = None,
     version: int | None = None,
     epoch: int | None = None,
-) -> MessageRecord | None:
-    """Post the run's card in its thread, or rewrite it on a later status (#1547).
+    authority_epoch: int = 0,
+) -> tuple[MessageRecord | None, ApplyResult | None]:
+    """Version-gated run-card upsert that lets :class:`StaleEpochError` and storage errors propagate.
 
-    Post: a run has one ``run_card`` message (:func:`run_card_id`), published on the
-    thread bus as a ``message`` event so an open Console updates it in place.
+    Post: ``(card, result)``; ``(None, None)`` for a run without a thread. A rejected (DUPLICATE/STALE)
+    update is not published. An APPLIED card is published on the thread bus.
     """
     thread_id = getattr(run, "thread_id", "") or ""
     if not thread_id:
-        return None
+        return None, None
 
     conv_store = store or get_conversation_store()
     event_bus = bus or get_thread_bus()
@@ -139,26 +141,46 @@ def post_run_card(
         "work_item_id": getattr(run, "work_item_id", ""),
         "run": card_run(run, status, question=question, summary=summary),
     }
-
-    msg_id = run_card_id(run.id)
-    try:
-        # One atomic, version-gated upsert: a late/duplicate update can never regress a terminal
-        # card (#1800); a rejected update is not published.
-        saved, result = conv_store.apply_run_card_update(
-            thread_id=thread_id,
-            run_id=run.id,
-            message_id=msg_id,
-            status=status,
-            version=version,
-            epoch=epoch,
-            body_md=body_md,
-            meta=meta,
-            author=run.role,
-        )
-        if result.outcome is not ApplyOutcome.APPLIED or saved is None:
-            return saved
+    # One atomic, version-gated upsert: a late/duplicate update can never regress a terminal
+    # card (#1800); a rejected update is not published.
+    saved, result = conv_store.apply_run_card_update(
+        thread_id=thread_id,
+        run_id=run.id,
+        message_id=run_card_id(run.id),
+        status=status,
+        version=version,
+        epoch=epoch,
+        authority_epoch=authority_epoch,
+        body_md=body_md,
+        meta=meta,
+        author=run.role,
+    )
+    if result.outcome is ApplyOutcome.APPLIED and saved is not None:
         event_bus.publish_message_sync(thread_id, saved.to_dict())
-        return saved
+    return saved, result
+
+
+def post_run_card(
+    run: RunRecord,
+    status: str,
+    text: str = "",
+    question: str | None = None,
+    summary: str | None = None,
+    store: Any = None,
+    bus: Any = None,
+    version: int | None = None,
+    epoch: int | None = None,
+    authority_epoch: int = 0,
+) -> MessageRecord | None:
+    """Post the run's card in its thread, or rewrite it on a later status (#1547).
+
+    Post: a run has one ``run_card`` message (:func:`run_card_id`), published on the
+    thread bus as a ``message`` event so an open Console updates it in place. Failures are logged.
+    """
+    try:
+        return post_run_card_checked(run, status, text, question, summary, store, bus, version, epoch, authority_epoch)[
+            0
+        ]
     except Exception as exc:  # noqa: BLE001
         log.warning("staff.run_link: failed to post run card for %s: %s", run.id, exc)
         return None
@@ -249,20 +271,7 @@ def relay_run_card_to_origin(
         )
         return False
 
-    payload = {
-        "run_id": run.id,
-        "role": run.role,
-        "status": status,
-        "node": machine,
-        "provider": run.provider,
-        "repo": run.repo,
-        "target_ref": run.target_ref,
-        "branch": run.branch,
-        "question": question,
-        "summary": summary,
-        "error": getattr(run, "error", "") or None,
-        "failure_class": getattr(run, "failure_class", "") or None,
-    }
+    payload = relay_payload(run, status, question, summary)
     headers = staff_fleet.fleet_headers()
     target_url = f"{origin_url}/api/v1/staff/threads/{thread_id}/relay-card"
     try:
@@ -305,6 +314,12 @@ def handle_run_status_change(
     relay_fn: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
+    config = get_authority_config()
+    if config.is_replica and run.thread_id:
+        # A replica never commits a conversation write: stage the update for the authority (#1800).
+        update_linked_work_item(run, status, summary=summary)
+        enqueue_run_card(run, status, question=question, summary=summary)
+        return None
     update_linked_work_item(run, status, summary=summary)
     card = post_run_card(
         run,
@@ -313,6 +328,7 @@ def handle_run_status_change(
         summary=summary,
         store=store,
         bus=bus,
+        authority_epoch=config.epoch if config.is_authority else 0,
     )
     relay_run_card_to_origin(run, status, question=question, summary=summary, relay_fn=relay_fn)
     return card
@@ -379,8 +395,14 @@ def _mark_answered(conv_store: Any, bus: Any, run_id: str, *, answered_by: str, 
         bus.publish_message_sync(saved.thread_id, saved.to_dict())
 
 
-def apply_relayed_run_card(store: Any, bus: Any, thread_id: str, req: Any) -> Any:
-    """Apply a relayed run-card update received from an executing peer node."""
+def apply_relayed_run_card(
+    store: Any, bus: Any, thread_id: str, req: Any
+) -> tuple[MessageRecord | None, ApplyResult | None]:
+    """Apply a relayed run-card update received from an executing peer node.
+
+    Pre: ``req.version`` / ``req.epoch`` are optional (legacy peers omit them). Post: ``(card, result)``;
+    raises :class:`StaleEpochError` when the sender's epoch is not this authority's.
+    """
     run_stub = RunRecord(
         id=req.run_id,
         role=req.role,
@@ -396,7 +418,7 @@ def apply_relayed_run_card(store: Any, bus: Any, thread_id: str, req: Any) -> An
         error=req.error or "",
         failure_class=req.failure_class or "",
     )
-    return post_run_card(
+    return post_run_card_checked(
         run_stub,
         status=req.status,
         text=req.body_md or "",
@@ -404,4 +426,7 @@ def apply_relayed_run_card(store: Any, bus: Any, thread_id: str, req: Any) -> An
         summary=req.summary,
         store=store,
         bus=bus,
+        version=getattr(req, "version", None),
+        epoch=getattr(req, "epoch", None),
+        authority_epoch=get_authority_config().epoch,
     )
