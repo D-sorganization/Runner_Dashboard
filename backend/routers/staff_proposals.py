@@ -15,6 +15,7 @@ from staff.actions import (
     ACTION_REGISTRY,
     ParamsHashMismatchError,
     ParamsHashRequiredError,
+    ParamsHashUnavailableError,
     ProposalExpiredError,
     ProposalNotApprovedError,
     ProposalReplayError,
@@ -93,6 +94,8 @@ def _require_reviewed_hash(prop: Any, reviewed_hash: str | None) -> None:
         raise HTTPException(status_code=428, detail={"code": "params_hash_required", "message": str(exc)}) from exc
     except ParamsHashMismatchError as exc:
         raise HTTPException(status_code=409, detail={"code": "params_changed", "message": str(exc)}) from exc
+    except ParamsHashUnavailableError as exc:
+        raise HTTPException(status_code=422, detail={"code": "hash_unavailable", "message": str(exc)}) from exc
 
 
 # ─── Actions Catalogue Endpoints ─────────────────────────────────────────────
@@ -224,6 +227,8 @@ async def get_proposal(
         if not prop:
             raise HTTPException(status_code=404, detail="proposal not found")
         return {**prop.to_dict(), **build_proposal_preview(store, prop, caller)}
+    except ParamsHashUnavailableError as exc:
+        raise HTTPException(status_code=422, detail={"code": "hash_unavailable", "message": str(exc)}) from exc
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

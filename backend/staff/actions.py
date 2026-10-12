@@ -69,6 +69,10 @@ class ParamsHashMismatchError(ActionError):
     """Raised when the reviewed-parameter hash differs from the stored proposal's (HTTP 409)."""
 
 
+class ParamsHashUnavailableError(ActionError):
+    """Raised when a proposal's parameters cannot be canonically hashed (HTTP 422)."""
+
+
 class RolePermissionDeniedError(ActionError):
     """Raised when a proposing role is not permitted to trigger the action."""
 
@@ -311,14 +315,22 @@ def stored_params_hash(s: ConversationStore, proposal_id: str) -> str:
     prop = s.get_proposal(proposal_id)
     if prop is None:
         raise ProposalReplayError(f"Proposal {proposal_id} not found")
-    return params_hash(prop.action, prop.params)
+    return compute_params_hash(prop)
+
+
+def compute_params_hash(prop: ActionProposalRecord) -> str:
+    """Hash of ``prop``'s action and params; :class:`ParamsHashUnavailableError` when they cannot be serialised."""
+    try:
+        return params_hash(prop.action, prop.params)
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ParamsHashUnavailableError(f"Proposal {prop.id}: parameters cannot be hashed ({exc})") from exc
 
 
 def verify_params_hash(prop: ActionProposalRecord, reviewed_hash: str | None) -> None:
     """Raise unless ``reviewed_hash`` is the hash of ``prop``'s stored action and params (no state change)."""
     if not reviewed_hash:
         raise ParamsHashRequiredError(f"Proposal {prop.id}: params_hash is required to approve or execute")
-    if not hmac.compare_digest(reviewed_hash.encode(), params_hash(prop.action, prop.params).encode()):
+    if not hmac.compare_digest(reviewed_hash.encode(), compute_params_hash(prop).encode()):
         raise ParamsHashMismatchError(f"Proposal {prop.id}: parameters changed since they were reviewed")
 
 

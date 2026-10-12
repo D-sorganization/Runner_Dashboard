@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from identity import Principal
-from staff.actions import ACTION_REGISTRY, check_role_permission, proposing_role_of
-from staff.approval_authority import evaluate_approval_authority, params_hash
+from staff.actions import ACTION_REGISTRY, check_role_permission, compute_params_hash, proposing_role_of
+from staff.approval_authority import evaluate_approval_authority
 
 if TYPE_CHECKING:
     from staff.conversation_models import ActionProposalRecord
@@ -23,7 +23,8 @@ def build_proposal_preview(store: ConversationStore, prop: ActionProposalRecord,
     """``{can_approve, denial_reason, params_hash}`` for ``caller`` on ``prop``.
 
     Post: ``can_approve`` is exactly the shared evaluator's verdict; ``denial_reason`` is ``None``
-    iff ``can_approve``. No state is read for write and nothing is changed.
+    iff ``can_approve``. Raises :class:`ParamsHashUnavailableError` (no partial preview) when the
+    params cannot be hashed. No state is read for write and nothing is changed.
     """
     action = ACTION_REGISTRY.get(prop.action)
     role = proposing_role_of(store, prop)
@@ -37,5 +38,5 @@ def build_proposal_preview(store: ConversationStore, prop: ActionProposalRecord,
     return {
         "can_approve": verdict.allowed,
         "denial_reason": None if verdict.allowed else verdict.reason,
-        "params_hash": params_hash(prop.action, prop.params),
+        "params_hash": compute_params_hash(prop),
     }
