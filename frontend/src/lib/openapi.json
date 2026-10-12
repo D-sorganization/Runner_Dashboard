@@ -5170,6 +5170,11 @@
         "additionalProperties": true,
         "description": "One staff execution run record.",
         "properties": {
+          "artifact": {
+            "default": "",
+            "title": "Artifact",
+            "type": "string"
+          },
           "attempt": {
             "default": 1,
             "title": "Attempt",

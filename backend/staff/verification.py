@@ -25,6 +25,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import quote
 
+from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
 from staff.roles import AD_HOC_ROLE
 from staff.workspace import ORG
 
@@ -65,6 +66,7 @@ class Verdict:
     verification: str
     detail: str
     pr_number: int | None = None
+    artifact: str = ""  # typed completion evidence (#1808): pr_open | pr_merged | ""
 
 
 class PrProbe(Protocol):
@@ -101,11 +103,12 @@ def decide(*, claimed: str, opens_pr: bool, branch: str, pr: PullRequest | None)
         return Verdict("failed", reason)
     if pr.state == "closed":
         return Verdict("failed", f"PR #{pr.number} was closed without merging", pr.number)
+    artifact = ARTIFACT_PR_MERGED if pr.state == "merged" else ARTIFACT_PR_OPEN
     if pr.ci == "red":
-        return Verdict("failed", f"PR #{pr.number} head CI is failing", pr.number)
+        return Verdict("failed", f"PR #{pr.number} head CI is failing", pr.number, artifact)
     if pr.ci == "pending":
-        return Verdict("unverified", f"PR #{pr.number} head CI is still pending", pr.number)
-    return Verdict("verified", f"PR #{pr.number} is {pr.state} with head CI green", pr.number)
+        return Verdict("unverified", f"PR #{pr.number} head CI is still pending", pr.number, artifact)
+    return Verdict("verified", f"PR #{pr.number} is {pr.state} with head CI green", pr.number, artifact)
 
 
 def _age(rec: RunRecord, now: datetime) -> timedelta:
@@ -141,6 +144,7 @@ def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
         "verification": verdict.verification,
         "verification_detail": verdict.detail,
         "pr_number": verdict.pr_number,
+        "artifact": verdict.artifact,
     }
     if mode == "enforce" and verdict.verification == "failed" and rec.status == "succeeded":
         updates.update(status="failed", failure_class=UNVERIFIED_OUTPUT, error=verdict.detail)

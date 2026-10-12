@@ -405,7 +405,7 @@ COMMANDS: tuple[Command, ...] = (
                 "type": "string",
                 "description": (
                     "Filter by state: open, in_progress, waiting_on_user, waiting_on_ci, "
-                    "blocked, done, cancelled, escalated."
+                    "needs_evidence, blocked, done, cancelled, escalated."
                 ),
             },
             "thread_id": {"type": "string", "description": "Filter by associated thread id."},

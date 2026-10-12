@@ -9262,6 +9262,11 @@ export interface components {
          */
         StaffRunRecord: {
             /**
+             * Artifact
+             * @default
+             */
+            artifact: string;
+            /**
              * Attempt
              * @default 1
              */

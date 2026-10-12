@@ -27,6 +27,7 @@ WORK_ITEM_STATES: tuple[str, ...] = (
     "in_progress",
     "waiting_on_user",
     "waiting_on_ci",
+    "needs_evidence",
     "blocked",
     "done",
     "cancelled",
@@ -37,9 +38,10 @@ TERMINAL_STATES: frozenset[str] = frozenset({"done", "cancelled", "escalated"})
 
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "open": {"in_progress", "blocked", "cancelled", "escalated"},
-    "in_progress": {"waiting_on_user", "waiting_on_ci", "blocked", "done", "cancelled", "escalated"},
+    "in_progress": {"waiting_on_user", "waiting_on_ci", "needs_evidence", "blocked", "done", "cancelled", "escalated"},
     "waiting_on_user": {"in_progress", "blocked", "cancelled", "escalated"},
     "waiting_on_ci": {"in_progress", "done", "blocked", "cancelled", "escalated"},
+    "needs_evidence": {"in_progress", "waiting_on_ci", "done", "blocked", "cancelled", "escalated"},
     "blocked": {"in_progress", "cancelled", "escalated"},
     "done": set(),
     "cancelled": set(),

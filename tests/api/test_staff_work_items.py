@@ -310,8 +310,8 @@ def test_run_status_changes_update_work_item_lifecycle(store: WorkItemStore) -> 
     assert wi_updated is not None
     assert wi_updated.state == "in_progress"
 
-    # 4. Run succeeds -> done
+    # 4. Run succeeds with no typed artifact -> needs_evidence (never done on prose, #1808)
     handle_run_status_change(run, "succeeded", summary="Resolved issue #42")
     wi_updated = store.get_work_item(wi.id)
     assert wi_updated is not None
-    assert wi_updated.state == "done"
+    assert wi_updated.state == "needs_evidence"
