@@ -98,6 +98,8 @@ class RunRecord:
     verification: str = ""
     verification_detail: str = ""
     pr_number: int | None = None
+    # Typed completion evidence (#1808): "" | pr_open | pr_merged | deployed (see staff.completion).
+    artifact: str = ""
     origin_node: str = ""
 
     def __post_init__(self) -> None:

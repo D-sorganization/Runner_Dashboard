@@ -156,6 +156,7 @@ class StaffRunRecord(BaseModel):
     verification: str = ""
     verification_detail: str = ""
     pr_number: int | None = None
+    artifact: str = ""
 
     model_config = ConfigDict(extra="allow")
 

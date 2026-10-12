@@ -12,6 +12,7 @@ from typing import Any
 
 from staff.barb_runtime import enqueue_run_card, get_authority_config, relay_payload
 from staff.barb_versions import ApplyOutcome, ApplyResult
+from staff.completion import work_item_state_for_success
 from staff.conversation_models import MessageRecord
 from staff.conversations import get_conversation_store
 from staff.plan import RunRequest
@@ -220,21 +221,17 @@ def update_linked_work_item(run: RunRecord, status: str, summary: str | None = N
             "open",
             "in_progress",
             "waiting_on_ci",
+            "needs_evidence",
         ):
-            outcome = summary or getattr(run, "outcome", "") or ""
-            if "PR #" in outcome or "pull/" in outcome:
+            # Typed evidence decides, never the summary prose (#1808).
+            artifact = getattr(run, "artifact", "") or ""
+            target = work_item_state_for_success(artifact)
+            if target != wi.state:
                 wi_store.transition_state(
                     work_item_id,
-                    "waiting_on_ci",
+                    target,
                     actor=run.role,
-                    reason=f"Run {run.id} opened PR",
-                )
-            else:
-                wi_store.transition_state(
-                    work_item_id,
-                    "done",
-                    actor=run.role,
-                    reason=f"Run {run.id} completed successfully",
+                    reason=f"Run {run.id} succeeded with artifact {artifact or 'none'}",
                 )
     except Exception as exc:  # noqa: BLE001
         log.warning(
