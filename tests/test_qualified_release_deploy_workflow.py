@@ -14,6 +14,7 @@ BOOTSTRAP = ROOT / "deploy" / "bootstrap-qualified-release-deploy.sh"
 TRANSACTION = ROOT / "deploy" / "qualified-release-deploy.sh"
 LIBRARY = ROOT / "deploy" / "qualified-release-lib.sh"
 RUNTIME_LIBRARY = ROOT / "deploy" / "qualified-release-runtime-lib.sh"
+INVENTORY = ROOT / "deploy" / "oglaptop_github_inventory.py"
 SCHEDULE = ROOT / "config" / "runner-schedule-oglaptop.json"
 RUNBOOK = ROOT / "docs" / "runbooks" / "qualified-release-deploy.md"
 PINNED_ACTION = re.compile(r"^[\w.\-]+/[\w.\-]+(?:/[\w.\-/]+)?@[0-9a-f]{40}$")
@@ -37,7 +38,7 @@ def _uses() -> list[str]:
 
 
 def test_guarded_deployment_assets_exist() -> None:
-    for path in (WORKFLOW, BOOTSTRAP, TRANSACTION, LIBRARY, RUNTIME_LIBRARY, SCHEDULE, RUNBOOK):
+    for path in (WORKFLOW, BOOTSTRAP, TRANSACTION, LIBRARY, RUNTIME_LIBRARY, INVENTORY, SCHEDULE, RUNBOOK):
         assert path.is_file(), path
 
 
@@ -105,9 +106,9 @@ def test_workflow_proves_only_its_exact_worker_is_busy() -> None:
         "Runner.Worker",
         "WORKER_PID",
         "--paginate",
-        "total_count",
-        '"busy":true',
-        "every other OGLaptop runner must be idle",
+        "oglaptop_github_inventory.py",
+        "validate-pre",
+        "validate-post",
     ):
         assert marker in text
 
@@ -126,6 +127,7 @@ def test_bootstrap_installs_root_authority_and_narrow_sudoers() -> None:
     for marker in (
         "/usr/local/sbin/runner-dashboard-qualified-deploy",
         "/usr/local/lib/runner-dashboard/qualified-release-lib.sh",
+        "/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py",
         "/etc/sudoers.d/runner-dashboard-qualified-deploy",
         "visudo -cf",
         "root:root",
@@ -150,6 +152,8 @@ def test_transaction_has_strict_request_and_host_contracts() -> None:
         "Python 3.12",
         "validate_worker_ancestry",
         "validate_local_runner_inventory",
+        "scan_local_legacy_runner_metadata",
+        "oglaptop_github_inventory.py",
         "runner-1",
         "weekday-day",
         "weekend-day",
