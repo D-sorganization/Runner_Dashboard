@@ -16,7 +16,8 @@ import os
 import threading
 from typing import Any
 
-from staff.barb_authority import AuthorityClient, AuthorityConfig
+from staff.barb_authority import AuthorityClient, AuthorityConfig, AuthorityRole
+from staff.barb_fence import FencedAuthorityError, check_fence
 from staff.barb_outbox import OutboxFullError
 from staff.barb_outbox_drain import DrainStats, drain_once
 from staff.conversations import get_conversation_store
@@ -166,6 +167,7 @@ def barb_status() -> dict[str, Any]:
         "enqueue_failures": _enqueue_failures,
         "outbox": None,
         "degraded": False,
+        **_fence_status(config),
     }
     if config.is_replica:
         s = get_conversation_store().barb_outbox().stats()
@@ -176,4 +178,19 @@ def barb_status() -> dict[str, Any]:
             "oldest_created_at": s.oldest_created_at,
         }
         out["degraded"] = s.entries > 0
+    out["degraded"] = out["degraded"] or out["fenced"]
     return out
+
+
+def _fence_status(config: AuthorityConfig) -> dict[str, Any]:
+    """The persisted epoch fence and whether this AUTHORITY is behind it (then it refuses every write)."""
+    if config.role is AuthorityRole.UNSET:
+        return {"fence": None, "fenced": False}
+    fence = get_conversation_store().barb_epoch_fence()
+    fenced = False
+    if config.is_authority:
+        try:
+            check_fence(fence, config.epoch, config.node)
+        except FencedAuthorityError:
+            fenced = True
+    return {"fence": fence.to_dict() if fence else None, "fenced": fenced}

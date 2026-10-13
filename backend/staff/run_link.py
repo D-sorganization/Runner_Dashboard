@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from staff.barb_fence import FencedAuthorityError
 from staff.barb_runtime import enqueue_run_card, get_authority_config, relay_payload
 from staff.barb_versions import ApplyOutcome, ApplyResult
 from staff.completion import work_item_state_for_success
@@ -113,6 +114,7 @@ def post_run_card_checked(
     version: int | None = None,
     epoch: int | None = None,
     authority_epoch: int = 0,
+    authority_node: str = "",
 ) -> tuple[MessageRecord | None, ApplyResult | None]:
     """Version-gated run-card upsert that lets :class:`StaleEpochError` and storage errors propagate.
 
@@ -152,6 +154,7 @@ def post_run_card_checked(
         version=version,
         epoch=epoch,
         authority_epoch=authority_epoch,
+        authority_node=authority_node,
         body_md=body_md,
         meta=meta,
         author=run.role,
@@ -172,6 +175,7 @@ def post_run_card(
     version: int | None = None,
     epoch: int | None = None,
     authority_epoch: int = 0,
+    authority_node: str = "",
 ) -> MessageRecord | None:
     """Post the run's card in its thread, or rewrite it on a later status (#1547).
 
@@ -179,9 +183,16 @@ def post_run_card(
     thread bus as a ``message`` event so an open Console updates it in place. Failures are logged.
     """
     try:
-        return post_run_card_checked(run, status, text, question, summary, store, bus, version, epoch, authority_epoch)[
-            0
-        ]
+        return post_run_card_checked(
+            run, status, text, question, summary, store, bus, version, epoch, authority_epoch, authority_node
+        )[0]
+    except FencedAuthorityError as exc:
+        # A fenced authority must not write, but the card is staged, not lost (I5): it is delivered once
+        # the operator reconfigures this node as a replica of the current authority.
+        log.error("staff.run_link: %s is fenced (%s); staging the run card in the outbox", run.id, exc)
+        if getattr(run, "thread_id", ""):
+            enqueue_run_card(run, status, question=question, summary=summary)
+        return None
     except Exception as exc:  # noqa: BLE001
         log.warning("staff.run_link: failed to post run card for %s: %s", run.id, exc)
         return None
@@ -326,6 +337,7 @@ def handle_run_status_change(
         store=store,
         bus=bus,
         authority_epoch=config.epoch if config.is_authority else 0,
+        authority_node=config.node if config.is_authority else "",
     )
     relay_run_card_to_origin(run, status, question=question, summary=summary, relay_fn=relay_fn)
     return card
@@ -426,4 +438,5 @@ def apply_relayed_run_card(
         version=getattr(req, "version", None),
         epoch=getattr(req, "epoch", None),
         authority_epoch=get_authority_config().epoch,
+        authority_node=get_authority_config().node,
     )

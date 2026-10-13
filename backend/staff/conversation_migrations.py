@@ -123,6 +123,17 @@ CREATE TABLE IF NOT EXISTS barb_receipts (
 CREATE UNIQUE INDEX IF NOT EXISTS barb_receipts_ref_idx ON barb_receipts(kind, ref_id);
 """
 
+# Persisted authority epoch fence (#1800, BR-06 I4): one row, a monotonic (epoch, node) high-water mark.
+_MIGRATION_7_SQL = """
+CREATE TABLE IF NOT EXISTS barb_epoch_fence (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    epoch INTEGER NOT NULL CHECK (epoch >= 1),
+    node TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+"""
+
 CORE_MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "conversations_core_tables", _MIGRATION_1_SQL),
     (2, "threads_meta_column", _MIGRATION_2_SQL),
@@ -130,6 +141,7 @@ CORE_MIGRATIONS: list[tuple[int, str, str]] = [
     (4, "barb_outbox", _MIGRATION_4_SQL),
     (5, "run_card_versions", _MIGRATION_5_SQL),
     (6, "barb_receipts", _MIGRATION_6_SQL),
+    (7, "barb_epoch_fence", _MIGRATION_7_SQL),
 ]
 
 

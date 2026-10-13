@@ -15,6 +15,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from staff.barb_db import immediate_txn
+from staff.barb_fence import EpochFence, advance_fence, read_fence
 from staff.barb_outbox import OutboxStore, bounds_from_env
 from staff.barb_versions import (
     DEFAULT_RECEIPT_PRUNE_BATCH,
@@ -102,6 +103,18 @@ class BarbAuthorityMixin:
                 batch=size,
             )
 
+    def barb_epoch_fence(self) -> EpochFence | None:
+        """The persisted authority epoch fence, or ``None`` before any epoch-aware write."""
+        self._ensure_available()
+        with self._lock:
+            return read_fence(self._conn)
+
+    def advance_barb_epoch_fence(self, epoch: int, node: str, reason: str = "") -> EpochFence:
+        """Raise the fence to ``(epoch, node)`` (failover); raises ``FencedAuthorityError`` if that is behind it."""
+        self._ensure_available()
+        with immediate_txn(self._conn, self._lock) as conn:
+            return advance_fence(conn, epoch, node, reason)
+
     def apply_run_card_update(
         self,
         *,
@@ -115,12 +128,15 @@ class BarbAuthorityMixin:
         author: str,
         epoch: int | None = None,
         authority_epoch: int = 0,
+        authority_node: str = "",
         author_kind: str = "role",
     ) -> tuple[MessageRecord | None, ApplyResult]:
         """Idempotent, version-gated upsert of a run card (replaces read-then-write in ``post_run_card``).
 
         Pre: ``status`` is a run status; ``version`` is ``>= 1`` (``None`` = next local version); a given
-        ``epoch`` equals ``authority_epoch`` (else :class:`StaleEpochError`, nothing written).
+        ``epoch`` equals ``authority_epoch`` (else :class:`StaleEpochError`, nothing written); an epoch-aware
+        authority (``authority_epoch >= 1``) is not behind the persisted fence (else ``FencedAuthorityError``,
+        nothing written) and advances it in the same transaction.
         Post: the card message, version row and receipt commit atomically, or not at all. APPLIED
         returns the new card; DUPLICATE/STALE leave state untouched and return the stored card.
         """
@@ -131,6 +147,8 @@ class BarbAuthorityMixin:
             raise ValueError("version must be >= 1")
         check_epoch(epoch, authority_epoch)
         with immediate_txn(self._conn, self._lock) as conn:
+            if authority_epoch >= 1:
+                advance_fence(conn, authority_epoch, authority_node)
             ver = version if version is not None else current_version(conn, run_id) + 1
             result = decide(conn, run_id=run_id, version=ver, status=status, message_id=message_id)
             if result.outcome is not ApplyOutcome.APPLIED:
