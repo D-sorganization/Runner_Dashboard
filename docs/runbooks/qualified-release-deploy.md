@@ -19,7 +19,13 @@ deployment. That worker is the sole exception to the idle-host precondition:
    an ancestor of the privileged process.
 3. A complete, paginated GitHub inventory proves runner 1 is the exact busy
    runner, runners 2-8 are idle, runners 1-4 are online, and runners 5-8 are
-   offline.
+   offline. Validation is centralized in
+   `/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py` (installed by
+   bootstrap). Failures name missing slots (for example standby `7`/`8` after a
+   registration purge), legacy `d-sorg-local-OGLaptop-{N}` GitHub names, and
+   stale local `.runner` metadata so operators follow
+   [runner-registration-purge-recovery.md](runner-registration-purge-recovery.md)
+   with the canonical `d-sorg-local-Oglaptop-{N}` names.
 4. The artifact's scheduler independently proves the local inventory contains
    exactly runners 1-8, only runner 1 is busy, and only runners 1-4 are active.
 

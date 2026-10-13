@@ -68,6 +68,15 @@ PY
     GITHUB_RUN_ATTEMPT="${REQUEST_FIELDS[7]}"
 }
 
+scan_local_legacy_runner_metadata() {
+    local helper="/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py"
+    if [[ -f "${STAGE_DIR}/deploy/oglaptop_github_inventory.py" ]]; then
+        helper="${STAGE_DIR}/deploy/oglaptop_github_inventory.py"
+    fi
+    [[ -f "${helper}" ]] || fail "qualified inventory helper is absent"
+    /usr/bin/python3 "${helper}" scan-local "${QUALIFIED_RUNNER_ROOT}"
+}
+
 validate_local_runner_inventory() {
     local output="$1"
     RUNNER_ROOT="${QUALIFIED_RUNNER_ROOT}" \
@@ -337,6 +346,7 @@ install -d -o root -g root -m 0700 "${STAGE_DIR}"
 tar -xzf "${ARTIFACT_COPY}" --no-same-owner --no-same-permissions -C "${STAGE_DIR}"
 verify_root_only_tree "${STAGE_DIR}"
 validate_artifact_metadata "${STAGE_DIR}" "${RELEASE_VERSION}" "${RELEASE_COMMIT}"
+scan_local_legacy_runner_metadata
 validate_local_runner_inventory "${TRANSACTION_DIR}/local-inventory-before.json"
 select_root_scheduler_python
 journal_event "preflight-qualified"
