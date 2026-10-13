@@ -88,7 +88,13 @@ class FleetClient:
         agent: str | None = None,
         session: str | None = None,
     ) -> None:
-        url = (base_url or os.environ.get("FLEET_API_URL") or DEFAULT_URL).strip().rstrip("/")
+        # BR-06 (#1800): with no explicit endpoint, read from the one Barb authority so every enrolled
+        # computer sees the same threads; a node-local default would show only that node's conversations.
+        url = (
+            (base_url or os.environ.get("FLEET_API_URL") or os.environ.get("BARB_AUTHORITY_URL") or DEFAULT_URL)
+            .strip()
+            .rstrip("/")
+        )
         parsed = urllib.parse.urlparse(url)
         _check(parsed.scheme in ("http", "https") and bool(parsed.netloc), f"invalid FLEET_API_URL: {url!r}")
         self.base_url = url

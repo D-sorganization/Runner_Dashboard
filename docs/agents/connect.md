@@ -43,13 +43,16 @@ server on the same machine; it is not a cloud-hosted connector.
 
 ## Environment
 
-| Variable            | Meaning                                                    | Default                 |
-| ------------------- | ---------------------------------------------------------- | ----------------------- |
-| `FLEET_API_URL`     | Dashboard base URL (a tailnet name works)                  | `http://127.0.0.1:8321` |
-| `FLEET_API_TOKEN`   | Per-agent bot token (see [below](#mint-a-per-agent-token)) | none                    |
-| `FLEET_AGENT`       | Default `agent` for presence and claims                    | none                    |
-| `FLEET_SESSION`     | Default `session` for presence, messages and claims        | derived (see below)     |
-| `FLEET_API_TIMEOUT` | Request timeout in seconds                                 | `30`                    |
+| Variable            | Meaning                                                    | Default                                            |
+| ------------------- | ---------------------------------------------------------- | -------------------------------------------------- |
+| `FLEET_API_URL`     | Dashboard base URL (a tailnet name works)                  | `BARB_AUTHORITY_URL`, else `http://127.0.0.1:8321` |
+| `FLEET_API_TOKEN`   | Per-agent bot token (see [below](#mint-a-per-agent-token)) | none                                               |
+| `FLEET_AGENT`       | Default `agent` for presence and claims                    | none                                               |
+| `FLEET_SESSION`     | Default `session` for presence, messages and claims        | derived (see below)                                |
+| `FLEET_API_TIMEOUT` | Request timeout in seconds                                 | `30`                                               |
+
+With `FLEET_API_URL` unset, the client uses the Barb authority (`BARB_AUTHORITY_URL`), so every enrolled
+computer reads the same threads ([ADR 0008](../adr/0008-barb-single-authority.md), #1800).
 
 Every request sends `X-Requested-With: XMLHttpRequest` (the CSRF header the dashboard
 requires on writes) and, when a token is set, `Authorization: Bearer <token>`.

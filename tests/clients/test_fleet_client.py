@@ -246,8 +246,20 @@ def test_environment_configuration(fake_api: Any, monkeypatch: pytest.MonkeyPatc
     }
 
 
-def test_default_url() -> None:
+def test_default_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FLEET_API_URL", raising=False)
+    monkeypatch.delenv("BARB_AUTHORITY_URL", raising=False)
     assert FleetClient().base_url == DEFAULT_URL == "http://127.0.0.1:8321"
+
+
+def test_default_url_is_the_barb_authority_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BR-06 (#1800): every enrolled computer reads the same threads from the one authority by default."""
+    monkeypatch.delenv("FLEET_API_URL", raising=False)
+    monkeypatch.setenv("BARB_AUTHORITY_URL", "http://controltower:8321/")
+    assert FleetClient().base_url == "http://controltower:8321"
+    monkeypatch.setenv("FLEET_API_URL", "http://deskcomputer:8321")
+    assert FleetClient().base_url == "http://deskcomputer:8321"  # an explicit endpoint still wins
+    assert FleetClient("http://other:8321").base_url == "http://other:8321"
 
 
 def test_dispatch_body_and_defaults(client: FleetClient, fake_api: Any) -> None:
