@@ -27,7 +27,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from staff.barb_db import immediate_txn
+from staff.barb_db import env_positive_int, immediate_txn
 
 COALESCING_KINDS = frozenset({"run_card"})
 DEFAULT_MAX_ENTRIES = 5000
@@ -39,6 +39,10 @@ BACKOFF_CAP_SECONDS = 300.0
 
 class OutboxFullError(RuntimeError):
     """The outbox is at its bound: apply back-pressure to the producer (503 ``outbox_full``)."""
+
+
+class OutboxConflictError(ValueError):
+    """The same (kind, thread, run, version) key was enqueued again with a different payload (a producer bug)."""
 
 
 class OutboxEntryTooLarge(ValueError):
@@ -77,17 +81,15 @@ def backoff_seconds(attempts: int, *, rng: random.Random | None = None) -> float
 
 
 def bounds_from_env(environ: Mapping[str, str] | None = None) -> tuple[int, int, int]:
-    """``(max_entries, max_bytes, max_entry_bytes)`` from ``BARB_OUTBOX_*`` (defaults 5000 / 64 MiB / 256 KiB)."""
+    """``(max_entries, max_bytes, max_entry_bytes)`` from ``BARB_OUTBOX_*`` (defaults 5000 / 64 MiB / 256 KiB).
+
+    Post: raises :class:`~staff.barb_db.BarbConfigError` naming the variable when a value is malformed.
+    """
     env = os.environ if environ is None else environ
-
-    def _int(name: str, default: int) -> int:
-        raw = (env.get(name) or "").strip()
-        return int(raw) if raw else default
-
     return (
-        _int("BARB_OUTBOX_MAX_ENTRIES", DEFAULT_MAX_ENTRIES),
-        _int("BARB_OUTBOX_MAX_BYTES", DEFAULT_MAX_BYTES),
-        _int("BARB_OUTBOX_MAX_ENTRY_BYTES", DEFAULT_MAX_ENTRY_BYTES),
+        env_positive_int(env, "BARB_OUTBOX_MAX_ENTRIES", DEFAULT_MAX_ENTRIES),
+        env_positive_int(env, "BARB_OUTBOX_MAX_BYTES", DEFAULT_MAX_BYTES),
+        env_positive_int(env, "BARB_OUTBOX_MAX_ENTRY_BYTES", DEFAULT_MAX_ENTRY_BYTES),
     )
 
 
@@ -119,10 +121,11 @@ class OutboxStore:
     def enqueue(
         self, kind: str, thread_id: str, run_id: str, version: int, payload: dict[str, Any], *, terminal: bool = False
     ) -> str:
-        """Persist one delivery; returns its id (the existing id when the key was already enqueued).
+        """Persist one delivery; returns its id (the existing id when the same key and payload were already enqueued).
 
         Pre: non-empty ``kind``/``thread_id``, ``version >= 1``, payload within ``max_entry_bytes``.
-        Post: entries and bytes still within bounds, else :class:`OutboxFullError` and no change.
+        Post: entries and bytes still within bounds, else :class:`OutboxFullError` and no change. The same key with
+        a different payload raises :class:`OutboxConflictError` (the old entry is never silently kept).
         """
         if not kind or not thread_id or version < 1:
             raise ValueError("kind, thread_id and version >= 1 are required")
@@ -133,10 +136,14 @@ class OutboxStore:
         with immediate_txn(self._conn, self._lock) as conn:
             key = (kind, thread_id, run_id)
             row = conn.execute(
-                f"SELECT outbox_id FROM barb_outbox WHERE {_KEY} AND version = ?",  # noqa: S608
+                f"SELECT outbox_id, payload FROM barb_outbox WHERE {_KEY} AND version = ?",  # noqa: S608
                 (*key, version),
             ).fetchone()
             if row:
+                if row["payload"] != data:
+                    raise OutboxConflictError(
+                        f"{kind}/{thread_id}/{run_id} v{version} already enqueued with a different payload"
+                    )
                 return str(row["outbox_id"])
             if kind in COALESCING_KINDS:
                 conn.execute(

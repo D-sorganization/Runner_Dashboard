@@ -181,6 +181,7 @@ class StaffAuditStore:
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=FULL")  # RPO = 0 (#1800): fsync every commit
             self._conn.executescript(_SCHEMA)
 
     def columns(self) -> set[str]:
