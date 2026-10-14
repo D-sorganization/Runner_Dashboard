@@ -129,10 +129,11 @@ All endpoints are mounted on `/api/code-requests`:
   both `content` and `prompt`.
 - **POST** (`code-requests.manage`) saves `{name, content}` or `{name, prompt}`.
   A saved template whose name matches a built-in replaces it in the listing.
-- **Built-ins:** `premortem` — a read-only, evidence-based premortem across one
-  or more repositories ("assume the project failed; explain why"), producing a
-  scored risk register, early-warning signals, mitigations and a draft-issues
-  file for human review.
+- **Built-ins:** `premortem` — a read-only, evidence-based premortem of a plan
+  across one or more repositories ("it is six months from now and the plan
+  failed; write the autopsy"), run as five stages: Autopsy (7 ranked causes of
+  death), Verdict, Rebuild (with a walk-away checklist), Adversary and
+  Tripwires (dated, measurable signals), plus a draft-issues file for review.
 
 ---
 

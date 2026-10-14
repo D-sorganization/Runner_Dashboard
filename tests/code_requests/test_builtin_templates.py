@@ -12,7 +12,14 @@ def test_premortem_template_ships_with_report_sections() -> None:
     premortem = by_name["premortem"]
     assert premortem["builtin"] is True
     assert premortem["prompt"] == premortem["content"]
-    for section in ("## 1. Scenario", "## 4. Findings", "Early warning signal", "## Draft issues"):
+    for section in (
+        "Stage 1. The Autopsy",
+        "Stage 2. The Verdict",
+        "Stage 3. The Rebuild",
+        "Stage 4. The Adversary",
+        "Stage 5. The Tripwires",
+        "## Draft Issues",
+    ):
         assert section in premortem["content"]
 
 
