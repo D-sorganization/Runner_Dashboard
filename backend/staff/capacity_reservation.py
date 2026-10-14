@@ -126,8 +126,8 @@ class CapacityReservationStore:
         self.path = path or default_db_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.limits = limits or CapacityLimits()
-        self._lock = threading.RLock()
-        with first_touch_lock(self.path):
+        self._lock = first_touch_lock(self.path)
+        with self._lock:
             self._conn = sqlite3.connect(
                 str(self.path),
                 check_same_thread=False,
