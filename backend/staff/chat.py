@@ -162,7 +162,7 @@ class ChatTurnRunner:
         user_msg = self.conv_store.get_message(user_message_id)
         raw_prompt = user_msg.body_md if user_msg else ""
         knowledge_block = build_knowledge_turn_block(role, raw_prompt)
-        fleet_block = await build_fleet_context_block(role)
+        fleet_block = await build_fleet_context_block(role, raw_prompt=raw_prompt)
         issue_block = await build_issue_context_block(role, raw_prompt)
         pending_block = build_pending_proposals_block(self.conv_store, thread_id)
         context_blocks = (fleet_block, issue_block, knowledge_block, pending_block)

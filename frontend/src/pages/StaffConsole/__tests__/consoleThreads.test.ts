@@ -6,7 +6,19 @@
  * recent live thread, or a newly created one.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createFreshRoleThread, pickRoleThread, resolveRoleThread, threadKindForRole, type ThreadApi } from "../consoleThreads";
+import {
+  clearThreadDraft,
+  createFreshRoleThread,
+  getRoleMissionName,
+  getThreadDraft,
+  listRoleThreads,
+  pickRoleThread,
+  resolveRoleThread,
+  resumeMissionThread,
+  saveThreadDraft,
+  threadKindForRole,
+  type ThreadApi,
+} from "../consoleThreads";
 import type { ThreadInfo } from "../threadTypes";
 
 function thread(overrides: Partial<ThreadInfo>): ThreadInfo {
@@ -158,5 +170,40 @@ describe("createFreshRoleThread (#1775)", () => {
     await expect(createFreshRoleThread("maintenance", "Fleet Maintenance", deps)).rejects.toThrow(
       /does not include role 'maintenance'/,
     );
+  });
+});
+
+describe("listRoleThreads and resumeMissionThread (#1806, BR-13)", () => {
+  it("lists all non-archived role threads ordered newest activity first", () => {
+    const t1 = thread({ id: "t1", last_message_at: "2026-10-14T10:00:00Z" });
+    const t2 = thread({ id: "t2", last_message_at: "2026-10-14T12:00:00Z" });
+    const tArchived = thread({ id: "t3", status: "archived", last_message_at: "2026-10-14T13:00:00Z" });
+
+    const list = listRoleThreads([t1, t2, tArchived], "maintenance");
+    expect(list.map((t) => t.id)).toEqual(["t2", "t1"]);
+  });
+
+  it("resumes an older mission thread by id without overwriting active conversations", () => {
+    const older = thread({ id: "mission-alpha", title: "Refactor API" });
+    const newer = thread({ id: "mission-beta", title: "Fix CI" });
+
+    expect(resumeMissionThread([older, newer], "mission-alpha")).toBe(older);
+    expect(resumeMissionThread([older, newer], "non-existent")).toBeNull();
+  });
+
+  it("formats mission names cleanly", () => {
+    expect(getRoleMissionName(thread({ id: "abc123456", title: "Investigate Drifts" }))).toBe("Investigate Drifts");
+    expect(getRoleMissionName(thread({ id: "abc123456", title: "" }))).toBe("Conversation (abc12345)");
+  });
+});
+
+describe("thread draft preservation (#1806, BR-13)", () => {
+  it("saves, retrieves, and clears thread drafts across navigation", () => {
+    expect(getThreadDraft("thread-test-1")).toBe("");
+    saveThreadDraft("thread-test-1", "Hello Barb, draft question");
+    expect(getThreadDraft("thread-test-1")).toBe("Hello Barb, draft question");
+
+    clearThreadDraft("thread-test-1");
+    expect(getThreadDraft("thread-test-1")).toBe("");
   });
 });

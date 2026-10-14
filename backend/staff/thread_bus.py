@@ -18,9 +18,19 @@ class ThreadEventBus:
 
     def __init__(self) -> None:
         self._subscribers: dict[str, set[asyncio.Queue[dict[str, Any]]]] = {}
-        # The loop each queue was created on: worker threads must hand events to it (#1547).
         self._loops: dict[asyncio.Queue[dict[str, Any]], asyncio.AbstractEventLoop] = {}
+        self._revisions: dict[str, int] = {}
         self._lock = asyncio.Lock()
+
+    def next_revision(self, thread_id: str) -> int:
+        """Return next monotonic event revision for the thread (BR-16, #1809)."""
+        rev = self._revisions.get(thread_id, 0) + 1
+        self._revisions[thread_id] = rev
+        return rev
+
+    def current_revision(self, thread_id: str) -> int:
+        """Return current monotonic revision for thread or 0."""
+        return self._revisions.get(thread_id, 0)
 
     async def subscribe(self, thread_id: str) -> asyncio.Queue[dict[str, Any]]:
         """Register an async queue to receive live events for a given thread."""
@@ -56,6 +66,7 @@ class ThreadEventBus:
         payload = {
             "id": event_id,
             "event": event_type,
+            "revision": self.next_revision(thread_id),
             "data": data,
         }
         async with self._lock:
@@ -67,7 +78,19 @@ class ThreadEventBus:
                 q.put_nowait(payload)
                 count += 1
             except asyncio.QueueFull:
-                log.warning("Subscriber queue full for thread %s; dropping event", thread_id)
+                log.warning("Subscriber queue full for thread %s; triggering resync event", thread_id)
+                try:
+                    q.get_nowait()
+                    q.put_nowait(
+                        {
+                            "id": None,
+                            "event": "resync_required",
+                            "revision": self.current_revision(thread_id),
+                            "data": {"thread_id": thread_id, "reason": "overflow"},
+                        }
+                    )
+                except Exception:
+                    pass
         return count
 
     def publish_sync(

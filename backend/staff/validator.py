@@ -353,18 +353,45 @@ def _validate_lifecycle(data: dict[str, Any]) -> list[str]:
     return problems
 
 
+SUPPORTED_CHAT_TOOLS: frozenset[str] = frozenset(
+    {
+        "read_staff_summary",
+        "read_priorities",
+        "read_briefing",
+        "read_sessions",
+        "read_issue",
+        "read_run",
+        "read_repo",
+        "search_knowledge",
+    }
+)
+
+
 def _validate_chat(data: dict[str, Any]) -> list[str]:
-    """``chat.read_only_tools`` must use the read-only vocabulary (#1484)."""
+    """Validate chat tools against executor capability contracts (#1484, #1803)."""
     chat = data.get("chat")
-    if not isinstance(chat, dict) or "read_only_tools" not in chat:
+    if not isinstance(chat, dict):
         return []
-    tools = chat["read_only_tools"]
-    if not isinstance(tools, list) or not all(isinstance(t, str) for t in tools):
-        return ["chat.read_only_tools must be a list of strings"]
-    unknown = [t for t in tools if t not in CHAT_READ_ONLY_TOOLS]
-    if unknown:
-        return [f"chat.read_only_tools has non-read-only tools {unknown}; known: {sorted(CHAT_READ_ONLY_TOOLS)}"]
-    return []
+    problems: list[str] = []
+    if "read_only_tools" in chat:
+        ro_tools = chat["read_only_tools"]
+        if not isinstance(ro_tools, list) or not all(isinstance(t, str) for t in ro_tools):
+            problems.append("chat.read_only_tools must be a list of strings")
+        else:
+            unknown = [t for t in ro_tools if t not in CHAT_READ_ONLY_TOOLS]
+            if unknown:
+                problems.append(
+                    f"chat.read_only_tools has non-read-only tools {unknown}; known: {sorted(CHAT_READ_ONLY_TOOLS)}"
+                )
+    if "tools" in chat:
+        tools = chat["tools"]
+        if not isinstance(tools, list) or not all(isinstance(t, str) for t in tools):
+            problems.append("chat.tools must be a list of strings")
+        else:
+            unsupported = [t for t in tools if t not in SUPPORTED_CHAT_TOOLS]
+            if unsupported:
+                problems.append(f"chat.tools declares unsupported tool(s) {unsupported}; executor cannot supply them")
+    return problems
 
 
 def validate_role_data(data: Any) -> list[str]:
