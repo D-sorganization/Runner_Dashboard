@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
+import math
 import os
 import re
 import subprocess
@@ -16,9 +18,36 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 UNAVAILABLE = "unavailable"
+
+
+def env_threshold(name: str, default: float, maximum: float | None = None) -> float:
+    """Read a positive numeric threshold from the environment.
+
+    Unset, non-numeric, non-finite, non-positive or above ``maximum`` values log a
+    warning and fall back to ``default`` (a bad env var must not break import).
+    """
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value) or value <= 0 or (maximum is not None and value > maximum):
+        logger.warning("Ignoring invalid %s=%r; using default %s", name, raw, default)
+        return default
+    return value
+
+
 # Alert when the Windows nonpaged pool exceeds this many GB (fleet policy: 3 GB).
-NONPAGED_POOL_ALERT_GB = float(os.environ.get("DASHBOARD_NONPAGED_POOL_ALERT_GB", "3.0"))
+NONPAGED_POOL_ALERT_GB = env_threshold("DASHBOARD_NONPAGED_POOL_ALERT_GB", 3.0)
+# Alert when Windows commit charge exceeds this percent of the commit limit.
+COMMIT_PERCENT_ALERT = env_threshold("DASHBOARD_COMMIT_PERCENT_ALERT", 90.0, maximum=100.0)
+# Alert when vmmemWSL exceeds this percent of the .wslconfig memory= cap.
+VMMEM_PERCENT_ALERT = env_threshold("DASHBOARD_VMMEM_PERCENT_ALERT", 90.0, maximum=100.0)
 KERNEL_POOL_TAIL_ROWS = 6
 _CSV_RELATIVE = "ProgramData/fleet-metrics/kernel-pool.csv"
 _CSV_FIELDS = ("nonpaged_gb", "paged_gb", "system_handles", "free_gb", "commit_gb", "vmmemwsl_gb")
@@ -173,15 +202,33 @@ def read_cache_trim_last_run(run: Callable[..., Any] = subprocess.run) -> dict[s
     return {"status": "ok", "last_run": when.isoformat(), "message": str(entry.get("MESSAGE", ""))}
 
 
-def evaluate_alerts(kernel_pool: dict[str, Any], threshold_gb: float = NONPAGED_POOL_ALERT_GB) -> list[dict[str, Any]]:
+def _percent_alert(code: str, section: dict[str, Any] | None, key: str, threshold: float) -> list[dict[str, Any]]:
+    """One alert when a measured ``section[key]`` percent exceeds ``threshold``."""
+    value = section.get(key) if section and section.get("status") == "ok" else None
+    if value is None or value <= threshold:
+        return []
+    return [{"code": code, "severity": "warning", "value_percent": value, "threshold_percent": threshold}]
+
+
+def evaluate_alerts(
+    kernel_pool: dict[str, Any],
+    threshold_gb: float = NONPAGED_POOL_ALERT_GB,
+    commit: dict[str, Any] | None = None,
+    vmmem: dict[str, Any] | None = None,
+    commit_percent_threshold: float = COMMIT_PERCENT_ALERT,
+    vmmem_percent_threshold: float = VMMEM_PERCENT_ALERT,
+) -> list[dict[str, Any]]:
     """Alerts for measured values only; unavailable data never alerts."""
+    alerts: list[dict[str, Any]] = []
     latest = kernel_pool.get("latest") if kernel_pool.get("status") == "ok" else None
     nonpaged = latest.get("nonpaged_gb") if latest else None
     if nonpaged is not None and nonpaged > threshold_gb:
-        return [
+        alerts.append(
             {"code": "nonpaged_pool_high", "severity": "warning", "value_gb": nonpaged, "threshold_gb": threshold_gb}
-        ]
-    return []
+        )
+    alerts += _percent_alert("commit_high", commit, "percent", commit_percent_threshold)
+    alerts += _percent_alert("vmmem_near_cap", vmmem, "percent_of_cap", vmmem_percent_threshold)
+    return alerts
 
 
 def get_host_memory_health() -> dict[str, Any]:
@@ -193,11 +240,18 @@ def get_host_memory_health() -> dict[str, Any]:
         "cache_trim": read_cache_trim_last_run(),
         "kernel_pool": kernel_pool,
     }
-    alerts = evaluate_alerts(kernel_pool)
+    alerts = evaluate_alerts(kernel_pool, commit=sections["commit"], vmmem=sections["vmmem"])
     if alerts:
         status = "alert"
     elif all(s["status"] == UNAVAILABLE for s in sections.values()):
         status = UNAVAILABLE
     else:
         status = "ok"
-    return {"status": status, "nonpaged_pool_alert_gb": NONPAGED_POOL_ALERT_GB, "alerts": alerts, **sections}
+    return {
+        "status": status,
+        "nonpaged_pool_alert_gb": NONPAGED_POOL_ALERT_GB,
+        "commit_percent_alert": COMMIT_PERCENT_ALERT,
+        "vmmem_percent_alert": VMMEM_PERCENT_ALERT,
+        "alerts": alerts,
+        **sections,
+    }

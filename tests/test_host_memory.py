@@ -154,6 +154,71 @@ def test_aggregate_alert(monkeypatch) -> None:  # noqa: ANN001
     assert out["status"] == "alert" and out["vmmem"]["percent_of_cap"] == 50.0
 
 
+def _codes(alerts: list[dict]) -> list[str]:
+    return [a["code"] for a in alerts]
+
+
+def test_commit_alert_default_90_strict() -> None:
+    assert hm.COMMIT_PERCENT_ALERT == 90.0
+    pool = hm.unavailable("x")
+    assert hm.evaluate_alerts(pool, commit={"status": "ok", "percent": 90.0}) == []
+    alerts = hm.evaluate_alerts(pool, commit={"status": "ok", "percent": 90.1})
+    assert _codes(alerts) == ["commit_high"]
+    assert alerts[0]["value_percent"] == 90.1 and alerts[0]["threshold_percent"] == 90.0
+
+
+def test_vmmem_alert_default_90_strict() -> None:
+    assert hm.VMMEM_PERCENT_ALERT == 90.0
+    pool = hm.unavailable("x")
+    ok = {"status": "ok", "percent_of_cap": 90.0}
+    assert hm.evaluate_alerts(pool, vmmem=ok) == []
+    alerts = hm.evaluate_alerts(pool, vmmem={"status": "ok", "percent_of_cap": 95.0})
+    assert _codes(alerts) == ["vmmem_near_cap"]
+    assert alerts[0]["threshold_percent"] == 90.0
+
+
+def test_unavailable_or_capless_sources_never_alert() -> None:
+    pool = hm.unavailable("x")
+    assert hm.evaluate_alerts(pool, commit=hm.unavailable("x"), vmmem=hm.unavailable("x")) == []
+    assert hm.evaluate_alerts(pool, vmmem={"status": "ok", "percent_of_cap": None}) == []
+    assert hm.evaluate_alerts(pool, commit={"status": "ok", "percent": None}) == []
+
+
+def test_all_three_alerts_together_and_custom_thresholds() -> None:
+    pool = {"status": "ok", "latest": {"nonpaged_gb": 4.0}}
+    alerts = hm.evaluate_alerts(
+        pool,
+        commit={"status": "ok", "percent": 50.0},
+        vmmem={"status": "ok", "percent_of_cap": 60.0},
+        commit_percent_threshold=40.0,
+        vmmem_percent_threshold=55.0,
+    )
+    assert _codes(alerts) == ["nonpaged_pool_high", "commit_high", "vmmem_near_cap"]
+
+
+def test_env_threshold_valid_invalid_and_default(monkeypatch, caplog) -> None:  # noqa: ANN001
+    monkeypatch.setenv("T_X", "75")
+    assert hm.env_threshold("T_X", 90.0, maximum=100.0) == 75.0
+    for bad in ("abc", "nan", "-5", "0", "150"):
+        monkeypatch.setenv("T_X", bad)
+        caplog.clear()
+        assert hm.env_threshold("T_X", 90.0, maximum=100.0) == 90.0
+        assert "T_X" in caplog.text
+    monkeypatch.delenv("T_X")
+    assert hm.env_threshold("T_X", 90.0) == 90.0
+
+
+def test_aggregate_commit_and_vmmem_alerts(monkeypatch) -> None:  # noqa: ANN001
+    pool = {"status": "ok", "latest": {"nonpaged_gb": 1.0, "vmmemwsl_gb": 19.0}}
+    monkeypatch.setattr(hm, "read_kernel_pool_tail", lambda: pool)
+    monkeypatch.setattr(hm, "read_commit", lambda: {"status": "ok", "percent": 95.0})
+    monkeypatch.setattr(hm, "read_wsl_memory_cap_gb", lambda: 20.0)
+    monkeypatch.setattr(hm, "read_cache_trim_last_run", lambda: hm.unavailable("x"))
+    out = hm.get_host_memory_health()
+    assert out["status"] == "alert"
+    assert _codes(out["alerts"]) == ["commit_high", "vmmem_near_cap"]
+
+
 def test_route_returns_payload(monkeypatch) -> None:  # noqa: ANN001
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
