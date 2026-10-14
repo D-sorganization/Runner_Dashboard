@@ -13,7 +13,7 @@ import pytest
 from fleet_events import EventStore
 from staff import runner as runner_mod
 from staff import store as store_mod
-from staff.reconcile import reconcile_orphaned_runs
+from staff.reconcile import reconcile_executing_proposals, reconcile_orphaned_runs
 from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
 
@@ -450,3 +450,43 @@ def test_reconcile_orphaned_runs_sweeps_orphan_run_projects(
     monkeypatch.setattr(cli_projects, "sweep_orphan_run_projects", fake_sweep)
     reconcile_orphaned_runs(staff_runner, event_store=EventStore())
     assert len(swept) == 1
+
+
+def test_reconcile_executing_proposals_marks_failed_without_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Proposals stuck in executing are marked failed without blind retry (BR-16, #1809)."""
+    from staff.conversations import ConversationStore
+
+    db_path = tmp_path / "conv_test.sqlite3"
+    conv_store = ConversationStore(path=db_path)
+    th = conv_store.create_thread(role="barb", kind="auto", title="Mission Recovery")
+    msg = conv_store.add_message(thread_id=th.id, author_kind="role", author="barb", kind="text", body_md="Proposal")
+    prop = conv_store.create_proposal(
+        thread_id=th.id, message_id=msg.id, action="staff.dispatch", params={"role": "worker"}, risk="low"
+    )
+    conv_store.transition_proposal_state(prop.id, "executing")
+
+    reconciled = reconcile_executing_proposals(conv_store)
+    assert reconciled == [prop.id]
+
+    # Verify state transitioned to failed
+    updated_prop = conv_store.get_proposal(prop.id)
+    assert updated_prop is not None
+    assert updated_prop.state == "failed"
+    assert "Interrupted by backend restart; not retried automatically" in updated_prop.reason
+
+    # Verify recovery system message posted
+    msgs = conv_store.list_messages(th.id)
+    sys_msgs = [m for m in msgs if m.author_kind == "system"]
+    assert len(sys_msgs) == 1
+    recovery_msg = sys_msgs[0]
+    assert recovery_msg.meta.get("interrupted_proposal_id") == prop.id
+    assert recovery_msg.meta.get("failure_class") == "interrupted_by_restart"
+    assert "marked failed without automatic retry" in recovery_msg.body_md
+
+    # Second pass is a no-op
+    assert reconcile_executing_proposals(conv_store) == []
+    msgs_after = conv_store.list_messages(th.id)
+    assert len(msgs_after) == len(msgs)

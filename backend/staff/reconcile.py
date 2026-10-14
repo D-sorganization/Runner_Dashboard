@@ -20,6 +20,7 @@ import os
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 try:
     import psutil
@@ -30,6 +31,7 @@ from fleet_events import EventStore, FleetEvent, get_event_store
 from staff import cli_projects, workspace
 from staff import lease as lease_mod
 from staff.audit import record_audit
+from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore, _now
@@ -180,6 +182,102 @@ def reconcile_interrupted_chat_messages(
     return reconciled_ids
 
 
+def _list_executing_proposals(store: ConversationStore) -> list[ActionProposalRecord]:
+    if not hasattr(store, "_conn") or not hasattr(store, "_lock"):
+        return []
+    with store._lock:
+        rows = store._conn.execute(
+            "SELECT * FROM action_proposals WHERE state = 'executing' ORDER BY thread_id, created_at ASC"
+        ).fetchall()
+    return [ActionProposalRecord.from_row(r) for r in rows]
+
+
+def reconcile_executing_proposals(
+    conv_store: ConversationStore | None = None,
+    audit_store: Any | None = None,
+) -> list[str]:
+    """Reconcile in-flight proposals interrupted by a backend restart (BR-16, #1809).
+
+    Precondition: conv_store is available or default store is reachable.
+    Postcondition: executing proposals are transitioned to 'failed' with failure_class='interrupted_by_restart',
+    never blind-retried to prevent duplicate remote side effects, notified in-thread, and audited.
+    """
+    store = conv_store or get_conversation_store()
+    if not store.status.available:
+        log.warning("Conversation store is unavailable; skipping executing proposal reconciliation")
+        return []
+
+    try:
+        executing = _list_executing_proposals(store)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to query executing proposals: %s", exc)
+        return []
+
+    reconciled_ids: list[str] = []
+    for prop in executing:
+        err_reason = "Interrupted by backend restart; not retried automatically to prevent duplicate side effects."
+        try:
+            store.transition_proposal_state(
+                prop.id,
+                "failed",
+                reason=err_reason,
+                audit_store=audit_store,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed transitioning executing proposal %s to failed: %s", prop.id, exc)
+            continue
+
+        recovery_meta = {
+            "interrupted_proposal_id": prop.id,
+            "action": prop.action,
+            "failure_class": "interrupted_by_restart",
+            "system_action": "proposal_recovery",
+        }
+        recovery_body = (
+            f"Proposal '{prop.action}' ({prop.id}) was executing when the backend restarted. "
+            "It was marked failed without automatic retry to prevent duplicate side effects. "
+            "Please verify external state before re-proposing."
+        )
+        try:
+            store.add_message(
+                thread_id=prop.thread_id,
+                author_kind="system",
+                author="system",
+                kind="text",
+                body_md=recovery_body,
+                meta=recovery_meta,
+                delivery="complete",
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed posting proposal recovery message for %s: %s", prop.id, exc)
+
+        try:
+            record_audit(
+                action="proposal_reconcile",
+                target=f"proposal:{prop.id}",
+                principal="system",
+                surface="scheduler",
+                thread_id=prop.thread_id,
+                outcome="failed",
+                detail={
+                    "proposal_id": prop.id,
+                    "action": prop.action,
+                    "previous_state": "executing",
+                    "failure_class": "interrupted_by_restart",
+                },
+                fail_closed=False,
+                store=audit_store,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed to record audit for reconciled proposal %s: %s", prop.id, exc)
+
+        reconciled_ids.append(prop.id)
+
+    if reconciled_ids:
+        log.info("Reconciled %d executing proposals: %s", len(reconciled_ids), reconciled_ids)
+    return reconciled_ids
+
+
 def reconcile_orphaned_runs(
     runner: StaffRunner,
     *,
@@ -192,12 +290,17 @@ def reconcile_orphaned_runs(
     Pre: runner is initialized with a store.
     Post: active runs owned by this machine are marked failed/orphaned,
           leases are released, clean worktrees removed, fleet events emitted,
-          and interrupted chat messages reconciled.
+          and interrupted chat messages and executing proposals reconciled.
     """
     try:
         reconcile_interrupted_chat_messages(conv_store=conv_store)
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to reconcile interrupted chat messages: %s", exc, exc_info=True)
+
+    try:
+        reconcile_executing_proposals(conv_store=conv_store)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to reconcile executing proposals: %s", exc, exc_info=True)
 
     try:
         cli_projects.sweep_orphan_run_projects(dict(os.environ), workspace.staff_worktrees_root())

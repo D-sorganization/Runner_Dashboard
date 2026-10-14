@@ -1,24 +1,12 @@
-"""Fleet context injection for staff chat turns (#1627).
+"""Fleet context injection for staff chat turns (#1627, #1803).
 
 Builds the ``## Fleet now`` block injected into chat prompts for roles declaring
 target-free read tools: ``read_staff_summary``, ``read_priorities``, ``read_briefing``,
 and ``read_sessions``.
 
-Targeted read tools require a specific target identifier and are NOT handled here.
-``read_issue`` is handled by :mod:`staff.chat_issue_context`; ``read_run`` and
-``read_repo`` remain unimplemented (Runner_Dashboard#1762).
-
-Before gathering, the role YAML cache (``staff.roles.load_roles``) is warmed
-off-loop once per turn: ``build_staff_summary`` (behind ``read_staff_summary``)
-reads it synchronously, and on a cold mtime-cache — most likely shortly after a
-restart — that means a directory glob, a stat of every role file, and a full
-YAML parse, all run directly on the event loop (#1761). Warming it first via
-``asyncio.to_thread`` means that in-loop call only re-stats already-cached
-files, which is cheap, so it can no longer freeze the loop for the several
-seconds that starved every concurrently gathered source at once. On timeout or
-error, a tool that has succeeded earlier this process renders its last-good
-payload as ``stale (age Ns): <body>`` instead of ``unavailable``; a tool with
-no prior success still renders ``unavailable``.
+Targeted read tools (``read_run``, ``read_repo``) are handled via typed, bounded
+handlers exposing source node, captured-at time, SHA, scope, and truncation manifest
+(BR-10, #1803).
 """
 
 from __future__ import annotations
@@ -26,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+import socket
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -33,13 +23,20 @@ from typing import Any
 from staff.roles import RoleSpec, load_roles
 
 __all__ = [
+    "ALL_FLEET_TOOLS",
     "COLD_SOURCE_TIMEOUT_SECONDS",
     "FLEET_CONTEXT_TOOLS",
     "MAX_BLOCK_CHARS",
     "MAX_SECTION_CHARS",
     "SOURCE_TIMEOUT_SECONDS",
+    "TARGETED_FLEET_TOOLS",
     "build_fleet_context_block",
+    "build_target_context_block",
     "declared_fleet_tools",
+    "parse_repo_refs",
+    "parse_run_refs",
+    "read_repo_context",
+    "read_run_context",
     "warm_fleet_context_snapshots",
 ]
 
@@ -51,6 +48,20 @@ FLEET_CONTEXT_TOOLS: tuple[str, ...] = (
     "read_briefing",
     "read_sessions",
 )
+TARGETED_FLEET_TOOLS: tuple[str, ...] = ("read_run", "read_repo")
+ALL_FLEET_TOOLS: tuple[str, ...] = FLEET_CONTEXT_TOOLS + TARGETED_FLEET_TOOLS
+
+DEFAULT_KNOWN_REPO_NAMES: tuple[str, ...] = (
+    "Runner_Dashboard",
+    "Repository_Management",
+    "Maxwell_Daemon",
+    "UpstreamDrift",
+    "Tools_Private",
+    "Tools",
+)
+
+_RUN_REF_RE = re.compile(r"\b(run-[A-Za-z0-9_.-]+)\b")
+_RUN_URL_RE = re.compile(r"/runs/(run-[A-Za-z0-9_.-]+)\b")
 
 SOURCE_TIMEOUT_SECONDS: float = 5.0
 COLD_SOURCE_TIMEOUT_SECONDS: float = 15.0
@@ -66,12 +77,196 @@ HEADER_TEMPLATE: str = (
     "as current. If a section says unavailable, say so rather than guessing."
 )
 
-# Per-tool last-good snapshot: tool -> (fetched_at, rendered_body). Populated on
-# every successful fetch and served (as "stale (age Ns): <body>") when a later
-# fetch times out or errors, instead of "unavailable" (#1761). Module-level and
-# unlocked: mutated only from coroutines running on the caller's event loop, which
-# is single-threaded, so concurrent `_run_source` calls never race on it.
 _LAST_GOOD: dict[str, tuple[datetime, str]] = {}
+
+
+def parse_run_refs(text: str) -> list[str]:
+    """Recognise up to 3 run references in text."""
+    if not text:
+        return []
+    refs: list[str] = []
+    seen: set[str] = set()
+    for m in _RUN_URL_RE.finditer(text):
+        rid = m.group(1)
+        if rid not in seen:
+            seen.add(rid)
+            refs.append(rid)
+    for m in _RUN_REF_RE.finditer(text):
+        rid = m.group(1)
+        if rid not in seen:
+            seen.add(rid)
+            refs.append(rid)
+    return refs[:3]
+
+
+def parse_repo_refs(text: str, repo_names: tuple[str, ...] = ()) -> list[str]:
+    """Recognise up to 3 known repository references in text."""
+    if not text:
+        return []
+    names = repo_names or DEFAULT_KNOWN_REPO_NAMES
+    canonical = {name.lower(): name for name in names}
+    alternation = "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+    repo_re = re.compile(rf"\b({alternation})\b", re.IGNORECASE)
+    refs: list[str] = []
+    seen: set[str] = set()
+    for m in repo_re.finditer(text):
+        matched = canonical[m.group(1).lower()]
+        if matched not in seen:
+            seen.add(matched)
+            refs.append(matched)
+    return refs[:3]
+
+
+def read_run_context(
+    run_id: str,
+    store: Any = None,
+    now_fn: Callable[[], datetime] | None = None,
+) -> dict[str, Any]:
+    """Retrieve structured run facts with machine-readable provenance (BR-10, #1803)."""
+    now = now_fn() if now_fn is not None else datetime.now(UTC)
+    time_iso = now.isoformat().replace("+00:00", "Z")
+    node = socket.gethostname()
+
+    target_store = store
+    if target_store is None:
+        try:
+            from staff.runner import get_runner  # noqa: PLC0415
+
+            target_store = get_runner().store
+        except Exception:  # noqa: BLE001
+            target_store = None
+
+    if target_store is None or not hasattr(target_store, "get_run"):
+        return {
+            "tool": "read_run",
+            "target": run_id,
+            "status": "unavailable",
+            "reason": "store_unavailable",
+            "source_node": node,
+            "captured_at": time_iso,
+            "sha": None,
+            "scope": "run",
+            "truncation": {"truncated": False, "omitted_sections": []},
+        }
+
+    rec = target_store.get_run(run_id)
+    if rec is None:
+        return {
+            "tool": "read_run",
+            "target": run_id,
+            "status": "unavailable",
+            "reason": "not_found",
+            "source_node": node,
+            "captured_at": time_iso,
+            "sha": None,
+            "scope": "run",
+            "truncation": {"truncated": False, "omitted_sections": []},
+        }
+
+    sha = getattr(rec, "head_ref", None) or getattr(rec, "target_ref", None) or ""
+    return {
+        "tool": "read_run",
+        "target": run_id,
+        "status": getattr(rec, "status", "unknown"),
+        "role": getattr(rec, "role", ""),
+        "repo": getattr(rec, "repo", ""),
+        "source_node": getattr(rec, "machine", "") or node,
+        "captured_at": time_iso,
+        "sha": sha,
+        "scope": "run",
+        "started_at": getattr(rec, "started_at", None),
+        "ended_at": getattr(rec, "ended_at", None),
+        "error": getattr(rec, "error", None) or None,
+        "summary": getattr(rec, "summary", "") or None,
+        "truncation": {"truncated": False, "omitted_sections": []},
+    }
+
+
+def read_repo_context(
+    repo_name: str,
+    now_fn: Callable[[], datetime] | None = None,
+) -> dict[str, Any]:
+    """Retrieve structured repository facts with machine-readable provenance (BR-10, #1803)."""
+    now = now_fn() if now_fn is not None else datetime.now(UTC)
+    time_iso = now.isoformat().replace("+00:00", "Z")
+    node = socket.gethostname()
+
+    if not repo_name or (repo_name not in DEFAULT_KNOWN_REPO_NAMES):
+        return {
+            "tool": "read_repo",
+            "target": repo_name,
+            "status": "unavailable",
+            "reason": "unknown_repo",
+            "source_node": node,
+            "captured_at": time_iso,
+            "sha": None,
+            "scope": "repo",
+            "truncation": {"truncated": False, "omitted_sections": []},
+        }
+
+    sha = "HEAD"
+    try:
+        from staff import workspace  # noqa: PLC0415
+
+        checkout = workspace.find_repo_checkout(repo_name)
+        if checkout and hasattr(workspace, "rev_parse_head"):
+            sha = workspace.rev_parse_head(checkout) or "HEAD"
+    except Exception:  # noqa: BLE001
+        sha = "HEAD"
+
+    return {
+        "tool": "read_repo",
+        "target": repo_name,
+        "status": "available",
+        "source_node": node,
+        "captured_at": time_iso,
+        "sha": sha,
+        "scope": "repo",
+        "truncation": {"truncated": False, "omitted_sections": []},
+    }
+
+
+def build_target_context_block(
+    role: RoleSpec | None,
+    text: str,
+    store: Any = None,
+    now: Callable[[], datetime] | None = None,
+) -> str | None:
+    """Build markdown block for declared targeted tools (read_run, read_repo)."""
+    if role is None or not isinstance(role.chat, dict):
+        return None
+    tools = set(role.chat.get("tools") or ())
+    has_read_run = "read_run" in tools
+    has_read_repo = "read_repo" in tools
+    if not (has_read_run or has_read_repo):
+        return None
+
+    now_fn = now if now is not None else lambda: datetime.now(UTC)
+    sections: list[str] = []
+
+    if has_read_run:
+        runs = parse_run_refs(text)
+        for r_id in runs:
+            payload = read_run_context(r_id, store=store, now_fn=now_fn)
+            body = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            sections.append(f"### read_run: {r_id}\n{body}")
+
+    if has_read_repo:
+        repos = parse_repo_refs(text)
+        for r_name in repos:
+            payload = read_repo_context(r_name, now_fn=now_fn)
+            body = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            sections.append(f"### read_repo: {r_name}\n{body}")
+
+    if not sections:
+        return None
+
+    header = (
+        "## Targeted context\n"
+        "Read by the dashboard for this turn with machine-readable provenance. "
+        "A section marked unavailable could not be verified."
+    )
+    return header + "\n\n" + "\n\n".join(sections)
 
 
 async def _fetch_staff_summary() -> dict[str, Any]:
@@ -111,12 +306,7 @@ DEFAULT_SOURCES: Mapping[str, Callable[[], Awaitable[dict[str, Any]]]] = {
 
 
 def declared_fleet_tools(role: RoleSpec | None) -> tuple[str, ...]:
-    """Return declared members of FLEET_CONTEXT_TOOLS in FLEET_CONTEXT_TOOLS order.
-
-    Precondition: role is optional.
-    Postcondition: returns a tuple of tool names in FLEET_CONTEXT_TOOLS order,
-    or () if role is None or declares none of the fleet context tools.
-    """
+    """Return declared members of FLEET_CONTEXT_TOOLS in FLEET_CONTEXT_TOOLS order."""
     if role is None or not isinstance(role.chat, dict):
         return ()
     raw_tools = role.chat.get("tools")
@@ -127,16 +317,7 @@ def declared_fleet_tools(role: RoleSpec | None) -> tuple[str, ...]:
 
 
 async def _warm_role_cache() -> None:
-    """Refresh the ``staff.roles.load_roles`` mtime-cache off the event loop.
-
-    Precondition: none.
-    Postcondition: never raises; a failure is logged and swallowed. On success,
-    ``load_roles()`` calls made later this turn on the caller's loop (e.g. inside
-    ``build_staff_summary``) only re-stat already-cached files instead of reading
-    and parsing every role YAML file from a cold cache, which is what made
-    ``read_staff_summary`` block the loop long enough to starve its concurrently
-    gathered siblings (#1761).
-    """
+    """Refresh the ``staff.roles.load_roles`` mtime-cache off the event loop."""
     try:
         await asyncio.to_thread(load_roles)
     except Exception as exc:  # noqa: BLE001
@@ -148,14 +329,7 @@ async def _run_source(
     source_fn: Callable[[], Awaitable[dict[str, Any]]] | None,
     now_fn: Callable[[], datetime],
 ) -> tuple[str, str]:
-    """Execute a single source function under timeout and format as compact JSON.
-
-    Precondition: tool is a non-empty string; now_fn returns a timezone-aware datetime.
-    Postcondition: returns (tool, rendered_body). Never raises exceptions. On success,
-    the rendered body is remembered as this tool's last-good snapshot. On timeout or
-    error, renders that snapshot as "stale (age Ns): <body>" when one exists, else
-    "unavailable (ExceptionName)".
-    """
+    """Execute a single source function under timeout and format as compact JSON."""
     try:
         if source_fn is None:
             raise KeyError(tool)
@@ -181,12 +355,7 @@ async def warm_fleet_context_snapshots(
     sources: Mapping[str, Callable[[], Awaitable[dict[str, Any]]]] | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> None:
-    """Pre-warm last-good snapshots for all fleet context tools.
-
-    Precondition: none.
-    Postcondition: runs all FLEET_CONTEXT_TOOLS, caching last-good payloads in
-    _LAST_GOOD. Never raises; errors are logged and swallowed.
-    """
+    """Pre-warm last-good snapshots for all fleet context tools."""
     active_sources = sources if sources is not None else DEFAULT_SOURCES
     now_fn = now if now is not None else lambda: datetime.now(UTC)
     await _warm_role_cache()
@@ -198,16 +367,17 @@ async def build_fleet_context_block(
     role: RoleSpec | None,
     sources: Mapping[str, Callable[[], Awaitable[dict[str, Any]]]] | None = None,
     now: Callable[[], datetime] | None = None,
+    raw_prompt: str = "",
+    store: Any = None,
 ) -> str | None:
     """Build the '## Fleet now' markdown block for target-free read tools.
 
-    Precondition: none beyond types.
-    Postcondition: returns None when the role declares none of the tools;
-    otherwise a markdown string starting with '## Fleet now' and at most
-    MAX_BLOCK_CHARS long. Never raises (orthogonality).
+    When raw_prompt is supplied and role declares targeted tools (read_run, read_repo),
+    targeted context is gathered and appended. Truncation includes section manifest (BR-10).
     """
     tools = declared_fleet_tools(role)
-    if not tools:
+    target_block = build_target_context_block(role, raw_prompt, store=store, now=now) if raw_prompt else None
+    if not tools and not target_block:
         return None
 
     active_sources = sources if sources is not None else DEFAULT_SOURCES
@@ -224,15 +394,18 @@ async def build_fleet_context_block(
 
     await _warm_role_cache()
 
-    tasks = [_run_source(tool, active_sources.get(tool), now_fn) for tool in tools]
-    results = await asyncio.gather(*tasks)
+    parts: list[str] = []
+    if tools:
+        tasks = [_run_source(tool, active_sources.get(tool), now_fn) for tool in tools]
+        results = await asyncio.gather(*tasks)
 
-    parts = [
-        "## Fleet now",
-        HEADER_TEMPLATE.format(time_str=time_str),
-    ]
-    for tool, body in results:
-        parts.append(f"### {tool}\n{body}")
+        parts.append("## Fleet now")
+        parts.append(HEADER_TEMPLATE.format(time_str=time_str))
+        for tool, body in results:
+            parts.append(f"### {tool}\n{body}")
+
+    if target_block:
+        parts.append(target_block)
 
     block = "\n\n".join(parts).strip()
     if len(block) > MAX_BLOCK_CHARS:

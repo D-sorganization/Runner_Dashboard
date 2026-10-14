@@ -313,3 +313,148 @@ async def test_warm_fleet_context_snapshots_populates_last_good(
     for tool in cfc.FLEET_CONTEXT_TOOLS:
         assert tool in cfc._LAST_GOOD
         assert '"warm"' in cfc._LAST_GOOD[tool][1]
+
+
+@pytest.mark.unit
+def test_read_run_context_unindexed_returns_structured_unavailable() -> None:
+    """Querying an unindexed run returns typed unavailability metadata (BR-10)."""
+    fixed_time = datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC)
+
+    class FakeStore:
+        def get_run(self, rid: str) -> Any:
+            return None
+
+    res = cfc.read_run_context("run-missing-999", store=FakeStore(), now_fn=lambda: fixed_time)
+    assert res["status"] == "unavailable"
+    assert res["reason"] == "not_found"
+    assert res["target"] == "run-missing-999"
+    assert res["captured_at"] == "2026-10-14T12:00:00Z"
+    assert res["sha"] is None
+    assert res["scope"] == "run"
+    assert res["truncation"] == {"truncated": False, "omitted_sections": []}
+    assert bool(res["source_node"])
+
+
+@pytest.mark.unit
+def test_read_run_context_known_run_returns_typed_facts() -> None:
+    """Querying an existing run returns complete run facts with provenance (BR-10)."""
+    fixed_time = datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC)
+
+    class FakeRun:
+        status = "succeeded"
+        role = "barb"
+        repo = "Runner_Dashboard"
+        machine = "desk-node-1"
+        started_at = "2026-10-14T11:00:00Z"
+        ended_at = "2026-10-14T11:05:00Z"
+        error = None
+        summary = "Completed task"
+        head_ref = "feat/test-branch"
+
+    class FakeStore:
+        def get_run(self, rid: str) -> Any:
+            return FakeRun()
+
+    res = cfc.read_run_context("run-ok-123", store=FakeStore(), now_fn=lambda: fixed_time)
+    assert res["status"] == "succeeded"
+    assert res["role"] == "barb"
+    assert res["repo"] == "Runner_Dashboard"
+    assert res["source_node"] == "desk-node-1"
+    assert res["sha"] == "feat/test-branch"
+    assert res["captured_at"] == "2026-10-14T12:00:00Z"
+    assert res["summary"] == "Completed task"
+
+
+@pytest.mark.unit
+def test_read_repo_context_known_and_unknown() -> None:
+    """Querying repo facts distinguishes known from unknown targets (BR-10)."""
+    fixed_time = datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC)
+
+    unknown = cfc.read_repo_context("NonexistentRepo", now_fn=lambda: fixed_time)
+    assert unknown["status"] == "unavailable"
+    assert unknown["reason"] == "unknown_repo"
+    assert unknown["scope"] == "repo"
+
+    known = cfc.read_repo_context("Runner_Dashboard", now_fn=lambda: fixed_time)
+    assert known["status"] == "available"
+    assert known["scope"] == "repo"
+    assert known["captured_at"] == "2026-10-14T12:00:00Z"
+    assert bool(known["sha"])
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_build_target_context_block_in_fleet_context() -> None:
+    """Targeted read tools inject machine-readable blocks when referenced (BR-10)."""
+    role = RoleSpec(
+        name="barb",
+        title="Barb",
+        chat={"tools": ["read_priorities", "read_run", "read_repo"]},
+    )
+
+    class FakeRun:
+        status = "failed"
+        role = "barb"
+        repo = "UpstreamDrift"
+        machine = "desk-1"
+        started_at = "2026-10-14T10:00:00Z"
+        ended_at = "2026-10-14T10:02:00Z"
+        error = "timeout"
+        summary = ""
+        head_ref = "abc1234"
+
+    class FakeStore:
+        def get_run(self, rid: str) -> Any:
+            return FakeRun() if rid == "run-failing-101" else None
+
+    fake_sources = {
+        "read_priorities": AsyncMock(return_value={"directives": []}),
+    }
+    prompt = "Can you inspect run-failing-101 on UpstreamDrift?"
+    block = await build_fleet_context_block(role, sources=fake_sources, raw_prompt=prompt, store=FakeStore())
+
+    assert block is not None
+    assert "## Targeted context" in block
+    assert "### read_run: run-failing-101" in block
+    assert "### read_repo: UpstreamDrift" in block
+    assert '"timeout"' in block
+
+
+@pytest.mark.unit
+def test_unsupported_role_tools_fail_validation() -> None:
+    """Declaring unsupported chat tools fails schema validation (BR-10)."""
+    from staff.validator import validate_role_data
+
+    valid_role_data = {
+        "name": "test-bot",
+        "title": "Test Bot",
+        "summary": "Valid summary",
+        "playbook": "docs/test.md",
+        "prompt_template": None,
+        "instructions": "Do work",
+        "providers": ["claude"],
+        "model": "default",
+        "schedule": None,
+        "window": None,
+        "repos": ["Runner_Dashboard"],
+        "scope": {},
+        "budget": {"usd_per_run": 1.0, "usd_per_day": 10.0},
+        "permissions": {
+            "lease": True,
+            "push_branch": True,
+            "open_pr": True,
+            "merge": False,
+            "host_shell": False,
+            "notify_user": False,
+        },
+        "reports_to": "user",
+        "holds": [],
+        "surface": "dashboard",
+        "chat": {"tools": ["read_run", "read_repo", "read_issue"]},
+    }
+    assert validate_role_data(valid_role_data) == []
+
+    invalid_role_data = dict(valid_role_data)
+    invalid_role_data["chat"] = {"tools": ["read_run", "execute_arbitrary_shell"]}
+    errs = validate_role_data(invalid_role_data)
+    assert any("unsupported tool" in e for e in errs)
