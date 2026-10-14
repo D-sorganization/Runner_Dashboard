@@ -121,6 +121,19 @@ All endpoints are mounted on `/api/code-requests`:
   - `reason` (string, required)
   - `is_operator_override` (boolean, optional)
 
+### 5. `GET` / `POST /api/code-requests/templates`
+
+- **GET** returns saved templates merged with the built-in templates shipped in
+  `backend/code_requests/builtin_prompts/*.md` (one template per file, named by
+  the file stem, flagged `"builtin": true`). Each template carries its body as
+  both `content` and `prompt`.
+- **POST** (`code-requests.manage`) saves `{name, content}` or `{name, prompt}`.
+  A saved template whose name matches a built-in replaces it in the listing.
+- **Built-ins:** `premortem` — a read-only, evidence-based premortem across one
+  or more repositories ("assume the project failed; explain why"), producing a
+  scored risk register, early-warning signals, mitigations and a draft-issues
+  file for human review.
+
 ---
 
 ## Label Management

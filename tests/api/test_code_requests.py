@@ -138,6 +138,24 @@ def test_code_requests_endpoints(client: TestClient, cr_env: tuple[Path, Path, P
     assert d_resp.json()["status"] == "dispatched"
 
 
+def test_templates_include_builtin_premortem_and_accept_prompt_key(
+    client: TestClient, cr_env: tuple[Path, Path, Path]
+) -> None:
+    listed = client.get("/api/code-requests/templates").json()["templates"]
+    premortem = next(t for t in listed if t["name"] == "premortem")
+    assert premortem["builtin"] is True
+    assert "PREMORTEM" in premortem["prompt"]
+
+    # The Code Requests page posts {name, prompt}; it must save, and override the built-in.
+    saved = client.post("/api/code-requests/templates", json={"name": "premortem", "prompt": "My premortem"})
+    assert saved.status_code == 200
+    listed = client.get("/api/code-requests/templates").json()["templates"]
+    mine = [t for t in listed if t["name"] == "premortem"]
+    assert len(mine) == 1
+    assert mine[0]["prompt"] == "My premortem"
+    assert "builtin" not in mine[0]
+
+
 def test_deprecated_feature_requests_endpoints(client: TestClient, cr_env: tuple[Path, Path, Path]) -> None:
     code_path, _, _ = cr_env
     data = [{"id": "200", "repository": "Runner_Dashboard", "prompt": "Deprecated"}]

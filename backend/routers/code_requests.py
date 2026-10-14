@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import config_schema
+from code_requests.builtin_templates import load_builtin_templates, merge_with_builtins
 from code_requests.dispatch_service import (
     HISTORY_LOCK,
     HISTORY_PATH,
@@ -166,7 +167,10 @@ async def list_prompt_templates() -> dict:
         )
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         pn_data = {"notes": "", "enabled": True}
-    return {"templates": t_data, "standards": STANDARDS_INJECTION, "promptNotes": pn_data}
+    if not isinstance(t_data, list):
+        t_data = []
+    templates = merge_with_builtins(t_data, load_builtin_templates())
+    return {"templates": templates, "standards": STANDARDS_INJECTION, "promptNotes": pn_data}
 
 
 @router.post("/api/code-requests/templates")
@@ -177,7 +181,9 @@ async def save_prompt_template(
 ) -> dict:
     """Save a prompt template."""
     body = await request.json()
-    name, content = str(body.get("name", "")).strip(), str(body.get("content", "")).strip()
+    # The Code Requests page posts {name, prompt}; API clients post {name, content}.
+    name = str(body.get("name", "")).strip()
+    content = str(body.get("content") or body.get("prompt") or "").strip()
     if not name or not content:
         raise HTTPException(status_code=422, detail="name and content required")
     async with _prompt_templates_lock:
