@@ -193,7 +193,7 @@ describe("listRoleThreads and resumeMissionThread (#1806, BR-13)", () => {
 
   it("formats mission names cleanly", () => {
     expect(getRoleMissionName(thread({ id: "thread-xyz", title: "Investigate Drifts" }))).toBe("Investigate Drifts");
-    expect(getRoleMissionName(thread({ id: "thread-xyz", title: "" }))).toBe("Conversation (thread-)");
+    expect(getRoleMissionName(thread({ id: "thread-xyz", title: "" }))).toBe("Conversation (thread-x)");
   });
 });
 
