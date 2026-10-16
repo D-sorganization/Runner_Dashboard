@@ -204,3 +204,13 @@ class TestTmpLitterGC:
         full_idx = cleanup_text.index('elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then', guard_idx)
         full_block = cleanup_text[full_idx : cleanup_text.index("else", full_idx)]
         assert "cleanup_tmp" in full_block
+
+
+def test_every_image_prune_spares_keep_labelled_images(cleanup_text: str) -> None:
+    """Images labelled ``keep`` (e.g. the UpstreamDrift explorer / ud-sim images)
+    must survive both the age-windowed and the disk-pressure prune; a plain
+    `image prune --all` deleted them repeatedly (UpstreamDrift #12878)."""
+    prune_lines = [line for line in cleanup_text.splitlines() if "docker image prune" in line]
+    assert prune_lines, "expected docker image prune calls"
+    for line in prune_lines:
+        assert "label!=keep" in line, f"image prune does not spare keep: {line.strip()}"

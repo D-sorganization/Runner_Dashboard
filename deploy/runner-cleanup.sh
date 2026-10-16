@@ -442,7 +442,9 @@ cleanup_docker() {
         # Disk pressure: reclaim everything reclaimable, ignoring age windows.
         # `prune` only ever removes STOPPED containers, UNUSED images, DANGLING
         # volumes, and idle build cache, so running jobs / in-use volumes /
-        # active buildx builders are never touched.
+        # active buildx builders are never touched. Images carrying the `keep`
+        # label (docker build --label keep=true) are spared: they are slow,
+        # WAN-bound rebuilds that other sessions depend on.
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force; fi
         run docker builder prune --all --force
         # buildx builders keep their own cache pools; prune those too when the
@@ -451,12 +453,12 @@ cleanup_docker() {
         if docker buildx version >/dev/null 2>&1; then
             run docker buildx prune --all --force
         fi
-        run docker image prune --all --force
+        run docker image prune --all --force --filter "label!=keep"
         run docker volume prune --force
     else
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force --filter "until=72h"; fi
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-        run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"
+        run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}" --filter "label!=keep"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
     fi
     if [[ "$PRUNE_ORPHAN_BUILDX_STATE" == "1" ]]; then cleanup_orphan_buildx_state; fi
