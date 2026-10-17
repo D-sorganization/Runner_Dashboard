@@ -125,6 +125,15 @@ def _install_current_hooks(host: _Host) -> None:
         dst.chmod(0o755)
 
 
+def _wire_clean_host(host: _Host) -> None:
+    """Hooks installed from the source, one fully wired unit, no .env overrides."""
+    for hook in ("job-started.sh", "job-completed.sh", "force-drain.sh"):
+        dst = host.hook_dir / hook
+        dst.write_bytes((host.src_dir / hook).read_bytes())
+        dst.chmod(0o755)
+    host.add_unit("r1", host.wired_env())
+
+
 def test_restore_scripts_have_lf_endings() -> None:
     for script in (RESTORE, JOB_COMPLETED):
         assert b"\r" not in script.read_bytes()
@@ -199,8 +208,7 @@ def test_unit_pointing_at_a_foreign_hook_is_rewired(host: _Host) -> None:
 
 @pytest.mark.skipif(os.name != "posix", reason="--check reads exec bits, which are POSIX-only")
 def test_fully_wired_host_is_a_noop(host: _Host) -> None:
-    _install_current_hooks(host)
-    host.add_unit("r1", environment=host.wired_env())
+    _wire_clean_host(host)
 
     assert host.run().returncode == 0
     assert host.systemctl_calls() == []
@@ -273,6 +281,47 @@ def test_check_mode_reports_all_drift_and_writes_nothing(host: _Host) -> None:
     assert (runner / ".env").read_text(encoding="utf-8") == _LEGACY_ENV
     assert host.systemctl_calls() == []
     assert not (host.prom / "runner_hooks.prom").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="exec bits are POSIX-only")
+def test_check_passes_when_hooks_match_their_source(host: _Host) -> None:
+    _wire_clean_host(host)
+
+    result = host.run("--check")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(os.name != "posix", reason="exec bits are POSIX-only")
+def test_check_reports_a_missing_hook_source_dir(host: _Host) -> None:
+    """ControlTower/OGLaptop 2026-10-17: /opt/runner-dashboard absent, restore a silent no-op (#1977)."""
+    _wire_clean_host(host)
+    for hook in host.src_dir.iterdir():
+        hook.unlink()
+    host.src_dir.rmdir()
+
+    result = host.run("--check")
+
+    assert result.returncode == 1
+    assert "[DRIFT]" in result.stdout and "source" in result.stdout
+
+
+@pytest.mark.skipif(os.name != "posix", reason="exec bits are POSIX-only")
+def test_check_reports_an_installed_hook_that_differs_from_source(host: _Host) -> None:
+    """DeskComputer 2026-10-17: the source was a stale 2026-07-31 checkout (#1977)."""
+    _wire_clean_host(host)
+    (host.hook_dir / "job-started.sh").write_text("# newer installed job-started.sh\n", encoding="utf-8")
+
+    result = host.run("--check")
+
+    assert result.returncode == 1
+    assert "job-started.sh" in result.stdout and "differs" in result.stdout
+    assert (host.hook_dir / "job-started.sh").read_text(encoding="utf-8") == "# newer installed job-started.sh\n"
+
+
+def test_restore_defaults_to_the_refreshed_mirror() -> None:
+    src = RESTORE.read_text(encoding="utf-8")
+    assert 'HOOK_SRC_DIR="${HOOK_SRC_DIR:-/usr/local/share/runner-hooks}"' in src
 
 
 def test_installer_ships_restore_with_a_timer() -> None:

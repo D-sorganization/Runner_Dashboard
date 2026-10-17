@@ -22,7 +22,8 @@ class _Prefix:
         self.bin = root / "bin"
         self.sbin = root / "sbin"
         self.units = root / "units"
-        for d in (self.bin, self.sbin, self.units):
+        self.share = root / "share"
+        for d in (self.bin, self.sbin, self.units, self.share):
             d.mkdir()
         self.log = root / "systemctl.log"
         self.systemctl = root / "fake-systemctl"
@@ -35,6 +36,7 @@ class _Prefix:
             "MAINT_BIN_DIR": as_bash_path(self.bin),
             "MAINT_SBIN_DIR": as_bash_path(self.sbin),
             "MAINT_UNIT_DIR": as_bash_path(self.units),
+            "MAINT_SHARE_DIR": as_bash_path(self.share),
             "MAINT_SUDO": "",
             "MAINT_SYSTEMCTL": as_bash_path(self.systemctl),
         }
@@ -230,3 +232,78 @@ def test_check_mode_reports_restore_script_drift(prefix: _Prefix) -> None:
 def test_missing_restore_script_is_not_provisioned(prefix: _Prefix) -> None:
     assert prefix.run().returncode == 0
     assert not (prefix.bin / "runner-hooks-restore").exists()
+
+
+# --- the restore timer's hook source (#1977) ------------------------------------
+# HOOK_SRC_DIR was /opt/runner-dashboard/deploy/runner-hooks: a 2026-07-31 checkout
+# on DeskComputer, absent on ControlTower and OGLaptop (restore silently a no-op).
+# Refresh now keeps a mirror of the repo hooks current and points the unit at it.
+
+_HOOKS = ("job-started.sh", "job-completed.sh", "force-drain.sh")
+_SOURCE_DROPIN = "runner-hooks-restore.service.d/20-hook-source.conf"
+
+
+def _provision_restore(prefix: _Prefix) -> None:
+    (prefix.bin / "runner-hooks-restore").write_bytes((DEPLOY / "runner-hooks-restore.sh").read_bytes())
+    (prefix.units / "runner-hooks-restore.service").write_text(
+        "[Service]\nEnvironment=HOOK_SRC_DIR=/opt/runner-dashboard/deploy/runner-hooks\n", encoding="utf-8"
+    )
+
+
+def test_hook_source_mirror_is_created_and_matches_repo(prefix: _Prefix) -> None:
+    _provision_restore(prefix)
+
+    result = prefix.run()
+
+    assert result.returncode == 0, result.stderr
+    for hook in _HOOKS:
+        assert (prefix.share / "runner-hooks" / hook).read_bytes() == (DEPLOY / "runner-hooks" / hook).read_bytes()
+
+
+def test_stale_hook_source_mirror_is_refreshed(prefix: _Prefix) -> None:
+    _provision_restore(prefix)
+    mirror = prefix.share / "runner-hooks"
+    mirror.mkdir()
+    (mirror / "job-started.sh").write_text("# 2026-07-31 job-started\n", encoding="utf-8")
+
+    assert prefix.run().returncode == 0
+    assert (mirror / "job-started.sh").read_bytes() == (DEPLOY / "runner-hooks" / "job-started.sh").read_bytes()
+
+
+def test_restore_unit_is_pointed_at_the_mirror_with_one_daemon_reload(prefix: _Prefix) -> None:
+    _provision_restore(prefix)
+
+    result = prefix.run()
+
+    assert result.returncode == 0, result.stderr
+    dropin = (prefix.units / _SOURCE_DROPIN).read_text(encoding="utf-8")
+    assert f"Environment=HOOK_SRC_DIR={as_bash_path(prefix.share / 'runner-hooks')}" in dropin
+    assert prefix.systemctl_calls().count("daemon-reload") == 1
+
+    prefix.log.unlink()
+    assert prefix.run().returncode == 0
+    assert prefix.systemctl_calls() == []
+
+
+def test_host_without_restore_gets_no_mirror_or_dropin(prefix: _Prefix) -> None:
+    assert prefix.run().returncode == 0
+    assert not (prefix.share / "runner-hooks").exists()
+    assert not (prefix.units / _SOURCE_DROPIN).exists()
+
+
+def test_check_mode_reports_missing_mirror_and_dropin_without_writing(prefix: _Prefix) -> None:
+    _provision_restore(prefix)
+
+    result = prefix.run("--check")
+
+    assert result.returncode == 1
+    assert "runner-hooks" in result.stdout and "20-hook-source.conf" in result.stdout
+    assert not (prefix.share / "runner-hooks").exists()
+    assert not (prefix.units / _SOURCE_DROPIN).exists()
+    assert prefix.systemctl_calls() == []
+
+
+def test_installer_points_restore_at_the_mirror() -> None:
+    src = (DEPLOY / "install-runner-maintenance.sh").read_text(encoding="utf-8")
+    assert "/opt/runner-dashboard" not in src
+    assert "/usr/local/share/runner-hooks" in src
