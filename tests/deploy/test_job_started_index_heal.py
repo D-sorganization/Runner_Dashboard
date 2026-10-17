@@ -533,6 +533,29 @@ def test_quarantined_workspace_is_reseeded_from_a_healthy_sibling(tmp_path: Path
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
+def test_a_sibling_running_a_job_is_not_the_preferred_seed(tmp_path: Path) -> None:
+    # `bin` is a symlink to `bin.<version>`, so a live worker's argv reads
+    # `<runner>/bin.2.337.0/Runner.Worker`; matching `<runner>/bin/Runner.Worker`
+    # saw every runner as idle (2026-10-17, two jobs killed by a reseed).
+    src = _make_source(tmp_path)
+    root = tmp_path / "runners"
+    busy = _clone(src, _runner_ws(root, "runner-2"))
+    idle = _clone(src, _runner_ws(root, "runner-3"))
+    _git(idle, "-c", "user.email=ci@example.invalid", "-c", "user.name=ci", "commit", "-q", "--allow-empty", "-m", "idle")
+    ws = _poisoned_ws(root, src)
+    worker_argv0 = f"{root / 'runner-2' / 'bin.2.337.0' / 'Runner.Worker'} spawnclient 1 2"
+    worker = subprocess.Popen([find_bash() or "bash", "-c", 'exec -a "$0" sleep 60', worker_argv0])
+    try:
+        assert _run_hook(ws, _seed_env(root)) == 0
+    finally:
+        worker.kill()
+        worker.wait()
+
+    assert _git(ws, "rev-parse", "HEAD").stdout == _git(idle, "rev-parse", "HEAD").stdout, "the idle sibling must seed"
+    assert _git(ws, "rev-parse", "HEAD").stdout != _git(busy, "rev-parse", "HEAD").stdout
+
+
+@pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
 def test_quarantine_without_a_sibling_leaves_an_empty_dir(tmp_path: Path) -> None:
     src = _make_source(tmp_path)
     root = tmp_path / "runners"

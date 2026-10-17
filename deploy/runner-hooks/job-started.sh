@@ -339,6 +339,20 @@ _seed_is_healthy() {
     [ -z "$(_sparse_reason "$c")" ]
 }
 
+# _runner_has_worker <runner_dir>: a Runner.Worker of that runner is alive.
+# `bin` is a symlink to `bin.<version>`, and the worker's argv names the
+# versioned dir, so match both literally (a pgrep regex on `<dir>/bin/` saw
+# every runner as idle).
+_runner_has_worker() {
+    local dir="$1" cmd
+    while IFS= read -r cmd; do
+        case "$cmd" in
+            "$dir"/bin/Runner.Worker* | "$dir"/bin.*/Runner.Worker*) return 0 ;;
+        esac
+    done < <(pgrep -af 'Runner\.Worker' 2>/dev/null | cut -d' ' -f2-)
+    return 1
+}
+
 # _pick_seed <workspace>: print the best sibling workspace, or fail.
 _pick_seed() {
     local ws="$1" own rel roots root c sib_runner busy_pick="" n=0
@@ -354,7 +368,7 @@ _pick_seed() {
             n=$((n + 1))
             [ "$n" -le 32 ] || break 2
             _seed_is_healthy "$c" || continue
-            if pgrep -f "$sib_runner/bin/Runner.Worker" >/dev/null 2>&1; then
+            if _runner_has_worker "$sib_runner"; then
                 [ -n "$busy_pick" ] || busy_pick="$c"
                 continue
             fi
