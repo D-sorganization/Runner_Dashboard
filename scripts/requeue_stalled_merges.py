@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-# Vendored from Repository_Management scripts/requeue_stalled_merges.py
-# (RM commit 8073b05d; RM#2027, RM#2029, RM#2033). Re-sync from upstream; do not fork.
-# No local changes except ruff format at this repository's line length.
-# Imports automerge_guard by path, so it must sit beside scripts/automerge_guard.py.
 """Enqueue green, armed PRs that the merge queue never picked up (#2018).
 
 When auto-merge is armed while a PR's required checks are still running,
@@ -46,7 +42,10 @@ Enqueue = Callable[[str, int], tuple[bool, str]]
 DEFAULT_LIMIT = 10
 _REPO_SLUG = re.compile(r"^[\w.-]+/[\w.-]+$")
 _OPEN_ARMED_JQ = ".[] | select(.draft | not) | select(.auto_merge != null) | .number"
-_QUEUE_EVENTS_JQ = '.[] | select(.event == "added_to_merge_queue" or .event == "removed_from_merge_queue") | .event'
+_QUEUE_EVENTS_JQ = (
+    '.[] | select(.event == "added_to_merge_queue" '
+    'or .event == "removed_from_merge_queue") | .event'
+)
 
 
 @dataclass(frozen=True)
@@ -76,7 +75,9 @@ def open_armed_prs(repo: str, run: CommandRunner) -> list[int]:
     A PR already in the merge queue reads ``auto_merge: null``, so it never
     appears here; :func:`is_stalled` checks the timeline as well regardless.
     """
-    lines = _gh_lines(run, [f"repos/{repo}/pulls?state=open&per_page=100", "--jq", _OPEN_ARMED_JQ])
+    lines = _gh_lines(
+        run, [f"repos/{repo}/pulls?state=open&per_page=100", "--jq", _OPEN_ARMED_JQ]
+    )
     return [int(line) for line in lines]
 
 
