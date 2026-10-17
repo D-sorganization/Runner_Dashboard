@@ -197,6 +197,7 @@ def test_unit_pointing_at_a_foreign_hook_is_rewired(host: _Host) -> None:
     assert host.dropin("old").exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="--check reads exec bits, which are POSIX-only")
 def test_fully_wired_host_is_a_noop(host: _Host) -> None:
     _install_current_hooks(host)
     host.add_unit("r1", environment=host.wired_env())
