@@ -35,7 +35,7 @@ is an empty pattern set. An empty pattern set matches nothing, so
 `unpack-trees` concludes **every** path belongs outside the working tree:
 `git checkout --force <ref>` empties the tree and exits 0.
 
-The quoted message is git's `WARNING_SPARSE_NOT_UPTODATE_FILE` — a *warning*
+The quoted message is git's `WARNING_SPARSE_NOT_UPTODATE_FILE` — a _warning_
 emitted on the sparse code path for paths it wanted to prune but could not.
 It is not the ordinary `ERROR_NOT_UPTODATE_FILE` ("Entry '%s' not uptodate.
 Cannot merge."), which would abort the checkout. That distinction is the tell:
@@ -64,7 +64,7 @@ stat-dirty, `git status --porcelain` empty, ctime diverged by ~17 minutes
 while mtime, size and inode matched exactly.
 
 The sweep hits **every runner on the host**, so the job that runs the `chown`
-is usually *not* the job that fails. Known offenders:
+is usually _not_ the job that fails. Known offenders:
 
 - `UpstreamDrift/.github/workflows/cross-engine-equivalence.yml` (2 sites)
 - `Tools_Private/.github/workflows/ci-standard.yml` (2 sites)
@@ -128,7 +128,7 @@ modifications. Then re-run the failed jobs
 
 > **Do not** "fix" this by adding `chown -R` or `chmod -R` to a runner hook.
 > That is the cause, not the cure: it would invalidate the stat cache on
-> *every* job rather than occasionally.
+> _every_ job rather than occasionally.
 
 ## Workspace residue from a previous job
 
@@ -136,11 +136,11 @@ Diagnosed 2026-10-17 on DeskComputer (Gasification_Model). Self-hosted runners
 reuse `_work/<repo>/<repo>`, and three kinds of residue break the next job's
 `actions/checkout`:
 
-| Residue | Symptom | Hook action |
-| --- | --- | --- |
-| Sparse / skip-worktree state (`sparse-checkout:` in a previous job, worst with `sparse-checkout-cone-mode: false`) | `Path '...' not uptodate; will not remove from working tree`, then `Can't find 'action.yml' under .github/actions/...` | Repaired **in place** when every index blob is present: `sparse-checkout disable`, drop the pattern file and config, clear skip-worktree bits, `checkout --force HEAD -- .`. A failed repair falls back to quarantine. |
-| Partial clone (`--filter=blob:none`) with **missing** index blobs | Checkout's `git clean -ffdx` / `git reset --hard HEAD` run *before* its auth extraheader is set, so each missing blob is lazy-fetched without credentials: `unable to read sha1 file of <path>`, then three `fatal: Authentication failed` per file; the step looks hung for 10+ minutes | **Quarantined**, then reseeded from a local sibling (below). `git sparse-checkout disable` does not fix this. |
-| Stale `.git/**.lock` from a killed job | Checkout cannot lock the index | `*.lock` older than 1 minute under this workspace's own `.git` (including `.git/modules/**`) is removed. |
+| Residue                                                                                                            | Symptom                                                                                                                                                                                                                                                                                  | Hook action                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sparse / skip-worktree state (`sparse-checkout:` in a previous job, worst with `sparse-checkout-cone-mode: false`) | `Path '...' not uptodate; will not remove from working tree`, then `Can't find 'action.yml' under .github/actions/...`                                                                                                                                                                   | Repaired **in place** when every index blob is present: `sparse-checkout disable`, drop the pattern file and config, clear skip-worktree bits, `checkout --force HEAD -- .`. A failed repair falls back to quarantine. |
+| Partial clone (`--filter=blob:none`) with **missing** index blobs                                                  | Checkout's `git clean -ffdx` / `git reset --hard HEAD` run _before_ its auth extraheader is set, so each missing blob is lazy-fetched without credentials: `unable to read sha1 file of <path>`, then three `fatal: Authentication failed` per file; the step looks hung for 10+ minutes | **Quarantined**, then reseeded from a local sibling (below). `git sparse-checkout disable` does not fix this.                                                                                                          |
+| Stale `.git/**.lock` from a killed job                                                                             | Checkout cannot lock the index                                                                                                                                                                                                                                                           | `*.lock` older than 1 minute under this workspace's own `.git` (including `.git/modules/**`) is removed.                                                                                                               |
 
 A promisor clone whose index blobs are all present is **healthy** and is left
 alone: once checkout's auth is set, later lazy fetches work. ControlTower (a
