@@ -198,3 +198,35 @@ def test_current_runner_hooks_pass_check(prefix: _Prefix) -> None:
         (hook_dir / hook).write_bytes((DEPLOY / "runner-hooks" / hook).read_bytes())
 
     assert prefix.run("--check").returncode == 0
+
+
+# --- runner-hooks-restore itself (#1975) --------------------------------------
+# DeskComputer 2026-10-17: refresh installed the #1971 hooks at 13:39Z and the
+# installed pre-#1971 restore script ("differs from source -> reinstall")
+# downgraded them from a stale /opt checkout at 13:43Z, on every 5-min tick.
+
+
+def test_stale_installed_restore_script_is_refreshed(prefix: _Prefix) -> None:
+    installed = prefix.bin / "runner-hooks-restore"
+    installed.write_text("# pre-#1971 restore that rewrites hook content\n", encoding="utf-8")
+
+    result = prefix.run()
+
+    assert result.returncode == 0, result.stderr
+    assert installed.read_bytes() == (DEPLOY / "runner-hooks-restore.sh").read_bytes()
+
+
+def test_check_mode_reports_restore_script_drift(prefix: _Prefix) -> None:
+    installed = prefix.bin / "runner-hooks-restore"
+    installed.write_text("# old\n", encoding="utf-8")
+
+    result = prefix.run("--check")
+
+    assert result.returncode == 1
+    assert "runner-hooks-restore" in result.stdout
+    assert installed.read_text(encoding="utf-8") == "# old\n"
+
+
+def test_missing_restore_script_is_not_provisioned(prefix: _Prefix) -> None:
+    assert prefix.run().returncode == 0
+    assert not (prefix.bin / "runner-hooks-restore").exists()
