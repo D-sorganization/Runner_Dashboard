@@ -13,12 +13,14 @@
 #   wsl-cache-trim.{service,timer}  /etc/systemd/system  (daemon-reload on change)
 #   runner-hooks/{job-started,job-completed,force-drain}.sh  /usr/local/bin/runner-hooks
 #   runner-hooks-restore        /usr/local/bin           (from runner-hooks-restore.sh, #1975)
+#   runner-hooks/*.sh mirror    /usr/local/share/runner-hooks  (restore's source, #1977)
+#   runner-hooks-restore.service.d/20-hook-source.conf   (points restore at the mirror)
 #
 # The runner hooks are refreshed here, from the deployed repo copy, because
 # runner-hooks-restore.timer deliberately only restores a MISSING hook: its
-# source (/opt/runner-dashboard) went stale on DeskComputer (a 2026-07-31
-# commit) and would otherwise pin hosts to an old job-started.sh. Hooks are
-# read fresh per job, so no runner restart is needed.
+# old source (/opt/runner-dashboard) went stale on DeskComputer (a 2026-07-31
+# commit) and was absent on ControlTower and OGLaptop. Hooks are read fresh
+# per job, so no runner restart is needed.
 #
 # It never provisions a host that was not set up by install-runner-maintenance.sh,
 # and it skips the scheduler on qualified-release hosts, whose runner-scheduler
@@ -29,7 +31,7 @@
 #   bash deploy/refresh-maintenance-assets.sh --check   # report drift, exit 1, write nothing
 #
 # Overrides (tests): MAINT_BIN_DIR, MAINT_SBIN_DIR, MAINT_UNIT_DIR, MAINT_HOOK_DIR,
-# MAINT_SUDO (empty = run as the current user), MAINT_SYSTEMCTL.
+# MAINT_SHARE_DIR, MAINT_SUDO (empty = run as the current user), MAINT_SYSTEMCTL.
 
 set -euo pipefail
 
@@ -38,6 +40,8 @@ BIN_DIR="${MAINT_BIN_DIR:-/usr/local/bin}"
 SBIN_DIR="${MAINT_SBIN_DIR:-/usr/local/sbin}"
 UNIT_DIR="${MAINT_UNIT_DIR:-/etc/systemd/system}"
 HOOK_DIR="${MAINT_HOOK_DIR:-$BIN_DIR/runner-hooks}"
+SHARE_DIR="${MAINT_SHARE_DIR:-/usr/local/share}"
+HOOK_SRC_MIRROR="$SHARE_DIR/runner-hooks"
 SYSTEMCTL="${MAINT_SYSTEMCTL:-systemctl}"
 read -r -a SUDO <<< "${MAINT_SUDO-sudo -n}"
 
@@ -55,16 +59,23 @@ UNITS_CHANGED=0
 # Installs <src> over <dest> when their bytes differ. Only touches assets that are
 # already installed (callers decide provisioning), so an absent <dest> is skipped.
 refresh_asset() {
+    local src="$1" dest="$2"
+    [[ -f "$dest" ]] || return 0
+    sync_asset "$@"
+}
+
+# sync_asset <src> <dest> <mode> [unit]
+# Like refresh_asset, but also creates an absent <dest> (and its directory).
+sync_asset() {
     local src="$1" dest="$2" mode="$3" is_unit="${4:-}"
     [[ -f "$src" ]] || { echo "[WARN] source missing, skipped: $src" >&2; return 0; }
-    [[ -f "$dest" ]] || return 0
-    cmp -s "$src" "$dest" && return 0
+    [[ -f "$dest" ]] && cmp -s "$src" "$dest" && return 0
     DRIFT=1
     if [[ "$MODE" == check ]]; then
         echo "[DRIFT] $dest differs from $src"
         return 0
     fi
-    "${SUDO[@]}" install -m "$mode" "$src" "$dest"
+    "${SUDO[@]}" install -D -m "$mode" "$src" "$dest"
     echo "[ OK ] refreshed $dest"
     [[ -z "$is_unit" ]] || UNITS_CHANGED=1
 }
@@ -92,6 +103,26 @@ done
 # a pre-#1971 copy reinstalls any hook whose content differs from its (possibly
 # stale) HOOK_SRC_DIR, undoing the hook refresh above within one tick.
 refresh_asset "$SCRIPT_DIR/runner-hooks-restore.sh" "$BIN_DIR/runner-hooks-restore" 0755
+
+# The restore timer's hook source (#1977). Its old HOOK_SRC_DIR was a repo
+# checkout under /opt that nothing kept current (stale on DeskComputer, absent
+# on ControlTower and OGLaptop), so a deleted hook came back old or not at all.
+# On a host with the restore installed, keep a mirror of the repo hooks and
+# point the unit at it through a drop-in that overrides the installer's value.
+if [[ -f "$BIN_DIR/runner-hooks-restore" ]]; then
+    for hook in job-started.sh job-completed.sh force-drain.sh; do
+        sync_asset "$SCRIPT_DIR/runner-hooks/$hook" "$HOOK_SRC_MIRROR/$hook" 0755
+    done
+    if [[ -f "$UNIT_DIR/runner-hooks-restore.service" ]]; then
+        source_dropin="$(mktemp)"
+        trap 'rm -f "$source_dropin"' EXIT
+        printf '%s\n' \
+            "# Managed by deploy/refresh-maintenance-assets.sh (#1977) -- do not hand-edit." \
+            "[Service]" \
+            "Environment=HOOK_SRC_DIR=$HOOK_SRC_MIRROR" >"$source_dropin"
+        sync_asset "$source_dropin" "$UNIT_DIR/runner-hooks-restore.service.d/20-hook-source.conf" 0644 unit
+    fi
+fi
 
 if [[ "$UNITS_CHANGED" == 1 ]]; then
     "${SUDO[@]}" "$SYSTEMCTL" daemon-reload

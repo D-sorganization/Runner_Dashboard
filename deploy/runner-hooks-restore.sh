@@ -13,12 +13,19 @@
 #    and only chmods it back to 0755 when it is present but not executable.
 #
 #    Rule (2026-10-17): this timer never rewrites the CONTENT of an installed
-#    hook.  Its HOOK_SRC_DIR (/opt/runner-dashboard) is not kept current on
-#    every host -- DeskComputer's checkout sat at a 2026-07-31 commit -- so a
-#    "differs from source" rule silently DOWNGRADED the newer hooks that
-#    refresh-maintenance-assets.sh installs from the deployed repo copy.
-#    Content drift is refresh-maintenance-assets.sh's job (it runs on every
-#    update-deployed.sh); this timer only guarantees the files exist and run.
+#    hook.  Its old HOOK_SRC_DIR (/opt/runner-dashboard) was not kept current
+#    -- DeskComputer's checkout sat at a 2026-07-31 commit, ControlTower and
+#    OGLaptop had none -- so a "differs from source" rule silently DOWNGRADED
+#    the newer hooks that refresh-maintenance-assets.sh installs from the
+#    deployed repo copy.  Content drift is refresh-maintenance-assets.sh's job
+#    (it runs on every update-deployed.sh); this timer only guarantees the
+#    files exist and run.
+#
+#    Source (#1977): refresh-maintenance-assets.sh keeps a mirror of the repo
+#    hooks at /usr/local/share/runner-hooks and points this unit at it, so a
+#    restored hook is the current one.  --check reports a missing source dir
+#    or an installed hook that differs from its source as drift, so a stale
+#    or absent source is never silent again.
 #
 # 2. Unit wiring.  Every actions.runner.*.service must carry
 #      ACTIONS_RUNNER_HOOK_JOB_STARTED=${HOOK_DIR}/job-started.sh
@@ -49,7 +56,8 @@
 #
 # Inputs (env, all optional):
 #   HOOK_SRC_DIR     — source dir containing the *.sh hooks
-#                      (default: /opt/runner-dashboard/deploy/runner-hooks)
+#                      (default: /usr/local/share/runner-hooks, the mirror
+#                      refresh-maintenance-assets.sh keeps current)
 #   HOOK_DIR         — install dir consulted by the runner
 #                      (default: /usr/local/bin/runner-hooks)
 #   PROM_FILE        — Prometheus textfile output path
@@ -59,7 +67,7 @@
 
 set -Eeuo pipefail
 
-HOOK_SRC_DIR="${HOOK_SRC_DIR:-/opt/runner-dashboard/deploy/runner-hooks}"
+HOOK_SRC_DIR="${HOOK_SRC_DIR:-/usr/local/share/runner-hooks}"
 HOOK_DIR="${HOOK_DIR:-/usr/local/bin/runner-hooks}"
 TEXTFILE_COLLECTOR_DIR="${TEXTFILE_COLLECTOR_DIR:-/var/lib/node_exporter/textfile_collector}"
 PROM_FILE="${PROM_FILE:-${TEXTFILE_COLLECTOR_DIR}/runner_hooks.prom}"
@@ -90,14 +98,24 @@ log() { echo "runner-hooks-restore: $*"; }
 
 # -- 1. hook presence ---------------------------------------------------------
 if [[ ! -d "${HOOK_SRC_DIR}" ]]; then
-    log "source dir ${HOOK_SRC_DIR} not present; nothing to restore from" >&2
     missing_src=1
+    drift=1
+    if [[ "$MODE" == check ]]; then
+        log "[DRIFT] hook source dir ${HOOK_SRC_DIR} missing; a deleted hook cannot be restored"
+    else
+        log "source dir ${HOOK_SRC_DIR} not present; nothing to restore from" >&2
+    fi
 fi
 [[ "$MODE" == check ]] || install -d -m 0755 "${HOOK_DIR}"
 for hook in "${HOOKS[@]}"; do
     src="${HOOK_SRC_DIR}/${hook}"
     dst="${HOOK_DIR}/${hook}"
     if [[ -f "${dst}" && -x "${dst}" ]]; then
+        # Report only: refresh-maintenance-assets.sh owns content (see rule above).
+        if [[ "$MODE" == check && -f "${src}" ]] && ! cmp -s "${src}" "${dst}"; then
+            drift=1
+            log "[DRIFT] ${dst} differs from source ${src}; run refresh-maintenance-assets.sh"
+        fi
         continue
     fi
     drift=1
