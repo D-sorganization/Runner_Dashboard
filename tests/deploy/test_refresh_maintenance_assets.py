@@ -147,3 +147,54 @@ def test_update_deployed_and_deploy_check_wire_the_refresh() -> None:
     check = (DEPLOY / "deploy-check.sh").read_text(encoding="utf-8")
     assert "refresh-maintenance-assets.sh" in update
     assert "refresh-maintenance-assets.sh" in check and "--check" in check
+
+
+# --- runner hooks (2026-10-17): the restore timer only restores MISSING hooks, so
+# content drift must be fixed here, from the deployed repo copy. -------------------
+
+HOOKS = ("job-started.sh", "job-completed.sh", "force-drain.sh")
+
+
+def _install_hooks(prefix: _Prefix, text: str = "# stale 3,697-byte hook\n") -> Path:
+    hook_dir = prefix.bin / "runner-hooks"
+    hook_dir.mkdir()
+    for hook in HOOKS:
+        (hook_dir / hook).write_text(text, encoding="utf-8")
+    return hook_dir
+
+
+def test_stale_runner_hooks_are_refreshed_from_repo(prefix: _Prefix) -> None:
+    hook_dir = _install_hooks(prefix)
+
+    result = prefix.run()
+
+    assert result.returncode == 0, result.stderr
+    for hook in HOOKS:
+        assert (hook_dir / hook).read_bytes() == (DEPLOY / "runner-hooks" / hook).read_bytes()
+
+
+def test_missing_runner_hooks_are_not_provisioned(prefix: _Prefix) -> None:
+    """An absent hook is runner-hooks-restore.sh's job; refresh only fixes drift."""
+    result = prefix.run()
+
+    assert result.returncode == 0, result.stderr
+    assert not (prefix.bin / "runner-hooks").exists()
+
+
+def test_check_mode_reports_runner_hook_drift_without_writing(prefix: _Prefix) -> None:
+    hook_dir = _install_hooks(prefix)
+
+    result = prefix.run("--check")
+
+    assert result.returncode == 1
+    assert "job-started.sh" in result.stdout
+    assert (hook_dir / "job-started.sh").read_text(encoding="utf-8") == "# stale 3,697-byte hook\n"
+
+
+def test_current_runner_hooks_pass_check(prefix: _Prefix) -> None:
+    hook_dir = prefix.bin / "runner-hooks"
+    hook_dir.mkdir()
+    for hook in HOOKS:
+        (hook_dir / hook).write_bytes((DEPLOY / "runner-hooks" / hook).read_bytes())
+
+    assert prefix.run("--check").returncode == 0

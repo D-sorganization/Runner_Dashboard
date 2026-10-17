@@ -113,35 +113,424 @@ fi
 # `extensions.worktreeConfig`, which orphans the `.git/config.worktree` that
 # `disable` had just written `core.sparseCheckout=false` into.  Clearing the
 # state outright at job start makes that sequence a no-op.
-_neutralise_sparse_checkout() {
-    _ws="$1"
-    _sparse=$(git -C "$_ws" config --get core.sparseCheckout 2>/dev/null || true)
-    _patterns="$_ws/.git/info/sparse-checkout"
-    # A genuine sparse checkout (config on AND patterns present) is left
-    # alone -- only the incoherent "on with no patterns" state is cleared.
-    if [ "$_sparse" = "true" ] && [ ! -s "$_patterns" ]; then
-        echo "[runner-cleanup] clearing incoherent sparse-checkout state in $_ws" >&2
-        git -C "$_ws" config --unset-all core.sparseCheckout 2>/dev/null || true
-        git -C "$_ws" config --unset-all core.sparseCheckoutCone 2>/dev/null || true
-        git -C "$_ws" config --unset-all index.sparse 2>/dev/null || true
-        rm -f "$_patterns" 2>/dev/null || true
+#
+# -- Workspace poisoning: repair or quarantine (2026-10-17) -------------------
+# Clearing only that incoherent "on with no patterns" state was not enough.
+# A self-hosted runner reuses `_work/<repo>/<repo>` across jobs, and three
+# kinds of residue from a PREVIOUS job break the NEXT job's actions/checkout
+# (diagnosed on DeskComputer, Gasification_Model):
+#
+#   1. Sparse / skip-worktree residue.  A job that ran actions/checkout with
+#      `sparse-checkout:` (worst with `sparse-checkout-cone-mode: false`)
+#      leaves core.sparseCheckout=true, .git/info/sparse-checkout and
+#      thousands of skip-worktree index bits behind.  The next full checkout
+#      fails with "Path '...' not uptodate; will not remove from working tree"
+#      and then "Can't find 'action.yml' under .github/actions/...".
+#   2. Partial clone with MISSING blobs.  `sparse-checkout:` (or
+#      `filter: blob:none`) clones with --filter=blob:none.  The next checkout
+#      runs `git clean -ffdx` and `git reset --hard HEAD` BEFORE it installs
+#      its auth extraheader, so every blob the index references but the clone
+#      never fetched is lazy-fetched WITHOUT credentials: "unable to read sha1
+#      file of <path>" and then "fatal: Authentication failed" three times per
+#      file.  Across thousands of files the step looks hung for 10+ minutes or
+#      is cancelled.  `git sparse-checkout disable` does not fix this.
+#      A promisor clone whose index blobs are all present is HEALTHY: once
+#      checkout's auth is set, later lazy fetches work.  (ControlTower, on a
+#      ~6 Mbit/s uplink, runs 14 such workspaces; re-cloning them would hurt.)
+#   3. Stale git locks (.git/index.lock and friends, including under
+#      .git/modules/**) left by a killed job.
+#
+# The old exception -- "a genuine sparse checkout (config on AND patterns
+# present) is left alone" -- was wrong for a shared workspace: at job start
+# THIS job's checkout has not run yet, so any sparse state is foreign residue
+# from a previous job.  The heal for $GITHUB_WORKSPACE is therefore, in order:
+#
+#   a. Remove *.lock older than 1 minute under this workspace's own .git.  A
+#      runner runs one job at a time, so no live git process owns them.  (The
+#      fleet-wide scan above stays opt-in.)
+#   b. If the workspace is a partial clone or carries sparse residue, check
+#      locally that every blob the index references is present.  If any is
+#      missing -- or the check fails or times out -- QUARANTINE: rename the
+#      workspace (atomic, same filesystem, never a cross-device copy) to
+#      <runner>/_work/_quarantine/<repo>-<epoch>-<pid>, recreate the dir
+#      (steps before checkout use it as their cwd) and delete the old tree in
+#      a fully detached background process.  The new dir is RESEEDED from a
+#      healthy local sibling workspace when one exists (see "Reseed" below),
+#      so actions/checkout fetches a delta; otherwise it stays empty and
+#      actions/checkout clones.
+#   c. Sparse residue with every blob present: REPAIR IN PLACE (sparse-checkout
+#      disable, drop the pattern file and config, clear skip-worktree bits,
+#      `checkout --force HEAD -- .`).  Any failure falls back to quarantine.
+#   d. A healthy promisor clone (no missing blobs, no sparse residue) is left
+#      alone, as is a clean full clone (which is not even blob-checked).
+#   e. The --really-refresh stat heal below.
+#
+# No step may touch the network: GIT_ALLOW_PROTOCOL=none refuses every
+# transport, including lazy fetches (GIT_NO_LAZY_FETCH only exists from git
+# 2.44; the fleet runs 2.34).  Verified on git 2.34: `cat-file --batch-check`
+# then reports an absent promisor blob as "missing" instead of fetching it.
+#
+# Everything is best-effort: every git and find call is bounded by `timeout`,
+# nothing is fatal, and the hook still exits 0.  Quarantine entries whose
+# background delete was interrupted are re-reaped after
+# RUNNER_HOOK_QUARANTINE_MAX_AGE_SECONDS (1h); the nightly runner-cleanup.sh
+# pass (root) removes anything left after that.
+# RUNNER_HOOK_DISABLE_WORKSPACE_QUARANTINE=1 skips the quarantine (the
+# in-place repair still runs).
+_HOOK_GIT_TIMEOUT="${RUNNER_HOOK_GIT_TIMEOUT_SECONDS:-20}"
+_HOOK_TREE_TIMEOUT="${RUNNER_HOOK_TREE_TIMEOUT_SECONDS:-120}"
+_QUARANTINE_MAX_AGE_SECONDS="${RUNNER_HOOK_QUARANTINE_MAX_AGE_SECONDS:-3600}"
+
+# _wsgit <workspace> <args...>: bounded git against one workspace.
+_wsgit() {
+    local ws="$1"
+    shift
+    timeout "$_HOOK_GIT_TIMEOUT" git -c safe.directory='*' -C "$ws" "$@"
+}
+
+# _partial_reason <workspace>: a promisor remote or partial-clone filter.
+# `--file` means no repository discovery and no global/system config can
+# leak into the verdict.
+_partial_reason() {
+    local gd="$1/.git" cfg
+    for cfg in "$gd/config" "$gd/config.worktree"; do
+        [ -f "$cfg" ] || continue
+        if timeout "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" --get-regexp \
+                '^remote\..*\.partialclonefilter$' >/dev/null 2>&1 ||
+           timeout "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" --bool --get-regexp \
+                '^remote\..*\.promisor$' 2>/dev/null | grep -q ' true$'; then
+            printf 'partial clone'
+            return 0
+        fi
+    done
+}
+
+# _sparse_reason <workspace>: sparse config, a pattern file or skip-worktree bits.
+_sparse_reason() {
+    local ws="$1" gd="$1/.git" reasons="" cfg
+    for cfg in "$gd/config" "$gd/config.worktree"; do
+        if [ -f "$cfg" ] && [ "$(timeout "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" \
+                --bool --get core.sparseCheckout 2>/dev/null)" = "true" ]; then
+            reasons="${reasons:+$reasons, }core.sparseCheckout=true"
+            break
+        fi
+    done
+    if [ -e "$gd/info/sparse-checkout" ]; then
+        reasons="${reasons:+$reasons, }.git/info/sparse-checkout present"
+    fi
+    if _wsgit "$ws" ls-files -v 2>/dev/null | grep -q '^[Ss] '; then
+        reasons="${reasons:+$reasons, }skip-worktree entries"
+    fi
+    printf '%s' "$reasons"
+}
+
+# _blob_problem <workspace>: empty when every blob the index references is
+# present locally; otherwise why not (missing blobs, or the check failed).
+_blob_problem() {
+    local ws="$1" out st missing
+    out="$( { _wsgit "$ws" ls-files -s -z |
+              sed -z -e '/^160000 /d' -e 's/^[0-7]* \([0-9a-f]*\) .*/\1/' |
+              tr '\0' '\n' |
+              _wsgit "$ws" cat-file --batch-check='%(objectname) %(objecttype)'
+              echo "__status ${PIPESTATUS[*]}"; } 2>/dev/null )"
+    st="${out##*__status }"
+    if [ "$st" != "0 0 0 0" ]; then
+        printf 'blob check failed or timed out (status %s)' "$st"
+        return 0
+    fi
+    missing=$(printf '%s\n' "$out" | grep -c ' missing$' || true)
+    if [ "${missing:-0}" -gt 0 ]; then
+        printf '%s index blob(s) missing locally' "$missing"
     fi
 }
 
+# _repair_sparse_in_place <workspace>: returns 0 only when the workspace ends
+# up a full, non-sparse checkout of HEAD.
+_repair_sparse_in_place() {
+    local ws="$1" gd="$1/.git" cfg st
+    timeout "$_HOOK_TREE_TIMEOUT" git -c safe.directory='*' -C "$ws" \
+        sparse-checkout disable >/dev/null 2>&1 || return 1
+    rm -f "$gd/info/sparse-checkout" 2>/dev/null || return 1
+    for cfg in "$gd/config" "$gd/config.worktree"; do
+        [ -f "$cfg" ] || continue
+        git config --file "$cfg" --unset-all core.sparseCheckout 2>/dev/null
+        git config --file "$cfg" --unset-all core.sparseCheckoutCone 2>/dev/null
+        git config --file "$cfg" --unset-all index.sparse 2>/dev/null
+    done
+    git config --file "$gd/config" --unset-all extensions.worktreeConfig 2>/dev/null
+    _wsgit "$ws" ls-files -z | _wsgit "$ws" update-index -z --no-skip-worktree --stdin >/dev/null 2>&1
+    st="${PIPESTATUS[*]}"
+    [ "$st" = "0 0" ] || return 1
+    timeout "$_HOOK_TREE_TIMEOUT" git -c safe.directory='*' -C "$ws" \
+        checkout --force HEAD -- . >/dev/null 2>&1 || return 1
+    # Verify rather than trust the exit codes.
+    [ -z "$(_sparse_reason "$ws")" ]
+}
+
+# _reap_in_background <path>: delete <path> without delaying the job.  Fully
+# detached: own session, no inherited stdio (the runner waits for the hook's
+# pipes to close), cwd /, and RUNNER_TRACKING_ID dropped so the runner's
+# end-of-job orphan-process cleanup does not kill the delete.
+_reap_in_background() {
+    (
+        cd / 2>/dev/null || exit 0
+        if command -v setsid >/dev/null 2>&1; then
+            nohup env -u RUNNER_TRACKING_ID setsid nice -n 19 \
+                rm -rf --one-file-system -- "$1" </dev/null >/dev/null 2>&1 &
+        else
+            nohup env -u RUNNER_TRACKING_ID nice -n 19 \
+                rm -rf --one-file-system -- "$1" </dev/null >/dev/null 2>&1 &
+        fi
+    ) </dev/null >/dev/null 2>&1
+}
+
+# _reap_old_quarantine <qroot>: re-delete entries whose background delete was
+# interrupted.  Age comes from the <epoch> in the entry NAME, because a rename
+# does not reliably move a directory's mtime.  Bounded to 50 entries.
+_reap_old_quarantine() {
+    local qroot="$1" now entry base stamp n=0
+    [ -d "$qroot" ] || return 0
+    now=$(date +%s)
+    for entry in "$qroot"/*; do
+        [ -e "$entry" ] || continue
+        n=$((n + 1))
+        [ "$n" -le 50 ] || break
+        base="${entry##*/}"
+        stamp="${base%-*}"
+        stamp="${stamp##*-}"
+        case "$stamp" in ''|*[!0-9]*) continue ;; esac
+        [ $((now - stamp)) -gt "$_QUARANTINE_MAX_AGE_SECONDS" ] || continue
+        _reap_in_background "$entry"
+    done
+}
+
+# -- Reseed from a local sibling (2026-10-17, production evidence) -----------
+# An EMPTY workspace makes actions/checkout clone over the network.  At ~09:00Z
+# six DeskComputer runners lost their GM workspaces at once; their parallel
+# `fetch --depth=1` clones saturated the uplink, took 43 minutes and the jobs
+# were cancelled (ControlTower is on ~6 Mbit/s cellular).  Rebuilding the same
+# workspaces from a healthy sibling on local disk took 11-14 s each, after
+# which checkout fetched only a small delta.  So a quarantined workspace is
+# RESEEDED from the healthiest sibling workspace of the same repo on this host
+# (<root>/*/_work/<repo>/<repo>, never this runner's own) before falling back
+# to an empty dir:
+#
+#   git clone --no-hardlinks --no-checkout <sibling> <ws>
+#   git remote set-url origin ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
+#   cp -a <sibling>/.git/modules <ws>/.git/
+#   git checkout --force HEAD
+#
+# A sibling qualifies only with a valid HEAD, no promisor/partial-clone config,
+# no sparse residue, no skip-worktree bits and no *.lock under its .git.
+# Siblings whose runner has no live Runner.Worker are preferred (a concurrent
+# job could be mid-gc); `clone --local` only reads the source either way.
+# Every step is bounded by `timeout` with network access disabled; any failure
+# moves the half-built tree aside again and leaves the empty dir.
+# RUNNER_HOOK_SEED_ROOT (colon-separated) overrides the scanned root(s).
+_SEED_TIMEOUT="${RUNNER_HOOK_SEED_TIMEOUT_SECONDS:-120}"
+
+# _seed_is_healthy <workspace>: a full, non-sparse, unlocked clone with a HEAD.
+_seed_is_healthy() {
+    local c="$1"
+    [ -d "$c/.git" ] && [ ! -L "$c" ] && [ ! -L "$c/.git" ] || return 1
+    _wsgit "$c" rev-parse -q --verify 'HEAD^{commit}' >/dev/null 2>&1 || return 1
+    [ -z "$(_partial_reason "$c")" ] || return 1
+    [ -z "$(timeout 10 find "$c/.git" -maxdepth 4 -name '*.lock' ! -path '*/objects/*' -print -quit 2>/dev/null)" ] || return 1
+    [ -z "$(_sparse_reason "$c")" ]
+}
+
+# _runner_has_worker <runner_dir>: a Runner.Worker of that runner is alive.
+# `bin` is a symlink to `bin.<version>`, and the worker's argv names the
+# versioned dir, so match both literally (a pgrep regex on `<dir>/bin/` saw
+# every runner as idle).
+_runner_has_worker() {
+    local dir="$1" cmd
+    while IFS= read -r cmd; do
+        case "$cmd" in
+            "$dir"/bin/Runner.Worker* | "$dir"/bin.*/Runner.Worker*) return 0 ;;
+        esac
+    done < <(pgrep -af 'Runner\.Worker' 2>/dev/null | cut -d' ' -f2-)
+    return 1
+}
+
+# _pick_seed <workspace>: print the best sibling workspace, or fail.
+_pick_seed() {
+    local ws="$1" own rel roots root c sib_runner busy_pick="" n=0
+    own="${ws%%/_work/*}"
+    rel="${ws#"$own"/}"
+    roots="${RUNNER_HOOK_SEED_ROOT:-${own%/*}}"
+    while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        for c in "$root"/*/"$rel"; do
+            [ -d "$c" ] || continue
+            sib_runner="${c%%/_work/*}"
+            [ "$sib_runner" != "$own" ] || continue
+            n=$((n + 1))
+            [ "$n" -le 32 ] || break 2
+            _seed_is_healthy "$c" || continue
+            if _runner_has_worker "$sib_runner"; then
+                [ -n "$busy_pick" ] || busy_pick="$c"
+                continue
+            fi
+            printf '%s' "$c"
+            return 0
+        done
+    done < <(printf '%s\n' "$roots" | tr ':' '\n')
+    [ -n "$busy_pick" ] || return 1
+    printf '%s' "$busy_pick"
+}
+
+# _origin_url <seed>: the credential-free URL actions/checkout expects.
+_origin_url() {
+    local url
+    if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+        printf '%s/%s' "${GITHUB_SERVER_URL:-https://github.com}" "$GITHUB_REPOSITORY"
+        return 0
+    fi
+    url="$(git config --file "$1/.git/config" --get remote.origin.url 2>/dev/null || true)"
+    case "$url" in
+        https://*@*|http://*@*|'') return 1 ;;
+    esac
+    printf '%s' "$url"
+}
+
+# _reseed_workspace <workspace> <qroot>: rebuild the (empty) workspace from a
+# local sibling.  Returns 0 on success; on failure the workspace is empty.
+_reseed_workspace() {
+    local ws="$1" qroot="$2" seed url started dest
+    seed="$(_pick_seed "$ws")" || return 1
+    url="$(_origin_url "$seed")" || return 1
+    started=$(date +%s)
+    # The local clone itself is the one transport allowed here: "file" covers
+    # local paths; the seed is never a promisor, so nothing can lazy-fetch.
+    if GIT_ALLOW_PROTOCOL="file" timeout "$_SEED_TIMEOUT" git -c safe.directory='*' clone -q --no-hardlinks --no-checkout \
+            -- "$seed" "$ws" >/dev/null 2>&1 &&
+       _wsgit "$ws" remote set-url origin "$url" >/dev/null 2>&1 &&
+       { [ ! -d "$seed/.git/modules" ] ||
+         timeout "$_SEED_TIMEOUT" cp -a "$seed/.git/modules" "$ws/.git/" 2>/dev/null; } &&
+       timeout "$_SEED_TIMEOUT" git -c safe.directory='*' -C "$ws" checkout -q --force HEAD >/dev/null 2>&1 &&
+       _wsgit "$ws" rev-parse -q --verify 'HEAD^{commit}' >/dev/null 2>&1; then
+        echo "[runner-cleanup] reseeded $ws from local sibling $seed in $(( $(date +%s) - started ))s" >&2
+        return 0
+    fi
+    echo "[runner-cleanup] reseed of $ws from $seed failed; leaving it empty" >&2
+    dest="$qroot/${ws##*/}-$(date +%s)-$$-seed"
+    if mv -T -- "$ws" "$dest" 2>/dev/null; then
+        _reap_in_background "$dest"
+    else
+        rm -rf --one-file-system -- "$ws" 2>/dev/null || true
+    fi
+    mkdir -p "$ws" 2>/dev/null || true
+    return 1
+}
+
+# _note_quarantine: herd guard.  Many quarantines at once mean something
+# host-wide is poisoning workspaces (or this hook misjudges them), and every
+# one costs a clone; still quarantine, but say so loudly.  State is a small
+# file of epochs under the busy-lock dir, trimmed to the window.
+_note_quarantine() {
+    local state="$LOCK_DIR/workspace-quarantines" now window threshold recent
+    now=$(date +%s)
+    window="${RUNNER_HOOK_QUARANTINE_HERD_WINDOW_SECONDS:-600}"
+    threshold="${RUNNER_HOOK_QUARANTINE_HERD_THRESHOLD:-3}"
+    mkdir -p "$LOCK_DIR" 2>/dev/null || return 0
+    if ! {
+        if [ -f "$state" ]; then
+            awk -v min=$((now - window)) '$1 >= min' "$state" 2>/dev/null
+        fi
+        echo "$now"
+    } > "$state.tmp.$$" 2>/dev/null || ! mv -f "$state.tmp.$$" "$state" 2>/dev/null; then
+        rm -f "$state.tmp.$$" 2>/dev/null
+        return 0
+    fi
+    recent=$(wc -l < "$state" 2>/dev/null || echo 0)
+    if [ "${recent:-0}" -gt "$threshold" ]; then
+        echo "[runner-cleanup] WARNING: quarantine herd -- ${recent} workspaces quarantined on this host in the last ${window}s (threshold ${threshold}); check what is poisoning them before the uplink saturates" >&2
+    fi
+}
+
+# _quarantine_workspace <workspace> <reason> <qroot>: returns 0 when the
+# workspace was moved aside and replaced by a reseeded or empty directory.
+_quarantine_workspace() {
+    local ws="$1" reason="$2" qroot="$3" dest
+    if [ "${RUNNER_HOOK_DISABLE_WORKSPACE_QUARANTINE:-0}" = "1" ] || [ -L "$ws" ]; then
+        return 1
+    fi
+    mkdir -p "$qroot" 2>/dev/null || return 1
+    # Same filesystem or nothing: a cross-device `mv` degrades into a
+    # synchronous copy of the whole tree inside the job.
+    [ "$(stat -c %d "$ws" 2>/dev/null)" = "$(stat -c %d "$qroot" 2>/dev/null)" ] || return 1
+    dest="$qroot/${ws##*/}-$(date +%s)-$$"
+    mv -T -- "$ws" "$dest" 2>/dev/null || return 1
+    mkdir -p "$ws" 2>/dev/null || true
+    echo "[runner-cleanup] quarantined poisoned workspace $ws (reason: $reason)" >&2
+    _reap_in_background "$dest"
+    _note_quarantine
+    _reseed_workspace "$ws" "$qroot" || true
+    return 0
+}
+
+# _remove_stale_workspace_locks <workspace>: *.lock older than 1 minute under
+# this workspace's own .git (including .git/modules/**).
+_remove_stale_workspace_locks() {
+    local gd="$1/.git" lock
+    [ -d "$gd" ] || return 0
+    # (No -prune: -delete implies -depth, under which find ignores -prune.)
+    timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$gd" -maxdepth 8 \
+        -type f -name '*.lock' ! -path '*/objects/*' -mmin +1 -print -delete 2>/dev/null | \
+        while IFS= read -r lock; do
+            echo "[runner-cleanup] removed stale workspace lock $lock" >&2
+        done || true
+}
+
 _heal_workspace() {
-    _ws="${1:-}"
+    local ws="${1:-}" qroot partial sparse problem
     # Guard: only ever touch a path inside a runner _work tree.
-    case "$_ws" in
+    case "$ws" in
         */_work/*) ;;
         *) return 0 ;;
     esac
-    [ -d "$_ws/.git" ] || [ -f "$_ws/.git" ] || return 0
-    _neutralise_sparse_checkout "$_ws"
-    # Bounded: never hang a job on a pathological workspace.
-    timeout 120 git -C "$_ws" update-index -q --really-refresh 2>/dev/null || true
+    case "$ws" in
+        */../*|*/..|*/./*|*/_work/_quarantine|*/_work/_quarantine/*) return 0 ;;
+    esac
+    # The hook is its own process: these only affect the git calls below.
+    # No inherited GIT_DIR may redirect them, and nothing may reach a network.
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+    export GIT_ALLOW_PROTOCOL=none GIT_NO_LAZY_FETCH=1 GIT_TERMINAL_PROMPT=0
+    # Even `git config --file` discovers a repository from the cwd and dies
+    # inside a broken one -- and the cwd may be the very workspace being
+    # quarantined.  Everything below uses absolute paths.
+    cd / 2>/dev/null || true
+    qroot="${ws%%/_work/*}/_work/_quarantine"
+    _reap_old_quarantine "$qroot"
+    [ -d "$ws/.git" ] || [ -f "$ws/.git" ] || return 0
+    if [ -d "$ws/.git" ]; then
+        _remove_stale_workspace_locks "$ws"                                 # a
+        partial="$(_partial_reason "$ws")"
+        sparse="$(_sparse_reason "$ws")"
+        if [ -n "$partial$sparse" ]; then
+            problem="$(_blob_problem "$ws")"                                # b
+            if [ -n "$problem" ]; then
+                if _quarantine_workspace "$ws" "$problem${partial:+; $partial}${sparse:+; $sparse}" "$qroot"; then
+                    return 0
+                fi
+                echo "[runner-cleanup] could not quarantine poisoned workspace $ws ($problem)" >&2
+            elif [ -n "$sparse" ]; then                                     # c
+                if _repair_sparse_in_place "$ws"; then
+                    echo "[runner-cleanup] repaired sparse-checkout residue in place in $ws ($sparse)" >&2
+                elif _quarantine_workspace "$ws" "in-place sparse repair failed; $sparse" "$qroot"; then
+                    return 0
+                else
+                    echo "[runner-cleanup] could not repair or quarantine sparse residue in $ws ($sparse)" >&2
+                fi
+            fi                                                              # d
+        fi
+    fi
+    # e. Bounded: never hang a job on a pathological workspace.
+    timeout 120 git -C "$ws" update-index -q --really-refresh 2>/dev/null || true
 }
 if [ -n "${GITHUB_WORKSPACE:-}" ]; then
-    _heal_workspace "$GITHUB_WORKSPACE"
+    _heal_workspace "$GITHUB_WORKSPACE" || true
 fi
 # -- end cleanup -------------------------------------------------------------
 

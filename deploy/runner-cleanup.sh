@@ -86,6 +86,17 @@ TMP_PRESSURE_PERCENT="${TMP_PRESSURE_PERCENT:-75}"
 # job's scratch is never touched. Name is fixed so cleanup and configure
 # agree without sharing state.
 RUNNER_TMP_SUBDIR="${RUNNER_TMP_SUBDIR:-_work/_tmp}"
+# Global gitconfig hygiene (#1216 follow-up, 2026-10-17): CI jobs that run
+# `git config --global url."https://x-access-token:<token>@github.com/".insteadOf`
+# leave one expired-token rewrite per run in the runner user's ~/.gitconfig.
+# clean-gitconfig-token-rewrites was only run once, at install time, so the
+# sections came straight back. Run it from scheduled maintenance -- never from
+# the per-job hook, because every runner on the host shares one ~/.gitconfig
+# and a live job may depend on the rewrite it just wrote. Runs only when the
+# host has runner units and none of them is busy. The cleaner never prints
+# token values (userinfo is redacted to ***).
+CLEAN_GITCONFIG_TOKEN_REWRITES="${CLEAN_GITCONFIG_TOKEN_REWRITES:-1}"
+GITCONFIG_CLEANER="${GITCONFIG_CLEANER:-/usr/local/bin/clean-gitconfig-token-rewrites}"
 DRY_RUN="${DRY_RUN:-0}"
 COMPACT_VHD="${COMPACT_VHD:-0}"
 COMPACT_VHD_ONLY="${COMPACT_VHD_ONLY:-0}"
@@ -125,10 +136,11 @@ DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
 PRUNE_ORPHAN_BUILDX_STATE,
 DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
 COMPACT_VHD_DISTRO, DRY_RUN, TMP_DIR, TMP_LITTER_HOURS, TMP_PRESSURE_PERCENT,
-RUNNER_TMP_SUBDIR.
+RUNNER_TMP_SUBDIR, CLEAN_GITCONFIG_TOKEN_REWRITES, GITCONFIG_CLEANER.
 
 --disk-guard        Lightweight, runner-safe pass: reclaim docker + /tmp and idle-runner
-                    TMPDIR CI litter + journal +
+                    TMPDIR CI litter + gitconfig token rewrites (all runners idle)
+                    + journal +
                     fstrim ONLY (never stops runner units). Goes aggressive on
                     docker when used% >= DISK_PRESSURE_PERCENT. Safe to run
                     frequently (hourly timer) to keep docker bloat in check
@@ -615,6 +627,33 @@ cleanup_rustup_tmp() {
     find "$tmp" -mindepth 1 -maxdepth 1 -mmin "+$(( RUSTUP_TMP_HOURS * 60 ))" -exec rm -rf {} + 2>/dev/null || true
 }
 
+cleanup_gitconfig_token_rewrites() {
+    local unit runner_dir units=0
+    if [[ "$CLEAN_GITCONFIG_TOKEN_REWRITES" != "1" ]]; then
+        log "gitconfig token-rewrite cleanup disabled (CLEAN_GITCONFIG_TOKEN_REWRITES=${CLEAN_GITCONFIG_TOKEN_REWRITES})"
+        return 0
+    fi
+    if [[ ! -x "$GITCONFIG_CLEANER" ]]; then
+        log "gitconfig token-rewrite cleanup skipped: $GITCONFIG_CLEANER not installed"
+        return 0
+    fi
+    while read -r unit; do
+        [[ -n "$unit" ]] || continue
+        units=$((units + 1))
+        runner_dir="$(service_workdir "$unit")"
+        if runner_busy "$unit" "$runner_dir"; then
+            log "gitconfig token-rewrite cleanup skipped: $unit is busy (runners share ~/.gitconfig)"
+            return 0
+        fi
+    done < <(list_runner_units)
+    if (( units == 0 )); then
+        log "gitconfig token-rewrite cleanup skipped: no runner units on this host"
+        return 0
+    fi
+    run sudo -u "$RUNNER_USER" -H "$GITCONFIG_CLEANER" \
+        || log "warn: gitconfig token-rewrite cleanup failed (rc=$?)"
+}
+
 cleanup_common_caches() {
     run apt-get autoclean
     command -v pip3 >/dev/null 2>&1 && run sudo -u "$RUNNER_USER" -H pip3 cache purge
@@ -672,10 +711,11 @@ main() {
         # touches runner units, so it can run on a frequent timer without
         # bouncing idle runners every pass. Goes aggressive on docker when the
         # pressure block above fired.
-        log "disk-guard mode: docker + tmp + journal + fstrim only (no runner bounce)"
+        log "disk-guard mode: docker + tmp + gitconfig + journal + fstrim only (no runner bounce)"
         cleanup_docker
         cleanup_tmp
         cleanup_runner_tmpdirs
+        cleanup_gitconfig_token_rewrites
         command -v journalctl >/dev/null 2>&1 && run journalctl --vacuum-size="$JOURNAL_MAX_SIZE"
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
     elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then
@@ -683,6 +723,7 @@ main() {
         cleanup_docker
         cleanup_tmp
         cleanup_runner_tmpdirs
+        cleanup_gitconfig_token_rewrites
         cleanup_rustup_tmp
         cleanup_common_caches
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
