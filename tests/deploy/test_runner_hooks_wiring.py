@@ -286,7 +286,10 @@ def test_installer_ships_restore_with_a_timer() -> None:
 def _run_job_completed(tmp_path: Path, env_extra: dict[str, str]) -> subprocess.CompletedProcess[str]:
     assert BASH
     exports = "; ".join(f"export {k}='{v}'" for k, v in env_extra.items())
+    # Under GitHub Actions the test process inherits the job's own RUNNER_TEMP /
+    # GITHUB_WORKSPACE; the hook would then clear the CI job's real _temp.
     cmd = (
+        "unset RUNNER_TEMP GITHUB_WORKSPACE; "
         f"export RUNNER_BUSY_LOCK_DIR='{as_bash_path(tmp_path / 'locks')}' RUNNER_NAME=r1; {exports}; "
         f'bash "{as_bash_path(JOB_COMPLETED)}"'
     )
