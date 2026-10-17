@@ -181,3 +181,63 @@ def test_prune_docker_containers_zero_skips_container_prune(tmp_path: Path) -> N
 def test_container_prune_defaults_on(tmp_path: Path) -> None:
     calls = _docker_calls(tmp_path, None)
     assert any(c.startswith("container prune") for c in calls), calls
+
+
+# --- gitconfig token-rewrite hygiene (#1216 follow-up) -------------------------
+# clean-gitconfig-token-rewrites only ran at install time, so expired-token
+# url.*.insteadOf sections came straight back. Scheduled maintenance runs it, but
+# only while every runner is idle: all runners share one ~/.gitconfig.
+
+
+def _gitconfig_gc(tmp_path: Path, *, units: str, busy: str = "", enabled: str = "1") -> str:
+    text = CLEANUP.read_text(encoding="utf-8")
+    cleaner = tmp_path / "cleaner"
+    cleaner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n")
+    cleaner.chmod(0o755)
+    result = _harness(
+        tmp_path,
+        [
+            'run() { echo "RUN $*"; }',
+            f"list_runner_units() {{ printf '%s\\n' '{units}' | tr ',' '\\n'; }}",
+            'service_workdir() { echo "/runners/$1"; }',
+            f'runner_busy() {{ case ",{busy}," in *",$1,"*) return 0 ;; esac; return 1; }}',
+            "RUNNER_USER=ci",
+            f"CLEAN_GITCONFIG_TOKEN_REWRITES={enabled}",
+            f'GITCONFIG_CLEANER="{as_bash_path(cleaner)}"',
+            _extract(text, "cleanup_gitconfig_token_rewrites"),
+            "cleanup_gitconfig_token_rewrites",
+        ],
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_gitconfig_cleanup_runs_as_runner_user_when_all_idle(tmp_path: Path) -> None:
+    out = _gitconfig_gc(tmp_path, units="actions.runner.a.service,actions.runner.b.service")
+    assert "RUN sudo -u ci -H" in out
+
+
+def test_gitconfig_cleanup_skipped_while_any_runner_is_busy(tmp_path: Path) -> None:
+    out = _gitconfig_gc(
+        tmp_path, units="actions.runner.a.service,actions.runner.b.service", busy="actions.runner.b.service"
+    )
+    assert "RUN" not in out
+    assert "is busy" in out
+
+
+def test_gitconfig_cleanup_skipped_on_hosts_without_runners(tmp_path: Path) -> None:
+    """Workstation-profile hosts: the logged-in user's gitconfig is not CI litter."""
+    out = _gitconfig_gc(tmp_path, units="")
+    assert "RUN" not in out
+
+
+def test_gitconfig_cleanup_can_be_disabled(tmp_path: Path) -> None:
+    out = _gitconfig_gc(tmp_path, units="actions.runner.a.service", enabled="0")
+    assert "RUN" not in out
+    assert "disabled" in out
+
+
+def test_gitconfig_cleanup_is_wired_into_both_scheduled_passes() -> None:
+    text = CLEANUP.read_text(encoding="utf-8")
+    main = text[text.index("main() {") :]
+    assert main.count("cleanup_gitconfig_token_rewrites") == 2

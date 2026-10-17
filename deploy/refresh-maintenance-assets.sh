@@ -11,6 +11,13 @@
 #   runner-scheduler            /usr/local/bin           (from runner-scheduler.py)
 #   wsl-cache-trim              /usr/local/sbin
 #   wsl-cache-trim.{service,timer}  /etc/systemd/system  (daemon-reload on change)
+#   runner-hooks/{job-started,job-completed,force-drain}.sh  /usr/local/bin/runner-hooks
+#
+# The runner hooks are refreshed here, from the deployed repo copy, because
+# runner-hooks-restore.timer deliberately only restores a MISSING hook: its
+# source (/opt/runner-dashboard) went stale on DeskComputer (a 2026-07-31
+# commit) and would otherwise pin hosts to an old job-started.sh. Hooks are
+# read fresh per job, so no runner restart is needed.
 #
 # It never provisions a host that was not set up by install-runner-maintenance.sh,
 # and it skips the scheduler on qualified-release hosts, whose runner-scheduler
@@ -20,8 +27,8 @@
 #   bash deploy/refresh-maintenance-assets.sh           # reinstall drifted assets
 #   bash deploy/refresh-maintenance-assets.sh --check   # report drift, exit 1, write nothing
 #
-# Overrides (tests): MAINT_BIN_DIR, MAINT_SBIN_DIR, MAINT_UNIT_DIR, MAINT_SUDO
-# (empty = run as the current user), MAINT_SYSTEMCTL.
+# Overrides (tests): MAINT_BIN_DIR, MAINT_SBIN_DIR, MAINT_UNIT_DIR, MAINT_HOOK_DIR,
+# MAINT_SUDO (empty = run as the current user), MAINT_SYSTEMCTL.
 
 set -euo pipefail
 
@@ -29,6 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${MAINT_BIN_DIR:-/usr/local/bin}"
 SBIN_DIR="${MAINT_SBIN_DIR:-/usr/local/sbin}"
 UNIT_DIR="${MAINT_UNIT_DIR:-/etc/systemd/system}"
+HOOK_DIR="${MAINT_HOOK_DIR:-$BIN_DIR/runner-hooks}"
 SYSTEMCTL="${MAINT_SYSTEMCTL:-systemctl}"
 read -r -a SUDO <<< "${MAINT_SUDO-sudo -n}"
 
@@ -72,6 +80,12 @@ fi
 refresh_asset "$SCRIPT_DIR/wsl-cache-trim" "$SBIN_DIR/wsl-cache-trim" 0755
 refresh_asset "$SCRIPT_DIR/wsl-cache-trim.service" "$UNIT_DIR/wsl-cache-trim.service" 0644 unit
 refresh_asset "$SCRIPT_DIR/wsl-cache-trim.timer" "$UNIT_DIR/wsl-cache-trim.timer" 0644 unit
+
+# Runner job hooks from install-runner-maintenance.sh (#664). Only installed
+# hooks are refreshed; a missing one is runner-hooks-restore.sh's job.
+for hook in job-started.sh job-completed.sh force-drain.sh; do
+    refresh_asset "$SCRIPT_DIR/runner-hooks/$hook" "$HOOK_DIR/$hook" 0755
+done
 
 if [[ "$UNITS_CHANGED" == 1 ]]; then
     "${SUDO[@]}" "$SYSTEMCTL" daemon-reload

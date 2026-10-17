@@ -114,11 +114,13 @@ modifications. Then re-run the failed jobs
 
 ## Durable fixes
 
-1. **Runner hook (this repo).** `deploy/runner-hooks/job-started.sh` clears
-   both states against `$GITHUB_WORKSPACE` before every job, so a poisoned
-   workspace heals itself whatever caused it. Guarded to paths under a runner
-   `_work` tree and bounded by `timeout`. A *genuine* sparse checkout (config
-   on **and** patterns present) is left untouched.
+1. **Runner hook (this repo).** `deploy/runner-hooks/job-started.sh` heals
+   `$GITHUB_WORKSPACE` before every job, so a poisoned workspace heals itself
+   whatever caused it. Guarded to paths under a runner `_work` tree, bounded
+   by `timeout`, never touches the network and always exits 0. See
+   [Workspace residue from a previous job](#workspace-residue-from-a-previous-job)
+   below for what it does. A sparse checkout is **not** left alone any more:
+   at job start, any sparse state is residue from a previous job.
 2. **Remove the sweeps.** Workflow steps must never run
    `sudo chown -R … /home/dieterolson/actions-runners`. Scope ownership
    repairs to the specific directory that needs them — never a repository
@@ -128,9 +130,88 @@ modifications. Then re-run the failed jobs
 > That is the cause, not the cure: it would invalidate the stat cache on
 > *every* job rather than occasionally.
 
+## Workspace residue from a previous job
+
+Diagnosed 2026-10-17 on DeskComputer (Gasification_Model). Self-hosted runners
+reuse `_work/<repo>/<repo>`, and three kinds of residue break the next job's
+`actions/checkout`:
+
+| Residue | Symptom | Hook action |
+| --- | --- | --- |
+| Sparse / skip-worktree state (`sparse-checkout:` in a previous job, worst with `sparse-checkout-cone-mode: false`) | `Path '...' not uptodate; will not remove from working tree`, then `Can't find 'action.yml' under .github/actions/...` | Repaired **in place** when every index blob is present: `sparse-checkout disable`, drop the pattern file and config, clear skip-worktree bits, `checkout --force HEAD -- .`. A failed repair falls back to quarantine. |
+| Partial clone (`--filter=blob:none`) with **missing** index blobs | Checkout's `git clean -ffdx` / `git reset --hard HEAD` run *before* its auth extraheader is set, so each missing blob is lazy-fetched without credentials: `unable to read sha1 file of <path>`, then three `fatal: Authentication failed` per file; the step looks hung for 10+ minutes | **Quarantined**, then reseeded from a local sibling (below). `git sparse-checkout disable` does not fix this. |
+| Stale `.git/**.lock` from a killed job | Checkout cannot lock the index | `*.lock` older than 1 minute under this workspace's own `.git` (including `.git/modules/**`) is removed. |
+
+A promisor clone whose index blobs are all present is **healthy** and is left
+alone: once checkout's auth is set, later lazy fetches work. ControlTower (a
+~6 Mbit/s uplink) runs 14 such workspaces. The blob check is local only:
+`GIT_ALLOW_PROTOCOL=none` refuses every transport, including lazy fetches
+(`GIT_NO_LAZY_FETCH` needs git 2.44; the fleet runs 2.34).
+
+**Quarantine** renames the workspace (atomic, same filesystem) to
+`<runner>/_work/_quarantine/<repo>-<epoch>-<pid>`, recreates the directory,
+and deletes the old tree in a detached background process. Entries older than
+an hour are re-reaped by later jobs; the nightly `runner-cleanup.sh` removes
+anything left after that.
+
+**Reseed.** An empty workspace means a network clone, and a herd of them
+saturates the uplink (six GM workspaces at once took 43 minutes and were
+cancelled). So the hook first rebuilds the workspace from the healthiest sibling
+`<root>/*/_work/<repo>/<repo>` of another runner on the same host. A sibling
+qualifies only with a valid HEAD, no promisor config, no sparse residue and no
+`*.lock`; idle runners are preferred. The rebuild is `git clone --no-hardlinks
+--no-checkout <sibling>`, `remote set-url origin https://github.com/<owner>/<repo>`,
+a copy of `.git/modules` and `checkout --force HEAD`, which takes 11–14 s for GM.
+If no sibling qualifies or any step fails, the directory is left empty. More than
+3 quarantines on one host within 10 minutes logs a `quarantine herd` warning
+(state in `$RUNNER_BUSY_LOCK_DIR/workspace-quarantines`).
+
+Hook stderr lines to grep for in job logs: `[runner-cleanup] quarantined poisoned
+workspace`, `reseeded ... from local sibling`, `repaired sparse-checkout residue
+in place`, `removed stale workspace lock`.
+
+Knobs: `RUNNER_HOOK_DISABLE_WORKSPACE_QUARANTINE=1` (repair only, never
+quarantine), `RUNNER_HOOK_SEED_ROOT` (colon-separated roots to scan for
+siblings), `RUNNER_HOOK_QUARANTINE_HERD_THRESHOLD` / `_WINDOW_SECONDS`.
+
+## Hook wiring
+
+The canonical hooks only help if the runner runs them:
+
+- **Unit wiring.** `runner-hooks-restore.sh` (5-minute timer) gives every
+  `actions.runner.*.service` whose effective Environment lacks the canonical
+  `ACTIONS_RUNNER_HOOK_JOB_STARTED`/`_COMPLETED` a
+  `<unit>.d/15-runner-hooks.conf` drop-in, then one `daemon-reload`.
+  ControlTower's units had none. It never restarts a unit: the new environment
+  applies at the next restart, which the nightly cleanup does only for idle
+  runners.
+- **`.env` overrides.** The runner's `<runner>/.env` wins over the unit. On
+  DeskComputer every `.env` pointed `ACTIONS_RUNNER_HOOK_JOB_COMPLETED` at a
+  legacy `fleet/runner-post-job.sh` that only cleared `_work/_temp`. The restore
+  timer removes any hook override that is not the canonical path, after a
+  timestamped `.env.bak.*`. `job-completed.sh` now clears `_work/_temp` itself
+  (except `_runner_file_commands`).
+- **Content drift.** The restore timer installs a hook only when it is
+  **missing** (or re-chmods one that is not executable). It never rewrites one,
+  because its source `/opt/runner-dashboard` can be months stale and would
+  downgrade it. `refresh-maintenance-assets.sh`, run by every
+  `update-deployed.sh`, refreshes installed hooks from the deployed repo copy.
+
+Check a host without changing it:
+
+```bash
+sudo /usr/local/bin/runner-hooks-restore --check
+bash deploy/refresh-maintenance-assets.sh --check
+```
+
+Metrics (`runner_hooks.prom`): `runner_hooks_unit_wiring_missing`,
+`runner_hooks_unit_dropins_written`, `runner_hooks_env_overrides`,
+`runner_hooks_env_overrides_removed`, `runner_hooks_restore_total`.
+
 ## Deploying a hook change
 
-The hooks are read fresh per job, so **no runner restart is needed**:
+The hooks are read fresh per job, so **no runner restart is needed**. The normal
+path is `update-deployed.sh`, which runs `refresh-maintenance-assets.sh`. By hand:
 
 ```bash
 sudo -n install -m 0755 job-started.sh /usr/local/bin/runner-hooks/job-started.sh
