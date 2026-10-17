@@ -476,6 +476,77 @@ def test_poisoned_repo_outside_a_runner_work_tree_is_never_touched(tmp_path: Pat
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
+def test_orphaned_fetch_temp_packs_are_removed_and_fresh_ones_kept(tmp_path: Path) -> None:
+    """A cancelled fetch leaves .git/objects/pack/tmp_pack_* behind (#1979): six on
+    DeskComputer runner-3, ~2.4 GB. The lock cleanup skips objects/, so nothing reaped them."""
+    repo = _make_repo(tmp_path)
+    pack = repo / ".git" / "objects" / "pack"
+    pack.mkdir(parents=True, exist_ok=True)
+    stale_pack, stale_idx = pack / "tmp_pack_aB12cd", pack / "tmp_idx_Ef34gh"
+    nested = repo / ".git" / "modules" / "lib" / "objects" / "pack" / "tmp_pack_Zz99yy"
+    fresh = pack / "tmp_pack_fresh0"
+    nested.parent.mkdir(parents=True)
+    for f in (stale_pack, stale_idx, nested, fresh):
+        f.write_bytes(b"PACK")
+    old = time.time() - 600
+    for f in (stale_pack, stale_idx, nested):
+        os.utime(f, (old, old))
+
+    assert _run_hook(repo) == 0
+    assert not stale_pack.exists() and not stale_idx.exists()
+    assert not nested.exists(), "submodule fetch residue is stale too"
+    assert fresh.exists(), "a temp pack younger than a minute must be left alone"
+
+
+_NEGOTIATION_REF = "refs/runner-cache/last-checkout"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
+def test_previous_head_is_kept_as_a_negotiation_ref(tmp_path: Path) -> None:
+    """actions/checkout deletes refs/heads and refs/remotes before fetching, and a
+    detached HEAD is never offered as a "have", so every fetch received the full
+    snapshot (#1979: 4.56 MiB vs 223 KiB with one kept ref)."""
+    repo = _make_repo(tmp_path)
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    _git(repo, "checkout", "-q", "--detach")
+    _git(repo, "branch", "-D", "main")
+
+    assert _run_hook(repo) == 0
+    assert _git(repo, "rev-parse", "--verify", "-q", _NEGOTIATION_REF).stdout.strip() == head
+
+
+@pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
+def test_negotiation_ref_follows_the_latest_head(tmp_path: Path) -> None:
+    repo = _make_repo(tmp_path)
+    assert _run_hook(repo) == 0
+    (repo / "d.py").write_text("# d\n", encoding="utf-8")
+    _git(repo, "add", "d.py")
+    _git(repo, "commit", "-qm", "next")
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    assert _run_hook(repo) == 0
+    assert _git(repo, "rev-parse", "--verify", "-q", _NEGOTIATION_REF).stdout.strip() == head
+
+
+@pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
+def test_repo_without_a_commit_gets_no_negotiation_ref(tmp_path: Path) -> None:
+    repo = tmp_path / "_work" / "Demo" / "Demo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "-q")
+
+    assert _run_hook(repo) == 0
+    assert _git(repo, "rev-parse", "--verify", "-q", _NEGOTIATION_REF).returncode != 0
+
+
+@pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
+def test_repo_outside_a_runner_work_tree_gets_no_negotiation_ref(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "not_a_runner" / "Demo")
+
+    assert _run_hook(repo) == 0
+    assert _git(repo, "rev-parse", "--verify", "-q", _NEGOTIATION_REF).returncode != 0
+
+
+@pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
 def test_old_quarantine_entries_are_reaped(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path)
     qdir = _quarantine_dir(repo)
@@ -530,6 +601,9 @@ def test_quarantined_workspace_is_reseeded_from_a_healthy_sibling(tmp_path: Path
         assert (ws / name).is_file(), f"reseed must check out the tree ({name} missing)"
     assert _skip_worktree_count(ws) == 0
     assert _git(sibling, "status", "--porcelain").stdout.strip() == "", "the sibling is only read"
+    assert _git(ws, "rev-parse", "--verify", "-q", _NEGOTIATION_REF).stdout == head.stdout, (
+        "the reseeded HEAD must be offered to the next fetch (#1979)"
+    )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")

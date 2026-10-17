@@ -138,7 +138,9 @@ fi
 #      checkout's auth is set, later lazy fetches work.  (ControlTower, on a
 #      ~6 Mbit/s uplink, runs 14 such workspaces; re-cloning them would hurt.)
 #   3. Stale git locks (.git/index.lock and friends, including under
-#      .git/modules/**) left by a killed job.
+#      .git/modules/**) left by a killed job, and the temp packs
+#      (objects/pack/tmp_pack_*, tmp_idx_*) of a fetch it cancelled -- six on
+#      DeskComputer runner-3, ~2.4 GB (#1979).
 #
 # The old exception -- "a genuine sparse checkout (config on AND patterns
 # present) is left alone" -- was wrong for a shared workspace: at job start
@@ -164,6 +166,14 @@ fi
 #   d. A healthy promisor clone (no missing blobs, no sparse residue) is left
 #      alone, as is a clean full clone (which is not even blob-checked).
 #   e. The --really-refresh stat heal below.
+#   f. Record HEAD as refs/runner-cache/last-checkout (#1979).  actions/checkout
+#      deletes refs/heads/* and refs/remotes/* before it fetches, and a
+#      detached HEAD is never offered as a "have", so the server assumed the
+#      workspace held nothing and sent the FULL snapshot every job (GM:
+#      250-540 MB per checkout; six at once starved the uplink into 30-min
+#      checkouts).  One ref outside those namespaces lets the next fetch --
+#      even --depth=1 into a shallow clone -- receive only the delta
+#      (measured: 4.56 MiB -> 223 KiB).  A local update-ref; no network.
 #
 # No step may touch the network: GIT_ALLOW_PROTOCOL=none refuses every
 # transport, including lazy fetches (GIT_NO_LAZY_FETCH only exists from git
@@ -483,6 +493,29 @@ _remove_stale_workspace_locks() {
         done || true
 }
 
+# _remove_orphaned_fetch_packs <workspace>: temp packs older than 1 minute that a
+# cancelled fetch left under this workspace's .git (including .git/modules/**).
+_remove_orphaned_fetch_packs() {
+    local gd="$1/.git" pack
+    [ -d "$gd" ] || return 0
+    timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$gd" -maxdepth 8 \
+        -type f -path '*/objects/pack/*' \( -name 'tmp_pack_*' -o -name 'tmp_idx_*' \) \
+        -mmin +1 -print -delete 2>/dev/null | \
+        while IFS= read -r pack; do
+            echo "[runner-cleanup] removed orphaned fetch temp pack $pack" >&2
+        done || true
+}
+
+# _record_negotiation_ref <workspace>: keep HEAD reachable from a ref that
+# actions/checkout's ref cleanup never deletes, so the next fetch negotiates.
+_record_negotiation_ref() {
+    local ws="$1" head
+    [ -d "$ws/.git" ] || return 0
+    head="$(timeout 10 git -C "$ws" rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null)" || return 0
+    [ -n "$head" ] || return 0
+    timeout 10 git -C "$ws" update-ref refs/runner-cache/last-checkout "$head" 2>/dev/null || true
+}
+
 _heal_workspace() {
     local ws="${1:-}" qroot partial sparse problem
     # Guard: only ever touch a path inside a runner _work tree.
@@ -506,12 +539,14 @@ _heal_workspace() {
     [ -d "$ws/.git" ] || [ -f "$ws/.git" ] || return 0
     if [ -d "$ws/.git" ]; then
         _remove_stale_workspace_locks "$ws"                                 # a
+        _remove_orphaned_fetch_packs "$ws"
         partial="$(_partial_reason "$ws")"
         sparse="$(_sparse_reason "$ws")"
         if [ -n "$partial$sparse" ]; then
             problem="$(_blob_problem "$ws")"                                # b
             if [ -n "$problem" ]; then
                 if _quarantine_workspace "$ws" "$problem${partial:+; $partial}${sparse:+; $sparse}" "$qroot"; then
+                    _record_negotiation_ref "$ws"                           # f (reseeded)
                     return 0
                 fi
                 echo "[runner-cleanup] could not quarantine poisoned workspace $ws ($problem)" >&2
@@ -528,6 +563,7 @@ _heal_workspace() {
     fi
     # e. Bounded: never hang a job on a pathological workspace.
     timeout 120 git -C "$ws" update-index -q --really-refresh 2>/dev/null || true
+    _record_negotiation_ref "$ws"                                           # f
 }
 if [ -n "${GITHUB_WORKSPACE:-}" ]; then
     _heal_workspace "$GITHUB_WORKSPACE" || true
