@@ -1,8 +1,8 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
 **Spec Version:** 2.5.300
-**Application Version:** 4.10.0 (see `VERSION`)
-**Last Updated:** 2026-10-04T00:00:00-07:00
+**Application Version:** 4.10.1 (see `VERSION`)
+**Last Updated:** 2026-10-10T00:00:00-07:00
 **Status:** Active
 
 ## Change Log
@@ -41,6 +41,7 @@
 | 2026-10-01 | #1805 | Keep mobile Inbox, Runs, send and approval controls in an unobscured local navigation region above the global mobile navigation; Vitest component and shell layout tests verify shell bottom offsets and 44px hit-testable bounds across 320, 390 and 430px widths. |
 | 2026-10-01 | #1828 | Refresh vendored Maxwell OpenAPI snapshot from upstream Maxwell_Daemon to resolve contract drift, deriving worker contract fixtures and schema validations from the typed WorkersStatusResponse schema. |
 | 2026-09-30 | #1840 | Refresh exact Debian OpenSSL/PCRE2 security pins and targeted urllib3 lock/export to close release container scan findings; preserve base digest, Python bounds, hash enforcement and scan thresholds. |
+| 2026-09-30 | #1834 | Prepare coherent 4.10.1 release metadata and notes for reviewed Staff reliability and mobile fixes; record root Python qualification blocker #1839 and verified candidate provenance. Publication and qualified production deployment remain separate gates. |
 | 2026-09-30 | #1836 | Systemd watchdog recovery test waits for an observed successful retry with bounded timeout and guaranteed cleanup instead of cancelling after a fixed timing sample. Runtime behavior unchanged. |
 | 2026-09-30 | #1832 | Windows test harnesses reuse compatible Bash discovery and path conversion; the process-tree watchdog test permits interpreter startup and polls boundedly for descendant termination. Production behavior is unchanged. |
 | 2026-09-30 | #1831 | Align `.env.example` `MAXWELL_PORT=8080` with the runtime and daemon listener instead of dashboard pool port 8322; regression-test the copied template target. |
