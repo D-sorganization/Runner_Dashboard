@@ -12,6 +12,7 @@
 #   wsl-cache-trim              /usr/local/sbin
 #   wsl-cache-trim.{service,timer}  /etc/systemd/system  (daemon-reload on change)
 #   runner-hooks/{job-started,job-completed,force-drain}.sh  /usr/local/bin/runner-hooks
+#   runner-hooks-restore        /usr/local/bin           (from runner-hooks-restore.sh, #1975)
 #
 # The runner hooks are refreshed here, from the deployed repo copy, because
 # runner-hooks-restore.timer deliberately only restores a MISSING hook: its
@@ -86,6 +87,11 @@ refresh_asset "$SCRIPT_DIR/wsl-cache-trim.timer" "$UNIT_DIR/wsl-cache-trim.timer
 for hook in job-started.sh job-completed.sh force-drain.sh; do
     refresh_asset "$SCRIPT_DIR/runner-hooks/$hook" "$HOOK_DIR/$hook" 0755
 done
+
+# The hook self-heal script itself (#1975). Its timer runs the installed copy;
+# a pre-#1971 copy reinstalls any hook whose content differs from its (possibly
+# stale) HOOK_SRC_DIR, undoing the hook refresh above within one tick.
+refresh_asset "$SCRIPT_DIR/runner-hooks-restore.sh" "$BIN_DIR/runner-hooks-restore" 0755
 
 if [[ "$UNITS_CHANGED" == 1 ]]; then
     "${SUDO[@]}" "$SYSTEMCTL" daemon-reload
