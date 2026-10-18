@@ -46,6 +46,13 @@ PRUNE_DOCKER_VOLUMES="${PRUNE_DOCKER_VOLUMES:-0}"
 # container (dangling) are removed, so user volumes and live builders are
 # never touched.
 PRUNE_ORPHAN_BUILDX_STATE="${PRUNE_ORPHAN_BUILDX_STATE:-1}"
+# Persistent shared buildx builders (#1988, UpstreamDrift #13208): one
+# long-lived docker-container builder per host whose state volume IS the layer
+# cache, bounded by BuildKit's own GC policy. Cleanup never removes such a
+# builder's container (buildx_buildkit_<name>0), its state volume
+# (buildx_buildkit_<name>0_state), its cache, or its definition. Space-separated
+# names, validated before any docker prune; set to "" to protect none.
+PERSISTENT_BUILDX_BUILDERS="${PERSISTENT_BUILDX_BUILDERS-ud-buildkit}"
 # Set to 1 automatically when disk pressure is detected (see main()). When on,
 # cleanup_docker() ignores age windows and reclaims ALL build cache (incl.
 # buildx builders), unused images, and dangling volumes. Docker is the dominant
@@ -449,7 +456,11 @@ cleanup_docker() {
         log "docker unavailable; skipping docker cleanup"
         return 0
     fi
+    validate_persistent_builders || return 2
     local prune_containers="${PRUNE_DOCKER_CONTAINERS:-1}"
+    if [[ "$prune_containers" == "1" ]] && ! ensure_persistent_builders_running; then
+        prune_containers=0
+    fi
     if [[ "$DOCKER_AGGRESSIVE" == "1" ]]; then
         # Disk pressure: reclaim everything reclaimable, ignoring age windows.
         # `prune` only ever removes STOPPED containers, UNUSED images, DANGLING
@@ -461,11 +472,11 @@ cleanup_docker() {
         # tagged images only (#1981).
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force; fi
         run docker builder prune --all --force
-        # buildx builders keep their own cache pools; prune those too when the
-        # buildx plugin is present (the moby/buildkit builder containers on this
-        # host accumulate tens of GB of cache).
+        # buildx builders keep their own cache pools; prune the current one too
+        # when the buildx plugin is present (the moby/buildkit builder containers
+        # on this host accumulate tens of GB of cache).
         if docker buildx version >/dev/null 2>&1; then
-            run docker buildx prune --all --force
+            prune_current_buildx_cache
         fi
         run docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"
         run docker image prune --all --force --filter "label!=keep"
@@ -484,8 +495,11 @@ cleanup_orphan_buildx_state() {
     # builder definitions whose containers are gone. `dangling=true` is the
     # engine's own "unreferenced" predicate, so a builder mid-job (its
     # buildkitd container running) keeps its volume.
+    # A persistent builder's state volume is the shared layer cache: never
+    # reaped, even while its container is momentarily gone.
     local vols count=0
-    vols="$(docker volume ls -q --filter dangling=true --filter name=buildx_buildkit_ 2>/dev/null | grep "_state$" || true)"
+    vols="$(docker volume ls -q --filter dangling=true --filter name=buildx_buildkit_ 2>/dev/null | grep "_state$" \
+        | grep -vxF -f <(persistent_state_volumes) || true)"
     [[ -n "$vols" ]] || return 0
     count="$(printf "%s\n" "$vols" | wc -l)"
     log "reaping $count orphaned buildx builder state volumes"
@@ -501,6 +515,72 @@ cleanup_orphan_buildx_state() {
             docker buildx rm "$b" >/dev/null 2>&1 || true
         done
     fi
+}
+
+PERSISTENT_BUILDERS=()
+
+validate_persistent_builders() {
+    # Precondition for every docker prune: each allowlisted name is a plain
+    # builder name. read -ra splits without glob expansion.
+    local b
+    read -ra PERSISTENT_BUILDERS <<< "$PERSISTENT_BUILDX_BUILDERS"
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        if [[ ! "$b" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+            log "error: invalid PERSISTENT_BUILDX_BUILDERS entry '$b' (must match ^[a-z0-9][a-z0-9_-]*\$); refusing docker cleanup"
+            echo "runner-cleanup: invalid PERSISTENT_BUILDX_BUILDERS entry '$b'" >&2
+            return 2
+        fi
+    done
+}
+
+is_persistent_builder() {
+    local b
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        [[ "$1" == "$b" ]] && return 0
+    done
+    return 1
+}
+
+persistent_state_volumes() {
+    local b
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        printf "buildx_buildkit_%s0_state\n" "$b"
+    done
+}
+
+ensure_persistent_builders_running() {
+    # `container prune` removes STOPPED containers, and a persistent builder's
+    # container stops on every host reboot. Start any stopped one first; if that
+    # fails, report it so the caller skips container prune for this run.
+    local b c state rc=0
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        c="buildx_buildkit_${b}0"
+        state="$(docker inspect --format '{{.State.Status}}' "$c" 2>/dev/null || true)"
+        case "$state" in
+            "" | running) ;;
+            *)
+                if run docker start "$c" >/dev/null; then
+                    log "started stopped persistent buildx builder $c (was $state)"
+                else
+                    log "warn: cannot start persistent buildx builder $c (state=$state); skipping container prune this run"
+                    rc=1
+                fi
+                ;;
+        esac
+    done
+    return "$rc"
+}
+
+prune_current_buildx_cache() {
+    # `docker buildx prune` acts on the current builder. A persistent builder's
+    # cache is bounded by its own BuildKit GC policy, so it is never pruned here.
+    local current
+    current="$(docker buildx inspect 2>/dev/null | awk '$1 == "Name:" {print $2; exit}' || true)"
+    if [[ -n "$current" ]] && is_persistent_builder "$current"; then
+        log "keeping cache of persistent buildx builder '$current' (bounded by BuildKit GC)"
+        return 0
+    fi
+    run docker buildx prune --all --force ${current:+--builder "$current"}
 }
 
 tmp_used_percent() {
