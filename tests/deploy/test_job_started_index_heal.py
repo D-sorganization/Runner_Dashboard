@@ -615,7 +615,9 @@ def test_a_sibling_running_a_job_is_not_the_preferred_seed(tmp_path: Path) -> No
     root = tmp_path / "runners"
     busy = _clone(src, _runner_ws(root, "runner-2"))
     idle = _clone(src, _runner_ws(root, "runner-3"))
-    _git(idle, "-c", "user.email=ci@example.invalid", "-c", "user.name=ci", "commit", "-q", "--allow-empty", "-m", "idle")
+    _git(
+        idle, "-c", "user.email=ci@example.invalid", "-c", "user.name=ci", "commit", "-q", "--allow-empty", "-m", "idle"
+    )
     ws = _poisoned_ws(root, src)
     worker_argv0 = f"{root / 'runner-2' / 'bin.2.337.0' / 'Runner.Worker'} spawnclient 1 2"
     worker = subprocess.Popen([find_bash() or "bash", "-c", 'exec -a "$0" sleep 60', worker_argv0])
@@ -637,6 +639,39 @@ def test_quarantine_without_a_sibling_leaves_an_empty_dir(tmp_path: Path) -> Non
 
     assert _run_hook(ws, _seed_env(root)) == 0
     assert ws.is_dir() and list(ws.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
+def test_reseed_never_clones_into_the_live_workspace(tmp_path: Path) -> None:
+    # #1982: a reseed clone into the workspace itself hung for 97 min after its
+    # timeout's SIGTERM, its clean-up deleting everything the next four jobs'
+    # checkouts wrote there. The clone must build aside and be renamed in.
+    src = _make_source(tmp_path)
+    root = tmp_path / "runners"
+    _clone(src, _runner_ws(root, "runner-2"))
+    ws = _poisoned_ws(root, src)
+    real_git = shutil.which("git")
+    assert real_git
+    shim_dir = tmp_path / "shim"
+    shim_dir.mkdir()
+    log = tmp_path / "clone_targets.log"
+    shim = shim_dir / "git"
+    shim.write_text(
+        "#!/usr/bin/env bash\n"
+        'case " $* " in *" clone "*) printf \'%s\\n\' "${@: -1}" >> "$CLONE_LOG" ;; esac\n'
+        f'exec "{real_git}" "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    env = _seed_env(root) | {"PATH": f"{shim_dir}{os.pathsep}{os.environ['PATH']}", "CLONE_LOG": str(log)}
+
+    assert _run_hook(ws, env) == 0
+
+    targets = [Path(t).resolve() for t in log.read_text(encoding="utf-8").split()]
+    assert targets, "fixture must exercise the reseed clone; the rest of this test is vacuous"
+    assert ws.resolve() not in targets, "reseed must clone into a staging dir, then rename it into place"
+    assert _git(ws, "rev-parse", "--verify", "HEAD").returncode == 0, "the renamed-in workspace must be usable"
+    assert not any(t.exists() for t in targets), "the staging dir must not linger after a successful reseed"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
