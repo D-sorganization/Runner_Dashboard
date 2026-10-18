@@ -374,6 +374,106 @@ class RunnerPipCacheProbe:
         return "ok", None
 
 
+class RunnerBusyLockProbe:
+    """Check for stale runner-busy lockfiles (issue #1987).
+
+    A lockfile in ``RUNNER_BUSY_LOCK_DIR`` older than 10 minutes (600s) with
+    no ``Runner.Worker`` running for that runner indicates a stale lock left behind
+    by an un-restarted runner or a crashed worker.
+    """
+
+    name = "runner_busy_locks"
+
+    def __init__(
+        self,
+        lock_dir: str | Path | None = None,
+        stale_threshold_seconds: float = 600.0,
+        cache_ttl_seconds: float = 10.0,
+    ) -> None:
+        assert cache_ttl_seconds >= 0.0, "cache_ttl_seconds must be >= 0"
+        self._lock_dir = (
+            Path(lock_dir)
+            if lock_dir is not None
+            else Path(os.environ.get("RUNNER_BUSY_LOCK_DIR", "/var/run/runner-busy"))
+        )
+        self._stale_threshold = stale_threshold_seconds
+        self._cache_ttl = cache_ttl_seconds
+        self._cached: tuple[float, ProbeStatus, str | None] | None = None
+
+    async def check(self) -> tuple[ProbeStatus, str | None]:
+        if self._cache_ttl > 0 and self._cached is not None:
+            ts, status, detail = self._cached
+            if (time.monotonic() - ts) < self._cache_ttl:
+                return status, detail
+
+        status, detail = await asyncio.to_thread(self._check_busy_locks)
+        self._cached = (time.monotonic(), status, detail)
+        return status, detail
+
+    def _get_running_worker_cmdlines(self) -> list[str]:
+        cmdlines: list[str] = []
+        try:
+            import psutil  # type: ignore
+
+            for proc in psutil.process_iter(["cmdline"]):
+                try:
+                    cmd = proc.info.get("cmdline") or []
+                    joined = " ".join(cmd)
+                    if "Runner.Worker" in joined:
+                        cmdlines.append(joined)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception:
+            pass
+        return cmdlines
+
+    def _worker_running_for_runner(self, runner_name: str, lock_file: Path, worker_cmdlines: list[str]) -> bool:
+        if not worker_cmdlines:
+            return False
+        for cmdline in worker_cmdlines:
+            if runner_name in cmdline:
+                return True
+        return False
+
+    def _check_busy_locks(self) -> tuple[ProbeStatus, str | None]:
+        if not self._lock_dir.is_dir():
+            return "ok", None
+
+        now = time.time()
+        stale_locks: list[str] = []
+
+        try:
+            lock_files = list(self._lock_dir.glob("*.lock"))
+        except OSError as exc:
+            return "degraded", f"unable to list locks in {self._lock_dir}: {exc}"
+
+        if not lock_files:
+            return "ok", None
+
+        worker_cmdlines = self._get_running_worker_cmdlines()
+
+        for lock_file in lock_files:
+            try:
+                stat = lock_file.stat()
+                age = now - stat.st_mtime
+                if age <= self._stale_threshold:
+                    continue
+
+                runner_name = lock_file.stem
+                if not self._worker_running_for_runner(runner_name, lock_file, worker_cmdlines):
+                    stale_locks.append(f"{lock_file.name} (age={int(age)}s)")
+            except (FileNotFoundError, OSError):
+                continue
+
+        if stale_locks:
+            return (
+                "degraded",
+                f"stale runner-busy lock(s) detected with no active Worker: {', '.join(stale_locks)}",
+            )
+
+        return "ok", None
+
+
 # ---------------------------------------------------------------------------
 # Aggregate
 # ---------------------------------------------------------------------------
@@ -385,6 +485,7 @@ _DEFAULT_PROBES: list[Probe] = [
     PushDbProbe(),
     RunnerHealthProbe(),
     RunnerPipCacheProbe(),
+    RunnerBusyLockProbe(),
 ]
 
 

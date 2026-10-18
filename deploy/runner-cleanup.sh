@@ -288,6 +288,7 @@ runner_busy_via_lockfile() {
     # The hook writes ${RUNNER_NAME}.lock, so keying on the workdir basename
     # never matched and this signal was silently dead.
     local runner_name="$1"
+    local runner_dir="${2:-}"
     local lock now mtime age
     lock="${RUNNER_BUSY_LOCK_DIR}/${runner_name}.lock"
     [[ -f "$lock" ]] || return 1
@@ -299,7 +300,39 @@ runner_busy_via_lockfile() {
         rm -f "$lock"
         return 1
     fi
+
+    # Issue #1987: Lock GC must remove a lock immediately when its recorded
+    # pid= is dead and no Runner.Worker is running for that runner.
+    local lock_pid
+    lock_pid=$(awk -F= '$1=="pid"{print $2; exit}' "$lock" 2>/dev/null || true)
+    if [[ -n "$lock_pid" && "$lock_pid" =~ ^[0-9]+$ ]]; then
+        if ! kill -0 "$lock_pid" 2>/dev/null; then
+            local worker_running=0
+            if [[ -n "$runner_dir" ]]; then
+                ps -eo args= 2>/dev/null | grep -F "${runner_dir}/bin/Runner.Worker" | grep -v 'grep -F' >/dev/null 2>&1 && worker_running=1
+            else
+                ps -eo args= 2>/dev/null | grep -E "Runner\.Worker.*${runner_name}" | grep -v 'grep -E' >/dev/null 2>&1 && worker_running=1
+            fi
+            if (( worker_running == 0 )); then
+                log "stale runner-busy lockfile (pid=${lock_pid} dead, no Worker running) — removing $lock"
+                rm -f "$lock"
+                return 1
+            fi
+        fi
+    fi
+
     return 0
+}
+
+cleanup_stale_busy_locks() {
+    [[ -d "$RUNNER_BUSY_LOCK_DIR" ]] || return 0
+    local lock
+    for lock in "$RUNNER_BUSY_LOCK_DIR"/*.lock; do
+        [[ -f "$lock" ]] || continue
+        local runner_name
+        runner_name="$(basename "$lock" .lock)"
+        runner_busy_via_lockfile "$runner_name" "" >/dev/null || true
+    done
 }
 
 runner_busy() {
@@ -313,7 +346,7 @@ runner_busy() {
     if runner_busy_via_pickup_dir "$runner_dir"; then
         return 0
     fi
-    if runner_busy_via_lockfile "$runner_name"; then
+    if runner_busy_via_lockfile "$runner_name" "$runner_dir"; then
         return 0
     fi
     ps -eo args= | grep -F "${runner_dir}/bin/Runner.Worker" | grep -v 'grep -F' >/dev/null 2>&1
@@ -439,6 +472,8 @@ cleanup_runners() {
             run systemctl start "$unit" || start_rc=$?
             if (( start_rc != 0 )); then
                 log "error $unit: failed to restart after cleanup (rc=$start_rc); host may have a stuck unit"
+            else
+                rm -f "${runner_dir}/.restart-required"
             fi
         fi
     done < <(list_runner_units)
@@ -709,6 +744,7 @@ main() {
         TOOL_CACHE_DAYS=7
         DOCKER_AGGRESSIVE=1
     fi
+    cleanup_stale_busy_locks
     if [[ "$DISK_GUARD" == "1" ]]; then
         # Runner-safe fast pass: reclaim docker + journal + trim only. Never
         # touches runner units, so it can run on a frequent timer without

@@ -32,8 +32,10 @@ class TestBusyViaLockfile:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,  # type: ignore[name-defined]
     ) -> None:
+        import os as _os
+
         monkeypatch.setattr(busy, "RUNNER_BUSY_LOCK_DIR", tmp_path)
-        (tmp_path / "runner-1.lock").write_text("pid=1\n")
+        (tmp_path / "runner-1.lock").write_text(f"pid={_os.getpid()}\n")
         assert busy._runner_busy_via_lockfile(UNIT) is True
 
     def test_stale_lockfile_returns_false(
@@ -50,6 +52,62 @@ class TestBusyViaLockfile:
         old = time.time() - 3600
         _os.utime(lock, (old, old))
         assert busy._runner_busy_via_lockfile(UNIT) is False
+
+    def test_dead_pid_and_no_worker_returns_false(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,  # type: ignore[name-defined]
+    ) -> None:
+        monkeypatch.setattr(busy, "RUNNER_BUSY_LOCK_DIR", tmp_path)
+        lock = tmp_path / "runner-1.lock"
+        lock.write_text("pid=99999999\nrunner=runner-1\n")
+
+        class FakePsutil:
+            @staticmethod
+            def pid_exists(pid: int) -> bool:
+                return False
+
+        monkeypatch.setattr(busy, "psutil", FakePsutil)
+        monkeypatch.setattr(busy, "_runner_busy_via_worker_scan_public", lambda _u: False)
+        assert busy._runner_busy_via_lockfile(UNIT) is False
+        assert lock.exists(), "autoscaler does not delete locks; cleanup script does"
+
+    def test_dead_pid_but_live_worker_keeps_lock_and_returns_true(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,  # type: ignore[name-defined]
+    ) -> None:
+        monkeypatch.setattr(busy, "RUNNER_BUSY_LOCK_DIR", tmp_path)
+        lock = tmp_path / "runner-1.lock"
+        lock.write_text("pid=99999999\nrunner=runner-1\n")
+
+        class FakePsutil:
+            @staticmethod
+            def pid_exists(pid: int) -> bool:
+                return False
+
+        monkeypatch.setattr(busy, "psutil", FakePsutil)
+        monkeypatch.setattr(busy, "_runner_busy_via_worker_scan_public", lambda _u: True)
+        assert busy._runner_busy_via_lockfile(UNIT) is True
+        assert lock.exists(), "lockfile should be preserved while worker is running"
+
+    def test_live_pid_keeps_lock_and_returns_true(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,  # type: ignore[name-defined]
+    ) -> None:
+        monkeypatch.setattr(busy, "RUNNER_BUSY_LOCK_DIR", tmp_path)
+        lock = tmp_path / "runner-1.lock"
+        lock.write_text("pid=12345\nrunner=runner-1\n")
+
+        class FakePsutil:
+            @staticmethod
+            def pid_exists(pid: int) -> bool:
+                return pid == 12345
+
+        monkeypatch.setattr(busy, "psutil", FakePsutil)
+        assert busy._runner_busy_via_lockfile(UNIT) is True
+        assert lock.exists()
 
 
 class TestBusyViaPickupDir:

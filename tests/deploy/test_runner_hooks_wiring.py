@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -58,7 +59,8 @@ class _Host:
         self.unit_dir = root / "systemd"
         self.units = root / "fake-units"
         self.prom = root / "prom"
-        for d in (self.hook_dir, self.src_dir, self.unit_dir, self.units, self.prom):
+        self.proc_dir = root / "proc"
+        for d in (self.hook_dir, self.src_dir, self.unit_dir, self.units, self.prom, self.proc_dir):
             d.mkdir()
         for hook in ("job-started.sh", "job-completed.sh", "force-drain.sh"):
             (self.src_dir / hook).write_text(f"# stale source copy of {hook}\n", encoding="utf-8")
@@ -76,17 +78,25 @@ class _Host:
             f"ACTIONS_RUNNER_HOOK_JOB_COMPLETED={self.canonical('job-completed.sh')} RUNNER_NAME=r1"
         )
 
-    def add_unit(self, name: str, environment: str = "", env_file: str | None = None) -> Path:
+    def add_unit(
+        self,
+        name: str,
+        environment: str = "",
+        env_file: str | None = None,
+        main_pid: int | None = None,
+    ) -> Path:
         unit = f"actions.runner.D-sorganization.{name}.service"
         runner = self.root / "runners" / name
-        (runner / "bin").mkdir(parents=True)
+        (runner / "bin").mkdir(parents=True, exist_ok=True)
         (runner / ".runner").write_text("{}", encoding="utf-8")
         if env_file is not None:
             (runner / ".env").write_text(env_file, encoding="utf-8", newline="\n")
         meta = self.units / unit
-        meta.mkdir()
+        meta.mkdir(parents=True, exist_ok=True)
         (meta / "Environment").write_text(environment + "\n", encoding="utf-8")
         (meta / "WorkingDirectory").write_text(as_bash_path(runner) + "\n", encoding="utf-8")
+        if main_pid is not None:
+            (meta / "MainPID").write_text(f"{main_pid}\n", encoding="utf-8")
         return runner
 
     def dropin(self, name: str) -> Path:
@@ -102,6 +112,7 @@ class _Host:
             "SYSTEMD_UNIT_DIR": as_bash_path(self.unit_dir),
             "FAKE_UNITS": as_bash_path(self.units),
             "FAKE_LOG": as_bash_path(self.log),
+            "PROC_DIR": as_bash_path(self.proc_dir),
         }
         exports = "; ".join(f"export {k}='{v}'" for k, v in env.items())
         cmd = f'{exports}; bash "{as_bash_path(RESTORE)}" {" ".join(args)}'
@@ -246,6 +257,42 @@ def test_env_override_is_removed_with_a_backup(host: _Host) -> None:
     assert host.run().returncode == 0
     assert len(list(runner.glob(".env.bak.*"))) == 1
     assert "runner_hooks_env_overrides 0" in host.metrics()
+
+
+def test_env_override_removal_flags_restart_required(host: _Host) -> None:
+    """Issue #1987: Removing .env hook overrides must flag the runner as restart-required."""
+    _install_current_hooks(host)
+    runner = host.add_unit("r1", environment=host.wired_env(), env_file=_LEGACY_ENV)
+
+    assert host.run().returncode == 0
+    assert (runner / ".restart-required").exists(), ".restart-required flag must be created when .env changes"
+    assert "runner_hooks_restart_required_runners 1" in host.metrics()
+
+
+def test_check_mode_reports_drift_when_restart_required_flag_present(host: _Host) -> None:
+    """Issue #1987: --check reports drift if .restart-required flag exists."""
+    _wire_clean_host(host)
+    runner = host.add_unit("r1", environment=host.wired_env(), env_file="# clean\n")
+    (runner / ".restart-required").write_text("reason=env_hook_override_removed\n")
+
+    result = host.run("--check")
+    assert result.returncode == 1
+    assert "[DRIFT]" in result.stdout and "restart-required" in result.stdout
+
+
+def test_check_mode_reports_drift_when_listener_started_before_env_mtime(host: _Host) -> None:
+    """Issue #1987: --check reports drift if running listener PID started before .env mtime."""
+    _wire_clean_host(host)
+    _ = host.add_unit("r1", environment=host.wired_env(), env_file="# clean\n", main_pid=4242)
+    proc_pid = host.proc_dir / "4242"
+    proc_pid.mkdir()
+    # Set proc pid mtime to 1 hour ago
+    old_time = time.time() - 3600
+    os.utime(proc_pid, (old_time, old_time))
+    # .env is fresh (now), which is > proc_pid mtime
+    result = host.run("--check")
+    assert result.returncode == 1
+    assert "[DRIFT]" in result.stdout and "started before .env" in result.stdout
 
 
 def test_env_line_pointing_at_the_canonical_hook_is_kept(host: _Host) -> None:

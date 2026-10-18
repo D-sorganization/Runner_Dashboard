@@ -26,6 +26,9 @@
 #     "Directory not empty", exit-127 "python: command not found", or
 #     "ModuleNotFoundError: No module named 'http'".
 #
+#   * stale_lock — runner-busy lockfiles older than 10 minutes (600s)
+#     with no active Runner.Worker process (see issue #1987).
+#
 # Output format (gauge):
 #
 #   # HELP runner_corruption_residue_count Stale corruption-residue file count by kind.
@@ -33,6 +36,7 @@
 #   runner_corruption_residue_count{host="HOST",runner="runner-01",kind="file_commands"} 3
 #   runner_corruption_residue_count{host="HOST",runner="runner-01",kind="diag_pages"} 1
 #   runner_corruption_residue_count{host="HOST",runner="runner-01",kind="python_toolcache"} 0
+#   runner_corruption_residue_count{host="HOST",runner="runner-01",kind="stale_lock"} 0
 #
 # Designed to be invoked from a 5-minute systemd timer
 # (runner-corruption-scan.timer) and scraped by node_exporter's
@@ -41,6 +45,8 @@
 set -Eeuo pipefail
 
 RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
+RUNNER_BUSY_LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
+RUNNER_BUSY_LOCK_STALE_SECONDS="${RUNNER_BUSY_LOCK_STALE_SECONDS:-600}"
 PROM_FILE="${PROM_FILE:-/var/lib/node_exporter/textfile_collector/runner_corruption.prom}"
 DIAG_PAGES_MIN_AGE_DAYS="${DIAG_PAGES_MIN_AGE_DAYS:-1}"
 FLEET_NODE_NAME="${FLEET_NODE_NAME:-$(hostname -s 2>/dev/null || hostname)}"
@@ -101,6 +107,45 @@ count_python_toolcache() {
     printf '%s' "$count"
 }
 
+count_stale_locks() {
+    # Count stale runner-busy locks for this runner (issue #1987).
+    # A lock older than $RUNNER_BUSY_LOCK_STALE_SECONDS (default 10 minutes)
+    # with no active Runner.Worker process is stale residue that permanently
+    # blocks maintenance and draining.
+    local runner_dir="$1"
+    local runner_name
+    runner_name="$(basename -- "$runner_dir")"
+    [[ -d "$RUNNER_BUSY_LOCK_DIR" ]] || { printf '0'; return; }
+
+    local agent_name=""
+    if [[ -f "${runner_dir}/.runner" ]]; then
+        agent_name=$(grep -o '"agentName"[[:space:]]*:[[:space:]]*"[^"]*"' "${runner_dir}/.runner" 2>/dev/null | cut -d'"' -f4 || true)
+    fi
+
+    local count=0 now lock checked_locks=" "
+    now=$(date +%s)
+    for name in "$runner_name" ${agent_name:+"$agent_name"}; do
+        lock="${RUNNER_BUSY_LOCK_DIR}/${name}.lock"
+        [[ -f "$lock" ]] || continue
+        if [[ "$checked_locks" == *" ${lock} "* ]]; then
+            continue
+        fi
+        checked_locks="${checked_locks}${lock} "
+
+        local mtime age
+        mtime=$(stat -c %Y "$lock" 2>/dev/null || echo 0)
+        age=$(( now - mtime ))
+        if (( age > RUNNER_BUSY_LOCK_STALE_SECONDS )); then
+            local worker_running=0
+            ps -eo args= 2>/dev/null | grep -F "${runner_dir}/bin" | grep 'Runner\.Worker' >/dev/null 2>&1 && worker_running=1
+            if (( worker_running == 0 )); then
+                count=$((count + 1))
+            fi
+        fi
+    done
+    printf '%s' "$count"
+}
+
 if [[ -d "$RUNNER_ROOT" ]]; then
     # shellcheck disable=SC2044  # paths under RUNNER_ROOT are operator-controlled
     while IFS= read -r runner_dir; do
@@ -109,12 +154,15 @@ if [[ -d "$RUNNER_ROOT" ]]; then
         fc_count="$(count_file_commands "$runner_dir")"
         dp_count="$(count_diag_pages "$runner_dir")"
         ptc_count="$(count_python_toolcache "$runner_dir")"
+        sl_count="$(count_stale_locks "$runner_dir")"
         printf 'runner_corruption_residue_count{host="%s",runner="%s",kind="file_commands"} %s\n' \
             "$FLEET_NODE_NAME" "$runner_name" "$fc_count" >>"$tmp_file"
         printf 'runner_corruption_residue_count{host="%s",runner="%s",kind="diag_pages"} %s\n' \
             "$FLEET_NODE_NAME" "$runner_name" "$dp_count" >>"$tmp_file"
         printf 'runner_corruption_residue_count{host="%s",runner="%s",kind="python_toolcache"} %s\n' \
             "$FLEET_NODE_NAME" "$runner_name" "$ptc_count" >>"$tmp_file"
+        printf 'runner_corruption_residue_count{host="%s",runner="%s",kind="stale_lock"} %s\n' \
+            "$FLEET_NODE_NAME" "$runner_name" "$sl_count" >>"$tmp_file"
     done < <(find "$RUNNER_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'runner-*' 2>/dev/null | sort)
 fi
 

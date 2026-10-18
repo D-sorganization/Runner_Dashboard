@@ -52,7 +52,7 @@ def _as_bash_path(p: Path) -> str:
     return str(p).replace("\\", "/")
 
 
-def _run_scan(runner_root: Path, prom_path: Path, host: str = "test-host") -> str:
+def _run_scan(runner_root: Path, prom_path: Path, host: str = "test-host", lock_dir: Path | None = None) -> str:
     """Invoke the scan script and return the file's contents."""
     env = os.environ.copy()
     if BASH:
@@ -62,6 +62,8 @@ def _run_scan(runner_root: Path, prom_path: Path, host: str = "test-host") -> st
     env["PROM_FILE"] = _as_bash_path(prom_path)
     env["FLEET_NODE_NAME"] = host
     env["DIAG_PAGES_MIN_AGE_DAYS"] = "1"
+    if lock_dir is not None:
+        env["RUNNER_BUSY_LOCK_DIR"] = _as_bash_path(lock_dir)
 
     if os.name == "nt" and BASH:
         bash_path = Path(BASH)
@@ -243,6 +245,29 @@ def test_python_toolcache_absent_cache_reports_zero(tmp_path: Path) -> None:
     prom = tmp_path / "out.prom"
     content = _run_scan(runner_root, prom)
     assert _metric_value(content, "runner-07", "python_toolcache") == 0
+
+
+def test_counts_stale_lock_residue(tmp_path: Path) -> None:
+    runner_root = tmp_path / "runners"
+    (runner_root / "runner-01").mkdir(parents=True)
+    (runner_root / "runner-02").mkdir(parents=True)
+    lock_dir = tmp_path / "locks"
+    lock_dir.mkdir()
+
+    # runner-01 has a stale lock (older than 10m = 600s)
+    stale_lock = lock_dir / "runner-01.lock"
+    stale_lock.write_text("pid=99999\nrunner=runner-01\n")
+    two_hours_ago = time.time() - 7200
+    os.utime(stale_lock, (two_hours_ago, two_hours_ago))
+
+    # runner-02 has a fresh lock (e.g. 30s old)
+    fresh_lock = lock_dir / "runner-02.lock"
+    fresh_lock.write_text("pid=99999\nrunner=runner-02\n")
+
+    prom = tmp_path / "out.prom"
+    content = _run_scan(runner_root, prom, lock_dir=lock_dir)
+    assert _metric_value(content, "runner-01", "stale_lock") == 1
+    assert _metric_value(content, "runner-02", "stale_lock") == 0
 
 
 def test_emits_atomic_write(tmp_path: Path) -> None:

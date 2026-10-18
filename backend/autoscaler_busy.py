@@ -15,6 +15,7 @@ Strategy ordering (any positive signal → busy):
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -107,6 +108,49 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
             unit,
         )
         return False
+
+    # Issue #1987: Treat lock as stale immediately when recorded pid= is dead
+    # and no Runner.Worker is running for that runner. Deletion is cleanup's job.
+    lock_pid: int | None = None
+    try:
+        content = lock.read_text(encoding="utf-8")
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("pid="):
+                val = line.split("=", 1)[1].strip()
+                if val.isdigit():
+                    lock_pid = int(val)
+                break
+    except OSError as exc:
+        log.debug("lockfile read failed unit=%s path=%s err=%s", unit, lock, exc)
+
+    if lock_pid is not None:
+        psutil_mod = _psutil_dep()
+        pid_dead = False
+        if psutil_mod is not None:
+            try:
+                if lock_pid == 1 and sys.platform == "win32":
+                    pid_dead = False
+                else:
+                    pid_dead = not psutil_mod.pid_exists(lock_pid)
+            except Exception:
+                pid_dead = False
+        else:
+            try:
+                os.kill(lock_pid, 0)
+            except ProcessLookupError:
+                pid_dead = True
+            except OSError:
+                pid_dead = False
+
+        if pid_dead and not _runner_busy_via_worker_scan_public(unit):
+            log.info(
+                "stale lockfile (pid=%d is dead and no Runner.Worker running) — not treating as busy unit=%s",
+                lock_pid,
+                unit,
+            )
+            return False
+
     return True
 
 
@@ -190,19 +234,19 @@ def _runner_busy_via_worker_scan(unit: str) -> bool:
     *positive* signal layered on top of the other strategies, never the sole
     arbiter of idleness.
     """
-    work_dir = _runner_workdir_for_unit_public(unit)
-    if not work_dir:
-        return False
-    psutil_mod = _psutil_dep()
-    if psutil_mod is None:
-        return False
-    # POSIX join (not pathlib): the runner workdir comes from systemd on the
-    # Linux host, and we substring-match it against the Worker's argv. Using
-    # os-native Path() would emit backslashes when this check is exercised on
-    # Windows (e.g. the test suite), breaking the match. Mirror the literal
-    # concatenation used by deploy/runner-cleanup.sh's ps grep.
-    worker_path = work_dir.rstrip("/") + "/bin/Runner.Worker"
     try:
+        work_dir = _runner_workdir_for_unit_public(unit)
+        if not work_dir:
+            return False
+        psutil_mod = _psutil_dep()
+        if psutil_mod is None:
+            return False
+        # POSIX join (not pathlib): the runner workdir comes from systemd on the
+        # Linux host, and we substring-match it against the Worker's argv. Using
+        # os-native Path() would emit backslashes when this check is exercised on
+        # Windows (e.g. the test suite), breaking the match. Mirror the literal
+        # concatenation used by deploy/runner-cleanup.sh's ps grep.
+        worker_path = work_dir.rstrip("/") + "/bin/Runner.Worker"
         for proc in psutil_mod.process_iter(["cmdline"]):
             try:
                 cmdline = proc.info.get("cmdline") or []

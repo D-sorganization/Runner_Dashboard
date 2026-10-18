@@ -198,12 +198,58 @@ def runner_names(workdir: Path, unit: str | None = None) -> list[str]:
     return list(dict.fromkeys(names))
 
 
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32" and pid == 1:
+        return True
+    try:
+        import psutil  # type: ignore
+
+        return bool(psutil.pid_exists(pid))
+    except ImportError:
+        pass
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
 def runner_busy_via_lock(workdir: Path, unit: str | None = None) -> bool:
     """Detect a job-start hook marker for the runner."""
-    return any(
-        _recent_path_is_busy(RUNNER_BUSY_LOCK_DIR / f"{name}.lock", RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
-        for name in runner_names(workdir, unit)
-    )
+    for name in runner_names(workdir, unit):
+        lock = RUNNER_BUSY_LOCK_DIR / f"{name}.lock"
+        if not _recent_path_is_busy(lock, RUNNER_BUSY_LOCK_MAX_AGE_SECONDS):
+            continue
+        # Issue #1987: Treat lock as stale immediately if recorded pid= is dead
+        # and no Runner.Worker process is running for that runner.
+        try:
+            content = lock.read_text(encoding="utf-8", errors="replace")
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith("pid="):
+                    val = line.split("=", 1)[1].strip()
+                    if val.isdigit():
+                        lock_pid = int(val)
+                        if not _pid_is_alive(lock_pid) and not runner_busy_via_process(workdir):
+                            try:
+                                lock.unlink(missing_ok=True)
+                            except OSError:
+                                pass
+                            break
+                    break
+            else:
+                return True
+            if lock.exists():
+                return True
+        except OSError:
+            return True
+    return False
 
 
 def runner_busy_via_diag(workdir: Path) -> bool:

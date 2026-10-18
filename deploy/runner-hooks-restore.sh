@@ -73,6 +73,7 @@ TEXTFILE_COLLECTOR_DIR="${TEXTFILE_COLLECTOR_DIR:-/var/lib/node_exporter/textfil
 PROM_FILE="${PROM_FILE:-${TEXTFILE_COLLECTOR_DIR}/runner_hooks.prom}"
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
 SYSTEMD_UNIT_DIR="${SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
+PROC_DIR="${PROC_DIR:-/proc}"
 DROPIN_NAME="15-runner-hooks.conf"
 
 MODE=apply
@@ -93,6 +94,7 @@ wiring_missing=0
 dropins_written=0
 env_overrides=0
 env_overrides_removed=0
+restart_required_runners=0
 
 log() { echo "runner-hooks-restore: $*"; }
 
@@ -224,6 +226,9 @@ fix_env_file() {
     mv -f "$staged" "$env_file" || { rm -f "$staged"; return 1; }
     env_overrides_removed=$((env_overrides_removed + found))
     log "removed ${found} hook override(s) from ${env_file} (backup ${backup}); applies at next runner restart"
+    # Issue #1987: Flag runner as restart-required so changes to .env are not silently inert.
+    touch "${runner_dir}/.restart-required"
+    log "flagged ${runner_dir} as restart-required"
 }
 
 while IFS= read -r unit; do
@@ -233,6 +238,39 @@ while IFS= read -r unit; do
         continue
     fi
     fix_env_file "$runner_dir" || log "could not fix ${runner_dir}/.env" >&2
+
+    # Issue #1987: Check if .restart-required flag exists
+    if [[ -f "${runner_dir}/.restart-required" ]]; then
+        restart_required_runners=$((restart_required_runners + 1))
+        if [[ "$MODE" == check ]]; then
+            drift=1
+            log "[DRIFT] ${runner_dir} has .restart-required flag set; restart runner to apply .env changes"
+        fi
+    fi
+
+    # Issue #1987 (Item 4): Check .env-versus-running-process drift.
+    # Compare /proc/<Listener pid> start time with .env mtime.
+    main_pid="$("$SYSTEMCTL" show "$unit" --property=MainPID --value 2>/dev/null || echo 0)"
+    if [[ -n "$main_pid" && "$main_pid" =~ ^[0-9]+$ && "$main_pid" -gt 0 ]]; then
+        proc_stat="${PROC_DIR}/${main_pid}"
+        env_file="${runner_dir}/.env"
+        if [[ -d "$proc_stat" && -f "$env_file" ]]; then
+            pid_start=$(stat -c %Y "$proc_stat" 2>/dev/null || echo 0)
+            env_mtime=$(stat -c %Y "$env_file" 2>/dev/null || echo 0)
+            if (( pid_start > 0 && env_mtime > pid_start )); then
+                drift=1
+                if [[ "$MODE" == check ]]; then
+                    log "[DRIFT] ${unit} (PID ${main_pid}) started before .env was modified (env_mtime=${env_mtime} > pid_start=${pid_start}); restart required"
+                else
+                    log "warn: ${unit} (PID ${main_pid}) started before .env was modified; flagging restart-required"
+                    if [[ ! -f "${runner_dir}/.restart-required" ]]; then
+                        touch "${runner_dir}/.restart-required"
+                        restart_required_runners=$((restart_required_runners + 1))
+                    fi
+                fi
+            fi
+        fi
+    fi
 done < <(list_runner_units)
 
 if [[ "$MODE" == check ]]; then
@@ -261,6 +299,9 @@ if [[ -d "${TEXTFILE_COLLECTOR_DIR}" ]]; then
         echo "# HELP runner_hooks_env_overrides_removed Runner .env hook overrides removed on the most recent pass."
         echo "# TYPE runner_hooks_env_overrides_removed gauge"
         echo "runner_hooks_env_overrides_removed ${env_overrides_removed}"
+        echo "# HELP runner_hooks_restart_required_runners Runners flagged as requiring restart to apply .env changes."
+        echo "# TYPE runner_hooks_restart_required_runners gauge"
+        echo "runner_hooks_restart_required_runners ${restart_required_runners}"
         echo "# HELP runner_hooks_last_check_timestamp_seconds Unix time of the last self-heal pass."
         echo "# TYPE runner_hooks_last_check_timestamp_seconds gauge"
         echo "runner_hooks_last_check_timestamp_seconds $(date +%s)"
