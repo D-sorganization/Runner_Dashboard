@@ -456,7 +456,9 @@ cleanup_docker() {
         # volumes, and idle build cache, so running jobs / in-use volumes /
         # active buildx builders are never touched. Images carrying the `keep`
         # label (docker build --label keep=true) are spared: they are slow,
-        # WAN-bound rebuilds that other sessions depend on.
+        # WAN-bound rebuilds that other sessions depend on. Untagged (dangling)
+        # copies are always reclaimable even if labelled keep: keep protects
+        # tagged images only (#1981).
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force; fi
         run docker builder prune --all --force
         # buildx builders keep their own cache pools; prune those too when the
@@ -465,12 +467,13 @@ cleanup_docker() {
         if docker buildx version >/dev/null 2>&1; then
             run docker buildx prune --all --force
         fi
+        run docker image prune --force
         run docker image prune --all --force --filter "label!=keep"
         run docker volume prune --force
     else
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force --filter "until=72h"; fi
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-        run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}" --filter "label!=keep"
+        run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
     fi
     if [[ "$PRUNE_ORPHAN_BUILDX_STATE" == "1" ]]; then cleanup_orphan_buildx_state; fi

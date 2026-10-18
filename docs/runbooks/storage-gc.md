@@ -65,6 +65,12 @@ When the installer finds an `ExecStart=` override in a drop-in, it neutralises i
 
 To add a host, edit the registry or the workstation list. Never hard-code a host anywhere else.
 
+## Docker Image Lifecycle and the `keep` Label
+
+Images labelled `keep=true` (e.g. `docker build --label keep=true` for heavy base/sim images) are protected during disk pressure:
+- **Tagged images**: `docker image prune --all` spares any image carrying `label=keep`.
+- **Dangling images (untagged)**: Reclaimed regardless of the `keep` label (#1981). Untagged superseded builds cannot be referenced by name; the `keep` label protects tagged images only. Routine maintenance reclaims dangling images older than `DOCKER_DANGLING_UNTIL` (default `6h`), and aggressive cleanup reclaims all dangling images immediately.
+
 ## Known Limits
 
 - **WSL `ext4.vhdx` files do not shrink when the guest frees space.** Reclaiming that space on the Windows side is a separate step: see [wsl-vhdx-compaction.md](wsl-vhdx-compaction.md).

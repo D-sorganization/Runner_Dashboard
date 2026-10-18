@@ -206,11 +206,23 @@ class TestTmpLitterGC:
         assert "cleanup_tmp" in full_block
 
 
-def test_every_image_prune_spares_keep_labelled_images(cleanup_text: str) -> None:
-    """Images labelled ``keep`` (e.g. the UpstreamDrift explorer / ud-sim images)
-    must survive both the age-windowed and the disk-pressure prune; a plain
-    `image prune --all` deleted them repeatedly (UpstreamDrift #12878)."""
-    prune_lines = [line for line in cleanup_text.splitlines() if "docker image prune" in line]
-    assert prune_lines, "expected docker image prune calls"
-    for line in prune_lines:
-        assert "label!=keep" in line, f"image prune does not spare keep: {line.strip()}"
+def test_all_image_prune_spares_keep_labelled_images(cleanup_text: str) -> None:
+    """Tagged images labelled ``keep`` (e.g. the UpstreamDrift explorer / ud-sim images)
+    must survive disk-pressure prune; a plain `image prune --all` deleted them
+    repeatedly (UpstreamDrift #12878). Every `--all` prune must carry label!=keep."""
+    all_prune_lines = [line for line in cleanup_text.splitlines() if "docker image prune" in line and "--all" in line]
+    assert all_prune_lines, "expected docker image prune --all calls"
+    for line in all_prune_lines:
+        assert "label!=keep" in line, f"aggressive image prune does not spare keep: {line.strip()}"
+
+
+def test_dangling_image_prune_reclaims_without_label_filter(cleanup_text: str) -> None:
+    """Untagged (dangling) images must be pruned without `label!=keep` (#1981).
+    Superseded builds of keep-labelled images retain the label when untagged,
+    so filtering by `label!=keep` permanently leaks them."""
+    dangling_prune_lines = [
+        line for line in cleanup_text.splitlines() if "docker image prune" in line and "--all" not in line
+    ]
+    assert dangling_prune_lines, "expected dangling docker image prune calls"
+    for line in dangling_prune_lines:
+        assert "label!=keep" not in line, f"dangling image prune must not filter out keep: {line.strip()}"
