@@ -150,6 +150,14 @@ def test_cleanup_tmp_default_is_declared_at_top_level() -> None:
 
 # --- PRUNE_DOCKER_CONTAINERS gate ---------------------------------------------
 
+PERSISTENT_BUILDER_HELPERS = (
+    "validate_persistent_builders",
+    "is_persistent_builder",
+    "persistent_state_volumes",
+    "ensure_persistent_builders_running",
+    "prune_current_buildx_cache",
+)
+
 
 def _docker_calls(tmp_path: Path, prune_containers: str | None, *, aggressive: str = "0") -> list[str]:
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -167,6 +175,9 @@ def _docker_calls(tmp_path: Path, prune_containers: str | None, *, aggressive: s
     ]
     if prune_containers is not None:
         lines.append(f"PRUNE_DOCKER_CONTAINERS={prune_containers}")
+    # cleanup_docker guards persistent shared buildx builders through these helpers (#1988).
+    lines += ["log() { :; }", "PERSISTENT_BUILDX_BUILDERS=ud-buildkit", "PERSISTENT_BUILDERS=()"]
+    lines += [_extract(text, fn) for fn in PERSISTENT_BUILDER_HELPERS]
     lines += [_extract(text, "cleanup_docker"), "cleanup_docker"]
     result = _harness(tmp_path, lines)
     assert result.returncode == 0, result.stderr

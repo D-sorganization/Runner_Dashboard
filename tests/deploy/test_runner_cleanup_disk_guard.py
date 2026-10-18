@@ -23,7 +23,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from bash_host import BASH, SKIP_REASON, as_bash_path
+from bash_host import BASH, SKIP_REASON, as_bash_path, docker_shim_prelude
 
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 CLEANUP = DEPLOY / "runner-cleanup.sh"
@@ -249,13 +249,13 @@ def test_dangling_prune_command_uses_age_window_in_both_modes(tmp_path: Path, ag
     docker.chmod(0o755)
 
     script = CLEANUP.read_text(encoding="utf-8").split("# Emit a textfile-collector metric", 1)[0]
-    script += "\ncleanup_docker\n"
+    script = docker_shim_prelude(docker_dir) + script + "\ncleanup_docker\n"
     harness = tmp_path / "cleanup-docker.sh"
     harness.write_text(script, encoding="utf-8", newline="\n")
     env = os.environ.copy()
     env.update(
         {
-            "PATH": f"{as_bash_path(docker_dir)}:{env['PATH']}",
+            "DOCKER_HOST": "unix:///nonexistent/docker-test-guard.sock",
             "DOCKER_CALLS": as_bash_path(calls),
             "DOCKER_AGGRESSIVE": aggressive,
             "DOCKER_DANGLING_UNTIL": "2h",

@@ -74,6 +74,18 @@ Images labelled `keep=true` (e.g. `docker build --label keep=true` for heavy bas
 
 To inspect or deploy a change to this policy, use the storage-GC owner: `python deploy/fleet_storage_gc.py --verify-only` for current state, `python deploy/fleet_storage_gc.py --dry-run` to preview, then `python deploy/fleet_storage_gc.py` to install and verify. The fleet tool transports `deploy/runner-cleanup.sh` through `deploy/install-storage-gc.sh`.
 
+## Persistent Shared buildx Builders
+
+Some repositories share one long-lived `docker-container` buildx builder per host instead of per-runner `type=local` caches (UpstreamDrift #13208: `ud-buildkit`). The builder's state volume is the layer cache. Its size is capped by the builder's own BuildKit GC policy, not by this cleanup.
+
+`PERSISTENT_BUILDX_BUILDERS` lists these builders. It is space-separated and defaults to `ud-buildkit`; set it to `""` to protect none. Each name must match `^[a-z0-9][a-z0-9_-]*$`. An invalid entry stops docker cleanup with exit code 2 before any prune runs. For every listed builder, cleanup (#1988):
+
+- **Container:** starts the builder's container (`buildx_buildkit_<name>0`) if it is stopped, which happens after every reboot, so `container prune` cannot remove it. If the start fails, the run skips `container prune` and logs a warning.
+- **Cache:** never runs `buildx prune` on it, even when it is the current builder.
+- **State volume and definition:** never reaps its state volume (`buildx_buildkit_<name>0_state`) and never runs `buildx rm` on it, even if the container is momentarily gone.
+
+Ephemeral builders, such as those `docker/setup-buildx-action` creates per job, are reclaimed exactly as before. To retire a persistent builder, drop it from the list and run `docker buildx rm <name>` by hand.
+
 ## Known Limits
 
 - **WSL `ext4.vhdx` files do not shrink when the guest frees space.** Reclaiming that space on the Windows side is a separate step: see [wsl-vhdx-compaction.md](wsl-vhdx-compaction.md).
