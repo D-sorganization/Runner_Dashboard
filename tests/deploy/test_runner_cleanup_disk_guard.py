@@ -12,14 +12,18 @@ was the dominant consumer. These tests pin the controls that prevent recurrence:
      runner units, so it is safe to run on a frequent (hourly) timer.
   3. The installer ships and enables an hourly runner-disk-guard timer.
 
-All static analysis — no bash execution, no Linux host required.
+Most checks are static; the dangling-image contract also drives the real bash
+function with a stub Docker executable, so no Docker daemon or Linux host is required.
 """
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
+from bash_host import BASH, SKIP_REASON, as_bash_path
 
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 CLEANUP = DEPLOY / "runner-cleanup.sh"
@@ -70,7 +74,7 @@ class TestAggressiveDockerUnderPressure:
         anchor = '    else\n        if [[ "$prune_containers" == "1" ]]; then run docker container prune'
         routine = cleanup_text[cleanup_text.index(anchor) :]
         routine = routine[: routine.index("\n    fi\n")]
-        assert 'docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"' in routine
+        assert 'docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"' in routine
         assert "docker image prune --all" not in routine
 
     def test_rustup_tmp_gc_is_guarded(self, cleanup_text: str) -> None:
@@ -226,3 +230,51 @@ def test_dangling_image_prune_reclaims_without_label_filter(cleanup_text: str) -
     assert dangling_prune_lines, "expected dangling docker image prune calls"
     for line in dangling_prune_lines:
         assert "label!=keep" not in line, f"dangling image prune must not filter out keep: {line.strip()}"
+
+
+@pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
+@pytest.mark.parametrize("aggressive", ["0", "1"])
+def test_dangling_prune_command_uses_age_window_in_both_modes(tmp_path: Path, aggressive: str) -> None:
+    """Run the real prune function with a stub Docker and inspect its argv."""
+    assert BASH is not None
+    docker_dir = tmp_path / "bin"
+    docker_dir.mkdir()
+    calls = tmp_path / "docker-calls.log"
+    docker = docker_dir / "docker"
+    docker.write_text(
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$DOCKER_CALLS"\nexit 0\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    docker.chmod(0o755)
+
+    script = CLEANUP.read_text(encoding="utf-8").split("# Emit a textfile-collector metric", 1)[0]
+    script += "\ncleanup_docker\n"
+    harness = tmp_path / "cleanup-docker.sh"
+    harness.write_text(script, encoding="utf-8", newline="\n")
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{as_bash_path(docker_dir)}:{env['PATH']}",
+            "DOCKER_CALLS": as_bash_path(calls),
+            "DOCKER_AGGRESSIVE": aggressive,
+            "DOCKER_DANGLING_UNTIL": "2h",
+            "PRUNE_ORPHAN_BUILDX_STATE": "0",
+            "LOG_DIR": as_bash_path(tmp_path / "logs"),
+            "USER": "runner-test",
+        }
+    )
+    result = subprocess.run([BASH, as_bash_path(harness)], capture_output=True, text=True, check=False, env=env)
+
+    assert result.returncode == 0, result.stderr
+    docker_calls = calls.read_text(encoding="utf-8").splitlines()
+    assert "image prune --force --filter dangling=true --filter until=2h" in docker_calls
+    assert not any(
+        call.startswith("image prune") and "--all" not in call and "--filter dangling=true" not in call
+        for call in docker_calls
+    )
+    assert all("label!=keep" not in call for call in docker_calls if call.startswith("image prune --force"))
+    if aggressive == "1":
+        all_prunes = [call for call in docker_calls if call.startswith("image prune") and "--all" in call]
+        assert all_prunes, "aggressive cleanup must include an all-unused-image prune"
+        assert all("label!=keep" in call for call in all_prunes)
