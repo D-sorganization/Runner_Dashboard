@@ -19,6 +19,7 @@ Fleet survey findings these pin:
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -385,3 +386,24 @@ def test_job_completed_never_clears_a_dir_that_is_not_runner_temp(tmp_path: Path
 
     assert _run_job_completed(tmp_path, {"RUNNER_TEMP": as_bash_path(other)}).returncode == 0
     assert (other / "step.sh").exists()
+
+
+def test_all_hook_timeouts_pass_kill_after_escalation() -> None:
+    """Every timeout invocation in runner-hooks must pass -k <grace> so a
+    TERM-ignoring or TERM-spinning child is killed with SIGKILL (#1982).
+    A bare timeout caused git's remove_junk signal handler to spin in state R
+    for 97 minutes on ControlTower."""
+    hook_dir = DEPLOY / "runner-hooks"
+    scripts = sorted(hook_dir.glob("*.sh"))
+    assert scripts, "expected runner hook scripts"
+    violations: list[str] = []
+    for script in scripts:
+        for idx, line in enumerate(script.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if re.search(r"(?:^|[\s\(;&|])timeout\s+", stripped):
+                if not re.search(r"(?:^|[\s\(;&|])timeout\s+(?:-k\s+\S+|--kill-after=\S+)", stripped):
+                    violations.append(f"{script.name}:{idx}: {stripped}")
+
+    assert not violations, "Found bare timeout call(s) without -k escalation:\n" + "\n".join(violations)
