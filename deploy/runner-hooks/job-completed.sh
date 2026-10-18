@@ -40,7 +40,7 @@ fi
 case "$_runner_temp" in
     */_work/_temp)
         if [ -d "$_runner_temp" ] && [ ! -L "$_runner_temp" ]; then
-            timeout "${RUNNER_HOOK_TEMP_CLEANUP_TIMEOUT_SECONDS:-60}s" find "$_runner_temp" \
+            timeout -k 10s "${RUNNER_HOOK_TEMP_CLEANUP_TIMEOUT_SECONDS:-60}s" find "$_runner_temp" \
                 -mindepth 1 -maxdepth 1 ! -name _runner_file_commands \
                 -exec rm -rf --one-file-system -- {} + 2>/dev/null || true
         fi

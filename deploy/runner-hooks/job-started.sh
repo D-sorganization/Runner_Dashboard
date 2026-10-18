@@ -59,7 +59,7 @@ done
 # default; enable here only for one-off recovery.
 _work_root="$HOME_DIR/actions-runners"
 if [ "${RUNNER_HOOK_ENABLE_WORKTREE_LOCK_CLEANUP:-0}" = "1" ] && [ -d "$_work_root" ]; then
-    timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$_work_root" \
+    timeout -k 10s "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$_work_root" \
         \( -path '*/.git/index.lock' -o \
            -path '*/.git/HEAD.lock' -o \
            -path '*/.git/config.lock' -o \
@@ -195,7 +195,7 @@ _QUARANTINE_MAX_AGE_SECONDS="${RUNNER_HOOK_QUARANTINE_MAX_AGE_SECONDS:-3600}"
 _wsgit() {
     local ws="$1"
     shift
-    timeout "$_HOOK_GIT_TIMEOUT" git -c safe.directory='*' -C "$ws" "$@"
+    timeout -k 10s "$_HOOK_GIT_TIMEOUT" git -c safe.directory='*' -C "$ws" "$@"
 }
 
 # _partial_reason <workspace>: a promisor remote or partial-clone filter.
@@ -205,9 +205,9 @@ _partial_reason() {
     local gd="$1/.git" cfg
     for cfg in "$gd/config" "$gd/config.worktree"; do
         [ -f "$cfg" ] || continue
-        if timeout "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" --get-regexp \
+        if timeout -k 10s "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" --get-regexp \
                 '^remote\..*\.partialclonefilter$' >/dev/null 2>&1 ||
-           timeout "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" --bool --get-regexp \
+           timeout -k 10s "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" --bool --get-regexp \
                 '^remote\..*\.promisor$' 2>/dev/null | grep -q ' true$'; then
             printf 'partial clone'
             return 0
@@ -219,7 +219,7 @@ _partial_reason() {
 _sparse_reason() {
     local ws="$1" gd="$1/.git" reasons="" cfg
     for cfg in "$gd/config" "$gd/config.worktree"; do
-        if [ -f "$cfg" ] && [ "$(timeout "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" \
+        if [ -f "$cfg" ] && [ "$(timeout -k 10s "$_HOOK_GIT_TIMEOUT" git config --file "$cfg" \
                 --bool --get core.sparseCheckout 2>/dev/null)" = "true" ]; then
             reasons="${reasons:+$reasons, }core.sparseCheckout=true"
             break
@@ -258,7 +258,7 @@ _blob_problem() {
 # up a full, non-sparse checkout of HEAD.
 _repair_sparse_in_place() {
     local ws="$1" gd="$1/.git" cfg st
-    timeout "$_HOOK_TREE_TIMEOUT" git -c safe.directory='*' -C "$ws" \
+    timeout -k 10s "$_HOOK_TREE_TIMEOUT" git -c safe.directory='*' -C "$ws" \
         sparse-checkout disable >/dev/null 2>&1 || return 1
     rm -f "$gd/info/sparse-checkout" 2>/dev/null || return 1
     for cfg in "$gd/config" "$gd/config.worktree"; do
@@ -271,7 +271,7 @@ _repair_sparse_in_place() {
     _wsgit "$ws" ls-files -z | _wsgit "$ws" update-index -z --no-skip-worktree --stdin >/dev/null 2>&1
     st="${PIPESTATUS[*]}"
     [ "$st" = "0 0" ] || return 1
-    timeout "$_HOOK_TREE_TIMEOUT" git -c safe.directory='*' -C "$ws" \
+    timeout -k 10s "$_HOOK_TREE_TIMEOUT" git -c safe.directory='*' -C "$ws" \
         checkout --force HEAD -- . >/dev/null 2>&1 || return 1
     # Verify rather than trust the exit codes.
     [ -z "$(_sparse_reason "$ws")" ]
@@ -345,7 +345,7 @@ _seed_is_healthy() {
     [ -d "$c/.git" ] && [ ! -L "$c" ] && [ ! -L "$c/.git" ] || return 1
     _wsgit "$c" rev-parse -q --verify 'HEAD^{commit}' >/dev/null 2>&1 || return 1
     [ -z "$(_partial_reason "$c")" ] || return 1
-    [ -z "$(timeout 10 find "$c/.git" -maxdepth 4 -name '*.lock' ! -path '*/objects/*' -print -quit 2>/dev/null)" ] || return 1
+    [ -z "$(timeout -k 10s 10 find "$c/.git" -maxdepth 4 -name '*.lock' ! -path '*/objects/*' -print -quit 2>/dev/null)" ] || return 1
     [ -z "$(_sparse_reason "$c")" ]
 }
 
@@ -413,12 +413,12 @@ _reseed_workspace() {
     started=$(date +%s)
     # The local clone itself is the one transport allowed here: "file" covers
     # local paths; the seed is never a promisor, so nothing can lazy-fetch.
-    if GIT_ALLOW_PROTOCOL="file" timeout "$_SEED_TIMEOUT" git -c safe.directory='*' clone -q --no-hardlinks --no-checkout \
+    if GIT_ALLOW_PROTOCOL="file" timeout -k 10s "$_SEED_TIMEOUT" git -c safe.directory='*' clone -q --no-hardlinks --no-checkout \
             -- "$seed" "$ws" >/dev/null 2>&1 &&
        _wsgit "$ws" remote set-url origin "$url" >/dev/null 2>&1 &&
        { [ ! -d "$seed/.git/modules" ] ||
-         timeout "$_SEED_TIMEOUT" cp -a "$seed/.git/modules" "$ws/.git/" 2>/dev/null; } &&
-       timeout "$_SEED_TIMEOUT" git -c safe.directory='*' -C "$ws" checkout -q --force HEAD >/dev/null 2>&1 &&
+         timeout -k 10s "$_SEED_TIMEOUT" cp -a "$seed/.git/modules" "$ws/.git/" 2>/dev/null; } &&
+       timeout -k 10s "$_SEED_TIMEOUT" git -c safe.directory='*' -C "$ws" checkout -q --force HEAD >/dev/null 2>&1 &&
        _wsgit "$ws" rev-parse -q --verify 'HEAD^{commit}' >/dev/null 2>&1; then
         echo "[runner-cleanup] reseeded $ws from local sibling $seed in $(( $(date +%s) - started ))s" >&2
         return 0
@@ -486,7 +486,7 @@ _remove_stale_workspace_locks() {
     local gd="$1/.git" lock
     [ -d "$gd" ] || return 0
     # (No -prune: -delete implies -depth, under which find ignores -prune.)
-    timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$gd" -maxdepth 8 \
+    timeout -k 10s "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$gd" -maxdepth 8 \
         -type f -name '*.lock' ! -path '*/objects/*' -mmin +1 -print -delete 2>/dev/null | \
         while IFS= read -r lock; do
             echo "[runner-cleanup] removed stale workspace lock $lock" >&2
@@ -498,7 +498,7 @@ _remove_stale_workspace_locks() {
 _remove_orphaned_fetch_packs() {
     local gd="$1/.git" pack
     [ -d "$gd" ] || return 0
-    timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$gd" -maxdepth 8 \
+    timeout -k 10s "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$gd" -maxdepth 8 \
         -type f -path '*/objects/pack/*' \( -name 'tmp_pack_*' -o -name 'tmp_idx_*' \) \
         -mmin +1 -print -delete 2>/dev/null | \
         while IFS= read -r pack; do
@@ -511,9 +511,9 @@ _remove_orphaned_fetch_packs() {
 _record_negotiation_ref() {
     local ws="$1" head
     [ -d "$ws/.git" ] || return 0
-    head="$(timeout 10 git -C "$ws" rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null)" || return 0
+    head="$(timeout -k 10s 10 git -C "$ws" rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null)" || return 0
     [ -n "$head" ] || return 0
-    timeout 10 git -C "$ws" update-ref refs/runner-cache/last-checkout "$head" 2>/dev/null || true
+    timeout -k 10s 10 git -C "$ws" update-ref refs/runner-cache/last-checkout "$head" 2>/dev/null || true
 }
 
 _heal_workspace() {
@@ -562,7 +562,7 @@ _heal_workspace() {
         fi
     fi
     # e. Bounded: never hang a job on a pathological workspace.
-    timeout 120 git -C "$ws" update-index -q --really-refresh 2>/dev/null || true
+    timeout -k 10s 120 git -C "$ws" update-index -q --really-refresh 2>/dev/null || true
     _record_negotiation_ref "$ws"                                           # f
 }
 if [ -n "${GITHUB_WORKSPACE:-}" ]; then
