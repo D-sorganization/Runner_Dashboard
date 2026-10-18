@@ -141,6 +141,26 @@ def as_bash_path(path: Path) -> str:
     return _translate(str(path), BASH)
 
 
+def docker_shim_prelude(shim_dir: Path) -> str:
+    """Bash lines that pin ``docker`` to the stub in *shim_dir* or abort.
+
+    Passing PATH through the environment is not enough on Windows: the Git Bash
+    launcher rebuilds PATH from its Windows form and can drop the stub
+    directory, so the user's real ``docker`` CLI ran and pruned a live daemon
+    (Runner_Dashboard #1988). Set PATH inside the script, point DOCKER_HOST at
+    a socket that does not exist, and refuse to run unless ``docker`` resolves
+    to the stub.
+    """
+    shim = as_bash_path(shim_dir)
+    return (
+        f'export PATH="{shim}:$PATH"\n'
+        "export DOCKER_HOST=unix:///nonexistent/docker-test-guard.sock\n"
+        f'if [ "$(command -v docker)" != "{shim}/docker" ]; then\n'
+        '  echo "refusing to run: docker resolves to $(command -v docker), not the test stub" >&2; exit 97\n'
+        "fi\n"
+    )
+
+
 def require_bash() -> str:
     """Resolved bash for in-process use, or skip the calling test when none exists."""
     import pytest
