@@ -325,17 +325,18 @@ _reap_old_quarantine() {
 # (<root>/*/_work/<repo>/<repo>, never this runner's own) before falling back
 # to an empty dir:
 #
-#   git clone --no-hardlinks --no-checkout <sibling> <ws>
+#   git clone --no-hardlinks --no-checkout <sibling> <stage>
 #   git remote set-url origin ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
-#   cp -a <sibling>/.git/modules <ws>/.git/
+#   cp -a <sibling>/.git/modules <stage>/.git/
 #   git checkout --force HEAD
+#   mv -T <stage> <ws>        # <stage> = <qroot>/<repo>-reseed-<epoch>-<pid>
 #
 # A sibling qualifies only with a valid HEAD, no promisor/partial-clone config,
 # no sparse residue, no skip-worktree bits and no *.lock under its .git.
 # Siblings whose runner has no live Runner.Worker are preferred (a concurrent
 # job could be mid-gc); `clone --local` only reads the source either way.
-# Every step is bounded by `timeout` with network access disabled; any failure
-# moves the half-built tree aside again and leaves the empty dir.
+# Every step is bounded by `timeout -k` with network access disabled; any failure
+# reaps the half-built staging tree and leaves the empty dir.
 # RUNNER_HOOK_SEED_ROOT (colon-separated) overrides the scanned root(s).
 _SEED_TIMEOUT="${RUNNER_HOOK_SEED_TIMEOUT_SECONDS:-120}"
 
@@ -406,30 +407,30 @@ _origin_url() {
 
 # _reseed_workspace <workspace> <qroot>: rebuild the (empty) workspace from a
 # local sibling.  Returns 0 on success; on failure the workspace is empty.
+# The tree is built in a staging dir under <qroot> and renamed in only once it
+# is complete, so a clone that hangs or is killed can never touch the live
+# workspace (#1982); leftovers are reaped like any quarantine entry.
 _reseed_workspace() {
-    local ws="$1" qroot="$2" seed url started dest
+    local ws="$1" qroot="$2" seed url started stage
     seed="$(_pick_seed "$ws")" || return 1
     url="$(_origin_url "$seed")" || return 1
     started=$(date +%s)
+    stage="$qroot/${ws##*/}-reseed-$started-$$"
+    mkdir -p "$qroot" 2>/dev/null || return 1
     # The local clone itself is the one transport allowed here: "file" covers
     # local paths; the seed is never a promisor, so nothing can lazy-fetch.
-    if GIT_ALLOW_PROTOCOL="file" timeout -k 10s "$_SEED_TIMEOUT" git -c safe.directory='*' clone -q --no-hardlinks --no-checkout \
-            -- "$seed" "$ws" >/dev/null 2>&1 &&
-       _wsgit "$ws" remote set-url origin "$url" >/dev/null 2>&1 &&
+    if GIT_ALLOW_PROTOCOL="file" timeout -k 10s "$_SEED_TIMEOUT" git -c safe.directory='*' clone -q --no-hardlinks --no-checkout             -- "$seed" "$stage" >/dev/null 2>&1 &&
+       _wsgit "$stage" remote set-url origin "$url" >/dev/null 2>&1 &&
        { [ ! -d "$seed/.git/modules" ] ||
-         timeout -k 10s "$_SEED_TIMEOUT" cp -a "$seed/.git/modules" "$ws/.git/" 2>/dev/null; } &&
-       timeout -k 10s "$_SEED_TIMEOUT" git -c safe.directory='*' -C "$ws" checkout -q --force HEAD >/dev/null 2>&1 &&
-       _wsgit "$ws" rev-parse -q --verify 'HEAD^{commit}' >/dev/null 2>&1; then
+         timeout -k 10s "$_SEED_TIMEOUT" cp -a "$seed/.git/modules" "$stage/.git/" 2>/dev/null; } &&
+       timeout -k 10s "$_SEED_TIMEOUT" git -c safe.directory='*' -C "$stage" checkout -q --force HEAD >/dev/null 2>&1 &&
+       _wsgit "$stage" rev-parse -q --verify 'HEAD^{commit}' >/dev/null 2>&1 &&
+       mv -T -- "$stage" "$ws" 2>/dev/null; then
         echo "[runner-cleanup] reseeded $ws from local sibling $seed in $(( $(date +%s) - started ))s" >&2
         return 0
     fi
     echo "[runner-cleanup] reseed of $ws from $seed failed; leaving it empty" >&2
-    dest="$qroot/${ws##*/}-$(date +%s)-$$-seed"
-    if mv -T -- "$ws" "$dest" 2>/dev/null; then
-        _reap_in_background "$dest"
-    else
-        rm -rf --one-file-system -- "$ws" 2>/dev/null || true
-    fi
+    _reap_in_background "$stage"
     mkdir -p "$ws" 2>/dev/null || true
     return 1
 }
