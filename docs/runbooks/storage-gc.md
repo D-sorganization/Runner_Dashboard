@@ -70,7 +70,9 @@ To add a host, edit the registry or the workstation list. Never hard-code a host
 Images labelled `keep=true` (e.g. `docker build --label keep=true` for heavy base/sim images) are protected during disk pressure:
 
 - **Tagged images**: `docker image prune --all` spares any image carrying `label=keep`.
-- **Dangling images (untagged)**: Reclaimed regardless of the `keep` label (#1981). Untagged superseded builds cannot be referenced by name; the `keep` label protects tagged images only. Routine maintenance reclaims dangling images older than `DOCKER_DANGLING_UNTIL` (default `6h`), and aggressive cleanup reclaims all dangling images immediately.
+- **Dangling images (untagged)**: The dangling-only pass reclaims images regardless of the `keep` label (#1981). Untagged superseded builds cannot be referenced by name; the `keep` label protects tagged images. Both routine and aggressive cleanup use `docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"` (default `6h`), so this pass observes the configured age window. Aggressive mode also runs a separate `--all` prune with `label!=keep`, which protects images carrying the `keep` label.
+
+To inspect or deploy a change to this policy, use the storage-GC owner: `python deploy/fleet_storage_gc.py --verify-only` for current state, `python deploy/fleet_storage_gc.py --dry-run` to preview, then `python deploy/fleet_storage_gc.py` to install and verify. The fleet tool transports `deploy/runner-cleanup.sh` through `deploy/install-storage-gc.sh`.
 
 ## Known Limits
 

@@ -467,13 +467,13 @@ cleanup_docker() {
         if docker buildx version >/dev/null 2>&1; then
             run docker buildx prune --all --force
         fi
-        run docker image prune --force
+        run docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"
         run docker image prune --all --force --filter "label!=keep"
         run docker volume prune --force
     else
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force --filter "until=72h"; fi
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-        run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"
+        run docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
     fi
     if [[ "$PRUNE_ORPHAN_BUILDX_STATE" == "1" ]]; then cleanup_orphan_buildx_state; fi
