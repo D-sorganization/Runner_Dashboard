@@ -151,13 +151,14 @@ def test_cleanup_tmp_default_is_declared_at_top_level() -> None:
 # --- PRUNE_DOCKER_CONTAINERS gate ---------------------------------------------
 
 
-def _docker_calls(tmp_path: Path, prune_containers: str | None) -> list[str]:
+def _docker_calls(tmp_path: Path, prune_containers: str | None, *, aggressive: str = "0") -> list[str]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     text = CLEANUP.read_text(encoding="utf-8")
     calls = tmp_path / "docker.log"
     lines = [
         f'docker() {{ echo "$*" >> "{as_bash_path(calls)}"; }}',
         'run() { "$@"; }',
-        "DOCKER_AGGRESSIVE=0",
+        f"DOCKER_AGGRESSIVE={aggressive}",
         "DOCKER_PRUNE_UNTIL=168h",
         "DOCKER_DANGLING_UNTIL=6h",
         "PRUNE_DOCKER_VOLUMES=0",
@@ -181,6 +182,22 @@ def test_prune_docker_containers_zero_skips_container_prune(tmp_path: Path) -> N
 def test_container_prune_defaults_on(tmp_path: Path) -> None:
     calls = _docker_calls(tmp_path, None)
     assert any(c.startswith("container prune") for c in calls), calls
+
+
+def test_docker_image_prune_dangling_and_aggressive_spares_keep(tmp_path: Path) -> None:
+    routine_calls = _docker_calls(tmp_path / "routine", None, aggressive="0")
+    img_routine = [c for c in routine_calls if c.startswith("image prune")]
+    assert len(img_routine) == 1
+    assert "label!=keep" not in img_routine[0], "dangling prune must not filter label!=keep"
+    assert "until=6h" in img_routine[0]
+    assert "--all" not in img_routine[0]
+
+    aggressive_calls = _docker_calls(tmp_path / "aggressive", None, aggressive="1")
+    img_aggressive = [c for c in aggressive_calls if c.startswith("image prune")]
+    assert any("--all" in c and "label!=keep" in c for c in img_aggressive), "aggressive --all prune must spare keep"
+    assert any("--all" not in c and "label!=keep" not in c for c in img_aggressive), (
+        "aggressive dangling prune must reclaim without label!=keep"
+    )
 
 
 # --- gitconfig token-rewrite hygiene (#1216 follow-up) -------------------------
