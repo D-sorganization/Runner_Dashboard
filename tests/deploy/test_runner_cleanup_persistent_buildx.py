@@ -20,7 +20,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from bash_host import BASH, SKIP_REASON, as_bash_path
+from bash_host import BASH, SKIP_REASON, as_bash_path, docker_shim_prelude
 
 CLEANUP = Path(__file__).resolve().parents[2] / "deploy" / "runner-cleanup.sh"
 
@@ -66,12 +66,13 @@ def _run_cleanup(
 
     script = CLEANUP.read_text(encoding="utf-8").split("# Emit a textfile-collector metric", 1)[0]
     harness = tmp_path / "cleanup-docker.sh"
-    harness.write_text(script + "\ncleanup_docker\n", encoding="utf-8", newline="\n")
+    # The prelude goes after the shebang/set line but before any docker use.
+    harness.write_text(docker_shim_prelude(bin_dir) + script + "\ncleanup_docker\n", encoding="utf-8", newline="\n")
 
     env = os.environ.copy()
     env.update(
         {
-            "PATH": f"{as_bash_path(bin_dir)}:{env['PATH']}",
+            "DOCKER_HOST": "unix:///nonexistent/docker-test-guard.sock",
             "DOCKER_CALLS": as_bash_path(calls),
             "DOCKER_AGGRESSIVE": aggressive,
             "PRUNE_DOCKER_VOLUMES": "1",
@@ -155,3 +156,16 @@ def test_empty_allowlist_protects_nothing(tmp_path: Path) -> None:
 def test_default_allowlist_is_ud_buildkit() -> None:
     text = CLEANUP.read_text(encoding="utf-8")
     assert 'PERSISTENT_BUILDX_BUILDERS="${PERSISTENT_BUILDX_BUILDERS-ud-buildkit}"' in text
+
+
+def test_shim_prelude_refuses_when_docker_is_not_the_stub(tmp_path: Path) -> None:
+    """The guard that keeps these tests off a live daemon must itself fail closed."""
+    assert BASH is not None
+    empty = tmp_path / "no-stub"
+    empty.mkdir()
+    harness = tmp_path / "guard.sh"
+    harness.write_text(docker_shim_prelude(empty) + "echo reached\n", encoding="utf-8", newline="\n")
+    result = subprocess.run([BASH, as_bash_path(harness)], capture_output=True, text=True, check=False)
+
+    assert result.returncode == 97
+    assert "reached" not in result.stdout
