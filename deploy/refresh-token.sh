@@ -25,7 +25,10 @@ if grep -Eq '^GITHUB_APP_ID=.+$' "${SECRETS_FILE}" \
     echo "[refresh-token] GitHub App auth configured; refreshing GH_TOKEN fallback only" >&2
 fi
 
-TOKEN=$(gh auth token 2>/dev/null || echo "")
+# systemd loads ${SECRETS_FILE} into this ExecStartPre too, and gh returns an
+# exported GH_TOKEN/GITHUB_TOKEN instead of its stored login. Clear them, or a
+# stale (even revoked) token is re-saved after every `gh auth login`.
+TOKEN=$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token 2>/dev/null || echo "")
 
 # Older gh (<2.40) prints its usage/error to stdout, so `2>/dev/null` doesn't
 # silence it. Treat anything that doesn't look like a GitHub token
