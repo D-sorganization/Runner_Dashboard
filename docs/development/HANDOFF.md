@@ -1,3 +1,14 @@
+# Current handoff — Sanitation: root `assessments/` staging dir archived
+
+- **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-run-8107763f9147`; branch `staff/sanitation-task-357e5a`; commit SELF; PR: see the branch (draft).
+- **Why:** Root-level `assessments/` held the 2026-04-26 fleet-wide A-O assessment orchestrator's staging copy — per-repo JSON for all 12 D-sorganization repos plus generator/distribution scripts — added whole in PR #168. Only one of those 12 repos is Runner_Dashboard itself, and its distributed copy already lives at `docs/assessments/` (the canonical location per `distribute_assessments.py`'s own model). Nothing outside `assessments/` referenced the directory, its filenames, or its script names (repo-wide grep).
+- **Change:** `git mv assessments/ docs/archive/root-cleanup-2026-10-17/assessments/` with a `PROVENANCE.md` explaining origin and why it's archived rather than deleted (fail-closed: dated artifact, not invented deletion). Removed the now-dead `"assessments/*.py" = ["T201"]` ruff per-file-ignore in `pyproject.toml` (the path no longer exists; `docs/` is already ruff-excluded).
+- **Not touched:** `docs/assessments/` (Runner_Dashboard's own canonical distributed copy, kept as-is); any other worktree, branch, or PR in the fleet (out of scope for this session); the 324 remote branches / other sessions' worktrees visible from this checkout (explicitly out of scope per this session's task brief).
+- **Validation:** `ruff check backend/` clean; repo-wide grep for `assessments/` path and script names confirmed no other reference.
+- **Next:** merge through the queue. No follow-up issue filed — single self-contained cleanup, no bulk remediation.
+
+---
+
 # Current handoff — SC-G6: mobile Maxwell page drops its chat (DL-#1338-maxwell-mobile)
 
 - **Repository / worktree:** Runner_Dashboard, `Runner_Dashboard-worktrees/claude-1338`; branch `claude/issue-1338`; commit SELF; PR: see the branch (draft).
