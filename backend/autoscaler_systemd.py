@@ -101,14 +101,18 @@ def _runner_workdir_for_unit(unit: str) -> str:
     the runner's `_work/_temp/_runner_file_commands/` location without
     assuming a directory-naming convention.
     """
-    r = subprocess.run(
-        ["systemctl", "show", unit, "--property=WorkingDirectory", "--value"],
-        capture_output=True,
-        text=True,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-        check=False,
-    )
-    return (r.stdout or "").strip()
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", unit, "--property=WorkingDirectory", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=_SYSTEMCTL_TIMEOUT_S,
+            check=False,
+        )
+        return (r.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.debug("systemctl show WorkingDirectory failed unit=%s err=%s", unit, exc)
+        return ""
 
 
 def _systemd_timespan_seconds(value: str) -> float:

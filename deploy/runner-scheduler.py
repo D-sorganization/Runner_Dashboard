@@ -198,12 +198,59 @@ def runner_names(workdir: Path, unit: str | None = None) -> list[str]:
     return list(dict.fromkeys(names))
 
 
+def _lock_worker_pid_stale(text: str) -> bool:
+    """Issue #1987: True only when the lock's worker_pid= is dead or reused.
+
+    Same rule as backend/runner_busy_lock.py::lock_is_stale_by_worker_pid and
+    deploy/runner-cleanup.sh::lock_worker_pid_stale (this script is deployed
+    standalone, so it cannot import the backend). The legacy pid= is the
+    short-lived hook shell and is never consulted; a lock without worker_pid
+    is never stale-by-pid and falls back to the age rule.
+    """
+    value = ""
+    for line in text.splitlines():
+        key, sep, val = line.strip().partition("=")
+        if sep and key == "worker_pid":
+            value = val.strip()
+            break
+    if not value.isdigit() or int(value) <= 0:
+        return False
+    if not PROC_ROOT.is_dir():
+        return False
+    pid_dir = PROC_ROOT / value
+    if not pid_dir.is_dir():
+        return True
+    try:
+        cmdline = (pid_dir / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return "Runner.Worker" not in cmdline
+
+
 def runner_busy_via_lock(workdir: Path, unit: str | None = None) -> bool:
-    """Detect a job-start hook marker for the runner."""
-    return any(
-        _recent_path_is_busy(RUNNER_BUSY_LOCK_DIR / f"{name}.lock", RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
-        for name in runner_names(workdir, unit)
-    )
+    """Detect a job-start hook marker for the runner.
+
+    A fresh lock counts as busy unless its recorded Runner.Worker pid is dead
+    or reused (#1987); such a lock is unlinked.
+    """
+    for name in runner_names(workdir, unit):
+        lock = RUNNER_BUSY_LOCK_DIR / f"{name}.lock"
+        if not _recent_path_is_busy(lock, RUNNER_BUSY_LOCK_MAX_AGE_SECONDS):
+            continue
+        try:
+            content = lock.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return True
+        if not _lock_worker_pid_stale(content):
+            return True
+        log.info("removing stale runner-busy lock %s (worker_pid dead or not a Runner.Worker)", lock)
+        try:
+            lock.unlink(missing_ok=True)
+        except OSError:
+            return True
+    return False
 
 
 def runner_busy_via_diag(workdir: Path) -> bool:

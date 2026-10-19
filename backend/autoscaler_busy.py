@@ -33,6 +33,7 @@ from autoscaler_systemd import (
     _runner_workdir_for_unit,
     _unit_state,
 )
+from runner_busy_lock import lock_is_stale_by_worker_pid
 
 log = logging.getLogger("runner-autoscaler")
 _DEFAULT_PSUTIL = psutil
@@ -107,6 +108,23 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
             unit,
         )
         return False
+
+    # Issue #1987: the lock stops counting only when the hook-recorded
+    # Runner.Worker pid (worker_pid=) is dead or reused. The legacy pid= is
+    # the short-lived hook shell and is never consulted. Deletion is
+    # runner-cleanup.sh's job. Rule shared with runner_busy_lock.py.
+    try:
+        content = lock.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        log.debug("lockfile read failed unit=%s path=%s err=%s", unit, lock, exc)
+        return True
+    if lock_is_stale_by_worker_pid(content):
+        log.info(
+            "stale lockfile (worker_pid dead or not a Runner.Worker) — not treating as busy unit=%s",
+            unit,
+        )
+        return False
+
     return True
 
 
@@ -190,19 +208,19 @@ def _runner_busy_via_worker_scan(unit: str) -> bool:
     *positive* signal layered on top of the other strategies, never the sole
     arbiter of idleness.
     """
-    work_dir = _runner_workdir_for_unit_public(unit)
-    if not work_dir:
-        return False
-    psutil_mod = _psutil_dep()
-    if psutil_mod is None:
-        return False
-    # POSIX join (not pathlib): the runner workdir comes from systemd on the
-    # Linux host, and we substring-match it against the Worker's argv. Using
-    # os-native Path() would emit backslashes when this check is exercised on
-    # Windows (e.g. the test suite), breaking the match. Mirror the literal
-    # concatenation used by deploy/runner-cleanup.sh's ps grep.
-    worker_path = work_dir.rstrip("/") + "/bin/Runner.Worker"
     try:
+        work_dir = _runner_workdir_for_unit_public(unit)
+        if not work_dir:
+            return False
+        psutil_mod = _psutil_dep()
+        if psutil_mod is None:
+            return False
+        # POSIX join (not pathlib): the runner workdir comes from systemd on the
+        # Linux host, and we substring-match it against the Worker's argv. Using
+        # os-native Path() would emit backslashes when this check is exercised on
+        # Windows (e.g. the test suite), breaking the match. Mirror the literal
+        # concatenation used by deploy/runner-cleanup.sh's ps grep.
+        worker_path = work_dir.rstrip("/") + "/bin/Runner.Worker"
         for proc in psutil_mod.process_iter(["cmdline"]):
             try:
                 cmdline = proc.info.get("cmdline") or []

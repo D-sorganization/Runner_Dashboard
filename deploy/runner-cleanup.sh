@@ -282,6 +282,24 @@ runner_name_for_unit() {
     printf '%s' "${stem##*.}"
 }
 
+PROC_ROOT="${PROC_ROOT:-/proc}"
+
+lock_worker_pid_stale() {
+    # Issue #1987: return 0 (stale) only when the lockfile carries worker_pid=
+    # AND that pid is dead or its cmdline no longer contains Runner.Worker
+    # (pid reuse). No worker_pid, a malformed one, or no proc filesystem to
+    # ask -> return 1 (not provably stale). Mirrors
+    # backend/runner_busy_lock.py::lock_is_stale_by_worker_pid.
+    local lock="$1" wpid cmdline
+    wpid=$(awk -F= '$1=="worker_pid"{print $2; exit}' "$lock" 2>/dev/null || true)
+    [[ "$wpid" =~ ^[0-9]+$ ]] || return 1
+    [[ -d "$PROC_ROOT" ]] || return 1
+    [[ -d "$PROC_ROOT/$wpid" ]] || return 0
+    cmdline=$(tr '\0' ' ' 2>/dev/null < "$PROC_ROOT/$wpid/cmdline" || true)
+    [[ "$cmdline" == *Runner.Worker* ]] && return 1
+    return 0
+}
+
 runner_busy_via_lockfile() {
     # Issue #651 defense-in-depth signal mirroring backend/runner_autoscaler.py's
     # _runner_busy_via_lockfile. The runner's JOB_STARTED hook writes
@@ -306,7 +324,29 @@ runner_busy_via_lockfile() {
         rm -f "$lock"
         return 1
     fi
+
+    # Issue #1987: a lock is stale-by-pid ONLY when the hook recorded the
+    # Runner.Worker pid (worker_pid=) and that pid is dead or reused. The
+    # legacy pid= is the short-lived hook shell -- dead for the entire job --
+    # so locks without worker_pid fall back to the age rule above only.
+    if lock_worker_pid_stale "$lock"; then
+        log "stale runner-busy lockfile (worker_pid dead or not a Runner.Worker) — removing $lock"
+        rm -f "$lock"
+        return 1
+    fi
+
     return 0
+}
+
+cleanup_stale_busy_locks() {
+    [[ -d "$RUNNER_BUSY_LOCK_DIR" ]] || return 0
+    local lock
+    for lock in "$RUNNER_BUSY_LOCK_DIR"/*.lock; do
+        [[ -f "$lock" ]] || continue
+        local runner_name
+        runner_name="$(basename "$lock" .lock)"
+        runner_busy_via_lockfile "$runner_name" || true
+    done
 }
 
 runner_busy() {
@@ -446,6 +486,8 @@ cleanup_runners() {
             run systemctl start "$unit" || start_rc=$?
             if (( start_rc != 0 )); then
                 log "error $unit: failed to restart after cleanup (rc=$start_rc); host may have a stuck unit"
+            else
+                rm -f "${runner_dir}/.restart-required"
             fi
         fi
     done < <(list_runner_units)
@@ -789,6 +831,7 @@ main() {
         TOOL_CACHE_DAYS=7
         DOCKER_AGGRESSIVE=1
     fi
+    cleanup_stale_busy_locks
     if [[ "$DISK_GUARD" == "1" ]]; then
         # Runner-safe fast pass: reclaim docker + journal + trim only. Never
         # touches runner units, so it can run on a frequent timer without
