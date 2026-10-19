@@ -12,7 +12,7 @@ base (e.g. origin/main, FLEET_HOOK_FROM_REF..FLEET_HOOK_TO_REF, staged files,
 or @{upstream}..HEAD), maps changed Python source files and direct test files
 to corresponding pytest test targets, and runs pytest on that scoped subset.
 
-Includes `-p no:pytestqt` to prevent Windows DLL load / INTERNALERROR failures
+Includes `-p no:pytest-qt` to prevent Windows DLL load / INTERNALERROR failures
 on environments where Qt bindings are unavailable or headless.
 """
 
@@ -178,7 +178,7 @@ def build_pytest_cmd(
     cmd = [sys.executable, "-m", "pytest", *targets]
 
     # Guard against Qt crashes/DLL errors on Windows or headless runs
-    cmd.extend(["-p", "no:pytestqt"])
+    cmd.extend(["-p", "no:pytest-qt"])
 
     if extra_args:
         cmd.extend(extra_args)
