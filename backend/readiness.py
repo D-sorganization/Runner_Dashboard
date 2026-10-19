@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from typing import Final, Literal, Protocol, runtime_checkable
 
-from runner_busy_lock import lock_is_stale_by_worker_pid, worker_pid
+from runner_busy_lock import RunnerBusyLockProbe
 
 log = logging.getLogger("dashboard.readiness")
 
@@ -372,80 +372,6 @@ class RunnerPipCacheProbe:
 
         if unwritable:
             return "down", f"runner pip cache unwritable on {len(unwritable)} runner(s): {', '.join(unwritable)}"
-
-        return "ok", None
-
-
-class RunnerBusyLockProbe:
-    """Check for stale runner-busy lockfiles (issue #1987).
-
-    A lockfile in ``RUNNER_BUSY_LOCK_DIR`` is stale when its recorded
-    ``worker_pid`` is dead or no longer a ``Runner.Worker`` (see
-    ``runner_busy_lock``), or -- for legacy locks without ``worker_pid`` --
-    when it is older than the threshold (default 10 minutes).
-    """
-
-    name = "runner_busy_locks"
-
-    def __init__(
-        self,
-        lock_dir: str | Path | None = None,
-        stale_threshold_seconds: float = 600.0,
-        cache_ttl_seconds: float = 10.0,
-    ) -> None:
-        assert cache_ttl_seconds >= 0.0, "cache_ttl_seconds must be >= 0"
-        self._lock_dir = (
-            Path(lock_dir)
-            if lock_dir is not None
-            else Path(os.environ.get("RUNNER_BUSY_LOCK_DIR", "/var/run/runner-busy"))
-        )
-        self._stale_threshold = stale_threshold_seconds
-        self._cache_ttl = cache_ttl_seconds
-        self._cached: tuple[float, ProbeStatus, str | None] | None = None
-
-    async def check(self) -> tuple[ProbeStatus, str | None]:
-        if self._cache_ttl > 0 and self._cached is not None:
-            ts, status, detail = self._cached
-            if (time.monotonic() - ts) < self._cache_ttl:
-                return status, detail
-
-        status, detail = await asyncio.to_thread(self._check_busy_locks)
-        self._cached = (time.monotonic(), status, detail)
-        return status, detail
-
-    def _check_busy_locks(self) -> tuple[ProbeStatus, str | None]:
-        if not self._lock_dir.is_dir():
-            return "ok", None
-
-        now = time.time()
-        stale_locks: list[str] = []
-
-        try:
-            lock_files = list(self._lock_dir.glob("*.lock"))
-        except OSError as exc:
-            return "degraded", f"unable to list locks in {self._lock_dir}: {exc}"
-
-        if not lock_files:
-            return "ok", None
-
-        for lock_file in lock_files:
-            try:
-                age = now - lock_file.stat().st_mtime
-                text = lock_file.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            # Issue #1987: shared rule (runner_busy_lock.py). A recorded
-            # worker_pid decides on its own; legacy locks fall back to age.
-            if lock_is_stale_by_worker_pid(text):
-                stale_locks.append(f"{lock_file.name} (worker_pid dead or reused, age={int(age)}s)")
-            elif worker_pid(text) is None and age > self._stale_threshold:
-                stale_locks.append(f"{lock_file.name} (age={int(age)}s)")
-
-        if stale_locks:
-            return (
-                "degraded",
-                f"stale runner-busy lock(s) detected: {', '.join(stale_locks)}",
-            )
 
         return "ok", None
 
