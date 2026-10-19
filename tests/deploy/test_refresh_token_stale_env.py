@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "refresh-token.sh"
 _STALE = "gho_" + "s" * 36
@@ -47,7 +48,7 @@ def test_refresh_ignores_inherited_stale_gh_token(tmp_path: Path) -> None:
         "GH_TOKEN": _STALE,
         "GITHUB_TOKEN": _STALE,
     }
-    subprocess.run(["bash", str(_SCRIPT)], env=env, check=True, capture_output=True)
+    subprocess.run([find_bash() or "bash", str(_SCRIPT)], env=env, check=True, capture_output=True)
 
     content = secrets.read_text(encoding="utf-8")
     assert f"GH_TOKEN={_FRESH}" in content
