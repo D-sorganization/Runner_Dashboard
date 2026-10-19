@@ -174,3 +174,18 @@ def test_direct_match_does_not_hide_other_matching_tests(tmp_path: Path) -> None
         "tests/test_gh_client.py",
         "tests/test_gh_client_retry.py",
     ]
+
+
+def test_qt_opt_out_names_the_registered_plugin(tmp_path: Path) -> None:
+    """`-p no:` matches the pytest11 entry-point name, not the module.
+
+    pytest-qt registers as ``pytest-qt``; ``-p no:pytestqt`` matched nothing,
+    so a broken Qt install still crashed every pre-push run (RM#2125).
+    """
+    from importlib.metadata import entry_points
+
+    names = {ep.name for ep in entry_points(group="pytest11") if ep.value.startswith("pytestqt")}
+    if not names:
+        pytest.skip("pytest-qt not installed")
+    cmd = run_pytest_diff.build_pytest_cmd(["tests"], extra_args=[], root=tmp_path)
+    assert cmd[cmd.index("-p") + 1] in {f"no:{name}" for name in names}
