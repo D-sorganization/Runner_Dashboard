@@ -377,16 +377,50 @@ def _stops(commands: list[list[str]]) -> list[str]:
 
 
 def test_drain_stops_runner_that_is_between_jobs_even_when_tick_saw_all_busy(monkeypatch, tmp_path: Path) -> None:
-    """The #1929 race: every runner is busy at the tick, but one gaps between jobs."""
+    """The #1929 race: every runner is busy at the tick, but one goes idle and stays idle."""
     units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2, 3, 4)]
-    # Runner 4 has a ~5 s gap between jobs starting at t=20; the others never gap.
-    clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: not (num == 4 and 20 <= now < 25))
+    # Runner 4 finishes its job at t=20 and nothing is queued for it; the others never gap.
+    clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: not (num == 4 and now >= 20))
 
     actions = runner_scheduler.drain_surplus(units, desired=3, dry_run=False)
 
     assert [a["runner"] for a in actions] == [4]
     assert actions[0]["action"] == "stop"
     assert _stops(commands) == [units[3].unit]
+    assert clock.now >= 20 + runner_scheduler.DRAIN_SETTLE_SECONDS, "stopped before the settle window elapsed"
+
+
+def test_drain_never_stops_a_runner_in_a_short_gap_between_jobs(monkeypatch, tmp_path: Path) -> None:
+    """#1973: a just-freed runner under a deep queue is handed the next job within seconds.
+
+    GitHub assigns that job server-side to the listener's open session, so a stop in
+    the gap orphans it (zero steps, failed after 10 min) even with the SIGSTOP freeze.
+    """
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    # Runner 2 gaps for 5 s every 60 s: a deep queue keeps feeding it.
+    _clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: not (num == 2 and now % 60 < 5))
+
+    actions = runner_scheduler.drain_surplus(units, desired=1, dry_run=False)
+
+    assert actions == []
+    assert _stops(commands) == []
+
+
+def test_drain_settle_window_restarts_when_a_job_arrives(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
+    settle = runner_scheduler.DRAIN_SETTLE_SECONDS
+    # Idle from t=10, a job runs over [10 + settle/2, 10 + settle/2 + 4), then idle for good.
+    job_start = 10 + settle / 2
+    clock, commands = _drain_env(
+        monkeypatch,
+        tmp_path,
+        lambda num, now: num == 1 or now < 10 or job_start <= now < job_start + 4,
+    )
+
+    actions = runner_scheduler.drain_surplus(units, desired=1, dry_run=False)
+
+    assert [a["runner"] for a in actions] == [2]
+    assert clock.now >= job_start + 4 + settle
 
 
 def test_drain_never_stops_a_runner_that_stays_busy(monkeypatch, tmp_path: Path) -> None:
@@ -528,6 +562,8 @@ def test_stop_never_lands_on_a_job_assigned_after_the_idle_checks(monkeypatch, t
 
     clock, commands = _drain_env(monkeypatch, tmp_path, late_job)
     monkeypatch.setattr(runner_scheduler, "DRAIN_MAX_SECONDS", 3)
+    # Isolate the freeze/re-check path from the settle window (#1973).
+    monkeypatch.setattr(runner_scheduler, "DRAIN_SETTLE_SECONDS", 0)
 
     actions = runner_scheduler.drain_surplus(units, desired=1, dry_run=False)
 
@@ -563,6 +599,8 @@ def test_stop_fails_closed_when_the_listener_cannot_be_frozen(monkeypatch, tmp_p
     units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
     clock, commands = _drain_env(monkeypatch, tmp_path, lambda num, now: num == 1)
     monkeypatch.setattr(runner_scheduler, "DRAIN_MAX_SECONDS", 3)
+    # Isolate the freeze/re-check path from the settle window (#1973).
+    monkeypatch.setattr(runner_scheduler, "DRAIN_SETTLE_SECONDS", 0)
 
     def failing_freeze(cmd, **_k):
         commands.append(cmd)
@@ -681,7 +719,8 @@ def test_run_maintenance_drain_reports_not_drained_when_jobs_outlast_timeout(mon
     units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
     _clock, commands = _maintenance_env(monkeypatch, tmp_path, lambda num, now: num == 1)
 
-    report = runner_scheduler.run_maintenance_drain(units, timeout=30)
+    # Long enough for the idle runner to settle (#1973); runner 1 never goes idle.
+    report = runner_scheduler.run_maintenance_drain(units, timeout=120)
 
     assert report["drained"] is False
     assert report["remaining"] == 1
@@ -715,3 +754,60 @@ def test_main_resume_clears_hold(monkeypatch, tmp_path: Path) -> None:
 
     assert runner_scheduler.main() == 0
     assert runner_scheduler.maintenance_active() is False
+
+
+def test_stop_timeout_counts_as_stopped_when_the_unit_went_down(monkeypatch, tmp_path: Path) -> None:
+    """#1973: a slow ``systemctl stop`` must not crash the scheduler run."""
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+
+    def run(cmd, **_k):
+        commands.append(cmd)
+        if cmd[:2] == ["systemctl", "stop"]:
+            raise runner_scheduler.subprocess.TimeoutExpired(cmd, 30)
+        if cmd[:2] == ["systemctl", "is-active"]:
+            return _process_result(returncode=3)  # deactivating / inactive
+        return _process_result()
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert _thaws(commands) == []
+
+
+def test_stop_timeout_with_unit_still_active_thaws_and_keeps_it(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+
+    def run(cmd, **_k):
+        commands.append(cmd)
+        if cmd[:2] == ["systemctl", "stop"]:
+            raise runner_scheduler.subprocess.TimeoutExpired(cmd, 30)
+        return _process_result()  # is-active -> 0: still running
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+    assert _thaws(commands) == [unit.unit]
+
+
+def test_systemctl_stop_gets_its_own_longer_timeout(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    timeouts: dict[str, object] = {}
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["systemctl", "stop"]:
+            timeouts["stop"] = kwargs.get("timeout")
+        return _process_result()
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert timeouts["stop"] == runner_scheduler.STOP_TIMEOUT_SECONDS
+    assert runner_scheduler.STOP_TIMEOUT_SECONDS > 30

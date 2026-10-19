@@ -150,14 +150,23 @@ def test_cleanup_tmp_default_is_declared_at_top_level() -> None:
 
 # --- PRUNE_DOCKER_CONTAINERS gate ---------------------------------------------
 
+PERSISTENT_BUILDER_HELPERS = (
+    "validate_persistent_builders",
+    "is_persistent_builder",
+    "persistent_state_volumes",
+    "ensure_persistent_builders_running",
+    "prune_current_buildx_cache",
+)
 
-def _docker_calls(tmp_path: Path, prune_containers: str | None) -> list[str]:
+
+def _docker_calls(tmp_path: Path, prune_containers: str | None, *, aggressive: str = "0") -> list[str]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     text = CLEANUP.read_text(encoding="utf-8")
     calls = tmp_path / "docker.log"
     lines = [
         f'docker() {{ echo "$*" >> "{as_bash_path(calls)}"; }}',
         'run() { "$@"; }',
-        "DOCKER_AGGRESSIVE=0",
+        f"DOCKER_AGGRESSIVE={aggressive}",
         "DOCKER_PRUNE_UNTIL=168h",
         "DOCKER_DANGLING_UNTIL=6h",
         "PRUNE_DOCKER_VOLUMES=0",
@@ -166,6 +175,9 @@ def _docker_calls(tmp_path: Path, prune_containers: str | None) -> list[str]:
     ]
     if prune_containers is not None:
         lines.append(f"PRUNE_DOCKER_CONTAINERS={prune_containers}")
+    # cleanup_docker guards persistent shared buildx builders through these helpers (#1988).
+    lines += ["log() { :; }", "PERSISTENT_BUILDX_BUILDERS=ud-buildkit", "PERSISTENT_BUILDERS=()"]
+    lines += [_extract(text, fn) for fn in PERSISTENT_BUILDER_HELPERS]
     lines += [_extract(text, "cleanup_docker"), "cleanup_docker"]
     result = _harness(tmp_path, lines)
     assert result.returncode == 0, result.stderr
@@ -181,3 +193,79 @@ def test_prune_docker_containers_zero_skips_container_prune(tmp_path: Path) -> N
 def test_container_prune_defaults_on(tmp_path: Path) -> None:
     calls = _docker_calls(tmp_path, None)
     assert any(c.startswith("container prune") for c in calls), calls
+
+
+def test_docker_image_prune_dangling_and_aggressive_spares_keep(tmp_path: Path) -> None:
+    routine_calls = _docker_calls(tmp_path / "routine", None, aggressive="0")
+    img_routine = [c for c in routine_calls if c.startswith("image prune")]
+    assert len(img_routine) == 1
+    assert "label!=keep" not in img_routine[0], "dangling prune must not filter label!=keep"
+    assert "until=6h" in img_routine[0]
+    assert "--all" not in img_routine[0]
+
+    aggressive_calls = _docker_calls(tmp_path / "aggressive", None, aggressive="1")
+    img_aggressive = [c for c in aggressive_calls if c.startswith("image prune")]
+    assert any("--all" in c and "label!=keep" in c for c in img_aggressive), "aggressive --all prune must spare keep"
+    assert any("--all" not in c and "label!=keep" not in c for c in img_aggressive), (
+        "aggressive dangling prune must reclaim without label!=keep"
+    )
+
+
+# --- gitconfig token-rewrite hygiene (#1216 follow-up) -------------------------
+# clean-gitconfig-token-rewrites only ran at install time, so expired-token
+# url.*.insteadOf sections came straight back. Scheduled maintenance runs it, but
+# only while every runner is idle: all runners share one ~/.gitconfig.
+
+
+def _gitconfig_gc(tmp_path: Path, *, units: str, busy: str = "", enabled: str = "1") -> str:
+    text = CLEANUP.read_text(encoding="utf-8")
+    cleaner = tmp_path / "cleaner"
+    cleaner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n")
+    cleaner.chmod(0o755)
+    result = _harness(
+        tmp_path,
+        [
+            'run() { echo "RUN $*"; }',
+            f"list_runner_units() {{ printf '%s\\n' '{units}' | tr ',' '\\n'; }}",
+            'service_workdir() { echo "/runners/$1"; }',
+            f'runner_busy() {{ case ",{busy}," in *",$1,"*) return 0 ;; esac; return 1; }}',
+            "RUNNER_USER=ci",
+            f"CLEAN_GITCONFIG_TOKEN_REWRITES={enabled}",
+            f'GITCONFIG_CLEANER="{as_bash_path(cleaner)}"',
+            _extract(text, "cleanup_gitconfig_token_rewrites"),
+            "cleanup_gitconfig_token_rewrites",
+        ],
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_gitconfig_cleanup_runs_as_runner_user_when_all_idle(tmp_path: Path) -> None:
+    out = _gitconfig_gc(tmp_path, units="actions.runner.a.service,actions.runner.b.service")
+    assert "RUN sudo -u ci -H" in out
+
+
+def test_gitconfig_cleanup_skipped_while_any_runner_is_busy(tmp_path: Path) -> None:
+    out = _gitconfig_gc(
+        tmp_path, units="actions.runner.a.service,actions.runner.b.service", busy="actions.runner.b.service"
+    )
+    assert "RUN" not in out
+    assert "is busy" in out
+
+
+def test_gitconfig_cleanup_skipped_on_hosts_without_runners(tmp_path: Path) -> None:
+    """Workstation-profile hosts: the logged-in user's gitconfig is not CI litter."""
+    out = _gitconfig_gc(tmp_path, units="")
+    assert "RUN" not in out
+
+
+def test_gitconfig_cleanup_can_be_disabled(tmp_path: Path) -> None:
+    out = _gitconfig_gc(tmp_path, units="actions.runner.a.service", enabled="0")
+    assert "RUN" not in out
+    assert "disabled" in out
+
+
+def test_gitconfig_cleanup_is_wired_into_both_scheduled_passes() -> None:
+    text = CLEANUP.read_text(encoding="utf-8")
+    main = text[text.index("main() {") :]
+    assert main.count("cleanup_gitconfig_token_rewrites") == 2

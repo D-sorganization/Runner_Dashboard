@@ -59,11 +59,15 @@ fi
 # drop-ins written by migrate-runner-units.sh. Installed at a stable
 # system path so the drop-ins don't depend on a repo checkout location.
 HOOK_INSTALL_DIR="/usr/local/bin/runner-hooks"
-HOOK_SRC_DIR_INSTALLED="/opt/runner-dashboard/deploy/runner-hooks"
-sudo install -d -m 0755 "${HOOK_INSTALL_DIR}"
-sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/job-started.sh"   "${HOOK_INSTALL_DIR}/job-started.sh"
-sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/job-completed.sh" "${HOOK_INSTALL_DIR}/job-completed.sh"
-sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/force-drain.sh"   "${HOOK_INSTALL_DIR}/force-drain.sh"
+# The restore timer's source is a mirror of the repo hooks that
+# refresh-maintenance-assets.sh keeps current (#1977); it used to be a repo
+# checkout under /opt that went stale or was absent.
+HOOK_SRC_DIR_INSTALLED="/usr/local/share/runner-hooks"
+sudo install -d -m 0755 "${HOOK_INSTALL_DIR}" "${HOOK_SRC_DIR_INSTALLED}"
+for hook in job-started.sh job-completed.sh force-drain.sh; do
+    sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/${hook}" "${HOOK_INSTALL_DIR}/${hook}"
+    sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/${hook}" "${HOOK_SRC_DIR_INSTALLED}/${hook}"
+done
 # Self-heal pass — restores the three hook scripts if they go missing
 # between deploys. Idempotent; safe to run on a short timer. Wired up
 # below as runner-hooks-restore.{service,timer}. Root cause this

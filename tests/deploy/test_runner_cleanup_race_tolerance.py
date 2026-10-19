@@ -120,3 +120,16 @@ class TestRaceTolerantStop:
             "that is incremented when systemctl stop fails. "
             "This counter feeds runner_cleanup_stop_failures_total in Prometheus."
         )
+
+
+class TestStaleBusyLockGC:
+    """Issue #1987: restart-required flag handling.
+
+    The stale busy-lock GC itself is covered behaviourally in
+    test_runner_busy_lock_gc.py.
+    """
+
+    def test_clears_restart_required_flag_on_successful_restart(self, script_text: str) -> None:
+        assert ".restart-required" in script_text, (
+            "runner-cleanup.sh must clear .restart-required flag when a runner restarts cleanly"
+        )

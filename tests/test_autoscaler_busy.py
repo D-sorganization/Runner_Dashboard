@@ -32,8 +32,10 @@ class TestBusyViaLockfile:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,  # type: ignore[name-defined]
     ) -> None:
+        import os as _os
+
         monkeypatch.setattr(busy, "RUNNER_BUSY_LOCK_DIR", tmp_path)
-        (tmp_path / "runner-1.lock").write_text("pid=1\n")
+        (tmp_path / "runner-1.lock").write_text(f"pid={_os.getpid()}\n")
         assert busy._runner_busy_via_lockfile(UNIT) is True
 
     def test_stale_lockfile_returns_false(
@@ -50,6 +52,8 @@ class TestBusyViaLockfile:
         old = time.time() - 3600
         _os.utime(lock, (old, old))
         assert busy._runner_busy_via_lockfile(UNIT) is False
+
+    # worker_pid staleness cases live in tests/test_runner_busy_lock.py (#1987).
 
 
 class TestBusyViaPickupDir:

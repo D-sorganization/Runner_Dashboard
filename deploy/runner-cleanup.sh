@@ -46,6 +46,13 @@ PRUNE_DOCKER_VOLUMES="${PRUNE_DOCKER_VOLUMES:-0}"
 # container (dangling) are removed, so user volumes and live builders are
 # never touched.
 PRUNE_ORPHAN_BUILDX_STATE="${PRUNE_ORPHAN_BUILDX_STATE:-1}"
+# Persistent shared buildx builders (#1988, UpstreamDrift #13208): one
+# long-lived docker-container builder per host whose state volume IS the layer
+# cache, bounded by BuildKit's own GC policy. Cleanup never removes such a
+# builder's container (buildx_buildkit_<name>0), its state volume
+# (buildx_buildkit_<name>0_state), its cache, or its definition. Space-separated
+# names, validated before any docker prune; set to "" to protect none.
+PERSISTENT_BUILDX_BUILDERS="${PERSISTENT_BUILDX_BUILDERS-ud-buildkit}"
 # Set to 1 automatically when disk pressure is detected (see main()). When on,
 # cleanup_docker() ignores age windows and reclaims ALL build cache (incl.
 # buildx builders), unused images, and dangling volumes. Docker is the dominant
@@ -86,6 +93,17 @@ TMP_PRESSURE_PERCENT="${TMP_PRESSURE_PERCENT:-75}"
 # job's scratch is never touched. Name is fixed so cleanup and configure
 # agree without sharing state.
 RUNNER_TMP_SUBDIR="${RUNNER_TMP_SUBDIR:-_work/_tmp}"
+# Global gitconfig hygiene (#1216 follow-up, 2026-10-17): CI jobs that run
+# `git config --global url."https://x-access-token:<token>@github.com/".insteadOf`
+# leave one expired-token rewrite per run in the runner user's ~/.gitconfig.
+# clean-gitconfig-token-rewrites was only run once, at install time, so the
+# sections came straight back. Run it from scheduled maintenance -- never from
+# the per-job hook, because every runner on the host shares one ~/.gitconfig
+# and a live job may depend on the rewrite it just wrote. Runs only when the
+# host has runner units and none of them is busy. The cleaner never prints
+# token values (userinfo is redacted to ***).
+CLEAN_GITCONFIG_TOKEN_REWRITES="${CLEAN_GITCONFIG_TOKEN_REWRITES:-1}"
+GITCONFIG_CLEANER="${GITCONFIG_CLEANER:-/usr/local/bin/clean-gitconfig-token-rewrites}"
 DRY_RUN="${DRY_RUN:-0}"
 COMPACT_VHD="${COMPACT_VHD:-0}"
 COMPACT_VHD_ONLY="${COMPACT_VHD_ONLY:-0}"
@@ -125,10 +143,11 @@ DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
 PRUNE_ORPHAN_BUILDX_STATE,
 DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
 COMPACT_VHD_DISTRO, DRY_RUN, TMP_DIR, TMP_LITTER_HOURS, TMP_PRESSURE_PERCENT,
-RUNNER_TMP_SUBDIR.
+RUNNER_TMP_SUBDIR, CLEAN_GITCONFIG_TOKEN_REWRITES, GITCONFIG_CLEANER.
 
 --disk-guard        Lightweight, runner-safe pass: reclaim docker + /tmp and idle-runner
-                    TMPDIR CI litter + journal +
+                    TMPDIR CI litter + gitconfig token rewrites (all runners idle)
+                    + journal +
                     fstrim ONLY (never stops runner units). Goes aggressive on
                     docker when used% >= DISK_PRESSURE_PERCENT. Safe to run
                     frequently (hourly timer) to keep docker bloat in check
@@ -263,6 +282,24 @@ runner_name_for_unit() {
     printf '%s' "${stem##*.}"
 }
 
+PROC_ROOT="${PROC_ROOT:-/proc}"
+
+lock_worker_pid_stale() {
+    # Issue #1987: return 0 (stale) only when the lockfile carries worker_pid=
+    # AND that pid is dead or its cmdline no longer contains Runner.Worker
+    # (pid reuse). No worker_pid, a malformed one, or no proc filesystem to
+    # ask -> return 1 (not provably stale). Mirrors
+    # backend/runner_busy_lock.py::lock_is_stale_by_worker_pid.
+    local lock="$1" wpid cmdline
+    wpid=$(awk -F= '$1=="worker_pid"{print $2; exit}' "$lock" 2>/dev/null || true)
+    [[ "$wpid" =~ ^[0-9]+$ ]] || return 1
+    [[ -d "$PROC_ROOT" ]] || return 1
+    [[ -d "$PROC_ROOT/$wpid" ]] || return 0
+    cmdline=$(tr '\0' ' ' 2>/dev/null < "$PROC_ROOT/$wpid/cmdline" || true)
+    [[ "$cmdline" == *Runner.Worker* ]] && return 1
+    return 0
+}
+
 runner_busy_via_lockfile() {
     # Issue #651 defense-in-depth signal mirroring backend/runner_autoscaler.py's
     # _runner_busy_via_lockfile. The runner's JOB_STARTED hook writes
@@ -287,7 +324,29 @@ runner_busy_via_lockfile() {
         rm -f "$lock"
         return 1
     fi
+
+    # Issue #1987: a lock is stale-by-pid ONLY when the hook recorded the
+    # Runner.Worker pid (worker_pid=) and that pid is dead or reused. The
+    # legacy pid= is the short-lived hook shell -- dead for the entire job --
+    # so locks without worker_pid fall back to the age rule above only.
+    if lock_worker_pid_stale "$lock"; then
+        log "stale runner-busy lockfile (worker_pid dead or not a Runner.Worker) — removing $lock"
+        rm -f "$lock"
+        return 1
+    fi
+
     return 0
+}
+
+cleanup_stale_busy_locks() {
+    [[ -d "$RUNNER_BUSY_LOCK_DIR" ]] || return 0
+    local lock
+    for lock in "$RUNNER_BUSY_LOCK_DIR"/*.lock; do
+        [[ -f "$lock" ]] || continue
+        local runner_name
+        runner_name="$(basename "$lock" .lock)"
+        runner_busy_via_lockfile "$runner_name" || true
+    done
 }
 
 runner_busy() {
@@ -427,6 +486,8 @@ cleanup_runners() {
             run systemctl start "$unit" || start_rc=$?
             if (( start_rc != 0 )); then
                 log "error $unit: failed to restart after cleanup (rc=$start_rc); host may have a stuck unit"
+            else
+                rm -f "${runner_dir}/.restart-required"
             fi
         fi
     done < <(list_runner_units)
@@ -437,28 +498,35 @@ cleanup_docker() {
         log "docker unavailable; skipping docker cleanup"
         return 0
     fi
+    validate_persistent_builders || return 2
     local prune_containers="${PRUNE_DOCKER_CONTAINERS:-1}"
+    if [[ "$prune_containers" == "1" ]] && ! ensure_persistent_builders_running; then
+        prune_containers=0
+    fi
     if [[ "$DOCKER_AGGRESSIVE" == "1" ]]; then
         # Disk pressure: reclaim everything reclaimable, ignoring age windows.
         # `prune` only ever removes STOPPED containers, UNUSED images, DANGLING
         # volumes, and idle build cache, so running jobs / in-use volumes /
         # active buildx builders are never touched. Images carrying the `keep`
         # label (docker build --label keep=true) are spared: they are slow,
-        # WAN-bound rebuilds that other sessions depend on.
+        # WAN-bound rebuilds that other sessions depend on. Untagged (dangling)
+        # copies are always reclaimable even if labelled keep: keep protects
+        # tagged images only (#1981).
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force; fi
         run docker builder prune --all --force
-        # buildx builders keep their own cache pools; prune those too when the
-        # buildx plugin is present (the moby/buildkit builder containers on this
-        # host accumulate tens of GB of cache).
+        # buildx builders keep their own cache pools; prune the current one too
+        # when the buildx plugin is present (the moby/buildkit builder containers
+        # on this host accumulate tens of GB of cache).
         if docker buildx version >/dev/null 2>&1; then
-            run docker buildx prune --all --force
+            prune_current_buildx_cache
         fi
+        run docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"
         run docker image prune --all --force --filter "label!=keep"
         run docker volume prune --force
     else
         if [[ "$prune_containers" == "1" ]]; then run docker container prune --force --filter "until=72h"; fi
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-        run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}" --filter "label!=keep"
+        run docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
     fi
     if [[ "$PRUNE_ORPHAN_BUILDX_STATE" == "1" ]]; then cleanup_orphan_buildx_state; fi
@@ -469,8 +537,11 @@ cleanup_orphan_buildx_state() {
     # builder definitions whose containers are gone. `dangling=true` is the
     # engine's own "unreferenced" predicate, so a builder mid-job (its
     # buildkitd container running) keeps its volume.
+    # A persistent builder's state volume is the shared layer cache: never
+    # reaped, even while its container is momentarily gone.
     local vols count=0
-    vols="$(docker volume ls -q --filter dangling=true --filter name=buildx_buildkit_ 2>/dev/null | grep "_state$" || true)"
+    vols="$(docker volume ls -q --filter dangling=true --filter name=buildx_buildkit_ 2>/dev/null | grep "_state$" \
+        | grep -vxF -f <(persistent_state_volumes) || true)"
     [[ -n "$vols" ]] || return 0
     count="$(printf "%s\n" "$vols" | wc -l)"
     log "reaping $count orphaned buildx builder state volumes"
@@ -486,6 +557,72 @@ cleanup_orphan_buildx_state() {
             docker buildx rm "$b" >/dev/null 2>&1 || true
         done
     fi
+}
+
+PERSISTENT_BUILDERS=()
+
+validate_persistent_builders() {
+    # Precondition for every docker prune: each allowlisted name is a plain
+    # builder name. read -ra splits without glob expansion.
+    local b
+    read -ra PERSISTENT_BUILDERS <<< "$PERSISTENT_BUILDX_BUILDERS"
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        if [[ ! "$b" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+            log "error: invalid PERSISTENT_BUILDX_BUILDERS entry '$b' (must match ^[a-z0-9][a-z0-9_-]*\$); refusing docker cleanup"
+            echo "runner-cleanup: invalid PERSISTENT_BUILDX_BUILDERS entry '$b'" >&2
+            return 2
+        fi
+    done
+}
+
+is_persistent_builder() {
+    local b
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        [[ "$1" == "$b" ]] && return 0
+    done
+    return 1
+}
+
+persistent_state_volumes() {
+    local b
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        printf "buildx_buildkit_%s0_state\n" "$b"
+    done
+}
+
+ensure_persistent_builders_running() {
+    # `container prune` removes STOPPED containers, and a persistent builder's
+    # container stops on every host reboot. Start any stopped one first; if that
+    # fails, report it so the caller skips container prune for this run.
+    local b c state rc=0
+    for b in "${PERSISTENT_BUILDERS[@]}"; do
+        c="buildx_buildkit_${b}0"
+        state="$(docker inspect --format '{{.State.Status}}' "$c" 2>/dev/null || true)"
+        case "$state" in
+            "" | running) ;;
+            *)
+                if run docker start "$c" >/dev/null; then
+                    log "started stopped persistent buildx builder $c (was $state)"
+                else
+                    log "warn: cannot start persistent buildx builder $c (state=$state); skipping container prune this run"
+                    rc=1
+                fi
+                ;;
+        esac
+    done
+    return "$rc"
+}
+
+prune_current_buildx_cache() {
+    # `docker buildx prune` acts on the current builder. A persistent builder's
+    # cache is bounded by its own BuildKit GC policy, so it is never pruned here.
+    local current
+    current="$(docker buildx inspect 2>/dev/null | awk '$1 == "Name:" {print $2; exit}' || true)"
+    if [[ -n "$current" ]] && is_persistent_builder "$current"; then
+        log "keeping cache of persistent buildx builder '$current' (bounded by BuildKit GC)"
+        return 0
+    fi
+    run docker buildx prune --all --force ${current:+--builder "$current"}
 }
 
 tmp_used_percent() {
@@ -615,6 +752,33 @@ cleanup_rustup_tmp() {
     find "$tmp" -mindepth 1 -maxdepth 1 -mmin "+$(( RUSTUP_TMP_HOURS * 60 ))" -exec rm -rf {} + 2>/dev/null || true
 }
 
+cleanup_gitconfig_token_rewrites() {
+    local unit runner_dir units=0
+    if [[ "$CLEAN_GITCONFIG_TOKEN_REWRITES" != "1" ]]; then
+        log "gitconfig token-rewrite cleanup disabled (CLEAN_GITCONFIG_TOKEN_REWRITES=${CLEAN_GITCONFIG_TOKEN_REWRITES})"
+        return 0
+    fi
+    if [[ ! -x "$GITCONFIG_CLEANER" ]]; then
+        log "gitconfig token-rewrite cleanup skipped: $GITCONFIG_CLEANER not installed"
+        return 0
+    fi
+    while read -r unit; do
+        [[ -n "$unit" ]] || continue
+        units=$((units + 1))
+        runner_dir="$(service_workdir "$unit")"
+        if runner_busy "$unit" "$runner_dir"; then
+            log "gitconfig token-rewrite cleanup skipped: $unit is busy (runners share ~/.gitconfig)"
+            return 0
+        fi
+    done < <(list_runner_units)
+    if (( units == 0 )); then
+        log "gitconfig token-rewrite cleanup skipped: no runner units on this host"
+        return 0
+    fi
+    run sudo -u "$RUNNER_USER" -H "$GITCONFIG_CLEANER" \
+        || log "warn: gitconfig token-rewrite cleanup failed (rc=$?)"
+}
+
 cleanup_common_caches() {
     run apt-get autoclean
     command -v pip3 >/dev/null 2>&1 && run sudo -u "$RUNNER_USER" -H pip3 cache purge
@@ -667,15 +831,17 @@ main() {
         TOOL_CACHE_DAYS=7
         DOCKER_AGGRESSIVE=1
     fi
+    cleanup_stale_busy_locks
     if [[ "$DISK_GUARD" == "1" ]]; then
         # Runner-safe fast pass: reclaim docker + journal + trim only. Never
         # touches runner units, so it can run on a frequent timer without
         # bouncing idle runners every pass. Goes aggressive on docker when the
         # pressure block above fired.
-        log "disk-guard mode: docker + tmp + journal + fstrim only (no runner bounce)"
+        log "disk-guard mode: docker + tmp + gitconfig + journal + fstrim only (no runner bounce)"
         cleanup_docker
         cleanup_tmp
         cleanup_runner_tmpdirs
+        cleanup_gitconfig_token_rewrites
         command -v journalctl >/dev/null 2>&1 && run journalctl --vacuum-size="$JOURNAL_MAX_SIZE"
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
     elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then
@@ -683,6 +849,7 @@ main() {
         cleanup_docker
         cleanup_tmp
         cleanup_runner_tmpdirs
+        cleanup_gitconfig_token_rewrites
         cleanup_rustup_tmp
         cleanup_common_caches
         command -v fstrim >/dev/null 2>&1 && run fstrim -av

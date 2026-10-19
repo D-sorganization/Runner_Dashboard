@@ -38,6 +38,15 @@ STOP_RECHECK_DELAY_SECONDS = float(os.environ.get("RUNNER_STOP_RECHECK_DELAY_SEC
 DRAIN_MAX_SECONDS = float(os.environ.get("RUNNER_DRAIN_MAX_SECONDS", "240"))
 DRAIN_POLL_SECONDS = float(os.environ.get("RUNNER_DRAIN_POLL_SECONDS", "2"))
 DRAIN_CONFIRM_SECONDS = float(os.environ.get("RUNNER_DRAIN_CONFIRM_SECONDS", "1"))
+# A drain stop needs the runner to have stayed between jobs this long (#1973).
+# Under a deep queue GitHub hands a just-freed runner its next job within
+# seconds, server-side, to the listener's open session; the SIGSTOP freeze
+# cannot stop that, so a stop in the gap orphans the job (zero steps, failed
+# after 10 min). A runner left idle this long has nothing queued for it.
+DRAIN_SETTLE_SECONDS = float(os.environ.get("RUNNER_DRAIN_SETTLE_SECONDS", "30"))
+# `systemctl stop` waits for the listener to shut down, which can exceed the
+# 30 s run_cmd default; a timeout must not crash the whole run (#1973).
+STOP_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_STOP_TIMEOUT_SECONDS", "120"))
 # Maintenance hold (#1929 item 3): while this flag exists every tick targets 0
 # runners, so a drain is not undone by the next scheduled start.
 MAINTENANCE_PATH = Path(os.environ.get("RUNNER_MAINTENANCE_FLAG", "/var/lib/runner-scheduler/maintenance.json"))
@@ -63,8 +72,8 @@ class RunnerUnit:
     busy: bool
 
 
-def run_cmd(cmd: list[str], check: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, capture_output=True, text=True, check=check, timeout=30)
+def run_cmd(cmd: list[str], check: bool = False, timeout: float = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, capture_output=True, text=True, check=check, timeout=timeout)
 
 
 def parse_hhmm(value: str) -> time:
@@ -189,12 +198,59 @@ def runner_names(workdir: Path, unit: str | None = None) -> list[str]:
     return list(dict.fromkeys(names))
 
 
+def _lock_worker_pid_stale(text: str) -> bool:
+    """Issue #1987: True only when the lock's worker_pid= is dead or reused.
+
+    Same rule as backend/runner_busy_lock.py::lock_is_stale_by_worker_pid and
+    deploy/runner-cleanup.sh::lock_worker_pid_stale (this script is deployed
+    standalone, so it cannot import the backend). The legacy pid= is the
+    short-lived hook shell and is never consulted; a lock without worker_pid
+    is never stale-by-pid and falls back to the age rule.
+    """
+    value = ""
+    for line in text.splitlines():
+        key, sep, val = line.strip().partition("=")
+        if sep and key == "worker_pid":
+            value = val.strip()
+            break
+    if not value.isdigit() or int(value) <= 0:
+        return False
+    if not PROC_ROOT.is_dir():
+        return False
+    pid_dir = PROC_ROOT / value
+    if not pid_dir.is_dir():
+        return True
+    try:
+        cmdline = (pid_dir / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return "Runner.Worker" not in cmdline
+
+
 def runner_busy_via_lock(workdir: Path, unit: str | None = None) -> bool:
-    """Detect a job-start hook marker for the runner."""
-    return any(
-        _recent_path_is_busy(RUNNER_BUSY_LOCK_DIR / f"{name}.lock", RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
-        for name in runner_names(workdir, unit)
-    )
+    """Detect a job-start hook marker for the runner.
+
+    A fresh lock counts as busy unless its recorded Runner.Worker pid is dead
+    or reused (#1987); such a lock is unlinked.
+    """
+    for name in runner_names(workdir, unit):
+        lock = RUNNER_BUSY_LOCK_DIR / f"{name}.lock"
+        if not _recent_path_is_busy(lock, RUNNER_BUSY_LOCK_MAX_AGE_SECONDS):
+            continue
+        try:
+            content = lock.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return True
+        if not _lock_worker_pid_stale(content):
+            return True
+        log.info("removing stale runner-busy lock %s (worker_pid dead or not a Runner.Worker)", lock)
+        try:
+            lock.unlink(missing_ok=True)
+        except OSError:
+            return True
+    return False
 
 
 def runner_busy_via_diag(workdir: Path) -> bool:
@@ -319,7 +375,12 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
     try:
         if not _worker_absent(unit):
             return False
-        stopped = run_cmd(["systemctl", "stop", unit.unit]).returncode == 0
+        try:
+            stopped = run_cmd(["systemctl", "stop", unit.unit], timeout=STOP_TIMEOUT_SECONDS).returncode == 0
+        except subprocess.TimeoutExpired:
+            # The stop was issued; it counts once the unit is no longer active.
+            stopped = not unit_active(unit.unit)
+            log.warning("systemctl stop %s timed out; unit %s", unit.unit, "going down" if stopped else "still active")
     finally:
         if not stopped:
             # Every path except a successful stop must leave the unit running.
@@ -377,10 +438,13 @@ def _between_jobs(unit: RunnerUnit) -> bool:
 
 
 def drain_surplus(units: list[RunnerUnit], desired: int, dry_run: bool, max_seconds: float | None = None) -> list[dict]:
-    """Stop surplus runners the moment they gap between jobs (#1929).
+    """Stop surplus runners once they settle between jobs (#1929, #1973).
 
     Contract: never stops a runner with a live Worker/lock, and never leaves
     fewer than ``desired`` active runners. Returns the stop actions taken.
+
+    Only a runner that has stayed between jobs for ``DRAIN_SETTLE_SECONDS`` is
+    stopped (#1973): a shorter gap is the moment GitHub assigns it the next job.
     """
     budget = DRAIN_MAX_SECONDS if max_seconds is None else max_seconds
     if dry_run or budget <= 0:
@@ -388,12 +452,17 @@ def drain_surplus(units: list[RunnerUnit], desired: int, dry_run: bool, max_seco
     desired = max(0, desired)
     remaining = sorted((u for u in units if u.active), key=lambda item: item.num, reverse=True)
     actions: list[dict] = []
+    idle_since: dict[str, float] = {}
     deadline = time_module.monotonic() + budget
     while len(remaining) > desired and time_module.monotonic() < deadline:
         for unit in list(remaining):
             if len(remaining) <= desired:
                 break
             if not _between_jobs(unit):
+                idle_since.pop(unit.unit, None)
+                continue
+            now = time_module.monotonic()
+            if now - idle_since.setdefault(unit.unit, now) < DRAIN_SETTLE_SECONDS:
                 continue
             assert len(remaining) > desired, "drain must not go below the desired runner count"  # noqa: S101
             if not stop_runner_safely(unit):

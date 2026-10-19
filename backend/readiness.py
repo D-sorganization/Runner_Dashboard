@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from typing import Final, Literal, Protocol, runtime_checkable
 
+from runner_busy_lock import RunnerBusyLockProbe
+
 log = logging.getLogger("dashboard.readiness")
 
 ProbeStatus = Literal["ok", "degraded", "down"]
@@ -385,6 +387,7 @@ _DEFAULT_PROBES: list[Probe] = [
     PushDbProbe(),
     RunnerHealthProbe(),
     RunnerPipCacheProbe(),
+    RunnerBusyLockProbe(),
 ]
 
 

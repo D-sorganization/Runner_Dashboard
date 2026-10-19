@@ -162,7 +162,7 @@ def test_job_started_hook_keeps_worktree_lock_scan_bounded_and_opt_in() -> None:
     src = _read(_DEPLOY / "runner-hooks" / "job-started.sh")
     assert "RUNNER_HOOK_ENABLE_WORKTREE_LOCK_CLEANUP:-0" in src
     assert "RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10" in src
-    assert 'timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find' in src
+    assert 'timeout -k 10s "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find' in src
 
 
 def test_job_completed_hook_removes_the_lockfile() -> None:
