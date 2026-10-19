@@ -123,25 +123,11 @@ class TestRaceTolerantStop:
 
 
 class TestStaleBusyLockGC:
-    """Issue #1987: Lock GC must remove locks immediately when recorded pid is dead and no Worker is running."""
+    """Issue #1987: restart-required flag handling.
 
-    def test_runner_busy_via_lockfile_checks_dead_pid(self, script_text: str) -> None:
-        assert "kill -0" in script_text or "lock_pid" in script_text, (
-            "runner-cleanup.sh must check whether the lockfile's recorded PID is alive"
-        )
-        assert "Runner.Worker" in script_text, (
-            "runner-cleanup.sh must verify whether a Runner.Worker process is running"
-        )
-
-    def test_runner_busy_via_lockfile_removes_stale_lock(self, script_text: str) -> None:
-        assert "stale runner-busy lockfile (pid=" in script_text, (
-            "runner-cleanup.sh must log and remove lock when pid is dead and no worker running"
-        )
-
-    def test_cleanup_stale_busy_locks_function_present(self, script_text: str) -> None:
-        assert "cleanup_stale_busy_locks" in script_text, (
-            "runner-cleanup.sh must provide a cleanup_stale_busy_locks function"
-        )
+    The stale busy-lock GC itself is covered behaviourally in
+    test_runner_busy_lock_gc.py.
+    """
 
     def test_clears_restart_required_flag_on_successful_restart(self, script_text: str) -> None:
         assert ".restart-required" in script_text, (

@@ -243,22 +243,6 @@ def test_runner_busy_lock_for_other_runner_is_ignored(monkeypatch, tmp_path: Pat
     assert runner_scheduler.runner_busy(workdir) is False
 
 
-def test_runner_busy_stale_lock_with_dead_pid_and_no_worker_is_cleaned(monkeypatch, tmp_path: Path) -> None:
-    workdir = tmp_path / "runner-3"
-    workdir.mkdir()
-    (workdir / ".runner").write_text(json.dumps({"agentName": "d-sorg-local-Desktop-3"}), encoding="utf-8")
-    lock_dir = tmp_path / "runner-busy"
-    lock_dir.mkdir()
-    lock_file = lock_dir / "d-sorg-local-Desktop-3.lock"
-    lock_file.write_text("pid=999999\nrunner=d-sorg-local-Desktop-3\n", encoding="utf-8")
-    monkeypatch.setattr(runner_scheduler, "RUNNER_BUSY_LOCK_DIR", lock_dir)
-    monkeypatch.setattr(runner_scheduler, "_pid_is_alive", lambda _pid: False)
-    _no_ps(monkeypatch)
-
-    assert runner_scheduler.runner_busy(workdir) is False
-    assert not lock_file.exists(), "Stale lock must be unlinked"
-
-
 def test_runner_busy_detects_worker_via_proc_when_ps_misses_it(monkeypatch, tmp_path: Path) -> None:
     workdir = tmp_path / "runner-3"
     worker = workdir / "bin.2.337.0" / "Runner.Worker"

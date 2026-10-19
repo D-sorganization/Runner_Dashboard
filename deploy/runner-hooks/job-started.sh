@@ -577,9 +577,35 @@ mkdir -p "$LOCK_DIR" 2>/dev/null || true
 
 LOCK_FILE="${LOCK_DIR}/${RUNNER_NAME}.lock"
 
+# _find_worker_pid <start-pid>: print the nearest Runner.Worker ancestor,
+# walking up /proc/<pid>/status PPid a few levels from <start-pid> (the
+# hook's $PPID). Returns 1 and prints nothing when none is found.
+#
+# Issue #1987: `pid=` below is this hook shell, which exits as soon as the
+# lock is written, so it is dead for the whole job. Stale-lock GC
+# (deploy/runner-cleanup.sh lock_worker_pid_stale,
+# backend/runner_busy_lock.py) keys liveness on `worker_pid=` only.
+_find_worker_pid() {
+    local pid="$1" proc="${PROC_ROOT:-/proc}" depth cmdline
+    for depth in 1 2 3 4 5 6; do
+        [[ "$pid" =~ ^[0-9]+$ ]] && (( pid > 1 )) || return 1
+        cmdline=$(tr '\0' ' ' 2>/dev/null < "$proc/$pid/cmdline") || cmdline=""
+        if [[ "$cmdline" == *Runner.Worker* ]]; then
+            printf '%s' "$pid"
+            return 0
+        fi
+        pid=$(awk '$1=="PPid:"{print $2; exit}' "$proc/$pid/status" 2>/dev/null) || return 1
+    done
+    return 1
+}
+WORKER_PID="$(_find_worker_pid "${PPID:-0}" || true)"
+
 # Atomic write with metadata so observers can see who/what claimed it.
 {
     printf 'pid=%s\n' "$$"
+    if [ -n "$WORKER_PID" ]; then
+        printf 'worker_pid=%s\n' "$WORKER_PID"
+    fi
     printf 'runner=%s\n' "$RUNNER_NAME"
     printf 'job=%s\n' "${GITHUB_JOB:-unknown}"
     printf 'workflow=%s\n' "${GITHUB_WORKFLOW:-unknown}"

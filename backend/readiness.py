@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from typing import Final, Literal, Protocol, runtime_checkable
 
+from runner_busy_lock import lock_is_stale_by_worker_pid, worker_pid
+
 log = logging.getLogger("dashboard.readiness")
 
 ProbeStatus = Literal["ok", "degraded", "down"]
@@ -377,9 +379,10 @@ class RunnerPipCacheProbe:
 class RunnerBusyLockProbe:
     """Check for stale runner-busy lockfiles (issue #1987).
 
-    A lockfile in ``RUNNER_BUSY_LOCK_DIR`` older than 10 minutes (600s) with
-    no ``Runner.Worker`` running for that runner indicates a stale lock left behind
-    by an un-restarted runner or a crashed worker.
+    A lockfile in ``RUNNER_BUSY_LOCK_DIR`` is stale when its recorded
+    ``worker_pid`` is dead or no longer a ``Runner.Worker`` (see
+    ``runner_busy_lock``), or -- for legacy locks without ``worker_pid`` --
+    when it is older than the threshold (default 10 minutes).
     """
 
     name = "runner_busy_locks"
@@ -410,31 +413,6 @@ class RunnerBusyLockProbe:
         self._cached = (time.monotonic(), status, detail)
         return status, detail
 
-    def _get_running_worker_cmdlines(self) -> list[str]:
-        cmdlines: list[str] = []
-        try:
-            import psutil  # type: ignore
-
-            for proc in psutil.process_iter(["cmdline"]):
-                try:
-                    cmd = proc.info.get("cmdline") or []
-                    joined = " ".join(cmd)
-                    if "Runner.Worker" in joined:
-                        cmdlines.append(joined)
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-        except Exception:
-            pass
-        return cmdlines
-
-    def _worker_running_for_runner(self, runner_name: str, lock_file: Path, worker_cmdlines: list[str]) -> bool:
-        if not worker_cmdlines:
-            return False
-        for cmdline in worker_cmdlines:
-            if runner_name in cmdline:
-                return True
-        return False
-
     def _check_busy_locks(self) -> tuple[ProbeStatus, str | None]:
         if not self._lock_dir.is_dir():
             return "ok", None
@@ -450,25 +428,23 @@ class RunnerBusyLockProbe:
         if not lock_files:
             return "ok", None
 
-        worker_cmdlines = self._get_running_worker_cmdlines()
-
         for lock_file in lock_files:
             try:
-                stat = lock_file.stat()
-                age = now - stat.st_mtime
-                if age <= self._stale_threshold:
-                    continue
-
-                runner_name = lock_file.stem
-                if not self._worker_running_for_runner(runner_name, lock_file, worker_cmdlines):
-                    stale_locks.append(f"{lock_file.name} (age={int(age)}s)")
-            except (FileNotFoundError, OSError):
+                age = now - lock_file.stat().st_mtime
+                text = lock_file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
                 continue
+            # Issue #1987: shared rule (runner_busy_lock.py). A recorded
+            # worker_pid decides on its own; legacy locks fall back to age.
+            if lock_is_stale_by_worker_pid(text):
+                stale_locks.append(f"{lock_file.name} (worker_pid dead or reused, age={int(age)}s)")
+            elif worker_pid(text) is None and age > self._stale_threshold:
+                stale_locks.append(f"{lock_file.name} (age={int(age)}s)")
 
         if stale_locks:
             return (
                 "degraded",
-                f"stale runner-busy lock(s) detected with no active Worker: {', '.join(stale_locks)}",
+                f"stale runner-busy lock(s) detected: {', '.join(stale_locks)}",
             )
 
         return "ok", None

@@ -3,8 +3,8 @@
 Verifies:
 - Probe returns "ok" when lock directory is absent or empty.
 - Probe returns "ok" when locks are fresh (<= 10m).
-- Probe returns "degraded" when locks are stale (> 10m) and no Worker is running.
-- Probe returns "ok" when lock is > 10m but a Worker is actively running for that runner.
+- worker_pid rule: live Worker ok at any age; dead or reused worker_pid degraded.
+- Legacy locks (no worker_pid) are judged by age only, never by the dead hook pid=.
 - Probe respects cache TTL.
 - Probe is included in get_default_probes().
 """
@@ -15,7 +15,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -57,44 +56,67 @@ async def test_busy_lock_probe_ok_when_locks_fresh(tmp_path: Path) -> None:
     assert detail is None
 
 
-@pytest.mark.asyncio
-async def test_busy_lock_probe_degraded_when_lock_stale_and_no_worker(tmp_path: Path) -> None:
-    lock_dir = tmp_path / "runner-busy"
-    lock_dir.mkdir()
+WORKER_CMDLINE = b"/home/u/actions-runners/runner-1/bin/Runner.Worker\x00spawnclient\x00"
+
+
+def _fake_proc(root: Path, procs: dict[int, bytes]) -> Path:
+    proc = root / "proc"
+    proc.mkdir()
+    for pid, cmdline in procs.items():
+        (proc / str(pid)).mkdir()
+        (proc / str(pid) / "cmdline").write_bytes(cmdline)
+    return proc
+
+
+def _old_lock(lock_dir: Path, body: str) -> Path:
+    lock_dir.mkdir(exist_ok=True)
     lock_file = lock_dir / "d-sorg-local-Desktop-1.lock"
-    lock_file.write_text("pid=12345\nrunner=d-sorg-local-Desktop-1\n", encoding="utf-8")
+    lock_file.write_text(body, encoding="utf-8")
     old_time = time.time() - 1200  # 20 minutes ago
     os.utime(lock_file, (old_time, old_time))
+    return lock_file
 
-    probe = r.RunnerBusyLockProbe(lock_dir=lock_dir, stale_threshold_seconds=600, cache_ttl_seconds=0)
-    with patch.object(probe, "_get_running_worker_cmdlines", return_value=[]):
-        status, detail = await probe.check()
 
-    assert status == "degraded"
-    assert detail is not None
-    assert "d-sorg-local-Desktop-1.lock" in detail
-    assert "no active Worker" in detail
+# Issue #1987: same four cases as the cleanup/autoscaler rule. A live
+# worker_pid is healthy at any age; a dead or reused one is stale; a legacy
+# lock (no worker_pid) is judged by age alone, never by its dead hook pid=.
+_PROBE_CASES = {
+    "live_worker_ok": ("pid=11\nworker_pid=100\n", {100: WORKER_CMDLINE}, "ok"),
+    "dead_worker_pid_degraded": ("pid=11\nworker_pid=100\n", {}, "degraded"),
+    "reused_pid_degraded": ("pid=11\nworker_pid=100\n", {100: b"/usr/bin/python3\x00"}, "degraded"),
+    "legacy_old_lock_degraded_by_age": ("pid=11\n", {}, "degraded"),
+}
 
 
 @pytest.mark.asyncio
-async def test_busy_lock_probe_ok_when_lock_stale_but_worker_running(tmp_path: Path) -> None:
+@pytest.mark.parametrize("case", sorted(_PROBE_CASES))
+async def test_busy_lock_probe_worker_pid_rule(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    body, procs, expected = _PROBE_CASES[case]
     lock_dir = tmp_path / "runner-busy"
-    lock_dir.mkdir()
-    lock_file = lock_dir / "d-sorg-local-Desktop-1.lock"
-    lock_file.write_text("pid=12345\nrunner=d-sorg-local-Desktop-1\n", encoding="utf-8")
-    old_time = time.time() - 1200
-    os.utime(lock_file, (old_time, old_time))
+    _old_lock(lock_dir, body)
+    monkeypatch.setenv("PROC_ROOT", str(_fake_proc(tmp_path, procs)))
 
     probe = r.RunnerBusyLockProbe(lock_dir=lock_dir, stale_threshold_seconds=600, cache_ttl_seconds=0)
-    with patch.object(
-        probe,
-        "_get_running_worker_cmdlines",
-        return_value=["/home/user/actions-runners/runner-1/bin/Runner.Worker d-sorg-local-Desktop-1"],
-    ):
-        status, detail = await probe.check()
+    status, detail = await probe.check()
 
-    assert status == "ok"
-    assert detail is None
+    assert status == expected
+    if expected == "degraded":
+        assert detail is not None and "d-sorg-local-Desktop-1.lock" in detail
+    else:
+        assert detail is None
+
+
+@pytest.mark.asyncio
+async def test_busy_lock_probe_ok_when_legacy_lock_is_fresh_even_if_hook_pid_dead(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock_dir = tmp_path / "runner-busy"
+    lock_dir.mkdir()
+    (lock_dir / "r.lock").write_text("pid=11\n", encoding="utf-8")
+    monkeypatch.setenv("PROC_ROOT", str(_fake_proc(tmp_path, {})))
+
+    probe = r.RunnerBusyLockProbe(lock_dir=lock_dir, stale_threshold_seconds=600, cache_ttl_seconds=0)
+    assert await probe.check() == ("ok", None)
 
 
 @pytest.mark.asyncio

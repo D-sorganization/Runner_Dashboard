@@ -15,7 +15,6 @@ Strategy ordering (any positive signal → busy):
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import sys
 import time
@@ -34,6 +33,7 @@ from autoscaler_systemd import (
     _runner_workdir_for_unit,
     _unit_state,
 )
+from runner_busy_lock import lock_is_stale_by_worker_pid
 
 log = logging.getLogger("runner-autoscaler")
 _DEFAULT_PSUTIL = psutil
@@ -109,47 +109,21 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
         )
         return False
 
-    # Issue #1987: Treat lock as stale immediately when recorded pid= is dead
-    # and no Runner.Worker is running for that runner. Deletion is cleanup's job.
-    lock_pid: int | None = None
+    # Issue #1987: the lock stops counting only when the hook-recorded
+    # Runner.Worker pid (worker_pid=) is dead or reused. The legacy pid= is
+    # the short-lived hook shell and is never consulted. Deletion is
+    # runner-cleanup.sh's job. Rule shared with runner_busy_lock.py.
     try:
-        content = lock.read_text(encoding="utf-8")
-        for line in content.splitlines():
-            line = line.strip()
-            if line.startswith("pid="):
-                val = line.split("=", 1)[1].strip()
-                if val.isdigit():
-                    lock_pid = int(val)
-                break
+        content = lock.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         log.debug("lockfile read failed unit=%s path=%s err=%s", unit, lock, exc)
-
-    if lock_pid is not None:
-        psutil_mod = _psutil_dep()
-        pid_dead = False
-        if psutil_mod is not None:
-            try:
-                if lock_pid == 1 and sys.platform == "win32":
-                    pid_dead = False
-                else:
-                    pid_dead = not psutil_mod.pid_exists(lock_pid)
-            except Exception:
-                pid_dead = False
-        else:
-            try:
-                os.kill(lock_pid, 0)
-            except ProcessLookupError:
-                pid_dead = True
-            except OSError:
-                pid_dead = False
-
-        if pid_dead and not _runner_busy_via_worker_scan_public(unit):
-            log.info(
-                "stale lockfile (pid=%d is dead and no Runner.Worker running) — not treating as busy unit=%s",
-                lock_pid,
-                unit,
-            )
-            return False
+        return True
+    if lock_is_stale_by_worker_pid(content):
+        log.info(
+            "stale lockfile (worker_pid dead or not a Runner.Worker) — not treating as busy unit=%s",
+            unit,
+        )
+        return False
 
     return True
 
