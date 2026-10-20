@@ -171,7 +171,7 @@ Full rule: [fleet-rules/agent-tiers.md](https://github.com/D-sorganization/Repos
 
 ### Reasoning & Engagement
 
-- Surface ambiguity and ask; never guess silently. Push back on overcomplication.
+- Surface genuine requirement ambiguity and ask; make routine choices yourself and state the assumption. Never guess silently. Push back on overcomplication.
 - Stay surgical: every changed line traces to the request. Spotted is not fix: report unrelated problems as follow-ups. Clean up only your own orphans.
 - State a verifiable success criterion (for a bug, a failing test) before coding.
 
