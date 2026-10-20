@@ -144,6 +144,9 @@ def as_bash_path(path: Path) -> str:
 def docker_shim_prelude(shim_dir: Path) -> str:
     """Bash lines that pin ``docker`` to the stub in *shim_dir* or abort.
 
+    Idle-builder cleanup tests (#2002) must source runner-cleanup through this
+    prelude so no harness hits a live daemon (Runner_Dashboard #1990).
+
     Passing PATH through the environment is not enough on Windows: the Git Bash
     launcher rebuilds PATH from its Windows form and can drop the stub
     directory, so the user's real ``docker`` CLI ran and pruned a live daemon

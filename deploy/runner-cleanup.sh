@@ -53,6 +53,18 @@ PRUNE_ORPHAN_BUILDX_STATE="${PRUNE_ORPHAN_BUILDX_STATE:-1}"
 # (buildx_buildkit_<name>0_state), its cache, or its definition. Space-separated
 # names, validated before any docker prune; set to "" to protect none.
 PERSISTENT_BUILDX_BUILDERS="${PERSISTENT_BUILDX_BUILDERS-ud-buildkit}"
+# Idle leaked ephemeral builders (#2002). A setup-buildx-action builder
+# (builder-<uuid>) or a gm-ci-* builder whose post-job `buildx rm` never ran
+# keeps its buildx_buildkit_<name>0 container; once that container restarts it
+# references its state volume again, so cleanup_orphan_buildx_state (dangling
+# volumes only) never reclaims it. reap_idle_builders removes the container,
+# state volume and definition of a builder whose name matches one of these
+# prefix globs, that was CREATED more than IDLE_BUILDER_MAX_AGE_HOURS ago (a
+# restart resets StartedAt, not Created) and whose `docker top` shows no build
+# process. PERSISTENT_BUILDX_BUILDERS always win. REAP_IDLE_BUILDERS=0 disables.
+REAP_IDLE_BUILDERS="${REAP_IDLE_BUILDERS:-1}"
+IDLE_BUILDER_PATTERNS="${IDLE_BUILDER_PATTERNS-builder-* gm-ci-*}"
+IDLE_BUILDER_MAX_AGE_HOURS="${IDLE_BUILDER_MAX_AGE_HOURS:-3}"
 # Set to 1 automatically when disk pressure is detected (see main()). When on,
 # cleanup_docker() ignores age windows and reclaims ALL build cache (incl.
 # buildx builders), unused images, and dangling volumes. Docker is the dominant
@@ -499,6 +511,7 @@ cleanup_docker() {
         return 0
     fi
     validate_persistent_builders || return 2
+    validate_idle_builder_patterns || return 2
     local prune_containers="${PRUNE_DOCKER_CONTAINERS:-1}"
     if [[ "$prune_containers" == "1" ]] && ! ensure_persistent_builders_running; then
         prune_containers=0
@@ -529,7 +542,77 @@ cleanup_docker() {
         run docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
     fi
+    reap_idle_builders
     if [[ "$PRUNE_ORPHAN_BUILDX_STATE" == "1" ]]; then cleanup_orphan_buildx_state; fi
+}
+
+IDLE_BUILDER_GLOBS=()
+
+validate_idle_builder_patterns() {
+    # Precondition for the idle-builder reaper: each pattern is a lowercase
+    # builder-name prefix with an optional trailing '*' (never a bare '*'),
+    # and the age threshold is a positive whole number of hours.
+    local p
+    read -ra IDLE_BUILDER_GLOBS <<< "$IDLE_BUILDER_PATTERNS"
+    for p in "${IDLE_BUILDER_GLOBS[@]}"; do
+        if [[ ! "$p" =~ ^[a-z0-9][a-z0-9_-]*\*?$ ]]; then
+            log "error: invalid IDLE_BUILDER_PATTERNS entry '$p' (must match ^[a-z0-9][a-z0-9_-]*\\*?\$); refusing docker cleanup"
+            echo "runner-cleanup: invalid IDLE_BUILDER_PATTERNS entry '$p'" >&2
+            return 2
+        fi
+    done
+    if [[ ! "$IDLE_BUILDER_MAX_AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+        log "error: invalid IDLE_BUILDER_MAX_AGE_HOURS '$IDLE_BUILDER_MAX_AGE_HOURS' (positive integer hours); refusing docker cleanup"
+        echo "runner-cleanup: invalid IDLE_BUILDER_MAX_AGE_HOURS '$IDLE_BUILDER_MAX_AGE_HOURS'" >&2
+        return 2
+    fi
+}
+
+matches_idle_builder_pattern() {
+    local p
+    for p in "${IDLE_BUILDER_GLOBS[@]}"; do
+        # shellcheck disable=SC2053  # $p is a validated glob on purpose
+        [[ "$1" == $p ]] && return 0
+    done
+    return 1
+}
+
+builder_has_active_build() {
+    # A buildx builder container runs buildkitd (optionally under an init) and
+    # nothing else while idle; any other process (buildkit-runc, a RUN step,
+    # qemu) is a build in flight. A stopped container (top fails) is idle.
+    local procs
+    procs="$(docker top "$1" -eo pid,comm 2>/dev/null | awk 'NR > 1 {print $2}')" || return 1
+    printf '%s\n' "$procs" | grep -qvxE 'buildkitd|docker-init|tini|' && return 0
+    return 1
+}
+
+reap_idle_builders() {
+    # Callers run validate_persistent_builders and validate_idle_builder_patterns
+    # first. Persistent builders (ud-buildkit) are skipped before any other
+    # query, so they are never inspected, stopped or removed.
+    [[ "$REAP_IDLE_BUILDERS" == "1" ]] || return 0
+    local now max_age c b created created_epoch age
+    now="$(date +%s)"
+    max_age=$(( IDLE_BUILDER_MAX_AGE_HOURS * 3600 ))
+    while IFS= read -r c; do
+        [[ "$c" =~ ^buildx_buildkit_(.+)0$ ]] || continue
+        b="${BASH_REMATCH[1]}"
+        is_persistent_builder "$b" && continue
+        matches_idle_builder_pattern "$b" || continue
+        created="$(docker inspect --format '{{.Created}}' "$c" 2>/dev/null)" || continue
+        created_epoch="$(date -d "$created" +%s 2>/dev/null)" || continue
+        age=$(( now - created_epoch ))
+        (( age > max_age )) || continue
+        builder_has_active_build "$c" && { log "keeping buildx builder $b: build in progress"; continue; }
+        log "reaping idle buildx builder $b (created $(( age / 3600 ))h ago, no active build)"
+        [[ "$DRY_RUN" == "1" ]] && continue
+        docker rm -f "$c" >/dev/null 2>&1 || true
+        docker volume rm "${c}_state" >/dev/null 2>&1 || true
+        if docker buildx version >/dev/null 2>&1; then
+            docker buildx rm "$b" >/dev/null 2>&1 || true
+        fi
+    done < <(docker ps -a --filter name=buildx_buildkit_ --format '{{.Names}}' 2>/dev/null || true)
 }
 
 cleanup_orphan_buildx_state() {
