@@ -156,16 +156,24 @@ def _label_breakdown(jobs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return dict(sorted(counts.items(), key=lambda item: (-int(item[1]["count"]), item[0])))
 
 
+def _jobs_without_matching_runners(
+    jobs: list[dict[str, Any]], label_sets: list[frozenset[str]]
+) -> list[dict[str, Any]]:
+    unmatched: list[dict[str, Any]] = []
+    for job in jobs:
+        labels = [str(label) for label in job.get("labels", []) or [] if label]
+        if job.get("target") == "github-hosted" or not labels:
+            continue
+        if not is_routable(labels, label_sets):
+            unmatched.append(job)
+    return unmatched
+
+
 def _misconfigured_jobs(jobs: list[dict[str, Any]], online_label_sets: list[frozenset[str]]) -> list[dict[str, Any]]:
     misconfigured: list[dict[str, Any]] = []
     all_online_labels = set().union(*online_label_sets) if online_label_sets else set()
-    for job in jobs:
+    for job in _jobs_without_matching_runners(jobs, online_label_sets):
         labels = [str(label) for label in job.get("labels", []) or [] if label]
-        target = job.get("target")
-        if target == "github-hosted" or not labels:
-            continue
-        if is_routable(labels, online_label_sets):
-            continue
         missing = sorted(label for label in labels if label not in all_online_labels)
         misconfigured.append(
             {
@@ -223,23 +231,24 @@ def _bottleneck(
     waiting_for_generic_self_hosted: int,
     waiting_for_github_hosted: int,
     misconfig_count: int,
+    idle_capacity_waiting_count: int,
     job_errors: list[str],
     runner_error: str | None,
 ) -> str:
     if queued_jobs == 0:
         return "No queued jobs found"
-    if misconfig_count:
-        return f"{misconfig_count} queued job(s) request labels no online runner can satisfy"
-    if waiting_for_self_hosted and runner_pool.get("idle", 0) == 0:
-        return "Self-hosted jobs are waiting and all online runners are busy"
-    if waiting_for_generic_self_hosted and runner_pool.get("total", 0) > 0:
-        return "Generic self-hosted jobs are waiting; prefer explicit d-sorg fleet labels"
-    if waiting_for_github_hosted and not waiting_for_self_hosted:
-        return "Queued jobs are waiting for GitHub-hosted runners"
     if runner_error:
         return "Queue sampled, but runner inventory is degraded"
     if job_errors:
         return "Queue sampled with partial job-detail failures"
+    if misconfig_count:
+        return f"{misconfig_count} queued job(s) request labels no online runner can satisfy"
+    if waiting_for_self_hosted and idle_capacity_waiting_count:
+        return f"{idle_capacity_waiting_count} queued self-hosted job(s) have no matching idle runner capacity"
+    if waiting_for_generic_self_hosted and runner_pool.get("total", 0) > 0:
+        return "Generic self-hosted jobs are waiting; prefer explicit d-sorg fleet labels"
+    if waiting_for_github_hosted and not waiting_for_self_hosted:
+        return "Queued jobs are waiting for GitHub-hosted runners"
     return "Queued jobs appear routable with current runner capacity"
 
 
@@ -280,7 +289,13 @@ async def diagnose_queue() -> dict[str, Any]:
         for runner in runners
         if isinstance(runner, dict) and runner.get("status") == "online"
     ]
-    misconfigured = _misconfigured_jobs(sampled_jobs, online_label_sets)
+    idle_label_sets = [
+        frozenset(_runner_labels(runner))
+        for runner in runners
+        if isinstance(runner, dict) and runner.get("status") == "online" and not runner.get("busy")
+    ]
+    misconfigured = [] if runner_error else _misconfigured_jobs(sampled_jobs, online_label_sets)
+    idle_capacity_waiting = _jobs_without_matching_runners(sampled_jobs, idle_label_sets)
     waiting_for_fleet = target_counts["self-hosted (d-sorg-fleet)"]
     waiting_for_generic_self_hosted = target_counts["self-hosted (generic)"]
     waiting_for_github_hosted = target_counts["github-hosted"]
@@ -312,6 +327,7 @@ async def diagnose_queue() -> dict[str, Any]:
             waiting_for_generic_self_hosted=waiting_for_generic_self_hosted,
             waiting_for_github_hosted=waiting_for_github_hosted,
             misconfig_count=len(misconfigured),
+            idle_capacity_waiting_count=len(idle_capacity_waiting),
             job_errors=job_errors,
             runner_error=runner_error,
         ),
