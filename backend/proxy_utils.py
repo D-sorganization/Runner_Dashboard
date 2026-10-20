@@ -16,6 +16,7 @@ log = logging.getLogger("dashboard.proxy")
 # longer than this for the hub's answer gets an httpx timeout, so any
 # hub-side "wait then answer degraded" budget must stay below this value.
 HUB_PROXY_TIMEOUT_S = 15.0
+HEALTH_PROXY_HOP_HEADER = "x-dashboard-health-hop"
 
 # ── Hub circuit breaker (issue: blank dashboard when the hub is offline) ──────
 # A spoke proxies fleet-wide endpoints to HUB_URL. If the hub is unreachable the
@@ -109,12 +110,18 @@ def _safe_forward_headers(request: Request) -> dict[str, str]:
     return forwarded
 
 
-async def proxy_to_hub(request: Request):
+async def proxy_to_hub(request: Request, *, require_success: bool = False):
     """Proxy request to the designated HUB_URL for hub-spoke topology.
 
     Sensitive caller headers are stripped and replaced with the intra-fleet
     bearer token so that operator credentials cannot be laundered to the hub
     (issue #347).
+
+    Health callers opt into ``require_success``: a non-2xx response raises
+    before resetting the circuit or accepting a healthy-shaped JSON body.
+    Health probes stamp one fixed hop marker, replacing caller-provided values,
+    so a misconfigured node-to-node or self URL cannot recurse.
+    Existing proxy callers retain their response translation contract.
     """
     if not HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
@@ -123,13 +130,19 @@ async def proxy_to_hub(request: Request):
         if request.url.query:
             url = f"{url}?{request.url.query}"
         try:
+            headers = _safe_forward_headers(request)
+            if require_success and request.url.path == "/api/health":
+                headers = {key: value for key, value in headers.items() if key.lower() != HEALTH_PROXY_HOP_HEADER}
+                headers[HEALTH_PROXY_HOP_HEADER] = "1"
             req = client.build_request(
                 request.method,
                 url,
-                headers=_safe_forward_headers(request),
+                headers=headers,
                 content=await request.body(),
             )
             resp = await client.send(req)
+            if require_success and not 200 <= resp.status_code < 300:
+                raise HTTPException(status_code=502, detail=f"Hub returned HTTP {resp.status_code}")
             reset_hub_circuit()  # hub answered → close the breaker
             return _translate_upstream_response(resp, "Hub proxy")
         except httpx.TimeoutException as e:

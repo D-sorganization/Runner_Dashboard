@@ -179,7 +179,9 @@ if [[ "$COMPACT_VHD_ONLY" == "1" ]]; then
     COMPACT_VHD=1
 fi
 
-mkdir -p "$LOG_DIR"
+if [[ "$DRY_RUN" != "1" ]]; then
+    mkdir -p "$LOG_DIR"
+fi
 
 log() {
     printf '%s %s\n' "$(date --iso-8601=seconds)" "$*"
@@ -201,6 +203,8 @@ delete_path() {
 }
 
 write_metrics() {
+    # A preview must not replace the outcome of the last real cleanup pass.
+    [[ "$DRY_RUN" == "1" ]] && return 0
     # Emit a Prometheus textfile-collector snapshot of the last cleanup pass.
     # Invoked from an EXIT trap so partial / failed runs still publish a
     # signal. Failures here are non-fatal: the trap must never mask the
@@ -333,7 +337,7 @@ runner_busy_via_lockfile() {
     age=$(( now - mtime ))
     if (( age > RUNNER_BUSY_LOCK_MAX_AGE_SECONDS )); then
         log "stale runner-busy lockfile (age=${age}s) — removing $lock"
-        rm -f "$lock"
+        run rm -f "$lock"
         return 1
     fi
 
@@ -343,7 +347,7 @@ runner_busy_via_lockfile() {
     # so locks without worker_pid fall back to the age rule above only.
     if lock_worker_pid_stale "$lock"; then
         log "stale runner-busy lockfile (worker_pid dead or not a Runner.Worker) — removing $lock"
-        rm -f "$lock"
+        run rm -f "$lock"
         return 1
     fi
 
@@ -499,7 +503,7 @@ cleanup_runners() {
             if (( start_rc != 0 )); then
                 log "error $unit: failed to restart after cleanup (rc=$start_rc); host may have a stuck unit"
             else
-                rm -f "${runner_dir}/.restart-required"
+                run rm -f "${runner_dir}/.restart-required"
             fi
         fi
     done < <(list_runner_units)
@@ -897,11 +901,14 @@ compact_wsl_vhd() {
 }
 
 main() {
-    exec 9>"$LOCK_FILE"
-    if ! flock -n 9; then
-        log "another cleanup is already running; exiting"
-        CLEANUP_RESULT="skipped"
-        return 0
+    # Read-only previews need no exclusive lock and must not create/truncate it.
+    if [[ "$DRY_RUN" != "1" ]]; then
+        exec 9>"$LOCK_FILE"
+        if ! flock -n 9; then
+            log "another cleanup is already running; exiting"
+            CLEANUP_RESULT="skipped"
+            return 0
+        fi
     fi
     local before after used
     before="$(root_used_bytes)"

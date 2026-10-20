@@ -121,6 +121,56 @@ def test_diagnose_reports_runner_pool_and_queued_job_targets(
     assert "self-hosted, Linux, X64, d-sorg-fleet-fast-io" in data["label_breakdown"]
 
 
+@pytest.mark.parametrize(
+    ("idle_runner_labels", "expected_bottleneck"),
+    [
+        (
+            ["self-hosted", "Windows", "X64", "MATLAB"],
+            "1 queued self-hosted job(s) have no matching idle runner capacity",
+        ),
+        (
+            ["self-hosted", "Linux", "X64", "d-sorg-fleet"],
+            "Queued jobs appear routable with current runner capacity",
+        ),
+    ],
+)
+def test_diagnose_bottleneck_requires_matching_idle_capacity(
+    diagnostics_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    idle_runner_labels: list[str],
+    expected_bottleneck: str,
+) -> None:
+    from routers import queue_diagnostics as diag  # noqa: PLC0415
+
+    async def fake_queue_impl() -> dict[str, Any]:
+        return {"queued": [_run("RepoA", 10)], "in_progress": [], "queued_jobs_count": 1}
+
+    async def fake_fetch_org_runners(_api: Any, _org: str) -> dict[str, Any]:
+        return {
+            "runners": [
+                _runner(
+                    "linux-fleet-busy",
+                    busy=True,
+                    labels=["self-hosted", "Linux", "X64", "d-sorg-fleet"],
+                ),
+                _runner("other-platform-idle", labels=idle_runner_labels),
+            ]
+        }
+
+    async def fake_gh_api_admin(_endpoint: str) -> dict[str, Any]:
+        return {"jobs": [_job("fleet-job", ["self-hosted", "Linux", "X64", "d-sorg-fleet"])]}
+
+    monkeypatch.setattr(diag, "_queue_impl", fake_queue_impl)
+    monkeypatch.setattr(diag, "fetch_org_runners", fake_fetch_org_runners)
+    monkeypatch.setattr(diag, "gh_api_admin", fake_gh_api_admin)
+
+    data = diagnostics_client.get("/api/queue/diagnose").json()
+
+    assert data["runner_pool"]["idle"] == 1
+    assert data["pick_runner_misconfig"] == []
+    assert data["bottleneck"] == expected_bottleneck
+
+
 def test_diagnose_flags_unroutable_self_hosted_labels(
     diagnostics_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -181,9 +231,18 @@ def test_diagnose_treats_fleet_label_without_self_hosted_as_self_hosted(
     assert data["sampled_jobs"][0]["target"] == "self-hosted (d-sorg-fleet)"
 
 
+@pytest.mark.parametrize(
+    ("job_labels", "expected_fleet_waiting"),
+    [
+        (["ubuntu-latest"], 0),
+        (["self-hosted", "Linux", "X64", "d-sorg-fleet"], 1),
+    ],
+)
 def test_diagnose_degrades_when_runner_inventory_fails(
     diagnostics_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
+    job_labels: list[str],
+    expected_fleet_waiting: int,
 ) -> None:
     from routers import queue_diagnostics as diag  # noqa: PLC0415
 
@@ -194,7 +253,7 @@ def test_diagnose_degrades_when_runner_inventory_fails(
         raise RuntimeError("runner api down")
 
     async def fake_gh_api_admin(_endpoint: str) -> dict[str, Any]:
-        return {"jobs": [_job("hosted", ["ubuntu-latest"])]}
+        return {"jobs": [_job("queued", job_labels)]}
 
     monkeypatch.setattr(diag, "_queue_impl", fake_queue_impl)
     monkeypatch.setattr(diag, "fetch_org_runners", fake_fetch_org_runners)
@@ -205,8 +264,35 @@ def test_diagnose_degrades_when_runner_inventory_fails(
     assert response.status_code == 200
     data = response.json()
     assert data["runner_pool"] == {"total": 0, "online": 0, "busy": 0, "idle": 0, "offline": 0}
-    assert data["waiting_for_github_hosted"] == 1
+    assert data["waiting_for_fleet"] == expected_fleet_waiting
     assert data["errors"]["runner_inventory"] == "runner api down"
+    assert data["pick_runner_misconfig"] == []
+    assert data["bottleneck"] == "Queue sampled, but runner inventory is degraded"
+
+
+def test_diagnose_preserves_partial_job_detail_failure(
+    diagnostics_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from routers import queue_diagnostics as diag  # noqa: PLC0415
+
+    async def fake_queue_impl() -> dict[str, Any]:
+        return {"queued": [_run("RepoA", 10)], "in_progress": [], "queued_jobs_count": 1}
+
+    async def fake_fetch_org_runners(_api: Any, _org: str) -> dict[str, Any]:
+        return {"runners": [_runner("idle-runner")]}
+
+    async def fake_gh_api_admin(_endpoint: str) -> dict[str, Any]:
+        raise RuntimeError("job details unavailable")
+
+    monkeypatch.setattr(diag, "_queue_impl", fake_queue_impl)
+    monkeypatch.setattr(diag, "fetch_org_runners", fake_fetch_org_runners)
+    monkeypatch.setattr(diag, "gh_api_admin", fake_gh_api_admin)
+
+    data = diagnostics_client.get("/api/queue/diagnose").json()
+
+    assert data["errors"]["job_details"] == ["RepoA#10: job details unavailable"]
+    assert data["bottleneck"] == "Queue sampled with partial job-detail failures"
 
 
 def test_diagnose_uses_cache_without_fetching(monkeypatch: pytest.MonkeyPatch) -> None:
