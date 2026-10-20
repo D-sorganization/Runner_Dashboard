@@ -12,11 +12,12 @@ anyio==4.15.1
     #   httpx
     #   starlette
     #   watchfiles
-certifi==2026.4.22
+certifi==2026.10.19
     # via
     #   httpcore
     #   httpx
     #   requests
+    #   runner-dashboard
 cffi==2.0.0 ; platform_python_implementation != 'PyPy'
     # via cryptography
 charset-normalizer==3.4.7
