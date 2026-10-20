@@ -226,10 +226,9 @@ def _load_or_generate_api_key() -> str:
         key_file.parent.mkdir(parents=True, exist_ok=True)
         key_file.write_text(new_key, encoding="utf-8")
         key_file.chmod(0o600)
-        log.warning("Generated new API key; saved to %s", key_file)
-        log.warning("Add header 'Authorization: Bearer %s' to all API requests.", new_key)
+        log.warning("Dashboard request-auth value saved in %s", key_file)
     except OSError as exc:
-        log.warning("Could not persist API key to %s: %s", key_file, exc)
+        log.warning("Dashboard request-auth value could not be saved to %s: %s", key_file, exc)
     return new_key
 
 
