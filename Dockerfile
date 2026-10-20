@@ -12,13 +12,17 @@ FROM python:3.13-slim@sha256:7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee48
 WORKDIR /app
 
 # Install system dependencies (curl needed for HEALTHCHECK). Keep the Debian
-# OpenSSL security package set exact and non-overridable so resolution fails
-# closed if Debian's fixed security version is unavailable.
+# OpenSSL and curl package sets exact and non-overridable so resolution fails
+# closed if Debian's fixed security versions are unavailable. Pin expat as well.
 RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u3' \
+    && CURL_DEBIAN_SECURITY_VERSION='8.14.1-2+deb13u7' \
     && apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    curl="${CURL_DEBIAN_SECURITY_VERSION}" \
     git \
     gzip='1.13-1+deb13u1' \
+    libcurl3t64-gnutls="${CURL_DEBIAN_SECURITY_VERSION}" \
+    libcurl4t64="${CURL_DEBIAN_SECURITY_VERSION}" \
+    libexpat1='2.9.0-1~deb13u1' \
     libpcre2-8-0='10.46-1~deb13u3' \
     libsqlite3-0='3.46.1-7+deb13u2' \
     libssl3t64="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
