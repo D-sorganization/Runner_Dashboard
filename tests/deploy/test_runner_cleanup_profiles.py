@@ -158,6 +158,14 @@ PERSISTENT_BUILDER_HELPERS = (
     "prune_current_buildx_cache",
 )
 
+# cleanup_docker validates idle-builder config before pruning (#2002).
+IDLE_BUILDER_HELPERS = (
+    "validate_idle_builder_patterns",
+    "matches_idle_builder_pattern",
+    "builder_has_active_build",
+    "reap_idle_builders",
+)
+
 
 def _docker_calls(tmp_path: Path, prune_containers: str | None, *, aggressive: str = "0") -> list[str]:
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -178,6 +186,13 @@ def _docker_calls(tmp_path: Path, prune_containers: str | None, *, aggressive: s
     # cleanup_docker guards persistent shared buildx builders through these helpers (#1988).
     lines += ["log() { :; }", "PERSISTENT_BUILDX_BUILDERS=ud-buildkit", "PERSISTENT_BUILDERS=()"]
     lines += [_extract(text, fn) for fn in PERSISTENT_BUILDER_HELPERS]
+    lines += [
+        "IDLE_BUILDER_GLOBS=()",
+        "REAP_IDLE_BUILDERS=0",
+        'IDLE_BUILDER_PATTERNS="${IDLE_BUILDER_PATTERNS:-builder-* gm-ci-*}"',
+        'IDLE_BUILDER_MAX_AGE_HOURS="${IDLE_BUILDER_MAX_AGE_HOURS:-3}"',
+    ]
+    lines += [_extract(text, fn) for fn in IDLE_BUILDER_HELPERS]
     lines += [_extract(text, "cleanup_docker"), "cleanup_docker"]
     result = _harness(tmp_path, lines)
     assert result.returncode == 0, result.stderr
