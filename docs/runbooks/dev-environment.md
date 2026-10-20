@@ -17,14 +17,14 @@ Open http://localhost:8321.
 
 ## Flags
 
-| Flag        | Effect                                                                |
-| ----------- | --------------------------------------------------------------------- |
-| `--port N`  | Bind to port `N` (default `8321`).                                    |
-| `--host H`  | Bind to host/interface `H` (default `127.0.0.1`).                     |
-| `--bg`      | Run in the background, log to `/tmp/runner-dashboard.log`.            |
-| `--reload`  | Hot-reload via `uvicorn --reload --reload-dir backend/`.              |
-| `--mock`    | Sets `DASHBOARD_MOCK_MODE=1` for fixture-backed GH calls (wiring TODO).|
-| `--help`    | Print usage and exit.                                                 |
+| Flag       | Effect                                                                  |
+| ---------- | ----------------------------------------------------------------------- |
+| `--port N` | Bind to port `N` (default `8321`).                                      |
+| `--host H` | Bind to host/interface `H` (default `127.0.0.1`).                       |
+| `--bg`     | Run in the background, log to `/tmp/runner-dashboard.log`.              |
+| `--reload` | Hot-reload via `uvicorn --reload --reload-dir backend/`.                |
+| `--mock`   | Sets `DASHBOARD_MOCK_MODE=1` for fixture-backed GH calls (wiring TODO). |
+| `--help`   | Print usage and exit.                                                   |
 
 ## Virtualenv location
 
@@ -35,10 +35,10 @@ Open http://localhost:8321.
 
 ## Make targets
 
-| Target      | What it runs                          |
-| ----------- | ------------------------------------- |
-| `make dev`  | `./start-dashboard.sh --reload`        |
-| `make test` | `pytest tests/ -q --tb=short`          |
+| Target      | What it runs                              |
+| ----------- | ----------------------------------------- |
+| `make dev`  | `./start-dashboard.sh --reload`           |
+| `make test` | `pytest tests/ -q --tb=short`             |
 | `make seed` | Stub — prints a TODO until fixtures land. |
 
 ## Stopping

@@ -1,51 +1,57 @@
 # [EPIC] Issue #157 — Shared Contracts Package Plan
 
 **Status:** Draft  
-**Scope:** Extract duplicated design-by-contract (DbC) precondition/postcondition validators into a standalone `robotics_contracts` package, consumable by `Pinocchio_Models`, `MuJoCo_Models`, and `OpenSim_Models`.  
+**Scope:** Extract duplicated design-by-contract (DbC) precondition/postcondition validators into a standalone `robotics_contracts` package, consumable by `Pinocchio_Models`, `MuJoCo_Models`, and `OpenSim_Models`.
 
 ---
 
 ## 1. Current State
 
-All three biomechanics model repositories implement nearly identical **precondition** and **postcondition** validators under local `shared/contracts/` namespaces.  The duplication is structural, not merely cosmetic: each repo maintains its own copy of the same guard functions, tests, and exception semantics.
+All three biomechanics model repositories implement nearly identical **precondition** and **postcondition** validators under local `shared/contracts/` namespaces. The duplication is structural, not merely cosmetic: each repo maintains its own copy of the same guard functions, tests, and exception semantics.
 
 ### 1.1 Pinocchio_Models
-| Component | Location |
-|-----------|----------|
-| Generic shared package | `src/robotics_contracts/` (already exists) |
-| Domain-specific wrappers | `src/pinocchio_models/shared/contracts/preconditions.py` |
+
+| Component                | Location                                                  |
+| ------------------------ | --------------------------------------------------------- |
+| Generic shared package   | `src/robotics_contracts/` (already exists)                |
+| Domain-specific wrappers | `src/pinocchio_models/shared/contracts/preconditions.py`  |
 | Domain-specific wrappers | `src/pinocchio_models/shared/contracts/postconditions.py` |
-| Tests | `tests/unit/shared/test_postconditions.py` |
-| Imports from | `robotics_contracts` (internal) + wraps with `URDFError` |
+| Tests                    | `tests/unit/shared/test_postconditions.py`                |
+| Imports from             | `robotics_contracts` (internal) + wraps with `URDFError`  |
 
 **Key observations**
+
 - Already contains a **top-level `robotics_contracts`** package under `src/`, but it is bundled inside `pinocchio-models` wheel.
 - Domain wrappers (`pinocchio_models.shared.contracts`) import from `robotics_contracts` at runtime and re-raise as `URDFError` with error codes (`PM101`–`PM111`).
 - The generic `robotics_contracts` raises plain `ValueError`.
 
 ### 1.2 MuJoCo_Models
-| Component | Location |
-|-----------|----------|
-| Local preconditions | `src/mujoco_models/shared/contracts/preconditions.py` |
+
+| Component            | Location                                               |
+| -------------------- | ------------------------------------------------------ |
+| Local preconditions  | `src/mujoco_models/shared/contracts/preconditions.py`  |
 | Local postconditions | `src/mujoco_models/shared/contracts/postconditions.py` |
-| Tests | `tests/unit/shared/test_preconditions.py` |
-| Exception type | `ValidationError` (extends `MuJoCoModelError`) |
+| Tests                | `tests/unit/shared/test_preconditions.py`              |
+| Exception type       | `ValidationError` (extends `MuJoCoModelError`)         |
 
 **Key observations**
+
 - Six public guards: `require_positive`, `require_non_negative`, `require_unit_vector`, `require_finite`, `require_in_range`, `require_shape`.
 - Includes **Bolt optimizations** (`math.isfinite` fast-path, unrolled `math.sqrt` for unit-vector norm, scalar fast-paths).
 - Raises `ValidationError` instead of `ValueError`.
 - No dependency on any external `robotics_contracts` package.
 
 ### 1.3 OpenSim_Models
-| Component | Location |
-|-----------|----------|
-| Local preconditions | `src/opensim_models/shared/contracts/preconditions.py` |
-| Local postconditions | `src/opensim_models/shared/contracts/postconditions.py` |
-| Tests | `tests/unit/shared/test_preconditions.py`, `tests/unit/test_edge_cases.py` |
-| Exception type | `ValueError` |
+
+| Component            | Location                                                                   |
+| -------------------- | -------------------------------------------------------------------------- |
+| Local preconditions  | `src/opensim_models/shared/contracts/preconditions.py`                     |
+| Local postconditions | `src/opensim_models/shared/contracts/postconditions.py`                    |
+| Tests                | `tests/unit/shared/test_preconditions.py`, `tests/unit/test_edge_cases.py` |
+| Exception type       | `ValueError`                                                               |
 
 **Key observations**
+
 - Same six public guards as MuJoCo_Models.
 - Contains the **most extensive Bolt optimizations** (fast-paths for `list`/`tuple`, `np.ndarray` dtype checks, `math.hypot` for 3-vectors).
 - Raises plain `ValueError`.
@@ -53,20 +59,21 @@ All three biomechanics model repositories implement nearly identical **precondit
 
 ### 1.4 Duplication Summary
 
-| Function | Pinocchio | MuJoCo | OpenSim |
-|----------|:---------:|:------:|:-------:|
-| `require_positive` | ✅ | ✅ | ✅ |
-| `require_non_negative` | ✅ | ✅ | ✅ |
-| `require_unit_vector` | ✅ | ✅ | ✅ |
-| `require_finite` | ✅ | ✅ | ✅ |
-| `require_in_range` | ✅ | ✅ | ✅ |
-| `require_shape` | ✅ | ✅ | ✅ |
-| `ensure_positive_mass` | ✅ | — | — |
-| `ensure_positive_definite_inertia` | ✅ | — | — |
-| `require_valid_urdf_string` | (domain) | — | — |
-| `ensure_valid_urdf` / `ensure_valid_urdf_tree` | (domain) | — | — |
+| Function                                       | Pinocchio | MuJoCo | OpenSim |
+| ---------------------------------------------- | :-------: | :----: | :-----: |
+| `require_positive`                             |    ✅     |   ✅   |   ✅    |
+| `require_non_negative`                         |    ✅     |   ✅   |   ✅    |
+| `require_unit_vector`                          |    ✅     |   ✅   |   ✅    |
+| `require_finite`                               |    ✅     |   ✅   |   ✅    |
+| `require_in_range`                             |    ✅     |   ✅   |   ✅    |
+| `require_shape`                                |    ✅     |   ✅   |   ✅    |
+| `ensure_positive_mass`                         |    ✅     |   —    |    —    |
+| `ensure_positive_definite_inertia`             |    ✅     |   —    |    —    |
+| `require_valid_urdf_string`                    | (domain)  |   —    |    —    |
+| `ensure_valid_urdf` / `ensure_valid_urdf_tree` | (domain)  |   —    |    —    |
 
 **Pain points**
+
 - **Three copies** of the same 6 precondition guards to maintain.
 - **Divergent optimizations** — OpenSim has the fastest scalar paths; MuJoCo has unrolled vector math; Pinocchio is generic.
 - **Different exception types** — `ValueError`, `ValidationError`, `URDFError` — making cross-repo portability harder.
@@ -105,16 +112,16 @@ robotics_contracts/
 
 The consolidated module merges **the fastest implementation** from each repo:
 
-| Function | Source of truth | Rationale |
-|----------|-----------------|-----------|
-| `require_positive` | OpenSim | Inline `math.isfinite`, no helper overhead |
-| `require_non_negative` | OpenSim | Same as above |
-| `require_unit_vector` | MuJoCo | Unrolled `math.sqrt` + `float()` cast, avoids `np.linalg.norm` |
-| `require_finite` | OpenSim | Multi-tier fast-path (`float` → `list`/`tuple` → `np.ndarray` → fallback) |
-| `require_in_range` | OpenSim | Inline `math.isfinite` for bounds |
-| `require_shape` | OpenSim | `np.ndarray` shape check without `np.asarray` |
+| Function               | Source of truth | Rationale                                                                 |
+| ---------------------- | --------------- | ------------------------------------------------------------------------- |
+| `require_positive`     | OpenSim         | Inline `math.isfinite`, no helper overhead                                |
+| `require_non_negative` | OpenSim         | Same as above                                                             |
+| `require_unit_vector`  | MuJoCo          | Unrolled `math.sqrt` + `float()` cast, avoids `np.linalg.norm`            |
+| `require_finite`       | OpenSim         | Multi-tier fast-path (`float` → `list`/`tuple` → `np.ndarray` → fallback) |
+| `require_in_range`     | OpenSim         | Inline `math.isfinite` for bounds                                         |
+| `require_shape`        | OpenSim         | `np.ndarray` shape check without `np.asarray`                             |
 
-All functions raise **`ValueError`** (the lowest common denominator).  Consumers may wrap this in domain-specific exceptions.
+All functions raise **`ValueError`** (the lowest common denominator). Consumers may wrap this in domain-specific exceptions.
 
 ```python
 # Example consolidated signature
@@ -132,9 +139,9 @@ def require_positive(value: float, name: str) -> None:
 
 #### `src/robotics_contracts/postconditions.py`
 
-| Function | Source of truth |
-|----------|-----------------|
-| `ensure_positive_mass` | Pinocchio (generic) |
+| Function                           | Source of truth     |
+| ---------------------------------- | ------------------- |
+| `ensure_positive_mass`             | Pinocchio (generic) |
 | `ensure_positive_definite_inertia` | Pinocchio (generic) |
 
 #### `src/robotics_contracts/_compat.py` (optional)
@@ -163,7 +170,7 @@ dependencies = [
 ]
 ```
 
-No heavy simulation dependencies (no `pinocchio`, `mujoco`, `opensim`).  This keeps the package lightweight and CI-fast.
+No heavy simulation dependencies (no `pinocchio`, `mujoco`, `opensim`). This keeps the package lightweight and CI-fast.
 
 ### 2.4 CI / CD
 
@@ -185,6 +192,7 @@ No heavy simulation dependencies (no `pinocchio`, `mujoco`, `opensim`).  This ke
 5. **Publish `v0.1.0`** to PyPI (or private index).
 
 **Acceptance criteria**
+
 - `pip install robotics-contracts` works.
 - All 6 precondition + 2 postcondition functions present.
 - 100% line coverage.
@@ -196,17 +204,18 @@ No heavy simulation dependencies (no `pinocchio`, `mujoco`, `opensim`).  This ke
 
 Pinocchio already has `robotics_contracts` as an internal package; the migration is therefore a **lift-and-shift** plus dependency update.
 
-| Step | Action |
-|------|--------|
-| 1 | Add `robotics-contracts>=0.1.0` to `pyproject.toml` dependencies. |
-| 2 | Delete `src/robotics_contracts/` directory entirely. |
-| 3 | Update domain wrappers (`pinocchio_models/shared/contracts/preconditions.py`) to import from external `robotics_contracts` instead of the deleted local copy. |
-| 4 | Update `__init__.py` exports if any direct consumers reference `robotics_contracts`. |
-| 5 | Run full test suite (`pytest -n auto`). |
-| 6 | Verify no import errors in CI. |
+| Step | Action                                                                                                                                                        |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Add `robotics-contracts>=0.1.0` to `pyproject.toml` dependencies.                                                                                             |
+| 2    | Delete `src/robotics_contracts/` directory entirely.                                                                                                          |
+| 3    | Update domain wrappers (`pinocchio_models/shared/contracts/preconditions.py`) to import from external `robotics_contracts` instead of the deleted local copy. |
+| 4    | Update `__init__.py` exports if any direct consumers reference `robotics_contracts`.                                                                          |
+| 5    | Run full test suite (`pytest -n auto`).                                                                                                                       |
+| 6    | Verify no import errors in CI.                                                                                                                                |
 
 **Backward compatibility**
-- Domain wrappers remain in place; they continue to raise `URDFError`.  External consumers of `pinocchio_models.shared.contracts` see **no API change**.
+
+- Domain wrappers remain in place; they continue to raise `URDFError`. External consumers of `pinocchio_models.shared.contracts` see **no API change**.
 - Internal `robotics_contracts.*` imports must be replaced with the PyPI package.
 
 **Risk:** Low — the internal `robotics_contracts` was never exposed as a public entry-point in `pyproject.toml` scripts.
@@ -215,13 +224,13 @@ Pinocchio already has `robotics_contracts` as an internal package; the migration
 
 ### 3.3 Phase 2 — MuJoCo_Models Migration (Week 3)
 
-| Step | Action |
-|------|--------|
-| 1 | Add `robotics-contracts>=0.1.0` to `pyproject.toml` dependencies. |
-| 2 | Replace `mujoco_models.shared.contracts.preconditions` with a **thin compatibility module** that imports from `robotics_contracts` and re-raises `ValidationError`. |
-| 3 | Replace `mujoco_models.shared.contracts.postconditions` with domain-specific postconditions or delete if empty. |
-| 4 | Update all internal imports (`from mujoco_models.shared.contracts.preconditions import ...`) — either keep the compatibility re-exports or switch to `robotics_contracts` directly. |
-| 5 | Run full test suite. |
+| Step | Action                                                                                                                                                                              |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Add `robotics-contracts>=0.1.0` to `pyproject.toml` dependencies.                                                                                                                   |
+| 2    | Replace `mujoco_models.shared.contracts.preconditions` with a **thin compatibility module** that imports from `robotics_contracts` and re-raises `ValidationError`.                 |
+| 3    | Replace `mujoco_models.shared.contracts.postconditions` with domain-specific postconditions or delete if empty.                                                                     |
+| 4    | Update all internal imports (`from mujoco_models.shared.contracts.preconditions import ...`) — either keep the compatibility re-exports or switch to `robotics_contracts` directly. |
+| 5    | Run full test suite.                                                                                                                                                                |
 
 **Exception mapping pattern**
 
@@ -248,18 +257,18 @@ def require_positive(value: float, name: str) -> None:
 
 **Backward compatibility:** Public API of `mujoco_models.shared.contracts` is preserved; only internal implementation changes.
 
-**Risk:** Medium — MuJoCo's `ValidationError` semantics must be preserved.  The compatibility wrapper guarantees this.
+**Risk:** Medium — MuJoCo's `ValidationError` semantics must be preserved. The compatibility wrapper guarantees this.
 
 ---
 
 ### 3.4 Phase 3 — OpenSim_Models Migration (Week 3–4)
 
-| Step | Action |
-|------|--------|
-| 1 | Add `robotics-contracts>=0.1.0` to `pyproject.toml` dependencies. |
-| 2 | Replace `opensim_models.shared.contracts.preconditions` with a **thin compatibility module** (same pattern as MuJoCo, but mapping to `ValueError` since OpenSim already uses `ValueError`). |
-| 3 | Update all internal imports. |
-| 4 | Run full test suite. |
+| Step | Action                                                                                                                                                                                      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Add `robotics-contracts>=0.1.0` to `pyproject.toml` dependencies.                                                                                                                           |
+| 2    | Replace `opensim_models.shared.contracts.preconditions` with a **thin compatibility module** (same pattern as MuJoCo, but mapping to `ValueError` since OpenSim already uses `ValueError`). |
+| 3    | Update all internal imports.                                                                                                                                                                |
+| 4    | Run full test suite.                                                                                                                                                                        |
 
 **Note:** Because OpenSim already raises `ValueError`, the compatibility layer can be extremely thin — essentially a re-export:
 
@@ -288,19 +297,20 @@ from robotics_contracts.preconditions import (
 
 ## 4. Timeline
 
-| Week | Milestone |
-|------|-----------|
-| **1** | `robotics_contracts` repo created, `v0.1.0` published, CI green. |
-| **2** | `Pinocchio_Models` migrated to external dependency; PR merged. |
-| **3** | `MuJoCo_Models` migrated; PR merged. |
-| **3–4** | `OpenSim_Models` migrated; PR merged. |
-| **4** | Final cleanup, documentation update, issue #157 closed. |
+| Week    | Milestone                                                        |
+| ------- | ---------------------------------------------------------------- |
+| **1**   | `robotics_contracts` repo created, `v0.1.0` published, CI green. |
+| **2**   | `Pinocchio_Models` migrated to external dependency; PR merged.   |
+| **3**   | `MuJoCo_Models` migrated; PR merged.                             |
+| **3–4** | `OpenSim_Models` migrated; PR merged.                            |
+| **4**   | Final cleanup, documentation update, issue #157 closed.          |
 
 ---
 
 ## 5. Acceptance Criteria
 
 ### 5.1 For the new `robotics_contracts` package
+
 - [ ] `pip install robotics-contracts` succeeds in a clean virtualenv.
 - [ ] All 8 public functions (`require_*` × 6, `ensure_*` × 2) documented with docstrings.
 - [ ] Unit tests achieve **100% line coverage**.
@@ -308,6 +318,7 @@ from robotics_contracts.preconditions import (
 - [ ] `mypy --strict` passes with no errors.
 
 ### 5.2 For each downstream repo
+
 - [ ] `robotics-contracts` added to `pyproject.toml` dependencies.
 - [ ] Local generic guard implementations removed (or converted to thin wrappers).
 - [ ] Full `pytest` suite passes (unit + integration).
@@ -315,6 +326,7 @@ from robotics_contracts.preconditions import (
 - [ ] No public API breakage (domain wrappers preserve exception types).
 
 ### 5.3 Cross-repo consistency
+
 - [ ] All three repos consume the **same version** of `robotics_contracts` (or compatible semver range, e.g. `>=0.1.0,<1.0.0`).
 - [ ] A bug fix in `robotics_contracts` can be released once and picked up by all three repos without individual patches.
 
@@ -323,32 +335,32 @@ from robotics_contracts.preconditions import (
 ## 6. Open Questions
 
 1. **Namespace / repo name:** Should the package live in a new repo (`D-sorganization/robotics_contracts`) or within an existing shared repo (e.g. `Tools`)?  
-   *Recommendation:* New repo for clean versioning and CI isolation.
+   _Recommendation:_ New repo for clean versioning and CI isolation.
 
 2. **PyPI vs. internal index:** Is there an internal PyPI mirror or should we publish to public PyPI?  
-   *Assumption:* Public PyPI under MIT license (consistent with all three downstream repos).
+   _Assumption:_ Public PyPI under MIT license (consistent with all three downstream repos).
 
-3. **Error code preservation:** Pinocchio's `URDFError` codes (`PM101`–`PM111`) are lost when calling `robotics_contracts` directly.  Should the shared package expose a `code` parameter or should domain wrappers add codes themselves?  
-   *Recommendation:* Keep `robotics_contracts` simple (`ValueError` only).  Domain wrappers maintain their own error-code mapping.
+3. **Error code preservation:** Pinocchio's `URDFError` codes (`PM101`–`PM111`) are lost when calling `robotics_contracts` directly. Should the shared package expose a `code` parameter or should domain wrappers add codes themselves?  
+   _Recommendation:_ Keep `robotics_contracts` simple (`ValueError` only). Domain wrappers maintain their own error-code mapping.
 
 4. **Additional shared guards:** Should domain-specific guards like `require_valid_urdf_string` or `ensure_valid_urdf_tree` eventually migrate to a `urdf_contracts` or `xml_contracts` package?  
-   *Recommendation:* Out of scope for #157; evaluate separately if demand arises.
+   _Recommendation:_ Out of scope for #157; evaluate separately if demand arises.
 
 ---
 
 ## 7. Related Files / References
 
-| Repo | File | Relevance |
-|------|------|-----------|
-| Pinocchio_Models | `src/robotics_contracts/preconditions.py` | Source of generic guards (to be extracted) |
-| Pinocchio_Models | `src/robotics_contracts/postconditions.py` | Source of generic postconditions |
-| Pinocchio_Models | `src/pinocchio_models/shared/contracts/preconditions.py` | Domain wrapper (URDFError codes) |
-| Pinocchio_Models | `src/pinocchio_models/shared/contracts/postconditions.py` | Domain wrapper (URDF validation) |
-| MuJoCo_Models | `src/mujoco_models/shared/contracts/preconditions.py` | Independent implementation (ValidationError) |
-| MuJoCo_Models | `src/mujoco_models/shared/contracts/postconditions.py` | Independent implementation |
-| OpenSim_Models | `src/opensim_models/shared/contracts/preconditions.py` | Independent implementation (ValueError, Bolt-optimized) |
-| OpenSim_Models | `src/opensim_models/shared/contracts/postconditions.py` | Independent implementation |
+| Repo             | File                                                      | Relevance                                               |
+| ---------------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| Pinocchio_Models | `src/robotics_contracts/preconditions.py`                 | Source of generic guards (to be extracted)              |
+| Pinocchio_Models | `src/robotics_contracts/postconditions.py`                | Source of generic postconditions                        |
+| Pinocchio_Models | `src/pinocchio_models/shared/contracts/preconditions.py`  | Domain wrapper (URDFError codes)                        |
+| Pinocchio_Models | `src/pinocchio_models/shared/contracts/postconditions.py` | Domain wrapper (URDF validation)                        |
+| MuJoCo_Models    | `src/mujoco_models/shared/contracts/preconditions.py`     | Independent implementation (ValidationError)            |
+| MuJoCo_Models    | `src/mujoco_models/shared/contracts/postconditions.py`    | Independent implementation                              |
+| OpenSim_Models   | `src/opensim_models/shared/contracts/preconditions.py`    | Independent implementation (ValueError, Bolt-optimized) |
+| OpenSim_Models   | `src/opensim_models/shared/contracts/postconditions.py`   | Independent implementation                              |
 
 ---
 
-*End of plan*
+_End of plan_

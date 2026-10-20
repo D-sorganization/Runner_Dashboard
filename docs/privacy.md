@@ -8,10 +8,10 @@ persistence is **opt-in and off by default**.
 
 ### Behaviour
 
-| Setting | Stored in localStorage? |
-|---------|------------------------|
-| `Save chat history` OFF (default) | No — transcript is discarded on page unload |
-| `Save chat history` ON | Yes — capped at 200 messages, auto-expired after **24 hours** |
+| Setting                           | Stored in localStorage?                                       |
+| --------------------------------- | ------------------------------------------------------------- |
+| `Save chat history` OFF (default) | No — transcript is discarded on page unload                   |
+| `Save chat history` ON            | Yes — capped at 200 messages, auto-expired after **24 hours** |
 
 ### Controls
 
@@ -23,11 +23,11 @@ persistence is **opt-in and off by default**.
 
 ### localStorage keys
 
-| Key | Purpose |
-|-----|---------|
-| `assistant:transcript` | Serialised message array (written only when toggle is on) |
-| `assistant:transcript:ts` | Unix-ms timestamp of last write, used for 24 h TTL |
-| `assistant:saveHistory` | Persists the user's toggle preference across sessions |
+| Key                       | Purpose                                                   |
+| ------------------------- | --------------------------------------------------------- |
+| `assistant:transcript`    | Serialised message array (written only when toggle is on) |
+| `assistant:transcript:ts` | Unix-ms timestamp of last write, used for 24 h TTL        |
+| `assistant:saveHistory`   | Persists the user's toggle preference across sessions     |
 
 ### Recommendations for shared boxes
 

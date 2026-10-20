@@ -13,15 +13,15 @@ path — there is no ambiguity about which subsystem owns the data.
 
 ## 1. `runner_cleanup_runs_total`
 
-| Field          | Value                                                           |
-| -------------- | --------------------------------------------------------------- |
-| Type           | Counter                                                         |
-| Labels         | `host`, `result` ∈ `{ok, skipped, failed}`                      |
-| Emitter        | `deploy/runner-cleanup.sh` (`write_metrics()` in an EXIT trap)  |
-| Scrape path    | node_exporter textfile collector                                |
-| State file     | `${TEXTFILE_COLLECTOR_DIR}/runner_cleanup.prom`                 |
-| Default dir    | `/var/lib/node_exporter/textfile_collector`                     |
-| Cadence        | Once per cleanup pass (daily timer, plus manual invocations)    |
+| Field       | Value                                                          |
+| ----------- | -------------------------------------------------------------- |
+| Type        | Counter                                                        |
+| Labels      | `host`, `result` ∈ `{ok, skipped, failed}`                     |
+| Emitter     | `deploy/runner-cleanup.sh` (`write_metrics()` in an EXIT trap) |
+| Scrape path | node_exporter textfile collector                               |
+| State file  | `${TEXTFILE_COLLECTOR_DIR}/runner_cleanup.prom`                |
+| Default dir | `/var/lib/node_exporter/textfile_collector`                    |
+| Cadence     | Once per cleanup pass (daily timer, plus manual invocations)   |
 
 Co-emitted from the same trap:
 
@@ -57,14 +57,14 @@ would have paged on the first 2-hour window.
 
 ## 2. `runner_corruption_residue_count`
 
-| Field          | Value                                                                  |
-| -------------- | ---------------------------------------------------------------------- |
-| Type           | Gauge                                                                  |
-| Labels         | `host`, `runner`, `kind` ∈ `{file_commands, diag_pages}`               |
-| Emitter        | `deploy/runner-corruption-scan.sh`                                     |
-| Scrape path    | node_exporter textfile collector                                       |
-| State file     | `${PROM_FILE}` (default `/var/lib/node_exporter/textfile_collector/runner_corruption.prom`) |
-| Schedule       | `runner-corruption-scan.timer` — `OnUnitActiveSec=5min`                |
+| Field       | Value                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| Type        | Gauge                                                                                       |
+| Labels      | `host`, `runner`, `kind` ∈ `{file_commands, diag_pages}`                                    |
+| Emitter     | `deploy/runner-corruption-scan.sh`                                                          |
+| Scrape path | node_exporter textfile collector                                                            |
+| State file  | `${PROM_FILE}` (default `/var/lib/node_exporter/textfile_collector/runner_corruption.prom`) |
+| Schedule    | `runner-corruption-scan.timer` — `OnUnitActiveSec=5min`                                     |
 
 The scan walks every `runner-*` directory under `$RUNNER_ROOT` and counts:
 
@@ -92,21 +92,21 @@ populates `_runner_file_commands` mid-execution.
 
 ### How this would have caught #651
 
-The corruption residue is the *physical* failure mode that surfaces when
+The corruption residue is the _physical_ failure mode that surfaces when
 cleanup stops running. Even if `runner_cleanup_runs_total` hadn't existed,
 this metric would have shown stale residue accumulating per-runner. Alerts
 would have fired on the first runner to hold ≥1 residue file for >10 min.
 
 ## 3. `runner_orphan_worker_total`
 
-| Field          | Value                                                          |
-| -------------- | -------------------------------------------------------------- |
-| Type           | Counter                                                        |
-| Labels         | `host`, `runner` (systemd unit name)                          |
-| Emitter        | Vector journald → `log_to_metric` transform                    |
-| Scrape path    | Vector Prometheus exporter sink                                |
-| Endpoint       | `${VECTOR_PROM_ADDR:-0.0.0.0:9598}/metrics`                    |
-| Loki audit     | Loki stream `{event="orphan_worker"}` (raw journald line)      |
+| Field       | Value                                                     |
+| ----------- | --------------------------------------------------------- |
+| Type        | Counter                                                   |
+| Labels      | `host`, `runner` (systemd unit name)                      |
+| Emitter     | Vector journald → `log_to_metric` transform               |
+| Scrape path | Vector Prometheus exporter sink                           |
+| Endpoint    | `${VECTOR_PROM_ADDR:-0.0.0.0:9598}/metrics`               |
+| Loki audit  | Loki stream `{event="orphan_worker"}` (raw journald line) |
 
 Pattern matched in journald:
 
@@ -123,7 +123,7 @@ it. The orphan continues writing to `_runner_file_commands/` and
 
 The `KillMode=` policy on the per-runner systemd units is owned by the
 autoscaler PR (#3 in this series) — see the parent task. This metric is
-*observation only* and intentionally avoids touching unit files.
+_observation only_ and intentionally avoids touching unit files.
 
 > **TODO (operator):** confirm your Prometheus scraper is configured to
 > pull `<vector-host>:9598/metrics`. The fleet does not yet ship a
@@ -146,11 +146,11 @@ autoscaler PR (#3 in this series) — see the parent task. This metric is
 `deploy/install-runner-maintenance.sh` installs the cleanup script, the
 corruption-scan script, and three systemd timers:
 
-| Timer                            | Cadence                  | Emits                                       |
-| -------------------------------- | ------------------------ | ------------------------------------------- |
-| `runner-cleanup.timer`           | Daily, 04:20 + jitter    | `runner_cleanup_runs_total` family          |
-| `runner-corruption-scan.timer`   | `OnUnitActiveSec=5min`   | `runner_corruption_residue_count`           |
-| `runner-scheduler.timer`         | Every 5 min              | (pre-existing — not changed by this PR)     |
+| Timer                          | Cadence                | Emits                                   |
+| ------------------------------ | ---------------------- | --------------------------------------- |
+| `runner-cleanup.timer`         | Daily, 04:20 + jitter  | `runner_cleanup_runs_total` family      |
+| `runner-corruption-scan.timer` | `OnUnitActiveSec=5min` | `runner_corruption_residue_count`       |
+| `runner-scheduler.timer`       | Every 5 min            | (pre-existing — not changed by this PR) |
 
 Vector (`deploy/observability/vector.toml`) handles the orphan-Worker
 metric; install Vector separately on each fleet node.

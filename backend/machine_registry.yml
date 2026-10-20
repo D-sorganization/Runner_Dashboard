@@ -196,7 +196,7 @@ machines:
       disk_windows_host_gb: 804
       gpu_vram_gb: null
       accelerators:
-        - egpu-host-attached  # operator: eGPU relocated from DeskComputer; WSL nvidia-smi NVML N/A as of 2026-09-21
+        - egpu-host-attached # operator: eGPU relocated from DeskComputer; WSL nvidia-smi NVML N/A as of 2026-09-21
       workload_tags:
         - parallel-ci
         - node
@@ -262,7 +262,7 @@ machines:
       memory_gb: 64
       disk_total_gb: 1007
       gpu_vram_gb: null
-      accelerators: []  # eGPU moved to OGLaptop as of 2026-09-21; Iris Xe only
+      accelerators: [] # eGPU moved to OGLaptop as of 2026-09-21; Iris Xe only
       workload_tags:
         - parallel-ci
         - node
