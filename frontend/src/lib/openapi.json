@@ -10754,7 +10754,7 @@
     },
     "/api/health": {
       "get": {
-        "description": "Health endpoint for monitoring and load balancers.",
+        "description": "Use the configured hub's GitHub probe without replacing local identity.\n\nA hub failure or invalid summary is degraded, never a privileged local\nretry. Explicit local reads and standalone nodes keep the direct probe.",
         "operationId": "health_check_api_health_get",
         "responses": {
           "200": {

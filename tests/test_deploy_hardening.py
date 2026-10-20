@@ -23,6 +23,8 @@ _PYPROJECT = _ROOT / "pyproject.toml"
 _PYTHON_313_SLIM_DIGEST = "7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4"  # pragma: allowlist secret
 _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u3"
 _PCRE2_DEBIAN_SECURITY_VERSION = "10.46-1~deb13u3"
+_CURL_DEBIAN_SECURITY_VERSION = "8.14.1-2+deb13u7"
+_EXPAT_DEBIAN_SECURITY_VERSION = "2.9.0-1~deb13u1"
 
 # ── Issue #391: new hardening directives ─────────────────────────────────────
 # These must appear in both the .service template files AND in the setup.sh
@@ -144,6 +146,24 @@ def test_dockerfile_pins_pcre2_security_version() -> None:
     assert "libpcre2-8-0='10.46-1~deb13u2'" not in content, (
         "Dockerfile contains vulnerable PCRE2 package version 10.46-1~deb13u2"
     )
+
+
+def test_dockerfile_pins_curl_security_package_family() -> None:
+    """Curl and its installed library variants must share Debian's fixed version."""
+    content = _read(_DOCKERFILE)
+    version_arg = "CURL_DEBIAN_SECURITY_VERSION"
+    assert f"ARG {version_arg}" not in content
+    assert f"&& {version_arg}='{_CURL_DEBIAN_SECURITY_VERSION}'" in content
+    for package in ("curl", "libcurl3t64-gnutls", "libcurl4t64"):
+        assert f'{package}="${{{version_arg}}}"' in content
+    assert "8.14.1-2+deb13u5" not in content
+
+
+def test_dockerfile_pins_expat_security_version() -> None:
+    """The image must install Debian's fixed expat runtime library."""
+    content = _read(_DOCKERFILE)
+    assert f"libexpat1='{_EXPAT_DEBIAN_SECURITY_VERSION}'" in content
+    assert "libexpat1='2.8.3-1'" not in content
 
 
 def test_uv_lock_urllib3_meets_security_baseline() -> None:
