@@ -6,12 +6,12 @@ to every machine in the fleet.
 
 ## Series
 
-| PR | What it ships | Where it lands |
-|----|---------------|----------------|
-| [#660](https://github.com/D-sorganization/Runner_Dashboard/pull/660) | Cleanup strict-mode fix | `deploy/runner-cleanup.sh` → `/usr/local/bin/runner-cleanup` |
-| [#661](https://github.com/D-sorganization/Runner_Dashboard/pull/661) | Operator break-glass `heal-host.sh` + runbook | `deploy/heal-host.sh` |
-| [#664](https://github.com/D-sorganization/Runner_Dashboard/pull/664) | Job-pickup lockfile + `KillMode=mixed` (root cause) | `deploy/migrate-runner-units.sh`, `deploy/runner-hooks/*`, autoscaler + cleanup logic |
-| [#663](https://github.com/D-sorganization/Runner_Dashboard/pull/663) | Prometheus metrics for cleanup / corruption residue / orphan workers | `deploy/runner-corruption-scan.sh`, `deploy/observability/vector.toml` |
+| PR                                                                   | What it ships                                                        | Where it lands                                                                        |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [#660](https://github.com/D-sorganization/Runner_Dashboard/pull/660) | Cleanup strict-mode fix                                              | `deploy/runner-cleanup.sh` → `/usr/local/bin/runner-cleanup`                          |
+| [#661](https://github.com/D-sorganization/Runner_Dashboard/pull/661) | Operator break-glass `heal-host.sh` + runbook                        | `deploy/heal-host.sh`                                                                 |
+| [#664](https://github.com/D-sorganization/Runner_Dashboard/pull/664) | Job-pickup lockfile + `KillMode=mixed` (root cause)                  | `deploy/migrate-runner-units.sh`, `deploy/runner-hooks/*`, autoscaler + cleanup logic |
+| [#663](https://github.com/D-sorganization/Runner_Dashboard/pull/663) | Prometheus metrics for cleanup / corruption residue / orphan workers | `deploy/runner-corruption-scan.sh`, `deploy/observability/vector.toml`                |
 
 These should all merge in any order. The rollout below assumes all four are on `main`.
 
@@ -19,13 +19,13 @@ These should all merge in any order. The rollout below assumes all four are on `
 
 As of 2026-05-18 the fleet is:
 
-| Host                      | Runners | Platform        | Notes |
-|---------------------------|---------|-----------------|-------|
-| `d-sorg-local-ControlTower` | 16    | WSL2 (Ubuntu)   | Confirmed corruption 2026-05-18, healed manually |
-| `d-sorg-local-Desktop`    | 8       | WSL2 (Ubuntu)   | Same layout — assume corruption present |
-| `d-sorg-local-Oglaptop`   | 8       | Linux           | Verify before rollout |
-| `d-sorg-local-Brick`      | 1       | Linux           | Verify before rollout |
-| `ControlTower-MATLAB`     | 1       | Windows         | NOT AFFECTED — different code path |
+| Host                        | Runners | Platform      | Notes                                            |
+| --------------------------- | ------- | ------------- | ------------------------------------------------ |
+| `d-sorg-local-ControlTower` | 16      | WSL2 (Ubuntu) | Confirmed corruption 2026-05-18, healed manually |
+| `d-sorg-local-Desktop`      | 8       | WSL2 (Ubuntu) | Same layout — assume corruption present          |
+| `d-sorg-local-Oglaptop`     | 8       | Linux         | Verify before rollout                            |
+| `d-sorg-local-Brick`        | 1       | Linux         | Verify before rollout                            |
+| `ControlTower-MATLAB`       | 1       | Windows       | NOT AFFECTED — different code path               |
 
 Skip the Windows host; the bug is Linux-specific (`KillMode=process`, journald, `_diag/pages` filesystem layout).
 
@@ -131,6 +131,7 @@ sudo journalctl -u actions.runner.<...>.service -n 50
 ```
 
 Common causes:
+
 - Token expired → `sudo deploy/refresh-token.sh` on this host.
 - Disk full → `sudo /usr/local/bin/runner-cleanup --compact-vhd-only` (WSL hosts).
 - Drop-in syntax error → `sudo rm /etc/systemd/system/actions.runner.<...>.service.d/10-runner-dashboard-busy-lock.conf` and re-run `migrate-runner-units.sh`.

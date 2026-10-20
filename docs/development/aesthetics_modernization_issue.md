@@ -1,11 +1,13 @@
 ## Feature: Modernize Dashboard Aesthetics to Premium Standards
 
 ### Summary
+
 Overhaul the Runner Dashboard visual design to meet modern premium web application standards. The current interface should be upgraded with sleek, contemporary aesthetics including glassmorphism effects, refined typography, smooth animations, vibrant gradients, and responsive layout improvements.
 
 ---
 
 ### Motivation
+
 - **First Impressions**: The dashboard is the primary interface for monitoring fleet operations. A premium look builds confidence in the underlying system.
 - **Modern Standards**: Current web design trends emphasize depth, motion, and spatial awareness through layered surfaces, micro-animations, and refined color usage.
 - **Consistency**: Align with the fleet's shared design token system for a cohesive cross-application experience.
@@ -15,11 +17,13 @@ Overhaul the Runner Dashboard visual design to meet modern premium web applicati
 ### Design Targets
 
 #### Typography
+
 - [ ] Replace default fonts with modern web fonts (Inter, JetBrains Mono for code)
 - [ ] Establish clear typographic hierarchy (display, heading, body, caption, code)
 - [ ] Use fluid typography scaling (`clamp()` for responsive font sizes)
 
 #### Color & Surface
+
 - [ ] Implement glassmorphism for cards and overlays (`backdrop-filter: blur()`)
 - [ ] Use smooth gradients for header/hero sections
 - [ ] Add depth through layered surfaces with subtle shadows
@@ -28,6 +32,7 @@ Overhaul the Runner Dashboard visual design to meet modern premium web applicati
 - [ ] Integrate fleet shared themes via CSS custom properties from `themes.json`
 
 #### Animation & Interaction
+
 - [ ] Add page transition animations (fade, slide)
 - [ ] Implement micro-animations for buttons, cards, and interactive elements
 - [ ] Add skeleton loading states for async data
@@ -36,6 +41,7 @@ Overhaul the Runner Dashboard visual design to meet modern premium web applicati
 - [ ] Status indicators with subtle pulse animations
 
 #### Layout & Responsive
+
 - [ ] Implement fluid grid layouts with CSS Grid
 - [ ] Add responsive breakpoints for tablet and mobile
 - [ ] Use container queries for component-level responsiveness
@@ -43,6 +49,7 @@ Overhaul the Runner Dashboard visual design to meet modern premium web applicati
 - [ ] Implement card-based dashboard layout with drag-to-reorder
 
 #### Data Visualization
+
 - [ ] Modern chart styling with gradients and smooth curves
 - [ ] Interactive tooltips with glassmorphism effect
 - [ ] Animated chart transitions on data updates
@@ -51,18 +58,21 @@ Overhaul the Runner Dashboard visual design to meet modern premium web applicati
 ---
 
 ### Design Inspiration
+
 - Linear.app — Clean, minimal, glassmorphic
 - Vercel Dashboard — Premium dark mode, smooth animations
 - Raycast — Refined typography, micro-interactions
 - Supabase Dashboard — Clear hierarchy, modern cards
 
 ### Files to Modify
+
 - `frontend/src/index.css` — Complete design system overhaul
 - `frontend/src/components/**` — Component-level styling updates
 - `frontend/src/design/` — Design token integration
 - `frontend/index.html` — Google Fonts, meta viewport
 
 ### Acceptance Criteria
+
 - [ ] Modern typography with Inter/JetBrains Mono fonts
 - [ ] Glassmorphism effects on cards and modals
 - [ ] Smooth page and component transitions

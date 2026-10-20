@@ -664,7 +664,15 @@ jobs:
   #
   # `if: always()` is load-bearing for the same reason.
   quality-gate:
-    needs: [pick-runner, changes, ci-health-check, lint, tests-required, security-scan]
+    needs:
+      [
+        pick-runner,
+        changes,
+        ci-health-check,
+        lint,
+        tests-required,
+        security-scan,
+      ]
     if: always()
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-

@@ -7,26 +7,26 @@
 
 ## Progress
 
-| ID  | Feature                                 | Status      | Progress | Last change                                                                |
-| --- | --------------------------------------- | ----------- | -------- | -------------------------------------------------------------------------- |
-| F1  | Fleet Monitoring and Machine Inventory  | shipped     | 100%     | Merged machines, runner audit, and event log into Fleet page (#1324)       |
-| F2  | Operations Console and Unified Dispatch | shipped     | 100%     | Merged deployment, orchestration, conductor, and schedules (#1325)         |
-| F3  | Queue Health and Automated Job Reaper   | shipped     | 100%     | Stale queue detection and periodic reaper scripts active                   |
-| F4  | Authentication and RBAC Perimeter       | shipped     | 100%     | Enforced explicit scopes on staff mutations and reads (#1295)              |
-| F5  | Staff Console Conversation Engine       | in-progress | 85%      | Action cards embedded and thread view composer shipped (#1318, #1319)      |
-| F6  | Barb Routing and Follow-Up Engine       | in-progress | 90%      | Follow-up engine and inbox briefings implemented (#1327, #1328)            |
-| F7  | Fleet Maintenance Automation            | in-progress | 80%      | Row actions and maintenance playbooks added (#1322, #1333)                 |
-| F8  | Staff Agent and Tooling APIs            | in-progress | 85%      | Public staff API, MCP tools, and spend limits active (#1312, #1323, #1336) |
-| F9  | Staff Console Shell and Navigation      | in-progress | 90%      | Mobile navigation and context pane shipped (#1320, #1331)                  |
-| F10 | UI Modernization and Legacy Pruning     | in-progress | 60%      | Insights tab merged; classic layout retirement pending (#1326, #1345)      |
-| F11 | Code Requests and Proposals Pipeline    | shipped     | 100%     | Rename, data model, and agent-agnostic dispatch shipped; epic #1279 closed (#1432, #1443, #1456) |
+| ID  | Feature                                 | Status      | Progress | Last change                                                                                           |
+| --- | --------------------------------------- | ----------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| F1  | Fleet Monitoring and Machine Inventory  | shipped     | 100%     | Merged machines, runner audit, and event log into Fleet page (#1324)                                  |
+| F2  | Operations Console and Unified Dispatch | shipped     | 100%     | Merged deployment, orchestration, conductor, and schedules (#1325)                                    |
+| F3  | Queue Health and Automated Job Reaper   | shipped     | 100%     | Stale queue detection and periodic reaper scripts active                                              |
+| F4  | Authentication and RBAC Perimeter       | shipped     | 100%     | Enforced explicit scopes on staff mutations and reads (#1295)                                         |
+| F5  | Staff Console Conversation Engine       | in-progress | 85%      | Action cards embedded and thread view composer shipped (#1318, #1319)                                 |
+| F6  | Barb Routing and Follow-Up Engine       | in-progress | 90%      | Follow-up engine and inbox briefings implemented (#1327, #1328)                                       |
+| F7  | Fleet Maintenance Automation            | in-progress | 80%      | Row actions and maintenance playbooks added (#1322, #1333)                                            |
+| F8  | Staff Agent and Tooling APIs            | in-progress | 85%      | Public staff API, MCP tools, and spend limits active (#1312, #1323, #1336)                            |
+| F9  | Staff Console Shell and Navigation      | in-progress | 90%      | Mobile navigation and context pane shipped (#1320, #1331)                                             |
+| F10 | UI Modernization and Legacy Pruning     | in-progress | 60%      | Insights tab merged; classic layout retirement pending (#1326, #1345)                                 |
+| F11 | Code Requests and Proposals Pipeline    | shipped     | 100%     | Rename, data model, and agent-agnostic dispatch shipped; epic #1279 closed (#1432, #1443, #1456)      |
 | F12 | Multi-Host Node Infrastructure          | shipped     | 100%     | OGLaptop bridge verified and duplicate-address outage guard shipped; epic #1258 closed (#1262, #1272) |
-| F13 | Projects and Fleet Stewardship          | shipped     | 100%     | Deferred-plan owner exposure shipped; epic #1248 closed (#1254)            |
-| F14 | Staff Hub Reliability and Watchdogs     | in-progress | 95%      | Watchdogs, orphan recovery, and error boundaries active (#1292, #1294)     |
-| F15 | Maxwell Control Plane Proxy             | shipped     | 100%     | HTTP proxy and contract tests maintained; review pending (#1338)           |
-| F16 | Fleet Coordination and Priorities       | shipped     | 100%     | Fleet Command UI and coordination endpoints active (#1229, #1233)          |
-| F17 | Board Deliberation and Group Threads    | shipped     | 100%     | Group threads (#1480) and Board review/routing (#1763, #1772) shipped; epic #1339 closed |
-| F18 | Offline Release Artifact Pipeline       | parked      | 15%      | Deferred to follow-up issue #1085 after lockfile fix                       |
+| F13 | Projects and Fleet Stewardship          | shipped     | 100%     | Deferred-plan owner exposure shipped; epic #1248 closed (#1254)                                       |
+| F14 | Staff Hub Reliability and Watchdogs     | in-progress | 95%      | Watchdogs, orphan recovery, and error boundaries active (#1292, #1294)                                |
+| F15 | Maxwell Control Plane Proxy             | shipped     | 100%     | HTTP proxy and contract tests maintained; review pending (#1338)                                      |
+| F16 | Fleet Coordination and Priorities       | shipped     | 100%     | Fleet Command UI and coordination endpoints active (#1229, #1233)                                     |
+| F17 | Board Deliberation and Group Threads    | shipped     | 100%     | Group threads (#1480) and Board review/routing (#1763, #1772) shipped; epic #1339 closed              |
+| F18 | Offline Release Artifact Pipeline       | parked      | 15%      | Deferred to follow-up issue #1085 after lockfile fix                                                  |
 
 ## Blockers
 

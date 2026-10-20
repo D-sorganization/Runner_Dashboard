@@ -10,6 +10,7 @@
 The dashboard assistant (sidebar) needs a backend endpoint to receive user prompts and return AI-generated responses. Currently, the frontend has an assistant sidebar UI (#87) but no backend integration.
 
 **User Story:**
+
 - Operator types a question in the dashboard sidebar
 - Backend receives the prompt with dashboard context (current tab, selected items, etc.)
 - Backend calls the configured AI provider (Jules API, Ollama, etc.)
@@ -20,20 +21,25 @@ The dashboard assistant (sidebar) needs a backend endpoint to receive user promp
 ## Architecture Options
 
 ### Option A: Simple Prompt Pass-Through
+
 **Approach:** POST /api/assistant/chat → forward prompt to AI provider with no context
 
 **Pros:**
+
 - Minimal backend changes
 - Stateless, cacheable responses
 - Easy to test
 
 **Cons:**
+
 - AI lacks dashboard context (what tab user is on, what data they're viewing)
 - Can't reference selected runners, failed workflows, etc.
 - Less useful responses
 
 ### Option B: Context-Aware Chat (Recommended)
+
 **Approach:** POST /api/assistant/chat with body containing:
+
 ```json
 {
   "prompt": "why did this workflow fail?",
@@ -48,12 +54,14 @@ The dashboard assistant (sidebar) needs a backend endpoint to receive user promp
 ```
 
 **Pros:**
+
 - AI can reference specific dashboard data
 - Contextual, actionable responses
 - Better UX: "Why did run #12345 fail?" gets specific answer
 - Aligns with existing dispatch architecture (context-aware remediation)
 
 **Cons:**
+
 - Larger request payloads
 - Need to serialize dashboard state carefully
 - Potential security concerns if context leaks secrets
@@ -75,7 +83,7 @@ Follows existing pattern from `/api/agent-remediation/plan` (#85) which also tak
 async def assistant_chat(request: Request) -> dict:
     """
     Chat with AI assistant about dashboard state.
-    
+
     Request body:
     {
         "prompt": str,           # User question/request
@@ -87,7 +95,7 @@ async def assistant_chat(request: Request) -> dict:
         },
         "provider": str (optional, default from config)
     }
-    
+
     Response:
     {
         "response": str,         # AI response text
@@ -135,20 +143,20 @@ async def assistant_chat(request: Request) -> dict:
         payload = await request.json()
     except JSONDecodeError:
         return {"error": "Invalid JSON"}, 400
-    
+
     # Validate request
     req = AssistantChatRequest(**payload)
-    
+
     # Get provider from config
     provider = req.provider or remediationProvider  # Use existing config
-    
+
     # Call AI provider (reuse existing dispatching logic from #85)
     response_text = await dispatch_to_ai_provider(
         provider=provider,
         prompt=req.prompt,
         context=req.context.dict()
     )
-    
+
     return {
         "response": response_text,
         "provider": provider,
@@ -160,6 +168,7 @@ async def assistant_chat(request: Request) -> dict:
 ### Frontend Integration
 
 The assistant sidebar (from #87) already has:
+
 - Prompt input field
 - Response display area
 - Provider selector
@@ -168,23 +177,23 @@ Connect these to the endpoint:
 
 ```javascript
 async function sendPromptToAssistant(prompt, context) {
-    const response = await fetch('/api/assistant/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            prompt,
-            context: {
-                current_tab: tab,  // from App component state
-                selected_run_id: selectedRun?.id,
-                selected_items: Object.values(selected),
-                // Include minimal relevant state
-            },
-            provider: remediationProvider
-        })
-    });
-    
-    const data = await response.json();
-    setAssistantResponse(data.response);
+  const response = await fetch("/api/assistant/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      context: {
+        current_tab: tab, // from App component state
+        selected_run_id: selectedRun?.id,
+        selected_items: Object.values(selected),
+        // Include minimal relevant state
+      },
+      provider: remediationProvider,
+    }),
+  });
+
+  const data = await response.json();
+  setAssistantResponse(data.response);
 }
 ```
 
@@ -193,16 +202,19 @@ async function sendPromptToAssistant(prompt, context) {
 ## Security Considerations
 
 ### Input Validation
+
 - Sanitize prompt input (no command injection)
 - Validate context structure (no unexpected fields)
 - Rate-limit prompts (e.g., max 10/minute per user)
 
 ### Context Privacy
+
 - Don't include secrets in context (API tokens, passwords)
 - Don't include large payloads (avoid serializing entire app state)
 - Log prompts/responses carefully (may contain sensitive data)
 
 ### AI Provider Credentials
+
 - Use existing provider auth from config (reuse remediationProvider setup)
 - Never include credentials in context/prompt
 - Validate provider URL is internal (localhost or Tailscale)
@@ -212,16 +224,19 @@ async function sendPromptToAssistant(prompt, context) {
 ## Testing Plan
 
 ### Unit Tests
+
 - Request/response model validation
 - Invalid prompt handling (too long, empty, etc.)
 - Provider selection (default vs override)
 
 ### Integration Tests
+
 - Full request/response cycle with mock AI provider
 - Context serialization correctness
 - Error handling (provider unavailable, etc.)
 
 ### E2E Testing
+
 - Frontend sends prompt with context
 - Backend receives, processes, returns response
 - Frontend displays response in sidebar
@@ -230,12 +245,12 @@ async function sendPromptToAssistant(prompt, context) {
 
 ## Files to Modify
 
-| File | Change | Size |
-|------|--------|------|
-| `backend/assistant_contract.py` | New: Request/response models | ~40 lines |
-| `backend/server.py` | Add POST /api/assistant/chat endpoint | ~30 lines |
-| `frontend/index.html` | Connect sidebar to endpoint | ~20 lines |
-| `tests/api/test_assistant.py` | New: Unit + integration tests | ~80 lines |
+| File                            | Change                                | Size      |
+| ------------------------------- | ------------------------------------- | --------- |
+| `backend/assistant_contract.py` | New: Request/response models          | ~40 lines |
+| `backend/server.py`             | Add POST /api/assistant/chat endpoint | ~30 lines |
+| `frontend/index.html`           | Connect sidebar to endpoint           | ~20 lines |
+| `tests/api/test_assistant.py`   | New: Unit + integration tests         | ~80 lines |
 
 ---
 

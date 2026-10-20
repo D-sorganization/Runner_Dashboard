@@ -10,16 +10,16 @@ This is a verified snapshot, not a claim about other machines or future uptime.
 OGLaptop is configured as a worker. **Keep `STAFF_SCHEDULER_ENABLED=0`.**
 This setup did not change DeskComputer or ControlTower or enable a second scheduler.
 
-| Item | Verified value |
-| --- | --- |
-| Windows host / WSL distro | `OGLaptop` / `Ubuntu` |
-| Linux user / home | `dieterolson` / `/home/dieterolson` |
-| Dashboard service | `runner-dashboard`, active; loopback port `8321` |
-| Dashboard version / deployed commit | `4.10.0` / `31a91047463695d8506495dcca674a7ae58fdd6b` |
-| Required changes | Includes #1250, #1253, #1256, #1261 and #1262; built from merged main |
-| Runtime | uv-managed CPython `3.11.15`; artifact wheel ABI `3.11` |
-| Scheduler | `0`, verified in the running process environment after deployment |
-| Final board | All six requested providers available; zero running or queued staff jobs |
+| Item                                | Verified value                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| Windows host / WSL distro           | `OGLaptop` / `Ubuntu`                                                    |
+| Linux user / home                   | `dieterolson` / `/home/dieterolson`                                      |
+| Dashboard service                   | `runner-dashboard`, active; loopback port `8321`                         |
+| Dashboard version / deployed commit | `4.10.0` / `31a91047463695d8506495dcca674a7ae58fdd6b`                    |
+| Required changes                    | Includes #1250, #1253, #1256, #1261 and #1262; built from merged main    |
+| Runtime                             | uv-managed CPython `3.11.15`; artifact wheel ABI `3.11`                  |
+| Scheduler                           | `0`, verified in the running process environment after deployment        |
+| Final board                         | All six requested providers available; zero running or queued staff jobs |
 
 The version string alone cannot distinguish the old `f510c4c` deployment from
 this deployment. Check `deployment.git_sha` in `GET /api/health`.
@@ -107,13 +107,13 @@ The dashboard started automatically at the same deployed commit. Gateway
 remained `0`, all six provider flags were true, and worker holds were empty.
 Post-restart health runs all succeeded with exit 0:
 
-| Provider | Run |
-| --- | --- |
-| Claude | `run-a51cc1408152` |
-| Codex | `run-318d9b6b39aa` |
-| Antigravity | `run-77a4d6df013f` |
-| Cursor | `run-058dbc8b19c5` |
-| Ollama via Codex | `run-80a6f535fa67` |
+| Provider          | Run                |
+| ----------------- | ------------------ |
+| Claude            | `run-a51cc1408152` |
+| Codex             | `run-318d9b6b39aa` |
+| Antigravity       | `run-77a4d6df013f` |
+| Cursor            | `run-058dbc8b19c5` |
+| Ollama via Codex  | `run-80a6f535fa67` |
 | Ollama via Claude | `run-d8707eb93210` |
 
 WSLg mounted another tmpfs over `/run/user/1000`, hiding the user bus socket
@@ -134,13 +134,13 @@ The dashboard recovered at the same deployed commit, with Staff scheduling
 off, empty worker holds and all six providers available. All post-Windows-reboot
 checks succeeded with exit 0:
 
-| Provider | Run |
-| --- | --- |
-| Claude | `run-864e41672c0b` |
-| Codex | `run-ecbdbcfcd9f7` |
-| Antigravity | `run-0ddcad1824a4` |
-| Cursor | `run-ecc6678e11bb` |
-| Ollama via Codex | `run-342a2641c92c` |
+| Provider          | Run                |
+| ----------------- | ------------------ |
+| Claude            | `run-864e41672c0b` |
+| Codex             | `run-ecbdbcfcd9f7` |
+| Antigravity       | `run-0ddcad1824a4` |
+| Cursor            | `run-ecc6678e11bb` |
+| Ollama via Codex  | `run-342a2641c92c` |
 | Ollama via Claude | `run-b04b13787763` |
 
 The owner reported all Windows websites unavailable after reboot. System/Tcpip
@@ -209,15 +209,15 @@ Coordinate any enclosure reset with active GPU jobs and attached peripherals.
 All sign-ins were completed by the owner. Do not inspect, copy, print, or put
 credentials into documentation. Future sign-ins must also be owner-operated.
 
-| Tool | Installation / verification |
-| --- | --- |
-| GitHub CLI | `/usr/bin/gh`; WSL authentication verified with token environment variables unset |
-| Node | nvm LTS `v24.21.0`, under `~/.nvm/versions/node/v24.21.0/bin` |
-| Claude Code | Linux npm install `2.1.280`; dashboard-config prompt returned `OK` |
-| Codex | Native Linux `0.156.1`; ChatGPT sign-in and prompt verified |
-| Antigravity | `~/.local/bin/agy` symlinks to the installed Windows WinGet `agy.exe`; Google sign-in and prompt verified |
-| Cursor Agent | `2026.09.18-9a7762b`, under `~/.local/bin`; subscription login and model listing verified |
-| Ollama | Existing Windows app `0.34.2`; existing models retained; no models downloaded |
+| Tool         | Installation / verification                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------------- |
+| GitHub CLI   | `/usr/bin/gh`; WSL authentication verified with token environment variables unset                         |
+| Node         | nvm LTS `v24.21.0`, under `~/.nvm/versions/node/v24.21.0/bin`                                             |
+| Claude Code  | Linux npm install `2.1.280`; dashboard-config prompt returned `OK`                                        |
+| Codex        | Native Linux `0.156.1`; ChatGPT sign-in and prompt verified                                               |
+| Antigravity  | `~/.local/bin/agy` symlinks to the installed Windows WinGet `agy.exe`; Google sign-in and prompt verified |
+| Cursor Agent | `2026.09.18-9a7762b`, under `~/.local/bin`; subscription login and model listing verified                 |
+| Ollama       | Existing Windows app `0.34.2`; existing models retained; no models downloaded                             |
 
 Codex's wrapper executes
 `~/.local/lib/codex-linux-x64/package/vendor/x86_64-unknown-linux-musl/bin/codex`,
@@ -242,19 +242,19 @@ Cursor lists these Grok model families:
 
 Paths beginning with `~` below refer to `/home/dieterolson` in **Ubuntu WSL**.
 
-| Setting / resource | Location or value |
-| --- | --- |
-| Live application | `~/actions-runners/dashboard` |
-| Service environment | `~/.config/runner-dashboard/env` |
-| Service drop-in | `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf` |
-| Claude seat config | `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude` |
-| Claude on Ollama config | `~/.config/runner-dashboard/claude-ollama`; isolated from the Claude seat |
-| Staff git config | `GIT_CONFIG_GLOBAL=~/.config/runner-dashboard/staff.gitconfig` |
-| Linux repository root | `STAFF_REPOS_ROOT=~/staff-repos` |
-| Staff worktree root | `STAFF_WORKTREES_ROOT=~/staff-worktrees` |
-| Live RM clone | `STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management` |
-| Live role source | `STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles` |
-| Windows setup artifacts | `C:\Users\diete\Repositories\_deploy` |
+| Setting / resource      | Location or value                                                                 |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| Live application        | `~/actions-runners/dashboard`                                                     |
+| Service environment     | `~/.config/runner-dashboard/env`                                                  |
+| Service drop-in         | `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf`                   |
+| Claude seat config      | `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude`                             |
+| Claude on Ollama config | `~/.config/runner-dashboard/claude-ollama`; isolated from the Claude seat         |
+| Staff git config        | `GIT_CONFIG_GLOBAL=~/.config/runner-dashboard/staff.gitconfig`                    |
+| Linux repository root   | `STAFF_REPOS_ROOT=~/staff-repos`                                                  |
+| Staff worktree root     | `STAFF_WORKTREES_ROOT=~/staff-worktrees`                                          |
+| Live RM clone           | `STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management`               |
+| Live role source        | `STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles` |
+| Windows setup artifacts | `C:\Users\diete\Repositories\_deploy`                                             |
 
 The old `~/staff-bundle/rm` directory is retained for rollback only. The active
 user timer `runner-dashboard-rm-sync.timer` refreshes the Linux clone at most
@@ -271,14 +271,14 @@ worker holds remain empty.
 
 ## Follow-up rollout: #1256 / #1257 / #1258
 
-| Step | Status / evidence |
-| --- | --- |
-| Documentation | Initial setup report merged as #1259; this runbook is the node status source. |
-| Ollama lease fix #1256 | Deployed in `35686c4`; both Ollama harness checks below succeeded. |
-| Bridge implementation #1257 | #1261 merged; 15 PowerShell planner tests and real Windows 5.1 dry-run passed. |
-| Windows bridge installation | Owner reinstalled the #1265 fix; SYSTEM task returned **0 at 14:24:13 PT**, next run 14:25:12. Installed script hash matches tested source. Scoped forwarding remains working. |
-| Live RM source #1258 | #1262 merged and deployed; env migrated, timer active, lingering enabled, first automatic fast-forward verified, worker holds empty. |
-| Reboot acceptance | **Pending safe restart window, WSL restart and Windows reboot**; three active CI worker processes were detected after task verification. External tailnet port isolation also remains unverified. |
+| Step                        | Status / evidence                                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Documentation               | Initial setup report merged as #1259; this runbook is the node status source.                                                                                                                     |
+| Ollama lease fix #1256      | Deployed in `35686c4`; both Ollama harness checks below succeeded.                                                                                                                                |
+| Bridge implementation #1257 | #1261 merged; 15 PowerShell planner tests and real Windows 5.1 dry-run passed.                                                                                                                    |
+| Windows bridge installation | Owner reinstalled the #1265 fix; SYSTEM task returned **0 at 14:24:13 PT**, next run 14:25:12. Installed script hash matches tested source. Scoped forwarding remains working.                    |
+| Live RM source #1258        | #1262 merged and deployed; env migrated, timer active, lingering enabled, first automatic fast-forward verified, worker holds empty.                                                              |
+| Reboot acceptance           | **Pending safe restart window, WSL restart and Windows reboot**; three active CI worker processes were detected after task verification. External tailnet port isolation also remains unverified. |
 
 The owner runs this exact command in **PowerShell as Administrator**:
 
@@ -299,10 +299,10 @@ external-connectivity checks. Do not claim these acceptance steps from dry-run t
 
 After deployment and RM migration, these runs succeeded with exit code 0:
 
-| Provider | Run |
-| --- | --- |
+| Provider         | Run                |
+| ---------------- | ------------------ |
 | `ollama` (Codex) | `run-0b132c0615f3` |
-| `claude-ollama` | `run-1e1e8264a027` |
+| `claude-ollama`  | `run-1e1e8264a027` |
 
 Release artifact: `~/staff-bundle/rd-rm-1258-py311/dashboard-4.10.0.tar.gz`;
 SHA-256 `f0aa4d351326d6c209a85345064154ca598612d711a00a8720062ec1cbe119c1`.
@@ -406,14 +406,14 @@ Neither backup deletion nor rollback is part of routine verification.
 
 ## Initial six-provider verification and repeat checks
 
-| Provider | Successful dashboard run | Result |
-| --- | --- | --- |
-| `claude` | `run-4cd625e1e8d6` | `succeeded`, exit 0, `STAFF_RESULT: ok` |
-| `codex` | `run-de78a17520d0` | `succeeded`, exit 0, `STAFF_RESULT: ok` |
-| `antigravity` | `run-ca0beeaed98f` | `succeeded`, exit 0, `STAFF_RESULT: ok` |
-| `cursor-agent` | `run-78f6011fd0d4` | `succeeded`, exit 0, `STAFF_RESULT: ok` |
-| `ollama` (via Codex) | `run-8ce7e91178b8` | `succeeded`, exit 0, `STAFF_RESULT: ok` |
-| `claude-ollama` | `run-d4c83ae38059` | `succeeded`, exit 0, `STAFF_RESULT: ok` |
+| Provider             | Successful dashboard run | Result                                  |
+| -------------------- | ------------------------ | --------------------------------------- |
+| `claude`             | `run-4cd625e1e8d6`       | `succeeded`, exit 0, `STAFF_RESULT: ok` |
+| `codex`              | `run-de78a17520d0`       | `succeeded`, exit 0, `STAFF_RESULT: ok` |
+| `antigravity`        | `run-ca0beeaed98f`       | `succeeded`, exit 0, `STAFF_RESULT: ok` |
+| `cursor-agent`       | `run-78f6011fd0d4`       | `succeeded`, exit 0, `STAFF_RESULT: ok` |
+| `ollama` (via Codex) | `run-8ce7e91178b8`       | `succeeded`, exit 0, `STAFF_RESULT: ok` |
+| `claude-ollama`      | `run-d4c83ae38059`       | `succeeded`, exit 0, `STAFF_RESULT: ok` |
 
 Antigravity initially failed in `run-8cb01018890e` with WSL
 `UtilAcceptVsock:271: accept4 failed 110`; one retry succeeded. Both the configured

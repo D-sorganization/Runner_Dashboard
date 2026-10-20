@@ -11,6 +11,7 @@ This document defines the agent roster and tier structure used by the Agent Pane
 **Agents:** `claude`, `codex`
 
 **Qualifications:**
+
 - Complexity: `trivial`, `routine`
 - Effort: `xs`, `s`
 - Domains: `backend`, `frontend`, `tests`, `ci`, `code-quality`
@@ -24,6 +25,7 @@ Example: "Should we use middleware or decorators for rate limiting?"
 **Agents:** `claude`, `maxwell-daemon`, `codex`
 
 **Qualifications:**
+
 - Complexity: up to `complex`
 - Effort: up to `m`
 - Domains: `backend`, `frontend`, `architecture`, `security`, `agent-safety`
@@ -37,6 +39,7 @@ Example: "How should we restructure the dispatch contract to support retries?"
 **Agents:** `claude`, `maxwell-daemon`, `jules`
 
 **Qualifications:**
+
 - Complexity: up to `deep`
 - Effort: `l`, `xl`
 - Domains: `security`, `architecture`, `supply-chain`, `governance`
@@ -50,6 +53,7 @@ Example: "Should we switch from JWT-based auth to mutual TLS for inter-node comm
 **Agents:** `claude`
 
 **Qualifications:**
+
 - Complexity: `research`
 - Domains: `research`, `spike`, `feasibility`
 
@@ -96,17 +100,22 @@ Panelists must respond with this format:
 
 ```markdown
 <!-- panel-opinion:v1 agent=<tier> stance=support|oppose|modify -->
+
 ## Opinion
+
 <2-3 sentence summary of your position>
 
 ## Suggested approach
+
 <specific recommendation or alternative design>
 
 ## Risks
+
 <identified risks, concerns, or gotchas>
 ```
 
 **Fields:**
+
 - `agent`: Your agent tier (e.g., `tier-1`, `tier-2`, `tier-3`, `research`)
 - `stance`: Your position — `support` (go ahead), `oppose` (don't), `modify` (approve with changes)
 
@@ -148,13 +157,13 @@ Once the team has picked a direction, remove the `panel-review` label...
 
 When an issue is labeled `panel-review`, the workflow automatically selects tiers based on complexity:
 
-| Complexity | Recommended Tier(s) |
-|---|---|
-| `trivial` | Tier 1 |
-| `routine` | Tier 1 |
-| `complex` | Tier 2 (includes Tier 1) |
-| `deep` | Tier 3 (includes Tier 1 & 2) |
-| `research` | Research tier |
+| Complexity | Recommended Tier(s)          |
+| ---------- | ---------------------------- |
+| `trivial`  | Tier 1                       |
+| `routine`  | Tier 1                       |
+| `complex`  | Tier 2 (includes Tier 1)     |
+| `deep`     | Tier 3 (includes Tier 1 & 2) |
+| `research` | Research tier                |
 
 **Example:** An issue labeled `complexity:complex` will get recommendations for agents from both Tier 1 and Tier 2, with emphasis on Tier 2 experts.
 

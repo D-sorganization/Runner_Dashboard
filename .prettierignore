@@ -1,0 +1,7 @@
+# Vendored Maxwell_Daemon OpenAPI snapshot: refreshed verbatim from upstream
+# and compared canonically by scripts/check_maxwell_contract_drift.py.
+tests/contracts/maxwell_openapi.json
+
+# Machine-generated assessment output (A-O assessment JSON and `gh` issue dumps).
+docs/assessments/*.json
+docs/archive/**/assessments/*.json
