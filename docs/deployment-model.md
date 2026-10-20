@@ -318,6 +318,26 @@ daytime and two runners overnight and during weekend daytime, with a hard
 two-runner ceiling. Machine-specific deployment must retain that ceiling when
 the schedule is edited through the dashboard.
 
+A shared machine can also define an optional `resource_floor` block (#2000):
+
+```json
+"resource_floor": {
+  "disk_path": "/mnt/c",
+  "min_disk_free_gb": 40,
+  "min_mem_available_gb": 6,
+  "max_memory_pressure_avg60": 20,
+  "runners": 1
+}
+```
+
+If free space at `disk_path` falls below the threshold, or `MemAvailable` falls
+below its threshold, or memory PSI `some avg60` rises above its threshold, the
+scheduler lowers capacity to `runners`. It never raises capacity this way, and
+the state `reason` names the floor that was breached. Surplus runners leave
+through the busy-safe drain. Capacity returns on the first tick after the host
+recovers. A probe that cannot be read is not treated as a breach. OGLaptop uses
+this block so it stays usable for interactive coding sessions.
+
 The scheduler treats a runner as busy when any of these independent signals is
 present:
 

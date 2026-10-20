@@ -811,3 +811,124 @@ def test_systemctl_stop_gets_its_own_longer_timeout(monkeypatch, tmp_path: Path)
     assert runner_scheduler.stop_runner_safely(unit) is True
     assert timeouts["stop"] == runner_scheduler.STOP_TIMEOUT_SECONDS
     assert runner_scheduler.STOP_TIMEOUT_SECONDS > 30
+
+
+# --- #2000: host-resource floor keeps shared hosts usable for interactive work ---
+
+
+def _proc_with(tmp_path: Path, *, mem_available_kb: int = 16 * 1024 * 1024, mem_psi_avg60: float = 0.0) -> Path:
+    proc = tmp_path / "proc"
+    (proc / "pressure").mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        f"MemTotal:       32000000 kB\nMemFree:         1000000 kB\nMemAvailable:   {mem_available_kb} kB\n",
+        encoding="utf-8",
+    )
+    (proc / "pressure" / "memory").write_text(
+        f"some avg10=0.00 avg60={mem_psi_avg60:.2f} avg300=0.00 total=1\n"
+        "full avg10=0.00 avg60=0.00 avg300=0.00 total=1\n",
+        encoding="utf-8",
+    )
+    return proc
+
+
+def _floor_env(monkeypatch, tmp_path: Path, *, disk_free_gb: float = 500.0, **proc_kwargs) -> None:
+    monkeypatch.setattr(runner_scheduler, "PROC_ROOT", _proc_with(tmp_path, **proc_kwargs))
+    monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
+    monkeypatch.setattr(runner_scheduler, "disk_free_gb", lambda _path: disk_free_gb)
+
+
+FLOOR = {
+    "disk_path": "/mnt/c",
+    "min_disk_free_gb": 40,
+    "min_mem_available_gb": 6,
+    "max_memory_pressure_avg60": 20,
+    "runners": 1,
+}
+
+
+def _floor_config(floor: dict | None = FLOOR) -> dict:
+    config: dict = {"enabled": True, "default_count": 4, "max_count": 8, "schedules": []}
+    if floor is not None:
+        config["resource_floor"] = dict(floor)
+    return config
+
+
+def test_resource_floor_absent_keeps_schedule(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path, disk_free_gb=1.0, mem_available_kb=1024)
+    assert runner_scheduler.effective_capacity(_floor_config(None), None) == (4, "default")
+
+
+def test_resource_floor_healthy_host_keeps_schedule(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path)
+    assert runner_scheduler.effective_capacity(_floor_config(), None) == (4, "default")
+
+
+def test_resource_floor_low_disk_lowers_capacity(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path, disk_free_gb=30.0)
+    desired, reason = runner_scheduler.effective_capacity(_floor_config(), None)
+    assert desired == 1
+    assert reason.startswith("default + resource-floor")
+    assert "disk_free=30.0GB<40" in reason
+
+
+def test_resource_floor_low_mem_available_lowers_capacity(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path, mem_available_kb=4 * 1024 * 1024)
+    desired, reason = runner_scheduler.effective_capacity(_floor_config(), None)
+    assert desired == 1
+    assert "mem_available=4.0GB<6" in reason
+
+
+def test_resource_floor_memory_pressure_lowers_capacity(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path, mem_psi_avg60=35.5)
+    desired, reason = runner_scheduler.effective_capacity(_floor_config(), None)
+    assert desired == 1
+    assert "memory_psi_avg60=35.5>20" in reason
+
+
+def test_resource_floor_never_raises_capacity(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path, disk_free_gb=1.0)
+    config = _floor_config({**FLOOR, "runners": 3})
+    config["default_count"] = 2
+    assert runner_scheduler.effective_capacity(config, None)[0] == 2
+
+
+def test_resource_floor_applies_to_manual_target(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path, disk_free_gb=10.0)
+    assert runner_scheduler.effective_capacity(_floor_config(), 6)[0] == 1
+
+
+def test_resource_floor_unreadable_probe_is_not_a_breach(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_scheduler, "PROC_ROOT", tmp_path / "missing-proc")
+    monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
+    monkeypatch.setattr(runner_scheduler, "disk_free_gb", lambda _path: None)
+    assert runner_scheduler.effective_capacity(_floor_config(), None) == (4, "default")
+
+
+def test_maintenance_hold_beats_resource_floor(monkeypatch, tmp_path: Path) -> None:
+    _floor_env(monkeypatch, tmp_path, disk_free_gb=1.0)
+    (tmp_path / "maintenance.json").write_text("{}", encoding="utf-8")
+    assert runner_scheduler.effective_capacity(_floor_config(), None) == (0, "maintenance-drain")
+
+
+def test_disk_free_gb_reads_real_path(tmp_path: Path) -> None:
+    free = runner_scheduler.disk_free_gb(str(tmp_path))
+    assert free is not None and free > 0
+    assert runner_scheduler.disk_free_gb(str(tmp_path / "does-not-exist")) is None
+
+
+def test_validate_config_rejects_bad_resource_floor() -> None:
+    import pytest
+
+    for bad in ({"min_disk_free_gb": -1}, {"runners": -1}, {"max_memory_pressure_avg60": "high"}, "nope"):
+        with pytest.raises(ValueError):
+            runner_scheduler.validate_config(_floor_config(bad))  # type: ignore[arg-type]
+
+
+def test_oglaptop_schedule_carries_conservative_resource_floor() -> None:
+    config = json.loads((REPO_ROOT / "config" / "runner-schedule-oglaptop.json").read_text(encoding="utf-8"))
+    runner_scheduler.validate_config(config)
+    floor = config["resource_floor"]
+    assert floor["disk_path"] == "/mnt/c"
+    assert floor["min_disk_free_gb"] >= 40
+    assert floor["min_mem_available_gb"] >= 6
+    assert floor["runners"] <= 1
