@@ -16,6 +16,7 @@ log = logging.getLogger("dashboard.proxy")
 # longer than this for the hub's answer gets an httpx timeout, so any
 # hub-side "wait then answer degraded" budget must stay below this value.
 HUB_PROXY_TIMEOUT_S = 15.0
+HEALTH_PROXY_HOP_HEADER = "x-dashboard-health-hop"
 
 # ── Hub circuit breaker (issue: blank dashboard when the hub is offline) ──────
 # A spoke proxies fleet-wide endpoints to HUB_URL. If the hub is unreachable the
@@ -118,6 +119,8 @@ async def proxy_to_hub(request: Request, *, require_success: bool = False):
 
     Health callers opt into ``require_success``: a non-2xx response raises
     before resetting the circuit or accepting a healthy-shaped JSON body.
+    Health probes stamp one fixed hop marker, replacing caller-provided values,
+    so a misconfigured node-to-node or self URL cannot recurse.
     Existing proxy callers retain their response translation contract.
     """
     if not HUB_URL:
@@ -127,10 +130,14 @@ async def proxy_to_hub(request: Request, *, require_success: bool = False):
         if request.url.query:
             url = f"{url}?{request.url.query}"
         try:
+            headers = _safe_forward_headers(request)
+            if require_success and request.url.path == "/api/health":
+                headers = {key: value for key, value in headers.items() if key.lower() != HEALTH_PROXY_HOP_HEADER}
+                headers[HEALTH_PROXY_HOP_HEADER] = "1"
             req = client.build_request(
                 request.method,
                 url,
-                headers=_safe_forward_headers(request),
+                headers=headers,
                 content=await request.body(),
             )
             resp = await client.send(req)

@@ -29,7 +29,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from oauth_config import OAuthConfig
 from prometheus_metrics import record_dashboard_health
-from proxy_utils import hub_in_cooldown, proxy_to_hub, should_mark_hub_circuit_degraded, should_proxy_fleet_to_hub
+from proxy_utils import (
+    HEALTH_PROXY_HOP_HEADER,
+    hub_in_cooldown,
+    proxy_to_hub,
+    should_mark_hub_circuit_degraded,
+    should_proxy_fleet_to_hub,
+)
 from readiness import aggregate, get_default_probes
 
 router = APIRouter(tags=["health"])
@@ -185,8 +191,15 @@ async def health_check(request: Request) -> dict:
     """
     started_at = time.perf_counter()
     github_health = None
-    if should_proxy_fleet_to_hub(request) or should_mark_hub_circuit_degraded(request):
+    forwarded_spoke = (
+        dashboard_config.MACHINE_ROLE == "node"
+        and bool(dashboard_config.HUB_URL)
+        and HEALTH_PROXY_HOP_HEADER in request.headers
+    )
+    if forwarded_spoke or should_proxy_fleet_to_hub(request) or should_mark_hub_circuit_degraded(request):
         try:
+            if forwarded_spoke:
+                raise HTTPException(status_code=503, detail="Health proxy hop exceeded")
             if should_mark_hub_circuit_degraded(request):
                 raise HTTPException(status_code=503, detail="Hub circuit open")
             github_health = _validate_hub_github_health(await proxy_to_hub(request, require_success=True))

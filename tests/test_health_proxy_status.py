@@ -38,6 +38,7 @@ async def test_health_proxy_requires_success_and_strips_caller_credentials(
         ("Cookie", "test-session=example"),
         ("X-API-Key", "test-api-credential"),
         ("X-CSRF-Token", "test-csrf"),
+        ("x-dashboard-health-hop", "caller-controlled"),
     ]
 
     if status == 200:
@@ -52,5 +53,6 @@ async def test_health_proxy_requires_success_and_strips_caller_credentials(
 
     assert len(captured) == 1
     assert captured[0].headers["authorization"] == "Bearer test-fleet-credential"
+    assert captured[0].headers.get_list("x-dashboard-health-hop") == ["1"]
     for key in ("cookie", "x-api-key", "x-csrf-token"):
         assert key not in captured[0].headers

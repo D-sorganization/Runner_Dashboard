@@ -43,6 +43,8 @@ def spoke(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
     monkeypatch.setattr(health, "record_dashboard_health", lambda *_args: None)
     monkeypatch.setattr(proxy_utils, "MACHINE_ROLE", "node")
     monkeypatch.setattr(proxy_utils, "HUB_URL", "http://hub.invalid")
+    monkeypatch.setattr(health.dashboard_config, "MACHINE_ROLE", "node")
+    monkeypatch.setattr(health.dashboard_config, "HUB_URL", "http://hub.invalid")
     monkeypatch.setattr(proxy_utils, "hub_in_cooldown", lambda: False)
     return direct, upstream
 
@@ -133,6 +135,33 @@ async def test_spoke_cancellation_propagates(spoke: tuple[AsyncMock, AsyncMock])
     with pytest.raises(asyncio.CancelledError):
         await health.health_check(request())
     direct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("local", [False, True])
+async def test_forwarded_spoke_health_stops_at_one_hop(spoke: tuple[AsyncMock, AsyncMock], local: bool) -> None:
+    direct, upstream = spoke
+    incoming = request(b"local=1" if local else b"")
+    incoming.scope["headers"] = [(b"x-dashboard-health-hop", b"1")]
+    body = await health.health_check(incoming)
+    direct.assert_not_awaited()
+    upstream.assert_not_awaited()
+    assert body["status"] == "degraded"
+    assert body["github_api"] == "unreachable"
+
+
+@pytest.mark.asyncio
+async def test_forwarded_hub_health_keeps_direct_probe(
+    spoke: tuple[AsyncMock, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    direct, upstream = spoke
+    monkeypatch.setattr(proxy_utils, "MACHINE_ROLE", "hub")
+    monkeypatch.setattr(health.dashboard_config, "MACHINE_ROLE", "hub")
+    incoming = request()
+    incoming.scope["headers"] = [(b"x-dashboard-health-hop", b"1")]
+    await health.health_check(incoming)
+    direct.assert_awaited_once()
+    upstream.assert_not_awaited()
 
 
 @pytest.mark.asyncio
