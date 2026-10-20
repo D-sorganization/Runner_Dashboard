@@ -2418,7 +2418,10 @@ export interface paths {
         };
         /**
          * Health Check
-         * @description Health endpoint for monitoring and load balancers.
+         * @description Use the configured hub's GitHub probe without replacing local identity.
+         *
+         *     A hub failure or invalid summary is degraded, never a privileged local
+         *     retry. Explicit local reads and standalone nodes keep the direct probe.
          */
         get: operations["health_check_api_health_get"];
         put?: never;
