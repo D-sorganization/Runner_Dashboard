@@ -61,11 +61,11 @@ def _local_only_guard_text() -> str:
 
 
 def _run_workflow_bash(script: str, *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    """Execute an extracted workflow script under Git Bash with a bounded environment."""
+    """Execute a workflow script with host-native Bash and a bounded tool path."""
     bash = Path(require_bash()).resolve()
-    git_usr_bin = as_bash_path(bash.parent.parent / "usr" / "bin")
+    tool_path = as_bash_path(bash.parent.parent / "usr" / "bin") if os.name == "nt" else os.defpath
     shim_path = env["TEST_SHIM_DIR"]
-    guarded_script = f'export PATH="{shim_path}:{git_usr_bin}"\n{script}'
+    guarded_script = f'export PATH="{shim_path}:{tool_path}"\n{script}'
     process_env = os.environ.copy()
     process_env.pop("GH_TOKEN", None)
     process_env.pop("GITHUB_TOKEN", None)
