@@ -109,12 +109,16 @@ def _safe_forward_headers(request: Request) -> dict[str, str]:
     return forwarded
 
 
-async def proxy_to_hub(request: Request):
+async def proxy_to_hub(request: Request, *, require_success: bool = False):
     """Proxy request to the designated HUB_URL for hub-spoke topology.
 
     Sensitive caller headers are stripped and replaced with the intra-fleet
     bearer token so that operator credentials cannot be laundered to the hub
     (issue #347).
+
+    Health callers opt into ``require_success``: a non-2xx response raises
+    before resetting the circuit or accepting a healthy-shaped JSON body.
+    Existing proxy callers retain their response translation contract.
     """
     if not HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
@@ -130,6 +134,8 @@ async def proxy_to_hub(request: Request):
                 content=await request.body(),
             )
             resp = await client.send(req)
+            if require_success and not 200 <= resp.status_code < 300:
+                raise HTTPException(status_code=502, detail=f"Hub returned HTTP {resp.status_code}")
             reset_hub_circuit()  # hub answered → close the breaker
             return _translate_upstream_response(resp, "Hub proxy")
         except httpx.TimeoutException as e:

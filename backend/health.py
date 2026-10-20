@@ -25,11 +25,11 @@ import time
 
 import dashboard_config
 from cache_utils import cache_size
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from oauth_config import OAuthConfig
 from prometheus_metrics import record_dashboard_health
-from proxy_utils import hub_in_cooldown
+from proxy_utils import hub_in_cooldown, proxy_to_hub, should_mark_hub_circuit_degraded, should_proxy_fleet_to_hub
 from readiness import aggregate, get_default_probes
 
 router = APIRouter(tags=["health"])
@@ -96,9 +96,13 @@ async def readyz() -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-async def _health_impl() -> dict:
-    """Core health logic, callable both from the HTTP endpoint and internally."""
-    start = time.perf_counter()
+async def _health_impl(github_health: dict | None = None, *, started_at: float | None = None) -> dict:
+    """Build local health, optionally using a validated hub GitHub summary.
+
+    Internal callers retain a direct local probe. Only GitHub fields are taken
+    from the supplied summary; node identity and deployment remain local.
+    """
+    start = time.perf_counter() if started_at is None else started_at
     # Lazy import to avoid circular dependency with server.py
     from runner_inventory import fetch_org_runners  # noqa: PLC0415
     from server import (  # noqa: PLC0415
@@ -116,15 +120,24 @@ async def _health_impl() -> dict:
     try:
         import gh_client  # noqa: PLC0415
 
-        github_auth = gh_client.get_status()
-        # Reuse the runner cache so health checks don't add extra API calls.
-        data = _cache_get("runners", 25.0)
-        if data is None:
-            data = await fetch_org_runners(gh_api_admin, ORG)
-            _cache_set("runners", data)
+        if github_health is not None:
+            gh_ok = github_health["github_api"] == "connected"
+            runner_count = github_health["runners_registered"]
+            github_error_type = github_health.get("github_error_type")
+            github_auth = {
+                "auth_source": github_health.get("github_auth_source", "unknown"),
+                "status": github_health.get("github_auth_status", "unknown"),
+            }
+        else:
             github_auth = gh_client.get_status()
-        gh_ok = True
-        runner_count = len(data.get("runners", []))
+            # Reuse the runner cache so health checks don't add extra API calls.
+            data = _cache_get("runners", 25.0)
+            if data is None:
+                data = await fetch_org_runners(gh_api_admin, ORG)
+                _cache_set("runners", data)
+                github_auth = gh_client.get_status()
+            gh_ok = True
+            runner_count = len(data.get("runners", []))
     except Exception as e:  # noqa: BLE001
         if isinstance(e, (KeyboardInterrupt, SystemExit)):
             raise
@@ -163,10 +176,45 @@ async def _health_impl() -> dict:
     }
 
 
-@router.get("/api/health")
-async def health_check(request: Request):
-    """Health endpoint for monitoring and load balancers."""
-    return await _health_impl()
+@router.get("/api/health", response_model=None)
+async def health_check(request: Request) -> dict:
+    """Use the configured hub's GitHub probe without replacing local identity.
+
+    A hub failure or invalid summary is degraded, never a privileged local
+    retry. Explicit local reads and standalone nodes keep the direct probe.
+    """
+    started_at = time.perf_counter()
+    github_health = None
+    if should_proxy_fleet_to_hub(request) or should_mark_hub_circuit_degraded(request):
+        try:
+            if should_mark_hub_circuit_degraded(request):
+                raise HTTPException(status_code=503, detail="Hub circuit open")
+            github_health = _validate_hub_github_health(await proxy_to_hub(request, require_success=True))
+        except (HTTPException, ValueError) as exc:
+            github_health = {
+                "github_api": "unreachable",
+                "runners_registered": 0,
+                "github_error_type": type(exc).__name__,
+            }
+    return await _health_impl(github_health, started_at=started_at)
+
+
+def _validate_hub_github_health(summary: object) -> dict:
+    """Require a consistent connectivity state and nonnegative integer count."""
+    if not isinstance(summary, dict):
+        raise ValueError("Hub health must be an object")
+    state = (summary.get("status"), summary.get("github_api"))
+    count = summary.get("runners_registered")
+    if state not in (("healthy", "connected"), ("degraded", "unreachable")):
+        raise ValueError("Hub health has invalid connectivity state")
+    if type(count) is not int or count < 0:
+        raise ValueError("Hub runner count must be a nonnegative integer")
+    for field in ("github_auth_source", "github_auth_status"):
+        if field in summary and not isinstance(summary[field], str):
+            raise ValueError(f"Hub {field} must be a string")
+    if summary.get("github_error_type") is not None and not isinstance(summary["github_error_type"], str):
+        raise ValueError("Hub GitHub error type must be a string or null")
+    return summary
 
 
 @router.get("/api/version")
