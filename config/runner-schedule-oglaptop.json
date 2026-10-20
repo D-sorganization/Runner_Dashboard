@@ -25,5 +25,12 @@
       "end": "07:00",
       "runners": 4
     }
-  ]
+  ],
+  "resource_floor": {
+    "disk_path": "/mnt/c",
+    "min_disk_free_gb": 40,
+    "min_mem_available_gb": 6,
+    "max_memory_pressure_avg60": 20,
+    "runners": 1
+  }
 }

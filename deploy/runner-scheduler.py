@@ -9,6 +9,7 @@ import logging
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import time as time_module
@@ -101,6 +102,31 @@ def validate_config(config: dict) -> None:
         days = entry.get("days", [])
         if not days or any(day not in DAYS for day in days):
             raise ValueError(f"invalid schedule days for {entry.get('name', '<unnamed>')}")
+    validate_resource_floor(config.get("resource_floor"))
+
+
+RESOURCE_FLOOR_NUMERIC_KEYS = (
+    "min_disk_free_gb",
+    "min_mem_available_gb",
+    "max_memory_pressure_avg60",
+    "runners",
+)
+
+
+def validate_resource_floor(floor: object) -> None:
+    """Optional host-resource floor (#2000); every numeric threshold must be >= 0."""
+    if floor is None:
+        return
+    if not isinstance(floor, dict):
+        raise ValueError("resource_floor must be an object")
+    for key in RESOURCE_FLOOR_NUMERIC_KEYS:
+        if key not in floor:
+            continue
+        value = floor[key]
+        if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+            raise ValueError(f"resource_floor.{key} must be a nonnegative number")
+    if "disk_path" in floor and not isinstance(floor["disk_path"], str):
+        raise ValueError("resource_floor.disk_path must be a string")
 
 
 def load_config() -> dict:
@@ -488,15 +514,81 @@ def set_maintenance(active: bool) -> None:
         MAINTENANCE_PATH.unlink(missing_ok=True)
 
 
+def disk_free_gb(path: str) -> float | None:
+    """Free space at ``path`` in GB, or None when it cannot be read."""
+    try:
+        return shutil.disk_usage(path).free / 1e9
+    except OSError:
+        return None
+
+
+def mem_available_gb() -> float | None:
+    """``MemAvailable`` from /proc/meminfo in GiB, or None when unreadable."""
+    try:
+        for line in (PROC_ROOT / "meminfo").read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) / (1024 * 1024)
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def pressure_avg60(resource: str) -> float | None:
+    """PSI ``some avg60`` for ``resource`` (cpu/memory/io), or None when unreadable."""
+    try:
+        for line in (PROC_ROOT / "pressure" / resource).read_text(encoding="utf-8").splitlines():
+            if line.startswith("some "):
+                fields = dict(part.split("=", 1) for part in line.split()[1:])
+                return float(fields["avg60"])
+    except (OSError, ValueError, KeyError):
+        return None
+    return None
+
+
+def resource_floor_breaches(floor: dict) -> list[str]:
+    """Breached host-resource floors; an unreadable probe never counts as a breach."""
+    breaches: list[str] = []
+    if "min_disk_free_gb" in floor:
+        free = disk_free_gb(str(floor.get("disk_path", "/")))
+        if free is not None and free < floor["min_disk_free_gb"]:
+            breaches.append(f"disk_free={free:.1f}GB<{floor['min_disk_free_gb']}")
+    if "min_mem_available_gb" in floor:
+        available = mem_available_gb()
+        if available is not None and available < floor["min_mem_available_gb"]:
+            breaches.append(f"mem_available={available:.1f}GB<{floor['min_mem_available_gb']}")
+    if "max_memory_pressure_avg60" in floor:
+        psi = pressure_avg60("memory")
+        if psi is not None and psi > floor["max_memory_pressure_avg60"]:
+            breaches.append(f"memory_psi_avg60={psi:.1f}>{floor['max_memory_pressure_avg60']}")
+    return breaches
+
+
+def apply_resource_floor(config: dict, desired: int, reason: str) -> tuple[int, str]:
+    """Lower (never raise) capacity while the host is short on disk or memory (#2000).
+
+    Surplus runners still leave through the busy-safe drain, so a breach never
+    kills a running job; capacity returns on the first tick after recovery.
+    """
+    floor = config.get("resource_floor")
+    if not floor:
+        return desired, reason
+    breaches = resource_floor_breaches(floor)
+    if not breaches:
+        return desired, reason
+    floored = min(desired, int(floor.get("runners", 1)))
+    return floored, f"{reason} + resource-floor ({', '.join(breaches)})"
+
+
 def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
     """Desired runner count; an active maintenance hold overrides everything with 0."""
     if maintenance_active():
         return 0, "maintenance-drain"
-    return desired_capacity(
+    desired, reason = desired_capacity(
         config,
         target,
         target_source="cli: --target" if target is not None else None,
     )
+    return apply_resource_floor(config, desired, reason)
 
 
 def run_maintenance_drain(units: list[RunnerUnit], timeout: float) -> dict:
