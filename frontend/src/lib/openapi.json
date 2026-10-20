@@ -6185,7 +6185,7 @@
     },
     "/_drain": {
       "post": {
-        "description": "Activate drain mode: returns 503 from /healthz, rejects new POSTs (issue #711).\n\nPre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).\nPost-condition: _drain_mode is True after successful call.",
+        "description": "Activate process-local draining and reject new mutations with HTTP 503.\n\n``/readyz`` reports unready while draining. Requests already admitted are\nallowed to finish; this flag does not cancel or wait for in-flight work.\n\nPre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).\nPost-condition: _drain_mode is True after successful call.",
         "operationId": "drain_endpoint__drain_post",
         "responses": {
           "200": {
