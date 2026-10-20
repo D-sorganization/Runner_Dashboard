@@ -50,7 +50,7 @@ def _capture_dashboard_logs() -> Iterator[list[logging.LogRecord]]:
 
 
 def test_generated_key_is_returned_persisted_and_never_logged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    secret = "test-" + test_secrets.token_urlsafe(24)
+    secret = test_secrets.token_urlsafe(24)
     key_file = tmp_path / "runner-dashboard" / "api_key.txt"
     chmod_modes: list[int] = []
     original_chmod = Path.chmod
@@ -85,7 +85,7 @@ def test_generated_key_is_returned_persisted_and_never_logged(tmp_path: Path, mo
 def test_persistence_failure_keeps_useful_secret_free_diagnostic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    secret = "test-" + test_secrets.token_urlsafe(24)
+    secret = test_secrets.token_urlsafe(24)
     key_directory = tmp_path / "runner-dashboard"
 
     monkeypatch.delenv("DASHBOARD_API_KEY", raising=False)

@@ -1,6 +1,6 @@
 ---
 issue: 2015
-summary: "Redact generated API credentials from startup diagnostics"
+summary: "Redact generated API credentials and keep test credentials scanner-safe"
 dl_state: "in_review"
 next_step: "Publish after local gates; root owns publication"
 owner: "codex"
