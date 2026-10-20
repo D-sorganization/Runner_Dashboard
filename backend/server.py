@@ -106,6 +106,7 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
     _inspect_wslconfig,
     _probe_detail,
 )
+from drain_admission import DrainAdmissionMiddleware  # noqa: E402
 from error_models import (  # noqa: E402
     from_http_exception,
     internal_error,
@@ -768,6 +769,9 @@ app.include_router(_proposals_router.router)
 # request.session is populated by the time the perimeter resolves a principal.
 # Every non-exempt /api/* route is now authenticated by default: a handler that
 # forgets its own auth dependency can no longer ship an unauthenticated hole.
+# Drain admission is registered first so the auth perimeter remains outside it
+# in Starlette's middleware stack.
+app.add_middleware(DrainAdmissionMiddleware, is_draining=lambda: _drain_mode)
 app.add_middleware(BaseHTTPMiddleware, dispatch=auth_perimeter_check)
 
 app.add_middleware(
@@ -2735,7 +2739,10 @@ _drain_mode: bool = False
 
 @app.post("/_drain")
 async def drain_endpoint(request: Request) -> dict:
-    """Activate drain mode: returns 503 from /healthz, rejects new POSTs (issue #711).
+    """Activate process-local draining and reject new mutations with HTTP 503.
+
+    ``/readyz`` reports unready while draining. Requests already admitted are
+    allowed to finish; this flag does not cancel or wait for in-flight work.
 
     Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
     Post-condition: _drain_mode is True after successful call.

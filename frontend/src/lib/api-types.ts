@@ -35,7 +35,10 @@ export interface paths {
         put?: never;
         /**
          * Drain Endpoint
-         * @description Activate drain mode: returns 503 from /healthz, rejects new POSTs (issue #711).
+         * @description Activate process-local draining and reject new mutations with HTTP 503.
+         *
+         *     ``/readyz`` reports unready while draining. Requests already admitted are
+         *     allowed to finish; this flag does not cancel or wait for in-flight work.
          *
          *     Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
          *     Post-condition: _drain_mode is True after successful call.
