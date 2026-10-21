@@ -19,6 +19,7 @@ from dashboard_config import (
 )
 from fastapi import APIRouter, Depends, Request, Response
 from fleet_autoconfig import (
+    _local_dashboard_url_candidates,
     derive_fleet_nodes_from_registry,
     derive_pool_topology,
 )  # issue #942, #1169 — registry-driven pool topology & federation
@@ -137,7 +138,7 @@ def _node_probe_timeout() -> httpx.Timeout:
     return httpx.Timeout(HttpTimeout.PROXY_NODE_SYSTEM_S, connect=HttpTimeout.NODE_CONNECT_S)
 
 
-async def _fetch_peer_pool(peer: dict) -> dict[str, dict]:
+async def _fetch_peer_pool(peer: dict, *, local_dashboard_urls: frozenset[str]) -> dict[str, dict]:
     """Fetch one peer pool's fleet status, classifying it offline on failure.
 
     Returns a ``{node_name: metrics}`` mapping to merge into the aggregate
@@ -146,12 +147,24 @@ async def _fetch_peer_pool(peer: dict) -> dict[str, dict]:
     rather than raising.
     """
     peer_pool_name = peer["name"]
-    peer_url = f"{peer['url']}/api/fleet/status?exclude_pools=true"
+    peer_base = str(peer["url"]).strip().rstrip("/").lower()
+    # Co-located pools on the same host must not recurse into our own
+    # ``/api/fleet/status`` over loopback: with a single uvicorn worker that
+    # deadlocks until the client times out (~30s).
+    if peer_base in local_dashboard_urls:
+        peer_url = f"{peer['url'].rstrip('/')}/api/system"
+        single_key = True
+    else:
+        peer_url = f"{peer['url'].rstrip('/')}/api/fleet/status?exclude_pools=true"
+        single_key = False
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(peer_url, timeout=_node_probe_timeout())
             if resp.status_code == 200:
-                return dict(resp.json())
+                payload = resp.json()
+                if single_key and isinstance(payload, dict):
+                    return {peer_pool_name: payload}
+                return dict(payload) if isinstance(payload, dict) else {}
             reason = classify_node_offline(status_code=resp.status_code)
             return {
                 peer_pool_name: {
@@ -207,6 +220,15 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         platform_node="",
         runner_aliases=RUNNER_ALIASES,
     )
+    local_dashboard_urls = frozenset(
+        _local_dashboard_url_candidates(
+            registry,
+            display_name=HOSTNAME,
+            platform_node="",
+            runner_aliases=RUNNER_ALIASES,
+            local_port=PORT,
+        )
+    )
 
     responses[local_pool_name or HOSTNAME] = local_metrics
 
@@ -257,7 +279,9 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         # Fan out to peer pools concurrently. The previous sequential loop let a
         # single unreachable pool stall the whole response for its full connect
         # budget; gather collapses N peer timeouts into one wall-clock window.
-        peer_results = await asyncio.gather(*[_fetch_peer_pool(peer) for peer in peer_pools])
+        peer_results = await asyncio.gather(
+            *[_fetch_peer_pool(peer, local_dashboard_urls=local_dashboard_urls) for peer in peer_pools]
+        )
         for updates in peer_results:
             responses.update(updates)
 

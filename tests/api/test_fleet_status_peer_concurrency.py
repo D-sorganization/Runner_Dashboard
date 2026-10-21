@@ -45,7 +45,10 @@ async def test_fetch_peer_pool_classifies_unreachable_as_offline(monkeypatch: py
 
     monkeypatch.setattr(fleet.httpx, "AsyncClient", lambda *_a, **_k: _Boom())
 
-    result = await fleet._fetch_peer_pool({"name": "DeskComputer", "url": "http://dead:8321"})
+    result = await fleet._fetch_peer_pool(
+        {"name": "DeskComputer", "url": "http://dead:8321"},
+        local_dashboard_urls=frozenset(),
+    )
 
     assert result["DeskComputer"]["status"] == "offline"
 
