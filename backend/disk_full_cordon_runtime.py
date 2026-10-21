@@ -19,7 +19,7 @@ from disk_full_cordon import (
     plan_cordon_tick,
 )
 from host_volume import probe_host_volume
-from rm_ops_017_config import DiskFullCordonConfig, load_disk_full_cordon_config
+from runner_disk_guard_policy import RunnerDiskGuardPolicy, load_runner_disk_guard_policy
 
 log = logging.getLogger("dashboard.disk_full_cordon_runtime")
 
@@ -145,25 +145,25 @@ def process_disk_full_cordon_tick(
     stop_unit: Callable[[str, str], None],
     dry_run: bool,
     now: float,
-    config: DiskFullCordonConfig | None = None,
+    policy: RunnerDiskGuardPolicy | None = None,
     state_path: Path | None = None,
 ) -> bool:
     """Run one cordon tick. Returns True when normal autoscaler scaling should be skipped."""
-    cfg = config or load_disk_full_cordon_config()
-    if not cfg.enabled:
+    active_policy = policy or load_runner_disk_guard_policy()
+    if not active_policy.enabled:
         return False
 
     host = probe_host_volume()
     free_gb = float(host.get("free_gb", 0.0))
-    free_percent = float(host.get("free_percent", 0.0))
+    used_percent = float(host.get("percent", 0.0))
 
     state = load_cordon_state(state_path)
     runners = build_runner_snapshots(units, unit_is_active, runner_is_busy)
     result = plan_cordon_tick(
         state,
         free_gb=free_gb,
-        free_percent=free_percent,
-        config=cfg,
+        used_percent=used_percent,
+        policy=active_policy,
         runners=runners,
         now=now,
     )
@@ -171,10 +171,10 @@ def process_disk_full_cordon_tick(
     save_cordon_state(result.state, state_path)
     if result.cordon_active:
         log.info(
-            "disk-full cordon phase=%s free=%.1fGB (%.1f%%) actions=%d",
+            "disk-full cordon phase=%s free=%.1fGB used=%.1f%% actions=%d",
             result.state.phase,
             free_gb,
-            free_percent,
+            used_percent,
             len(result.actions),
         )
     return result.cordon_active

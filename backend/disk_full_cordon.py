@@ -2,7 +2,8 @@
 
 Pure decision logic: trip thresholds, hysteresis readmit, bounded drain, then
 take all runners offline (``MIN_ONLINE=0``). Side effects are applied by
-``disk_full_cordon_runtime``.
+``disk_full_cordon_runtime``. Thresholds come from :class:`RunnerDiskGuardPolicy`
+(loaded via RM ``runner-disk-guard/v1``); not redefined here.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from rm_ops_017_config import DiskFullCordonConfig, DiskFullCordonReadmitThresholds, DiskFullCordonTripThresholds
+from runner_disk_guard_policy import RunnerDiskGuardPolicy
 
 CordonPhase = Literal["normal", "tripping", "cordoned"]
 
@@ -53,22 +54,14 @@ class CordonTickResult:
     cordon_active: bool
 
 
-def disk_pressure_trips(
-    free_gb: float,
-    free_percent: float,
-    trip: DiskFullCordonTripThresholds,
-) -> bool:
-    """True when host volume is below the trip floor (either metric)."""
-    return free_percent < trip.free_percent_below or free_gb < trip.free_gb_below
+def disk_pressure_trips(free_gb: float, used_percent: float, policy: RunnerDiskGuardPolicy) -> bool:
+    """True when host volume trips RM thresholds (free GB **or** used %)."""
+    return free_gb < policy.trip_min_free_gb or used_percent >= policy.trip_max_used_percent
 
 
-def disk_pressure_allows_readmit(
-    free_gb: float,
-    free_percent: float,
-    readmit: DiskFullCordonReadmitThresholds,
-) -> bool:
-    """True when host volume cleared the higher readmit bar (both metrics)."""
-    return free_percent >= readmit.free_percent_above and free_gb >= readmit.free_gb_above
+def disk_pressure_allows_readmit(free_gb: float, used_percent: float, policy: RunnerDiskGuardPolicy) -> bool:
+    """True when host volume cleared hysteresis (free GB **or** used %)."""
+    return free_gb >= policy.readmit_min_free_gb or used_percent <= policy.readmit_max_used_percent
 
 
 def _active_runners(runners: list[RunnerSnapshot]) -> list[RunnerSnapshot]:
@@ -79,13 +72,13 @@ def plan_cordon_tick(
     state: DiskFullCordonState,
     *,
     free_gb: float,
-    free_percent: float,
-    config: DiskFullCordonConfig,
+    used_percent: float,
+    policy: RunnerDiskGuardPolicy,
     runners: list[RunnerSnapshot],
     now: float,
 ) -> CordonTickResult:
     """Advance cordon state for one autoscaler tick. Pure aside from *state* copy."""
-    if not config.enabled:
+    if not policy.enabled:
         cleared = DiskFullCordonState(phase="normal")
         return CordonTickResult(
             state=cleared,
@@ -103,7 +96,7 @@ def plan_cordon_tick(
     )
 
     if state.phase == "normal":
-        if disk_pressure_trips(free_gb, free_percent, config.trip):
+        if disk_pressure_trips(free_gb, used_percent, policy):
             next_state.phase = "tripping"
             next_state.tripped_at = now
             actions.append(CordonAction(CordonActionKind.SET_MAINTENANCE_ON))
@@ -112,7 +105,8 @@ def plan_cordon_tick(
 
     if next_state.phase == "tripping":
         assert next_state.tripped_at is not None  # noqa: S101
-        force_stop = (now - next_state.tripped_at) >= config.drain_timeout_seconds
+        drain_elapsed = now - next_state.tripped_at
+        force_stop = not policy.finish_running_jobs or drain_elapsed >= policy.drain_timeout_seconds
         for runner in _active_runners(runners):
             if runner.busy and not force_stop:
                 continue
@@ -128,7 +122,7 @@ def plan_cordon_tick(
             actions.append(CordonAction(CordonActionKind.RUN_DISK_CLEANUP))
             next_state.cleanup_done = True
             return _finish_tick(next_state, actions)
-        if disk_pressure_allows_readmit(free_gb, free_percent, config.readmit):
+        if disk_pressure_allows_readmit(free_gb, used_percent, policy):
             next_state = DiskFullCordonState(phase="normal")
             actions.append(CordonAction(CordonActionKind.SET_MAINTENANCE_OFF))
         return _finish_tick(next_state, actions)
@@ -143,7 +137,6 @@ def _finish_tick(
     cordon_active = state.phase != "normal"
     scheduling_inhibited = cordon_active
     effective_min_online: int | None = 0 if cordon_active else None
-    # Deduplicate stop actions for the same unit (tripping may append twice on timeout edge).
     deduped: list[CordonAction] = []
     seen_stops: set[str] = set()
     for action in actions:
@@ -159,11 +152,6 @@ def _finish_tick(
         effective_min_online=effective_min_online,
         cordon_active=cordon_active,
     )
-
-
-def count_cordoned_hosts(nodes: list[tuple[str, bool]]) -> int:
-    """Count fleet nodes reporting an active disk-full cordon."""
-    return sum(1 for _name, active in nodes if active)
 
 
 def multi_host_cordon_alert_needed(

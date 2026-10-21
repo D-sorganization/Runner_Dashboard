@@ -40,7 +40,7 @@ from dashboard_config import (
     DISK_WARN_PERCENT,
 )
 from disk_full_cordon import multi_host_cordon_alert_needed
-from rm_ops_017_config import load_disk_full_cordon_config
+from runner_disk_guard_policy import load_runner_disk_guard_policy
 
 # Re-exported so consumers/tests can read the active thresholds without a second
 # import of dashboard_config (DRY single source).
@@ -325,7 +325,7 @@ def classify_fleet_events(
         )
 
     # 6. Multi-host disk-full cordon (RD-OPS-017).
-    cordon_cfg = load_disk_full_cordon_config()
+    cordon_cfg = load_runner_disk_guard_policy()
     current_cordon_count = sum(1 for snap in curr_list if snap.disk_cordon_active)
     prev_cordon_count = (
         sum(1 for snap in prev_by_name.values() if snap.disk_cordon_active) if previous is not None else None
@@ -343,7 +343,7 @@ def classify_fleet_events(
                 title=f"{current_cordon_count} hosts disk-full cordoned",
                 detail=(
                     f"At least {cordon_cfg.multi_host_cordon_alert_min} fleet hosts are under "
-                    "disk-full cordon (runners held at zero until readmit thresholds)."
+                    "disk-full cordon (runner-disk-guard/v1 readmit thresholds)."
                 ),
             )
         )

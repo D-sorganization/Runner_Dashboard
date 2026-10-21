@@ -1,0 +1,15 @@
+# RM-OPS-017 / runner-disk-guard/v1 — keep in sync with Repository_Management
+# config/runner_disk_guard.yaml (PR #2230).
+schema: runner-disk-guard/v1
+enabled: true
+trip:
+  min_free_gb: 25
+  max_used_percent: 92
+drain:
+  finish_running_jobs: true
+  timeout_seconds: 7200
+readmit:
+  min_free_gb: 40
+  max_used_percent: 85
+fleet:
+  multi_host_cordon_alert_min: 2
