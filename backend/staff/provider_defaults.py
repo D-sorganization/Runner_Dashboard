@@ -23,8 +23,13 @@ def _load_defaults_file() -> dict[str, Any]:
     if not path.exists():
         log.warning("Staff provider defaults file missing at %s", path)
         return {}
-    allowed_roots = [path.parent, Path(__file__).resolve().parent.parent]
-    validate_config_path(path, allowed_roots=allowed_roots)
+    allowed_roots = {
+        path.parent.resolve(),
+        Path(__file__).resolve().parent.parent.resolve(),
+    }
+    resolved = path.resolve()
+    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+        raise ValueError(f"Provider defaults path escapes allowed roots: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("staff_provider_defaults.json must be a JSON object")
