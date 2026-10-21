@@ -163,7 +163,15 @@ def test_user_and_repair_bypass(tmp_path: Path) -> None:
         store=store,
         policy=policy,
     )
+    blocked_repair = arm_cap.admit_for_arm(
+        "o/r",
+        3,
+        arm_cap.AdmitContext(tier="repair", dispatch_kind="implementation"),
+        store=store,
+        policy=policy,
+    )
     assert user.allowed and repair.allowed
+    assert not blocked_repair.allowed
 
 
 @pytest.mark.unit

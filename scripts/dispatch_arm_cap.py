@@ -202,10 +202,10 @@ class AdmitContext:
     def bypass_cap(self) -> bool:
         if self.tier == "user":
             return True
-        if self.tier == "repair":
-            return True
         kind = self.dispatch_kind.strip().lower()
-        return kind.startswith("ci_fix") or kind.startswith("conflict")
+        if self.tier == "repair":
+            return kind.startswith("ci_fix") or kind.startswith("conflict")
+        return False
 
 
 @dataclass(frozen=True)
