@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Vendored from Repository_Management shared_scripts/runner_disk_guard_config.py
-# (RM-OPS-017, PR #2230). Re-sync from upstream; do not fork.
+# (RM-OPS-017, merged via PR #2230). Byte-sync: tests/contracts/runner_disk_guard_upstream.json
+# and scripts/check_runner_disk_guard_drift.py. Re-sync from upstream; do not fork.
 """Validate and load ``config/runner_disk_guard.yaml`` (schema ``runner-disk-guard/v1``)."""
 
 from __future__ import annotations

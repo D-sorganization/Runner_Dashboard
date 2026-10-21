@@ -1,9 +1,7 @@
 """Disk-full host cordon state machine (RD-OPS-017 / issue #2030).
 
-Pure decision logic: trip thresholds, hysteresis readmit, bounded drain, then
-take all runners offline (``MIN_ONLINE=0``). Side effects are applied by
-``disk_full_cordon_runtime``. Thresholds come from :class:`RunnerDiskGuardPolicy`
-(loaded via RM ``runner-disk-guard/v1``); not redefined here.
+Thresholds and drain policy come from :class:`RunnerDiskGuardConfig` (RM
+``runner-disk-guard/v1``); not redefined here.
 """
 
 from __future__ import annotations
@@ -12,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from runner_disk_guard_policy import RunnerDiskGuardPolicy
+from shared_scripts.runner_disk_guard_config import RunnerDiskGuardConfig, RunnerDiskGuardReadmit, RunnerDiskGuardTrip
 
 CordonPhase = Literal["normal", "tripping", "cordoned"]
 
@@ -54,14 +52,14 @@ class CordonTickResult:
     cordon_active: bool
 
 
-def disk_pressure_trips(free_gb: float, used_percent: float, policy: RunnerDiskGuardPolicy) -> bool:
+def disk_pressure_trips(free_gb: float, used_percent: float, trip: RunnerDiskGuardTrip) -> bool:
     """True when host volume trips RM thresholds (free GB **or** used %)."""
-    return free_gb < policy.trip_min_free_gb or used_percent >= policy.trip_max_used_percent
+    return free_gb < trip.min_free_gb or used_percent >= trip.max_used_percent
 
 
-def disk_pressure_allows_readmit(free_gb: float, used_percent: float, policy: RunnerDiskGuardPolicy) -> bool:
+def disk_pressure_allows_readmit(free_gb: float, used_percent: float, readmit: RunnerDiskGuardReadmit) -> bool:
     """True when host volume cleared hysteresis (free GB **or** used %)."""
-    return free_gb >= policy.readmit_min_free_gb or used_percent <= policy.readmit_max_used_percent
+    return free_gb >= readmit.min_free_gb or used_percent <= readmit.max_used_percent
 
 
 def _active_runners(runners: list[RunnerSnapshot]) -> list[RunnerSnapshot]:
@@ -73,12 +71,12 @@ def plan_cordon_tick(
     *,
     free_gb: float,
     used_percent: float,
-    policy: RunnerDiskGuardPolicy,
+    config: RunnerDiskGuardConfig,
     runners: list[RunnerSnapshot],
     now: float,
 ) -> CordonTickResult:
     """Advance cordon state for one autoscaler tick. Pure aside from *state* copy."""
-    if not policy.enabled:
+    if not config.enabled:
         cleared = DiskFullCordonState(phase="normal")
         return CordonTickResult(
             state=cleared,
@@ -96,7 +94,7 @@ def plan_cordon_tick(
     )
 
     if state.phase == "normal":
-        if disk_pressure_trips(free_gb, used_percent, policy):
+        if disk_pressure_trips(free_gb, used_percent, config.trip):
             next_state.phase = "tripping"
             next_state.tripped_at = now
             actions.append(CordonAction(CordonActionKind.SET_MAINTENANCE_ON))
@@ -106,7 +104,7 @@ def plan_cordon_tick(
     if next_state.phase == "tripping":
         assert next_state.tripped_at is not None  # noqa: S101
         drain_elapsed = now - next_state.tripped_at
-        force_stop = not policy.finish_running_jobs or drain_elapsed >= policy.drain_timeout_seconds
+        force_stop = not config.drain.finish_running_jobs or drain_elapsed >= config.drain.timeout_seconds
         for runner in _active_runners(runners):
             if runner.busy and not force_stop:
                 continue
@@ -122,7 +120,7 @@ def plan_cordon_tick(
             actions.append(CordonAction(CordonActionKind.RUN_DISK_CLEANUP))
             next_state.cleanup_done = True
             return _finish_tick(next_state, actions)
-        if disk_pressure_allows_readmit(free_gb, used_percent, policy):
+        if disk_pressure_allows_readmit(free_gb, used_percent, config.readmit):
             next_state = DiskFullCordonState(phase="normal")
             actions.append(CordonAction(CordonActionKind.SET_MAINTENANCE_OFF))
         return _finish_tick(next_state, actions)

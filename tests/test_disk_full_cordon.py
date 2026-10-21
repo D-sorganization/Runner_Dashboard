@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from disk_full_cordon import (
@@ -15,36 +13,52 @@ from disk_full_cordon import (
     multi_host_cordon_alert_needed,
     plan_cordon_tick,
 )
-from runner_disk_guard_policy import _PolicyFromRm
+from shared_scripts.runner_disk_guard_config import (
+    RunnerDiskGuardConfig,
+    RunnerDiskGuardDrain,
+    RunnerDiskGuardFleet,
+    RunnerDiskGuardReadmit,
+    RunnerDiskGuardTrip,
+)
 
 
-def _policy(**overrides: object) -> _PolicyFromRm:
-    base = {
-        "enabled": True,
-        "trip_min_free_gb": 25.0,
-        "trip_max_used_percent": 92.0,
-        "readmit_min_free_gb": 40.0,
-        "readmit_max_used_percent": 85.0,
-        "drain_timeout_seconds": 120.0,
-        "finish_running_jobs": True,
-        "multi_host_cordon_alert_min": 2,
-    }
-    base.update(overrides)
-    return _PolicyFromRm(**base)  # type: ignore[arg-type]
+def _cfg(**overrides: object) -> RunnerDiskGuardConfig:
+    base = RunnerDiskGuardConfig(
+        schema="runner-disk-guard/v1",
+        enabled=True,
+        trip=RunnerDiskGuardTrip(min_free_gb=25.0, max_used_percent=92.0),
+        drain=RunnerDiskGuardDrain(finish_running_jobs=True, timeout_seconds=120.0),
+        readmit=RunnerDiskGuardReadmit(min_free_gb=40.0, max_used_percent=85.0),
+        fleet=RunnerDiskGuardFleet(multi_host_cordon_alert_min=2),
+    )
+    if not overrides:
+        return base
+    trip = overrides.get("trip", base.trip)
+    drain = overrides.get("drain", base.drain)
+    readmit = overrides.get("readmit", base.readmit)
+    fleet = overrides.get("fleet", base.fleet)
+    return RunnerDiskGuardConfig(
+        schema=base.schema,
+        enabled=bool(overrides.get("enabled", base.enabled)),
+        trip=trip,
+        drain=drain,
+        readmit=readmit,
+        fleet=fleet,
+    )
 
 
 def test_disk_pressure_trips_on_used_percent_or_low_free_gb() -> None:
-    policy = _policy()
-    assert disk_pressure_trips(20.0, 93.0, policy) is True
-    assert disk_pressure_trips(24.0, 50.0, policy) is True
-    assert disk_pressure_trips(30.0, 90.0, policy) is False
+    policy = _cfg()
+    assert disk_pressure_trips(20.0, 93.0, policy.trip) is True
+    assert disk_pressure_trips(24.0, 50.0, policy.trip) is True
+    assert disk_pressure_trips(30.0, 90.0, policy.trip) is False
 
 
 def test_readmit_uses_hysteresis_or_semantics() -> None:
-    policy = _policy()
-    assert disk_pressure_allows_readmit(45.0, 90.0, policy) is True
-    assert disk_pressure_allows_readmit(30.0, 80.0, policy) is True
-    assert disk_pressure_allows_readmit(30.0, 90.0, policy) is False
+    policy = _cfg()
+    assert disk_pressure_allows_readmit(45.0, 90.0, policy.readmit) is True
+    assert disk_pressure_allows_readmit(30.0, 80.0, policy.readmit) is True
+    assert disk_pressure_allows_readmit(30.0, 90.0, policy.readmit) is False
 
 
 def test_trip_starts_drain_and_sets_min_online_zero() -> None:
@@ -57,7 +71,7 @@ def test_trip_starts_drain_and_sets_min_online_zero() -> None:
         state,
         free_gb=20.0,
         used_percent=93.0,
-        policy=_policy(),
+        config=_cfg(),
         runners=runners,
         now=1000.0,
     )
@@ -75,7 +89,7 @@ def test_drain_timeout_force_stops_busy_runners() -> None:
         state,
         free_gb=20.0,
         used_percent=93.0,
-        policy=_policy(),
+        config=_cfg(),
         runners=runners,
         now=1125.0,
     )
@@ -86,11 +100,12 @@ def test_drain_timeout_force_stops_busy_runners() -> None:
 def test_finish_running_jobs_false_stops_busy_immediately() -> None:
     state = DiskFullCordonState(phase="tripping", tripped_at=1000.0)
     runners = [RunnerSnapshot("u1", active=True, busy=True)]
+    drain = RunnerDiskGuardDrain(finish_running_jobs=False, timeout_seconds=7200.0)
     result = plan_cordon_tick(
         state,
         free_gb=20.0,
         used_percent=93.0,
-        policy=_policy(finish_running_jobs=False),
+        config=_cfg(drain=drain),
         runners=runners,
         now=1001.0,
     )
@@ -100,12 +115,12 @@ def test_finish_running_jobs_false_stops_busy_immediately() -> None:
 
 def test_cordoned_runs_cleanup_once_then_readmits_with_hysteresis() -> None:
     state = DiskFullCordonState(phase="cordoned", tripped_at=900.0, cleanup_done=False)
-    policy = _policy()
+    policy = _cfg()
     low = plan_cordon_tick(
         state,
         free_gb=55.0,
         used_percent=50.0,
-        policy=policy,
+        config=policy,
         runners=[],
         now=2000.0,
     )
@@ -116,7 +131,7 @@ def test_cordoned_runs_cleanup_once_then_readmits_with_hysteresis() -> None:
         low.state,
         free_gb=55.0,
         used_percent=50.0,
-        policy=policy,
+        config=policy,
         runners=[],
         now=2001.0,
     )

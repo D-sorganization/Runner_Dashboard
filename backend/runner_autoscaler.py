@@ -613,6 +613,12 @@ def _record_stop_action(pool_name: str, now: float | None = None) -> None:
     pool_last_stop_action[pool_name] = time.time() if now is None else now
 
 
+def _cordon_stop_unit(unit: str, reason: str) -> None:
+    """Adapter for disk-full cordon drain stops (``_stop_unit`` returns bool)."""
+    _stop_unit(unit, reason=reason)
+    return
+
+
 def _run_poll_loop() -> None:
     """Infinite poll loop: sample resources, classify runners, scale up/down."""
     history_len = max(3, SUSTAIN_SECS // max(POLL_SECONDS, 1))
@@ -650,7 +656,7 @@ def _run_poll_loop() -> None:
                 units,
                 unit_is_active=_unit_is_active,
                 runner_is_busy=_runner_is_busy,
-                stop_unit=_stop_unit,
+                stop_unit=_cordon_stop_unit,
                 dry_run=DRY_RUN,
                 now=time.time(),
             ):

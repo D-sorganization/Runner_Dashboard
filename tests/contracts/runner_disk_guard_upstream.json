@@ -1,0 +1,9 @@
+{
+  "upstream_repository": "D-sorganization/Repository_Management",
+  "upstream_merge_pr": 2230,
+  "upstream_ref": "main",
+  "sha256": {
+    "shared_scripts/runner_disk_guard_config.py": "6efb73ffeeb64c926d0a1c13f509f0785faff93a01b1ca7dd45201d3b818e5ea",
+    "config/runner_disk_guard.yaml": "bdf9fd71d4663b9e07bcf9a2bbf681163c4e5491ed394df1c47de2f28ce9c14d"
+  }
+}

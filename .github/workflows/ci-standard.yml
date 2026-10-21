@@ -412,6 +412,8 @@ jobs:
           mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
           # Agent clients (#1228) are stdlib-only scripts, checked as their own module set.
           mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
+      - name: Runner disk guard vendored manifest
+        run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
       - name: Run bandit security scan
         # Full tier only (merge_group / workflow_dispatch, issue #1864).
         if: needs.changes.outputs.full_suite == 'true'
@@ -549,9 +551,24 @@ jobs:
           - "3.11"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout Repository_Management (runner disk guard upstream)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: D-sorganization/Repository_Management
+          ref: main
+          path: upstream-rm
+          fetch-depth: 1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
         with:
           python-version: ${{ matrix.python }}
+      - name: Verify runner disk guard matches Repository_Management
+        run: |
+          set -euo pipefail
+          UPSTREAM_SHA="$(git -C upstream-rm rev-parse HEAD)"
+          echo "Repository_Management runner-disk-guard upstream commit: ${UPSTREAM_SHA}"
+          for path in shared_scripts/runner_disk_guard_config.py config/runner_disk_guard.yaml; do
+            diff -u "upstream-rm/${path}" "${path}"
+          done
       - name: Bootstrap Python venv
         run: |
           python -m venv "$RUNNER_TEMP/ci-venv"
