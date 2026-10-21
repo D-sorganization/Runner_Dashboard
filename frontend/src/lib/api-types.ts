@@ -9683,6 +9683,15 @@ export interface components {
             providers?: {
                 [key: string]: unknown;
             };
+            /**
+             * Providers Cooldown
+             * @description Per-machine provider cooldown rows after capacity/quota/rate-limit (#2047)
+             */
+            providers_cooldown?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
             /** Recent 24H */
             recent_24h?: {
                 [key: string]: number;
