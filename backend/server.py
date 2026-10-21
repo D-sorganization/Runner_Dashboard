@@ -799,8 +799,10 @@ app.include_router(_priorities_router.router)
 
 # Board Proposals suggestion box (issue #1284, CR-7).
 from routers import proposals as _proposals_router  # noqa: E402
+from routers import intake_proposals as _intake_proposals_router  # noqa: E402
 
 app.include_router(_proposals_router.router)
+app.include_router(_intake_proposals_router.router)
 
 # Issue #924 — structural auth perimeter. Registered BEFORE the session selector so
 # that, in Starlette's outer→inner stack, session handling wraps this gate and
@@ -2760,6 +2762,10 @@ async def _startup() -> None:
     from staff.chat_fleet_context import warm_fleet_context_snapshots
 
     asyncio.create_task(warm_fleet_context_snapshots())
+
+    from email_intake.poller import email_intake_poll_loop  # noqa: PLC0415
+
+    asyncio.create_task(email_intake_poll_loop())
 
     from github_app_auth import github_app_auth_configured  # noqa: PLC0415
     from staff.github_app_preflight import periodic_github_app_preflight_loop  # noqa: PLC0415

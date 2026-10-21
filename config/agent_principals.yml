@@ -46,3 +46,9 @@ agents:
   - id: agent-gemini
     kind: other
     name: Gemini agent
+  - id: email-intake
+    name: Verified email intake
+    roles:
+      - email-intake
+    scopes:
+      - intake.proposals.create
