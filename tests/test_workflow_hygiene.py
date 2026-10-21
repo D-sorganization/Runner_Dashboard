@@ -35,6 +35,7 @@ _PR_GROUP_TOKENS = (
 )
 
 _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
+    "arm-cap-reconcile.yml": "Armed-PR inventory reconcile must finish SQLite inventory sync before optional disarm dispatch; cancel mid-run risks cap drift.",
     "conflict-disarm.yml": "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state.",
     "deploy-qualified-release.yml": "A root transaction must run to commit or rollback; never interrupt it mid-stream.",
     "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",

@@ -40,6 +40,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -805,6 +806,77 @@ def _emit(message: str) -> None:
     sys.stdout.write(f"{message}\n")
 
 
+def _import_arm_cap_module() -> Any:
+    """Load ``dispatch_arm_cap`` from ``backend/`` when present (RD-CI-005)."""
+    backend = Path(__file__).resolve().parents[1] / "backend"
+    if not backend.is_dir():
+        return None
+    path = str(backend)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    try:
+        import dispatch_arm_cap as arm_cap  # noqa: PLC0415
+    except ImportError:
+        return None
+    return arm_cap
+
+
+def _arm_cli(
+    repo: str,
+    pr: int,
+    *,
+    strategy: str,
+    delete_branch: bool,
+    arm_tier: str,
+    dispatch_kind: str,
+    repo_root: str,
+) -> int:
+    """Run ``--arm`` with optional WIP-cap reservation (RD-CI-005)."""
+    cap_token: str | None = None
+    arm_cap = _import_arm_cap_module()
+    if arm_cap is not None:
+        root = Path(repo_root or ".").resolve()
+        try:
+            policy = arm_cap.load_policy(root)
+            store = arm_cap.ArmCapStore(arm_cap.DEFAULT_STORE_PATH)
+            admit = arm_cap.admit_for_arm(
+                repo,
+                pr,
+                arm_cap.AdmitContext(tier=arm_tier, dispatch_kind=dispatch_kind),  # type: ignore[arg-type]
+                store=store,
+                policy=policy,
+            )
+        except ValueError as exc:
+            logger.warning("armed-PR cap policy unreadable; failing open: %s", exc)
+            admit = None
+        if admit is not None and not admit.allowed:
+            _emit(f"NOT armed {repo}#{pr}: {admit.reason}")
+            return EXIT_ARM_CAP_REFUSED
+        if admit is not None and admit.reservation_token:
+            cap_token = admit.reservation_token
+            if admit.shadow_would_block:
+                _emit(f"SHADOW would-block {repo}#{pr}: {admit.reason}")
+
+    result = arm_auto_merge(repo, pr, strategy=strategy, delete_branch=delete_branch)
+    if arm_cap is not None and cap_token:
+        cap_store = arm_cap.ArmCapStore(arm_cap.DEFAULT_STORE_PATH)
+        if result.armed or result.merged:
+            cap_store.confirm_reservation(cap_token)
+        else:
+            cap_store.release_reservation(cap_token)
+    if result.armed:
+        _emit(f"armed {repo}#{pr}")
+        return 0
+    if result.merged:
+        _emit(f"merged {repo}#{pr} ({strategy}; PR was already clean)")
+        return 0
+    if result.auto_merge_may_be_on:
+        _emit(f"DANGER NOT armed {repo}#{pr}: {result.reason()}")
+        return EXIT_ARM_MAY_BE_ON
+    _emit(f"NOT armed {repo}#{pr}: {result.reason()}")
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI: ``automerge_guard.py <owner/repo> <pr> [--arm] [--strategy squash]``.
 
@@ -852,62 +924,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_IDENTITY_REFUSED
 
     if args.arm:
-        cap_token: str | None = None
-        _arm_cap: Any = None
-        try:
-            from pathlib import Path
-
-            import dispatch_arm_cap as _arm_cap
-        except ImportError:
-            pass
-        if _arm_cap is not None:
-            repo_root = Path(args.repo_root or ".").resolve()
-            try:
-                policy = _arm_cap.load_policy(repo_root)
-                store = _arm_cap.ArmCapStore(_arm_cap.DEFAULT_STORE_PATH)
-                admit = _arm_cap.admit_for_arm(
-                    args.repo,
-                    args.pr,
-                    _arm_cap.AdmitContext(tier=args.arm_tier, dispatch_kind=args.dispatch_kind),
-                    store=store,
-                    policy=policy,
-                )
-            except ValueError as exc:
-                logger.warning("armed-PR cap policy unreadable; failing open: %s", exc)
-                admit = None
-            if admit is not None and not admit.allowed:
-                _emit(f"NOT armed {args.repo}#{args.pr}: {admit.reason}")
-                return EXIT_ARM_CAP_REFUSED
-            if admit is not None and admit.reservation_token:
-                cap_token = admit.reservation_token
-                if admit.shadow_would_block:
-                    _emit(f"SHADOW would-block {args.repo}#{args.pr}: {admit.reason}")
-
-        result = arm_auto_merge(
+        return _arm_cli(
             args.repo,
             args.pr,
             strategy=args.strategy,
             delete_branch=args.delete_branch,
+            arm_tier=args.arm_tier,
+            dispatch_kind=args.dispatch_kind,
+            repo_root=args.repo_root,
         )
-        if _arm_cap is not None and cap_token:
-            cap_store = _arm_cap.ArmCapStore(_arm_cap.DEFAULT_STORE_PATH)
-            if result.armed or result.merged:
-                cap_store.confirm_reservation(cap_token)
-            else:
-                cap_store.release_reservation(cap_token)
-        if result.armed:
-            _emit(f"armed {args.repo}#{args.pr}")
-            return 0
-        if result.merged:
-            _emit(
-                f"merged {args.repo}#{args.pr} ({args.strategy}; PR was already clean)"
-            )
-            return 0
-        if result.auto_merge_may_be_on:
-            _emit(f"DANGER NOT armed {args.repo}#{args.pr}: {result.reason()}")
-            return EXIT_ARM_MAY_BE_ON
-        _emit(f"NOT armed {args.repo}#{args.pr}: {result.reason()}")
-        return 1
 
     verdict = evaluate_hold(args.repo, args.pr)
     _emit(f"{args.repo}#{args.pr}: {verdict.describe()}")

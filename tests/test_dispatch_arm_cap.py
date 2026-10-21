@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
+_BACKEND = Path(__file__).resolve().parents[1] / "backend"
+if str(_BACKEND) not in sys.path:
+    sys.path.insert(0, str(_BACKEND))
 
 import dispatch_arm_cap as arm_cap  # noqa: E402
 
-_MODULE_PATH = _SCRIPTS / "automerge_guard.py"
+_MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "automerge_guard.py"
 _SPEC = importlib.util.spec_from_file_location("automerge_guard", _MODULE_PATH)
 automerge_guard = importlib.util.module_from_spec(_SPEC)
 sys.modules["automerge_guard"] = automerge_guard
@@ -210,6 +210,7 @@ def test_automerge_guard_refuses_when_cap_enforced(
     policy = _policy(tmp_path, max_healthy_armed=0, shadow_mode=False)
     monkeypatch.setattr(arm_cap, "load_policy", lambda _root=None, policy_path=None: policy)
     monkeypatch.setattr(arm_cap, "DEFAULT_STORE_PATH", tmp_path / "cap.sqlite3")
+    monkeypatch.setattr(automerge_guard, "_import_arm_cap_module", lambda: arm_cap)
     monkeypatch.setattr(
         automerge_guard,
         "arm_auto_merge",
@@ -231,6 +232,7 @@ def test_automerge_guard_confirms_reservation_on_success(
     store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")
     monkeypatch.setattr(arm_cap, "load_policy", lambda _root=None, policy_path=None: policy)
     monkeypatch.setattr(arm_cap, "DEFAULT_STORE_PATH", tmp_path / "cap.sqlite3")
+    monkeypatch.setattr(automerge_guard, "_import_arm_cap_module", lambda: arm_cap)
     monkeypatch.setattr(
         automerge_guard,
         "arm_auto_merge",

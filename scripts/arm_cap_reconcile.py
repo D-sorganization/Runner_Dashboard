@@ -11,11 +11,11 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-_SCRIPT_DIR = str(Path(__file__).resolve().parent)
-sys.path.insert(0, _SCRIPT_DIR)
+_BACKEND = str(Path(__file__).resolve().parents[1] / "backend")
+sys.path.insert(0, _BACKEND)
 import dispatch_arm_cap as arm_cap  # noqa: E402
 
-sys.path.remove(_SCRIPT_DIR)
+sys.path.remove(_BACKEND)
 
 logger = logging.getLogger("arm_cap_reconcile")
 CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]

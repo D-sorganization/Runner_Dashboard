@@ -77,7 +77,7 @@ class ArmCapPolicy:
         return cls(
             enabled=bool(data.get("enabled", False)),
             shadow_mode=bool(data.get("shadow_mode", True)),
-            max_healthy_armed=int(data.get("max_healthy_armed", 20)),
+            max_healthy_armed=int(data.get("max_healthy_armed", 12)),
             reservation_ttl_seconds=int(data.get("reservation_ttl_seconds", 300)),
             reconcile_interval_seconds=int(data.get("reconcile_interval_seconds", 900)),
             scope_repositories=scope_tuple,

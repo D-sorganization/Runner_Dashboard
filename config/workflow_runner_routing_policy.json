@@ -34,6 +34,7 @@
         "ci-spec-check.yml",
         "collate-changes.yml",
         "conflict-disarm.yml",
+        "arm-cap-reconcile.yml",
         "dependabot-auto-merge.yml",
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
