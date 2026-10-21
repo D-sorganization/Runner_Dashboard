@@ -8,7 +8,6 @@ import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +17,10 @@ from memory.models import MemoryEntry
 _STORE: AssistantMemoryStore | None = None
 
 
-def _config_dir() -> Path:
-    configured = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
-    return Path(configured).expanduser() if configured else Path("~/.config/runner-dashboard").expanduser()
-
-
 def default_db_path() -> Path:
-    return Path(os.environ.get("ASSISTANT_MEMORY_DB", str(_config_dir() / "assistant_memory.sqlite3"))).expanduser()
+    configured = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
+    base = Path(configured).expanduser() if configured else Path("~/.config/runner-dashboard").expanduser()
+    return Path(os.environ.get("ASSISTANT_MEMORY_DB", str(base / "assistant_memory.sqlite3"))).expanduser()
 
 
 def _now() -> str:
