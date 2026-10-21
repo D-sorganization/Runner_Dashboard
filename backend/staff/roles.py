@@ -488,3 +488,21 @@ def role_validation_errors(directory: Path | None = None) -> dict[str, list[str]
     load_roles(directory)
     with _CACHE_LOCK:
         return dict(_CACHE_ERRORS)
+
+
+def roles_yaml_parse_errors(directory: Path | None = None) -> list[str]:
+    """Return ``file: message`` for every role file whose YAML failed to parse.
+
+    Schema validation failures are ignored here; only syntax errors fail reconcile.
+    """
+    directory = directory if directory is not None else roles_dir()
+    if directory is None or not directory.is_dir():
+        return []
+    load_roles(directory)
+    with _CACHE_LOCK:
+        problems: list[str] = []
+        for name, errs in sorted(_CACHE_ERRORS.items()):
+            for err in errs:
+                if err.startswith("YAML syntax error:"):
+                    problems.append(f"{name}: {err}")
+        return problems
