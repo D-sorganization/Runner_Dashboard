@@ -1,103 +1,77 @@
-# Dependabot configuration — Issue #395
-#
-# Strategy:
-# - Weekly cadence for routine version bumps (grouped to reduce PR noise).
-# - Daily cadence for security advisories — handled by a dedicated `security`
-#   group with `applies-to: security-updates` so high/critical findings open
-#   a PR within 24h regardless of normal schedule.
-# - Major version bumps are intentionally left ungrouped so a human reviews
-#   them before merge.
-# - The companion auto-merge workflow (.github/workflows/dependabot-auto-merge.yml)
-#   only auto-merges patch + minor updates after required checks pass.
-#
-# Ecosystems covered:
-#   - pip (backend)            — backend/requirements.txt + pyproject.toml
-#   - github-actions           — pinned action SHAs across .github/workflows
-#   - docker                   — Dockerfile base image
-#
-# npm is intentionally NOT enabled: the frontend is a single-file SPA loaded
-# from CDN with no package.json or node_modules (see CLAUDE.md "Frontend"
-# section). Re-enable here if the frontend ever adopts a build step.
-
+# Golden target — Runner_Dashboard (RM#2196)
 version: 2
-updates:
-  # ── Python (pip / uv) ──────────────────────────────────────────────────
-  - package-ecosystem: "pip"
-    directory: "/backend"
+
+multi-ecosystem-groups:
+  weekly-deps:
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:00"
-      timezone: "Etc/UTC"
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Los_Angeles
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    patterns: ["*"]
+    multi-ecosystem-group: weekly-deps
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "ci"
-      - "judgement:objective"
-    commit-message:
-      prefix: "chore(deps)"
-      include: "scope"
+      - dependencies
+      - ci
+      - judgement:objective
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       python-security:
         applies-to: security-updates
         patterns:
           - "*"
-      python-minor-patch:
-        applies-to: version-updates
-        update-types:
-          - "minor"
-          - "patch"
 
-  # ── GitHub Actions ─────────────────────────────────────────────────────
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:00"
-      timezone: "Etc/UTC"
+      interval: weekly
+    patterns: ["*"]
+    multi-ecosystem-group: weekly-deps
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "ci"
-      - "judgement:objective"
-    commit-message:
-      prefix: "chore(actions)"
-      include: "scope"
+      - dependencies
+      - ci
+      - judgement:objective
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       actions-security:
         applies-to: security-updates
         patterns:
           - "*"
-      actions-minor-patch:
-        applies-to: version-updates
-        update-types:
-          - "minor"
-          - "patch"
 
-  # ── Docker ─────────────────────────────────────────────────────────────
-  - package-ecosystem: "docker"
-    directory: "/"
+  - package-ecosystem: docker
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:00"
-      timezone: "Etc/UTC"
+      interval: weekly
+    patterns: ["*"]
+    multi-ecosystem-group: weekly-deps
     open-pull-requests-limit: 3
     labels:
-      - "dependencies"
-      - "ci"
-      - "judgement:objective"
-    commit-message:
-      prefix: "chore(docker)"
-      include: "scope"
+      - dependencies
+      - ci
+      - judgement:objective
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       docker-security:
         applies-to: security-updates
         patterns:
           - "*"
-      docker-minor-patch:
-        applies-to: version-updates
-        update-types:
-          - "minor"
-          - "patch"

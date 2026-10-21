@@ -31,6 +31,7 @@ from staff.adapter_policies import (
     claude_unattended_tools,
     gemini_policy_toml,
 )
+from staff.provider_defaults import default_model_for_provider
 
 # Provider ids used by staff roles. They intentionally match the
 # ``dashboard_id`` values in agent_remediation/provider_registry.py where an
@@ -133,7 +134,7 @@ class ProviderAdapter:
             raise UnattendedUnsupportedError(
                 f"provider {self.provider_id!r} has no code-read-only unattended mode (#1659)"
             )
-        chosen_model = model or self.default_model or ""
+        chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
         slots = {
             "{prompt}": prompt,
             "{model}": chosen_model,
@@ -199,7 +200,7 @@ class ProviderAdapter:
                 f"provider {self.provider_id!r} has no read-only chat mode; refusing the turn"
             )
         allowed = claude_allowed_tools(read_only_tools)
-        chosen_model = model or self.default_model or ""
+        chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
 
         if self.provider_id in ("claude", "claude-ollama"):

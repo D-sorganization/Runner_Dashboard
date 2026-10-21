@@ -174,11 +174,11 @@ def _no_hub_proxy(monkeypatch):
     set ``HUB_URL`` with ``patch.object``, which overrides this default.
     """
     try:
-        import proxy_utils  # noqa: PLC0415
+        import dashboard_config  # noqa: PLC0415
     except ImportError:
         return
 
-    monkeypatch.setattr(proxy_utils, "HUB_URL", None)
+    monkeypatch.setattr(dashboard_config, "HUB_URL", None)
     server = sys.modules.get("server")  # heavy: patch only when a test loaded it
     if server is not None and hasattr(server, "HUB_URL"):
         monkeypatch.setattr(server, "HUB_URL", None)
