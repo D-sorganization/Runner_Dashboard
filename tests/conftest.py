@@ -369,8 +369,14 @@ def _stub_staff_github_run_env(monkeypatch, request):  # noqa: ANN001
 
     token = "ghs_" + "F" * 40 + "_teststub"
 
-    def _prep(base_env, role, repo):  # noqa: ANN001
-        return build_staff_run_env(base_env, token), StaffGithubToken(token=token, expires_at=0.0, source="test")
+    def _prep(base_env, role, repo, **kwargs):  # noqa: ANN001
+        env = build_staff_run_env(
+            base_env,
+            token,
+            run_id=kwargs.get("run_id", "run-test-stub"),
+            real_gh_path=kwargs.get("real_gh_path", "/usr/bin/gh"),
+        )
+        return env, StaffGithubToken(token=token, expires_at=0.0, source="test")
 
     monkeypatch.setattr("staff.runner.prepare_staff_run_github_env", _prep)
 

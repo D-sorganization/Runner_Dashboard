@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from github_app_auth import (
     github_app_auth_configured,
     mint_installation_access_token,
 )
 from staff.roles import RoleSpec
-
-# GitHub installation tokens last at most one hour; stay below that for long runs.
-GITHUB_INSTALLATION_TOKEN_MAX_RUN_SECONDS = int(os.environ.get("STAFF_GITHUB_TOKEN_MAX_RUN_SECONDS", "3300"))
 
 _CHILD_STRIP_KEYS = (
     "GH_TOKEN",
@@ -23,6 +22,8 @@ _CHILD_STRIP_KEYS = (
     "GITHUB_APP_ID",
     "GITHUB_APP_INSTALLATION_ID",
 )
+
+_WRAPPERS_DIR = Path(__file__).resolve().parent / "wrappers"
 
 
 @dataclass(frozen=True)
@@ -105,24 +106,41 @@ def mint_staff_run_github_token(role: RoleSpec, repo: str) -> StaffGithubToken:
     )
 
 
-def cap_run_timeout_for_github_token(seconds: float) -> float:
-    return min(float(seconds), float(GITHUB_INSTALLATION_TOKEN_MAX_RUN_SECONDS))
-
-
 def strip_github_secrets_from_child_env(env: Mapping[str, str]) -> dict[str, str]:
     return {k: v for k, v in env.items() if k not in _CHILD_STRIP_KEYS}
 
 
-def build_staff_run_env(base_env: Mapping[str, str], github_token: str) -> dict[str, str]:
-    """Child-process env: operator/App secrets stripped, run token and git auth injected."""
+def _credential_url(run_id: str, dashboard_port: str | None) -> str:
+    port = (dashboard_port or os.environ.get("DASHBOARD_PORT", "8321")).strip()
+    return f"http://127.0.0.1:{port}/api/staff/runs/{run_id}/github-credential"
+
+
+def build_staff_run_env(
+    base_env: Mapping[str, str],
+    github_token: str,
+    *,
+    run_id: str,
+    real_gh_path: str,
+    python_executable: str | None = None,
+    dashboard_port: str | None = None,
+) -> dict[str, str]:
+    """Child-process env: stripped secrets, bootstrap token, refresh hooks for git/gh."""
     env = strip_github_secrets_from_child_env(base_env)
     env = dict(env)
+    py = python_executable or sys.executable
     env["GH_TOKEN"] = github_token
     env["GITHUB_TOKEN"] = github_token
-    # In-memory git URL rewrite; never writes credentials into the worktree.
-    env["GIT_CONFIG_COUNT"] = "1"
-    env["GIT_CONFIG_KEY_0"] = "url.https://github.com/.insteadOf"
-    env["GIT_CONFIG_VALUE_0"] = f"https://x-access-token:{github_token}@github.com/"
+    env["STAFF_GITHUB_CREDENTIAL_URL"] = _credential_url(run_id, dashboard_port)
+    env["STAFF_REAL_GH_PATH"] = real_gh_path
+    helper = f"!{py} -m staff.github_git_credential"
+    env["GIT_CONFIG_COUNT"] = "2"
+    env["GIT_CONFIG_KEY_0"] = "credential.https://github.com.helper"
+    env["GIT_CONFIG_VALUE_0"] = helper
+    env["GIT_CONFIG_KEY_1"] = "credential.useHttpPath"
+    env["GIT_CONFIG_VALUE_1"] = "true"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    wrapper_dir = str(_WRAPPERS_DIR)
+    env["PATH"] = os.pathsep.join([wrapper_dir, env.get("PATH", "")])
     return env
 
 
@@ -130,6 +148,19 @@ def prepare_staff_run_github_env(
     base_env: Mapping[str, str],
     role: RoleSpec,
     repo: str,
+    *,
+    run_id: str,
+    real_gh_path: str,
+    python_executable: str | None = None,
+    dashboard_port: str | None = None,
 ) -> tuple[dict[str, str], StaffGithubToken]:
     cred = mint_staff_run_github_token(role, repo)
-    return build_staff_run_env(base_env, cred.token), cred
+    env = build_staff_run_env(
+        base_env,
+        cred.token,
+        run_id=run_id,
+        real_gh_path=real_gh_path,
+        python_executable=python_executable,
+        dashboard_port=dashboard_port,
+    )
+    return env, cred

@@ -7,16 +7,17 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import sys
+
 from staff.github_run_env import (
-    GITHUB_INSTALLATION_TOKEN_MAX_RUN_SECONDS,
     StaffGithubToken,
     build_staff_run_env,
-    cap_run_timeout_for_github_token,
     github_permissions_for_role,
     mint_staff_run_github_token,
     operator_token_fallback_enabled,
     strip_github_secrets_from_child_env,
 )
+from github_app_auth import InstallationToken
 from staff.roles import RoleSpec
 from staff.runner import RunRecord, RunRequest, StaffRunner
 from staff.store import RunStore
@@ -84,16 +85,21 @@ def test_strip_operator_tokens_and_app_private_key() -> None:
     assert "GITHUB_APP_ID" not in child
 
 
-def test_build_staff_run_env_injects_token_and_git_config() -> None:
+def test_build_staff_run_env_injects_token_and_refresh_hooks() -> None:
     base = {"PATH": "/bin", "GH_TOKEN": _FAKE_GHP}
-    env = build_staff_run_env(base_env=base, github_token=_FAKE_GHS)
+    env = build_staff_run_env(
+        base_env=base,
+        github_token=_FAKE_GHS,
+        run_id="run-env-01",
+        real_gh_path="/usr/bin/gh",
+        python_executable=sys.executable,
+    )
     assert env["GH_TOKEN"] == _FAKE_GHS
     assert env["GITHUB_TOKEN"] == _FAKE_GHS
-    assert "GH_TOKEN" not in base or base["GH_TOKEN"] == _FAKE_GHP
-    assert env["GIT_CONFIG_COUNT"] == "1"
-    assert "x-access-token" in env["GIT_CONFIG_VALUE_0"]
-    assert _FAKE_GHS in env["GIT_CONFIG_VALUE_0"]
-    assert _FAKE_GHP not in env["GIT_CONFIG_VALUE_0"]
+    assert env["GIT_CONFIG_KEY_0"] == "credential.https://github.com.helper"
+    assert "github_git_credential" in env["GIT_CONFIG_VALUE_0"]
+    assert "x-access-token" not in env["GIT_CONFIG_VALUE_0"]
+    assert env["STAFF_GITHUB_CREDENTIAL_URL"].endswith("/runs/run-env-01/github-credential")
 
 
 def test_mint_staff_run_github_token_fail_closed_without_app(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,7 +121,7 @@ def test_mint_staff_run_github_token_operator_opt_in(monkeypatch: pytest.MonkeyP
 
 def test_mint_staff_run_github_token_uses_app_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("STAFF_ALLOW_OPERATOR_TOKEN", raising=False)
-    fake = StaffGithubToken(token=_FAKE_GHS, expires_at=1_700_000_000.0, source="github_app")
+    fake = InstallationToken(token=_FAKE_GHS, expires_at=1_700_000_000.0)
     with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
         with patch("staff.github_run_env.mint_installation_access_token", return_value=fake) as mint:
             tok = mint_staff_run_github_token(
@@ -127,11 +133,6 @@ def test_mint_staff_run_github_token_uses_app_when_configured(monkeypatch: pytes
     kwargs = mint.call_args.kwargs
     assert kwargs["repositories"] == ["D-sorganization/Runner_Dashboard"]
     assert kwargs["permissions"]["contents"] == "write"
-
-
-def test_cap_run_timeout_for_github_token() -> None:
-    assert cap_run_timeout_for_github_token(7200.0) == float(GITHUB_INSTALLATION_TOKEN_MAX_RUN_SECONDS)
-    assert cap_run_timeout_for_github_token(600.0) == 600.0
 
 
 def test_runner_auth_error_when_github_mint_fails(tmp_path: Any) -> None:
@@ -238,9 +239,14 @@ def test_runner_injects_scoped_github_token(tmp_path: Any) -> None:
         mock_proc.poll.return_value = 0
         return mock_proc
 
-    env_patch, _cred = build_staff_run_env({"PATH": "/bin", "GH_TOKEN": _FAKE_GHP}, _FAKE_GHS), StaffGithubToken(
-        token=_FAKE_GHS, expires_at=0.0, source="github_app"
+    env_patch = build_staff_run_env(
+        {"PATH": "/bin", "GH_TOKEN": _FAKE_GHP},
+        _FAKE_GHS,
+        run_id=rec.id,
+        real_gh_path="/usr/bin/gh",
+        python_executable=sys.executable,
     )
+    _cred = StaffGithubToken(token=_FAKE_GHS, expires_at=0.0, source="github_app")
 
     with patch.dict(os.environ, {"GH_TOKEN": _FAKE_GHP}, clear=False):
         with patch("staff.runner.prepare_staff_run_github_env", return_value=(env_patch, _cred)):

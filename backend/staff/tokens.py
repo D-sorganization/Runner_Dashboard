@@ -67,7 +67,7 @@ def mint_run_token(
     if ttl_seconds <= 0:
         raise ValueError("ttl_seconds must be positive")
 
-    scopes = resolve_run_scopes(fleet_actions)
+    scopes = sorted(set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential"})
     principal_id = f"staff:{role}:{run_id}"
     role_preset = f"staff-run:{run_id}"
 

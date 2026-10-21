@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""Wrap ``gh`` to refresh the GitHub installation token before each invocation (#2038)."""
+
+from __future__ import annotations
+
+import logging
+import os
+import subprocess
+import sys
+
+from staff.github_credential_client import fetch_github_token_for_run
+
+log = logging.getLogger("dashboard.staff.gh_wrapper")
+
+
+def main() -> int:
+    real = os.environ.get("STAFF_REAL_GH_PATH", "").strip() or "gh"
+    try:
+        token = fetch_github_token_for_run()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff gh wrapper: token refresh failed: %s", exc)
+        return 1
+    env = {**os.environ, "GH_TOKEN": token, "GITHUB_TOKEN": token}
+    try:
+        return subprocess.call([real, *sys.argv[1:]], env=env)
+    except OSError as exc:
+        log.warning("staff gh wrapper: failed to exec %s: %s", real, exc)
+        return 127
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

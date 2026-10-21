@@ -17,8 +17,16 @@ from staff.tokens import mint_run_token, revoke_run_token
 _FAKE_GHS = "ghs_" + "B" * 40 + "_tok"
 
 
-def _github_env_patch() -> tuple[dict[str, str], StaffGithubToken]:
-    env = build_staff_run_env({"PATH": "/usr/bin"}, _FAKE_GHS)
+def _github_env_patch(run_id: str = "run-exec-test-01") -> tuple[dict[str, str], StaffGithubToken]:
+    import sys
+
+    env = build_staff_run_env(
+        {"PATH": "/usr/bin"},
+        _FAKE_GHS,
+        run_id=run_id,
+        real_gh_path="/usr/bin/gh",
+        python_executable=sys.executable,
+    )
     cred = StaffGithubToken(token=_FAKE_GHS, expires_at=0.0, source="test")
     return env, cred
 
