@@ -125,13 +125,20 @@ class StaffRunner:
             consolidation=paragraph,
             focus=focus,
         )
-        argv = self._adapters[provider].build_command(
-            prompt, "<workdir>", req.model or role.model, **read_only_kwargs(role)
+        from staff.model_resolution import resolve_staff_run_model
+
+        adapter = self._adapters[provider]
+        effective_model = resolve_staff_run_model(
+            requested=req.model,
+            role_model=role.model,
+            provider_id=provider,
+            adapter=adapter,
         )
+        argv = adapter.build_command(prompt, "<workdir>", effective_model, **read_only_kwargs(role))
         return RunPlan(
             role=role.name,
             provider=provider,
-            model=req.model or role.model,
+            model=effective_model,
             repo=req.repo,
             target_kind=req.target_kind,
             target_ref=req.target_ref,

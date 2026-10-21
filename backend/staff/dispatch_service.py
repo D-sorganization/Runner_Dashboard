@@ -259,6 +259,26 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         )
         return await _forward(target, cmd, obo_hdr)
     if cmd.dry_run:
+        try:
+            record_audit(
+                action="dispatch",
+                target=f"role:{plan.role}",
+                principal=format_caller(caller),
+                on_behalf_of=cmd.on_behalf_of,
+                surface=cmd.surface,
+                thread_id=cmd.thread_id,
+                outcome="dry_run",
+                detail={
+                    "repo": plan.repo,
+                    "provider": plan.provider,
+                    "model": plan.model,
+                    "machine": runner.machine,
+                    "dry_run": True,
+                },
+                fail_closed=False,
+            )
+        except AuditError as exc:
+            log.warning("staff: dry-run dispatch audit skipped: %s", exc)
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
     budget_ok, budget_reason = BudgetGuard(runner.store).can_dispatch(spec, plan.provider)
     if not budget_ok and not cmd.ignore_budget:

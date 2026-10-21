@@ -26,6 +26,7 @@ from routers.staff import (
 )
 from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
+from staff.dispatch_auth import require_staff_run_dispatch
 from staff import fleet as staff_fleet
 from staff import summary_view, usage
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
@@ -319,7 +320,7 @@ async def dispatch_v1(
     body: RunBody,
     request: Request,
     idempotency_key: str = Depends(require_idempotency_header),
-    _peer: Principal = Depends(require_scope("staff.dispatch")),
+    _peer: Principal = Depends(require_staff_run_dispatch()),
 ) -> Response:
     caller = format_caller(_peer)
     endpoint = f"POST /api/v1/staff/{role}/run"

@@ -251,13 +251,19 @@ def test_loopback_auth_scope_enforcement(monkeypatch: pytest.MonkeyPatch, auth_e
 
     loopback_client = TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 53000))
 
-    # Loopback has staff.dispatch
+    # Dispatch requires a bearer even on loopback (#2053)
     d_resp = loopback_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "local dev", "provider": "claude", "dry_run": True},
         headers=_XHR,
     )
-    assert d_resp.status_code == 200
+    assert d_resp.status_code == 401
+    d_ok = loopback_client.post(
+        "/api/staff/ad-hoc/run",
+        json={"prompt": "local dev", "provider": "claude", "dry_run": True},
+        headers={**_XHR, "Authorization": f"Bearer {auth_env['operator']}"},
+    )
+    assert d_ok.status_code == 200
 
     # Loopback has staff.read
     r_resp = loopback_client.get("/api/staff/roster")

@@ -97,7 +97,10 @@ async def test_approved_dispatch_honours_dry_run(staff: runner_mod.StaffRunner) 
     assert res.success, res.error
     assert res.run_id is None and res.result["dry_run"] is True
     assert staff.store.list_runs(limit=5) == []
-    assert get_audit_store().list_entries(action="dispatch") == []
+    entries = get_audit_store().list_entries(action="dispatch")
+    assert len(entries) == 1
+    assert entries[0].outcome == "dry_run"
+    assert entries[0].detail.get("dry_run") is True
 
 
 @pytest.mark.unit

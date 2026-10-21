@@ -439,13 +439,17 @@ def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises
 # ── routes ───────────────────────────────────────────────────────────────
 @pytest.fixture
 def client(staff: runner_mod.StaffRunner) -> Iterator[TestClient]:
-    from identity import require_fleet_peer, require_orchestrator_peer  # noqa: PLC0415
+    from identity import Principal, require_fleet_peer, require_orchestrator_peer  # noqa: PLC0415
     from routers import staff as staff_router  # noqa: PLC0415
+    from staff.dispatch_auth import require_staff_run_dispatch  # noqa: PLC0415
 
     app = FastAPI()
     app.include_router(staff_router.router)
     app.dependency_overrides[require_fleet_peer] = lambda: "test-peer"
     app.dependency_overrides[require_orchestrator_peer] = lambda: "test-orchestrator"
+    app.dependency_overrides[require_staff_run_dispatch()] = lambda: Principal(
+        id="test-dispatch", type="bot", name="Test Dispatch", roles=["admin"]
+    )
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

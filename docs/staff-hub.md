@@ -30,7 +30,7 @@ missing binary is classified `cli_missing`, an expired Google session `auth_expi
 | GET    | `/api/staff/runs`             | fleet peer        | History; filters `role`, `status`, `since`, `limit`                                                                                                                                                      |
 | GET    | `/api/staff/runs/{id}`        | fleet peer        | One run plus its events                                                                                                                                                                                  |
 | GET    | `/api/staff/runs/{id}/stream` | fleet peer        | Server-sent events until the run ends                                                                                                                                                                    |
-| POST   | `/api/staff/{role}/run`       | orchestrator peer | Dispatch; `dry_run: true` returns the plan only                                                                                                                                                          |
+| POST   | `/api/staff/{role}/run`       | bearer (`staff.dispatch`) | Dispatch; `dry_run: true` returns the plan only; loopback without a bearer is rejected (#2053)                                                                                                           |
 | POST   | `/api/staff/runs/{id}/cancel` | orchestrator peer | Terminate a run                                                                                                                                                                                          |
 | GET    | `/api/staff/schedule`         | fleet peer        | Per role: next fire, in window now, blocking hold, budget, last fired                                                                                                                                    |
 | GET    | `/api/staff/holds`            | fleet peer        | The holds list                                                                                                                                                                                           |
@@ -41,9 +41,11 @@ missing binary is classified `cli_missing`, an expired Google session `auth_expi
 | GET    | `/api/staff/quota`            | fleet peer        | Billing kind and live plan windows per provider (#1587); local files only                                                                                                                                |
 
 POST bodies need the CSRF sentinel header `X-Requested-With: XMLHttpRequest`
-like every other dashboard POST. "Orchestrator peer" means an operator
-principal, the `HUB_FLEET_TOKEN` bearer, or loopback with
-`DASHBOARD_LOOPBACK_AUTH=1` (the same rule as `/api/orchestrator/*`).
+like every other dashboard POST. Dispatch (`POST /api/staff/{role}/run`) requires
+`Authorization: Bearer …` with a principal that holds `staff.dispatch` (operator
+or bot service token, or `HUB_FLEET_TOKEN`). Loopback development auth does not
+substitute for a bearer on dispatch, including `dry_run` previews (#2053). Other
+staff mutations document their scope on the table above.
 
 Example dispatch:
 

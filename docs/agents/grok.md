@@ -59,7 +59,7 @@ The first live contract is the `/api/v1/staff` threads API with the `agent-grok`
 
 All POST requests to `/api/v1/staff` require:
 
-- `Authorization: Bearer $FLEET_API_TOKEN`
+- `Authorization: Bearer $FLEET_API_TOKEN` (including `POST …/{role}/run` with `dry_run: true`; loopback without a bearer is rejected, #2053)
 - `X-Requested-With: XMLHttpRequest` (CSRF sentinel)
 - `Content-Type: application/json`
 - `Idempotency-Key: <unique-key>` (for mutating POST requests)
