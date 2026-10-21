@@ -49,8 +49,9 @@ def hub_ready_for_commit(
     return True, f"hub at {sha[:7]}"
 
 
-def fetch_fleet_status(hub_url: str, token: str | None, *, timeout: float = 20.0) -> dict[str, Any]:
-    url = f"{hub_url.rstrip('/')}/api/fleet/status?exclude_pools=true"
+def fetch_hub_version(hub_url: str, token: str | None, *, timeout: float = 5.0) -> dict[str, Any]:
+    """Lightweight hub deployment probe (no fleet fan-out)."""
+    url = f"{hub_url.rstrip('/')}/api/version"
     headers: dict[str, str] = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -61,3 +62,16 @@ def fetch_fleet_status(hub_url: str, token: str | None, *, timeout: float = 20.0
     except (URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
         raise RuntimeError(str(exc)) from exc
     return payload if isinstance(payload, dict) else {}
+
+
+def fetch_fleet_status(hub_url: str, token: str | None, *, timeout: float = 5.0) -> dict[str, Any]:
+    """Return a minimal fleet-shaped payload for hub commit gating.
+
+    Auto-deploy only needs the hub ``git_sha``; ``/api/version`` answers in
+    milliseconds instead of fanning out ``/api/fleet/status``.
+    """
+    version = fetch_hub_version(hub_url, token, timeout=timeout)
+    sha = str(version.get("git_sha") or "").lower()
+    if len(sha) != 40:
+        return {}
+    return {"hub": {"_role": "hub", "deployment": {"git_sha": sha}}}
