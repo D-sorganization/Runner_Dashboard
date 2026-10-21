@@ -14,36 +14,24 @@ is exercised operationally, not here).
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import textwrap
 from pathlib import Path
 
 import pytest
 
+from pwsh_host import find_pwsh, run_pwsh_command, run_pwsh_file
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "deploy" / "fleet-health-monitor.ps1"
 
-
-def _find_pwsh() -> str | None:
-    for candidate in ("pwsh", "powershell"):
-        if shutil.which(candidate):
-            return candidate
-    return None
-
-
-PWSH = _find_pwsh()
+PWSH = find_pwsh()
 PWSH_REQUIRED = pytest.mark.skipif(PWSH is None, reason="PowerShell not available on this runner")
 
 
 def _run_ps(script_body: str) -> subprocess.CompletedProcess[str]:
     assert PWSH is not None
-    return subprocess.run(
-        [PWSH, "-NoProfile", "-NonInteractive", "-Command", script_body],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    return run_pwsh_command(PWSH, script_body)
 
 
 def _prefix() -> str:
@@ -79,22 +67,15 @@ def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Pat
     """An operator drain must win over every keepalive and recovery action."""
     marker = tmp_path / "deskcomputer-runner-drained.flag"
     marker.write_text("drained\n", encoding="utf-8")
-    result = subprocess.run(
-        [
-            PWSH,
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(SCRIPT),
+    result = run_pwsh_file(
+        PWSH,
+        str(SCRIPT),
+        (
             "-DrainMarker",
             str(marker),
             "-DashboardUrl",
             "invalid://must-not-be-contacted",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
+        ),
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
@@ -103,24 +84,17 @@ def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Pat
 @PWSH_REQUIRED
 def test_script_exits_before_side_effects_when_enable_marker_is_absent(tmp_path: Path) -> None:
     """Marker cleanup alone must not re-enable automatic fleet recovery."""
-    result = subprocess.run(
-        [
-            PWSH,
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(SCRIPT),
+    result = run_pwsh_file(
+        PWSH,
+        str(SCRIPT),
+        (
             "-DrainMarker",
             str(tmp_path / "no-drain.flag"),
             "-EnableMarker",
             str(tmp_path / "no-enable.flag"),
             "-DashboardUrl",
             "invalid://must-not-be-contacted",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
+        ),
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""

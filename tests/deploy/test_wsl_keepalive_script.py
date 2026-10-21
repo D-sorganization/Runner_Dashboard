@@ -21,12 +21,13 @@ out to ``wsl.exe``. Those are covered by the Pester suite at
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import textwrap
 from pathlib import Path
 
 import pytest
+
+from pwsh_host import find_pwsh, run_pwsh_command, run_pwsh_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "deploy" / "wsl-keepalive.ps1"
@@ -42,26 +43,19 @@ def test_drain_marker_exits_before_validation_or_recovery(tmp_path: Path) -> Non
     """A deliberate host drain must prevent WSL warm-up and recovery."""
     marker = tmp_path / "deskcomputer-runner-drained.flag"
     marker.write_text("drained\n", encoding="utf-8")
-    shell = shutil.which("pwsh") or shutil.which("powershell")
+    shell = find_pwsh()
     if shell is None:
         pytest.skip("PowerShell not available")
-    result = subprocess.run(
-        [
-            shell,
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(SCRIPT),
+    result = run_pwsh_file(
+        shell,
+        str(SCRIPT),
+        (
             "-DrainMarker",
             str(marker),
             "-CheckIntervalSeconds",
             "1",
             "-Once",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
+        ),
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
@@ -69,16 +63,13 @@ def test_drain_marker_exits_before_validation_or_recovery(tmp_path: Path) -> Non
 
 def test_missing_enable_marker_exits_before_validation_or_recovery(tmp_path: Path) -> None:
     """Automatic recovery requires an explicit operator enable marker."""
-    shell = shutil.which("pwsh") or shutil.which("powershell")
+    shell = find_pwsh()
     if shell is None:
         pytest.skip("PowerShell not available")
-    result = subprocess.run(
-        [
-            shell,
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(SCRIPT),
+    result = run_pwsh_file(
+        shell,
+        str(SCRIPT),
+        (
             "-DrainMarker",
             str(tmp_path / "no-drain.flag"),
             "-EnableMarker",
@@ -86,11 +77,7 @@ def test_missing_enable_marker_exits_before_validation_or_recovery(tmp_path: Pat
             "-CheckIntervalSeconds",
             "1",
             "-Once",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
+        ),
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
@@ -112,26 +99,14 @@ def test_keepalive_and_monitor_share_default_operator_markers() -> None:
 INSTALLER = REPO_ROOT / "deploy" / "install-wsl-keepalive-task.ps1"
 
 
-def _find_pwsh() -> str | None:
-    for candidate in ("pwsh", "powershell"):
-        if shutil.which(candidate):
-            return candidate
-    return None
-
-
-PWSH = _find_pwsh()
+PWSH = find_pwsh()
 PWSH_REQUIRED = pytest.mark.skipif(PWSH is None, reason="PowerShell (pwsh/powershell) not available on this runner")
 
 
 def _run_ps(script_body: str) -> subprocess.CompletedProcess[str]:
     """Run a small PowerShell snippet and return the completed process."""
     assert PWSH is not None
-    return subprocess.run(
-        [PWSH, "-NoProfile", "-NonInteractive", "-Command", script_body],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    return run_pwsh_command(PWSH, script_body)
 
 
 # ---------------------------------------------------------------------------
