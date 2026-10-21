@@ -20,6 +20,8 @@ from node_auto_deploy.version import deployed_git_sha  # noqa: E402
 
 _SHA = "a" * 40
 _SHA_B = "b" * 40
+_ECB3F6B_SHA = "ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2"
+_ECB3F6B_FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "ecb3f6b_check_runs.json"
 
 
 def test_deployed_git_sha_reads_deployment_json(tmp_path: Path) -> None:
@@ -46,6 +48,48 @@ def test_ci_gate_requires_completed_success() -> None:
     ok, detail = ci_gate_for_commit(failed, _SHA)
     assert ok is False
     assert "failed" in detail
+
+
+def test_ci_gate_treats_skipped_and_duplicate_names_as_passing() -> None:
+    skipped_only = [
+        {"head_sha": _SHA, "name": "guard", "status": "completed", "conclusion": "skipped"},
+    ]
+    ok, _ = ci_gate_for_commit(skipped_only, _SHA)
+    assert ok is True
+
+    tier_gated_with_success = [
+        {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "skipped"},
+        {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "success"},
+    ]
+    ok, _ = ci_gate_for_commit(tier_gated_with_success, _SHA)
+    assert ok is True
+
+    skipped_plus_failure = [
+        {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "skipped"},
+        {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "failure"},
+    ]
+    ok, detail = ci_gate_for_commit(skipped_plus_failure, _SHA)
+    assert ok is False
+    assert "lint" in detail
+
+    neutral_only = [
+        {"head_sha": _SHA, "name": "note", "status": "completed", "conclusion": "neutral"},
+    ]
+    ok, _ = ci_gate_for_commit(neutral_only, _SHA)
+    assert ok is False
+
+
+def test_ci_gate_passes_ecb3f6b_main_check_list() -> None:
+    runs = json.loads(_ECB3F6B_FIXTURE.read_text(encoding="utf-8"))
+    assert len(runs) == 29
+    conclusions = {str(r.get("conclusion")) for r in runs}
+    assert conclusions == {"success", "skipped"}
+    assert sum(1 for r in runs if r.get("conclusion") == "success") == 25
+    assert sum(1 for r in runs if r.get("conclusion") == "skipped") == 4
+
+    ok, detail = ci_gate_for_commit(runs, _ECB3F6B_SHA)
+    assert ok is True
+    assert _ECB3F6B_SHA[:7] in detail
 
 
 def test_service_scope_prefers_system_when_both_active() -> None:
