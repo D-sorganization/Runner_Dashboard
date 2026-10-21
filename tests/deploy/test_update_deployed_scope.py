@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -15,16 +16,15 @@ UPDATE = ROOT / "deploy" / "update-deployed.sh"
 pytestmark = pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 
 
-def _run_update(
-    tmp_path: Path,
-    *args: str,
-    health: bool = True,
-    user_unit: bool = True,
-    user_manager: bool = True,
-) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    log = tmp_path / "commands.log"
+@dataclass(frozen=True)
+class _UpdateOptions:
+    args: tuple[str, ...] = ()
+    health: bool = True
+    user_unit: bool = True
+    user_manager: bool = True
+
+
+def _create_command_stubs(bin_dir: Path, options: _UpdateOptions) -> None:
     for name, body in {
         "systemctl": (
             'printf "systemctl %s\\n" "$*" >> "$COMMAND_LOG"\n'
@@ -36,7 +36,8 @@ def _run_update(
             "exit 0\n"
         ),
         "sudo": 'printf "sudo %s\\n" "$*" >> "$COMMAND_LOG"\nexec "$@"\n',
-        "curl": 'printf "curl %s\\n" "$*" >> "$COMMAND_LOG"\n' + ("exit 0\n" if health else "exit 1\n"),
+        "curl": 'printf "curl %s\\n" "$*" >> "$COMMAND_LOG"\n'
+        + ("exit 0\n" if options.health else "exit 1\n"),
         "sleep": "exit 0\n",
         "rsync": (
             'printf "rsync %s\\n" "$*" >> "$COMMAND_LOG"\n'
@@ -50,10 +51,8 @@ def _run_update(
         command.write_text(f"#!/usr/bin/env bash\n{body}", encoding="utf-8")
         command.chmod(0o755)
 
-    deploy = tmp_path / "deployed"
-    deploy.mkdir()
-    (deploy / "old.txt").write_text("old", encoding="utf-8")
-    repo = tmp_path / "repo"
+
+def _create_fixture_repository(repo: Path) -> None:
     for directory in ("backend", "frontend", "deploy"):
         (repo / directory).mkdir(parents=True, exist_ok=True)
     (repo / "uv.lock").write_text("", encoding="utf-8")
@@ -66,7 +65,8 @@ def _run_update(
     (repo / "frontend" / "index.html").write_text("", encoding="utf-8")
     (repo / "dist").mkdir()
 
-    scripts = tmp_path / "scripts"
+
+def _create_fixture_scripts(scripts: Path) -> None:
     scripts.mkdir()
     shutil.copy2(UPDATE, scripts / "update-deployed.sh")
     shutil.copy2(ROOT / "deploy" / "lib.sh", scripts / "lib.sh")
@@ -88,6 +88,8 @@ def _run_update(
     )
     (scripts / "install-dashboard-artifact.sh").chmod(0o755)
 
+
+def _update_environment(tmp_path: Path, log: Path, deploy: Path, options: _UpdateOptions) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("DBUS_SESSION_BUS_ADDRESS", None)
     env.update(
@@ -95,12 +97,32 @@ def _run_update(
         DEPLOY_DIR=str(deploy),
         DASHBOARD_HOME=str(tmp_path),
         DEPLOY_HEALTH_DELAYS="0",
-        FAKE_USER_UNIT_STATE="loaded" if user_unit else "not-found",
-        FAKE_USER_MANAGER_AVAILABLE="true" if user_manager else "false",
+        FAKE_USER_UNIT_STATE="loaded" if options.user_unit else "not-found",
+        FAKE_USER_MANAGER_AVAILABLE="true" if options.user_manager else "false",
     )
+    env["HOME"] = str(tmp_path)
     runtime_dir = tmp_path / "user-runtime"
     runtime_dir.mkdir()
     env["XDG_RUNTIME_DIR"] = str(runtime_dir)
+    return env
+
+
+def _run_update(
+    tmp_path: Path, options: _UpdateOptions | None = None
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    options = options or _UpdateOptions()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "commands.log"
+    _create_command_stubs(bin_dir, options)
+    deploy = tmp_path / "deployed"
+    deploy.mkdir()
+    (deploy / "old.txt").write_text("old", encoding="utf-8")
+    repo = tmp_path / "repo"
+    _create_fixture_repository(repo)
+    scripts = tmp_path / "scripts"
+    _create_fixture_scripts(scripts)
+    env = _update_environment(tmp_path, log, deploy, options)
     assert BASH is not None
     result = subprocess.run(
         [
@@ -114,7 +136,7 @@ def _run_update(
             as_bash_path(repo),
             "--deploy-dir",
             as_bash_path(deploy),
-            *args,
+            *options.args,
         ],
         cwd=ROOT,
         env=env,
@@ -127,7 +149,7 @@ def _run_update(
 
 
 def test_invalid_scope_fails_before_backup_or_commands(tmp_path: Path) -> None:
-    result, commands = _run_update(tmp_path, "--scope", "host")
+    result, commands = _run_update(tmp_path, _UpdateOptions(("--scope", "host")))
 
     assert result.returncode != 0
     assert "unsupported deployment scope" in result.stderr.lower()
@@ -136,7 +158,7 @@ def test_invalid_scope_fails_before_backup_or_commands(tmp_path: Path) -> None:
 
 
 def test_unknown_option_fails_closed_before_backup_or_commands(tmp_path: Path) -> None:
-    result, commands = _run_update(tmp_path, "--scpoe", "user")
+    result, commands = _run_update(tmp_path, _UpdateOptions(("--scpoe", "user")))
 
     assert result.returncode != 0
     assert "unknown option" in result.stderr.lower()
@@ -145,7 +167,7 @@ def test_unknown_option_fails_closed_before_backup_or_commands(tmp_path: Path) -
 
 
 def test_user_scope_uses_user_manager_and_skips_host_maintenance(tmp_path: Path) -> None:
-    result, commands = _run_update(tmp_path, "--scope", "user")
+    result, commands = _run_update(tmp_path, _UpdateOptions(("--scope", "user")))
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert "systemctl --user restart runner-dashboard" in commands
@@ -167,7 +189,7 @@ def test_default_scope_preserves_system_service_and_maintenance(tmp_path: Path) 
 
 
 def test_user_scope_rolls_back_with_user_service_manager(tmp_path: Path) -> None:
-    result, commands = _run_update(tmp_path, "--scope", "user", health=False)
+    result, commands = _run_update(tmp_path, _UpdateOptions(("--scope", "user"), health=False))
 
     assert result.returncode != 0
     assert any(line.startswith("systemctl --user restart runner-dashboard") for line in commands)
@@ -179,7 +201,7 @@ def test_user_scope_rolls_back_with_user_service_manager(tmp_path: Path) -> None
 
 
 def test_user_scope_preserves_backup_manifest_before_update(tmp_path: Path) -> None:
-    result, _commands = _run_update(tmp_path, "--scope", "user")
+    result, _commands = _run_update(tmp_path, _UpdateOptions(("--scope", "user")))
 
     assert result.returncode == 0, result.stderr + result.stdout
     backups = [path for path in tmp_path.glob("deployed.bak.*") if path.is_dir()]
@@ -195,13 +217,9 @@ def test_user_artifact_scope_forwards_checksum_and_rolls_back_in_user_scope(tmp_
 
     result, commands = _run_update(
         tmp_path,
-        "--scope",
-        "user",
-        "--artifact",
-        str(artifact),
-        "--checksum",
-        checksum,
-        health=False,
+        _UpdateOptions(
+            ("--scope", "user", "--artifact", str(artifact), "--checksum", checksum), health=False
+        ),
     )
 
     assert result.returncode != 0
@@ -219,14 +237,45 @@ def test_user_artifact_scope_forwards_checksum_and_rolls_back_in_user_scope(tmp_
 
 
 def test_user_scope_accepts_xdg_only_user_manager_session(tmp_path: Path) -> None:
-    result, commands = _run_update(tmp_path, "--scope", "user")
+    result, commands = _run_update(tmp_path, _UpdateOptions(("--scope", "user")))
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert any(line.startswith("systemctl --user show runner-dashboard.service") for line in commands)
 
 
+def test_disconnected_api_without_secrets_file_prints_token_guidance(tmp_path: Path) -> None:
+    result, _commands = _run_update(tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "No GH_TOKEN found" in result.stdout
+
+
+def test_disconnected_api_without_token_entry_prints_guidance(tmp_path: Path) -> None:
+    secrets = tmp_path / ".config" / "runner-dashboard" / "env"
+    secrets.parent.mkdir(parents=True)
+    secrets.write_text("OTHER_SETTING=value\n", encoding="utf-8")
+
+    result, _commands = _run_update(tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "No GH_TOKEN found" in result.stdout
+    assert "value" not in result.stdout
+
+
+def test_disconnected_api_with_token_uses_existing_diagnostic_without_exposing_it(tmp_path: Path) -> None:
+    secrets = tmp_path / ".config" / "runner-dashboard" / "env"
+    secrets.parent.mkdir(parents=True)
+    secrets.write_text("GH_TOKEN=fixture-secret-token\n", encoding="utf-8")
+
+    result, _commands = _run_update(tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "GH_TOKEN present but API returned an error" in result.stdout
+    assert "fixture-secret-token" not in result.stdout
+
+
 def test_user_scope_requires_installed_unit_before_backup(tmp_path: Path) -> None:
-    result, commands = _run_update(tmp_path, "--scope", "user", user_unit=False)
+    result, commands = _run_update(tmp_path, _UpdateOptions(("--scope", "user"), user_unit=False))
 
     assert result.returncode != 0
     assert "not installed" in result.stderr
@@ -235,7 +284,7 @@ def test_user_scope_requires_installed_unit_before_backup(tmp_path: Path) -> Non
 
 
 def test_user_scope_manager_connection_failure_precedes_backup(tmp_path: Path) -> None:
-    result, commands = _run_update(tmp_path, "--scope", "user", user_manager=False)
+    result, commands = _run_update(tmp_path, _UpdateOptions(("--scope", "user"), user_manager=False))
 
     assert result.returncode != 0
     assert "cannot reach the user systemd manager" in result.stderr.lower()

@@ -298,7 +298,13 @@ if [[ "$DRY_RUN" != "true" ]]; then
     else
         # Distinguish rate-limit exhaustion from a missing/bad token
         SECRETS_FILE="${HOME}/.config/runner-dashboard/env"
-        STORED_TOKEN=$(grep '^GH_TOKEN=' "${SECRETS_FILE}" 2>/dev/null | cut -d= -f2-)
+        STORED_TOKEN=""
+        if [[ -e "$SECRETS_FILE" ]]; then
+            STORED_TOKEN=$(grep '^GH_TOKEN=' "${SECRETS_FILE}" 2>/dev/null | cut -d= -f2- || {
+                lookup_status=$?
+                [[ "$lookup_status" -eq 1 ]]
+            })
+        fi
         RL_REMAINING="unknown"
         if [[ -n "$STORED_TOKEN" ]]; then
             RL_REMAINING=$(curl -s --max-time 5 \
