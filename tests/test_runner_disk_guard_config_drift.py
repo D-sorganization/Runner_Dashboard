@@ -30,6 +30,13 @@ def _load_upstream() -> ModuleType:
     return module
 
 
+def _upstream_repo_root() -> Path:
+    path = next((p for p in _CANDIDATES if p.is_file()), None)
+    if path is None:
+        pytest.skip("no Repository_Management checkout beside this repository")
+    return path.parents[1]
+
+
 def test_vendored_schema_matches_upstream() -> None:
     upstream = _load_upstream()
     assert vendored.SCHEMA_ID == upstream.SCHEMA_ID
@@ -39,3 +46,19 @@ def test_vendored_schema_matches_upstream() -> None:
     assert cfg.drain == upstream_cfg.drain
     assert cfg.readmit == upstream_cfg.readmit
     assert cfg.fleet == upstream_cfg.fleet
+
+
+def test_vendored_files_match_upstream_bytes() -> None:
+    upstream_root = _upstream_repo_root()
+    pairs = (
+        (
+            _REPO_ROOT / "shared_scripts" / "runner_disk_guard_config.py",
+            upstream_root / "shared_scripts" / "runner_disk_guard_config.py",
+        ),
+        (
+            _REPO_ROOT / "config" / "runner_disk_guard.yaml",
+            upstream_root / "config" / "runner_disk_guard.yaml",
+        ),
+    )
+    for local, remote in pairs:
+        assert local.read_bytes() == remote.read_bytes(), f"{local.name} drift from Repository_Management"

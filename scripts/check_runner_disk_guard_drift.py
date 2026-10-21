@@ -87,11 +87,16 @@ def compare_upstream(
 
 def write_manifest(ref: str, repo_root: Path) -> None:
     files = {rel: _sha256_bytes((repo_root / rel).read_bytes()) for rel in VENDORED_PATHS}
-    manifest = {
+    manifest: dict[str, object] = {
         "upstream_repository": UPSTREAM_REPO,
         "upstream_ref": ref,
         "sha256": files,
     }
+    if MANIFEST_PATH.is_file():
+        existing = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        merge_pr = existing.get("upstream_merge_pr")
+        if isinstance(merge_pr, int):
+            manifest["upstream_merge_pr"] = merge_pr
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 

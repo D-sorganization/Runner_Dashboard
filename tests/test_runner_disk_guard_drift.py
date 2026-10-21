@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -22,3 +23,12 @@ def test_manifest_pins_vendored_file_hashes() -> None:
 def test_main_manifest_only_passes() -> None:
     rc = drift.main(["--repo-root", str(_REPO_ROOT), "--manifest-only"])
     assert rc == 0
+
+
+def test_manifest_records_rm_merge_pr() -> None:
+    manifest_path = _REPO_ROOT / "tests" / "contracts" / "runner_disk_guard_upstream.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest.get("upstream_merge_pr") == 2230
+    assert manifest.get("upstream_repository") == drift.UPSTREAM_REPO
+    ref = manifest.get("upstream_ref")
+    assert isinstance(ref, str) and ref
