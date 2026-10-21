@@ -277,7 +277,9 @@ def test_cursor_sandbox_dropin_matches_unit_template() -> None:
 def test_update_deployed_installs_cursor_sandbox_dropin_before_restart() -> None:
     content = _read(_DEPLOY / "update-deployed.sh")
     assert "systemd-dropins/40-cursor-sandbox.conf" in content
-    install = content.index("    install_cursor_sandbox_dropin\n", content.index("if [[ \"$DEPLOY_SCOPE\" == \"system\" ]]; then"))
+    install = content.index(
+        "    install_cursor_sandbox_dropin\n", content.index('if [[ "$DEPLOY_SCOPE" == "system" ]]; then')
+    )
     restart = content.index('deployment_service_command "$DEPLOY_SCOPE" manage restart "$SERVICE"')
     assert install < restart, "the drop-in must be in place before the service restarts"
     assert "daemon-reload" in content
