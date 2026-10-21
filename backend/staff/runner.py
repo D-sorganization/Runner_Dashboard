@@ -320,9 +320,7 @@ class StaffRunner:
         )
         if env is None:
             return
-        env = apply_staff_run_fleet_token(
-            store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
-        )
+        env = apply_staff_run_fleet_token(store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout)
         if env is None:
             return
         try:
