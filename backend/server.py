@@ -948,6 +948,8 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
 
 try:
     _topology_registry = load_machine_registry()
+    from fleet_autoconfig import assert_fleet_identity_no_self_loop
+
     _fleet_identity = apply_fleet_identity_from_registry(
         _topology_registry,
         hub_url_env=os.environ.get("HUB_URL"),
@@ -955,6 +957,14 @@ try:
         display_name=os.environ.get("DISPLAY_NAME"),
         platform_node=platform.node(),
         runner_aliases=os.environ.get("RUNNER_ALIASES"),
+    )
+    assert_fleet_identity_no_self_loop(
+        _fleet_identity,
+        _topology_registry,
+        display_name=os.environ.get("DISPLAY_NAME"),
+        platform_node=platform.node(),
+        runner_aliases=os.environ.get("RUNNER_ALIASES"),
+        local_port=int(os.environ.get("DASHBOARD_PORT", "8321")),
     )
     dashboard_config.apply_fleet_identity(_fleet_identity.machine_role, _fleet_identity.hub_url)
     MACHINE_ROLE = dashboard_config.MACHINE_ROLE
@@ -967,6 +977,9 @@ try:
             _fleet_identity.machine_role_source,
             _fleet_identity.hub_url_source,
         )
+except RuntimeError as _exc:
+    log.error("Fleet identity configuration invalid: %s", _exc)
+    raise
 except Exception as _exc:  # noqa: BLE001
     log.warning("Fleet identity derive from registry failed: %s", _exc)
     HUB_URL = os.environ.get("HUB_URL")

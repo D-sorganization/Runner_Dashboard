@@ -20,8 +20,17 @@ before restarting.
 1. Pull/deploy this merge to `main`.
 2. Remove interim `HUB_URL` / `FLEET_NODES` overrides unless you intentionally
    keep a custom peer list (not recommended).
-3. Unset or remove `MACHINE_ROLE=hub` from env if present — registry declares hub.
-4. Restart `runner-dashboard.service`.
+3. Reinstall the unit so any legacy `MACHINE_ROLE=node` line is removed from
+   `/etc/systemd/system/runner-dashboard.service` (role comes from the registry
+   at runtime):
+
+   ```bash
+   cd ~/actions-runners/dashboard
+   ./deploy/setup.sh --runners 8 --machine-name DeskComputer
+   ```
+
+4. Confirm the unit has **no** `Environment=MACHINE_ROLE=` line unless you
+   passed `--role` intentionally; restart if you only edited env files.
 5. Confirm `GET /api/fleet/status` on DeskComputer shows `_role: hub` and staff
    summary names DeskComputer as hub.
 
@@ -45,7 +54,14 @@ before restarting.
 
 1. Follow [brick-dashboard-redeploy.md](./brick-dashboard-redeploy.md).
 2. Ensure registry entry is present (post-merge `machine_registry.yml`).
-3. Dry-run dispatch to `machine: Brick` from the hub.
+3. Reinstall the unit (drops stale hub role, derives `HUB_URL` at runtime):
+
+   ```bash
+   cd ~/actions-runners/dashboard
+   ./deploy/setup.sh --runners 4 --machine-name Brick
+   ```
+
+4. Dry-run dispatch to `machine: Brick` from the hub.
 
 ## Codex default model
 

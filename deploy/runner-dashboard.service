@@ -49,7 +49,8 @@ Environment=DISPLAY_NAME=ControlTower
 Environment=RUNNER_ALIASES=controltower,control-tower-runner-monitoring
 Environment=RUNNER_SCHEDULE_CONFIG=/home/YOUR_USER/.config/runner-dashboard/runner-schedule.json
 Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
-Environment=MACHINE_ROLE=hub
+# Fleet role (hub vs node) is derived at runtime from machine_registry.yml (#2022).
+# setup.sh may inject a MACHINE_ROLE environment line only when --role is passed.
 Environment=HOME=/home/YOUR_USER
 Environment=PATH=/usr/lib/wsl/lib:/home/YOUR_USER/.local/bin:/home/YOUR_USER/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # WSL systemd services do not inherit the interactive WSL interop socket, but
