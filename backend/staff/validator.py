@@ -42,9 +42,6 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "tools",
     "scopes",
     "retry",
-    "fallback_providers",
-    "provider_fallbacks",
-    "max_attempts",
 )
 STRATEGY_KEYS: tuple[str, ...] = ("consolidate_when",)
 CONSOLIDATE_WHEN_BOUNDS: dict[str, tuple[int, int | None]] = {
