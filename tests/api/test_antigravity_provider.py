@@ -158,7 +158,7 @@ def test_antigravity_quota_exhaustion_classified_as_rate_limited_or_capacity() -
         exit_code=1,
     )
     assert failure.retryable is True
-    assert failure.failure_class in ("rate_limited", "provider_capacity")
+    assert failure.failure_class in ("rate_limited", "provider_capacity", "quota_exhausted")
 
     failure_capacity = classify_run_failure(
         provider="antigravity",

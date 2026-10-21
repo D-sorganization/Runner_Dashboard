@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from staff.adapter_failure import adapter_failure_classification
 from staff.adapters import _extract_text
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "config",
         "provider_capacity",
         "provider_error",
+        "quota_exhausted",
         "rate_limited",
         "needs_input",
         "timeout",
@@ -200,6 +202,16 @@ def classify_run_failure(
 
     lower = combined.lower()
 
+    adapter_row = adapter_failure_classification(provider, combined)
+    if adapter_row is not None:
+        fc, retryable, remediation, error = adapter_row
+        return FailureClassification(
+            failure_class=fc,
+            retryable=retryable,
+            remediation=remediation,
+            error=error,
+        )
+
     # 3. CLI Missing
     cli_missing_patterns = (
         "command not found",
@@ -303,12 +315,8 @@ def classify_run_failure(
         "rate_limit_exceeded",
         "too many requests",
         "overloaded_error",
-        "overloaded",
-        "exceeded your current quota",
         "resource_exhausted",
         "quota exceeded",
-        "quota exhausted",
-        "out of quota",
     )
     if "disk quota" not in lower and any(pat in lower for pat in rate_patterns):
         return FailureClassification(
