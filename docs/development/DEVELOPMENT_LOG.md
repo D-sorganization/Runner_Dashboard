@@ -26,10 +26,10 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** cursor-agent
 - **Issue:** #2022
 - **Branch:** `cursor/fleet-hub-brick-codex-7386`
-- **PR:** not created
+- **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/2023
 - **Paths:** `backend/machine_registry.yml`, `backend/fleet_autoconfig.py`, `backend/dashboard_config/__init__.py`, `backend/server.py`, `backend/proxy_utils.py`, `backend/staff/provider_defaults.py`, `backend/staff/adapters.py`, `backend/staff/classifier.py`, `config/staff_provider_defaults.json`, `docs/runbooks/brick-dashboard-redeploy.md`, `docs/runbooks/fleet-hub-deskcomputer-rollout-2022.md`, `tests/test_fleet_hub_topology.py`, `tests/unit/test_staff_provider_defaults.py`, `tests/unit/test_staff_classifier.py`
 - **Started:** 2026-10-21
-- **Last verified:** 2026-10-21 @ SELF; hub topology, provider default, and classifier tests RED→GREEN locally.
+- **Last verified:** 2026-10-21 @ SELF; CI Standard lint/tests/quality-gate green on PR #2023.
 - **Summary:** Hub topology and Codex provider defaults move into repo-managed config; Brick joins the registry with redeploy/rollout runbooks.
 - **Next step:** Merge PR after CI Standard is green.
 
