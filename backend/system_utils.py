@@ -1150,6 +1150,12 @@ async def get_system_metrics_snapshot(
                     }
 
         host_vol_metrics = get_host_volume_metrics()
+        try:
+            from disk_full_cordon_runtime import cordon_status_dict
+
+            disk_full_cordon = cordon_status_dict()
+        except Exception:  # noqa: BLE001 - metrics must not fail the snapshot
+            disk_full_cordon = {"active": False, "phase": "normal", "scheduling_inhibited": False}
 
         metrics = {
             "hostname": HOSTNAME,
@@ -1199,6 +1205,7 @@ async def get_system_metrics_snapshot(
                 "host_volume": host_vol_metrics,
             },
             "host_volume": host_vol_metrics,
+            "disk_full_cordon": disk_full_cordon,
             "network": {
                 "bytes_sent": net.bytes_sent,
                 "bytes_recv": net.bytes_recv,

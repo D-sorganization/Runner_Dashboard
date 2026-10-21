@@ -412,6 +412,8 @@ jobs:
           mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
           # Agent clients (#1228) are stdlib-only scripts, checked as their own module set.
           mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
+      - name: Runner disk guard vendored manifest
+        run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
       - name: Run bandit security scan
         # Full tier only (merge_group / workflow_dispatch, issue #1864).
         if: needs.changes.outputs.full_suite == 'true'
@@ -552,6 +554,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
         with:
           python-version: ${{ matrix.python }}
+      # Hosted CI cannot clone private Repository_Management (RM#1989 / public RD).
+      # Pin vendored bytes in tests/contracts/runner_disk_guard_upstream.json; lint
+      # and pytest enforce the manifest. Sibling-checkout byte tests run locally.
+      - name: Runner disk guard vendored manifest
+        run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
       - name: Bootstrap Python venv
         run: |
           python -m venv "$RUNNER_TEMP/ci-venv"
@@ -570,7 +577,7 @@ jobs:
           fi
       - name: Run Python tests
         env:
-          PYTHONPATH: backend
+          PYTHONPATH: backend:.
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
           EXPECTED_PYTHON: ${{ matrix.python }}
         # -n auto: pytest-xdist parallel workers (issue #401).

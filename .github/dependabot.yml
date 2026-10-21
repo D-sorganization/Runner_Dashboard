@@ -8,6 +8,7 @@ multi-ecosystem-groups:
       day: monday
       time: "06:00"
       timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
     commit-message:
       prefix: chore(deps)
       include: scope
@@ -19,7 +20,6 @@ updates:
       interval: weekly
     patterns: ["*"]
     multi-ecosystem-group: weekly-deps
-    open-pull-requests-limit: 5
     labels:
       - dependencies
       - ci
@@ -40,7 +40,6 @@ updates:
       interval: weekly
     patterns: ["*"]
     multi-ecosystem-group: weekly-deps
-    open-pull-requests-limit: 5
     labels:
       - dependencies
       - ci
@@ -61,7 +60,6 @@ updates:
       interval: weekly
     patterns: ["*"]
     multi-ecosystem-group: weekly-deps
-    open-pull-requests-limit: 3
     labels:
       - dependencies
       - ci
