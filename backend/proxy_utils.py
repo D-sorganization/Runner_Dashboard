@@ -6,8 +6,8 @@ import logging
 import os
 import time
 
+import dashboard_config
 import httpx
-from dashboard_config import HUB_URL, MACHINE_ROLE
 from fastapi import HTTPException, Request
 
 log = logging.getLogger("dashboard.proxy")
@@ -123,10 +123,10 @@ async def proxy_to_hub(request: Request, *, require_success: bool = False):
     so a misconfigured node-to-node or self URL cannot recurse.
     Existing proxy callers retain their response translation contract.
     """
-    if not HUB_URL:
+    if not dashboard_config.HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
     async with httpx.AsyncClient(timeout=HUB_PROXY_TIMEOUT_S) as client:
-        url = f"{HUB_URL}{request.url.path}"
+        url = f"{dashboard_config.HUB_URL}{request.url.path}"
         if request.url.query:
             url = f"{url}?{request.url.query}"
         try:
@@ -168,7 +168,12 @@ def _request_prefers_local(request: Request) -> bool:
 
 def should_mark_hub_circuit_degraded(request: Request) -> bool:
     """Return True when local data is served only because the hub circuit is open."""
-    return MACHINE_ROLE == "node" and bool(HUB_URL) and hub_in_cooldown() and not _request_prefers_local(request)
+    return (
+        dashboard_config.MACHINE_ROLE == "node"
+        and bool(dashboard_config.HUB_URL)
+        and hub_in_cooldown()
+        and not _request_prefers_local(request)
+    )
 
 
 def should_proxy_fleet_to_hub(request: Request) -> bool:
@@ -178,6 +183,6 @@ def should_proxy_fleet_to_hub(request: Request) -> bool:
     False so the node serves its own local data instead of timing out on a dead
     hub — preventing a blank dashboard fleet-wide.
     """
-    if MACHINE_ROLE != "node" or not HUB_URL or hub_in_cooldown():
+    if dashboard_config.MACHINE_ROLE != "node" or not dashboard_config.HUB_URL or hub_in_cooldown():
         return False
     return not _request_prefers_local(request)

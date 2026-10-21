@@ -8,10 +8,14 @@ this logic separate from ``server.py`` makes the self-exclusion rules testable.
 
 from __future__ import annotations
 
+import logging
 import platform
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
+
+log = logging.getLogger("dashboard.fleet_autoconfig")
 
 
 def normalize_fleet_label(value: object) -> str:
@@ -221,14 +225,129 @@ def derive_fleet_nodes_from_registry(
     return nodes
 
 
+@dataclass(frozen=True)
+class FleetIdentity:
+    """Resolved hub-spoke identity for this dashboard process."""
+
+    machine_role: str
+    machine_role_source: str
+    hub_url: str | None
+    hub_url_source: str
+    hub_machine_names: tuple[str, ...]
+
+
+def _active_machines(registry: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    machines = registry.get("machines", []) or []
+    return [m for m in machines if isinstance(m, Mapping) and not m.get("retired")]
+
+
+def hub_machine_names(registry: Mapping[str, Any]) -> list[str]:
+    """Return canonical names of non-retired machines whose ``role`` is ``hub``."""
+    names: list[str] = []
+    for machine in _active_machines(registry):
+        role = str(machine.get("role") or "node").strip().lower()
+        if role == "hub":
+            name = str(machine.get("name", "")).strip()
+            if name:
+                names.append(name)
+    return names
+
+
+def resolve_hub_url_from_registry(registry: Mapping[str, Any]) -> str:
+    """Return the hub dashboard URL declared in the registry.
+
+    Pre: exactly one active machine has ``role: hub`` (callers should run
+    :func:`assert_unique_hub_role` first).
+    Post: non-empty URL string.
+    """
+    hubs = hub_machine_names(registry)
+    assert len(hubs) == 1, "registry must declare exactly one hub machine"  # noqa: S101
+    for machine in _active_machines(registry):
+        if str(machine.get("name", "")).strip() == hubs[0]:
+            url = registry_machine_url(machine).rstrip("/")
+            if not url:
+                raise RuntimeError(f"Hub machine '{hubs[0]}' has no dashboard_url")
+            return url
+    raise RuntimeError(f"Hub machine '{hubs[0]}' missing from registry")
+
+
+def assert_unique_hub_role(registry: Mapping[str, Any]) -> None:
+    """Fail fast when more than one machine claims ``role: hub`` (#2022, DbC)."""
+    hubs = hub_machine_names(registry)
+    if len(hubs) > 1:
+        raise RuntimeError(
+            f"Fleet topology error: {len(hubs)} machines declare role=hub "
+            f"({', '.join(hubs)}). Demote all but one to role=node in machine_registry.yml."
+        )
+    if not hubs:
+        log.warning(
+            "Machine registry declares no hub machine (role=hub); "
+            "spoke nodes cannot derive HUB_URL until one is configured."
+        )
+
+
+def apply_fleet_identity_from_registry(
+    registry: Mapping[str, Any],
+    *,
+    hub_url_env: str | None,
+    machine_role_env: str | None,
+    display_name: str | None = None,
+    platform_node: str | None = None,
+    runner_aliases: str | Iterable[str] | None = None,
+) -> FleetIdentity:
+    """Derive ``MACHINE_ROLE`` and ``HUB_URL`` from the registry with env overrides.
+
+    ``HUB_URL`` env wins when set. ``MACHINE_ROLE`` env wins when set. Otherwise
+    the local machine entry (matched by name/alias) supplies the role, and spokes
+    point at the registry hub's ``dashboard_url``.
+    """
+    from machine_registry import resolve_local_identity
+
+    assert_unique_hub_role(registry)
+    hubs = tuple(hub_machine_names(registry))
+
+    if machine_role_env and str(machine_role_env).strip():
+        machine_role = str(machine_role_env).strip().lower()
+        role_source = "env"
+    else:
+        identity = resolve_local_identity(
+            display_name,
+            None,
+            dict(registry),
+        )
+        machine_role = str(identity.get("role") or "node").strip().lower()
+        role_source = "registry" if identity.get("registry_match") not in (None, "unregistered") else "default"
+
+    hub_url: str | None = None
+    hub_source = "none"
+    env_hub = (hub_url_env or "").strip().rstrip("/")
+    if env_hub:
+        hub_url = env_hub
+        hub_source = "env"
+    elif machine_role != "hub" and hubs:
+        hub_url = resolve_hub_url_from_registry(registry)
+        hub_source = "registry"
+
+    return FleetIdentity(
+        machine_role=machine_role,
+        machine_role_source=role_source,
+        hub_url=hub_url,
+        hub_url_source=hub_source,
+        hub_machine_names=hubs,
+    )
+
+
 def assert_valid_active_registry(registry: Mapping[str, Any]) -> None:
     """Validate that every non-retired machine and pool has a valid dashboard URL and config.
 
     Issue #1169: Fail fast when an active machine or runner pool has no resolvable
     dashboard URL, invalid URL format, or conflicting ports with other pools.
+    Issue #2022: Fail fast when multiple machines declare ``role: hub``.
     """
     if not isinstance(registry, Mapping):
         raise RuntimeError("Machine registry must be a mapping")
+
+    assert_unique_hub_role(registry)
 
     machines = registry.get("machines", [])
     if not isinstance(machines, list):

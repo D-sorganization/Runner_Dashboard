@@ -134,6 +134,21 @@ HUB_URL = os.environ.get("HUB_URL")
 if HUB_URL:
     HUB_URL = HUB_URL.rstrip("/")
 
+
+def apply_fleet_identity(machine_role: str, hub_url: str | None) -> None:
+    """Apply registry-derived fleet identity (issue #2022).
+
+    Called from ``server.py`` after ``machine_registry.yml`` is loaded so
+    ``MACHINE_ROLE`` / ``HUB_URL`` reflect the repo config with env overrides.
+    """
+    global MACHINE_ROLE, HUB_URL
+    MACHINE_ROLE = machine_role.strip().lower()
+    if hub_url:
+        HUB_URL = hub_url.strip().rstrip("/")
+    else:
+        HUB_URL = None
+
+
 # Fleet topology
 FLEET_NODES: dict[str, str] = {}
 _nodes_raw = os.environ.get("FLEET_NODES", "")
@@ -308,6 +323,7 @@ __all__ = [
     "DISK_MIN_FREE_GB",
     "DISK_WARN_PERCENT",
     "EXPECTED_VERSION_FILE",
+    "apply_fleet_identity",
     "FLEET_NODES",
     "HEAVY_TEST_REPOS",
     "HOST",

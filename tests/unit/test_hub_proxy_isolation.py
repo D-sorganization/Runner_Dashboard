@@ -8,6 +8,7 @@ endpoints forwarded test requests to the real hub. Run this file with
 
 from __future__ import annotations
 
+import dashboard_config
 import proxy_utils
 import pytest
 from starlette.requests import Request
@@ -19,11 +20,11 @@ def _request(path: str = "/api/runners") -> Request:
 
 @pytest.mark.unit
 def test_hub_url_is_cleared_for_every_test() -> None:
-    assert proxy_utils.HUB_URL is None
+    assert dashboard_config.HUB_URL is None
 
 
 @pytest.mark.unit
 def test_a_node_role_does_not_proxy_fleet_requests_inside_tests(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(proxy_utils, "MACHINE_ROLE", "node")
+    monkeypatch.setattr(dashboard_config, "MACHINE_ROLE", "node")
 
     assert proxy_utils.should_proxy_fleet_to_hub(_request()) is False

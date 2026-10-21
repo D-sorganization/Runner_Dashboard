@@ -112,7 +112,10 @@ from error_models import (  # noqa: E402
     internal_error,
     validation_error,
 )
-from fleet_autoconfig import derive_fleet_nodes_from_registry  # noqa: E402
+from fleet_autoconfig import (  # noqa: E402
+    apply_fleet_identity_from_registry,
+    derive_fleet_nodes_from_registry,
+)
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
@@ -943,9 +946,32 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
     except Exception as _exc:  # noqa: BLE001
         log.warning("FLEET_NODES auto-derive from registry failed: %s", _exc)
 
-HUB_URL = os.environ.get("HUB_URL")
-if HUB_URL:
-    HUB_URL = HUB_URL.rstrip("/")
+try:
+    _topology_registry = load_machine_registry()
+    _fleet_identity = apply_fleet_identity_from_registry(
+        _topology_registry,
+        hub_url_env=os.environ.get("HUB_URL"),
+        machine_role_env=os.environ.get("MACHINE_ROLE"),
+        display_name=os.environ.get("DISPLAY_NAME"),
+        platform_node=platform.node(),
+        runner_aliases=os.environ.get("RUNNER_ALIASES"),
+    )
+    dashboard_config.apply_fleet_identity(_fleet_identity.machine_role, _fleet_identity.hub_url)
+    MACHINE_ROLE = dashboard_config.MACHINE_ROLE
+    HUB_URL = dashboard_config.HUB_URL
+    if _fleet_identity.hub_machine_names:
+        log.info(
+            "Fleet hub from registry: %s (role=%s via %s, hub_url via %s)",
+            ", ".join(_fleet_identity.hub_machine_names),
+            MACHINE_ROLE,
+            _fleet_identity.machine_role_source,
+            _fleet_identity.hub_url_source,
+        )
+except Exception as _exc:  # noqa: BLE001
+    log.warning("Fleet identity derive from registry failed: %s", _exc)
+    HUB_URL = os.environ.get("HUB_URL")
+    if HUB_URL:
+        HUB_URL = HUB_URL.rstrip("/")
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -24,6 +24,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "auth_expired",
         "cli_missing",
         "cli_outdated",
+        "config",
         "provider_error",
         "rate_limited",
         "needs_input",
@@ -231,6 +232,20 @@ def classify_run_failure(
                 f"run `{upgrade_cmd}` in the dashboard service's environment."
             ),
             error=f"{provider} CLI on node {node} rejected option {option}",
+        )
+
+    # 3c. Provider / account configuration (unsupported model on ChatGPT Codex seat)
+    if provider == "codex" and "model is not supported when using codex with a chatgpt account" in lower:
+        return FailureClassification(
+            failure_class="config",
+            retryable=False,
+            remediation=(
+                "Codex rejected the model for this ChatGPT-account seat. Set an explicit "
+                "`model` on the run, or update `config/staff_provider_defaults.json` "
+                "(codex default is gpt-6-luna) so the runner passes `-m`/`--model` and "
+                "does not rely on ~/.codex/config.toml."
+            ),
+            error=_extract_last_line_text(output_text) or error_message or "unsupported Codex model",
         )
 
     # 4. Authentication / OAuth Expired
