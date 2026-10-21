@@ -6,11 +6,10 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
+from ci_fleet_baseline.constants import NEEDS_CREATED_AT_NOTE
+from ci_fleet_baseline.window import parse_utc
 from workflow_analysis import infer_machine_from_runner_name
 from workflow_stats import connect_stats_db, inclusive_percentile
-
-from shared_scripts.ci_fleet_baseline.constants import NEEDS_CREATED_AT_NOTE
-from shared_scripts.ci_fleet_baseline.window import parse_utc
 
 GroupBy = Literal["repo", "event", "label", "host"]
 GROUPINGS = frozenset({"repo", "event", "label", "host"})

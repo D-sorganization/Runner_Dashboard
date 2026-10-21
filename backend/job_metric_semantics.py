@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shared_scripts.ci_fleet_baseline.metrics import job_execute_seconds, job_queue_seconds
+from ci_fleet_baseline.metrics import job_execute_seconds, job_queue_seconds
 
 
 def job_durations(

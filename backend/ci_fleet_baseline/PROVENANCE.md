@@ -1,8 +1,12 @@
 # Vendored RM-CI-000 Timing Helpers
 
-These files are copied byte-for-byte from Repository_Management commit
+These files are vendored from Repository_Management commit
 `820402ec16afac89e30f6674252ad9237352b8b4`; the dashboard imports only this
 local copy and does not import a sibling checkout at runtime.
+
+`constants.py` and `window.py` are byte-identical copies. In `metrics.py`, only
+the two package imports change to relative imports so the helpers also work in
+a backend-only deployment. The formulas and all other source bytes are unchanged.
 
 | File           | Git blob                                   |
 | -------------- | ------------------------------------------ |
@@ -13,5 +17,6 @@ local copy and does not import a sibling checkout at runtime.
 `job_metric_semantics.py` adapts malformed external timestamps to missing
 measurements, while the vendored functions remain the source of timing math.
 
-Tests pin SHA-256 fingerprints of these exact bytes. The local Ruff configuration
-keeps upstream's 88-column formatting while retaining the dashboard lint rules.
+Tests reverse those two import adaptations and verify the upstream SHA-256
+fingerprints. The local Ruff configuration keeps upstream's 88-column formatting
+while retaining the dashboard lint rules.

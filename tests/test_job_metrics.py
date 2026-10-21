@@ -12,9 +12,8 @@ import gh_client
 import job_metrics
 import job_metrics_collector
 import pytest
+from ci_fleet_baseline.metrics import job_execute_seconds, job_queue_seconds
 from job_metric_semantics import job_durations
-
-from shared_scripts.ci_fleet_baseline.metrics import job_execute_seconds, job_queue_seconds
 
 
 @pytest.fixture
@@ -59,7 +58,7 @@ def test_job_timing_formulas_parse_and_clamp_invalid_or_negative_values() -> Non
 
 
 def test_timing_adapter_matches_exact_pinned_vendor_bytes() -> None:
-    package = Path(__file__).parents[1] / "shared_scripts" / "ci_fleet_baseline"
+    package = Path(__file__).parents[1] / "backend" / "ci_fleet_baseline"
     expected = {
         "metrics.py": "aef74ecb2dc0da84a6eab5c35e94d52d52b0d730446b4cbdf9835aa180bd348b",
         "window.py": "f2edab6d41050408966fa2693674896e2b364e877bd27190961fa6bbab8afa00",
@@ -67,6 +66,10 @@ def test_timing_adapter_matches_exact_pinned_vendor_bytes() -> None:
     }
     for name, fingerprint in expected.items():
         content = (package / name).read_bytes()
+        if name == "metrics.py":
+            content = content.replace(
+                b"from .constants import", b"from shared_scripts.ci_fleet_baseline.constants import", 1
+            ).replace(b"from .window import", b"from shared_scripts.ci_fleet_baseline.window import", 1)
         assert hashlib.sha256(content).hexdigest() == fingerprint
     timestamps = ("2026-10-21T10:00:00Z", "2026-10-21T10:00:10Z", "2026-10-21T10:01:10Z")
     assert job_durations(*timestamps) == (

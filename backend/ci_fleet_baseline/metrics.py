@@ -6,8 +6,8 @@ import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from shared_scripts.ci_fleet_baseline.constants import FAILURE_DENOMINATOR_CONCLUSIONS
-from shared_scripts.ci_fleet_baseline.window import parse_utc
+from .constants import FAILURE_DENOMINATOR_CONCLUSIONS
+from .window import parse_utc
 
 
 def wall_clock_seconds(
