@@ -558,6 +558,26 @@ Dollars are a notional effort figure: the Staff tab prints them as `≈ $`, and
 are the same: local midnight in the schedule timezone (`America/Los_Angeles`).
 The Board shows a **Plan quota** panel from `GET /api/staff/quota`.
 
+### Declarative provider fallback (#2021)
+
+Roles may declare ``retry.provider_fallbacks`` so a capacity or rate-limit failure on the
+primary provider schedules another attempt on a backup without treating real task failures as
+fallback triggers. ``provider_capacity`` (for example Codex *Selected model is at capacity*)
+switches immediately; ``rate_limited`` uses the same-provider retry budget first.
+
+Example for **pr-remediator** in Repository_Management ``staff/roles/pr-remediator.yml`` (land
+there after this dashboard change is deployed):
+
+```yaml
+retry:
+  provider_fallbacks:
+    - when: [provider_capacity, rate_limited]
+      from: codex
+      to:
+        provider: antigravity
+        model: gemini-3.8-flash-high
+```
+
 ### Turning a provider off (#1597)
 
 Set `STAFF_DISABLED_PROVIDERS` in the node env file to a comma-separated list of provider ids,
