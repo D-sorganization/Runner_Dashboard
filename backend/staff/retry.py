@@ -108,7 +108,9 @@ def should_retry(
     if not is_retryable_class(rec.failure_class):
         return False, f"failure class '{rec.failure_class}' is not retryable"
 
-    if rec.failure_class in ("provider_capacity", "quota_exhausted"):
+    if rec.failure_class == "provider_capacity":
+        return False, "provider capacity uses declarative fallback, not same-provider retry"
+    if rec.failure_class == "quota_exhausted":
         return False, f"{rec.failure_class} uses failover chain, not same-provider retry"
 
     max_att = getattr(rec, "max_attempts", 2) or getattr(role, "max_attempts", 2) or 2
