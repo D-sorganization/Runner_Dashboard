@@ -152,6 +152,7 @@ def test_verify_on_behalf_of_missing_principal_rejected() -> None:
 @pytest.mark.unit
 def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from routers import staff as staff_router
+    from staff.dispatch_auth import require_staff_run_dispatch
 
     monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
     monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-token")  # pragma: allowlist secret
@@ -167,7 +168,7 @@ def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, mon
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
 
     # Dispatched by user:dieter
-    client.app.dependency_overrides[staff_router.require_scope("staff.dispatch")] = lambda: Principal(
+    client.app.dependency_overrides[require_staff_run_dispatch()] = lambda: Principal(
         id="user:dieter", type="user", name="Dieter", roles=["operator"]
     )
 
@@ -194,7 +195,7 @@ def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, mon
 def test_peer_dispatch_with_valid_on_behalf_of_records_caller_and_audit(
     client: TestClient, tmp_audit_db: store_mod.RunStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from routers import staff as staff_router
+    from staff.dispatch_auth import require_staff_run_dispatch
 
     token_key = "test-fleet-token"  # pragma: allowlist secret
     monkeypatch.setenv("HUB_FLEET_TOKEN", token_key)
@@ -208,7 +209,7 @@ def test_peer_dispatch_with_valid_on_behalf_of_records_caller_and_audit(
     )
 
     # Caller is authenticated peer
-    client.app.dependency_overrides[staff_router.require_scope("staff.dispatch")] = lambda: Principal(
+    client.app.dependency_overrides[require_staff_run_dispatch()] = lambda: Principal(
         id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"]
     )
 
@@ -239,7 +240,7 @@ def test_peer_dispatch_with_valid_on_behalf_of_records_caller_and_audit(
 def test_peer_dispatch_with_tampered_header_falls_back_to_fleet_peer(
     client: TestClient, tmp_audit_db: store_mod.RunStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from routers import staff as staff_router
+    from staff.dispatch_auth import require_staff_run_dispatch
 
     token_key = "test-fleet-token"  # pragma: allowlist secret
     monkeypatch.setenv("HUB_FLEET_TOKEN", token_key)
@@ -247,7 +248,7 @@ def test_peer_dispatch_with_tampered_header_falls_back_to_fleet_peer(
     # Tampered header
     tampered_header = "eyJhbGciOiJIUzI1NiJ9.invalid.signature"
 
-    client.app.dependency_overrides[staff_router.require_scope("staff.dispatch")] = lambda: Principal(
+    client.app.dependency_overrides[require_staff_run_dispatch()] = lambda: Principal(
         id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"]
     )
 
@@ -275,7 +276,7 @@ def test_peer_dispatch_with_tampered_header_falls_back_to_fleet_peer(
 def test_non_peer_cannot_spoof_on_behalf_of(
     client: TestClient, tmp_audit_db: store_mod.RunStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from routers import staff as staff_router
+    from staff.dispatch_auth import require_staff_run_dispatch
 
     token_key = "test-fleet-token"  # pragma: allowlist secret
     monkeypatch.setenv("HUB_FLEET_TOKEN", token_key)
@@ -287,7 +288,7 @@ def test_non_peer_cannot_spoof_on_behalf_of(
     )
 
     # Normal user caller (not fleet-peer)
-    client.app.dependency_overrides[staff_router.require_scope("staff.dispatch")] = lambda: Principal(
+    client.app.dependency_overrides[require_staff_run_dispatch()] = lambda: Principal(
         id="user:bob", type="user", name="Bob", roles=["operator"]
     )
 
