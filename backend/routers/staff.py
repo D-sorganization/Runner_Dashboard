@@ -12,8 +12,9 @@ Routes (all under ``/api/staff``):
   POST /runs/{id}/cancel      Terminate a run.
 
 Auth: reads use ``require_fleet_peer`` (hub/peer readable, same as the fleet
-routes); mutations use ``require_orchestrator_peer`` so Barb/Orchestrator can
-call with the fleet bearer token and a local Conductor can call over loopback.
+routes). ``POST /{role}/run`` requires a bearer principal with ``staff.dispatch``
+(fleet token or service token); loopback dev auth does not substitute (#2053).
+Cancel and other mutations use scoped bearer auth as documented per route.
 """
 
 # ruff: noqa: B008
@@ -38,6 +39,7 @@ from staff.audit import (
     record_audit,
 )
 from staff.cli_version import provider_versions
+from staff.dispatch_auth import require_staff_run_dispatch
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.github_credential_service import mint_github_credential_for_run
 from staff.models import (
@@ -372,7 +374,7 @@ async def dispatch(
     role: str,
     body: RunBody,
     request: Request,
-    caller: Principal = Depends(require_scope("staff.dispatch")),
+    caller: Principal = Depends(require_staff_run_dispatch()),
 ) -> dict[str, Any]:
     """Dispatch a staff run on this node, or preview it with ``dry_run``.
 

@@ -34,6 +34,7 @@ from staff.audit import (
     record_audit,
 )
 from staff.cli_version import provider_versions
+from staff.dispatch_auth import require_staff_run_dispatch
 from staff.idempotency import (
     IdempotencyStoreError,
     get_idempotency_store,
@@ -319,7 +320,7 @@ async def dispatch_v1(
     body: RunBody,
     request: Request,
     idempotency_key: str = Depends(require_idempotency_header),
-    _peer: Principal = Depends(require_scope("staff.dispatch")),
+    _peer: Principal = Depends(require_staff_run_dispatch()),
 ) -> Response:
     caller = format_caller(_peer)
     endpoint = f"POST /api/v1/staff/{role}/run"

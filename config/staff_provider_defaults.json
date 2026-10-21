@@ -1,6 +1,7 @@
 {
   "schema_version": "staff-provider-defaults.v1",
   "default_models": {
-    "codex": "gpt-6-luna"
+    "codex": "gpt-6-luna",
+    "antigravity": "gemini-3.8-flash-high"
   }
 }
