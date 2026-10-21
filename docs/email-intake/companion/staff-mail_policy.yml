@@ -1,0 +1,17 @@
+# Companion artifact for Repository_Management (issue #2093).
+# Copy to staff/mail_policy.yml and add CI validator in RM.
+
+intake_enabled: true
+require_dmarc_pass: true
+max_age_hours: 72
+rate_limit_per_sender_per_hour: 12
+max_message_bytes: 262144
+
+allowed_senders:
+  - address: dieterolson@gmail.com
+    enabled: true
+  - address: dieterolson@affinedrift.com
+    enabled: true
+  - address: dolson@inentec.com
+    enabled: false
+    # pending InEnTec IT confirmation

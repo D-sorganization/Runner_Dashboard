@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from staff.rm_directives import DirectivesReconcileError, reconcile_directives_for_rm_root
+from staff.rm_mail_policy import refresh_mail_policy_cache
 from staff.rm_reconcile import HoldReconcileError, format_hold_reconcile_diff, reconcile_holds_for_roles_dir
 from staff.roles import role_validation_errors, roles_dir
 from staff.store import _config_dir
@@ -193,6 +194,15 @@ def _reconcile_holds_after_refresh(root: Path, state: dict[str, Any]) -> None:
     state["directive_reconcile"] = {"status": "ok", "changed": directive_diff.changed, **directive_diff.to_dict()}
     if directive_diff.changed:
         log.info("RM directive reconcile commit=%s %s", commit, json.dumps(directive_diff.to_dict(), sort_keys=True))
+    mail_snap = refresh_mail_policy_cache(root, str(commit))
+    if mail_snap is None:
+        state["mail_policy"] = {"status": "error", "reason": "invalid mail_policy.yml"}
+    else:
+        state["mail_policy"] = {
+            "status": "ok",
+            "intake_enabled": mail_snap.policy.intake_enabled,
+            "allowed_senders": len(mail_snap.policy.allowed_senders),
+        }
 
 
 def main() -> None:
