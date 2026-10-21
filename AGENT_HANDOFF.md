@@ -3,7 +3,7 @@
 ## Artifact Build Identity — #2081
 
 - Owner: `codex-brick-20261021-artifact-provenance`; active unpublished branch
-  `codex/2081-artifact-provenance` is being advanced onto actual merged #2082.
+  `codex/2081-artifact-provenance` is based on actual merged #2082 (`d4e3060b`).
 - Release caller correction #2082 merged at `d4e3060b`: packaging receives
   `steps.source.outputs.sha`, including existing-tag recovery where the event
   SHA differs. Its YAML/runtime tests, Actionlint and ShellCheck passed.
@@ -11,7 +11,8 @@
   initial clean checkout across the build. Preserve release and installer
   compatibility; a context hint is not a signing or attestation proof.
 - Focused provenance, artifact and offline-installer tests passed before the
-  dependency merge. Combined qualification and publication remain required.
+  dependency merge. The metadata input object preserves the CLI contract and function-size budget.
+  Combined qualification and publication remain required.
 - Keep source delivery separate from the operational artifact/deployment gates;
   issue #2081 closes only after its source criteria are proven through merge.
 
