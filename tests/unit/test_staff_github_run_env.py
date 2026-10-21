@@ -265,6 +265,13 @@ def test_redaction_masks_ghs_installation_token() -> None:
     assert "[REDACTED_GITHUB_TOKEN]" in redact_sensitive_content(line)
 
 
+def test_e2e_hermetic_returns_fake_installation_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STAFF_E2E_HERMETIC", "1")
+    tok = mint_staff_run_github_token(role=_role(), repo="")
+    assert tok.source == "e2e_hermetic"
+    assert tok.token.startswith("ghs_")
+
+
 def test_operator_token_fallback_enabled() -> None:
     assert not operator_token_fallback_enabled()
     with patch.dict(os.environ, {"STAFF_ALLOW_OPERATOR_TOKEN": "1"}):
