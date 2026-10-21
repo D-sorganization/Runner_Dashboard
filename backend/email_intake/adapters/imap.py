@@ -8,7 +8,6 @@ import logging
 from datetime import UTC, datetime
 from email import policy as email_policy
 from email.parser import BytesParser
-from typing import Any
 
 from email_intake.adapters.base import InboundAdapter, InboundFetchResult
 from email_intake.config import EmailIntakeConfig

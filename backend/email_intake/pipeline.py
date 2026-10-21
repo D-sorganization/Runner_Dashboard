@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC
 from typing import Any
 
 from email_intake.config import EmailIntakeConfig, load_email_intake_config
