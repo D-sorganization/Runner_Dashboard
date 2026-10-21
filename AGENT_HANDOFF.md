@@ -1,5 +1,11 @@
 # Agent Handoff — Runner Dashboard
 
+## GitHub Actions Artifact Transport — #2115
+
+- Branch `codex/2115-artifact-transport`, commit `48798bda`; PR not opened.
+- Bounded artifact pagination and ZIP streaming are implemented; focused transport, gh_client and retry tests passed (60 total), as did Ruff, format and targeted mypy.
+- Parent owns protected central pre-PR qualification/publication. The unchanged RD base reports inherited 5 WIP entries against its declared limit of 4; no strict-governance-green claim is made.
+
 ## Brick Dashboard Delivery — #2049, #2081 And #2089
 
 - Owner: `codex-brick-20261021-artifact-provenance`; active combined branch
