@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from staff.provider_fallback import ProviderFallbackRule, parse_provider_fallback_rules, validate_provider_fallback_rules
+from staff.provider_fallback import (
+    ProviderFallbackRule,
+    parse_provider_fallback_rules,
+    validate_provider_fallback_rules,
+)
 from staff.validator import validate_role_data
 
 log = logging.getLogger("dashboard.staff.roles")
