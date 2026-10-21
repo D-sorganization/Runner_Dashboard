@@ -7,7 +7,7 @@ large fleet feed module.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from disk_full_cordon import multi_host_cordon_alert_needed
@@ -23,8 +23,8 @@ def disk_cordon_active_from_fleet_node(data: Mapping[str, object]) -> bool:
 
 
 def multi_host_disk_cordon_fleet_events(
-    previous: list[NodeSnapshot] | None,
-    current: list[NodeSnapshot],
+    previous: Iterable[NodeSnapshot] | None,
+    current: Iterable[NodeSnapshot],
     *,
     ts: int,
     alert_threshold: int,
@@ -32,7 +32,8 @@ def multi_host_disk_cordon_fleet_events(
     """Emit a critical fleet event when cordoned host count crosses the RM threshold."""
     from fleet_events import FleetEvent
 
-    current_count = sum(1 for snap in current if snap.disk_cordon_active)
+    current_list = list(current)
+    current_count = sum(1 for snap in current_list if snap.disk_cordon_active)
     if previous is None:
         previous_count: int | None = None
     else:
