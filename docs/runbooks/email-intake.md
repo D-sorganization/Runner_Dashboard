@@ -2,63 +2,70 @@
 
 Provider-neutral work requests via IMAP pull (epic #2092). No public webhook on the hub.
 
+**Default:** intake is **off** until `MAIL_INTAKE_ENABLED=1` on the hub. Do not commit IMAP credentials;
+use a password file on the host only.
+
 ## 1. Mailbox and DNS
 
-Create a dedicated mailbox (example: `intake@<subdomain>.affinedrift.com`) at any host
-that supports IMAP. Replace `<subdomain>` with the label Dieter chooses (not chosen yet).
-Suggested DNS for `<subdomain>.affinedrift.com`:
+Production mailbox: **`dashboard@affinedrift.com`** (root domain; Dieter provisioned this address).
 
-| Type | Name | Value |
+The hub receives mail via your provider’s IMAP settings for that mailbox. For **outbound senders**
+(allowlisted in RM `staff/mail_policy.yml`), DMARC alignment uses the **From** domain — typically
+`@gmail.com`, `@affinedrift.com`, etc. Ensure **affinedrift.com** publishes correct SPF, DKIM, and
+DMARC if anyone sends From `@affinedrift.com`.
+
+| Type | Name | Purpose |
 | --- | --- | --- |
-| MX | `<subdomain>.affinedrift.com` | your provider MX targets |
-| TXT | `<subdomain>.affinedrift.com` | `v=spf1 include:<provider-spf> -all` |
-| TXT | `default._domainkey.<subdomain>.affinedrift.com` | provider DKIM selector |
-| TXT | `_dmarc.<subdomain>.affinedrift.com` | `v=DMARC1; p=quarantine; rua=mailto:dmarc@affinedrift.com` |
+| MX | `affinedrift.com` | Provider MX for the mailbox host (if receiving at root) |
+| TXT | `affinedrift.com` | SPF for affinedrift.com senders |
+| TXT | provider DKIM selector | DKIM for affinedrift.com |
+| TXT | `_dmarc.affinedrift.com` | DMARC policy for affinedrift.com |
 
-DMARC alignment must pass on the **receiving host**; the hub checks
-`Authentication-Results` for `dmarc=pass` aligned with the `From` domain.
+DMARC must pass on the **receiving host**; the hub checks `Authentication-Results` for
+`dmarc=pass` aligned with the `From` domain.
 
 ## 2. Repository_Management policy
 
-`staff/mail_policy.yml` is added in Repository_Management (companion tracked in
-`docs/email-intake/companion/` until the RM PR merges — link the RM PR here once open).
-RM sync refreshes the hub cache on each `staff.rm_sync` tick.
+Canonical policy: [Repository_Management#2284](https://github.com/D-sorganization/Repository_Management/pull/2284)
+(`staff/mail_policy.yml` + validator, merged `e524c89`).
 
-Kill switch: set `intake_enabled: false` in that file and wait for sync (next sync
-overwrites the cached policy; restart not required for policy-only changes).
+A copy for offline reference lives under `docs/email-intake/companion/`. RM sync refreshes the hub
+cache on each `staff.rm_sync` tick.
+
+Kill switch: set `intake_enabled: false` in `staff/mail_policy.yml` and wait for sync (restart not
+required for policy-only changes).
 
 ## 3. Hub environment (DeskComputer)
 
-Add to the hub service environment file (never commit secrets), e.g.
-`/etc/runner-dashboard/env` or the path configured for `runner-dashboard.service`:
+Add to the hub **system** service environment file (never commit secrets), e.g.
+`/etc/runner-dashboard/env`:
 
 ```bash
-MAIL_INTAKE_ENABLED=1
-MAIL_INTAKE_ADDRESS=intake@<subdomain>.affinedrift.com
-MAIL_INTAKE_DOMAIN=<subdomain>.affinedrift.com
-MAIL_INTAKE_IMAP_HOST=imap.<provider>
-MAIL_INTAKE_IMAP_USER=intake@<subdomain>.affinedrift.com
-MAIL_INTAKE_IMAP_PASSWORD_FILE=/etc/runner-dashboard/mail-intake-imap.password
-MAIL_INTAKE_POLL_INTERVAL_SECONDS=120
+# Off by default — set to 1 only when ready to poll
+# MAIL_INTAKE_ENABLED=1
+# MAIL_INTAKE_ADDRESS=dashboard@affinedrift.com
+# MAIL_INTAKE_DOMAIN=affinedrift.com
+# MAIL_INTAKE_IMAP_HOST=imap.<provider>
+# MAIL_INTAKE_IMAP_USER=dashboard@affinedrift.com
+# MAIL_INTAKE_IMAP_PASSWORD_FILE=/etc/runner-dashboard/mail-intake-imap.password
+# MAIL_INTAKE_POLL_INTERVAL_SECONDS=120
 ```
 
 Every accepted email must include a `role:` line naming a **published staff role**
-(from `staff/roles/*.yml` under `STAFF_RM_ROOT`). There is no default role; unknown
-roles are quarantined.
+(`staff/roles/*.yml` under `STAFF_RM_ROOT`). There is no default role; unknown roles are quarantined.
 
-Restart the **system** dashboard unit on the hub after env or credential changes:
+After enabling intake or changing credentials:
 
 ```bash
 sudo systemctl restart runner-dashboard
 ```
 
-On spoke nodes (e.g. Brick) that run the dashboard as a **user** unit, use
-`systemctl --user restart runner-dashboard.service` instead.
+On spoke nodes (e.g. Brick) with a **user** unit: `systemctl --user restart runner-dashboard.service`.
 
 ## 4. Swapping mail providers
 
-1. Update MX to the new provider.
-2. Update `MAIL_INTAKE_IMAP_*` credentials to the new mailbox.
+1. Update MX/DNS at the provider if needed.
+2. Update `MAIL_INTAKE_IMAP_*` and the password file on the hub.
 3. Restart the dashboard service (system unit on hub, user unit on spokes).
 
 ## 5. Barb (agent-grok) — read and approve proposals
