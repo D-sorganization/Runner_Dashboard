@@ -11,11 +11,13 @@ from staff import quota as quota_mod
 from staff.adapters import READ_ONLY_RUN_PROVIDERS, ProviderAdapter
 from staff.plan import RunRequest
 from staff.provider_cooldown import (
+    earliest_cooldown_reset,
+    mark_provider_cooldown,
     provider_in_cooldown,
 )
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain
 from staff.roles import RoleSpec
-from staff.runner_ops import can_run_unattended
+from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 log = logging.getLogger("dashboard.staff.failover_dispatch")
 
@@ -66,7 +68,6 @@ def _usable_provider(
 ) -> bool:
     if role.code_read_only and pid not in READ_ONLY_RUN_PROVIDERS:
         return False
-    # Match select_first_available_provider: unattended + not disabled; installed() is checked at launch.
     return can_run_unattended(adapters, pid)
 
 
@@ -116,6 +117,203 @@ def pick_machine_for_chain(
         if best is None or rank < best:
             best = rank
     return best[3] if best else local_name
+
+
+def tried_slots_for_root(store: Any, root_id: str) -> set[str]:
+    from staff.failover_model import slot_key  # noqa: PLC0415
+
+    root = store.get_run(root_id)
+    tried: set[str] = set()
+    if root is None:
+        return tried
+    chain = parse_chain_log(getattr(root, "provider_chain", ""))
+    for entry in chain:
+        tried.add(slot_key(entry.get("provider", ""), entry.get("tier", "")))
+    for row in store.get_attempts(root_id):
+        tried.add(slot_key(row.provider, getattr(row, "model_tier", "") or ""))
+    return tried
+
+
+def tried_providers_for_root(store: Any, root_id: str) -> set[str]:
+    return {s.split(":", 1)[0] for s in tried_slots_for_root(store, root_id)}
+
+
+def try_chain_failover(
+    runner: Any,
+    latest: Any,
+    plan: Any,
+    role: RoleSpec,
+    guard: Any,
+    *,
+    retries_exhausted: bool,
+) -> bool:
+    """Schedule the next provider in the fleet failover chain when appropriate."""
+    from staff.plan import RunPlan  # noqa: PLC0415
+    from staff.retry import _claim, _provenance, _schedule, attempt_run_id  # noqa: PLC0415
+    from staff.store import RunRecord  # noqa: PLC0415
+
+    fc = latest.failure_class
+    if not is_failover_failure(fc):
+        return False
+    immediate = fc in IMMEDIATE_FAILOVER_CLASSES
+    if not immediate and not retries_exhausted and fc == "rate_limited":
+        return False
+
+    mark_provider_cooldown(plan.provider, fc, message=latest.error or "")
+    root_id = latest.retry_of or latest.id
+    from staff.failover_model import resolve_launch_model, role_base_tier, slot_key
+
+    raw_tier = (getattr(latest, "model_tier", None) or "").strip().lower()
+    active_tier = raw_tier if raw_tier in ("routine", "standard", "complex") else role_base_tier(role)
+    append_chain_attempt(
+        runner.store,
+        root_id,
+        provider=plan.provider,
+        model=plan.model,
+        outcome=fc,
+        tier=active_tier,
+    )
+
+    chain = resolve_failover_chain(role, requested_provider=None)
+    tried_slots = tried_slots_for_root(runner.store, root_id)
+    next_step: FailoverStep | None = None
+    next_tier = active_tier
+
+    while next_step is None:
+        for step in chain:
+            key = slot_key(step.provider, next_tier)
+            if key in tried_slots:
+                continue
+            if provider_in_cooldown(step.provider):
+                continue
+            if not _usable_provider(runner._adapters, role, step.provider):
+                continue
+            next_step = step
+            break
+        if next_step is not None:
+            break
+        if not getattr(role, "allow_tier_escalation", False):
+            break
+        break  # tier escalation wiring lands in slice 5b
+
+    if next_step is None:
+        _mark_providers_exhausted(runner.store, latest, root_id, plan)
+        return True
+
+    can_run, _ = guard.can_run(role)
+    if not can_run:
+        return False
+
+    next_attempt = latest.attempt + 1
+    attempt_id = attempt_run_id(root_id, next_attempt)
+    next_branch = f"{plan.branch}-failover-{next_attempt}"
+    target_model, resolved_tier = resolve_launch_model(
+        req=None,
+        role=role,
+        provider=next_step.provider,
+        adapter=runner._adapters[next_step.provider],
+        step=next_step,
+        active_tier=next_tier,
+    )
+    argv = runner._adapters[next_step.provider].build_command(
+        plan.prompt, "<workdir>", target_model, **read_only_kwargs(role)
+    )
+    fallback_plan = RunPlan(
+        role=plan.role,
+        provider=next_step.provider,
+        model=target_model,
+        model_tier=resolved_tier,
+        repo=plan.repo,
+        target_kind=plan.target_kind,
+        target_ref=plan.target_ref,
+        operator_prompt=plan.operator_prompt,
+        prompt=plan.prompt,
+        argv=argv,
+        branch=next_branch,
+        lease_ritual=plan.lease_ritual,
+        consolidation=plan.consolidation,
+        focus=plan.focus,
+        head_ref=plan.head_ref,
+    )
+    fallback_rec = RunRecord(
+        id=attempt_id,
+        role=plan.role,
+        provider=next_step.provider,
+        model=target_model,
+        model_tier=resolved_tier,
+        machine=runner.machine,
+        repo=plan.repo,
+        target_kind=plan.target_kind,
+        target_ref=plan.target_ref,
+        prompt=plan.prompt,
+        requested_by=latest.requested_by,
+        on_behalf_of=latest.on_behalf_of,
+        branch=next_branch,
+        strategy_mode=plan.strategy_mode,
+        retry_of=root_id,
+        attempt=next_attempt,
+        max_attempts=latest.max_attempts + 1,
+        fallback_provider=next_step.provider,
+        **(_provenance(latest)),
+    )
+    if not _claim(runner.store, fallback_rec):
+        return False
+    runner.store.append_event(
+        root_id,
+        "failover",
+        f"{fc} on {plan.provider}; chain failover to {next_step.provider}"
+        + (f" ({target_model})" if target_model else ""),
+    )
+    _schedule(runner, fallback_rec, fallback_plan, 0.0)
+    return True
+
+
+def _mark_providers_exhausted(store: Any, latest: Any, root_id: str, plan: Any) -> None:
+    reset_at = earliest_cooldown_reset() or ""
+    msg = f"All providers in failover chain exhausted; earliest reset {reset_at or 'unknown'}"
+    store.update_run(
+        latest.id,
+        status="blocked",
+        failure_class="providers_exhausted",
+        retryable=False,
+        remediation=msg,
+        error=msg,
+        next_attempt_at=reset_at or None,
+    )
+    if root_id != latest.id:
+        store.update_run(
+            root_id,
+            status="blocked",
+            failure_class="providers_exhausted",
+            retryable=False,
+            remediation=msg,
+            error=msg,
+            next_attempt_at=reset_at or None,
+        )
+    store.append_event(root_id, "providers_exhausted", msg)
+
+
+def run_completion_summary(
+    store: Any,
+    rec: Any,
+    result_line: str,
+    *,
+    provider: str,
+    model: str | None,
+) -> str:
+    """Merge STAFF_RESULT text with failover chain brief when present (#2047)."""
+    from staff.adapter_failure import parse_chain_summary
+    from staff.run_link import result_summary
+
+    root_id = rec.retry_of or rec.id
+    append_chain_attempt(store, root_id, provider=provider, model=model, outcome="succeeded")
+    summary = (rec.outcome or "") or result_summary(result_line)
+    refreshed = store.get_run(root_id)
+    chain_raw = getattr(refreshed, "provider_chain", "") if refreshed else ""
+    chain_note = parse_chain_summary(parse_chain_log(chain_raw))
+    if chain_note and summary:
+        return f"{chain_note}. {summary}"
+    return str(chain_note or summary or "")
 
 
 def resolve_provider_and_model(
