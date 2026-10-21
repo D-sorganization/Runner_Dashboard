@@ -66,7 +66,8 @@ def _usable_provider(
 ) -> bool:
     if role.code_read_only and pid not in READ_ONLY_RUN_PROVIDERS:
         return False
-    return can_run_unattended(adapters, pid) and adapters[pid].installed()
+    # Match select_first_available_provider: unattended + not disabled; installed() is checked at launch.
+    return can_run_unattended(adapters, pid)
 
 
 def pick_launch_step(
