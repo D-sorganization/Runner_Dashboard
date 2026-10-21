@@ -92,9 +92,9 @@ def test_reconcile_writes_audit_rows(tmp_path: Path, monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("STAFF_RUNS_DB", str(audit_db))
     holds = holds_mod.HoldsList(tmp_path / "staff_holds.json", roles_loader=dict)
     holds.replace([{"text": "gone", "kind": "guardrail"}])
-    reconcile_holds(roles=_roles(), commit_sha="abc123456789", holds=holds)
+    reconcile_holds(roles=_roles(), commit_sha="abc123", holds=holds)
     store = StaffAuditStore(audit_db)
     lifts = store.list_entries(action="hold_lift")
     assert len(lifts) == 1
     assert lifts[0].principal == "role-sync"
-    assert lifts[0].detail.get("source_commit") == "abc123456789"
+    assert lifts[0].detail.get("source_commit") == "abc123"
