@@ -111,7 +111,6 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
                 token_hash=token_hash,
                 principal_id=agent_id,
                 created_at=time.time(),
-                expires_at=None,
                 name=f"agent-tokens/{path.name}",
             )
         )
