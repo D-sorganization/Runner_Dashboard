@@ -10,10 +10,21 @@ import re
 import subprocess
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 _FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
+
+
+@dataclass(frozen=True)
+class ArtifactBuildInputs:
+    """Validated inputs describing the source and compatibility of a build."""
+
+    repo: Path
+    version: str
+    python_minor: str
+    sha_override: str = ""
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -42,19 +53,16 @@ def validate_source_identity(repo: Path, *, sha_override: str = "") -> tuple[str
 
 
 def build_metadata(
-    repo: Path,
-    version: str,
-    python_minor: str,
-    *,
-    sha_override: str = "",
+    inputs: ArtifactBuildInputs,
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Return compatible metadata only when its SHA names this clean checkout."""
     env = os.environ if environ is None else environ
-    sha, branch = validate_source_identity(repo, sha_override=sha_override)
+    sha, branch = validate_source_identity(inputs.repo, sha_override=inputs.sha_override)
+    python_minor = inputs.python_minor
     return {
         "app": "runner-dashboard",
-        "version": version,
+        "version": inputs.version,
         "git_sha": sha,
         "git_branch": branch,
         "git_dirty": False,
@@ -89,7 +97,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not args.version or not args.python_minor or not args.output:
             parser.error("--version, --python-minor, and --output are required for metadata generation")
-        metadata = build_metadata(args.repo_root, args.version, args.python_minor, sha_override=args.sha)
+        inputs = ArtifactBuildInputs(args.repo_root, args.version, args.python_minor, args.sha)
+        metadata = build_metadata(inputs)
     except ValueError as exc:
         sys.stderr.write(f"artifact metadata: {exc}\n")
         return 1

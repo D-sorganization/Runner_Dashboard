@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,12 @@ assert SPEC and SPEC.loader
 artifact_metadata = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = artifact_metadata
 SPEC.loader.exec_module(artifact_metadata)
+
+
+def _build_inputs(repo: Path, sha_override: str = "") -> artifact_metadata.ArtifactBuildInputs:
+    if sha_override:
+        return artifact_metadata.ArtifactBuildInputs(repo, "1.2.3", "3.12", sha_override)
+    return artifact_metadata.ArtifactBuildInputs(repo, "1.2.3", "3.12")
 
 
 def _repo(tmp_path: Path) -> tuple[Path, str]:
@@ -35,8 +43,9 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
 
 def test_local_artifact_metadata_uses_clean_checkout_identity(tmp_path: Path) -> None:
     repo, sha = _repo(tmp_path)
+    inputs = _build_inputs(repo)
 
-    metadata = artifact_metadata.build_metadata(repo, "1.2.3", "3.12", environ={})
+    metadata = artifact_metadata.build_metadata(inputs, environ={})
 
     assert metadata["git_sha"] == sha
     assert metadata["git_dirty"] is False
@@ -45,20 +54,22 @@ def test_local_artifact_metadata_uses_clean_checkout_identity(tmp_path: Path) ->
     assert metadata["build_context_evidence"] == "environment-hint-unverified"
     assert metadata["build_timestamp"].endswith("Z")
     assert metadata["compatibility"]["artifact_schema"] == "runner-dashboard-artifact-v2"
+    with pytest.raises(FrozenInstanceError):
+        inputs.version = "2.0.0"
 
 
 def test_sha_override_must_be_full_checkout_sha(tmp_path: Path) -> None:
     repo, sha = _repo(tmp_path)
 
     with pytest.raises(ValueError, match="full 40-character checkout SHA"):
-        artifact_metadata.build_metadata(repo, "1.2.3", "3.12", sha_override=sha[:12], environ={})
+        artifact_metadata.build_metadata(_build_inputs(repo, sha[:12]), environ={})
 
 
 def test_sha_override_must_match_checkout(tmp_path: Path) -> None:
     repo, _ = _repo(tmp_path)
 
     with pytest.raises(ValueError, match="does not match checkout HEAD"):
-        artifact_metadata.build_metadata(repo, "1.2.3", "3.12", sha_override="f" * 40, environ={})
+        artifact_metadata.build_metadata(_build_inputs(repo, "f" * 40), environ={})
 
 
 def test_release_recovery_uses_explicit_tag_checkout_not_event_sha(tmp_path: Path) -> None:
@@ -66,10 +77,7 @@ def test_release_recovery_uses_explicit_tag_checkout_not_event_sha(tmp_path: Pat
     event_sha = "f" * 40
 
     metadata = artifact_metadata.build_metadata(
-        repo,
-        "1.2.3",
-        "3.12",
-        sha_override=tag_checkout_sha,
+        _build_inputs(repo, tag_checkout_sha),
         environ={"GITHUB_ACTIONS": "true", "GITHUB_SHA": event_sha},
     )
 
@@ -83,10 +91,7 @@ def test_release_recovery_rejects_event_sha_when_passed_as_explicit_override(tmp
 
     with pytest.raises(ValueError, match="--sha does not match checkout HEAD"):
         artifact_metadata.build_metadata(
-            repo,
-            "1.2.3",
-            "3.12",
-            sha_override=event_sha,
+            _build_inputs(repo, event_sha),
             environ={"GITHUB_ACTIONS": "true", "GITHUB_SHA": event_sha},
         )
 
@@ -97,7 +102,7 @@ def test_final_metadata_check_rejects_head_changed_after_initial_identity(tmp_pa
     subprocess.run(["git", "-C", str(repo), "commit", "-qam", "source moved during build"], check=True)
 
     with pytest.raises(ValueError, match="--sha does not match checkout HEAD"):
-        artifact_metadata.build_metadata(repo, "1.2.3", "3.12", sha_override=initial_sha, environ={})
+        artifact_metadata.build_metadata(_build_inputs(repo, initial_sha), environ={})
 
 
 def test_dirty_checkout_fails_closed_even_when_untracked_files_are_present(tmp_path: Path) -> None:
@@ -105,14 +110,58 @@ def test_dirty_checkout_fails_closed_even_when_untracked_files_are_present(tmp_p
     (repo / "untracked.txt").write_text("not in source commit\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="checkout is dirty"):
-        artifact_metadata.build_metadata(repo, "1.2.3", "3.12", environ={})
+        artifact_metadata.build_metadata(_build_inputs(repo), environ={})
 
 
 def test_github_actions_environment_is_only_an_unverified_context_hint(tmp_path: Path) -> None:
     repo, _ = _repo(tmp_path)
 
-    metadata = artifact_metadata.build_metadata(repo, "1.2.3", "3.12", environ={"GITHUB_ACTIONS": "true"})
+    metadata = artifact_metadata.build_metadata(_build_inputs(repo), environ={"GITHUB_ACTIONS": "true"})
 
     assert metadata["build_context"] == "github-actions"
     assert metadata["build_context_evidence"] == "environment-hint-unverified"
     assert metadata["source"] == "artifact-build"
+
+
+def test_metadata_cli_preserves_sha_flags(tmp_path: Path) -> None:
+    repo, sha = _repo(tmp_path)
+    output = tmp_path / "deployment.json"
+    generated = subprocess.run(
+        [
+            sys.executable,
+            str(METADATA),
+            "--repo-root",
+            str(repo),
+            "--version",
+            "1.2.3",
+            "--python-minor",
+            "3.12",
+            "--sha",
+            sha,
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert generated.returncode == 0, generated.stderr
+    assert json.loads(output.read_text(encoding="utf-8"))["git_sha"] == sha
+
+    validated = subprocess.run(
+        [
+            sys.executable,
+            str(METADATA),
+            "--repo-root",
+            str(repo),
+            "--sha",
+            sha,
+            "--validate-source-only",
+            "--print-sha",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert validated.returncode == 0, validated.stderr
+    assert validated.stdout == f"{sha}\n"
