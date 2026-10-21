@@ -18,12 +18,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import provider_switch
 from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
+from staff import quota as quota_mod
 from staff import retry as retry_mod
 from staff import usage as usage_mod
-from staff.adapters import ADAPTERS, ProviderAdapter
+from staff.adapters import ADAPTERS, READ_ONLY_RUN_PROVIDERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
@@ -105,7 +107,7 @@ class StaffRunner:
         role = self._resolve_role(req)
         from staff.failover_dispatch import resolve_provider_and_model
 
-        provider, _chain_model, _model_tier = resolve_provider_and_model(self._adapters, self.machine, req, role)
+        provider, _chain_model, model_tier = resolve_provider_and_model(self._adapters, self.machine, req, role)
         if req.repo and not _SAFE_REF.match(req.repo):
             raise ValueError("repo must be a bare repository name")
         if role.repos and req.repo and req.repo not in role.repos:
@@ -131,7 +133,7 @@ class StaffRunner:
         adapter = self._adapters[provider]
         chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)
         step = next((s for s in chain if s.provider == provider), None)
-        effective_model, _resolved_tier = resolve_launch_model(
+        effective_model, resolved_tier = resolve_launch_model(
             req=req,
             role=role,
             provider=provider,
@@ -144,6 +146,7 @@ class StaffRunner:
             role=role.name,
             provider=provider,
             model=effective_model,
+            model_tier=resolved_tier or model_tier,
             repo=req.repo,
             target_kind=req.target_kind,
             target_ref=req.target_ref,
@@ -431,11 +434,23 @@ class StaffRunner:
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
+                if status == "succeeded":
+                    from staff.failover_dispatch import run_completion_summary
+
+                    summary = run_completion_summary(
+                        store,
+                        updated_rec,
+                        result_line,
+                        provider=plan.provider,
+                        model=plan.model,
+                    )
+                else:
+                    summary = updated_rec.outcome or result_summary(result_line)
                 handle_run_status_change(
                     updated_rec,
                     status=status,
                     question=q,
-                    summary=updated_rec.outcome or result_summary(result_line),
+                    summary=summary,
                 )
         finally:
             revoke_run_token(rec.id)

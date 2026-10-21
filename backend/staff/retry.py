@@ -37,6 +37,7 @@ RETRYABLE_FAILURE_CLASSES = frozenset(
     {
         "rate_limited",
         "provider_capacity",
+        "quota_exhausted",
         "provider_error",
         "workspace_error",
     }
@@ -107,8 +108,8 @@ def should_retry(
     if not is_retryable_class(rec.failure_class):
         return False, f"failure class '{rec.failure_class}' is not retryable"
 
-    if rec.failure_class == "provider_capacity":
-        return False, "provider capacity uses declarative fallback, not same-provider retry"
+    if rec.failure_class in ("provider_capacity", "quota_exhausted"):
+        return False, f"{rec.failure_class} uses failover chain, not same-provider retry"
 
     max_att = getattr(rec, "max_attempts", 2) or getattr(role, "max_attempts", 2) or 2
     if rec.attempt >= max_att:
@@ -183,6 +184,7 @@ def handle_post_execution_retry(
         return False
 
     from staff.budget import BudgetGuard
+    from staff.failover_dispatch import try_chain_failover
     from staff.provider_fallback import try_declarative_fallback
     from staff.runner import RunPlan
     from staff.store import RunRecord
@@ -206,6 +208,8 @@ def handle_post_execution_retry(
     )
 
     if decl(False):
+        return True
+    if try_chain_failover(runner, latest, plan, role, guard, retries_exhausted=False):
         return True
 
     # 1. Try retry on the same provider
@@ -268,6 +272,8 @@ def handle_post_execution_retry(
 
     # 2. Declarative fallback after same-provider retries are exhausted
     if decl(True):
+        return True
+    if try_chain_failover(runner, latest, plan, role, guard, retries_exhausted=True):
         return True
 
     # 3. Legacy fallback_providers / providers order
