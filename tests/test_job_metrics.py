@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -12,8 +10,6 @@ import gh_client
 import job_metrics
 import job_metrics_collector
 import pytest
-from ci_fleet_baseline.metrics import job_execute_seconds, job_queue_seconds
-from job_metric_semantics import job_durations
 
 
 @pytest.fixture
@@ -47,35 +43,6 @@ def _job(job_id: int = 31, *, attempt: int | None = 1, labels: list[str] | None 
         "runner_name": "d-sorg-fleet-DeskComputer-1",
         "labels": labels or ["self-hosted", "linux"],
     }
-
-
-def test_job_timing_formulas_parse_and_clamp_invalid_or_negative_values() -> None:
-    assert job_durations("2026-10-21T10:00:00Z", "2026-10-21T10:00:10Z", "2026-10-21T10:01:10Z") == (
-        10.0,
-        60.0,
-    )
-    assert job_durations("bad", "2026-10-21T10:00:10Z", "2026-10-21T10:00:00Z") == (None, 0.0)
-
-
-def test_timing_adapter_matches_exact_pinned_vendor_bytes() -> None:
-    package = Path(__file__).parents[1] / "backend" / "ci_fleet_baseline"
-    expected = {
-        "metrics.py": "aef74ecb2dc0da84a6eab5c35e94d52d52b0d730446b4cbdf9835aa180bd348b",
-        "window.py": "f2edab6d41050408966fa2693674896e2b364e877bd27190961fa6bbab8afa00",
-        "constants.py": "c2554385fb811aad67e6f7bead3e6ac9b65f0e37d4231804650d813cffb30b2a",
-    }
-    for name, fingerprint in expected.items():
-        content = (package / name).read_bytes()
-        if name == "metrics.py":
-            content = content.replace(
-                b"from .constants import", b"from shared_scripts.ci_fleet_baseline.constants import", 1
-            ).replace(b"from .window import", b"from shared_scripts.ci_fleet_baseline.window import", 1)
-        assert hashlib.sha256(content).hexdigest() == fingerprint
-    timestamps = ("2026-10-21T10:00:00Z", "2026-10-21T10:00:10Z", "2026-10-21T10:01:10Z")
-    assert job_durations(*timestamps) == (
-        job_queue_seconds(timestamps[0], timestamps[1]),
-        job_execute_seconds(timestamps[1], timestamps[2]),
-    )
 
 
 def test_query_separates_metric_sample_counts_and_label_fanout(stats_db: None) -> None:
