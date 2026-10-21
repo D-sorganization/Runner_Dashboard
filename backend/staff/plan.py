@@ -72,7 +72,6 @@ class RunPlan:
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
     head_ref: str = ""
-    model_tier: str = ""
 
     @property
     def strategy_mode(self) -> str:
@@ -91,7 +90,6 @@ class RunPlan:
             "role": self.role,
             "provider": self.provider,
             "model": self.model,
-            "model_tier": self.model_tier,
             "repo": self.repo,
             "target_kind": self.target_kind,
             "target_ref": self.target_ref,

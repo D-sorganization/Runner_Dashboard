@@ -94,7 +94,7 @@ def pick_machine_for_chain(
 ) -> str:
     """Choose an online machine with a healthy chain provider; least loaded wins."""
     cooling = machine_cooldowns or {}
-    best: tuple[int, int, str] | None = None
+    best: tuple[int, int, int, str] | None = None
     for name, node in (board.get("machines") or {}).items():
         if node.get("status") != "online":
             continue

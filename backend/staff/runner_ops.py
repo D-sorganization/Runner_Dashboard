@@ -421,7 +421,6 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         on_behalf_of=req.on_behalf_of,
         branch=plan.branch,
         strategy_mode=plan.strategy_mode,
-        model_tier=getattr(plan, "model_tier", "") or "",
         max_attempts=max_attempts,
         thread_id=req.thread_id,
         work_item_id=req.work_item_id,
