@@ -114,9 +114,11 @@ jobs:
             echo "::error::Could not resolve target version"
             exit 1
           fi
-          echo "version=$TARGET" >> "$GITHUB_OUTPUT"
-          echo "dry_run=$DRY" >> "$GITHUB_OUTPUT"
-          echo "tag=v$TARGET" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$TARGET"
+            echo "dry_run=$DRY"
+            echo "tag=v$TARGET"
+          } >> "$GITHUB_OUTPUT"
           echo "Resolved target version: $TARGET (dry_run=$DRY)"
 
       - name: Verify VERSION matches target
@@ -274,10 +276,12 @@ jobs:
           CHECKSUM="${ARTIFACT}.sha256"
           BUNDLE_FILE="$OUTPUT_DIR/dashboard-${VERSION}.bundle"
           SHA256=$(awk '{print $1}' "$CHECKSUM")
-          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
-          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
-          echo "bundle=$BUNDLE_FILE" >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "artifact=$ARTIFACT"
+            echo "checksum=$CHECKSUM"
+            echo "bundle=$BUNDLE_FILE"
+            echo "sha256=$SHA256"
+          } >> "$GITHUB_OUTPUT"
           echo "Built $ARTIFACT (sha256=$SHA256)"
 
       - name: Install cosign
