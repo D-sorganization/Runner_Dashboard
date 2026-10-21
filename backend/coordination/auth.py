@@ -27,6 +27,8 @@ from identity import (
     Principal,
     _is_loopback_request,
     _loopback_auth_enabled,
+    _loopback_operator_writes_enabled,
+    _reject_unauthenticated_bearer,
     _resolve_principal_optional,
     auth_header,
     principal_has_scope,
@@ -111,7 +113,20 @@ def require_writer(scope: str) -> Callable[..., Caller]:
                 status_code=403,
                 detail={"error": "Authorization failed", "required_scope": scope, "principal": principal.id},
             )
+        _reject_unauthenticated_bearer(header_token)
         if _loopback_auth_enabled() and _is_loopback_request(request):
+            if scope == PRIORITIES_WRITE_SCOPE and not _loopback_operator_writes_enabled():
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "Loopback operator writes are disabled in production",
+                        "required_scope": scope,
+                        "hint": (
+                            "Use an authenticated operator session or set "
+                            "DASHBOARD_LOOPBACK_OPERATOR_WRITES=1 for local dev only"
+                        ),
+                    },
+                )
             return Caller(label="loopback-dev")
         raise HTTPException(status_code=401, detail="Authentication required")
 
