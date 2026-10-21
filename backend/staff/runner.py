@@ -18,14 +18,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import provider_switch
 from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
-from staff import quota as quota_mod
 from staff import retry as retry_mod
 from staff import usage as usage_mod
-from staff.adapters import ADAPTERS, READ_ONLY_RUN_PROVIDERS, ProviderAdapter
+from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
@@ -105,7 +103,9 @@ class StaffRunner:
         Raises ``ValueError`` with an operator-readable message on bad input.
         """
         role = self._resolve_role(req)
-        provider = self._resolve_provider(req, role)
+        from staff.failover_dispatch import resolve_provider_and_model
+
+        provider, _chain_model, _model_tier = resolve_provider_and_model(self._adapters, self.machine, req, role)
         if req.repo and not _SAFE_REF.match(req.repo):
             raise ValueError("repo must be a bare repository name")
         if role.repos and req.repo and req.repo not in role.repos:
@@ -125,14 +125,19 @@ class StaffRunner:
             consolidation=paragraph,
             focus=focus,
         )
-        from staff.model_resolution import resolve_staff_run_model
+        from staff.failover_model import resolve_launch_model, role_base_tier
+        from staff.provider_failover_config import resolve_failover_chain
 
         adapter = self._adapters[provider]
-        effective_model = resolve_staff_run_model(
-            requested=req.model,
-            role_model=role.model,
-            provider_id=provider,
+        chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)
+        step = next((s for s in chain if s.provider == provider), None)
+        effective_model, _resolved_tier = resolve_launch_model(
+            req=req,
+            role=role,
+            provider=provider,
             adapter=adapter,
+            step=step,
+            active_tier=role_base_tier(role),
         )
         argv = adapter.build_command(prompt, "<workdir>", effective_model, **read_only_kwargs(role))
         return RunPlan(
@@ -165,30 +170,6 @@ class StaffRunner:
             )
             raise ValueError(f"role '{req.role}' is not dispatchable from the dashboard ({reason})")
         return role
-
-    def _resolve_provider(self, req: RunRequest, role: RoleSpec) -> str:
-        if role.code_read_only and req.provider and req.provider not in READ_ONLY_RUN_PROVIDERS:
-            raise ValueError(
-                f"role '{role.name}' runs code-read-only; provider {req.provider!r} has no read-only unattended mode"
-            )
-        candidate_providers = (
-            tuple(p for p in role.providers if p in READ_ONLY_RUN_PROVIDERS) if role.code_read_only else role.providers
-        )
-        provider = req.provider or self._first_available(
-            candidate_providers, quota_mod.ceiling_percent(role.budget_max_window_percent)
-        )
-        if provider not in self._adapters:
-            raise ValueError(f"unknown provider '{provider}'")
-        if req.provider and req.provider not in role.providers and role.name != "ad-hoc":
-            allowed = ", ".join(role.providers)
-            raise ValueError(f"provider '{req.provider}' is not allowed for role '{role.name}' (allowed: {allowed})")
-        if provider_switch.is_disabled(provider):
-            raise ValueError(f"provider '{provider}' is {provider_switch.DISABLED_DETAIL}")
-        if not getattr(self._adapters[provider], "unattended", True):
-            raise ValueError(
-                f"provider '{provider}' is chat-only: it cannot run unattended without bypassing permissions"
-            )
-        return provider
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
         return select_first_available_provider(self._adapters, providers, ceiling)
