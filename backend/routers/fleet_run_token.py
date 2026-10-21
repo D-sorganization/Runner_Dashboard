@@ -47,10 +47,10 @@ def require_fleet_run_token_caller(
     "/api/fleet/run-token",
     response_model=FleetRunTokenResponse,
     response_model_exclude_none=True,
+    dependencies=[Depends(require_fleet_run_token_caller)],
 )
 async def post_fleet_run_token(
     body: FleetRunTokenRequest,
-    _caller: Principal = Depends(require_fleet_run_token_caller),
     fleet_node: str | None = Header(default=None, alias="X-Fleet-Node"),
 ) -> FleetRunTokenResponse:
     """Mint a short-lived GitHub App token for a staff run executing on a spoke node."""
