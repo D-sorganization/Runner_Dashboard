@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from shared_scripts.runner_disk_guard_config import RunnerDiskGuardConfig, RunnerDiskGuardReadmit, RunnerDiskGuardTrip
+from shared_scripts.runner_disk_guard_config import DiskGuardThresholds, RunnerDiskGuardConfig
 
 CordonPhase = Literal["normal", "tripping", "cordoned"]
 
@@ -52,14 +52,14 @@ class CordonTickResult:
     cordon_active: bool
 
 
-def disk_pressure_trips(free_gb: float, used_percent: float, trip: RunnerDiskGuardTrip) -> bool:
+def disk_pressure_trips(free_gb: float, used_percent: float, thresholds: DiskGuardThresholds) -> bool:
     """True when host volume trips RM thresholds (free GB **or** used %)."""
-    return free_gb < trip.min_free_gb or used_percent >= trip.max_used_percent
+    return free_gb < thresholds.trip_min_free_gb or used_percent >= thresholds.trip_used_percent
 
 
-def disk_pressure_allows_readmit(free_gb: float, used_percent: float, readmit: RunnerDiskGuardReadmit) -> bool:
+def disk_pressure_allows_readmit(free_gb: float, used_percent: float, thresholds: DiskGuardThresholds) -> bool:
     """True when host volume cleared hysteresis (free GB **or** used %)."""
-    return free_gb >= readmit.min_free_gb or used_percent <= readmit.max_used_percent
+    return free_gb >= thresholds.readmit_min_free_gb or used_percent <= thresholds.readmit_used_percent
 
 
 def _active_runners(runners: list[RunnerSnapshot]) -> list[RunnerSnapshot]:
@@ -76,16 +76,7 @@ def plan_cordon_tick(
     now: float,
 ) -> CordonTickResult:
     """Advance cordon state for one autoscaler tick. Pure aside from *state* copy."""
-    if not config.enabled:
-        cleared = DiskFullCordonState(phase="normal")
-        return CordonTickResult(
-            state=cleared,
-            actions=(),
-            scheduling_inhibited=False,
-            effective_min_online=None,
-            cordon_active=False,
-        )
-
+    thresholds = config.thresholds
     actions: list[CordonAction] = []
     next_state = DiskFullCordonState(
         phase=state.phase,
@@ -94,12 +85,12 @@ def plan_cordon_tick(
     )
 
     if state.phase == "normal":
-        if disk_pressure_trips(free_gb, used_percent, config.trip):
+        if disk_pressure_trips(free_gb, used_percent, thresholds):
             next_state.phase = "tripping"
             next_state.tripped_at = now
             actions.append(CordonAction(CordonActionKind.SET_MAINTENANCE_ON))
         else:
-            return _finish_tick(next_state, actions)
+            return _finish_tick(next_state, actions, config)
 
     if next_state.phase == "tripping":
         assert next_state.tripped_at is not None  # noqa: S101
@@ -113,28 +104,31 @@ def plan_cordon_tick(
             )
         if not _active_runners(runners):
             next_state.phase = "cordoned"
-        return _finish_tick(next_state, actions)
+        return _finish_tick(next_state, actions, config)
 
     if next_state.phase == "cordoned":
         if not state.cleanup_done:
             actions.append(CordonAction(CordonActionKind.RUN_DISK_CLEANUP))
             next_state.cleanup_done = True
-            return _finish_tick(next_state, actions)
-        if disk_pressure_allows_readmit(free_gb, used_percent, config.readmit):
+            return _finish_tick(next_state, actions, config)
+        if disk_pressure_allows_readmit(free_gb, used_percent, thresholds):
             next_state = DiskFullCordonState(phase="normal")
             actions.append(CordonAction(CordonActionKind.SET_MAINTENANCE_OFF))
-        return _finish_tick(next_state, actions)
+        return _finish_tick(next_state, actions, config)
 
-    return _finish_tick(next_state, actions)
+    return _finish_tick(next_state, actions, config)
 
 
 def _finish_tick(
     state: DiskFullCordonState,
     actions: list[CordonAction],
+    config: RunnerDiskGuardConfig,
 ) -> CordonTickResult:
     cordon_active = state.phase != "normal"
     scheduling_inhibited = cordon_active
-    effective_min_online: int | None = 0 if cordon_active else None
+    effective_min_online: int | None = (
+        config.cordon.min_online_after_drain if cordon_active else None
+    )
     deduped: list[CordonAction] = []
     seen_stops: set[str] = set()
     for action in actions:

@@ -42,10 +42,10 @@ def test_vendored_schema_matches_upstream() -> None:
     assert vendored.SCHEMA_ID == upstream.SCHEMA_ID
     cfg = vendored.load_runner_disk_guard_config(_REPO_ROOT / "config" / "runner_disk_guard.yaml")
     upstream_cfg = upstream.load_runner_disk_guard_config(_REPO_ROOT / "config" / "runner_disk_guard.yaml")
-    assert cfg.trip == upstream_cfg.trip
+    assert cfg.thresholds == upstream_cfg.thresholds
     assert cfg.drain == upstream_cfg.drain
-    assert cfg.readmit == upstream_cfg.readmit
-    assert cfg.fleet == upstream_cfg.fleet
+    assert cfg.cordon == upstream_cfg.cordon
+    assert cfg.alerts == upstream_cfg.alerts
 
 
 def test_vendored_files_match_upstream_bytes() -> None:

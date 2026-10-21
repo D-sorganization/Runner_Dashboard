@@ -333,7 +333,7 @@ def classify_fleet_events(
     if multi_host_cordon_alert_needed(
         prev_cordon_count,
         current_cordon_count,
-        cordon_cfg.fleet.multi_host_cordon_alert_min,
+        cordon_cfg.alerts.cordoned_hosts_warning_threshold,
     ):
         events.append(
             FleetEvent(
@@ -342,7 +342,7 @@ def classify_fleet_events(
                 kind="multi_host_disk_cordon",
                 title=f"{current_cordon_count} hosts disk-full cordoned",
                 detail=(
-                    f"At least {cordon_cfg.fleet.multi_host_cordon_alert_min} fleet hosts are under "
+                    f"At least {cordon_cfg.alerts.cordoned_hosts_warning_threshold} fleet hosts are under "
                     "disk-full cordon (runner-disk-guard/v1 readmit thresholds)."
                 ),
             )

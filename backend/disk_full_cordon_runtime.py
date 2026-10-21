@@ -32,7 +32,6 @@ _STATE_PATH = Path(
     )
 )
 _MAINTENANCE_PATH = Path(os.environ.get("RUNNER_MAINTENANCE_FLAG", "/var/lib/runner-scheduler/maintenance.json"))
-_CLEANUP_BIN = Path(os.environ.get("RUNNER_CLEANUP_BIN", "/usr/local/bin/runner-cleanup"))
 
 
 def load_cordon_state(path: Path | None = None) -> DiskFullCordonState:
@@ -88,28 +87,34 @@ def _set_maintenance(active: bool) -> None:
         _MAINTENANCE_PATH.unlink(missing_ok=True)
 
 
-def _run_cleanup(dry_run: bool) -> None:
+def _run_cleanup_commands(
+    config: RunnerDiskGuardConfig,
+    *,
+    dry_run: bool,
+) -> None:
     if dry_run:
-        log.info("disk-full cordon: dry-run skip runner-cleanup")
+        log.info("disk-full cordon: dry-run skip cleanup commands")
         return
-    if not _CLEANUP_BIN.is_file():
-        log.warning("disk-full cordon: cleanup binary missing at %s", _CLEANUP_BIN)
-        return
-    try:
-        subprocess.run(
-            [str(_CLEANUP_BIN), "--disk-guard"],
-            check=False,
-            timeout=1800,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        log.warning("disk-full cordon: cleanup failed: %s", exc)
+    for command in config.cleanup:
+        argv = list(command.argv)
+        if not argv:
+            continue
+        try:
+            subprocess.run(
+                argv,
+                check=False,
+                timeout=1800,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            log.warning("disk-full cordon: cleanup %s failed: %s", command.description, exc)
 
 
 def apply_cordon_actions(
     actions: tuple[CordonAction, ...],
     *,
+    config: RunnerDiskGuardConfig,
     dry_run: bool,
     stop_unit: Callable[[str, str], None],
 ) -> None:
@@ -122,7 +127,7 @@ def apply_cordon_actions(
             if not dry_run:
                 _set_maintenance(False)
         elif action.kind == CordonActionKind.RUN_DISK_CLEANUP:
-            _run_cleanup(dry_run)
+            _run_cleanup_commands(config, dry_run=dry_run)
         elif action.kind == CordonActionKind.STOP_RUNNER and action.unit:
             reason = "disk-full cordon (forced)" if action.force else "disk-full cordon drain"
             if dry_run:
@@ -152,8 +157,6 @@ def process_disk_full_cordon_tick(
 ) -> bool:
     """Run one cordon tick. Returns True when normal autoscaler scaling should be skipped."""
     active_policy = policy or load_runner_disk_guard_policy()
-    if not active_policy.enabled:
-        return False
 
     host = probe_host_volume()
     free_gb = float(host.get("free_gb", 0.0))
@@ -169,7 +172,12 @@ def process_disk_full_cordon_tick(
         runners=runners,
         now=now,
     )
-    apply_cordon_actions(result.actions, dry_run=dry_run, stop_unit=stop_unit)
+    apply_cordon_actions(
+        result.actions,
+        config=active_policy,
+        dry_run=dry_run,
+        stop_unit=stop_unit,
+    )
     save_cordon_state(result.state, state_path)
     if result.cordon_active:
         log.info(

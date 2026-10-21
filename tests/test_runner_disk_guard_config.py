@@ -8,8 +8,9 @@ import pytest
 
 from shared_scripts.runner_disk_guard_config import (
     SCHEMA_ID,
+    RunnerDiskGuardConfigError,
     load_runner_disk_guard_config,
-    parse_runner_disk_guard_document,
+    validate_runner_disk_guard,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,23 +19,38 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 def test_repo_default_yaml_matches_rm_ops_017_thresholds() -> None:
     cfg = load_runner_disk_guard_config(_REPO_ROOT / "config" / "runner_disk_guard.yaml")
     assert cfg.schema == SCHEMA_ID
-    assert cfg.trip.min_free_gb == 25.0
-    assert cfg.trip.max_used_percent == 92.0
+    assert cfg.version == 1
+    assert cfg.thresholds.trip_min_free_gb == 25.0
+    assert cfg.thresholds.trip_used_percent == 92.0
     assert cfg.drain.finish_running_jobs is True
-    assert cfg.drain.timeout_seconds == 7200.0
-    assert cfg.readmit.min_free_gb == 40.0
-    assert cfg.readmit.max_used_percent == 85.0
-    assert cfg.fleet.multi_host_cordon_alert_min == 2
+    assert cfg.drain.timeout_seconds == 7200
+    assert cfg.thresholds.readmit_min_free_gb == 40.0
+    assert cfg.thresholds.readmit_used_percent == 85.0
+    assert cfg.alerts.cordoned_hosts_warning_threshold == 2
+    assert cfg.cordon.min_online_after_drain == 0
+    assert len(cfg.cleanup) == 2
 
 
-def test_parse_rejects_invalid_hysteresis() -> None:
-    with pytest.raises(ValueError, match="readmit.min_free_gb"):
-        parse_runner_disk_guard_document(
+def test_validate_rejects_invalid_hysteresis() -> None:
+    with pytest.raises(RunnerDiskGuardConfigError, match="readmit_min_free_gb"):
+        validate_runner_disk_guard(
             {
+                "version": 1,
                 "schema": SCHEMA_ID,
-                "trip": {"min_free_gb": 40, "max_used_percent": 92},
-                "drain": {"finish_running_jobs": True, "timeout_seconds": 7200},
-                "readmit": {"min_free_gb": 25, "max_used_percent": 85},
-                "fleet": {"multi_host_cordon_alert_min": 2},
+                "updated_at": "2026-10-21",
+                "thresholds": {
+                    "trip_min_free_gb": 40.0,
+                    "readmit_min_free_gb": 25.0,
+                    "trip_used_percent": 92.0,
+                    "readmit_used_percent": 85.0,
+                },
+                "drain": {"timeout_seconds": 7200, "finish_running_jobs": True},
+                "cordon": {"min_online_after_drain": 0, "stop_accepting_jobs_on_trip": True},
+                "cleanup": {
+                    "commands": [
+                        {"argv": ["/usr/local/bin/runner-cleanup"], "description": "test"},
+                    ]
+                },
+                "alerts": {"cordoned_hosts_warning_threshold": 2},
             }
         )

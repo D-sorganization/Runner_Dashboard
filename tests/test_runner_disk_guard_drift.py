@@ -32,3 +32,4 @@ def test_manifest_records_rm_merge_pr() -> None:
     assert manifest.get("upstream_repository") == drift.UPSTREAM_REPO
     ref = manifest.get("upstream_ref")
     assert isinstance(ref, str) and ref
+    assert ref == "edfcbbb68c94bf3abfb1e41041dd28d6b5f9d8e7"
