@@ -30,6 +30,16 @@ bash deploy/install-node-auto-deploy.sh
 
 This copies the auto-deploy scripts into the live deploy dir, installs the timer
 (system scope on DeskComputer WSL hub, user scope on Brick), and enables it.
+The generated unit pins `RUNNER_DASHBOARD_PYTHON` to the same interpreter as
+`runner-dashboard` (deploy `.venv` or the dashboard unit’s `ExecStart`).
+
+After upgrading auto-deploy on a live hub, pull `main` and re-run the installer
+so systemd picks up the pinned interpreter:
+
+```bash
+bash deploy/install-node-auto-deploy.sh
+sudo systemctl start runner-dashboard-auto-deploy.service
+```
 
 ### Legacy flat deploy directory
 

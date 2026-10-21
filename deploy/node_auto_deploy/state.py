@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +52,7 @@ def record_event(
     rolled_back_from: str | None = None,
     now: datetime | None = None,
 ) -> AutoDeployEvent:
-    when = now or datetime.now(UTC)
+    when = now or datetime.now(timezone.utc)
     event = AutoDeployEvent(
         at=when.isoformat(),
         commit=commit,
