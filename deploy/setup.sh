@@ -50,7 +50,7 @@ NUM_RUNNERS="${NUM_RUNNERS:-4}"
 MACHINE_NAME=""
 DISPLAY_NAME_VAL=""
 RUNNER_ALIASES_VAL=""
-MACHINE_ROLE="node"
+ROLE_ENV_OVERRIDE=""
 FLEET_NODES_VAL=""
 HUB_URL_VAL=""
 ARTIFACT_SOURCE=""
@@ -112,7 +112,7 @@ while [[ $# -gt 0 ]]; do
         --machine-name) MACHINE_NAME="$2";    shift 2 ;;
         --display-name) DISPLAY_NAME_VAL="$2"; shift 2 ;;
         --runner-aliases) RUNNER_ALIASES_VAL="$2"; shift 2 ;;
-        --role)         MACHINE_ROLE="$2";    shift 2 ;;
+        --role)         ROLE_ENV_OVERRIDE="$2"; shift 2 ;;
         --fleet-nodes)  FLEET_NODES_VAL="$2"; shift 2 ;;
         --hub-url)      HUB_URL_VAL="$2";     shift 2 ;;
         --runner-base-dir) RUNNER_BASE_DIR="$2"; shift 2 ;;
@@ -146,6 +146,17 @@ systemctl is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_
 [[ -z "$MACHINE_NAME" ]] && MACHINE_NAME="$(hostname)"
 [[ -z "$DISPLAY_NAME_VAL" ]] && DISPLAY_NAME_VAL="$MACHINE_NAME"
 
+registry_resolved_role() {
+    env -u MACHINE_ROLE PYTHONPATH="${SCRIPT_DIR}/backend" "${PYTHON_BIN}" -c "
+from machine_registry import load_machine_registry, resolve_local_identity
+registry = load_machine_registry()
+identity = resolve_local_identity('${DISPLAY_NAME_VAL}', None, registry)
+print((identity.get('role') or 'node').strip().lower())
+" 2>/dev/null || echo "node"
+}
+
+EFFECTIVE_ROLE="${ROLE_ENV_OVERRIDE:-$(registry_resolved_role)}"
+
 header "Runner Dashboard Production Setup"
 echo "Source:       ${SCRIPT_DIR}"
 echo "Deploy:       ${DEPLOY_DIR}"
@@ -155,7 +166,11 @@ echo "User:         ${USER}"
 echo "Machine:      ${MACHINE_NAME}"
 echo "Display:      ${DISPLAY_NAME_VAL}"
 [[ -n "$RUNNER_ALIASES_VAL" ]] && echo "Aliases:      ${RUNNER_ALIASES_VAL}"
-echo "Role:         ${MACHINE_ROLE}"
+if [[ -n "${ROLE_ENV_OVERRIDE}" ]]; then
+    echo "Role:         ${EFFECTIVE_ROLE} (explicit --role override)"
+else
+    echo "Role:         ${EFFECTIVE_ROLE} (from machine_registry.yml at runtime)"
+fi
 echo "Runners:      ${NUM_RUNNERS}"
 echo "Schedule:     ${SCHEDULE_CONFIG_VAL}"
 echo "Python:       ${PYTHON_BIN}"
@@ -383,8 +398,14 @@ sed -e "s|Description=D-sorganization Runner Dashboard|Description=D-sorganizati
     -e "s|DISPLAY_NAME=ControlTower|DISPLAY_NAME=${DISPLAY_NAME_VAL}|g" \
     -e "s|RUNNER_ALIASES=controltower,control-tower-runner-monitoring|RUNNER_ALIASES=${RUNNER_ALIASES_VAL}|g" \
     -e "s|RUNNER_SCHEDULE_CONFIG=.*|RUNNER_SCHEDULE_CONFIG=${SCHEDULE_CONFIG_VAL}|g" \
-    -e "s|MACHINE_ROLE=hub|MACHINE_ROLE=${MACHINE_ROLE}|g" \
     "${TEMPLATE_FILE}" | sudo tee "${SERVICE_FILE}" > /dev/null
+
+# Role comes from machine_registry.yml at runtime; strip any legacy MACHINE_ROLE line
+# unless the operator explicitly passed --role (override-only).
+sudo sed -i '/^Environment=MACHINE_ROLE=/d' "${SERVICE_FILE}"
+if [[ -n "${ROLE_ENV_OVERRIDE}" ]]; then
+    sudo sed -i "/^Environment=DISPLAY_NAME=/a Environment=MACHINE_ROLE=${ROLE_ENV_OVERRIDE}" "${SERVICE_FILE}"
+fi
 
 sudo systemctl daemon-reload
 sudo systemctl enable runner-dashboard.service
@@ -511,7 +532,7 @@ echo "    sudo systemctl status runner-dashboard"
 echo "    sudo systemctl restart runner-dashboard"
 echo "    sudo journalctl -u runner-dashboard -f"
 echo ""
-if [[ "${MACHINE_ROLE}" == "hub" ]]; then
+if [[ "${EFFECTIVE_ROLE}" == "hub" ]]; then
     echo "  ${BOLD}Hub mode:${NC} this machine aggregates all fleet nodes."
     echo "  Once other machines are running, re-run with --fleet-nodes to connect them."
     echo ""

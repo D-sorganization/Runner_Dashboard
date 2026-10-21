@@ -337,6 +337,79 @@ def apply_fleet_identity_from_registry(
     )
 
 
+def _local_dashboard_url_candidates(
+    registry: Mapping[str, Any],
+    *,
+    display_name: str | None = None,
+    platform_node: str | None = None,
+    runner_aliases: str | Iterable[str] | None = None,
+    local_port: int = 8321,
+) -> set[str]:
+    identities = current_identity_names(
+        display_name=display_name,
+        platform_node=platform_node,
+        runner_aliases=runner_aliases,
+    )
+    urls: set[str] = {
+        f"http://127.0.0.1:{local_port}".rstrip("/").lower(),
+        f"http://localhost:{local_port}".rstrip("/").lower(),
+    }
+    for machine in _active_machines(registry):
+        if not registry_machine_matches_current_dashboard(machine, identities):
+            continue
+        machine_url = registry_machine_url(machine).strip().rstrip("/").lower()
+        if machine_url:
+            urls.add(machine_url)
+        for node in machine.get("tailscale_nodes", []) or []:
+            if not isinstance(node, Mapping):
+                continue
+            ip = str(node.get("ip", "")).strip()
+            if ip:
+                urls.add(f"http://{ip}:{local_port}".rstrip("/").lower())
+    return urls
+
+
+def assert_fleet_identity_no_self_loop(
+    identity: FleetIdentity,
+    registry: Mapping[str, Any],
+    *,
+    display_name: str | None = None,
+    platform_node: str | None = None,
+    runner_aliases: str | Iterable[str] | None = None,
+    local_port: int = 8321,
+) -> None:
+    """Fail closed when the hub host is mislabeled a node or HUB_URL loops locally."""
+    identities = current_identity_names(
+        display_name=display_name,
+        platform_node=platform_node,
+        runner_aliases=runner_aliases,
+    )
+    hub_labels = {normalize_fleet_label(name) for name in identity.hub_machine_names}
+    if hub_labels & identities and identity.machine_role != "hub":
+        raise RuntimeError(
+            "Fleet topology error: this host is the registered hub "
+            f"({', '.join(identity.hub_machine_names)}) but MACHINE_ROLE resolved to "
+            f"'{identity.machine_role}' (source={identity.machine_role_source}). "
+            "Remove MACHINE_ROLE from systemd and ~/.config/runner-dashboard/env."
+        )
+    hub_target = (identity.hub_url or "").strip().rstrip("/").lower()
+    if hub_target and hub_target in _local_dashboard_url_candidates(
+        registry,
+        display_name=display_name,
+        platform_node=platform_node,
+        runner_aliases=runner_aliases,
+        local_port=local_port,
+    ):
+        raise RuntimeError(
+            f"Fleet topology error: HUB_URL points at this dashboard ({identity.hub_url}), "
+            "which causes hub-spoke self-proxy loops. Unset HUB_URL on the hub host."
+        )
+
+
+# Public alias for callers that name the resolution step explicitly (issue #2022).
+derive_machine_role_and_hub_url = apply_fleet_identity_from_registry
+
+
 def assert_valid_active_registry(registry: Mapping[str, Any]) -> None:
     """Validate that every non-retired machine and pool has a valid dashboard URL and config.
 

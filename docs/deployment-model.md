@@ -490,15 +490,33 @@ Build artifacts are described in `deploy/ARTIFACT_BUILD.md`.
 ## Multi-Machine Fleet
 
 Each fleet machine runs its own dashboard instance independently. There is no
-shared database or central coordinator -- the hub machine (`--role hub`) aggregates
-status from the other nodes via the `/api/fleet/nodes` endpoint using Tailscale
-IPs.
+shared database or central coordinator -- the hub machine (``role: hub`` in
+``machine_registry.yml``, currently DeskComputer) aggregates status from the
+other nodes via the `/api/fleet/nodes` endpoint using Tailscale IPs.
+
+The systemd unit must **not** set ``MACHINE_ROLE``; the dashboard derives role
+and spoke ``HUB_URL`` from ``machine_registry.yml`` at startup. Pass
+``--role hub|node`` to ``setup.sh`` only when you intentionally override the
+registry (the installer injects ``Environment=MACHINE_ROLE=…`` in that case).
 
 Setup order:
 
-1. Run `setup.sh` on every node machine.
-2. Note each node's Tailscale IP.
-3. Run `setup.sh` on the hub machine with `--role hub --fleet-nodes "..."`.
+1. Run ``setup.sh`` on every machine (role is picked up from the registry by
+   ``--machine-name`` / hostname).
+2. Note each node's Tailscale IP if you still maintain a manual ``FLEET_NODES``
+   list in ``~/.config/runner-dashboard/env`` (optional; registry autoderive is
+   preferred).
+3. Re-run ``setup.sh`` idempotently after registry or template changes so the
+   unit drops any stale ``MACHINE_ROLE=node`` line.
+
+**Reinstall the systemd unit** (from the deployed dashboard tree, adjust runners
+and machine name per host):
+
+```bash
+cd ~/actions-runners/dashboard
+./deploy/setup.sh --runners 8 --machine-name DeskComputer   # hub (DeskComputer)
+./deploy/setup.sh --runners 4 --machine-name Brick          # node (Brick)
+```
 
 Updates are deployed per-machine. There is no fleet-wide push mechanism built
 into the deploy scripts; use the Fleet Orchestration tab in the dashboard UI
