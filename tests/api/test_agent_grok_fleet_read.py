@@ -89,6 +89,8 @@ def test_grok_ingested_with_fleet_read_and_reads_priorities(
     prin = identity_manager.verify_token(grok_env["grok"])
     assert prin is not None and prin.id == "agent-grok"
     assert identity.principal_has_scope(prin, "fleet.read")
+    assert identity.principal_has_scope(prin, "memory.read")
+    assert identity.principal_has_scope(prin, "memory.write")
     assert identity.principal_has_scope(prin, "staff.dispatch")
     assert not identity.principal_has_scope(prin, "priorities.write")
     assert not identity.principal_has_scope(prin, "staff.holds.write")
