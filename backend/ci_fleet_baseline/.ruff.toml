@@ -1,0 +1,3 @@
+# Match the upstream formatter while retaining the dashboard's lint rules.
+extend = "../../pyproject.toml"
+line-length = 88

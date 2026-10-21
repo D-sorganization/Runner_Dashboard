@@ -970,6 +970,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ci/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ci Metrics
+         * @description Return job timing percentiles and the stored collection coverage.
+         */
+        get: operations["get_ci_metrics_api_ci_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ci/metrics/collect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collect Ci Metrics
+         * @description Run one bounded, operator-requested job collection pass.
+         */
+        post: operations["collect_ci_metrics_api_ci_metrics_collect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/client-errors": {
         parameters: {
             query?: never;
@@ -11204,6 +11244,62 @@ export interface operations {
         };
     };
     get_cache_size_api_cache_size_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_ci_metrics_api_ci_metrics_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                group_by?: "repo" | "event" | "label" | "host";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collect_ci_metrics_api_ci_metrics_collect_post: {
         parameters: {
             query?: never;
             header?: never;

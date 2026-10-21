@@ -129,6 +129,7 @@ class GhJob(BaseModel):
 
     id: int = 0
     run_id: int = 0
+    run_attempt: int | None = None
     name: str = ""
     status: str = ""
     conclusion: str | None = None
@@ -136,6 +137,7 @@ class GhJob(BaseModel):
     runner_name: str | None = None
     runner_group_id: int | None = None
     runner_group_name: str | None = None
+    created_at: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
     html_url: str = ""
