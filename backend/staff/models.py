@@ -317,6 +317,10 @@ class StaffSummaryResponse(BaseModel):
         description="Per-provider spend in USD plus a 'total' key (issue #1289)",
     )
     providers: dict[str, Any] = Field(default_factory=dict)
+    providers_cooldown: dict[str, list[dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="Per-machine provider cooldown rows after capacity/quota/rate-limit (#2047)",
+    )
     holds: list[dict[str, Any]] = Field(default_factory=list)
     liveness_alerts: list[StaffRoleLiveness] = Field(default_factory=list)
     roles: list[dict[str, Any]] = Field(default_factory=list)
