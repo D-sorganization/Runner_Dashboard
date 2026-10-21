@@ -434,8 +434,9 @@ def assert_hub_url_env_matches_registry(
     if env_hub == registry_hub:
         return
     canonical = resolve_hub_url_from_registry(registry)
+    displayed = str(hub_url_env or "").strip().rstrip("/")
     raise RuntimeError(
-        f"Fleet topology error: HUB_URL={hub_url_env.strip().rstrip('/')} disagrees with "
+        f"Fleet topology error: HUB_URL={displayed} disagrees with "
         f"machine_registry.yml hub ({canonical}). Remove HUB_URL from "
         "~/.config/runner-dashboard/env to derive the hub from the registry, or set "
         "HUB_URL_REGISTRY_OVERRIDE=1 after confirming the override is intentional."
