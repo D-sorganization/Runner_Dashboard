@@ -8,18 +8,15 @@ multi-ecosystem-groups:
       day: monday
       time: "06:00"
       timezone: America/Los_Angeles
-    update-types:
-      - minor
-      - patch
+    commit-message:
+      prefix: chore(deps)
+      include: scope
 
 updates:
   - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
-      day: monday
-      time: "08:00"
-      timezone: Etc/UTC
     patterns: ["*"]
     multi-ecosystem-group: weekly-deps
     open-pull-requests-limit: 5
@@ -27,9 +24,10 @@ updates:
       - dependencies
       - ci
       - judgement:objective
-    commit-message:
-      prefix: chore(deps)
-      include: scope
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       python-security:
         applies-to: security-updates
@@ -40,9 +38,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-      day: monday
-      time: "08:00"
-      timezone: Etc/UTC
     patterns: ["*"]
     multi-ecosystem-group: weekly-deps
     open-pull-requests-limit: 5
@@ -50,9 +45,10 @@ updates:
       - dependencies
       - ci
       - judgement:objective
-    commit-message:
-      prefix: chore(actions)
-      include: scope
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       actions-security:
         applies-to: security-updates
@@ -63,9 +59,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-      day: monday
-      time: "08:00"
-      timezone: Etc/UTC
     patterns: ["*"]
     multi-ecosystem-group: weekly-deps
     open-pull-requests-limit: 3
@@ -73,9 +66,10 @@ updates:
       - dependencies
       - ci
       - judgement:objective
-    commit-message:
-      prefix: chore(docker)
-      include: scope
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       docker-security:
         applies-to: security-updates
