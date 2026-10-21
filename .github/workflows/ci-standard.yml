@@ -577,7 +577,7 @@ jobs:
           fi
       - name: Run Python tests
         env:
-          PYTHONPATH: backend
+          PYTHONPATH: backend:.
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
           EXPECTED_PYTHON: ${{ matrix.python }}
         # -n auto: pytest-xdist parallel workers (issue #401).
