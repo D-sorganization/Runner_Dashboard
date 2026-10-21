@@ -60,6 +60,5 @@ def load_email_intake_config() -> EmailIntakeConfig:
         imap_folder=os.environ.get("MAIL_INTAKE_IMAP_FOLDER", "INBOX").strip() or "INBOX",
         poll_interval_seconds=max(30, int(poll_raw)) if poll_raw.isdigit() else 120,
         imap_idle_enabled=_env_bool("MAIL_INTAKE_IMAP_IDLE", False),
-        default_dispatch_role=os.environ.get("MAIL_INTAKE_DEFAULT_DISPATCH_ROLE", "barb").strip() or "barb",
         smtp_outbound_enabled=_env_bool("MAIL_INTAKE_SMTP_OUTBOUND_ENABLED", False),
     )

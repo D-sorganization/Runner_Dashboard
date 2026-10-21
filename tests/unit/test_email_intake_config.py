@@ -9,7 +9,7 @@ from email_intake.config import load_email_intake_config
 
 def test_load_config_reads_password_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     secret = tmp_path / "imap.pass"
-    secret.write_text("s3cret\n", encoding="utf-8")
+    secret.write_text("fixture-imap-password\n", encoding="utf-8")
     monkeypatch.setenv("MAIL_INTAKE_ENABLED", "1")
     monkeypatch.setenv("MAIL_INTAKE_ADDRESS", "intake@mail.affinedrift.com")
     monkeypatch.setenv("MAIL_INTAKE_DOMAIN", "mail.affinedrift.com")
@@ -18,7 +18,7 @@ def test_load_config_reads_password_file(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setenv("MAIL_INTAKE_IMAP_PASSWORD_FILE", str(secret))
     cfg = load_email_intake_config()
     assert cfg.intake_enabled is True
-    assert cfg.imap_password == "s3cret"
+    assert cfg.imap_password == "fixture-imap-password"
     assert cfg.imap_configured()
 
 
