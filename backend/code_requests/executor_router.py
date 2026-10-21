@@ -50,7 +50,14 @@ TASK_CLASS_TO_TIER: dict[str, ExecutorTier] = {
 
 DEFAULT_PROVIDERS_BY_TIER: dict[ExecutorTier, list[str]] = {
     ExecutorTier.OLLAMA: ["ollama", "local"],
-    ExecutorTier.CLI: ["codex_cli", "claude_code_cli", "jules_cli", "cline"],
+    ExecutorTier.CLI: [
+        "codex_cli",
+        "claude_code_cli",
+        "antigravity",
+        "cursor_agent",
+        "jules_cli",
+        "cline",
+    ],
     ExecutorTier.STRONG: ["antigravity", "claude_code_cli", "maxwell"],
 }
 
@@ -132,7 +139,11 @@ def resolve_child_executor(
             log.info("Child %s pinned profile escalated: %s", child.key, reason)
             return provider, escalated, reason
 
-        return pinned_profile, profile_tier, f"pinned_profile: using pinned executor profile '{pinned_profile}'"
+        return (
+            pinned_profile,
+            profile_tier,
+            f"pinned_profile: using pinned executor profile '{pinned_profile}'",
+        )
 
     # 2. Conductor / routing fallback: find cheapest capable in-budget provider
     target_tier = child_required_tier

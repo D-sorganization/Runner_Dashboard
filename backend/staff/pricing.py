@@ -30,7 +30,10 @@ class Price:
     estimate: bool = False
 
     def cost(self, input_tokens: int, output_tokens: int) -> float:
-        return round((input_tokens * self.input_usd + output_tokens * self.output_usd) / 1_000_000, 6)
+        return round(
+            (input_tokens * self.input_usd + output_tokens * self.output_usd) / 1_000_000,
+            6,
+        )
 
 
 # Model keys are matched as substrings of the run's model string (longest key
@@ -70,6 +73,12 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
         "gemini-1.5-pro": Price(1.25, 5.0, estimate=True),
         "gemini-1.5-flash": Price(0.075, 0.30, estimate=True),
     },
+    "antigravity": {
+        "gemini-4-argon": Price(1.25, 10.0, estimate=True),
+        "gemini-3.8-flash": Price(0.15, 0.60, estimate=True),
+        "gemini-2.5-pro": Price(1.25, 10.0, estimate=True),
+        "gemini-2.5-flash": Price(0.15, 0.60, estimate=True),
+    },
     # Local inference: any model, always free.
     "ollama": {},
     "claude-ollama": {},
@@ -77,7 +86,12 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
 
 # Default model per provider when the run recorded none (mirrors the CLIs' own
 # defaults on 2026-09-22; ``estimate`` rows above still apply).
-DEFAULT_MODEL: dict[str, str] = {"claude": "opus-5", "codex": "gpt-5", "gemini": "gemini-2.5-pro"}
+DEFAULT_MODEL: dict[str, str] = {
+    "claude": "opus-5",
+    "codex": "gpt-5",
+    "gemini": "gemini-2.5-pro",
+    "antigravity": "gemini-3.8-flash-high",
+}
 
 # Providers that never carry per-token cost regardless of model.
 FREE_PROVIDERS: frozenset[str] = frozenset({"ollama", "claude-ollama"})
@@ -173,5 +187,12 @@ def price_table_rows() -> list[dict[str, object]]:
                 }
             )
     for provider, rate in sorted(_wall_rates().items()):
-        rows.append({"provider": provider, "model": "*", "wall_usd_per_minute": rate, "estimate": False})
+        rows.append(
+            {
+                "provider": provider,
+                "model": "*",
+                "wall_usd_per_minute": rate,
+                "estimate": False,
+            }
+        )
     return rows

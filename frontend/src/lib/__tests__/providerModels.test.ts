@@ -6,8 +6,9 @@ import { describe, expect, it } from "vitest";
 import { PROVIDER_MODELS, PROVIDERS_WITH_MODEL } from "../providerModels";
 
 describe("PROVIDER_MODELS", () => {
-  it("exposes the four known providers", () => {
+  it("exposes the five known providers", () => {
     expect(Object.keys(PROVIDER_MODELS).sort()).toEqual([
+      "antigravity",
       "claude_code_cli",
       "codex_cli",
       "gemini_cli",

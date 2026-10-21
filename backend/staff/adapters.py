@@ -12,6 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -75,6 +76,7 @@ class ProviderAdapter:
     # ``{policy}`` are substituted.
     argv: tuple[str, ...]
     default_model: str | None = None
+    models: tuple[str, ...] = ()
     # When True the prompt is written to stdin instead of an argv slot.
     prompt_via_stdin: bool = False
     json_lines: bool = False
@@ -135,6 +137,10 @@ class ProviderAdapter:
                 f"provider {self.provider_id!r} has no code-read-only unattended mode (#1659)"
             )
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
+        if chosen_model and self.models and chosen_model not in self.models:
+            raise ValueError(
+                f"unknown model {chosen_model!r} for provider {self.provider_id!r} (allowed: {', '.join(self.models)})"
+            )
         slots = {
             "{prompt}": prompt,
             "{model}": chosen_model,
@@ -204,7 +210,14 @@ class ProviderAdapter:
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
 
         if self.provider_id in ("claude", "claude-ollama"):
-            cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+            cmd = [
+                self.executable,
+                "-p",
+                prompt,
+                "--output-format",
+                "stream-json",
+                "--verbose",
+            ]
             cmd += read_only + ["--disallowedTools", ",".join(CLAUDE_WRITE_TOOLS)]
             if allowed:
                 cmd += ["--allowedTools", ",".join(allowed)]
@@ -218,12 +231,28 @@ class ProviderAdapter:
             if session_id:
                 cmd += ["--session", session_id]
         elif self.provider_id == "antigravity":
-            cmd = [self.executable, "--print", prompt, "--output-format", "stream-json", "--add-dir", workdir]
+            cmd = [
+                self.executable,
+                "--print",
+                prompt,
+                "--output-format",
+                "stream-json",
+                "--add-dir",
+                workdir,
+            ]
             cmd += read_only
             if session_id:
                 cmd += ["--resume", session_id]
         elif self.provider_id == "cursor-agent":
-            cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--workspace", workdir]
+            cmd = [
+                self.executable,
+                "-p",
+                prompt,
+                "--output-format",
+                "stream-json",
+                "--workspace",
+                workdir,
+            ]
             cmd += read_only
             if session_id:
                 cmd += ["--resume", session_id]
@@ -272,7 +301,15 @@ def _extract_text(raw: dict[str, Any]) -> str:
     if isinstance(raw.get("item"), dict):  # codex --json: only agent messages are answers
         item = raw["item"]
         return str(item.get("text") or "") if item.get("type") == "agent_message" else ""
-    for key in ("result", "text", "message", "content", "output", "response", "delta"):  # agy: response, claude: delta
+    for key in (
+        "result",
+        "text",
+        "message",
+        "content",
+        "output",
+        "response",
+        "delta",
+    ):  # agy: response, claude: delta
         val = raw.get(key)
         if isinstance(val, str) and val.strip():
             return val
@@ -396,6 +433,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "{model}",
         ),
         default_model="gemini-3.8-flash-high",
+        models=_ANTIGRAVITY_MODELS,
         json_lines=True,
         unattended=True,
         notes="Unattended ``--mode plan`` (#1586); WSL ``agy`` on PATH (often WinGet symlink); ``agy auth login``.",
@@ -450,7 +488,15 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         provider_id="ollama",
         label="Ollama models via Codex",
         executable="codex",
-        argv=(*_UNATTENDED_CODEX, "--oss", "--local-provider", "ollama", "--model", "{model}", "{prompt}"),
+        argv=(
+            *_UNATTENDED_CODEX,
+            "--oss",
+            "--local-provider",
+            "ollama",
+            "--model",
+            "{model}",
+            "{prompt}",
+        ),
         json_lines=True,
         chat_json_lines=False,
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,

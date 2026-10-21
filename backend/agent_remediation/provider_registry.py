@@ -114,7 +114,19 @@ _GEMINI_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
 # Cursor Agent routes to several vendors under one Cursor subscription. The
 # Grok entries are how Grok is used as a worker seat (#1193): the standalone
 # Grok Build CLI needs a SuperGrok plan the fleet does not hold.
-_CURSOR_AGENT_MODELS = ("auto", "gpt-5", "claude-sonnet-4", "grok-code-fast-1", "grok-4")
+_CURSOR_AGENT_MODELS = (
+    "auto",
+    "gpt-5",
+    "claude-sonnet-4",
+    "grok-code-fast-1",
+    "grok-4",
+)
+_ANTIGRAVITY_MODELS = (
+    "gemini-3.8-flash-high",
+    "gemini-4-argon-high",
+    "gemini-4-argon-medium",
+    "gemini-3.8-flash-medium",
+)
 
 #: Notes for the providers retired fleet-wide by RM#1483 / RM#1505 (#1193).
 _JULES_RETIRED_NOTE = (
@@ -261,7 +273,14 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         dispatch_mode="future",
         auth_mode="github_app",
         resource="runner",
-        capabilities=("code_edit", "ci_fix", "test_fix", "refactor", "lint_fix", "format"),
+        capabilities=(
+            "code_edit",
+            "ci_fix",
+            "test_fix",
+            "refactor",
+            "lint_fix",
+            "format",
+        ),
         cost_per_task=0.02,
         max_concurrency=1,
         availability_probe=("cline",),
@@ -283,6 +302,7 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         capabilities=("code_edit", "ci_fix", "test_fix", "refactor", "doc"),
         cost_per_task=0.0,
         max_concurrency=1,
+        models=_ANTIGRAVITY_MODELS,
         availability_probe=("agy",),
         credential_id="antigravity",
         setup_hint="Install Antigravity CLI (agy) on the node",
