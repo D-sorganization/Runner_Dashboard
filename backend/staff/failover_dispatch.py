@@ -162,9 +162,14 @@ def try_chain_failover(
     mark_provider_cooldown(plan.provider, fc, message=latest.error or "")
     root_id = latest.retry_of or latest.id
     from staff.failover_model import resolve_launch_model, role_base_tier, slot_key
+    from staff.model_tiers import normalize_tier
 
     raw_tier = (getattr(latest, "model_tier", None) or "").strip().lower()
-    active_tier = raw_tier if raw_tier in ("routine", "standard", "complex") else role_base_tier(role)
+    active_tier = (
+        normalize_tier(raw_tier)
+        if raw_tier in ("routine", "standard", "complex")
+        else role_base_tier(role)
+    )
     append_chain_attempt(
         runner.store,
         root_id,
