@@ -34,7 +34,6 @@ class EmailIntakeConfig:
     imap_folder: str
     poll_interval_seconds: int
     imap_idle_enabled: bool
-    default_dispatch_role: str
     smtp_outbound_enabled: bool
 
     def imap_configured(self) -> bool:
