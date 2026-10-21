@@ -6508,6 +6508,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Agent Profiles",
@@ -6633,6 +6636,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Agent Profile",
@@ -6955,6 +6961,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Workflow Machine Analysis",
@@ -8046,6 +8055,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Ci Metrics",
@@ -8162,6 +8174,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Code Requests",
@@ -8318,6 +8333,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Code Request",
@@ -9292,6 +9310,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Briefing",
@@ -9350,6 +9371,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Claim",
@@ -9499,6 +9523,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Inbox",
@@ -9738,6 +9765,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Sessions",
@@ -10001,6 +10031,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Deployment State",
@@ -10590,6 +10623,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Hardware",
@@ -10617,6 +10653,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Identity",
@@ -10674,6 +10713,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Nodes",
@@ -10854,6 +10896,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Post Fleet Run Token",
@@ -10949,6 +10994,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Status",
@@ -12203,6 +12251,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue",
@@ -12318,6 +12369,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Priorities",
@@ -12344,6 +12398,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Directives Route",
@@ -12415,6 +12472,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Meetings",
@@ -12465,6 +12525,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Meeting",
@@ -12492,6 +12555,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Projects",
@@ -12519,6 +12585,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Priorities",
@@ -12546,6 +12615,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Untracked",
@@ -12594,6 +12666,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Project",
@@ -12667,6 +12742,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List board proposals",
@@ -12759,6 +12837,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get proposal detail and Secretary comments",
@@ -13146,6 +13227,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue",
@@ -13224,6 +13308,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue Merge Settings",
@@ -13501,6 +13588,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Stale Queue Runs",
@@ -13528,6 +13618,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue Status",
@@ -13897,6 +13990,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Repos",
@@ -13968,6 +14064,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runners",
@@ -13995,6 +14094,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runners Diagnostics Summary",
@@ -14022,6 +14124,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Capacity",
@@ -14100,6 +14205,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runner Group",
@@ -14265,6 +14373,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Matlab Runner Health",
@@ -14612,6 +14723,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runs",
@@ -14661,6 +14775,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Enriched Runs",
@@ -14715,6 +14832,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Repo Runs",
@@ -14890,6 +15010,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Scheduled Workflows",
@@ -16141,6 +16264,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Stats",
@@ -16202,6 +16328,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Workflow Stats Summary",
@@ -16327,6 +16456,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Workflow Stats Timeseries",
@@ -16450,6 +16582,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Usage Monitoring",
@@ -19720,6 +19855,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Relay Thread Run Card",
