@@ -139,13 +139,6 @@ def resolve_provider_and_model(
     if req.provider:
         provider = req.provider
     else:
-        chain = resolve_failover_chain(role, requested_provider=None)
-        usable = [s for s in chain if _usable_provider(adapters, role, s.provider)]
-        if usable and all(provider_in_cooldown(s.provider) for s in usable):
-            raise ValueError(
-                f"all providers in the failover chain are cooling down on {machine}; "
-                "retry after the earliest reset in /api/staff/summary providers_cooldown"
-            )
         provider, model, tier = select_provider_from_chain(
             adapters,
             role,
@@ -190,7 +183,14 @@ def select_provider_from_chain(
     from staff.failover_model import resolve_launch_model, role_base_tier
 
     chain = resolve_failover_chain(role, requested_provider=requested_provider)
-    step = pick_launch_step(chain, adapters, role)
+    step = pick_launch_step(chain, adapters, role, skip_cooling=True)
+    if step is None:
+        step = pick_launch_step(chain, adapters, role, skip_cooling=False)
+    if step is None:
+        for candidate in chain:
+            if _usable_provider(adapters, role, candidate.provider):
+                step = candidate
+                break
     if step is None:
         step = chain[0] if chain else FailoverStep(role.providers[0], role.model)
     provider = step.provider
