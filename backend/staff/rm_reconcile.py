@@ -14,7 +14,21 @@ from pathlib import Path
 
 from staff.audit import record_audit
 from staff.holds import Hold, HoldsList, _seed_key, seed_from_roles
-from staff.roles import RoleSpec, load_roles, roles_yaml_parse_errors
+from staff.roles import RoleSpec, load_roles, role_validation_errors, roles_dir
+
+
+def roles_yaml_parse_errors(directory: Path | None = None) -> list[str]:
+    """Return ``file: message`` for every role file whose YAML failed to parse."""
+    directory = directory if directory is not None else roles_dir()
+    if directory is None or not directory.is_dir():
+        return []
+    problems: list[str] = []
+    for name, errs in sorted(role_validation_errors(directory).items()):
+        for err in errs:
+            if err.startswith("YAML syntax error:"):
+                problems.append(f"{name}: {err}")
+    return problems
+
 
 log = logging.getLogger("dashboard.staff.rm_reconcile")
 
