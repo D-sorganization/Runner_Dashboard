@@ -33,6 +33,7 @@
         "ci-secrets.yml",
         "ci-spec-check.yml",
         "collate-changes.yml",
+        "conflict-disarm.yml",
         "dependabot-auto-merge.yml",
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
