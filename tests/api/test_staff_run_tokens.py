@@ -227,7 +227,7 @@ def test_runner_minting_failure_sets_workspace_error(tmp_path: Any) -> None:
 
     gh_env, gh_cred = _github_env_patch()
     with patch("staff.runner_ops.prepare_staff_run_github_env", return_value=(gh_env, gh_cred)):
-        with patch("staff.runner.mint_run_token", side_effect=RuntimeError("entropy failure")):
+        with patch("staff.runner_ops.mint_run_token", side_effect=RuntimeError("entropy failure")):
             with patch("subprocess.Popen") as mock_popen:
                 runner._execute(rec, plan, workdir, lease_note="")
                 assert not mock_popen.called, "CLI subprocess must not be called when token minting fails"
