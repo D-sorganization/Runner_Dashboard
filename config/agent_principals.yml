@@ -1,0 +1,33 @@
+# Repo-managed defaults for fleet agent bot principals (merged at dashboard startup).
+#
+# The live identity store remains under ~/.config/runner-dashboard/ (or
+# $DASHBOARD_IDENTITY_DIR): principals.yml, tokens.yml, and optional
+# agent-tokens/*.token files. On load, each entry below is merged into a
+# matching principal (by id). Missing principals are created when a token file
+# exists: agent-tokens/<id>.token (e.g. agent-grok.token).
+#
+# Operator steps after deploy:
+#   1. Ensure agent-tokens/agent-grok.token holds the minted svc_* bearer (or mint
+#      via POST /api/admin/principals/agent-grok/token and copy into that file).
+#   2. Restart runner-dashboard so defaults and token files are ingested.
+#
+# Scopes listed here are unioned with role presets from identity.SCOPE_PRESETS.
+agents:
+  - id: agent-grok
+    name: Barb (Grok fleet secretary)
+    roles:
+      - bot
+    scopes:
+      - fleet.read
+  - id: agent-codex
+    name: Codex CLI agent
+    roles:
+      - bot
+  - id: agent-claude
+    name: Claude agent
+    roles:
+      - bot
+  - id: agent-gemini
+    name: Gemini agent
+    roles:
+      - bot

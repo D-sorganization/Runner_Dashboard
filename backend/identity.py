@@ -57,6 +57,9 @@ class IdentityManager:
         self._ephemeral_tokens: dict[str, TokenRecord] = {}
         self.load_principals()
         self.load_tokens()
+        from agent_principal_defaults import merge_agent_principal_defaults  # noqa: PLC0415
+
+        merge_agent_principal_defaults(self)
 
     def load_principals(self):
         if not self.principals_path.exists():
@@ -373,11 +376,13 @@ def require_principal(
     return prin
 
 
-FLEET_PEER_SCOPES = frozenset({"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain"})
+FLEET_PEER_SCOPES = frozenset(
+    {"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain", "fleet.read"}
+)
 LOOPBACK_SCOPES = frozenset(
     (
         "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write staff.approve "
-        "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain "
+        "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain fleet.read "
         "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write"
     ).split()
 )
@@ -390,9 +395,10 @@ SCOPE_PRESETS = {
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "
-        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin fleet.maintain"
+        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin "
+        "fleet.maintain fleet.read"
     ).split(),
-    "viewer": ["assistant.chat", "staff.read"],
+    "viewer": ["assistant.chat", "staff.read", "fleet.read"],
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
     "bot": (
         "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write proposals.write "
@@ -519,6 +525,11 @@ def require_scope(required_scope: str):
     return checker
 
 
+def _principal_may_read_fleet(principal: Principal) -> bool:
+    """True when the principal may pass ``require_fleet_peer`` (read or scoped maintain/control)."""
+    return any(principal_has_scope(principal, scope) for scope in ("fleet.read", "fleet.maintain", "fleet.control"))
+
+
 def require_fleet_peer(
     request: Request,
     header_token: str | None = Depends(auth_header),
@@ -541,10 +552,18 @@ def require_fleet_peer(
     """
     hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
 
-    # A valid operator principal is always accepted.
     principal = _resolve_principal_optional(request, header_token)
     if principal is not None:
-        return f"principal:{principal.id}"
+        if _principal_may_read_fleet(principal):
+            return f"principal:{principal.id}"
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Fleet authorization failed",
+                "required_scope": "fleet.read",
+                "principal": principal.id,
+            },
+        )
 
     # No token configured → fleet reads are tailnet-public (backward compatible).
     if not hub_token:
