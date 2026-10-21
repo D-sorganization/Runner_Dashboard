@@ -57,6 +57,7 @@ async def build_staff_summary() -> dict[str, Any]:
         "attention": attention[:20],
         "spend_today_usd": board_view["spend_today_usd"],
         "providers": board_view["providers"],
+        "providers_cooldown": board_view.get("providers_cooldown", {}),
         "holds": staff_fleet.holds_snapshot(),
         "liveness_alerts": board_view.get("liveness_alerts", []),
         "roles": [
