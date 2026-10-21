@@ -578,9 +578,26 @@ def _principal_may_read_fleet(principal: Principal) -> bool:
     return any(principal_has_scope(principal, scope) for scope in ("fleet.read", "fleet.maintain", "fleet.control"))
 
 
+def _loopback_fleet_reader(
+    request: Request,
+    header_token: str | None,
+    cookie_token: str | None,
+) -> Principal | None:
+    """Resolve the existing dev loopback identity for unauthenticated fleet reads only."""
+    if request.method not in {"GET", "HEAD"}:
+        return None
+    if header_token is not None or cookie_token is not None:
+        return None
+    if not _loopback_auth_enabled() or not _is_loopback_request(request):
+        return None
+    principal = _loopback_principal()
+    return principal if _principal_may_read_fleet(principal) else None
+
+
 def require_fleet_peer(
     request: Request,
     header_token: str | None = Depends(auth_header),
+    cookie_token: str | None = Depends(auth_cookie),
 ) -> str:
     """Authenticate an intra-fleet caller for hub-reachable fleet routes (#922).
 
@@ -612,6 +629,10 @@ def require_fleet_peer(
                 "principal": principal.id,
             },
         )
+
+    loopback_principal = _loopback_fleet_reader(request, header_token, cookie_token)
+    if loopback_principal is not None:
+        return f"principal:{loopback_principal.id}"
 
     # No token configured → fleet reads are tailnet-public (backward compatible).
     if not hub_token:
