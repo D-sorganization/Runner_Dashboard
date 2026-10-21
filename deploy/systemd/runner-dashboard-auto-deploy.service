@@ -5,6 +5,10 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+User=@DASHBOARD_USER@
+Environment=HOME=@DASHBOARD_HOME@
+Environment=RUNNER_DASHBOARD_USER=@DASHBOARD_USER@
+Environment=RUNNER_DASHBOARD_ENV_FILE=@ENV_FILE@
 EnvironmentFile=-@ENV_FILE@
 Environment=RUNNER_DASHBOARD_DEPLOY_DIR=@DEPLOY_DIR@
 Environment=RUNNER_DASHBOARD_AUTO_DEPLOY=1

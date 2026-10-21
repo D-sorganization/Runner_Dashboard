@@ -3,8 +3,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${HOME}/.config/runner-dashboard/env}"
-DEPLOY_DIR="${RUNNER_DASHBOARD_DEPLOY_DIR:-${HOME}/actions-runners/dashboard}"
+# shellcheck source=deploy/auto-deploy-env.sh
+source "${SCRIPT_DIR}/auto-deploy-env.sh"
+
+_RESOLVED_HOME="$(auto_deploy_resolve_home)"
+ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${_RESOLVED_HOME}/.config/runner-dashboard/env}"
+DEPLOY_DIR="${RUNNER_DASHBOARD_DEPLOY_DIR:-${_RESOLVED_HOME}/actions-runners/dashboard}"
 PORT="${DASHBOARD_PORT:-8321}"
 
 if [[ -f "${ENV_FILE}" ]]; then

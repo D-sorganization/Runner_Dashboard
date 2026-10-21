@@ -24,3 +24,12 @@ def test_service_invokes_deployed_wrapper() -> None:
     unit = (DEPLOY / "systemd" / "runner-dashboard-auto-deploy.service").read_text(encoding="utf-8")
     assert "node-auto-deploy.sh" in unit
     assert "RUNNER_DASHBOARD_AUTO_DEPLOY=1" in unit
+    assert "User=@DASHBOARD_USER@" in unit
+    assert "Environment=HOME=@DASHBOARD_HOME@" in unit
+    assert "RUNNER_DASHBOARD_ENV_FILE" in unit
+
+
+def test_install_renders_user_unit_without_system_user_line() -> None:
+    text = (DEPLOY / "install-node-auto-deploy.sh").read_text(encoding="utf-8")
+    assert "sed '/^User=/d'" in text
+    assert "auto-deploy-env.sh" in text
