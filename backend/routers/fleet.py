@@ -17,7 +17,6 @@ from dashboard_config import (
     HttpTimeout,
     runner_limit,
 )
-from node_auto_deploy_status import read_auto_deploy_fleet_status
 from fastapi import APIRouter, Depends, Request, Response
 from fleet_autoconfig import (
     derive_fleet_nodes_from_registry,
@@ -30,6 +29,7 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
 from machine_registry import load_machine_registry
+from node_auto_deploy_status import read_auto_deploy_fleet_status
 from proxy_utils import (
     proxy_to_hub,
     should_mark_hub_circuit_degraded,
