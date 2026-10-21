@@ -68,4 +68,4 @@ def test_rollback_script_has_rsync():
 def test_rollback_script_restarts_service():
     """Rollback must restart the systemd service after restore."""
     content = ROLLBACK_SCRIPT.read_text()
-    assert "systemctl restart" in content, "rollback-deployed.sh must restart the service"
+    assert 'deployment_service_command "$DEPLOY_SCOPE" manage restart "$SERVICE"' in content

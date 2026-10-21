@@ -1,54 +1,78 @@
-# Brick dashboard redeploy
+# Brick Dashboard Redeploy
 
 Native Linux fleet node **Brick** (`brick.tail2bbcc7.ts.net`, dashboard port **8321**).
+The dashboard directory is a deployed artifact and does not contain a Git checkout.
 
 ## Preconditions
 
-- Tailscale connected on Brick (`tailscale status` shows `100.93.80.7`).
-- SSH or console access as the dashboard operator user.
-- No secrets committed to git; use host-local env and GitHub App / token files only.
+- Tailscale is connected on Brick (`tailscale status` shows `100.93.80.7`).
+- SSH or console access is available as the dashboard operator user.
+- The `runner-dashboard.service` user unit is installed and the user's systemd manager is reachable.
+- In a headless shell, set `XDG_RUNTIME_DIR` before invoking the updater. Set
+  `DBUS_SESSION_BUS_ADDRESS` only if this system's user manager requires it; the
+  unit availability check is authoritative without that variable:
 
-## 1. Deploy current `main`
+  ```bash
+  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  systemctl --user status runner-dashboard.service --no-pager
+  ```
 
-On Brick, from the deployed checkout (typically under `~/actions-runners/dashboard`):
+- Obtain the approved dashboard release artifact and its published SHA-256 value. Keep the downloaded artifact outside `~/actions-runners/dashboard` until the updater starts.
+- Obtain the deployment tooling from a separate source checkout outside the deployed directory, pinned to the exact reviewed commit on protected `main` or an approved release tag. Confirm that revision contains the validated `--scope` option. The updater currently in Brick's deployed artifact may predate this option and silently select system scope; do not use it for this first update.
+- GitHub App runtime credentials are a separate prerequisite for GitHub API access. Configure `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY_FILE` in the user service's protected environment file, with the PEM outside the artifact directory. Follow [GitHub App Auth Runbook](./github-app-auth.md); never put credentials in the artifact or repository.
 
-```bash
-cd ~/actions-runners/dashboard
-git fetch origin main
-git checkout main
-git pull --ff-only origin main
-./deploy/update-deployed.sh
-```
+## 1. Deploy From a Verified Artifact
 
-Confirm health:
-
-```bash
-curl -sS http://127.0.0.1:8321/api/health | jq .
-```
-
-Expect `status` not `degraded` once auth and runners are fixed below.
-
-## 2. Fix GitHub auth (no secrets in repo)
-
-Follow [github-app-auth.md](./github-app-auth.md) or refresh the operator token in
-`~/.config/runner-dashboard/env` (or the path your unit file uses). Restart the service:
+Create or refresh a separate source checkout, then detach it at the exact reviewed protected-main commit or approved release tag. Verify the resulting SHA against the revision approved for this update:
 
 ```bash
-sudo systemctl restart runner-dashboard.service
+mkdir -p ~/src
+git clone --no-checkout https://github.com/D-sorganization/Runner_Dashboard.git \
+  ~/src/runner-dashboard-deploy
+git -C ~/src/runner-dashboard-deploy fetch --tags origin main
+git -C ~/src/runner-dashboard-deploy checkout --detach <reviewed-commit-or-tag>
+git -C ~/src/runner-dashboard-deploy rev-parse HEAD
 ```
 
-Verify `github_auth_status` on `/api/health` is healthy.
+If the checkout already exists, fetch the approved ref and detach at the same reviewed revision. From that checkout, invoke its updater and point it at the separately staged artifact. The checksum is checked by the artifact installer, and the updater creates a backup before installation:
 
-## 3. Register runners
+```bash
+bash ~/src/runner-dashboard-deploy/deploy/update-deployed.sh \
+  --scope user \
+  --artifact /path/to/dashboard-artifact.tar.gz \
+  --checksum <published-sha256>
+```
 
-Use the same runner install path as other Linux nodes (`RUNNER_BASE_DIR`, labels from
-`machine_registry.yml` for Brick: `d-sorg-fleet`, `d-sorg-fleet-docker`, etc.).
+Replace the example checkout path with the external checkout pinned above. Keep
+that checkout and artifact outside `~/actions-runners/dashboard`; the deployed
+artifact directory itself has no `.git` metadata.
 
+The user scope restarts and checks only `runner-dashboard.service` through
+`systemctl --user`. It does not configure privileged host assets or manipulate
+runner units. The updater verifies dashboard health and restores the backup
+through the user service manager if health verification fails.
+
+After an approved deployment, inspect the live result separately:
+
+```bash
+systemctl --user status runner-dashboard.service --no-pager
+curl -fsS http://127.0.0.1:8321/api/health | jq .
+```
+
+An artifact update does not configure GitHub App credentials. Confirm
+`github_auth_source`, `github_auth_status`, and `github_api` in the live health
+response; documentation or mocked tests do not establish deployment or
+authentication acceptance.
+
+## 2. Register Runners
+
+Use the approved runner installation procedure and Brick's labels from
+`machine_registry.yml` (`d-sorg-fleet`, `d-sorg-fleet-docker`, and others).
 After registration, `/api/runners` should list active runners on Brick.
 
-## 4. Verify dispatch (dry run)
+## 3. Verify Dispatch With a Dry Run
 
-From the **hub** (DeskComputer) Staff console or API:
+From the **hub** (DeskComputer) Staff Console or API:
 
 ```bash
 curl -sS -X POST "http://deskcomputer.tail2bbcc7.ts.net:8321/api/staff/ad-hoc/run" \
@@ -61,5 +85,14 @@ Expect a planned run targeting machine `Brick` without executing on the hub.
 
 ## Rollback
 
-Re-run `deploy/update-deployed.sh` from the previous known-good SHA and restart
-`runner-dashboard.service`.
+The updater automatically restores its timestamped backup when the health gate
+fails. For a manual rollback, use the matching backup and the same active user
+manager environment:
+
+```bash
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+bash ~/src/runner-dashboard-deploy/deploy/rollback-deployed.sh \
+  --backup-dir /path/to/dashboard.bak.<timestamp> \
+  --deploy-dir ~/actions-runners/dashboard \
+  --scope user
+```
