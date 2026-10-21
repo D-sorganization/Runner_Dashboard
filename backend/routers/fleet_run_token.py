@@ -7,7 +7,7 @@ import os
 
 import dashboard_config
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from identity import Principal, _resolve_principal_optional, auth_header
+from identity import Principal, _resolve_principal_optional, auth_header, require_fleet_peer
 from pydantic import BaseModel, Field
 from staff.fleet_run_token_service import mint_fleet_run_github_token
 
@@ -47,7 +47,7 @@ def require_fleet_run_token_caller(
     "/api/fleet/run-token",
     response_model=FleetRunTokenResponse,
     response_model_exclude_none=True,
-    dependencies=[Depends(require_fleet_run_token_caller)],
+    dependencies=[Depends(require_fleet_peer), Depends(require_fleet_run_token_caller)],
 )
 async def post_fleet_run_token(
     body: FleetRunTokenRequest,
