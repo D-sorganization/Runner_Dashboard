@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from staff.model_tiers import validate_role_tier
 from staff.provider_fallback import (
     ProviderFallbackRule,
     parse_provider_fallback_rules,
@@ -47,6 +48,8 @@ class RoleSpec:
     instructions: str = ""
     providers: tuple[str, ...] = ("claude",)
     model: str | None = None
+    tier: str = "routine"
+    allow_tier_escalation: bool = False
     schedule: str | None = None
     window: dict[str, str] | None = None
     repos: tuple[str, ...] = ()
@@ -131,6 +134,8 @@ class RoleSpec:
             "instructions": self.instructions,
             "providers": list(self.providers),
             "model": self.model,
+            "tier": self.tier,
+            "allow_tier_escalation": self.allow_tier_escalation,
             "schedule": self.schedule,
             "window": self.window,
             "repos": list(self.repos),
@@ -316,6 +321,9 @@ def parse_role(
     provider_fallback_rules = parse_provider_fallback_rules(data)
     merged_errors = list(errors)
     merged_errors.extend(validate_provider_fallback_rules(provider_fallback_rules, _as_tuple(data.get("providers"))))
+    role_tier = str(data.get("tier") or "routine").strip().lower()
+    merged_errors.extend(validate_role_tier(role_tier))
+    allow_escalation = bool(data.get("allow_tier_escalation", False))
 
     return RoleSpec(
         name=name,
@@ -326,6 +334,8 @@ def parse_role(
         instructions=str(data.get("instructions") or ""),
         providers=_as_tuple(data.get("providers")) or ("claude",),
         model=(str(data["model"]) if data.get("model") not in (None, "", "default") else None),
+        tier=role_tier if role_tier in ("routine", "standard", "complex") else "routine",
+        allow_tier_escalation=allow_escalation,
         schedule=(str(data["schedule"]) if data.get("schedule") else None),
         window=(
             {"start": str(window.get("start", "")), "end": str(window.get("end", ""))}
