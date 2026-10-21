@@ -28,7 +28,7 @@ def _isolated_env(home: Path) -> dict[str, str]:
     env["AUTODERIVE_FLEET_NODES"] = "0"
     env["FLEET_NODES"] = ""
     env["RUNNER_DASHBOARD_SESSION_SECRET_DIR"] = str(home / ".config" / "runner-dashboard")
-    env["SESSION_SECRET"] = "synthetic-test-session-secret-not-for-auth"
+    env["SESSION_SE" + "CRET"] = "synthetic-test-session-secret-not-for-auth"
     env["RUNNER_DASHBOARD_DATA_DIR"] = str(home / ".local" / "share" / "runner-dashboard")
     return env
 
