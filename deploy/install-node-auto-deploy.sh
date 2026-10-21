@@ -12,8 +12,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEPLOY_DIR="${RUNNER_DASHBOARD_DEPLOY_DIR:-${HOME}/actions-runners/dashboard}"
-ENV_FILE="${HOME}/.config/runner-dashboard/env"
+# shellcheck source=deploy/auto-deploy-env.sh
+source "${SCRIPT_DIR}/auto-deploy-env.sh"
+
+DASHBOARD_USER="$(auto_deploy_dashboard_user)"
+DASHBOARD_HOME="$(auto_deploy_resolve_home)"
+DEPLOY_DIR="${RUNNER_DASHBOARD_DEPLOY_DIR:-${DASHBOARD_HOME}/actions-runners/dashboard}"
+ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${DASHBOARD_HOME}/.config/runner-dashboard/env}"
 
 detect_scope() {
   if systemctl is-active runner-dashboard.service &>/dev/null || \
@@ -29,27 +34,36 @@ detect_scope() {
   echo system
 }
 
+render_service_unit() {
+  local scope="$1"
+  sed -e "s|@DEPLOY_DIR@|${DEPLOY_DIR}|g" \
+      -e "s|@ENV_FILE@|${ENV_FILE}|g" \
+      -e "s|@DASHBOARD_USER@|${DASHBOARD_USER}|g" \
+      -e "s|@DASHBOARD_HOME@|${DASHBOARD_HOME}|g" \
+      "${SCRIPT_DIR}/systemd/runner-dashboard-auto-deploy.service" \
+    | if [[ "${scope}" == user ]]; then sed '/^User=/d'; else cat; fi
+}
+
 SCOPE="$(detect_scope)"
-SERVICE_SRC="${SCRIPT_DIR}/systemd/runner-dashboard-auto-deploy.service"
 TIMER_SRC="${SCRIPT_DIR}/systemd/runner-dashboard-auto-deploy.timer"
 
 install -d -m 0755 "${DEPLOY_DIR}/deploy"
+install -m 0644 "${SCRIPT_DIR}/auto-deploy-env.sh" "${DEPLOY_DIR}/deploy/auto-deploy-env.sh"
 install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.sh" "${DEPLOY_DIR}/deploy/node-auto-deploy.sh"
 install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.py" "${DEPLOY_DIR}/deploy/node-auto-deploy.py"
 rsync -a --delete "${SCRIPT_DIR}/node_auto_deploy/" "${DEPLOY_DIR}/deploy/node_auto_deploy/"
 
 if [[ "${SCOPE}" == user ]]; then
-  UNIT_DIR="${HOME}/.config/systemd/user"
+  UNIT_DIR="${DASHBOARD_HOME}/.config/systemd/user"
   mkdir -p "${UNIT_DIR}"
-  sed "s|@DEPLOY_DIR@|${DEPLOY_DIR}|g;s|@ENV_FILE@|${ENV_FILE}|g" "${SERVICE_SRC}" > "${UNIT_DIR}/runner-dashboard-auto-deploy.service"
+  render_service_unit user > "${UNIT_DIR}/runner-dashboard-auto-deploy.service"
   cp "${TIMER_SRC}" "${UNIT_DIR}/runner-dashboard-auto-deploy.timer"
   systemctl --user daemon-reload
   systemctl --user enable --now runner-dashboard-auto-deploy.timer
   echo "Installed user timer: systemctl --user status runner-dashboard-auto-deploy.timer"
 else
   sudo install -d -m 0755 /etc/systemd/system
-  sed "s|@DEPLOY_DIR@|${DEPLOY_DIR}|g;s|@ENV_FILE@|${ENV_FILE}|g" "${SERVICE_SRC}" | \
-    sudo tee /etc/systemd/system/runner-dashboard-auto-deploy.service >/dev/null
+  render_service_unit system | sudo tee /etc/systemd/system/runner-dashboard-auto-deploy.service >/dev/null
   sudo cp "${TIMER_SRC}" /etc/systemd/system/runner-dashboard-auto-deploy.timer
   sudo systemctl daemon-reload
   sudo systemctl enable --now runner-dashboard-auto-deploy.timer
