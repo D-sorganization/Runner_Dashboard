@@ -82,6 +82,9 @@ EXIT_IDENTITY_REFUSED = 2
 #: still be ON). Distinct from 1 ("held / not armed") so automation can alert.
 EXIT_ARM_MAY_BE_ON = 3
 
+#: Exit code when the armed-PR WIP cap refused ``--arm`` (RD-CI-005, enforce mode).
+EXIT_ARM_CAP_REFUSED = 4
+
 
 def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
     """Run ``cmd`` and capture output. Resolved via PATH so Windows finds gh.exe."""
@@ -825,6 +828,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="exit 2 unless the active token is a GitHub App installation token",
     )
+    parser.add_argument(
+        "--arm-tier",
+        default="agent",
+        choices=["user", "repair", "agent"],
+        help="dispatch tier for armed-PR cap bypass (RD-CI-005)",
+    )
+    parser.add_argument(
+        "--dispatch-kind",
+        default="",
+        help="dispatch kind for repair-tier bypass (e.g. ci_fix:lint)",
+    )
+    parser.add_argument(
+        "--repo-root",
+        default="",
+        help="repository root for config/dispatch_limits.json (default: cwd)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -833,12 +852,49 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_IDENTITY_REFUSED
 
     if args.arm:
+        cap_token: str | None = None
+        _arm_cap: Any = None
+        try:
+            from pathlib import Path
+
+            import dispatch_arm_cap as _arm_cap
+        except ImportError:
+            pass
+        if _arm_cap is not None:
+            repo_root = Path(args.repo_root or ".").resolve()
+            try:
+                policy = _arm_cap.load_policy(repo_root)
+                store = _arm_cap.ArmCapStore(_arm_cap.DEFAULT_STORE_PATH)
+                admit = _arm_cap.admit_for_arm(
+                    args.repo,
+                    args.pr,
+                    _arm_cap.AdmitContext(tier=args.arm_tier, dispatch_kind=args.dispatch_kind),
+                    store=store,
+                    policy=policy,
+                )
+            except ValueError as exc:
+                logger.warning("armed-PR cap policy unreadable; failing open: %s", exc)
+                admit = None
+            if admit is not None and not admit.allowed:
+                _emit(f"NOT armed {args.repo}#{args.pr}: {admit.reason}")
+                return EXIT_ARM_CAP_REFUSED
+            if admit is not None and admit.reservation_token:
+                cap_token = admit.reservation_token
+                if admit.shadow_would_block:
+                    _emit(f"SHADOW would-block {args.repo}#{args.pr}: {admit.reason}")
+
         result = arm_auto_merge(
             args.repo,
             args.pr,
             strategy=args.strategy,
             delete_branch=args.delete_branch,
         )
+        if _arm_cap is not None and cap_token:
+            cap_store = _arm_cap.ArmCapStore(_arm_cap.DEFAULT_STORE_PATH)
+            if result.armed or result.merged:
+                cap_store.confirm_reservation(cap_token)
+            else:
+                cap_store.release_reservation(cap_token)
         if result.armed:
             _emit(f"armed {args.repo}#{args.pr}")
             return 0

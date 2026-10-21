@@ -1,0 +1,37 @@
+name: Armed PR cap reconcile
+
+on:
+  schedule:
+    - cron: "30 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      trigger_disarm:
+        description: "When over cap in enforce mode, dispatch conflict-disarm"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: arm-cap-reconcile-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile armed inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          args=(python3 scripts/arm_cap_reconcile.py --repo "${{ github.repository }}")
+          if [ "${{ inputs.trigger_disarm || 'false' }}" = "true" ]; then
+            args+=(--trigger-disarm)
+          fi
+          "${args[@]}"

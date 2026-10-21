@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "description": "Fleet armed-PR WIP cap (RD-CI-005 / issue #2029). Roll back with enabled=false.",
+  "enabled": true,
+  "shadow_mode": true,
+  "max_healthy_armed": 20,
+  "reservation_ttl_seconds": 300,
+  "reconcile_interval_seconds": 900,
+  "scope_repositories": null,
+  "required_checks_path": "config/ci-required-checks-live.json",
+  "fallback_checks_path": "config/required_status_checks_policy.json",
+  "disarm_workflow": "conflict-disarm.yml",
+  "disarm_transient_streak_limit": 2,
+  "disarm_cooldown_seconds": 3600
+}
