@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time as time_module
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -57,7 +57,7 @@ log = logging.getLogger("runner-scheduler")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
-def _resolve_tz(tz_name: str):
+def _resolve_tz(tz_name: str) -> tzinfo:
     try:
         return ZoneInfo(tz_name)
     except (ZoneInfoNotFoundError, KeyError, Exception):
@@ -255,11 +255,12 @@ def _lock_worker_pid_stale(text: str) -> bool:
     return "Runner.Worker" not in cmdline
 
 
-def runner_busy_via_lock(workdir: Path, unit: str | None = None) -> bool:
+def runner_busy_via_lock(workdir: Path, unit: str | None = None, *, cleanup_stale: bool = False) -> bool:
     """Detect a job-start hook marker for the runner.
 
     A fresh lock counts as busy unless its recorded Runner.Worker pid is dead
-    or reused (#1987); such a lock is unlinked.
+    or reused (#1987). Stale locks are only unlinked when explicitly requested
+    by an applied scheduler operation; previews keep inspection read-only.
     """
     for name in runner_names(workdir, unit):
         lock = RUNNER_BUSY_LOCK_DIR / f"{name}.lock"
@@ -271,6 +272,8 @@ def runner_busy_via_lock(workdir: Path, unit: str | None = None) -> bool:
             return True
         if not _lock_worker_pid_stale(content):
             return True
+        if not cleanup_stale:
+            continue
         log.info("removing stale runner-busy lock %s (worker_pid dead or not a Runner.Worker)", lock)
         try:
             lock.unlink(missing_ok=True)
@@ -322,11 +325,11 @@ def runner_busy_via_process(workdir: Path) -> bool:
     return any(pattern.search(line.replace("\\", "/")) is not None for line in lines)
 
 
-def runner_busy(workdir: Path, unit: str | None = None) -> bool:
+def runner_busy(workdir: Path, unit: str | None = None, *, cleanup_stale: bool = False) -> bool:
     """Return busy when any independent job signal is positive or unreadable."""
     return (
         runner_busy_via_pickup(workdir)
-        or runner_busy_via_lock(workdir, unit)
+        or runner_busy_via_lock(workdir, unit, cleanup_stale=cleanup_stale)
         or runner_busy_via_diag(workdir)
         or runner_busy_via_process(workdir)
     )
@@ -343,7 +346,7 @@ def runner_num(unit: str, workdir: Path | None) -> int | None:
     return None
 
 
-def list_units() -> list[RunnerUnit]:
+def list_units(*, cleanup_stale: bool = False) -> list[RunnerUnit]:
     result = run_cmd(["systemctl", "list-unit-files", "--type=service", "--no-legend"])
     units: list[RunnerUnit] = []
     for line in result.stdout.splitlines():
@@ -363,24 +366,27 @@ def list_units() -> list[RunnerUnit]:
                 unit=name,
                 workdir=workdir,
                 active=active,
-                busy=runner_busy(workdir, unit=name),
+                busy=runner_busy(workdir, unit=name, cleanup_stale=cleanup_stale),
             )
         )
     return sorted(units, key=lambda item: item.num)
 
 
-def _confirmed_idle(unit: RunnerUnit, settle: bool) -> bool:
-    if runner_busy(unit.workdir, unit=unit.unit):
+def _confirmed_idle(unit: RunnerUnit, settle: bool, *, cleanup_stale: bool = False) -> bool:
+    if runner_busy(unit.workdir, unit=unit.unit, cleanup_stale=cleanup_stale):
         return False
     if settle and STOP_RECHECK_DELAY_SECONDS > 0:
         time_module.sleep(STOP_RECHECK_DELAY_SECONDS)
-        return not runner_busy(unit.workdir, unit=unit.unit)
+        return not runner_busy(unit.workdir, unit=unit.unit, cleanup_stale=cleanup_stale)
     return True
 
 
-def _worker_absent(unit: RunnerUnit) -> bool:
+def _worker_absent(unit: RunnerUnit, *, cleanup_stale: bool = False) -> bool:
     """True when neither a Runner.Worker process nor a job lock exists for the runner."""
-    return not (runner_busy_via_process(unit.workdir) or runner_busy_via_lock(unit.workdir, unit.unit))
+    return not (
+        runner_busy_via_process(unit.workdir)
+        or runner_busy_via_lock(unit.workdir, unit.unit, cleanup_stale=cleanup_stale)
+    )
 
 
 def stop_runner_safely(unit: RunnerUnit) -> bool:
@@ -399,7 +405,7 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
         return False
     stopped = False
     try:
-        if not _worker_absent(unit):
+        if not _worker_absent(unit, cleanup_stale=True):
             return False
         try:
             stopped = run_cmd(["systemctl", "stop", unit.unit], timeout=STOP_TIMEOUT_SECONDS).returncode == 0
@@ -434,7 +440,7 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
             # The snapshot is seconds old (list_units issues several systemctl
             # calls per unit); a job may have been assigned since. Confirm idle
             # twice, spaced out, immediately before killing the listener (#1921).
-            if not _confirmed_idle(unit, settle=not dry_run):
+            if not _confirmed_idle(unit, settle=not dry_run, cleanup_stale=not dry_run):
                 continue
             if not dry_run and not stop_runner_safely(unit):
                 continue
@@ -455,7 +461,9 @@ def _between_jobs(unit: RunnerUnit) -> bool:
     """
 
     def idle() -> bool:
-        return not (runner_busy_via_process(unit.workdir) or runner_busy_via_lock(unit.workdir, unit.unit))
+        return not (
+            runner_busy_via_process(unit.workdir) or runner_busy_via_lock(unit.workdir, unit.unit, cleanup_stale=True)
+        )
 
     if not idle():
         return False
@@ -678,7 +686,7 @@ def main() -> int:
     dry_run = args.dry_run or not args.apply
     if args.resume and not dry_run:
         set_maintenance(False)
-    units = list_units()
+    units = list_units(cleanup_stale=not dry_run)
     maintenance_report: dict | None = None
     if args.drain and not dry_run:
         maintenance_report = run_maintenance_drain(units, timeout=args.drain_timeout)
