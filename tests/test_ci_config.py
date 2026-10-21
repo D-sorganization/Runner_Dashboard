@@ -18,10 +18,14 @@ pyproject.toml satisfy the non-blocking/blocking policy introduced in #400:
 from __future__ import annotations
 
 import ast
+import os
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
 import yaml
+from bash_host import as_bash_path, require_bash
 
 ROOT = Path(__file__).resolve().parent.parent
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-standard.yml"
@@ -54,6 +58,32 @@ def _runs_on_labels(job: dict) -> set[str]:
 
 def _local_only_guard_text() -> str:
     return LOCAL_ONLY_GUARD.read_text(encoding="utf-8")
+
+
+def _run_workflow_bash(script: str, *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Execute a workflow script with host-native Bash and a bounded tool path."""
+    bash = Path(require_bash()).resolve()
+    tool_path = as_bash_path(bash.parent.parent / "usr" / "bin") if os.name == "nt" else os.defpath
+    shim_path = env["TEST_SHIM_DIR"]
+    guarded_script = f'export PATH="{shim_path}:{tool_path}"\n{script}'
+    process_env = os.environ.copy()
+    process_env.pop("GH_TOKEN", None)
+    process_env.pop("GITHUB_TOKEN", None)
+    process_env.pop("BASH_ENV", None)
+    process_env.update(env)
+    return subprocess.run(
+        [str(bash), "--noprofile", "--norc", "-eo", "pipefail", "-c", guarded_script],
+        cwd=cwd,
+        env=process_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+
+def _workflow_test_steps() -> list[dict]:
+    return _workflow_yaml(CI_WORKFLOW)["jobs"]["tests"]["steps"]
 
 
 def _pyproject_data() -> dict:  # type: ignore[type-arg]
@@ -217,6 +247,171 @@ def test_main_line_cap_exempts_current_legacy_frontend_baseline() -> None:
     }
     for filename in legacy_files:
         assert filename in text, f"{filename} missing from line-cap legacy baseline"
+
+
+def test_tests_bootstrap_uses_the_declared_matrix_interpreter(tmp_path: Path) -> None:
+    """Execute the real bootstrap with fake tools; uv must inherit the selected matrix Python."""
+    steps = _workflow_test_steps()
+    bootstrap = next(step for step in steps if step.get("name") == "Bootstrap Python venv")
+    shim_dir = tmp_path / "shims"
+    shim_dir.mkdir()
+    call_log = tmp_path / "calls.log"
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    github_path = tmp_path / "github-path"
+    github_path.write_text("", encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    marker = tmp_path / ".venv" / "preserve-this-marker"
+    marker.parent.mkdir()
+    marker.write_text("guard", encoding="utf-8")
+
+    python_stub = """#!/usr/bin/env bash
+set -eu
+printf '%s|%s\\n' 'VERSION' "$*" >> "$CALL_LOG"
+if [[ "$1" == "-m" && "$2" == "venv" ]]; then
+  target="$3"
+  mkdir -p "$target/bin"
+  cp "$0" "$target/bin/python"
+  cp "$FAKE_PIP" "$target/bin/pip"
+  printf 'export PATH="%s/bin:$PATH"\\n' "$target" > "$target/bin/activate"
+fi
+"""
+    for command, version in (("python", "3.11"), ("python3.12", "3.12")):
+        shim = shim_dir / command
+        shim.write_text(python_stub.replace("VERSION", version), encoding="utf-8", newline="\n")
+        shim.chmod(0o755)
+
+    for command, body in {
+        "pip": 'printf "pip|%s\\n" "$*" >> "$CALL_LOG"\n',
+        "uv": 'printf "uv|%s\\n" "$*" >> "$CALL_LOG"\n',
+        "rm": 'printf "rm|%s\\n" "$*" >> "$CALL_LOG"\n',
+    }.items():
+        shim = shim_dir / command
+        shim.write_text(f"#!/usr/bin/env bash\nset -eu\n{body}", encoding="utf-8", newline="\n")
+        shim.chmod(0o755)
+
+    result = _run_workflow_bash(
+        bootstrap["run"],
+        cwd=tmp_path,
+        env={
+            "TEST_SHIM_DIR": as_bash_path(shim_dir),
+            "RUNNER_TEMP": as_bash_path(runner_temp),
+            "GITHUB_PATH": as_bash_path(github_path),
+            "CALL_LOG": as_bash_path(call_log),
+            "FAKE_PIP": as_bash_path(shim_dir / "pip"),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    records = [line.split("|", 1) for line in call_log.read_text(encoding="utf-8").splitlines()]
+    venv_versions = [version for version, args in records if args.startswith("-m venv ")]
+    assert venv_versions == ["3.11"], f"bootstrap created its venv with Python {venv_versions}"
+    uv_calls = [args for name, args in records if name == "uv"]
+    expected_python = f"{as_bash_path(runner_temp)}/ci-venv/bin/python"
+    assert any(args == f"sync --frozen --python {expected_python}" for args in uv_calls), uv_calls
+    assert marker.read_text(encoding="utf-8") == "guard", "bootstrap test must not delete the project venv"
+
+    setup_python = next(
+        (step for step in steps if str(step.get("uses", "")).startswith("actions/setup-python@")),
+        None,
+    )
+    assert setup_python is not None, "tests job must provision its matrix interpreter with setup-python"
+    assert setup_python["with"]["python-version"] == "${{ matrix.python }}"
+    assert steps.index(setup_python) < steps.index(bootstrap)
+
+
+def test_python_test_step_rejects_a_runtime_matrix_mismatch(tmp_path: Path) -> None:
+    """Run the actual pytest step with real Python and a stub pytest to check its guard."""
+    steps = _workflow_test_steps()
+    test_step = next(step for step in steps if step.get("name") == "Run Python tests")
+    shim_dir = tmp_path / "shims"
+    shim_dir.mkdir()
+    (tmp_path / "tests").mkdir()
+    call_log = tmp_path / "pytest-calls.log"
+
+    python_shim = shim_dir / "python"
+    python_shim.write_text('#!/usr/bin/env bash\nexec "$REAL_PYTHON" "$@"\n', encoding="utf-8", newline="\n")
+    python_shim.chmod(0o755)
+    pytest_shim = shim_dir / "pytest"
+    pytest_shim.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CALL_LOG"\n', encoding="utf-8", newline="\n")
+    pytest_shim.chmod(0o755)
+
+    actual = f"{sys.version_info.major}.{sys.version_info.minor}"
+    common_env = {
+        "TEST_SHIM_DIR": as_bash_path(shim_dir),
+        "REAL_PYTHON": as_bash_path(Path(sys.executable)),
+        "CALL_LOG": as_bash_path(call_log),
+        "PYTHONPATH": "backend",
+        "FULL_SUITE": "false",
+    }
+    mismatch = _run_workflow_bash(
+        test_step["run"],
+        cwd=tmp_path,
+        env={**common_env, "EXPECTED_PYTHON": f"{sys.version_info.major + 1}.{sys.version_info.minor}"},
+    )
+    assert mismatch.returncode != 0, "pytest ran even though the interpreter did not match the matrix"
+
+    matched = _run_workflow_bash(test_step["run"], cwd=tmp_path, env={**common_env, "EXPECTED_PYTHON": actual})
+    assert matched.returncode == 0, matched.stderr
+    assert call_log.read_text(encoding="utf-8").strip(), "the matched runtime should reach the stub pytest command"
+    assert test_step.get("env", {}).get("EXPECTED_PYTHON") == "${{ matrix.python }}"
+
+
+def test_security_audit_preserves_ignore_arguments_and_exit_status(tmp_path: Path) -> None:
+    """Execute the real audit step and ensure ignore identifiers remain single argv items."""
+    jobs = _workflow_yaml(CI_WORKFLOW)["jobs"].values()
+    audit_step = next(
+        step for job in jobs for step in job.get("steps", []) if step.get("name") == "Security Audit (pip-audit)"
+    )
+    fake_python = tmp_path / ".venv" / "bin" / "python"
+    fake_python.parent.mkdir(parents=True)
+    call_log = tmp_path / "pip-audit-args.log"
+    fake_python.write_text(
+        '#!/usr/bin/env bash\nprintf "<%s>\\n" "$@" > "$CALL_LOG"\nexit "$AUDIT_EXIT"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake_python.chmod(0o755)
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (tmp_path / "shims").mkdir()
+
+    def run_audit(ignore_text: str | None, exit_status: int) -> subprocess.CompletedProcess[str]:
+        ignore_file = tmp_path / "requirements-audit-ignore.txt"
+        if ignore_text is None:
+            ignore_file.unlink(missing_ok=True)
+        else:
+            ignore_file.write_text(ignore_text, encoding="utf-8")
+        return _run_workflow_bash(
+            audit_step["run"],
+            cwd=tmp_path,
+            env={
+                "TEST_SHIM_DIR": as_bash_path(tmp_path / "shims"),
+                "CALL_LOG": as_bash_path(call_log),
+                "AUDIT_EXIT": str(exit_status),
+                "RUNNER_TEMP": as_bash_path(tmp_path / "runner-temp"),
+            },
+        )
+
+    expected_base = ["<-m>", "<pip_audit>", "<--progress-spinner=off>"]
+    without_file = run_audit(None, 0)
+    assert without_file.returncode == 0
+    assert call_log.read_text(encoding="utf-8").splitlines() == expected_base
+
+    empty_file = run_audit("", 0)
+    assert empty_file.returncode == 0
+    assert call_log.read_text(encoding="utf-8").splitlines() == expected_base
+
+    with_records = run_audit(
+        "PYSEC-2026-1 # reviewed record\nGHSA-abcd-1234-efgh rationale\n",
+        23,
+    )
+    assert with_records.returncode == 23, "audit command failure must remain blocking"
+    assert call_log.read_text(encoding="utf-8").splitlines() == [
+        *expected_base,
+        "<--ignore-vuln>",
+        "<PYSEC-2026-1>",
+        "<--ignore-vuln>",
+        "<GHSA-abcd-1234-efgh>",
+    ]
 
 
 # ---------------------------------------------------------------------------

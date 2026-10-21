@@ -322,7 +322,7 @@ jobs:
           if [ -d tests/ ]; then
             pytest --co -q tests/ || { echo "::error::pytest --co failed"; exit 1; }
           else
-            echo "No tests directory â€” skipping collect check"
+            echo "No tests directory - skipping collect check"
           fi
 
   lint:
@@ -461,23 +461,23 @@ jobs:
         env:
           PYTHONNOUSERSITE: "1"
         run: |
-          IGNORE_FLAGS=""
+          IGNORE_FLAGS=()
           if [ -f requirements-audit-ignore.txt ]; then
             # Each non-comment line is a PURL to ignore (e.g. pkg:pypi/foo@1.0.0)
             while IFS= read -r line; do
               [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
               PURL=$(echo "$line" | awk '{print $1}')
-              IGNORE_FLAGS="$IGNORE_FLAGS --ignore-vuln $PURL"
+              IGNORE_FLAGS+=(--ignore-vuln "$PURL")
             done < requirements-audit-ignore.txt
           fi
           if [ -f uv.lock ]; then
-            ./.venv/bin/python -m pip_audit --progress-spinner=off $IGNORE_FLAGS
+            ./.venv/bin/python -m pip_audit --progress-spinner=off "${IGNORE_FLAGS[@]}"
           else
             python -m venv "$RUNNER_TEMP/pip-audit-venv"
             "$RUNNER_TEMP/pip-audit-venv/bin/pip" install --quiet pip-audit
             # shellcheck disable=SC2086
             "$RUNNER_TEMP/pip-audit-venv/bin/python" -m pip_audit -r requirements.txt \
-              --progress-spinner=off $IGNORE_FLAGS
+              --progress-spinner=off "${IGNORE_FLAGS[@]}"
           fi
 
   security-scan:
@@ -549,20 +549,18 @@ jobs:
           - "3.11"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        with:
+          python-version: ${{ matrix.python }}
       - name: Bootstrap Python venv
         run: |
-          for py in python3.11 python3.12 python3.10 python3; do
-            if command -v "$py" &>/dev/null; then
-              "$py" -m venv "$RUNNER_TEMP/ci-venv"
-              break
-            fi
-          done
+          python -m venv "$RUNNER_TEMP/ci-venv"
           source "$RUNNER_TEMP/ci-venv/bin/activate"
           pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
             rm -rf .venv
             pip install uv
-            uv sync --frozen
+            uv sync --frozen --python "$RUNNER_TEMP/ci-venv/bin/python"
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
           else
             source "$RUNNER_TEMP/ci-venv/bin/activate"
@@ -574,14 +572,29 @@ jobs:
         env:
           PYTHONPATH: backend
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
+          EXPECTED_PYTHON: ${{ matrix.python }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
         # Full tier (merge_group): whole suite with coverage (issue #342); the
         # coverage floor is enforced there. PR tier: the fast subset without
         # coverage instrumentation (issue #1864).
         run: |
+          python - <<'PY'
+          import os
+          import platform
+          import sys
+
+          expected = tuple(int(part) for part in os.environ["EXPECTED_PYTHON"].split("."))
+          actual = tuple(sys.version_info[: len(expected)])
+          print(
+              f"Expected CPython {os.environ['EXPECTED_PYTHON']}; actual "
+              f"{platform.python_implementation()} {platform.python_version()} ({sys.executable})"
+          )
+          if platform.python_implementation() != "CPython" or actual != expected:
+              raise SystemExit("test interpreter does not match the declared Python matrix")
+          PY
           if [ ! -d tests/ ]; then
-            echo "No tests directory found â€” skipping"
+            echo "No tests directory found - skipping"
             exit 0
           fi
           if [ "$FULL_SUITE" = "true" ]; then
