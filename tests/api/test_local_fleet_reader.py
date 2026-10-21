@@ -67,9 +67,7 @@ def make_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., TestC
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path", ["/api/runners", "/api/repos", "/api/queue"])
-def test_loopback_reader_can_fetch_core_fleet_views(
-    make_client: Callable[..., TestClient], path: str
-) -> None:
+def test_loopback_reader_can_fetch_core_fleet_views(make_client: Callable[..., TestClient], path: str) -> None:
     with make_client() as client:
         response = client.get(path)
 

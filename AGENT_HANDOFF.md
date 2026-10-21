@@ -1,6 +1,6 @@
 # Agent Handoff — Runner Dashboard
 
-## Brick Dashboard Delivery — #2049, #2081 and #2089
+## Brick Dashboard Delivery — #2049, #2081 And #2089
 
 - Owner: `codex-brick-20261021-artifact-provenance`; active combined branch
   `codex/2081-artifact-provenance` is based on actual merged #2082 (`d4e3060b`).

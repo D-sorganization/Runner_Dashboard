@@ -36,8 +36,7 @@ def _create_command_stubs(bin_dir: Path, options: _UpdateOptions) -> None:
             "exit 0\n"
         ),
         "sudo": 'printf "sudo %s\\n" "$*" >> "$COMMAND_LOG"\nexec "$@"\n',
-        "curl": 'printf "curl %s\\n" "$*" >> "$COMMAND_LOG"\n'
-        + ("exit 0\n" if options.health else "exit 1\n"),
+        "curl": 'printf "curl %s\\n" "$*" >> "$COMMAND_LOG"\n' + ("exit 0\n" if options.health else "exit 1\n"),
         "sleep": "exit 0\n",
         "rsync": (
             'printf "rsync %s\\n" "$*" >> "$COMMAND_LOG"\n'
@@ -217,9 +216,7 @@ def test_user_artifact_scope_forwards_checksum_and_rolls_back_in_user_scope(tmp_
 
     result, commands = _run_update(
         tmp_path,
-        _UpdateOptions(
-            ("--scope", "user", "--artifact", str(artifact), "--checksum", checksum), health=False
-        ),
+        _UpdateOptions(("--scope", "user", "--artifact", str(artifact), "--checksum", checksum), health=False),
     )
 
     assert result.returncode != 0
