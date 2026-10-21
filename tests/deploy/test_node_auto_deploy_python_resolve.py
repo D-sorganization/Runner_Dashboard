@@ -56,7 +56,7 @@ def test_resolve_honors_runner_dashboard_python_env(tmp_path: Path) -> None:
         env={"RUNNER_DASHBOARD_PYTHON": str(custom)},
     )
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == str(custom)
+    assert proc.stdout.strip() == str(custom.resolve())
 
 
 @pytest.mark.skipif(not RESOLVE_SH.is_file(), reason="resolve-auto-deploy-python.sh missing")
@@ -64,6 +64,36 @@ def test_resolve_honors_runner_dashboard_python_env(tmp_path: Path) -> None:
 def test_require_python_accepts_current_interpreter() -> None:
     proc = _bash_source(f'require_auto_deploy_python_version "{sys.executable}"')
     assert proc.returncode == 0, proc.stderr or proc.stdout
+
+
+@pytest.mark.skipif(not RESOLVE_SH.is_file(), reason="resolve-auto-deploy-python.sh missing")
+@pytest.mark.skipif(not Path(BASH).exists(), reason="bash required")
+def test_resolve_runner_dashboard_python_command_name_on_path(tmp_path: Path) -> None:
+    """RUNNER_DASHBOARD_PYTHON=python3.12 must resolve via PATH, not cwd -x lookup."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    named = bin_dir / "python3.12"
+    named.symlink_to(sys.executable)
+    deploy = tmp_path / "dashboard"
+    deploy.mkdir()
+    proc = _bash_source(
+        f'resolve_auto_deploy_python "{deploy}" system',
+        env={
+            "RUNNER_DASHBOARD_PYTHON": "python3.12",
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == str(named.resolve())
+
+
+def test_auto_deploy_min_python_matches_pyproject_requires() -> None:
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'requires-python = ">=3.11' in text
+    resolve = RESOLVE_SH.read_text(encoding="utf-8")
+    assert "AUTO_DEPLOY_MIN_PYTHON_MINOR=11" in resolve
+    entry = (DEPLOY / "node-auto-deploy.py").read_text(encoding="utf-8")
+    assert "_MIN_PYTHON = (3, 11)" in entry
 
 
 def test_node_auto_deploy_package_does_not_import_datetime_utc() -> None:
