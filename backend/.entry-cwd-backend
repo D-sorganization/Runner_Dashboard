@@ -1,2 +1,0 @@
-# DeskComputer and Staff e2e start the dashboard with cwd=backend/ (see tests/e2e/fakes/start_staff_backend.py).
-# Vendored RM policy modules must import from backend/, not repo-root shared_scripts/.
