@@ -31,6 +31,13 @@ _USES_LINE = re.compile(
 
 # Actions covered by the uniformity guard. Local repo-relative refs
 # (`./.github/...`) are intentionally excluded.
+# Fleet reusable workflows intentionally float on @main (RM #2195).
+_FLOATING_REUSABLE_WORKFLOW_REFS: frozenset[str] = frozenset(
+    {
+        "D-sorganization/Repository_Management/.github/workflows/reusable-conflict-disarm.yml@main",
+    }
+)
+
 _GUARDED_ACTIONS = (
     "actions/checkout",
     "actions/setup-python",
@@ -118,7 +125,10 @@ def test_no_floating_action_versions() -> None:
         for lineno, raw in enumerate(wf.read_text(encoding="utf-8").splitlines(), start=1):
             m = floating.match(raw)
             if m:
-                offenders.append(f"{wf.relative_to(REPO_ROOT)}:{lineno}  {m.group('ref')}@{m.group('tag')}")
+                full_ref = f"{m.group('ref')}@{m.group('tag')}"
+                if full_ref in _FLOATING_REUSABLE_WORKFLOW_REFS:
+                    continue
+                offenders.append(f"{wf.relative_to(REPO_ROOT)}:{lineno}  {full_ref}")
     assert not offenders, "Floating action versions found (pin to SHA):\n" + "\n".join(offenders)
 
 
