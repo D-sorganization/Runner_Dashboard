@@ -111,7 +111,8 @@ def strip_github_secrets_from_child_env(env: Mapping[str, str]) -> dict[str, str
 
 
 def _credential_url(run_id: str, dashboard_port: str | None) -> str:
-    port = (dashboard_port or os.environ.get("DASHBOARD_PORT", "8321")).strip()
+    port = dashboard_port if dashboard_port is not None else os.environ.get("DASHBOARD_PORT", "8321")
+    port = str(port or "8321").strip()
     return f"http://127.0.0.1:{port}/api/staff/runs/{run_id}/github-credential"
 
 
