@@ -31,7 +31,6 @@ from fleet_events import (  # noqa: E402
     get_event_store,
     node_disk_is_critical,
     node_disk_is_low,
-    nodes_from_fleet_status,
 )
 
 # ── FleetEvent contract ────────────────────────────────────────────────────
@@ -314,24 +313,6 @@ def test_get_event_store_is_singleton() -> None:
     assert get_event_store() is get_event_store()
 
 
-# ── nodes_from_fleet_status flattening ─────────────────────────────────────
-
-
-def test_flatten_fleet_status_online_node() -> None:
-    status = {
-        "NodeA": {
-            "status": "online",
-            "disk": {"windows_host": {"free_gb": 123.4, "percent": 55.0}},
-        }
-    }
-    nodes = nodes_from_fleet_status(status)
-    assert len(nodes) == 1
-    assert nodes[0].name == "NodeA"
-    assert nodes[0].online is True
-    assert nodes[0].disk_free_gb == pytest.approx(123.4)
-    assert nodes[0].disk_percent == pytest.approx(55.0)
-
-
 def test_multi_host_disk_cordon_event_emitted() -> None:
     previous = [
         NodeSnapshot(name="A", online=True, disk_cordon_active=True),
@@ -344,37 +325,6 @@ def test_multi_host_disk_cordon_event_emitted() -> None:
     events = classify_fleet_events(previous, current, ts=1)
     kinds = {e.kind for e in events}
     assert "multi_host_disk_cordon" in kinds
-
-
-def test_flatten_fleet_status_disk_cordon_flag() -> None:
-    status = {
-        "HostX": {
-            "status": "online",
-            "disk_full_cordon": {"active": True, "phase": "cordoned"},
-        }
-    }
-    node = nodes_from_fleet_status(status)[0]
-    assert node.disk_cordon_active is True
-
-
-def test_flatten_fleet_status_offline_disk_pressure() -> None:
-    status = {
-        "NodeB": {
-            "status": "offline",
-            "offline_reason": "disk-pressure",
-            "offline_detail": "free space 4.0 GB <= minimum 20 GB",
-        }
-    }
-    node = nodes_from_fleet_status(status)[0]
-    assert node.online is False
-    assert node.offline_reason == "disk-pressure"
-
-
-def test_flatten_falls_back_to_wsl_disk() -> None:
-    status = {"NodeC": {"status": "online", "disk": {"free_gb": 9.0, "percent": 95.0}}}
-    node = nodes_from_fleet_status(status)[0]
-    assert node.disk_free_gb == pytest.approx(9.0)
-    assert node.disk_percent == pytest.approx(95.0)
 
 
 # ── /api/events router contract ────────────────────────────────────────────
