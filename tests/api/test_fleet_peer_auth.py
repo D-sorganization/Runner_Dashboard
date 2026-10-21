@@ -90,11 +90,24 @@ def test_valid_service_token_principal_accepted(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("HUB_FLEET_TOKEN", "the-fleet-token")  # pragma: allowlist secret
     import identity
 
-    prin = Principal(id="bot", type="bot", name="Bot", roles=["bot"])
+    prin = Principal(id="bot", type="bot", name="Bot", roles=["bot"], scopes=["fleet.read"])
     monkeypatch.setattr(identity.identity_manager, "verify_token", lambda raw: prin if raw == "svc-tok" else None)
 
     label = require_fleet_peer(_request(), header_token="Bearer svc-tok")
     assert label == "principal:bot"
+
+
+def test_principal_without_fleet_read_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "the-fleet-token")  # pragma: allowlist secret
+    import identity
+
+    prin = Principal(id="agent-codex", type="bot", name="Codex", roles=["bot"])
+    monkeypatch.setattr(identity.identity_manager, "verify_token", lambda raw: prin if raw == "svc-tok" else None)
+
+    with pytest.raises(HTTPException) as exc:
+        require_fleet_peer(_request(), header_token="Bearer svc-tok")
+    assert exc.value.status_code == 403
+    assert exc.value.detail["required_scope"] == "fleet.read"
 
 
 # ── Uses constant-time comparison (hmac.compare_digest) ──────────────────────

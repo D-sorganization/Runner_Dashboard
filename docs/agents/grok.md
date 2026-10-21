@@ -34,13 +34,21 @@ export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-grok
 export FLEET_AGENT="grok"
 ```
 
-A principal `agent-grok` must be registered in `principals.yml` with `roles: [bot]`. The bot token file is `~/.config/runner-dashboard/agent-tokens/agent-grok.token` (never include token contents in commits or logs).
+A principal `agent-grok` must exist in the identity store with the `bot` role. On hub
+deploys, `config/agent_principals.yml` merges repo defaults at startup: `agent-grok`
+gets `roles: [bot]` plus explicit `fleet.read` (priorities, coordination reads,
+`GET /api/fleet/status`, and other fleet-read routes) while **not** receiving
+`priorities.write` or `staff.holds.write`. Place the bearer in
+`~/.config/runner-dashboard/agent-tokens/agent-grok.token`; the dashboard ingests
+that file on restart (in addition to `tokens.yml` entries from the admin mint API).
+Never commit token contents or logs.
 
 ### Go-live scope (owner decisions, 2026-09-26 and 2026-09-27)
 
 The first live contract is the `/api/v1/staff` threads API with the `agent-grok` bearer token above:
 
-- **Reads:** briefing, threads, work items, staff summary and priorities.
+- **Reads:** briefing, threads, work items, staff summary, priorities and directives
+  (`fleet.read`), coordination (`/api/coordination/*`), and fleet status.
 - **Dispatch: open, with owner confirmation** (2026-09-27, "Allow with confirm"). Every dispatch goes through Barb:
   she proposes an action card in the thread, which must be approved by the owner in the Staff Console (or via
   `/api/v1/staff/proposals/{id}/decide`). Chat turns (including Barb) operate in read-only mode and cannot
