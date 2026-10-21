@@ -13,14 +13,21 @@ BACKUP_DIR=""
 DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 ROLLBACK_NOTIFY_URL="${ROLLBACK_NOTIFY_URL:-}"
 SERVICE="runner-dashboard"
+DEPLOY_SCOPE="system"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
         --deploy-dir) DEPLOY_DIR="$2"; shift 2 ;;
-        *) shift ;;
+        --scope) DEPLOY_SCOPE="$2"; shift 2 ;;
+        *) fail "Unknown option: $1" ;;
     esac
 done
+
+deployment_scope_validate "$DEPLOY_SCOPE"
+if [[ "$DEPLOY_SCOPE" == "user" ]]; then
+    deployment_user_manager_require "$SERVICE"
+fi
 
 # Find most-recent backup if not specified
 if [[ -z "$BACKUP_DIR" ]]; then
@@ -34,9 +41,9 @@ rsync -a --delete "$BACKUP_DIR/" "$DEPLOY_DIR/"
 ok "Files restored"
 
 info "Restarting $SERVICE after rollback..."
-sudo systemctl restart "$SERVICE"
+deployment_service_command "$DEPLOY_SCOPE" manage restart "$SERVICE"
 sleep 3
-if sudo systemctl is-active --quiet "$SERVICE"; then
+if deployment_service_command "$DEPLOY_SCOPE" manage is-active --quiet "$SERVICE"; then
     ok "Service running after rollback"
 else
     fail "Service failed to start after rollback"

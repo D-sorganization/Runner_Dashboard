@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# update-deployed.sh — Copy updated dashboard files to the deployed location
-#                      and restart the systemd service.
+# update-deployed.sh — Copy updated dashboard files and restart the scoped service.
 #
 # Run this any time server.py, local_app_monitoring.py, local_apps.json, or
 # index.html changes.
@@ -18,6 +17,7 @@
 #   --deploy-dir <path>  Override the deploy directory
 #   --artifact <file>    Deploy from a pre-built artifact tarball
 #   --checksum <sha256>  Expected SHA-256 checksum for artifact
+#   --scope <system|user> Service manager scope (default: system)
 #   --dry-run            Preview without executing destructive steps
 # ==============================================================================
 
@@ -32,6 +32,7 @@ DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 SERVICE="runner-dashboard"
 ARTIFACT_SOURCE=""
 ARTIFACT_CHECKSUM=""
+DEPLOY_SCOPE="system"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -39,10 +40,17 @@ while [[ $# -gt 0 ]]; do
         --deploy-dir) DEPLOY_DIR="$2"; shift 2 ;;
         --artifact) ARTIFACT_SOURCE="$2"; shift 2 ;;
         --checksum) ARTIFACT_CHECKSUM="$2"; shift 2 ;;
+        --scope) DEPLOY_SCOPE="$2"; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
-        *) shift ;;
+        *) fail "Unknown option: $1" ;;
     esac
 done
+
+deployment_scope_validate "$DEPLOY_SCOPE"
+
+if [[ "$DEPLOY_SCOPE" == "user" ]]; then
+    deployment_user_manager_require "$SERVICE"
+fi
 
 [[ -d "$DEPLOY_DIR" ]]           || fail "Deployed dashboard not found at $DEPLOY_DIR — run setup.sh first."
 if [[ -z "$ARTIFACT_SOURCE" ]]; then
@@ -51,7 +59,7 @@ fi
 
 DASHBOARD_PORT="${DASHBOARD_PORT:-}"
 if [[ -z "$DASHBOARD_PORT" ]] && command -v systemctl &>/dev/null; then
-    DASHBOARD_PORT=$(systemctl show "${SERVICE}.service" -p Environment --value 2>/dev/null \
+    DASHBOARD_PORT=$(deployment_service_command "$DEPLOY_SCOPE" read show "${SERVICE}.service" -p Environment --value 2>/dev/null \
         | tr ' ' '\n' \
         | awk -F= '$1 == "DASHBOARD_PORT" {print $2; exit}' || true)
 fi
@@ -178,11 +186,13 @@ install_cursor_sandbox_dropin() {
         warn "cursor-agent sandbox drop-in missing — run: sudo install -D -m 0644 $src $dst && sudo systemctl daemon-reload"
     fi
 }
-install_cursor_sandbox_dropin
+if [[ "$DEPLOY_SCOPE" == "system" ]]; then
+    install_cursor_sandbox_dropin
+fi
 
 info "Restarting $SERVICE..."
-if ! dry_run "sudo systemctl restart $SERVICE"; then
-    sudo systemctl restart "$SERVICE"
+if ! dry_run "$DEPLOY_SCOPE service restart $SERVICE"; then
+    deployment_service_command "$DEPLOY_SCOPE" manage restart "$SERVICE"
 fi
 
 # ── Ensure runner-unit hardening is present (idempotent) ─────────────────────
@@ -228,7 +238,9 @@ ensure_runner_hardening() {
         warn "Runner units missing KillMode=mixed hardening — run: sudo deploy/migrate-runner-units.sh"
     fi
 }
-ensure_runner_hardening
+if [[ "$DEPLOY_SCOPE" == "system" ]]; then
+    ensure_runner_hardening
+fi
 
 # ── Refresh host-level maintenance assets (idempotent, #1927) ────────────────
 # The installed /usr/local/bin/runner-scheduler (and the wsl-cache-trim assets)
@@ -244,7 +256,9 @@ refresh_maintenance_assets() {
     fi
     bash "$refresh" || warn "Maintenance asset refresh failed (needs passwordless sudo) — run: sudo -n bash $refresh"
 }
-refresh_maintenance_assets
+if [[ "$DEPLOY_SCOPE" == "system" ]]; then
+    refresh_maintenance_assets
+fi
 
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {
@@ -256,11 +270,11 @@ if [[ "$DRY_RUN" != "true" ]]; then
     if ! wait_healthy _check_health; then
         warn "Service failed health checks — attempting rollback..."
         if [[ -n "${_BACKUP:-}" && -d "$_BACKUP" ]]; then
-            "$(dirname "$0")/rollback-deployed.sh" --backup-dir "$_BACKUP" --deploy-dir "$DEPLOY_DIR"
+            "$(dirname "$0")/rollback-deployed.sh" --backup-dir "$_BACKUP" --deploy-dir "$DEPLOY_DIR" --scope "$DEPLOY_SCOPE"
         fi
         fail "Deploy failed health checks; rollback attempted"
     fi
-    if sudo systemctl is-active --quiet "$SERVICE"; then
+    if deployment_service_command "$DEPLOY_SCOPE" manage is-active --quiet "$SERVICE"; then
         ok "Service is running"
         echo ""
         echo "  Dashboard: http://localhost:${DASHBOARD_PORT}"
@@ -269,7 +283,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
         echo "  Queue:     http://localhost:${DASHBOARD_PORT}/api/queue"
     else
         echo ""
-        sudo systemctl status "$SERVICE" --no-pager
+        deployment_service_command "$DEPLOY_SCOPE" manage status "$SERVICE" --no-pager
         fail "Service failed to start — check logs above"
     fi
 
@@ -318,7 +332,11 @@ if [[ "$DRY_RUN" != "true" ]]; then
             echo "    TOKEN=\$(gh auth token 2>/dev/null)"
             echo "    sed -i '/^GH_TOKEN=/d' ~/.config/runner-dashboard/env"
             echo "    printf 'GH_TOKEN=%s\\n' \"\$TOKEN\" >> ~/.config/runner-dashboard/env"
-            echo "    sudo systemctl restart runner-dashboard"
+            if [[ "$DEPLOY_SCOPE" == "user" ]]; then
+                echo "    systemctl --user restart runner-dashboard"
+            else
+                echo "    sudo systemctl restart runner-dashboard"
+            fi
             echo ""
             echo "  If gh auth token returns empty, re-authenticate:"
             echo "    gh auth login"

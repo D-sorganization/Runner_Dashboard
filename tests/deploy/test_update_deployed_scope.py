@@ -7,8 +7,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+from bash_host import BASH, SKIP_REASON, as_bash_path
+
 ROOT = Path(__file__).resolve().parents[2]
 UPDATE = ROOT / "deploy" / "update-deployed.sh"
+pytestmark = pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 
 
 def _run_update(
@@ -24,13 +28,16 @@ def _run_update(
     for name, body in {
         "systemctl": (
             'printf "systemctl %s\\n" "$*" >> "$COMMAND_LOG"\n'
-            'if [[ "$*" == *"LoadState"* && "${FAKE_USER_MANAGER_AVAILABLE}" != "true" ]]; then echo "failed to connect to bus" >&2; exit 1; fi\n'
+            'if [[ "$*" == *"LoadState"* && "${FAKE_USER_MANAGER_AVAILABLE}" != "true" ]]; then\n'
+            '  echo "failed to connect to bus" >&2\n'
+            "  exit 1\n"
+            "fi\n"
             'if [[ "$*" == *"LoadState"* ]]; then printf "%s\\n" "${FAKE_USER_UNIT_STATE}"; fi\n'
-            'exit 0\n'
+            "exit 0\n"
         ),
         "sudo": 'printf "sudo %s\\n" "$*" >> "$COMMAND_LOG"\nexec "$@"\n',
-        "curl": f'printf "curl %s\\n" "$*" >> "$COMMAND_LOG"\n' + ("exit 0\n" if health else "exit 1\n"),
-        "sleep": 'exit 0\n',
+        "curl": 'printf "curl %s\\n" "$*" >> "$COMMAND_LOG"\n' + ("exit 0\n" if health else "exit 1\n"),
+        "sleep": "exit 0\n",
         "rsync": (
             'printf "rsync %s\\n" "$*" >> "$COMMAND_LOG"\n'
             'source_path="${@: -2:1}"; target_path="${@: -1}"\n'
@@ -76,7 +83,7 @@ def _run_update(
     (scripts / "install-dashboard-artifact.sh").write_text(
         '#!/usr/bin/env bash\nprintf "install %s\\n" "$*" >> "$COMMAND_LOG"\n'
         'while [[ $# -gt 0 ]]; do case "$1" in --deploy-dir) deploy_dir="$2"; shift 2 ;; *) shift ;; esac; done\n'
-        'printf new > "$deploy_dir/version.txt"\n',
+        'printf new > "$deploy_dir/old.txt"\n',
         encoding="utf-8",
     )
     (scripts / "install-dashboard-artifact.sh").chmod(0o755)
@@ -84,7 +91,6 @@ def _run_update(
     env = os.environ.copy()
     env.pop("DBUS_SESSION_BUS_ADDRESS", None)
     env.update(
-        PATH=f"{bin_dir}:{env['PATH']}",
         COMMAND_LOG=str(log),
         DEPLOY_DIR=str(deploy),
         DASHBOARD_HOME=str(tmp_path),
@@ -95,8 +101,21 @@ def _run_update(
     runtime_dir = tmp_path / "user-runtime"
     runtime_dir.mkdir()
     env["XDG_RUNTIME_DIR"] = str(runtime_dir)
+    assert BASH is not None
     result = subprocess.run(
-        ["bash", str(scripts / "update-deployed.sh"), "--repo", str(repo), "--deploy-dir", str(deploy), *args],
+        [
+            BASH,
+            "-c",
+            'export PATH="$1:$PATH"; shift; exec "$@"',
+            "scope-test",
+            as_bash_path(bin_dir),
+            as_bash_path(scripts / "update-deployed.sh"),
+            "--repo",
+            as_bash_path(repo),
+            "--deploy-dir",
+            as_bash_path(deploy),
+            *args,
+        ],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -114,6 +133,15 @@ def test_invalid_scope_fails_before_backup_or_commands(tmp_path: Path) -> None:
     assert "unsupported deployment scope" in result.stderr.lower()
     assert commands == []
     assert not list(tmp_path.glob("deployed.bak.*"))
+
+
+def test_unknown_option_fails_closed_before_backup_or_commands(tmp_path: Path) -> None:
+    result, commands = _run_update(tmp_path, "--scpoe", "user")
+
+    assert result.returncode != 0
+    assert "unknown option" in result.stderr.lower()
+    assert commands == []
+    assert not [path for path in tmp_path.glob("deployed.bak.*") if path.is_dir()]
 
 
 def test_user_scope_uses_user_manager_and_skips_host_maintenance(tmp_path: Path) -> None:
@@ -178,7 +206,7 @@ def test_user_artifact_scope_forwards_checksum_and_rolls_back_in_user_scope(tmp_
 
     assert result.returncode != 0
     assert any(f"--checksum {checksum}" in line for line in commands)
-    assert any(line.startswith("systemctl --user restart runner-dashboard") for line in commands)
+    assert sum(line == "systemctl --user restart runner-dashboard" for line in commands) >= 2
     assert not any(line.startswith("sudo ") for line in commands)
     assert not any("migrate-runner-units" in line or "refresh-maintenance-assets" in line for line in commands)
     assert not any(line.startswith("uv ") or line.startswith("npm ") for line in commands)
@@ -187,8 +215,7 @@ def test_user_artifact_scope_forwards_checksum_and_rolls_back_in_user_scope(tmp_
         index for index, line in enumerate(commands) if line.startswith("rsync -a --delete ") and ".bak." in line
     )
     assert install_index < rollback_index
-    assert (tmp_path / "deployed" / "version.txt").read_text(encoding="utf-8") == "new"
-    assert (tmp_path / "deployed" / "old.txt").exists()
+    assert (tmp_path / "deployed" / "old.txt").read_text(encoding="utf-8") == "old"
 
 
 def test_user_scope_accepts_xdg_only_user_manager_session(tmp_path: Path) -> None:

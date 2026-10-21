@@ -35,6 +35,42 @@ require_dir()  { [[ -d "$1" ]] || fail "Required directory not found: $1"; }
 require_file() { [[ -f "$1" ]] || fail "Required file not found: $1"; }
 require_cmd()  { command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"; }
 
+# Deployment scope contract shared by update and rollback. `read` keeps system
+# manager inspection unprivileged; mutations use sudo only for system scope.
+deployment_scope_validate() {
+    case "$1" in
+        system|user) return 0 ;;
+        *) fail "Unsupported deployment scope '$1' (expected system or user)" ;;
+    esac
+}
+
+deployment_service_command() {
+    local scope="$1" access="$2"
+    shift 2
+    deployment_scope_validate "$scope"
+    case "$access" in
+        read|manage) ;;
+        *) fail "Unsupported service access '$access' (expected read or manage)" ;;
+    esac
+    if [[ "$scope" == "user" ]]; then
+        systemctl --user "$@"
+    elif [[ "$access" == "manage" ]]; then
+        sudo systemctl "$@"
+    else
+        systemctl "$@"
+    fi
+}
+
+deployment_user_manager_require() {
+    local service="$1" unit_state bus_state=unset
+    [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && bus_state=set
+    if ! unit_state=$(deployment_service_command user read show "${service}.service" -p LoadState --value 2>&1); then
+        fail "Cannot reach the user systemd manager; refusing to continue (XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset}; DBUS_SESSION_BUS_ADDRESS=${bus_state}; ${unit_state})"
+    fi
+    [[ "$unit_state" == "loaded" ]] \
+        || fail "User service ${service}.service is not installed (LoadState=${unit_state:-unknown}); refusing to continue"
+}
+
 # pip install with --break-system-packages when supported
 pip_install() {
     local -a pkgs=("$@")
