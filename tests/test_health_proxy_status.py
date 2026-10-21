@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+import dashboard_config
 import httpx
 import proxy_utils
 import pytest
@@ -24,7 +25,7 @@ async def test_health_proxy_requires_success_and_strips_caller_credentials(
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
     monkeypatch.setattr(proxy_utils.httpx, "AsyncClient", lambda **_kwargs: client)
-    monkeypatch.setattr(proxy_utils, "HUB_URL", "http://hub.invalid")
+    monkeypatch.setattr(dashboard_config, "HUB_URL", "http://hub.invalid")
     monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-credential")  # pragma: allowlist secret
     reset = MagicMock()
     monkeypatch.setattr(proxy_utils, "reset_hub_circuit", reset)

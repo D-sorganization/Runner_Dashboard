@@ -32,6 +32,7 @@ if str(_BACKEND) not in sys.path:
 
 os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
 
+import dashboard_config  # noqa: E402
 import proxy_utils  # noqa: E402
 
 _SENSITIVE = ("authorization", "cookie", "x-api-key", "x-csrf-token")
@@ -126,7 +127,7 @@ def test_safe_forward_headers_no_token_drops_authorization(monkeypatch: pytest.M
 @pytest.mark.asyncio
 async def test_proxy_to_hub_does_not_leak_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HUB_FLEET_TOKEN", "fleet-secret-token")  # pragma: allowlist secret
-    monkeypatch.setattr(proxy_utils, "HUB_URL", "http://hub.internal")
+    monkeypatch.setattr(dashboard_config, "HUB_URL", "http://hub.internal")
 
     captured: dict[str, dict[str, str]] = {}
 

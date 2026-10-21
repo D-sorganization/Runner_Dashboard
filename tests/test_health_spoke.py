@@ -8,6 +8,7 @@ import time
 import types
 from unittest.mock import AsyncMock
 
+import dashboard_config
 import health
 import proxy_utils
 import pytest
@@ -41,8 +42,8 @@ def spoke(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
     monkeypatch.setitem(sys.modules, "server", server)
     monkeypatch.setattr(health, "proxy_to_hub", upstream, raising=False)
     monkeypatch.setattr(health, "record_dashboard_health", lambda *_args: None)
-    monkeypatch.setattr(proxy_utils, "MACHINE_ROLE", "node")
-    monkeypatch.setattr(proxy_utils, "HUB_URL", "http://hub.invalid")
+    monkeypatch.setattr(dashboard_config, "MACHINE_ROLE", "node")
+    monkeypatch.setattr(dashboard_config, "HUB_URL", "http://hub.invalid")
     monkeypatch.setattr(health.dashboard_config, "MACHINE_ROLE", "node")
     monkeypatch.setattr(health.dashboard_config, "HUB_URL", "http://hub.invalid")
     monkeypatch.setattr(proxy_utils, "hub_in_cooldown", lambda: False)
@@ -155,7 +156,7 @@ async def test_forwarded_hub_health_keeps_direct_probe(
     spoke: tuple[AsyncMock, AsyncMock], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     direct, upstream = spoke
-    monkeypatch.setattr(proxy_utils, "MACHINE_ROLE", "hub")
+    monkeypatch.setattr(dashboard_config, "MACHINE_ROLE", "hub")
     monkeypatch.setattr(health.dashboard_config, "MACHINE_ROLE", "hub")
     incoming = request()
     incoming.scope["headers"] = [(b"x-dashboard-health-hop", b"1")]
@@ -185,9 +186,11 @@ async def test_direct_health_modes_keep_existing_probe(
 ) -> None:
     direct, upstream = spoke
     if mode == "hub":
-        monkeypatch.setattr(proxy_utils, "MACHINE_ROLE", "hub")
+        monkeypatch.setattr(dashboard_config, "MACHINE_ROLE", "hub")
+        monkeypatch.setattr(health.dashboard_config, "MACHINE_ROLE", "hub")
     elif mode == "standalone":
-        monkeypatch.setattr(proxy_utils, "HUB_URL", None)
+        monkeypatch.setattr(dashboard_config, "HUB_URL", None)
+        monkeypatch.setattr(health.dashboard_config, "HUB_URL", None)
     body = await health.health_check(request(b"local=1" if mode == "local" else b""))
     upstream.assert_not_awaited()
     direct.assert_awaited_once()
@@ -199,7 +202,8 @@ async def test_hub_health_still_reports_direct_success(
     spoke: tuple[AsyncMock, AsyncMock], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     direct, upstream = spoke
-    monkeypatch.setattr(proxy_utils, "MACHINE_ROLE", "hub")
+    monkeypatch.setattr(dashboard_config, "MACHINE_ROLE", "hub")
+    monkeypatch.setattr(health.dashboard_config, "MACHINE_ROLE", "hub")
     direct.side_effect = None
     direct.return_value = {"runners": [{"id": 1}], "total_count": 1}
     body = await health.health_check(request())
