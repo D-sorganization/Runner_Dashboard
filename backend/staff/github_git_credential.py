@@ -6,9 +6,9 @@ import logging
 import sys
 from typing import TextIO
 
-log = logging.getLogger("dashboard.staff.github_git_credential")
-
 from staff.github_credential_client import fetch_github_token_for_run
+
+log = logging.getLogger("dashboard.staff.github_git_credential")
 
 
 def run_git_credential_helper(

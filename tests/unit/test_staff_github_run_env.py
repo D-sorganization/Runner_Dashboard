@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-import sys
-
+from github_app_auth import InstallationToken
 from staff.github_run_env import (
     StaffGithubToken,
     build_staff_run_env,
@@ -17,7 +17,6 @@ from staff.github_run_env import (
     operator_token_fallback_enabled,
     strip_github_secrets_from_child_env,
 )
-from github_app_auth import InstallationToken
 from staff.roles import RoleSpec
 from staff.runner import RunRecord, RunRequest, StaffRunner
 from staff.store import RunStore
@@ -227,8 +226,6 @@ def test_runner_injects_scoped_github_token(tmp_path: Any) -> None:
     plan = runner.plan(RunRequest(role="maintenance", prompt="test", provider="dummy"))
     workdir = tmp_path / "work"
     workdir.mkdir()
-
-    fake = StaffGithubToken(token=_FAKE_GHS, expires_at=1_700_000_000.0, source="github_app")
 
     def capture_call(*args: Any, **kwargs: Any) -> MagicMock:
         captured_env.update(kwargs.get("env", {}))

@@ -140,7 +140,7 @@ def test_github_credential_endpoint_requires_matching_run_principal(client: Test
     run_id = "run-cred-auth"
     fleet = mint_run_token(role="maintenance", run_id=run_id, fleet_actions=[], ttl_seconds=600.0)
     headers = {"Authorization": f"Bearer {fleet}", **_XHR}
-    wrong = client.post(f"/api/staff/runs/other-run/github-credential", headers=headers)
+    wrong = client.post("/api/staff/runs/other-run/github-credential", headers=headers)
     assert wrong.status_code == 403
 
 
