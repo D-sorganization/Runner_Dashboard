@@ -7,7 +7,6 @@ import os
 from typing import Any
 
 from fastapi import HTTPException
-
 from memory.models import ENTRY_TYPES, EntryType
 
 MAX_ENTRY_JSON_BYTES = int(os.environ.get("ASSISTANT_MEMORY_MAX_ENTRY_BYTES", "16384"))
