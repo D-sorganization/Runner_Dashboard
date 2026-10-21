@@ -162,11 +162,16 @@ def reconcile_holds_for_roles_dir(
     if parse_errors:
         raise HoldReconcileError("; ".join(parse_errors))
     roles = load_roles(directory)
-    is_dry = dry_run if dry_run is not None else os.environ.get("STAFF_RM_RECONCILE_DRY_RUN", "").strip() in {
-        "1",
-        "true",
-        "yes",
-    }
+    is_dry = (
+        dry_run
+        if dry_run is not None
+        else os.environ.get("STAFF_RM_RECONCILE_DRY_RUN", "").strip()
+        in {
+            "1",
+            "true",
+            "yes",
+        }
+    )
     return reconcile_holds(roles=roles, commit_sha=commit_sha, holds=holds, dry_run=is_dry)
 
 
