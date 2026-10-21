@@ -8,13 +8,16 @@ from typing import Any
 
 import httpx
 from dashboard_config import (
+    DEPLOYMENT_FILE,
     FLEET_NODES,
     HOSTNAME,
     MACHINE_ROLE,
     ORG,
+    VERSION,
     HttpTimeout,
     runner_limit,
 )
+from node_auto_deploy_status import read_auto_deploy_fleet_status
 from fastapi import APIRouter, Depends, Request, Response
 from fleet_autoconfig import (
     derive_fleet_nodes_from_registry,
@@ -36,6 +39,7 @@ from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
 from runner_inventory import fetch_org_runners
 from system_utils import (
     classify_node_offline,
+    get_deployment_info,
     get_system_metrics_snapshot,
     resource_offline_reason,
 )
@@ -182,6 +186,8 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
 
     responses: dict[str, Any] = {}
     local_metrics = await get_system_metrics_snapshot()
+    local_metrics["deployment"] = get_deployment_info(VERSION, DEPLOYMENT_FILE)
+    local_metrics["auto_deploy"] = read_auto_deploy_fleet_status()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
     local_res_reason = resource_offline_reason(local_metrics)
     if local_res_reason:
