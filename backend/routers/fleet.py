@@ -8,15 +8,18 @@ from typing import Any
 
 import httpx
 from dashboard_config import (
+    DEPLOYMENT_FILE,
     FLEET_NODES,
     HOSTNAME,
     MACHINE_ROLE,
     ORG,
+    VERSION,
     HttpTimeout,
     runner_limit,
 )
 from fastapi import APIRouter, Depends, Request, Response
 from fleet_autoconfig import (
+    _local_dashboard_url_candidates,
     derive_fleet_nodes_from_registry,
     derive_pool_topology,
 )  # issue #942, #1169 — registry-driven pool topology & federation
@@ -27,6 +30,7 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
 from machine_registry import load_machine_registry
+from node_auto_deploy_status import read_auto_deploy_fleet_status
 from proxy_utils import (
     proxy_to_hub,
     should_mark_hub_circuit_degraded,
@@ -36,6 +40,7 @@ from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
 from runner_inventory import fetch_org_runners
 from system_utils import (
     classify_node_offline,
+    get_deployment_info,
     get_system_metrics_snapshot,
     resource_offline_reason,
 )
@@ -133,7 +138,7 @@ def _node_probe_timeout() -> httpx.Timeout:
     return httpx.Timeout(HttpTimeout.PROXY_NODE_SYSTEM_S, connect=HttpTimeout.NODE_CONNECT_S)
 
 
-async def _fetch_peer_pool(peer: dict) -> dict[str, dict]:
+async def _fetch_peer_pool(peer: dict, *, local_dashboard_urls: frozenset[str]) -> dict[str, dict]:
     """Fetch one peer pool's fleet status, classifying it offline on failure.
 
     Returns a ``{node_name: metrics}`` mapping to merge into the aggregate
@@ -142,12 +147,24 @@ async def _fetch_peer_pool(peer: dict) -> dict[str, dict]:
     rather than raising.
     """
     peer_pool_name = peer["name"]
-    peer_url = f"{peer['url']}/api/fleet/status?exclude_pools=true"
+    peer_base = str(peer["url"]).strip().rstrip("/").lower()
+    # Co-located pools on the same host must not recurse into our own
+    # ``/api/fleet/status`` over loopback: with a single uvicorn worker that
+    # deadlocks until the client times out (~30s).
+    if peer_base in local_dashboard_urls:
+        peer_url = f"{peer['url'].rstrip('/')}/api/system"
+        single_key = True
+    else:
+        peer_url = f"{peer['url'].rstrip('/')}/api/fleet/status?exclude_pools=true"
+        single_key = False
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(peer_url, timeout=_node_probe_timeout())
             if resp.status_code == 200:
-                return dict(resp.json())
+                payload = resp.json()
+                if single_key and isinstance(payload, dict):
+                    return {peer_pool_name: payload}
+                return dict(payload) if isinstance(payload, dict) else {}
             reason = classify_node_offline(status_code=resp.status_code)
             return {
                 peer_pool_name: {
@@ -182,6 +199,8 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
 
     responses: dict[str, Any] = {}
     local_metrics = await get_system_metrics_snapshot()
+    local_metrics["deployment"] = get_deployment_info(VERSION, DEPLOYMENT_FILE)
+    local_metrics["auto_deploy"] = read_auto_deploy_fleet_status()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
     local_res_reason = resource_offline_reason(local_metrics)
     if local_res_reason:
@@ -200,6 +219,15 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         display_name=HOSTNAME,
         platform_node="",
         runner_aliases=RUNNER_ALIASES,
+    )
+    local_dashboard_urls = frozenset(
+        _local_dashboard_url_candidates(
+            registry,
+            display_name=HOSTNAME,
+            platform_node="",
+            runner_aliases=RUNNER_ALIASES,
+            local_port=PORT,
+        )
     )
 
     responses[local_pool_name or HOSTNAME] = local_metrics
@@ -251,7 +279,9 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         # Fan out to peer pools concurrently. The previous sequential loop let a
         # single unreachable pool stall the whole response for its full connect
         # budget; gather collapses N peer timeouts into one wall-clock window.
-        peer_results = await asyncio.gather(*[_fetch_peer_pool(peer) for peer in peer_pools])
+        peer_results = await asyncio.gather(
+            *[_fetch_peer_pool(peer, local_dashboard_urls=local_dashboard_urls) for peer in peer_pools]
+        )
         for updates in peer_results:
             responses.update(updates)
 
