@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 import hmac
 import os
+from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Request
 from identity import (
@@ -26,7 +27,7 @@ _DISPATCH_SCOPE = "staff.dispatch"
 
 
 @functools.cache
-def require_staff_run_dispatch():
+def require_staff_run_dispatch() -> Callable[..., Principal]:
     """FastAPI dependency: ``staff.dispatch`` scope via bearer or session only."""
 
     def checker(
