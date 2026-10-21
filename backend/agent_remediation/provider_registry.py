@@ -116,12 +116,22 @@ _GEMINI_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
 # Grok Build CLI needs a SuperGrok plan the fleet does not hold.
 _CURSOR_AGENT_MODELS = (
     "auto",
+    "composer-2.5",
     "gpt-5",
     "claude-sonnet-4",
     "grok-code-fast-1",
     "grok-4",
+    "grok-4.7-high",
+    "grok-4.7-high-fast",
+    "grok-4.7-medium",
+    "grok-4.7-medium-fast",
+    "grok-4.7-low",
+    "grok-4.7-low-fast",
+    "grok-4.7-xhigh",
+    "grok-4.7-xhigh-fast",
 )
 _ANTIGRAVITY_MODELS = (
+    "gemini-3.8-flash",
     "gemini-3.8-flash-high",
     "gemini-4-argon-high",
     "gemini-4-argon-medium",
