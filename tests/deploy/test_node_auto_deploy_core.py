@@ -20,7 +20,7 @@ from node_auto_deploy.version import deployed_git_sha  # noqa: E402
 
 _SHA = "a" * 40
 _SHA_B = "b" * 40
-_ECB3F6B_SHA = "ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2"
+_ECB3F6B_SHA = "ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2"  # pragma: allowlist secret
 _ECB3F6B_FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "ecb3f6b_check_runs.json"
 
 
@@ -81,6 +81,7 @@ def test_ci_gate_treats_skipped_and_duplicate_names_as_passing() -> None:
 
 def test_ci_gate_passes_ecb3f6b_main_check_list() -> None:
     runs = json.loads(_ECB3F6B_FIXTURE.read_text(encoding="utf-8"))
+    runs = [{**run, "head_sha": _ECB3F6B_SHA} for run in runs]
     assert len(runs) == 29
     conclusions = {str(r.get("conclusion")) for r in runs}
     assert conclusions == {"success", "skipped"}

@@ -1,1 +1,147 @@
-[{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Publish Trivy SARIF","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"reap","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Playwright E2E smoke tests","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"quality-gate","status":"completed"},{"conclusion":"skipped","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"tests","status":"completed"},{"conclusion":"skipped","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"security-scan","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"tests","status":"completed"},{"conclusion":"skipped","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"lint","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"ci-health-check","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Decide CI tier","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Staff Console e2e (fake providers)","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"TypeScript typecheck (tsc)","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Vitest + Coverage","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Frontend perf budget (real bundle)","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Determine frontend validation scope","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Validate Architecture Map Contract","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Select reversible CI runner","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"docker-build-scan","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"detect-secrets (baseline diff)","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"gitleaks (full history scan)","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"quality-gate","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"tests","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"tests (3.11)","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"security-scan","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"lint","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"ci-health-check","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Decide CI tier","status":"completed"},{"conclusion":"skipped","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"guard","status":"completed"},{"conclusion":"success","head_sha":"ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2","name":"Select reversible CI runner","status":"completed"}]
+[
+  {
+    "conclusion": "success",
+    "name": "Publish Trivy SARIF",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "reap",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Playwright E2E smoke tests",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "quality-gate",
+    "status": "completed"
+  },
+  {
+    "conclusion": "skipped",
+    "name": "tests",
+    "status": "completed"
+  },
+  {
+    "conclusion": "skipped",
+    "name": "security-scan",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "tests",
+    "status": "completed"
+  },
+  {
+    "conclusion": "skipped",
+    "name": "lint",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "ci-health-check",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Decide CI tier",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Staff Console e2e (fake providers)",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "TypeScript typecheck (tsc)",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Vitest + Coverage",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Frontend perf budget (real bundle)",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Determine frontend validation scope",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Validate Architecture Map Contract",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Select reversible CI runner",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "docker-build-scan",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "detect-secrets (baseline diff)",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "gitleaks (full history scan)",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "quality-gate",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "tests",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "tests (3.11)",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "security-scan",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "lint",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "ci-health-check",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Decide CI tier",
+    "status": "completed"
+  },
+  {
+    "conclusion": "skipped",
+    "name": "guard",
+    "status": "completed"
+  },
+  {
+    "conclusion": "success",
+    "name": "Select reversible CI runner",
+    "status": "completed"
+  }
+]
