@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Literal
 
+import job_metrics
+import job_metrics_collector
 import workflow_stats
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, Query
@@ -60,4 +63,23 @@ async def collect_workflow_stats(
     await asyncio.to_thread(workflow_stats.init_db)
     result = await workflow_stats.collect_once(ORG)
     log.info("workflow_stats.collect_once triggered by %s: %s", principal.id, result)
+    return result
+
+
+@router.get("/api/ci/metrics", dependencies=[Depends(require_fleet_peer)])
+async def get_ci_metrics(
+    days: int = Query(14, ge=1, le=90),
+    group_by: Literal["repo", "event", "label", "host"] = "repo",
+) -> dict[str, object]:
+    """Return job timing percentiles and the stored collection coverage."""
+    return await asyncio.to_thread(job_metrics.get_job_metrics, days, group_by)
+
+
+@router.post("/api/ci/metrics/collect")
+async def collect_ci_metrics(
+    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
+) -> dict[str, object]:
+    """Run one bounded, operator-requested job collection pass."""
+    result = await job_metrics_collector.collect_job_metrics(ORG)
+    log.info("job metrics collection requested by %s", principal.id)
     return result

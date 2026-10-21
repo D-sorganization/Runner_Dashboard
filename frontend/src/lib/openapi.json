@@ -7935,6 +7935,98 @@
         "tags": ["health", "diagnostics"]
       }
     },
+    "/api/ci/metrics": {
+      "get": {
+        "description": "Return job timing percentiles and the stored collection coverage.",
+        "operationId": "get_ci_metrics_api_ci_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "repo",
+              "enum": ["repo", "event", "label", "host"],
+              "title": "Group By",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Ci Metrics Api Ci Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Ci Metrics",
+        "tags": ["workflow_stats"]
+      }
+    },
+    "/api/ci/metrics/collect": {
+      "post": {
+        "description": "Run one bounded, operator-requested job collection pass.",
+        "operationId": "collect_ci_metrics_api_ci_metrics_collect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Collect Ci Metrics Api Ci Metrics Collect Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Collect Ci Metrics",
+        "tags": ["workflow_stats"]
+      }
+    },
     "/api/client-errors": {
       "post": {
         "operationId": "post_client_error_api_client_errors_post",

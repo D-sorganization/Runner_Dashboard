@@ -96,6 +96,28 @@ def test_init_db_creates_tables(tmp_path: Path) -> None:
     assert "collection_state" in tables
 
 
+def test_init_db_adds_job_metrics_without_replacing_run_history(tmp_path: Path) -> None:
+    db_file = tmp_path / "stats.db"
+    ws.init_db(db_file)
+    with sqlite3.connect(db_file) as conn:
+        conn.execute(
+            """INSERT INTO workflow_runs
+            (run_id, repo, workflow_name, workflow_id, created_at, inserted_at)
+            VALUES (7, 'org/repo', 'CI', 3, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')"""
+        )
+
+    ws.init_db(db_file)
+
+    with sqlite3.connect(db_file) as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        old_run = conn.execute("SELECT repo FROM workflow_runs WHERE run_id = 7").fetchone()
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(workflow_jobs)")}
+
+    assert "workflow_jobs" in tables
+    assert {"repo", "job_id", "run_id", "run_attempt", "created_at", "started_at", "completed_at"} <= columns
+    assert old_run == ("org/repo",)
+
+
 def test_init_db_idempotent(tmp_path: Path) -> None:
     """Calling init_db twice on the same path must not raise."""
     db_file = tmp_path / "stats.db"

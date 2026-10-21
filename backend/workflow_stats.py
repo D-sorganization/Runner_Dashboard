@@ -28,74 +28,23 @@ import asyncio
 import datetime as _dt_mod
 import json
 import logging
-import os
-import sqlite3
 import subprocess
-from pathlib import Path
 from typing import Any
+
+from workflow_stats_db import (
+    SCHEMA_SQL,  # noqa: F401 - compatibility export
+    connect_stats_db,  # noqa: F401 - public connection boundary
+    init_db,  # noqa: F401 - compatibility export
+)
+from workflow_stats_db import (
+    open_stats_db as _connect,
+)
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 timedelta = _dt_mod.timedelta
 
 log = logging.getLogger(__name__)
-
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS workflow_runs (
-    run_id            INTEGER PRIMARY KEY,
-    repo              TEXT    NOT NULL,
-    workflow_name     TEXT    NOT NULL,
-    workflow_id       INTEGER NOT NULL,
-    head_branch       TEXT,
-    event             TEXT,
-    status            TEXT,
-    conclusion        TEXT,
-    created_at        TEXT    NOT NULL,
-    run_started_at    TEXT,
-    updated_at        TEXT,
-    queued_seconds    REAL,
-    duration_seconds  REAL,
-    runner_label      TEXT,
-    inserted_at       TEXT    NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_wfr_workflow ON workflow_runs(repo, workflow_name, created_at);
-CREATE INDEX IF NOT EXISTS idx_wfr_created  ON workflow_runs(created_at);
-CREATE INDEX IF NOT EXISTS idx_wfr_conclusion ON workflow_runs(conclusion);
-
-CREATE TABLE IF NOT EXISTS collection_state (
-    key       TEXT PRIMARY KEY,
-    value     TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-"""
-
-
-def _db_path() -> Path:
-    """Resolve the database file location (env-overridable)."""
-    return Path(
-        os.environ.get(
-            "STATS_DB_PATH",
-            str(Path.home() / "actions-runners" / "dashboard" / "stats.db"),
-        )
-    )
-
-
-def init_db(path: Path | None = None) -> Path:
-    """Create the DB file + schema if missing; return resolved path."""
-    path = path or _db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path, timeout=5.0) as conn:
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.executescript(SCHEMA_SQL)
-    log.info("workflow_stats: DB initialized at %s", path)
-    return path
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_db_path(), timeout=5.0)
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -266,6 +215,13 @@ def _percentile(values: list[float], p: float) -> float | None:
     if f == c:
         return s[f]
     return s[f] + (s[c] - s[f]) * (k - f)
+
+
+def inclusive_percentile(values: list[float], p: float) -> float | None:
+    """Public inclusive-linear percentile for other workflow-stat views."""
+    if not 0.0 <= p <= 1.0:
+        raise ValueError("percentile must be between 0 and 1")
+    return _percentile(values, p)
 
 
 def get_summary(days: int = 14, group_by: str = "workflow") -> dict[str, Any]:

@@ -143,6 +143,34 @@ def test_gh_job_from_api_dict_string_labels() -> None:
     assert job.labels == ["self-hosted", "windows"]
 
 
+def test_gh_job_retains_created_at_and_its_own_attempt() -> None:
+    """Job metrics must use the attempt attached to each job payload."""
+    from models.github_payloads import GhJob
+
+    raw = {
+        "id": 3,
+        "run_id": 4,
+        "run_attempt": 2,
+        "created_at": "2026-10-20T10:00:00Z",
+        "started_at": "2026-10-20T10:01:00Z",
+        "completed_at": "2026-10-20T10:02:00Z",
+    }
+
+    job = GhJob.from_api_dict(raw)
+
+    assert job.run_attempt == 2
+    assert job.created_at == "2026-10-20T10:00:00Z"
+
+
+def test_gh_job_missing_attempt_is_not_filled_from_parent() -> None:
+    """An absent per-job attempt remains absent instead of being guessed."""
+    from models.github_payloads import GhJob
+
+    job = GhJob.from_api_dict({"id": 4, "run_id": 5})
+
+    assert getattr(job, "run_attempt", None) is None
+
+
 # ---------------------------------------------------------------------------
 # Integration: queue router source uses GhWorkflowRun
 # ---------------------------------------------------------------------------
