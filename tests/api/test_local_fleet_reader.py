@@ -45,7 +45,7 @@ def make_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., TestC
     monkeypatch.setattr(queue, "_queue_impl", empty_queue)
 
     app = FastAPI()
-    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
+    app.add_middleware(SessionMiddleware, secret_key="unit-test-session-secret")
     app.include_router(runners.router)
     app.include_router(repos.router)
     app.include_router(queue.router)

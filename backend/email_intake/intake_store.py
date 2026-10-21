@@ -84,9 +84,7 @@ class IntakeStore:
 
     def quarantine_count(self) -> int:
         with self._lock, self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM intake_messages WHERE disposition = 'quarantine'"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) FROM intake_messages WHERE disposition = 'quarantine'").fetchone()
         return int(row[0]) if row else 0
 
 
