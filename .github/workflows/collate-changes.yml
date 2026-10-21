@@ -43,7 +43,29 @@ jobs:
     runs-on: d-sorg-fleet
     timeout-minutes: 10
     steps:
+      - name: Preflight Jules app credentials
+        id: credential-preflight
+        env:
+          JULES_APP_CLIENT_ID: ${{ secrets.JULES_APP_ID }}
+          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+        run: | # pragma: allowlist secret
+          missing=0
+          if [ -z "$JULES_APP_CLIENT_ID" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_ID is not configured."
+            missing=1
+          fi
+          if [ -z "$JULES_APP_PRIVATE_KEY" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_PRIVATE_KEY is not configured."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "credentials-present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "credentials-present=true" >> "$GITHUB_OUTPUT"
+
       - name: Generate fleet app token
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -53,9 +75,23 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
+      - name: Resolve GitHub token for collation
+        id: gh-token
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          CREDS_OK: ${{ steps.credential-preflight.outputs.credentials-present }}
+        run: |
+          if [ "$CREDS_OK" = "true" ] && [ -n "$APP_TOKEN" ]; then
+            echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "Using Jules GitHub App token for collation."
+            exit 0
+          fi
+          echo "::warning::Jules app credentials unavailable; using GITHUB_TOKEN for collation."
+          echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.gh-token.outputs.token }}
           # Full history: each fragment's PR is read from the commit that
           # added it, which may be older than the push that triggered us.
           fetch-depth: 0
@@ -67,7 +103,7 @@ jobs:
 
       - name: Collate fragments
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.gh-token.outputs.token }}
           REPO_SLUG: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -99,7 +135,7 @@ jobs:
 
       - name: Propose collation as a pull request
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.gh-token.outputs.token }}
           BRANCH: bot/collate-changes
           REPO_SLUG: ${{ github.repository }}
         run: |
