@@ -18,14 +18,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import provider_switch
 from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
-from staff import quota as quota_mod
 from staff import retry as retry_mod
 from staff import usage as usage_mod
-from staff.adapters import ADAPTERS, READ_ONLY_RUN_PROVIDERS, ProviderAdapter
+from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.classifier import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
@@ -434,23 +432,11 @@ class StaffRunner:
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
-                if status == "succeeded":
-                    from staff.failover_dispatch import run_completion_summary
-
-                    summary = run_completion_summary(
-                        store,
-                        updated_rec,
-                        result_line,
-                        provider=plan.provider,
-                        model=plan.model,
-                    )
-                else:
-                    summary = updated_rec.outcome or result_summary(result_line)
                 handle_run_status_change(
                     updated_rec,
                     status=status,
                     question=q,
-                    summary=summary,
+                    summary=updated_rec.outcome or result_summary(result_line),
                 )
         finally:
             revoke_run_token(rec.id)

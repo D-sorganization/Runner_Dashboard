@@ -7,17 +7,15 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from staff import quota as quota_mod
 from staff.adapters import READ_ONLY_RUN_PROVIDERS, ProviderAdapter
+from staff.plan import RunRequest
 from staff.provider_cooldown import (
-    earliest_cooldown_reset,
-    mark_provider_cooldown,
     provider_in_cooldown,
 )
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain
-from staff import quota as quota_mod
-from staff.plan import RunRequest
 from staff.roles import RoleSpec
-from staff.runner_ops import can_run_unattended, read_only_kwargs
+from staff.runner_ops import can_run_unattended
 
 log = logging.getLogger("dashboard.staff.failover_dispatch")
 
@@ -117,6 +115,8 @@ def pick_machine_for_chain(
         if best is None or rank < best:
             best = rank
     return best[3] if best else local_name
+
+
 def resolve_provider_and_model(
     adapters: Mapping[str, ProviderAdapter],
     machine: str,
@@ -131,6 +131,7 @@ def resolve_provider_and_model(
             f"role '{role.name}' runs code-read-only; provider {req.provider!r} has no read-only unattended mode"
         )
     ceiling = quota_mod.ceiling_percent(role.budget_max_window_percent)
+
     def _headroom(pid: str, lim: float | None) -> bool:
         return quota_mod.headroom(pid, lim if lim is not None else quota_mod.ceiling_percent(None))[0]
 
@@ -160,9 +161,7 @@ def resolve_provider_and_model(
     if provider_switch_mod.is_disabled(provider):
         raise ValueError(f"provider '{provider}' is {provider_switch_mod.DISABLED_DETAIL}")
     if not getattr(adapters[provider], "unattended", True):
-        raise ValueError(
-            f"provider '{provider}' is chat-only: it cannot run unattended without bypassing permissions"
-        )
+        raise ValueError(f"provider '{provider}' is chat-only: it cannot run unattended without bypassing permissions")
     from staff.failover_model import resolve_launch_model, role_base_tier
 
     model, tier = resolve_launch_model(
