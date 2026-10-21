@@ -115,8 +115,10 @@ def test_connect_md_has_supported_clients_and_networks_matrix() -> None:
 def test_connect_md_indexes_all_client_guides() -> None:
     """connect.md links to claude.md, codex.md, and grok.md."""
     text = _read(CONNECT_MD)
+    assert "README.md" in text, "connect.md must link to docs/agents/README.md"
     assert "claude.md" in text, "connect.md must link to claude.md"
     assert "codex.md" in text, "connect.md must link to codex.md"
+    assert "codex-hands.md" in text, "connect.md must link to codex-hands.md"
     assert "grok.md" in text, "connect.md must link to grok.md"
 
 

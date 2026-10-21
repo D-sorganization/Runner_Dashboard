@@ -36,19 +36,53 @@ export FLEET_AGENT="grok"
 
 A principal `agent-grok` must exist in the identity store with the `bot` role. On hub
 deploys, `config/agent_principals.yml` merges repo defaults at startup: `agent-grok`
-gets `roles: [bot]` plus explicit `fleet.read` (priorities, coordination reads,
-`GET /api/fleet/status`, and other fleet-read routes) while **not** receiving
-`priorities.write` or `staff.holds.write`. Place the bearer in
+gets `roles: [bot]` plus explicit `fleet.read` and `memory.read` / `memory.write`
+(shared conversation context) while **not** receiving `priorities.write` or
+`staff.holds.write`. Place the bearer in
 `~/.config/runner-dashboard/agent-tokens/agent-grok.token`; the dashboard ingests
 that file on restart (in addition to `tokens.yml` entries from the admin mint API).
 Never commit token contents or logs.
+
+Barb uses **`memory.read`** and **`memory.write`** to share conversation context with hands agents. See the [assistant bridge contract](README.md).
+
+### Shared memory (context pack)
+
+At the start of a session, read the compact context pack (digests, open tasks, directives, holds):
+
+```bash
+curl -s -H "Authorization: Bearer $FLEET_API_TOKEN" \
+  "$FLEET_API_URL/api/v1/memory/context-pack"
+```
+
+At checkpoints and session end, append a `session_digest` (decisions, open items):
+
+```bash
+curl -s -X POST "$FLEET_API_URL/api/v1/memory" \
+  -H "Authorization: Bearer $FLEET_API_TOKEN" \
+  -H "X-Requested-With: XMLHttpRequest" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entry_type": "session_digest",
+    "source_product": "grokbot",
+    "tags": ["Runner_Dashboard"],
+    "body": {
+      "summary": "What Barb and Dieter covered",
+      "decisions": [],
+      "open_items": []
+    }
+  }'
+```
+
+Hands agents such as [`agent-codex-hands`](codex-hands.md) also write digests and `task` rows when executing work.
 
 ### Go-live scope (owner decisions, 2026-09-26 and 2026-09-27)
 
 The first live contract is the `/api/v1/staff` threads API with the `agent-grok` bearer token above:
 
 - **Reads:** briefing, threads, work items, staff summary, priorities and directives
-  (`fleet.read`), coordination (`/api/coordination/*`), and fleet status.
+  (`fleet.read`), coordination (`/api/coordination/*`), fleet status, and shared memory
+  (`GET /api/v1/memory/context-pack`).
+- **Memory writes:** `POST /api/v1/memory` session digests (`memory.write`); still no directive or hold writes.
 - **Dispatch: open, with owner confirmation** (2026-09-27, "Allow with confirm"). Every dispatch goes through Barb:
   she proposes an action card in the thread, which must be approved by the owner in the Staff Console (or via
   `/api/v1/staff/proposals/{id}/decide`). Chat turns (including Barb) operate in read-only mode and cannot
