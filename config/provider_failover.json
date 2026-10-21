@@ -1,0 +1,14 @@
+{
+  "schema_version": "provider-failover.v1",
+  "default_chain": [
+    {"provider": "codex", "model": "gpt-6-luna"},
+    {"provider": "claude"},
+    {"provider": "antigravity", "model": "gemini-3.8-flash-high"},
+    {"provider": "cursor-agent"}
+  ],
+  "cooldown_seconds": {
+    "provider_capacity": 600,
+    "quota_exhausted": 3600,
+    "rate_limited": 120
+  }
+}
