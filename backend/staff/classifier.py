@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from staff.adapters import _extract_text
 from staff.adapter_failure import adapter_failure_classification
+from staff.adapters import _extract_text
 
 if TYPE_CHECKING:
     from staff.store import RunRecord
