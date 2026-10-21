@@ -12,6 +12,10 @@ import { OperationsAdmissionSection, type QueueStatus } from "./OperationsAdmiss
 import { OperationsRunnerHoursSection, type RunnerScheduleData } from "./OperationsRunnerHoursSection";
 import { OperationsScheduledWorkflowsSection, type ScheduledWorkflowsData } from "./OperationsScheduledWorkflowsSection";
 import { OperationsDiagnosticsSection, type DiagnosticsSummary } from "./OperationsDiagnosticsSection";
+import { OperationsCiMetricsSection } from "./OperationsCiMetricsSection";
+
+const CI_METRICS_PANEL_ENABLED =
+  (import.meta.env as Record<string, string | undefined>).VITE_CI_METRICS_PANEL_ENABLED !== "false";
 
 export function OperationsPage(): React.ReactElement {
   const [deploySummary, setDeploySummary] = useState<OperationsDeploySummary | undefined>();
@@ -112,6 +116,8 @@ export function OperationsPage(): React.ReactElement {
       <OperationsAdmissionSection onStatusChange={handleAdmissionStatusChange} />
 
       <OperationsRunnerHoursSection onDataChange={handleRunnerHoursChange} />
+
+      {CI_METRICS_PANEL_ENABLED && <OperationsCiMetricsSection />}
 
       <OperationsScheduledWorkflowsSection onDataChange={handleScheduledWorkflowsChange} />
 

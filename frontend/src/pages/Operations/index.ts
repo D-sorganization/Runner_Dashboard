@@ -33,6 +33,12 @@ export type {
   RunnerScheduleEntry,
 } from "./OperationsRunnerHoursSection";
 
+export { OperationsCiMetricsSection } from "./OperationsCiMetricsSection";
+export type {
+  CiMetricsResponse,
+  OperationsCiMetricsSectionProps,
+} from "./OperationsCiMetricsSection";
+
 export { OperationsScheduledWorkflowsSection } from "./OperationsScheduledWorkflowsSection";
 export type {
   OperationsScheduledWorkflowsSectionProps,

@@ -54,6 +54,20 @@ function mockAllOperationsFetch() {
         }),
       );
     }
+    if (u === "/api/ci/metrics?days=14&group_by=repo") {
+      return Promise.resolve(
+        jsonResponse({
+          generated_at: "2026-10-21T12:00:00Z",
+          window: { days: 14, start: "2026-10-07T12:00:00Z", end: "2026-10-21T12:00:00Z" },
+          group_by: "repo",
+          sample: { jobs: 0, queue: 0, execution: 0 },
+          coverage: { complete: true, organizations_reported: 1, partial_reasons: [], caps: [], incomplete_runs: 0 },
+          labels_are_non_additive: false,
+          queue_semantics: "Queue wait begins at job creation.",
+          rows: [],
+        }),
+      );
+    }
     if (u === "/api/scheduled-workflows") {
       return Promise.resolve(
         jsonResponse({
@@ -79,7 +93,7 @@ function mockAllOperationsFetch() {
 }
 
 describe("OperationsPage", () => {
-  it("renders all 5 operational sections and the status banner", async () => {
+  it("renders all 6 operational sections and the status banner", async () => {
     mockAllOperationsFetch();
 
     render(<OperationsPage />);
@@ -91,6 +105,7 @@ describe("OperationsPage", () => {
     expect(await screen.findByRole("heading", { name: /Deploy & versions/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /Admission \(Conductor\)/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /Runner hours/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /CI Job Metrics/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /Scheduled workflows/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /Diagnostics/i })).toBeInTheDocument();
   });
@@ -135,6 +150,7 @@ describe("OperationsPage", () => {
       "/api/deployment/state",
       "/api/orchestrator/queue",
       "/api/fleet/schedule",
+      "/api/ci/metrics?days=14&group_by=repo",
       "/api/scheduled-workflows",
       "/api/diagnostics/summary",
     ]) {
