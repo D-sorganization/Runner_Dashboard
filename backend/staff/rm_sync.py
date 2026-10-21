@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from staff.rm_directives import DirectivesReconcileError, reconcile_directives_for_rm_root
 from staff.rm_reconcile import HoldReconcileError, format_hold_reconcile_diff, reconcile_holds_for_roles_dir
 from staff.roles import role_validation_errors, roles_dir
 from staff.store import _config_dir
@@ -166,23 +167,32 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
 
 
 def _reconcile_holds_after_refresh(root: Path, state: dict[str, Any]) -> None:
-    """Best-effort hold reconcile from role YAML; never raises to the timer."""
+    """Best-effort hold and directive reconcile from RM YAML; never raises to the timer."""
     commit = state.get("commit")
     if not commit:
         return
     default_roles = root / "staff" / "roles"
     roles_path = default_roles if default_roles.is_dir() else roles_dir()
+    dry = os.environ.get("STAFF_RM_RECONCILE_DRY_RUN", "").strip() in {"1", "true", "yes"}
     try:
-        diff = reconcile_holds_for_roles_dir(roles_path, str(commit))
+        hold_diff = reconcile_holds_for_roles_dir(roles_path, str(commit), dry_run=dry)
     except HoldReconcileError as exc:
         state["hold_reconcile"] = {"status": "error", "reason": str(exc)}
         log.error("RM hold reconcile failed (fail closed): %s", exc)
         return
-    if diff is None:
+    if hold_diff is not None:
+        state["hold_reconcile"] = {"status": "ok", "changed": hold_diff.changed, **hold_diff.to_dict()}
+        if hold_diff.changed:
+            log.info("RM hold reconcile commit=%s %s", commit, format_hold_reconcile_diff(hold_diff))
+    try:
+        directive_diff = reconcile_directives_for_rm_root(root, str(commit), dry_run=dry)
+    except DirectivesReconcileError as exc:
+        state["directive_reconcile"] = {"status": "error", "reason": str(exc)}
+        log.error("RM directive reconcile failed (fail closed): %s", exc)
         return
-    state["hold_reconcile"] = {"status": "ok", "changed": diff.changed, **diff.to_dict()}
-    if diff.changed:
-        log.info("RM hold reconcile commit=%s %s", commit, format_hold_reconcile_diff(diff))
+    state["directive_reconcile"] = {"status": "ok", "changed": directive_diff.changed, **directive_diff.to_dict()}
+    if directive_diff.changed:
+        log.info("RM directive reconcile commit=%s %s", commit, json.dumps(directive_diff.to_dict(), sort_keys=True))
 
 
 def main() -> None:
@@ -211,7 +221,11 @@ def main() -> None:
 def format_hold_reconcile_diff_from_state(state: dict[str, Any]) -> str:
     """Extract reconcile diff fields written by ``_reconcile_holds_after_refresh``."""
     keys = ("added", "deactivated", "updated", "unchanged")
-    payload = {k: state["hold_reconcile"].get(k, []) for k in keys if "hold_reconcile" in state}
+    payload: dict[str, Any] = {}
+    if "hold_reconcile" in state:
+        payload["holds"] = {k: state["hold_reconcile"].get(k, []) for k in keys}
+    if "directive_reconcile" in state:
+        payload["directives"] = {k: state["directive_reconcile"].get(k, []) for k in keys}
     return json.dumps(payload, indent=2, sort_keys=True)
 
 

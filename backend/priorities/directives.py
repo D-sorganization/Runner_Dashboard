@@ -101,6 +101,8 @@ class Directive:
     priority: int = DEFAULT_PRIORITY
     expires: str = ""
     set_on: str = field(default_factory=_now)
+    active: bool = True
+    managed: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Directive:
@@ -118,10 +120,14 @@ class Directive:
             priority=_parse_priority(data.get("priority")),
             expires=_parse_expiry(data.get("expires")),
             set_on=str(data.get("set_on") or _now()),
+            active=bool(data.get("active", True)),
+            managed=bool(data.get("managed", False)),
         )
 
     def is_active(self, now: datetime) -> bool:
-        """True until ``expires`` (exclusive); directives without expiry never lapse."""
+        """True while ``active`` and until ``expires`` (exclusive); no expiry never lapses."""
+        if not self.active:
+            return False
         if not self.expires:
             return True
         return datetime.fromisoformat(self.expires.replace("Z", "+00:00")) > now
@@ -174,9 +180,14 @@ class DirectivesList:
             return _version_of(self.load())
 
     def active(self, now: datetime | None = None) -> list[Directive]:
-        """Unexpired directives, highest priority (lowest number) first, then oldest first."""
+        """Unexpired, active directives; highest priority (lowest number) first, then oldest first."""
         moment = now or datetime.now(UTC)
         return sorted((d for d in self.load() if d.is_active(moment)), key=lambda d: (d.priority, d.set_on))
+
+    def replace_all(self, directives: list[Directive]) -> None:
+        """Persist a full list (internal; callers validate before invoking)."""
+        with self._lock:
+            self._write(directives)
 
     def replace(
         self,
