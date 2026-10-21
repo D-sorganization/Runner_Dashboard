@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from staff.adapters import _extract_text
+from staff.adapter_failure import adapter_failure_classification
 
 if TYPE_CHECKING:
     from staff.store import RunRecord
@@ -27,6 +28,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "config",
         "provider_capacity",
         "provider_error",
+        "quota_exhausted",
         "rate_limited",
         "needs_input",
         "timeout",
@@ -200,6 +202,16 @@ def classify_run_failure(
 
     lower = combined.lower()
 
+    adapter_row = adapter_failure_classification(provider, combined)
+    if adapter_row is not None:
+        fc, retryable, remediation, error = adapter_row
+        return FailureClassification(
+            failure_class=fc,
+            retryable=retryable,
+            remediation=remediation,
+            error=error,
+        )
+
     # 3. CLI Missing
     cli_missing_patterns = (
         "command not found",
@@ -296,19 +308,32 @@ def classify_run_failure(
             error=detail,
         )
 
-    # 5. Rate limits
+    # 5. Quota exhaustion (plan / billing limits — distinct from transient rate limits)
+    quota_patterns = (
+        "exceeded your current quota",
+        "quota exhausted",
+        "out of quota",
+        "usage limit",
+        "plan limit",
+        "billing hard limit",
+    )
+    if "disk quota" not in lower and any(pat in lower for pat in quota_patterns):
+        return FailureClassification(
+            failure_class="quota_exhausted",
+            retryable=True,
+            remediation=f"Provider {provider} quota exhausted; failover chain will try the next provider.",
+            error=f"Quota exhausted on {provider}",
+        )
+
+    # 5b. Rate limits
     rate_patterns = (
         "429",
         "rate limit",
         "rate_limit_exceeded",
         "too many requests",
         "overloaded_error",
-        "overloaded",
-        "exceeded your current quota",
         "resource_exhausted",
         "quota exceeded",
-        "quota exhausted",
-        "out of quota",
     )
     if "disk quota" not in lower and any(pat in lower for pat in rate_patterns):
         return FailureClassification(
