@@ -18,7 +18,8 @@ def mint_staff_run_github_token_via_hub(role_name: str, repo: str, run_id: str) 
     Pre: ``HUB_URL`` and ``HUB_FLEET_TOKEN`` are configured on this node.
     Post: returns a token minted by the hub; raises ``RuntimeError`` when the hub refuses.
     """
-    hub = (HUB_URL or os.environ.get("HUB_URL", "")).strip().rstrip("/")
+    hub_raw = HUB_URL if HUB_URL is not None else os.environ.get("HUB_URL") or ""
+    hub = hub_raw.strip().rstrip("/")
     fleet = os.environ.get("HUB_FLEET_TOKEN", "").strip()
     rid = str(run_id or "").strip()
     if not hub or not fleet:

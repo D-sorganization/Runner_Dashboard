@@ -76,8 +76,10 @@ def _staff_github_mint_uses_hub() -> bool:
     """True when this node must request GitHub tokens from the fleet hub (#2051)."""
     if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
         return False
-    role = (MACHINE_ROLE or os.environ.get("MACHINE_ROLE", "node")).strip().lower()
-    hub = (HUB_URL or os.environ.get("HUB_URL", "")).strip()
+    role_raw = MACHINE_ROLE if MACHINE_ROLE is not None else os.environ.get("MACHINE_ROLE") or "node"
+    role = role_raw.strip().lower()
+    hub_raw = HUB_URL if HUB_URL is not None else os.environ.get("HUB_URL") or ""
+    hub = hub_raw.strip()
     return role == "node" and bool(hub)
 
 
