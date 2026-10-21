@@ -1579,6 +1579,49 @@
         "title": "ExecutorTier",
         "type": "string"
       },
+      "FleetRunTokenRequest": {
+        "properties": {
+          "repositories": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Repositories",
+            "type": "array"
+          },
+          "role": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": ["run_id", "role", "repositories"],
+        "title": "FleetRunTokenRequest",
+        "type": "object"
+      },
+      "FleetRunTokenResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": ["token", "expires_at"],
+        "title": "FleetRunTokenResponse",
+        "type": "object"
+      },
       "GithubCredentialResponse": {
         "properties": {
           "expires_at": {
@@ -10740,6 +10783,69 @@
         ],
         "summary": "Fleet Orchestration Dispatch",
         "tags": ["orchestration"]
+      }
+    },
+    "/api/fleet/run-token": {
+      "post": {
+        "description": "Mint a short-lived GitHub App token for a staff run executing on a spoke node.",
+        "operationId": "post_fleet_run_token_api_fleet_run_token_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Fleet-Node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Fleet-Node"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetRunTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetRunTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Fleet Run Token",
+        "tags": ["fleet"]
       }
     },
     "/api/fleet/schedule": {
