@@ -66,6 +66,15 @@
       "description": "Ordered preference list; the first available provider runs the role."
     },
     "model": { "type": "string", "minLength": 1 },
+    "tier": {
+      "type": "string",
+      "enum": ["routine", "standard", "complex"],
+      "description": "Task complexity tier for per-provider model selection (#2047)."
+    },
+    "allow_tier_escalation": {
+      "type": "boolean",
+      "description": "When true, failover may move up one tier after the provider chain is exhausted at the current tier."
+    },
     "schedule": {
       "type": ["string", "null"],
       "pattern": "^\\S+ \\S+ \\S+ \\S+ \\S+$",
@@ -312,7 +321,7 @@
                 "uniqueItems": true,
                 "items": {
                   "type": "string",
-                  "enum": ["provider_capacity", "rate_limited"]
+                  "enum": ["provider_capacity", "quota_exhausted", "rate_limited"]
                 }
               },
               "from": {
