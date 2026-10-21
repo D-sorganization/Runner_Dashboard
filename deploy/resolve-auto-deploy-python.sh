@@ -3,8 +3,35 @@
 # Source from node-auto-deploy.sh and install-node-auto-deploy.sh — do not execute.
 set -euo pipefail
 
+# Matches pyproject.toml [project] requires-python (>=3.11,<3.14).
 AUTO_DEPLOY_MIN_PYTHON_MAJOR=3
 AUTO_DEPLOY_MIN_PYTHON_MINOR=11
+
+_auto_deploy_absolute_path() {
+  local path="$1"
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -f "${path}" 2>/dev/null && return 0
+  fi
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "${path}" 2>/dev/null && return 0
+  fi
+  echo "${path}"
+}
+
+_auto_deploy_resolve_python_candidate() {
+  local candidate="${1:?}"
+  if [[ -x "${candidate}" ]]; then
+    _auto_deploy_absolute_path "${candidate}"
+    return 0
+  fi
+  local on_path=""
+  on_path="$(command -v "${candidate}" 2>/dev/null || true)"
+  if [[ -n "${on_path}" && -x "${on_path}" ]]; then
+    _auto_deploy_absolute_path "${on_path}"
+    return 0
+  fi
+  return 1
+}
 
 _auto_deploy_execstart_python() {
   local scope="$1"
@@ -29,9 +56,13 @@ resolve_auto_deploy_python() {
   local deploy_dir="${1:?deploy dir required}"
   local preferred_scope="${2:-system}"
 
-  if [[ -n "${RUNNER_DASHBOARD_PYTHON:-}" && -x "${RUNNER_DASHBOARD_PYTHON}" ]]; then
-    echo "${RUNNER_DASHBOARD_PYTHON}"
-    return 0
+  if [[ -n "${RUNNER_DASHBOARD_PYTHON:-}" ]]; then
+    local explicit=""
+    explicit="$(_auto_deploy_resolve_python_candidate "${RUNNER_DASHBOARD_PYTHON}" || true)"
+    if [[ -n "${explicit}" ]]; then
+      echo "${explicit}"
+      return 0
+    fi
   fi
 
   local venv_python="${deploy_dir}/.venv/bin/python"
