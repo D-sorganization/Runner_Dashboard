@@ -340,7 +340,7 @@ def test_python_test_step_rejects_a_runtime_matrix_mismatch(tmp_path: Path) -> N
         "TEST_SHIM_DIR": as_bash_path(shim_dir),
         "REAL_PYTHON": as_bash_path(Path(sys.executable)),
         "CALL_LOG": as_bash_path(call_log),
-        "PYTHONPATH": "backend",
+        "PYTHONPATH": "backend:.",
         "FULL_SUITE": "false",
     }
     mismatch = _run_workflow_bash(

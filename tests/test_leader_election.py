@@ -19,10 +19,12 @@ def test_autoscaler_leader_election(tmp_path: Path) -> None:
     # But runner_autoscaler imports psutil and might fail.
 
     # Let's just create a small wrapper
+    repo_root = Path(__file__).parent.parent
     wrapper_code = f"""
 import sys
 import time
-sys.path.insert(0, "{(Path(__file__).parent.parent / "backend").as_posix()}")
+sys.path.insert(0, "{(repo_root / "backend").as_posix()}")
+sys.path.insert(0, "{repo_root.as_posix()}")
 import runner_autoscaler
 
 # Patch lock path

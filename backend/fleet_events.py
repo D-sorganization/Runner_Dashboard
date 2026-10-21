@@ -30,7 +30,7 @@ node is still online — so operators see the pressure *before* the node drops.
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -39,6 +39,9 @@ from dashboard_config import (
     DISK_MIN_FREE_GB,
     DISK_WARN_PERCENT,
 )
+from disk_full_cordon_fleet_events import multi_host_disk_cordon_fleet_events
+from fleet_events_snapshots import nodes_from_fleet_status
+from runner_disk_guard_policy import load_runner_disk_guard_policy
 
 # Re-exported so consumers/tests can read the active thresholds without a second
 # import of dashboard_config (DRY single source).
@@ -72,6 +75,7 @@ EventKind = Literal[
     "staff_role_dead",
     "client_error",
     "staff_run_orphaned",
+    "multi_host_disk_cordon",
 ]
 
 # Default ring-buffer capacity. Large enough to hold a meaningful operator
@@ -112,6 +116,7 @@ class FleetEvent:
             "staff_role_dead",
             "client_error",
             "staff_run_orphaned",
+            "multi_host_disk_cordon",
         ):
             raise ValueError(f"FleetEvent.kind invalid: {self.kind!r}")
         if not self.title:
@@ -145,6 +150,7 @@ class NodeSnapshot:
     disk_percent: float | None = None
     offline_reason: str | None = None
     offline_detail: str | None = None
+    disk_cordon_active: bool = False
 
 
 def node_disk_is_critical(
@@ -319,6 +325,17 @@ def classify_fleet_events(
             )
         )
 
+    # 6. Multi-host disk-full cordon (RD-OPS-017).
+    cordon_cfg = load_runner_disk_guard_policy()
+    events.extend(
+        multi_host_disk_cordon_fleet_events(
+            previous,
+            curr_list,
+            ts=ts,
+            alert_threshold=cordon_cfg.alerts.cordoned_hosts_warning_threshold,
+        )
+    )
+
     return events
 
 
@@ -373,48 +390,6 @@ class EventStore:
     def __len__(self) -> int:
         with self._lock:
             return len(self._events)
-
-
-def nodes_from_fleet_status(
-    status: Mapping[str, Mapping[str, object]],
-) -> list[NodeSnapshot]:
-    """Flatten the nested ``/api/fleet/status`` payload into ``NodeSnapshot``s.
-
-    Law of Demeter boundary: the nested-dict reaching happens here, once, so
-    the classifier and store only ever see flat typed records.
-    """
-    out: list[NodeSnapshot] = []
-    for name, data in status.items():
-        if not isinstance(data, Mapping):
-            continue
-        status_str = data.get("status")
-        offline_reason = data.get("offline_reason")
-        # A node is offline if it self-reports offline OR the hub flagged it.
-        online = status_str != "offline" and offline_reason != "disk-pressure"
-        # Disk metric: prefer the windows-host disk, fall back to the WSL disk.
-        disk = data.get("disk")
-        free_gb: float | None = None
-        percent: float | None = None
-        if isinstance(disk, Mapping):
-            host = disk.get("windows_host")
-            metric = host if isinstance(host, Mapping) else disk
-            raw_free = metric.get("free_gb")
-            raw_percent = metric.get("percent")
-            if isinstance(raw_free, (int, float)):
-                free_gb = float(raw_free)
-            if isinstance(raw_percent, (int, float)):
-                percent = float(raw_percent)
-        out.append(
-            NodeSnapshot(
-                name=name,
-                online=bool(online),
-                disk_free_gb=free_gb,
-                disk_percent=percent,
-                offline_reason=(str(offline_reason) if offline_reason is not None else None),
-                offline_detail=(str(data.get("offline_detail")) if data.get("offline_detail") is not None else None),
-            )
-        )
-    return out
 
 
 # Process-wide singleton store. The poller records into it; the API reads from
