@@ -27,6 +27,7 @@ from staff import retry as retry_mod
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, READ_ONLY_RUN_PROVIDERS, ProviderAdapter
 from staff.classifier import classify_execution_result
+from staff.github_run_env import cap_run_timeout_for_github_token, prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
@@ -317,7 +318,29 @@ class StaffRunner:
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
+        wall_clock_timeout = cap_run_timeout_for_github_token(wall_clock_timeout)
         idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
+
+        try:
+            env, _gh_cred = prepare_staff_run_github_env(os.environ, role, plan.repo or "")
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Failed to mint GitHub credential for staff run %s", rec.id)
+            err = f"GitHub auth for run failed: {exc}"
+            store.update_run(
+                rec.id,
+                status="failed",
+                failure_class="auth_error",
+                retryable=False,
+                remediation=(
+                    "Configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and "
+                    "GITHUB_APP_PRIVATE_KEY_FILE on the dashboard node, or set "
+                    "STAFF_ALLOW_OPERATOR_TOKEN=1 only for explicit operator-PAT fallback."
+                ),
+                error=err,
+                ended_at=_now(),
+            )
+            store.append_event(rec.id, "error", err)
+            return
 
         try:
             token = mint_run_token(plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout)
@@ -337,7 +360,7 @@ class StaffRunner:
             return
         try:
             env = {
-                **os.environ,
+                **env,
                 **adapter.runtime_env(),
                 "STAFF_RUN_ID": rec.id,
                 "STAFF_ROLE": plan.role,

@@ -209,7 +209,10 @@ sudo systemctl restart runner-dashboard.service
 
 The dashboard still accepts `GH_TOKEN` / `GITHUB_TOKEN` as a fallback while the
 App credential is rolled out, but normal production nodes should have the App
-variables above set.
+variables above set. That operator token is for **dashboard** GitHub API calls
+(polling, health probes) only. Staff agent subprocesses receive their own
+per-run installation token minted at dispatch time (#2038); they must not inherit
+the operator PAT unless `STAFF_ALLOW_OPERATOR_TOKEN=1` is deliberately set.
 
 Required variables:
 

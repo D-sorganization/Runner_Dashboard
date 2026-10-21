@@ -209,6 +209,23 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | `STAFF_DISABLED_PROVIDERS`    | unset                                                                           | Comma-separated providers turned off on every dispatch path, e.g. `gemini` (#1597)        |
 | `CLAUDE_CONFIG_DIR`           | unset (CLI uses `~/.claude`)                                                    | Service-owned Claude seat; required under `ProtectHome=read-only` (see Node setup)        |
 | `GIT_CONFIG_GLOBAL`           | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                          |
+| `STAFF_ALLOW_OPERATOR_TOKEN`  | unset                                                                           | Set to `1` only to let staff runs fall back to the dashboard's operator `GH_TOKEN` when App minting fails (#2038) |
+| `STAFF_GITHUB_TOKEN_MAX_RUN_SECONDS` | `3300`                                                                   | Wall-clock cap for a run when using GitHub App installation tokens (1 h GitHub TTL) (#2038) |
+
+### GitHub credentials per run (#2038)
+
+Staff runs no longer inherit the operator's personal `GH_TOKEN`. Before each subprocess
+starts, the runner mints a short-lived **GitHub App installation token** (same App as the
+dashboard API) scoped to the run's repository and to the minimal permissions implied by the
+role (`contents`, `pull_requests`, `issues`, `workflows`, `checks`). The child environment
+sets `GH_TOKEN` and `GITHUB_TOKEN` to that value, strips inherited operator tokens and every
+`GITHUB_APP_*` private-key variable, and configures in-memory git auth via `GIT_CONFIG_*`
+(no token file in the worktree).
+
+When the App is missing or minting fails, the run **fails closed** with `failure_class=auth_error`
+unless `STAFF_ALLOW_OPERATOR_TOKEN=1` is set for an explicit operator-PAT fallback. Operator
+`GH_TOKEN` in `~/.config/runner-dashboard/env` remains for dashboard polling and API fallback
+only; agents act as the GitHub App.
 
 ## Fleet focus (#1239)
 

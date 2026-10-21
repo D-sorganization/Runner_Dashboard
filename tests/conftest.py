@@ -346,6 +346,21 @@ def _staff_verification_off(monkeypatch):
     monkeypatch.setenv("STAFF_VERIFY_MODE", "off")
 
 
+@pytest.fixture(autouse=True)
+def _stub_staff_github_run_env(monkeypatch, request):  # noqa: ANN001
+    """Staff runs mint a real GitHub App token in production; tests stub it (#2038)."""
+    if request.node.fspath and "test_staff_github_run_env.py" in str(request.node.fspath):
+        return
+    from staff.github_run_env import StaffGithubToken, build_staff_run_env  # noqa: PLC0415
+
+    token = "ghs_" + "F" * 40 + "_teststub"
+
+    def _prep(base_env, role, repo):  # noqa: ANN001
+        return build_staff_run_env(base_env, token), StaffGithubToken(token=token, expires_at=0.0, source="test")
+
+    monkeypatch.setattr("staff.runner.prepare_staff_run_github_env", _prep)
+
+
 def _live_staff_run_threads() -> set[threading.Thread]:
     return {t for t in threading.enumerate() if t.name.startswith("staff-run-") and t.is_alive()}
 
