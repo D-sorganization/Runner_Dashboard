@@ -126,9 +126,7 @@ def _finish_tick(
 ) -> CordonTickResult:
     cordon_active = state.phase != "normal"
     scheduling_inhibited = cordon_active
-    effective_min_online: int | None = (
-        config.cordon.min_online_after_drain if cordon_active else None
-    )
+    effective_min_online: int | None = config.cordon.min_online_after_drain if cordon_active else None
     deduped: list[CordonAction] = []
     seen_stops: set[str] = set()
     for action in actions:
