@@ -526,8 +526,10 @@ def require_scope(required_scope: str):
 
 
 def _principal_may_read_fleet(principal: Principal) -> bool:
-    """True when the principal may use fleet-read routes (priorities, coordination GET, fleet status)."""
-    return principal_has_scope(principal, "fleet.read")
+    """True when the principal may pass ``require_fleet_peer`` (read or scoped maintain/control)."""
+    return any(
+        principal_has_scope(principal, scope) for scope in ("fleet.read", "fleet.maintain", "fleet.control")
+    )
 
 
 def require_fleet_peer(
