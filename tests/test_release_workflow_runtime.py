@@ -33,6 +33,35 @@ def _run_workflow_step(
     return result, outputs
 
 
+def _write_fake_packager(tmp_path: Path) -> None:
+    fake_packager = tmp_path / "deploy" / "package-dashboard-artifact.sh"
+    fake_packager.parent.mkdir()
+    fake_packager.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT_DIR=
+VERSION=
+SHA=
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --version) VERSION="$2"; shift 2 ;;
+        --sha) SHA="$2"; shift 2 ;;
+        --python-minor) shift 2 ;;
+        *) echo "unexpected packager argument: $1" >&2; exit 2 ;;
+    esac
+done
+mkdir -p "$OUTPUT_DIR"
+printf '{"git_sha":"%s"}\\n' "$SHA" > "$OUTPUT_DIR/deployment.json"
+ARTIFACT="$OUTPUT_DIR/dashboard-${VERSION}.tar.gz"
+printf 'artifact for %s\\n' "$SHA" > "$ARTIFACT"
+(cd "$OUTPUT_DIR" && sha256sum "$(basename "$ARTIFACT")" > "$(basename "$ARTIFACT").sha256")
+touch "$OUTPUT_DIR/dashboard-${VERSION}.bundle"
+""",
+        encoding="utf-8",
+    )
+
+
 @pytest.mark.parametrize(
     ("event_name", "ref", "input_version", "input_dry_run", "file_version", "expected"),
     [
@@ -105,32 +134,7 @@ def test_release_tarball_step_packages_the_recorded_checkout_sha(
     step = _release_tarball_step()
     output_dir = tmp_path / "runner-temp"
     output_file = tmp_path / "github-output"
-    fake_packager = tmp_path / "deploy" / "package-dashboard-artifact.sh"
-    fake_packager.parent.mkdir()
-    fake_packager.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-OUTPUT_DIR=
-VERSION=
-SHA=
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
-        --version) VERSION="$2"; shift 2 ;;
-        --sha) SHA="$2"; shift 2 ;;
-        --python-minor) shift 2 ;;
-        *) echo "unexpected packager argument: $1" >&2; exit 2 ;;
-    esac
-done
-mkdir -p "$OUTPUT_DIR"
-printf '{"git_sha":"%s"}\\n' "$SHA" > "$OUTPUT_DIR/deployment.json"
-ARTIFACT="$OUTPUT_DIR/dashboard-${VERSION}.tar.gz"
-printf 'artifact for %s\\n' "$SHA" > "$ARTIFACT"
-(cd "$OUTPUT_DIR" && sha256sum "$(basename "$ARTIFACT")" > "$(basename "$ARTIFACT").sha256")
-touch "$OUTPUT_DIR/dashboard-${VERSION}.bundle"
-""",
-        encoding="utf-8",
-    )
+    _write_fake_packager(tmp_path)
 
     step_env = step.get("env", {})
     assert step_env.get("SOURCE_SHA") == "${{ steps.source.outputs.sha }}"
