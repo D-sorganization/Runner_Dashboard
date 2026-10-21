@@ -9,7 +9,9 @@
   `steps.source.outputs.sha`; normal releases retain the same source identity.
 - Workflow/runtime regressions cover normal releases, existing-tag recovery and
   resolver outputs. Actionlint now recognizes the existing fleet label and
-  passes without suppressing ShellCheck findings. Full pre-PR remains required.
+  passes without suppressing ShellCheck findings. Behavioral tests are split
+  from YAML contracts to keep each test file below 400 lines. Full pre-PR
+  remains required for the corrected source before re-arming this own PR.
   Do not publish or deploy from an unqualified source.
 - The separate `codex/2081-artifact-provenance` branch tightens artifact metadata
   and source checks after this caller correction merges. Keep workflow changes
