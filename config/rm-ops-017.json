@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "RM-OPS-017",
+  "disk_full_cordon": {
+    "enabled": true,
+    "trip": {
+      "free_percent_below": 5.0,
+      "free_gb_below": 30.0
+    },
+    "readmit": {
+      "free_percent_above": 10.0,
+      "free_gb_above": 50.0
+    },
+    "drain_timeout_seconds": 3600,
+    "multi_host_cordon_alert_min": 2
+  }
+}

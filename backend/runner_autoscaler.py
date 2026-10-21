@@ -126,6 +126,7 @@ from autoscaler_systemd import (
     _unit_is_active,
     _unit_state,
 )
+from disk_full_cordon_runtime import process_disk_full_cordon_tick
 
 log = logging.getLogger("runner-autoscaler")
 logging.basicConfig(
@@ -643,6 +644,17 @@ def _run_poll_loop() -> None:
             if not units:
                 log.info("no runner units detected; idling")
                 time.sleep(POLL_SECONDS * 4)
+                continue
+
+            if process_disk_full_cordon_tick(
+                units,
+                unit_is_active=_unit_is_active,
+                runner_is_busy=_runner_is_busy,
+                stop_unit=_stop_unit,
+                dry_run=DRY_RUN,
+                now=time.time(),
+            ):
+                time.sleep(POLL_SECONDS)
                 continue
 
             # Classify units into pools

@@ -332,6 +332,31 @@ def test_flatten_fleet_status_online_node() -> None:
     assert nodes[0].disk_percent == pytest.approx(55.0)
 
 
+def test_multi_host_disk_cordon_event_emitted() -> None:
+    previous = [
+        NodeSnapshot(name="A", online=True, disk_cordon_active=True),
+        NodeSnapshot(name="B", online=True, disk_cordon_active=False),
+    ]
+    current = [
+        NodeSnapshot(name="A", online=True, disk_cordon_active=True),
+        NodeSnapshot(name="B", online=True, disk_cordon_active=True),
+    ]
+    events = classify_fleet_events(previous, current, ts=1)
+    kinds = {e.kind for e in events}
+    assert "multi_host_disk_cordon" in kinds
+
+
+def test_flatten_fleet_status_disk_cordon_flag() -> None:
+    status = {
+        "HostX": {
+            "status": "online",
+            "disk_full_cordon": {"active": True, "phase": "cordoned"},
+        }
+    }
+    node = nodes_from_fleet_status(status)[0]
+    assert node.disk_cordon_active is True
+
+
 def test_flatten_fleet_status_offline_disk_pressure() -> None:
     status = {
         "NodeB": {
