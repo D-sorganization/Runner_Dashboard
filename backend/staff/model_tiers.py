@@ -25,6 +25,7 @@ _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "staff_model_tie
 # Claude Code CLI short names used in staff (``review.py``, ``test_staff_chat.py``).
 _CLAUDE_CLI_ALIASES = frozenset({"haiku", "sonnet", "opus"})
 
+
 def allowed_models_for_provider(provider_id: str, adapter: ProviderAdapter | None = None) -> frozenset[str]:
     """CLI-accepted model ids for validation (fail closed on unknown)."""
     adapter = adapter or ADAPTERS.get(provider_id)
