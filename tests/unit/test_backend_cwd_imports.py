@@ -32,6 +32,16 @@ import runner_autoscaler  # noqa: F401
 
 
 @pytest.mark.unit
+def test_backend_cwd_contract_is_not_a_marker_file() -> None:
+    """No guard reads ``backend/.entry-cwd-backend``; cwd contract is behavioral tests only."""
+    marker = _BACKEND / ".entry-cwd-backend"
+    assert not marker.exists(), (
+        "Remove backend/.entry-cwd-backend — document cwd=backend in this module instead "
+        "(see test_disk_guard_modules_import_with_backend_cwd_only)."
+    )
+
+
+@pytest.mark.unit
 def test_disk_guard_modules_import_with_backend_cwd_only() -> None:
     """Pre: cwd is backend/ without repo root on PYTHONPATH. Post: imports succeed."""
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
