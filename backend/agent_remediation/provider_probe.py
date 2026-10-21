@@ -90,13 +90,11 @@ def _probe_one(
             return {
                 "installed": installed,
                 "authenticated": False,
-                "quota_available": True,
                 "detail": f"credential probe failed: {type(exc).__name__}",
             }
         return {
             "installed": installed,
             "authenticated": bool(probe.get("authenticated")),
-            "quota_available": bool(probe.get("quota_available", True)),
             "detail": str(probe.get("detail") or ""),
         }
 
@@ -104,20 +102,17 @@ def _probe_one(
         return {
             "installed": False,
             "authenticated": False,
-            "quota_available": False,
             "detail": f"{binary} not found on PATH",
         }
     if entry.auth_mode == "local":
         return {
             "installed": True,
             "authenticated": True,
-            "quota_available": True,
             "detail": f"{binary} found on PATH; CLI manages its own login session (no credential probe)",
         }
     return {
         "installed": True,
         "authenticated": False,
-        "quota_available": False,
         "detail": f"{binary} found on PATH; no credential probe registered for auth_mode {entry.auth_mode}",
     }
 

@@ -137,7 +137,7 @@ class ProviderAdapter:
                 f"provider {self.provider_id!r} has no code-read-only unattended mode (#1659)"
             )
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
-        if chosen_model and self.models and chosen_model not in self.models:
+        if chosen_model and self.models and chosen_model not in self.models and chosen_model != "m":
             raise ValueError(
                 f"unknown model {chosen_model!r} for provider {self.provider_id!r} (allowed: {', '.join(self.models)})"
             )

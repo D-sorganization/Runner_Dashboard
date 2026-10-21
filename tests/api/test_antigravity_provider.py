@@ -252,4 +252,4 @@ def test_provider_probe_availability_includes_antigravity() -> None:
         assert "antigravity" in res
         assert res["antigravity"]["installed"] is True
         assert res["antigravity"]["authenticated"] is True
-        assert res["antigravity"]["quota_available"] is True
+        assert set(res["antigravity"].keys()) == {"installed", "authenticated", "detail"}
