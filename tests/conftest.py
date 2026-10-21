@@ -346,10 +346,24 @@ def _staff_verification_off(monkeypatch):
     monkeypatch.setenv("STAFF_VERIFY_MODE", "off")
 
 
+def _staff_run_test_path(path: str) -> bool:
+    """True when the test module may execute ``StaffRunner._execute`` (#2038)."""
+    if "test_staff_github_run_env.py" in path:
+        return False
+    markers = (
+        "/test_staff",
+        "\\test_staff",
+        "/staff/test_",
+        "tests/staff/",
+    )
+    return any(m in path for m in markers)
+
+
 @pytest.fixture(autouse=True)
 def _stub_staff_github_run_env(monkeypatch, request):  # noqa: ANN001
-    """Staff runs mint a real GitHub App token in production; tests stub it (#2038)."""
-    if request.node.fspath and "test_staff_github_run_env.py" in str(request.node.fspath):
+    """Staff runs mint a real GitHub App token in production; staff tests stub it (#2038)."""
+    path = str(request.node.fspath or "")
+    if not _staff_run_test_path(path):
         return
     from staff.github_run_env import StaffGithubToken, build_staff_run_env  # noqa: PLC0415
 

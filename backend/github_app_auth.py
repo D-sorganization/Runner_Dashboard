@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import jwt
 
 log = logging.getLogger("dashboard.github_app_auth")
 
@@ -50,6 +49,8 @@ def github_app_private_key() -> str:
 
 
 def build_app_jwt(now: datetime | None = None) -> str:
+    import jwt
+
     app_id = os.environ["GITHUB_APP_ID"].strip()
     issued_at = now or datetime.now(UTC)
     payload = {
