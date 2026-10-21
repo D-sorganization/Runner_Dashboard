@@ -17,10 +17,10 @@ from staff.adapters import READ_ONLY_RUN_PROVIDERS
 log = logging.getLogger("dashboard.staff.provider_fallback")
 
 # Failure classes that skip same-provider retry and switch immediately.
-IMMEDIATE_FALLBACK_CLASSES = frozenset({"provider_capacity"})
+IMMEDIATE_FALLBACK_CLASSES = frozenset({"provider_capacity", "quota_exhausted"})
 
 # Only these classes may appear in declarative ``when`` lists (DbC).
-ALLOWED_WHEN_CLASSES = frozenset({"provider_capacity", "rate_limited"})
+ALLOWED_WHEN_CLASSES = frozenset({"provider_capacity", "quota_exhausted", "rate_limited"})
 
 KNOWN_PROVIDERS = frozenset(
     {
