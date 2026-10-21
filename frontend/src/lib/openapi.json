@@ -5619,6 +5619,18 @@
             "title": "Providers",
             "type": "object"
           },
+          "providers_cooldown": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "description": "Per-machine provider cooldown rows after capacity/quota/rate-limit (#2047)",
+            "title": "Providers Cooldown",
+            "type": "object"
+          },
           "recent_24h": {
             "additionalProperties": {
               "type": "integer"
