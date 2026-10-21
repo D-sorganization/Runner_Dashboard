@@ -116,13 +116,26 @@ def refusal_message(exc: HTTPException) -> str:
     return str(detail)
 
 
-async def _resolve_target(runner: StaffRunner, machine: str, provider: str) -> str:
+async def _resolve_target(
+    runner: StaffRunner,
+    machine: str,
+    provider: str,
+    *,
+    role: Any = None,
+) -> str:
     """Machine targeting (#1197): ``local`` / this host → local; ``auto`` → least loaded
     online node with the provider installed; a peer name → that peer; unknown → 422."""
     peers = staff_fleet.peer_nodes()
     if machine.strip().lower() == "auto":
         board_view = await staff_fleet.aggregate_board(staff_fleet.local_board(runner), peers)
-        chosen = staff_fleet.choose_machine(board_view, provider, runner.machine)
+        if role is not None:
+            from staff.failover_dispatch import pick_machine_for_chain
+            from staff.provider_failover_config import resolve_failover_chain
+
+            chain = resolve_failover_chain(role, requested_provider=provider)
+            chosen = pick_machine_for_chain(board_view, chain, runner.machine)
+        else:
+            chosen = staff_fleet.choose_machine(board_view, provider, runner.machine)
         return "local" if chosen == runner.machine else chosen
     resolved = staff_fleet.resolve_machine(machine, runner.machine, peers)
     if resolved is None:
@@ -249,7 +262,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     check_rate_limit("dispatches", caller)
-    target = await _resolve_target(runner, cmd.machine, plan.provider)
+    target = await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
     if target != "local":
         obo_hdr = staff_fleet.sign_on_behalf_of(
             cmd.requested_by,

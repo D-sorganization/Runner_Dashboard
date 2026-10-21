@@ -28,6 +28,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "config",
         "provider_capacity",
         "provider_error",
+        "providers_exhausted",
         "quota_exhausted",
         "rate_limited",
         "needs_input",
