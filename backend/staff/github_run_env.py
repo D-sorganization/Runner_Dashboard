@@ -76,6 +76,10 @@ def mint_staff_run_github_token(role: RoleSpec, repo: str) -> StaffGithubToken:
     Post: never returns an empty token. Raises ``RuntimeError`` when App auth is
     unavailable and operator fallback is not explicitly enabled.
     """
+    if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
+        token = "ghs_" + "E2E" * 12 + "_hermetic"
+        return StaffGithubToken(token=token, expires_at=0.0, source="e2e_hermetic")
+
     if github_app_auth_configured():
         repositories = [repo] if repo else None
         try:
