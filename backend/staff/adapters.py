@@ -27,6 +27,8 @@ from staff.adapter_policies import (
     UNATTENDED_SHELL_DENY,
     ChatReadOnlyUnsupportedError,
     UnattendedUnsupportedError,
+    _extract_text,
+    _extract_usage,
     claude_allowed_tools,
     claude_read_only_run_tools,
     claude_unattended_tools,
@@ -295,69 +297,6 @@ class ProviderAdapter:
     def installed(self) -> bool:
         return shutil.which(self.executable) is not None
 
-
-def _extract_text(raw: dict[str, Any]) -> str:
-    """Best-effort human text from a stream-json event (claude/agy/codex shapes)."""
-    if isinstance(raw.get("item"), dict):  # codex --json: only agent messages are answers
-        item = raw["item"]
-        return str(item.get("text") or "") if item.get("type") == "agent_message" else ""
-    for key in (
-        "result",
-        "text",
-        "message",
-        "content",
-        "output",
-        "response",
-        "delta",
-    ):  # agy: response, claude: delta
-        val = raw.get(key)
-        if isinstance(val, str) and val.strip():
-            return val
-        if isinstance(val, dict):
-            inner = _extract_text(val)
-            if inner:
-                return inner
-        if isinstance(val, list):
-            parts = [p.get("text", "") for p in val if isinstance(p, dict) and p.get("type") == "text"]
-            joined = "\n".join(p for p in parts if p)
-            if joined.strip():
-                return joined
-    return ""
-
-
-def _extract_usage(raw: dict[str, Any]) -> dict[str, Any]:
-    """Pull token/cost accounting out of a final event when present."""
-    usage: dict[str, Any] = {}
-    src = raw.get("usage")
-    nested = raw.get("result")
-    if not isinstance(src, dict) and isinstance(nested, dict):
-        src = nested.get("usage")  # agy reports usage inside the result event
-    if isinstance(src, dict):
-        token_keys = (
-            "input_tokens",
-            "output_tokens",
-            "cache_read_input_tokens",
-            "cache_creation_input_tokens",
-            "total_tokens",
-        )
-        for key in token_keys:
-            if isinstance(src.get(key), int | float):
-                usage[key] = src[key]
-        for camel, snake in _CAMEL_USAGE.items():  # cursor-agent reports camelCase
-            if snake not in usage and isinstance(src.get(camel), int | float):
-                usage[snake] = src[camel]
-    for key in ("total_cost_usd", "cost_usd"):
-        if isinstance(raw.get(key), int | float):
-            usage["cost_usd"] = float(raw[key])
-    return usage
-
-
-_CAMEL_USAGE = {
-    "inputTokens": "input_tokens",
-    "outputTokens": "output_tokens",
-    "cacheReadTokens": "cache_read_input_tokens",
-    "cacheWriteTokens": "cache_creation_input_tokens",
-}
 
 _CLAUDE_ALLOWED, _CLAUDE_DENIED = claude_unattended_tools()
 _UNATTENDED_CLAUDE = (
