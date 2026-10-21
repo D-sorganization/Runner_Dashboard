@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 
 import pytest
-import staff.roles as roles_mod
 import staff.holds as holds_mod
+import staff.roles as roles_mod
 from staff.audit import StaffAuditStore
 from staff.rm_reconcile import HoldReconcileError, reconcile_holds, reconcile_holds_for_roles_dir
 from staff.roles import parse_role
