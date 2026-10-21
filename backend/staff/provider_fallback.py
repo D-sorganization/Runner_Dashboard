@@ -213,9 +213,7 @@ def try_declarative_fallback(
     attempt_id = attempt_run_id(root_id, next_attempt)
     next_branch = f"{plan.branch}-fallback-{next_attempt}"
     fallback_model = rule.target.model or plan.model
-    argv = runner._adapters[target].build_command(
-        plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role)
-    )
+    argv = runner._adapters[target].build_command(plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role))
     fallback_plan = RunPlan(
         role=plan.role,
         provider=target,
@@ -259,8 +257,7 @@ def try_declarative_fallback(
         "fallback",
         (
             f"{latest.failure_class} on {plan.provider}; declarative fallback to "
-            f"{target}"
-            + (f" ({fallback_model})" if fallback_model else "")
+            f"{target}" + (f" ({fallback_model})" if fallback_model else "")
         ),
     )
     schedule(runner, fallback_rec, fallback_plan, 0.0)
