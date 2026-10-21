@@ -71,7 +71,14 @@ fail_under = 60
 [tool.ruff]
 target-version = "py311"
 line-length = 120
-exclude = ["frontend/", "deploy/", "docs/"]
+# Byte-pinned RM runner_disk_guard_config copies must stay identical to upstream (manifest).
+exclude = [
+    "frontend/",
+    "deploy/",
+    "docs/",
+    "backend/runner_disk_guard_config.py",
+    "shared_scripts/runner_disk_guard_config.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "T20"]

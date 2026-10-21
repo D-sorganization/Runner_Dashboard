@@ -33,3 +33,10 @@ def test_manifest_records_rm_merge_pr() -> None:
     ref = manifest.get("upstream_ref")
     assert isinstance(ref, str) and len(ref) == 40
     assert ref != "main"
+
+
+def test_backend_runner_disk_guard_config_matches_shared_scripts_copy() -> None:
+    """Runtime imports use backend/; the copy must stay byte-identical to shared_scripts/."""
+    shared = _REPO_ROOT / "shared_scripts" / "runner_disk_guard_config.py"
+    backend = _REPO_ROOT / "backend" / "runner_disk_guard_config.py"
+    assert backend.read_bytes() == shared.read_bytes()

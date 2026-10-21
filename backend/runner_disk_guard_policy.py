@@ -1,21 +1,16 @@
 """Runner disk guard policy loader (RD-OPS-017).
 
 Loads RM-OPS-017 exclusively through the vendored
-``shared_scripts.runner_disk_guard_config`` validator.
+``runner_disk_guard_config`` validator (``backend/`` copy of RM ``shared_scripts/``).
 """
 
 from __future__ import annotations
 
 import os
-import sys
 from functools import lru_cache
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from shared_scripts.runner_disk_guard_config import (  # noqa: E402
+from runner_disk_guard_config import (
     DEFAULT_CONFIG_PATH,
     DiskGuardThresholds,
     RunnerDiskGuardConfig,
