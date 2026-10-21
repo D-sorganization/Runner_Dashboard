@@ -20,6 +20,7 @@ def test_allowed_failure_classes_complete() -> None:
         "config",
         "provider_capacity",
         "provider_error",
+        "providers_exhausted",
         "quota_exhausted",
         "rate_limited",
         "needs_input",

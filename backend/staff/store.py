@@ -101,6 +101,9 @@ class RunRecord:
     # Typed completion evidence (#1808): "" | pr_open | pr_merged | deployed (see staff.completion).
     artifact: str = ""
     origin_node: str = ""
+    # JSON list of {provider, model, outcome} attempts for failover briefs (#2047).
+    provider_chain: str = ""
+    model_tier: str = ""
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
