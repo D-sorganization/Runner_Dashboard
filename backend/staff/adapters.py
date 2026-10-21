@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS
+from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -416,6 +416,8 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "--model",
             "{model}",
         ),
+        default_model="grok-4.7-high",
+        models=_CURSOR_AGENT_MODELS,
         json_lines=True,
         notes=(
             "Cursor subscription; Grok models (grok-4.7-*, cursor-grok-4.6-*) are reached here, no separate xAI plan. "

@@ -156,5 +156,5 @@ def test_provider_capacity_skips_same_provider_retry() -> None:
     )
     ok, reason = should_retry(rec, role)
     assert ok is False
-    assert "declarative fallback" in reason
+    assert "failover chain" in reason
     assert is_retryable_class("provider_capacity") is True

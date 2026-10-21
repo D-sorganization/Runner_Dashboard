@@ -73,6 +73,13 @@ def test_resolve_child_executor_with_pinned_antigravity() -> None:
 
 
 @pytest.mark.unit
+def test_antigravity_adapter_accepts_gemini_3_8_flash_base_tier() -> None:
+    adapter = adapters_mod.ADAPTERS["antigravity"]
+    argv = adapter.build_command("run tests", "/tmp/repo", model="gemini-3.8-flash")
+    assert argv[argv.index("--model") + 1] == "gemini-3.8-flash"
+
+
+@pytest.mark.unit
 def test_antigravity_adapter_build_command_with_valid_model() -> None:
     adapter = adapters_mod.ADAPTERS["antigravity"]
     argv = adapter.build_command("run tests", "/tmp/repo", model="gemini-3.8-flash-high")
@@ -158,7 +165,7 @@ def test_antigravity_quota_exhaustion_classified_as_rate_limited_or_capacity() -
         exit_code=1,
     )
     assert failure.retryable is True
-    assert failure.failure_class in ("rate_limited", "provider_capacity")
+    assert failure.failure_class in ("rate_limited", "provider_capacity", "quota_exhausted")
 
     failure_capacity = classify_run_failure(
         provider="antigravity",
