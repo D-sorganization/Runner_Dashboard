@@ -10,6 +10,7 @@ import re
 from typing import Any, TypeGuard
 
 from staff.adapters import CHAT_READ_ONLY_TOOLS
+from staff.provider_fallback import validate_provider_fallback_rules_data
 
 SURFACES: tuple[str, ...] = ("grok-chat", "dashboard", "both")
 REQUIRED_FIELDS: tuple[str, ...] = (
@@ -40,6 +41,10 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "group",
     "tools",
     "scopes",
+    "retry",
+    "fallback_providers",
+    "provider_fallbacks",
+    "max_attempts",
 )
 STRATEGY_KEYS: tuple[str, ...] = ("consolidate_when",)
 CONSOLIDATE_WHEN_BOUNDS: dict[str, tuple[int, int | None]] = {
@@ -415,4 +420,29 @@ def validate_role_data(data: Any) -> list[str]:
     problems.extend(_validate_dicts(data))
     problems.extend(_validate_lifecycle(data))
     problems.extend(_validate_chat(data))
+    problems.extend(validate_provider_fallback_rules_data(data))
+    problems.extend(_validate_retry_block(data))
+    return problems
+
+
+def _validate_retry_block(data: dict[str, Any]) -> list[str]:
+    """Optional ``retry`` block: max_attempts and legacy fallback_providers."""
+    problems: list[str] = []
+    retry = data.get("retry")
+    if retry is None:
+        return problems
+    if not isinstance(retry, dict):
+        problems.append("retry must be a mapping")
+        return problems
+    for key in retry:
+        if key not in ("max_attempts", "fallback_providers", "provider_fallbacks"):
+            problems.append(f"unknown retry key {key!r}")
+    max_att = retry.get("max_attempts")
+    if max_att is not None:
+        if not isinstance(max_att, int) or isinstance(max_att, bool) or max_att < 1:
+            problems.append("retry.max_attempts must be a positive integer")
+    fb = retry.get("fallback_providers")
+    if fb is not None:
+        if not isinstance(fb, list) or any(not isinstance(p, str) or not p.strip() for p in fb):
+            problems.append("retry.fallback_providers must be a list of non-empty strings")
     return problems

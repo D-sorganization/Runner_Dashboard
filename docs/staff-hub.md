@@ -14,6 +14,12 @@ every run, and streams the output to the operator console.
 | Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir                                                 |
 | Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent` on `PATH`; an Ollama server for `ollama`/`claude-ollama` |
 
+On DeskComputer-class nodes the dashboard service runs in **WSL** while provider CLIs are often
+installed on Windows. Symlink `~/.local/bin/agy` to the WinGet `agy.exe` (see
+`docs/operations/controltower-staff-worker.md`). Staff dispatch executes `agy` from WSL `PATH`; a
+missing binary is classified `cli_missing`, an expired Google session `auth_expired` (run
+`agy auth login` in WSL and complete the browser flow).
+
 ## API (`/api/staff`)
 
 | Method | Path                          | Auth              | Purpose                                                                                                                                                                                                  |
@@ -474,7 +480,7 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 | --------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `claude`        | `claude -p --permission-mode dontAsk --permission-prompts none --allowedTools <list>`         | Claude seat (`CLAUDE_CONFIG_DIR` service copy)  |
 | `codex`         | `codex exec --sandbox workspace-write --add-dir <git common dir> --json` (0.156+)             | ChatGPT seat                                    |
-| `antigravity`   | Chat only: agy 1.2.11 cannot run shell commands headlessly without a bypass                   | Google sign-in                                  |
+| `antigravity`   | `agy --print … --mode plan --model <id> --add-dir <wt>` (no permission bypass, #1586)           | Google sign-in; default `gemini-3.8-flash-high` |
 | `cursor-agent`  | `cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt>`      | Cursor subscription, incl. Grok (`grok-4.7-*`)  |
 | `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`              | Any Ollama model; default `glm-5.3-flash:cloud` |
 | `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`) | Any Ollama model; default `glm-5.3-flash:cloud` |

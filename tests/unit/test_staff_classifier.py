@@ -18,6 +18,7 @@ def test_allowed_failure_classes_complete() -> None:
         "cli_missing",
         "cli_outdated",
         "config",
+        "provider_capacity",
         "provider_error",
         "rate_limited",
         "needs_input",

@@ -277,7 +277,84 @@
       "items": { "type": "string" }
     },
     "retired": { "type": "boolean" },
-    "retired_reason": { "type": "string", "minLength": 1 }
+    "retired_reason": { "type": "string", "minLength": 1 },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "fallback_providers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex",
+              "antigravity",
+              "gemini",
+              "cursor-agent",
+              "ollama",
+              "claude-ollama",
+              "grok-chat"
+            ]
+          }
+        },
+        "provider_fallbacks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["when", "to"],
+            "properties": {
+              "when": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "enum": ["provider_capacity", "rate_limited"]
+                }
+              },
+              "from": {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "antigravity",
+                  "gemini",
+                  "cursor-agent",
+                  "ollama",
+                  "claude-ollama",
+                  "grok-chat"
+                ]
+              },
+              "to": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["provider"],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "claude",
+                      "codex",
+                      "antigravity",
+                      "gemini",
+                      "cursor-agent",
+                      "ollama",
+                      "claude-ollama",
+                      "grok-chat"
+                    ]
+                  },
+                  "model": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          },
+          "description": "Declarative provider fallback on capacity or rate-limit failures (#2021)."
+        }
+      }
+    }
   },
   "allOf": [
     {

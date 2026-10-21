@@ -36,6 +36,7 @@ log = logging.getLogger("dashboard.staff.retry")
 RETRYABLE_FAILURE_CLASSES = frozenset(
     {
         "rate_limited",
+        "provider_capacity",
         "provider_error",
         "workspace_error",
     }
@@ -105,6 +106,9 @@ def should_retry(
     """
     if not is_retryable_class(rec.failure_class):
         return False, f"failure class '{rec.failure_class}' is not retryable"
+
+    if rec.failure_class == "provider_capacity":
+        return False, "provider capacity uses declarative fallback, not same-provider retry"
 
     max_att = getattr(rec, "max_attempts", 2) or getattr(role, "max_attempts", 2) or 2
     if rec.attempt >= max_att:
@@ -179,11 +183,30 @@ def handle_post_execution_retry(
         return False
 
     from staff.budget import BudgetGuard
+    from staff.provider_fallback import try_declarative_fallback
     from staff.runner import RunPlan
     from staff.store import RunRecord
 
     guard = BudgetGuard(store)
     root_id = latest.retry_of or latest.id
+    decl = lambda exhausted: try_declarative_fallback(  # noqa: E731
+        runner,
+        latest,
+        plan,
+        role,
+        guard,
+        root_id,
+        retries_exhausted=exhausted,
+        attempt_run_id=attempt_run_id,
+        claim=_claim,
+        schedule=_schedule,
+        provenance=_provenance,
+        can_run_unattended=can_run_unattended,
+        read_only_kwargs=read_only_kwargs,
+    )
+
+    if decl(False):
+        return True
 
     # 1. Try retry on the same provider
     can_retry, reason = should_retry(latest, role, budget_guard=guard)
@@ -243,7 +266,11 @@ def handle_post_execution_retry(
         _schedule(runner, attempt_rec, attempt_plan, delay)
         return True
 
-    # 2. If same provider retries exhausted, check fallback chain
+    # 2. Declarative fallback after same-provider retries are exhausted
+    if decl(True):
+        return True
+
+    # 3. Legacy fallback_providers / providers order
     if is_retryable_class(latest.failure_class):
         fallback = next_fallback_provider(
             role,
