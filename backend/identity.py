@@ -605,7 +605,9 @@ def require_fleet_peer(
       - it carries valid operator credentials (a principal resolved from a
         service token or session), OR
       - it presents ``Authorization: Bearer <HUB_FLEET_TOKEN>`` matching the
-        hub's configured ``HUB_FLEET_TOKEN`` (constant-time compare).
+        hub's configured ``HUB_FLEET_TOKEN`` (constant-time compare), OR
+      - it is a credential-free GET/HEAD from a real loopback peer with the
+        existing loopback-auth flag enabled and a fleet-readable principal.
 
     Policy decision (documented in docs/runbooks/hub-credentials.md): when
     ``HUB_FLEET_TOKEN`` is UNSET on this node, fleet reads are tailnet-public —

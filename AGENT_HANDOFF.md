@@ -1,8 +1,8 @@
 # Agent Handoff — Runner Dashboard
 
-## Artifact Build Identity — #2081
+## Brick Dashboard Delivery — #2049, #2081 and #2089
 
-- Owner: `codex-brick-20261021-artifact-provenance`; active unpublished branch
+- Owner: `codex-brick-20261021-artifact-provenance`; active combined branch
   `codex/2081-artifact-provenance` is based on actual merged #2082 (`d4e3060b`).
 - Release caller correction #2082 merged at `d4e3060b`: packaging receives
   `steps.source.outputs.sha`, including existing-tag recovery where the event
@@ -12,7 +12,11 @@
   compatibility; a context hint is not a signing or attestation proof.
 - Focused provenance, artifact and offline-installer tests passed before the
   dependency merge. The metadata input object preserves the CLI contract and function-size budget.
-  Combined qualification and publication remain required.
+  Combined qualification and follow-up publication remain required.
+- #2089 restores existing explicitly enabled loopback GET/HEAD fleet reads.
+  Invalid credentials, remote peers and unauthorized writes remain denied.
+- This branch incorporates this chat's stopped #2050 source with a normal merge;
+  leave redundant-PR closure to the designated closer. Do not mutate peer PRs.
 - Keep source delivery separate from the operational artifact/deployment gates;
   issue #2081 closes only after its source criteria are proven through merge.
 
@@ -35,8 +39,9 @@
 - Before deployment: qualify exact source, build a checksum-bound artifact with
   truthful provenance, preserve rollback, and use the existing user service with
   live health/version checks. API health does not prove browser OAuth readiness.
-- User-service work under #2049 is separate. The system-service update script
-  must not be applied unchecked to Brick or invoke unrelated maintenance here.
+- The combined branch includes #2049 user/system scope selection and scope-correct
+  rollback, plus a missing-token diagnostic correction. Qualify the combined
+  source before deployment; user scope must skip unrelated privileged maintenance.
 - Repository_Management #2253/#2278 govern admission, trusted dispatch context,
   reservations and reviewed migration. Provider packaging does not activate them.
 - No capacity increase, settings/protection change, peer PR/CI mutation,
