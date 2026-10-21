@@ -4786,6 +4786,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/runs/{run_id}/github-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Github Credential
+         * @description Mint a fresh GitHub App installation token for an active staff run (#2038).
+         */
+        post: operations["refresh_github_credential_api_staff_runs__run_id__github_credential_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/runs/{run_id}/stream": {
         parameters: {
             query?: never;
@@ -7512,6 +7532,13 @@ export interface components {
          * @enum {string}
          */
         ExecutorTier: "ollama" | "cli" | "strong";
+        /** GithubCredentialResponse */
+        GithubCredentialResponse: {
+            /** Expires At */
+            expires_at: number;
+            /** Token */
+            token: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -16389,6 +16416,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffCancelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_github_credential_api_staff_runs__run_id__github_credential_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubCredentialResponse"];
                 };
             };
             /** @description Validation Error */
