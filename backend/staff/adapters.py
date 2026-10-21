@@ -383,13 +383,22 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         provider_id="antigravity",
         label="Antigravity CLI (agy)",
         executable="agy",
-        argv=("--print", "{prompt}", "--output-format", "stream-json", "--add-dir", "{workdir}"),
-        json_lines=True,
-        unattended=False,
-        notes=(
-            "Chat only (#1586): agy 1.2.11 auto-denies every shell command in headless mode unless "
-            "--dangerously-skip-permissions is set, and ignores settings.json permissions.allow rules."
+        argv=(
+            "--print",
+            "{prompt}",
+            "--output-format",
+            "stream-json",
+            "--add-dir",
+            "{workdir}",
+            "--mode",
+            "plan",
+            "--model",
+            "{model}",
         ),
+        default_model="gemini-3.8-flash-high",
+        json_lines=True,
+        unattended=True,
+        notes="Unattended ``--mode plan`` (#1586); WSL ``agy`` on PATH (often WinGet symlink); ``agy auth login``.",
     ),
     "gemini": ProviderAdapter(
         provider_id="gemini",

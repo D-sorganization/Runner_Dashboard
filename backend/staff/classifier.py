@@ -25,6 +25,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "cli_missing",
         "cli_outdated",
         "config",
+        "provider_capacity",
         "provider_error",
         "rate_limited",
         "needs_input",
@@ -273,6 +274,26 @@ def classify_run_failure(
             retryable=False,
             remediation=f"Run `{login_cmd}` on node {node}.",
             error=f"Authentication expired for {provider} on node {node}",
+        )
+
+    # 4d. Provider model / seat capacity (Codex, Claude, agy)
+    capacity_patterns = (
+        "selected model is at capacity",
+        "model is at capacity",
+        "model at capacity",
+        "capacity limit",
+        "all models are at capacity",
+    )
+    if any(pat in lower for pat in capacity_patterns):
+        detail = _extract_last_line_text(output_text) or error_message or "provider capacity exhausted"
+        return FailureClassification(
+            failure_class="provider_capacity",
+            retryable=True,
+            remediation=(
+                f"Provider {provider} reported model capacity; retry with a configured fallback provider "
+                f"if the role declares one."
+            ),
+            error=detail,
         )
 
     # 5. Rate limits

@@ -19,6 +19,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from staff.provider_fallback import (
+    ProviderFallbackRule,
+    parse_provider_fallback_rules,
+    validate_provider_fallback_rules,
+)
 from staff.validator import validate_role_data
 
 log = logging.getLogger("dashboard.staff.roles")
@@ -67,6 +72,7 @@ class RoleSpec:
     group: str | None = None
     max_attempts: int = 2
     fallback_providers: tuple[str, ...] = ()
+    provider_fallbacks: tuple[ProviderFallbackRule, ...] = ()
     valid: bool = True
     errors: tuple[str, ...] = ()
     source_path: str = ""
@@ -152,6 +158,14 @@ class RoleSpec:
             "group": self.group,
             "max_attempts": self.max_attempts,
             "fallback_providers": list(self.fallback_providers),
+            "provider_fallbacks": [
+                {
+                    "when": list(r.when),
+                    "from": r.from_provider,
+                    "to": {"provider": r.target.provider, "model": r.target.model},
+                }
+                for r in self.provider_fallbacks
+            ],
             "valid": self.valid,
             "errors": list(self.errors),
             "error": self.errors[0] if self.errors else None,
@@ -299,6 +313,9 @@ def parse_role(
     except (TypeError, ValueError):
         max_att = 2
     fallback_provs = _as_tuple(retry_cfg.get("fallback_providers") or data.get("fallback_providers"))
+    provider_fallback_rules = parse_provider_fallback_rules(data)
+    merged_errors = list(errors)
+    merged_errors.extend(validate_provider_fallback_rules(provider_fallback_rules, _as_tuple(data.get("providers"))))
 
     return RoleSpec(
         name=name,
@@ -335,8 +352,9 @@ def parse_role(
         group=group,
         max_attempts=max_att,
         fallback_providers=fallback_provs,
-        valid=len(errors) == 0,
-        errors=errors,
+        provider_fallbacks=provider_fallback_rules,
+        valid=len(merged_errors) == 0,
+        errors=tuple(merged_errors),
         source_path=source_path,
     )
 

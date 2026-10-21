@@ -14,6 +14,12 @@ every run, and streams the output to the operator console.
 | Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir                                                 |
 | Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent` on `PATH`; an Ollama server for `ollama`/`claude-ollama` |
 
+On DeskComputer-class nodes the dashboard service runs in **WSL** while provider CLIs are often
+installed on Windows. Symlink `~/.local/bin/agy` to the WinGet `agy.exe` (see
+`docs/operations/controltower-staff-worker.md`). Staff dispatch executes `agy` from WSL `PATH`; a
+missing binary is classified `cli_missing`, an expired Google session `auth_expired` (run
+`agy auth login` in WSL and complete the browser flow).
+
 ## API (`/api/staff`)
 
 | Method | Path                          | Auth              | Purpose                                                                                                                                                                                                  |
@@ -474,7 +480,7 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 | --------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `claude`        | `claude -p --permission-mode dontAsk --permission-prompts none --allowedTools <list>`         | Claude seat (`CLAUDE_CONFIG_DIR` service copy)  |
 | `codex`         | `codex exec --sandbox workspace-write --add-dir <git common dir> --json` (0.156+)             | ChatGPT seat                                    |
-| `antigravity`   | Chat only: agy 1.2.11 cannot run shell commands headlessly without a bypass                   | Google sign-in                                  |
+| `antigravity`   | `agy --print … --mode plan --model <id> --add-dir <wt>` (no permission bypass, #1586)           | Google sign-in; default `gemini-3.8-flash-high` |
 | `cursor-agent`  | `cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt>`      | Cursor subscription, incl. Grok (`grok-4.7-*`)  |
 | `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`              | Any Ollama model; default `glm-5.3-flash:cloud` |
 | `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`) | Any Ollama model; default `glm-5.3-flash:cloud` |
@@ -551,6 +557,26 @@ Dollars are a notional effort figure: the Staff tab prints them as `≈ $`, and
 `/api/staff/usage` totals carry `cost_basis: "notional"`. The budget day and the usage day
 are the same: local midnight in the schedule timezone (`America/Los_Angeles`).
 The Board shows a **Plan quota** panel from `GET /api/staff/quota`.
+
+### Declarative provider fallback (#2021)
+
+Roles may declare ``retry.provider_fallbacks`` so a capacity or rate-limit failure on the
+primary provider schedules another attempt on a backup without treating real task failures as
+fallback triggers. ``provider_capacity`` (for example Codex *Selected model is at capacity*)
+switches immediately; ``rate_limited`` uses the same-provider retry budget first.
+
+Example for **pr-remediator** in Repository_Management ``staff/roles/pr-remediator.yml`` (land
+there after this dashboard change is deployed):
+
+```yaml
+retry:
+  provider_fallbacks:
+    - when: [provider_capacity, rate_limited]
+      from: codex
+      to:
+        provider: antigravity
+        model: gemini-3.8-flash-high
+```
 
 ### Turning a provider off (#1597)
 

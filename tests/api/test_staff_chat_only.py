@@ -40,12 +40,12 @@ def api_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 @pytest.mark.unit
 def test_adapters_chat_only_helpers() -> None:
     chat_only = chat_only_providers()
-    assert "antigravity" in chat_only
+    assert "antigravity" not in chat_only
     assert "claude" not in chat_only
     assert "codex" not in chat_only
 
     unattended = unattended_providers()
-    assert unattended["antigravity"] is False
+    assert unattended["antigravity"] is True
     assert unattended["claude"] is True
     assert unattended["codex"] is True
 
@@ -56,7 +56,7 @@ def test_staff_roster_exposes_chat_only_providers(api_client: TestClient) -> Non
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert "chat_only_providers" in data
-    assert "antigravity" in data["chat_only_providers"]
+    assert "antigravity" not in data["chat_only_providers"]
     assert "claude" not in data["chat_only_providers"]
 
 
@@ -65,8 +65,8 @@ def test_staff_providers_endpoint(api_client: TestClient) -> None:
     resp = api_client.get("/api/staff/providers")
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert "antigravity" in data["chat_only_providers"]
-    assert data["unattended_providers"]["antigravity"] is False
+    assert "antigravity" not in data["chat_only_providers"]
+    assert data["unattended_providers"]["antigravity"] is True
     assert data["unattended_providers"]["claude"] is True
     assert "claude" in data["providers"]
 
@@ -76,13 +76,13 @@ def test_staff_v1_roster_and_providers(api_client: TestClient) -> None:
     roster_resp = api_client.get("/api/v1/staff/roster")
     assert roster_resp.status_code == 200, roster_resp.text
     roster_data = roster_resp.json()
-    assert "antigravity" in roster_data["chat_only_providers"]
+    assert "antigravity" not in roster_data["chat_only_providers"]
 
     prov_resp = api_client.get("/api/v1/staff/providers")
     assert prov_resp.status_code == 200, prov_resp.text
     prov_data = prov_resp.json()
-    assert "antigravity" in prov_data["chat_only_providers"]
-    assert prov_data["unattended_providers"]["antigravity"] is False
+    assert "antigravity" not in prov_data["chat_only_providers"]
+    assert prov_data["unattended_providers"]["antigravity"] is True
     assert prov_data["unattended_providers"]["claude"] is True
 
 
@@ -92,4 +92,4 @@ def test_staff_board_exposes_chat_only_providers(api_client: TestClient) -> None
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert "chat_only_providers" in data
-    assert "antigravity" in data["chat_only_providers"]
+    assert "antigravity" not in data["chat_only_providers"]

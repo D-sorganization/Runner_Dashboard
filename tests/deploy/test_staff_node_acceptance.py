@@ -175,8 +175,8 @@ def test_unit_namespaces_blocking_cursor_sandbox_fail(tmp_path: Path) -> None:
     assert "[FAIL] Unit blocks cursor-agent sandbox namespaces" in out, out
 
 
-def test_run_ad_hoc_skips_chat_only_antigravity(tmp_path: Path) -> None:
-    """staff-node-acceptance --run-ad-hoc skips chat-only providers reported by backend (#1697)."""
+def test_run_ad_hoc_runs_antigravity_when_not_chat_only(tmp_path: Path) -> None:
+    """staff-node-acceptance --run-ad-hoc dispatches antigravity once the adapter is unattended (#2021)."""
     assert BASH is not None
     fake, env, dropin = _fake_node(tmp_path)
     home = tmp_path / "home"
@@ -187,13 +187,13 @@ def test_run_ad_hoc_skips_chat_only_antigravity(tmp_path: Path) -> None:
     board = (
         '{"providers":{"claude":true,"codex":true,"antigravity":true,"gemini":false,'
         '"cursor-agent":true,"ollama":true,"claude-ollama":true},'
-        '"chat_only_providers":["antigravity"],'
+        '"chat_only_providers":[],'
         '"rm_source":{"status":"unchanged","check_age_seconds":120}}'
     )
     roster = (
         '{"machine":"DeskComputer","roles":[],"providers":{"claude":true,"codex":true,"antigravity":true,'
         '"cursor-agent":true,"ollama":true,"claude-ollama":true},'
-        '"chat_only_providers":["antigravity"],'
+        '"chat_only_providers":[],'
         '"provider_versions":{},"active_runs":0}'
     )
     (fake / "curl").write_text(
@@ -222,9 +222,8 @@ def test_run_ad_hoc_skips_chat_only_antigravity(tmp_path: Path) -> None:
     )
     res = subprocess.run([BASH, "-c", cmd], capture_output=True, text=True)
     out = res.stdout + res.stderr
-    assert "[SKIP] Ad-hoc run skipped: antigravity" in out, out
+    assert "Ad-hoc run succeeded: antigravity" in out, out
     assert "Provider available on board: antigravity" in out, out
     assert "Ad-hoc run succeeded: claude" in out, out
-    assert "Ad-hoc dispatch failed for antigravity" not in out, out
-    assert "Ad-hoc run failed: antigravity" not in out, out
+    assert "[SKIP] Ad-hoc run skipped: antigravity" not in out, out
     assert res.returncode == 0, out

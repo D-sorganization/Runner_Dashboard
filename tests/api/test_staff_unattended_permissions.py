@@ -147,11 +147,11 @@ def test_gemini_policy_allows_the_shared_list_and_denies_above_it() -> None:
 
 
 @pytest.mark.unit
-def test_antigravity_is_chat_only() -> None:
+def test_antigravity_unattended_uses_plan_mode() -> None:
     agy = ADAPTERS["antigravity"]
-    assert agy.unattended is False
-    with pytest.raises(UnattendedUnsupportedError):
-        agy.build_command("do it", "/tmp/wt")
+    assert agy.unattended is True
+    argv = agy.build_command("do it", "/tmp/wt", model="gemini-3.8-flash-high")
+    assert argv[argv.index("--mode") + 1] == "plan"
     chat = agy.chat_argv("hi", "/tmp/wt")
     assert chat[chat.index("--mode") + 1] == "plan"
 
@@ -179,13 +179,13 @@ def test_retry_fallback_skips_chat_only_providers() -> None:
 
     role = RoleSpec(name="r", title="R", providers=("claude", "antigravity", "codex"))
     usable = lambda pid: ADAPTERS[pid].unattended  # noqa: E731
-    assert retry_mod.next_fallback_provider(role, "claude", usable=usable) == "codex"
-    chained = RoleSpec(name="r", title="R", fallback_providers=("antigravity", "gemini"))
+    assert retry_mod.next_fallback_provider(role, "claude", usable=usable) == "antigravity"
+    chained = RoleSpec(name="r", title="R", fallback_providers=("gemini",))
     assert retry_mod.next_fallback_provider(chained, "claude", usable=usable) == "gemini"
 
 
 @pytest.mark.unit
-def test_runner_never_picks_a_chat_only_provider(tmp_path) -> None:
+def test_runner_picks_first_unattended_provider(tmp_path) -> None:
     from staff.plan import RunRequest
     from staff.roles import RoleSpec
     from staff.runner import StaffRunner
@@ -193,9 +193,8 @@ def test_runner_never_picks_a_chat_only_provider(tmp_path) -> None:
 
     role = RoleSpec(name="r", title="R", providers=("antigravity", "codex"), surface="dashboard")
     runner = StaffRunner(store=RunStore(tmp_path / "s.db"), roles_loader=lambda: {"r": role})
-    assert runner.plan(RunRequest(role="r", prompt="go")).provider == "codex"
-    with pytest.raises(ValueError, match="chat-only"):
-        runner.plan(RunRequest(role="r", provider="antigravity", prompt="go"))
+    assert runner.plan(RunRequest(role="r", prompt="go")).provider == "antigravity"
+    assert runner.plan(RunRequest(role="r", provider="antigravity", prompt="go")).provider == "antigravity"
 
 
 @pytest.mark.unit
@@ -229,11 +228,11 @@ def test_chat_only_and_unattended_provider_helpers() -> None:
     from staff.adapters import chat_only_providers, unattended_providers
 
     chat_only = chat_only_providers()
-    assert "antigravity" in chat_only
+    assert "antigravity" not in chat_only
     assert "claude" not in chat_only
     assert "codex" not in chat_only
 
     unattended = unattended_providers()
-    assert unattended["antigravity"] is False
+    assert unattended["antigravity"] is True
     assert unattended["claude"] is True
     assert unattended["codex"] is True
