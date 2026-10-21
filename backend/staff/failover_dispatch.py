@@ -313,7 +313,7 @@ def run_completion_summary(
     chain_note = parse_chain_summary(parse_chain_log(chain_raw))
     if chain_note and summary:
         return f"{chain_note}. {summary}"
-    return chain_note or summary
+    return str(chain_note or summary or "")
 
 
 def resolve_provider_and_model(

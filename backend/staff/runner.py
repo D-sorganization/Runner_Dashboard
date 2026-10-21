@@ -443,7 +443,7 @@ class StaffRunner:
                         model=plan.model,
                     )
                 else:
-                    summary = updated_rec.outcome or result_summary(result_line)
+                    summary = (updated_rec.outcome or result_summary(result_line)) or ""
                 handle_run_status_change(
                     updated_rec,
                     status=status,
