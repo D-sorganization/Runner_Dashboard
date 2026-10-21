@@ -174,7 +174,7 @@ def test_runner_auth_error_when_github_mint_fails(tmp_path: Any) -> None:
     workdir = tmp_path / "work"
     workdir.mkdir()
 
-    with patch("staff.runner.prepare_staff_run_github_env", side_effect=RuntimeError("no app")):
+    with patch("staff.runner_ops.prepare_staff_run_github_env", side_effect=RuntimeError("no app")):
         with patch("subprocess.Popen") as mock_popen:
             runner._execute(rec, plan, workdir, lease_note="")
             assert not mock_popen.called
@@ -246,7 +246,7 @@ def test_runner_injects_scoped_github_token(tmp_path: Any) -> None:
     _cred = StaffGithubToken(token=_FAKE_GHS, expires_at=0.0, source="github_app")
 
     with patch.dict(os.environ, {"GH_TOKEN": _FAKE_GHP}, clear=False):
-        with patch("staff.runner.prepare_staff_run_github_env", return_value=(env_patch, _cred)):
+        with patch("staff.runner_ops.prepare_staff_run_github_env", return_value=(env_patch, _cred)):
             with patch("subprocess.Popen", side_effect=capture_call):
                 runner._execute(rec, plan, workdir, lease_note="")
 

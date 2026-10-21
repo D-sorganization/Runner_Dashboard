@@ -122,7 +122,7 @@ def test_runner_does_not_cap_four_hour_wall_clock(tmp_path: Any) -> None:
     )
 
     with patch.dict(os.environ, {"STAFF_RUN_TIMEOUT_SECONDS": "14400"}, clear=False):
-        with patch("staff.runner.prepare_staff_run_github_env", return_value=(env_patch, cred)):
+        with patch("staff.runner_ops.prepare_staff_run_github_env", return_value=(env_patch, cred)):
             with patch("staff.runner.StaffWatchdog", _Watchdog):
                 with patch("subprocess.Popen") as mock_popen:
                     mock_proc = mock_popen.return_value

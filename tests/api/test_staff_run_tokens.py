@@ -137,7 +137,7 @@ def test_runner_injects_and_revokes_fleet_api_token(tmp_path: Any) -> None:
     plan = runner.plan(RunRequest(role="maintenance", prompt="do maintenance", provider="dummy"))
 
     gh_env, gh_cred = _github_env_patch()
-    with patch("staff.runner.prepare_staff_run_github_env", return_value=(gh_env, gh_cred)):
+    with patch("staff.runner_ops.prepare_staff_run_github_env", return_value=(gh_env, gh_cred)):
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 99999
@@ -226,7 +226,7 @@ def test_runner_minting_failure_sets_workspace_error(tmp_path: Any) -> None:
     workdir.mkdir()
 
     gh_env, gh_cred = _github_env_patch()
-    with patch("staff.runner.prepare_staff_run_github_env", return_value=(gh_env, gh_cred)):
+    with patch("staff.runner_ops.prepare_staff_run_github_env", return_value=(gh_env, gh_cred)):
         with patch("staff.runner.mint_run_token", side_effect=RuntimeError("entropy failure")):
             with patch("subprocess.Popen") as mock_popen:
                 runner._execute(rec, plan, workdir, lease_note="")

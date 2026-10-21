@@ -378,7 +378,7 @@ def _stub_staff_github_run_env(monkeypatch, request):  # noqa: ANN001
         )
         return env, StaffGithubToken(token=token, expires_at=0.0, source="test")
 
-    monkeypatch.setattr("staff.runner.prepare_staff_run_github_env", _prep)
+    monkeypatch.setattr("staff.runner_ops.prepare_staff_run_github_env", _prep)
 
 
 def _live_staff_run_threads() -> set[threading.Thread]:
