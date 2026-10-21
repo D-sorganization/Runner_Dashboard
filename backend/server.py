@@ -150,6 +150,7 @@ from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import fleet as _fleet_router  # noqa: E402
+from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import label_guidance as _label_guidance_router  # noqa: E402  # issue #757
 from routers import linear as _linear_router  # noqa: E402
@@ -682,6 +683,7 @@ app.include_router(_events_router.router)  # issue #863 fleet event log
 app.include_router(_client_errors_router.router)  # issue #1292 client error beacon
 app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics and page tracking
 app.include_router(_fleet_router.router)
+app.include_router(_fleet_run_token_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
 app.include_router(_runners_router.router)

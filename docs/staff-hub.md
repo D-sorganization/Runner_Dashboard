@@ -40,6 +40,12 @@ missing binary is classified `cli_missing`, an expired Google session `auth_expi
 | POST   | `/api/staff/usage/export`     | orchestrator peer | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout)                                                   |
 | GET    | `/api/staff/quota`            | fleet peer        | Billing kind and live plan windows per provider (#1587); local files only                                                                                                                                |
 
+Fleet hub only (DeskComputer):
+
+| Method | Path                    | Auth                         | Purpose                                                                 |
+| ------ | ----------------------- | ---------------------------- | ----------------------------------------------------------------------- |
+| POST   | `/api/fleet/run-token`  | `HUB_FLEET_TOKEN` + node id  | Mint a GitHub App installation token for a staff run on a spoke node (#2051) |
+
 POST bodies need the CSRF sentinel header `X-Requested-With: XMLHttpRequest`
 like every other dashboard POST. "Orchestrator peer" means an operator
 principal, the `HUB_FLEET_TOKEN` bearer, or loopback with
@@ -217,7 +223,7 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | `GIT_CONFIG_GLOBAL`           | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                          |
 | `STAFF_ALLOW_OPERATOR_TOKEN`  | unset                                                                           | Set to `1` only to let staff runs fall back to the dashboard's operator `GH_TOKEN` when App minting fails (#2038) |
 
-### GitHub credentials per run (#2038)
+### GitHub credentials per run (#2038, #2051)
 
 Staff runs no longer inherit the operator's personal `GH_TOKEN`. Before each subprocess
 starts, the runner mints a short-lived **GitHub App installation token** (same App as the
@@ -227,15 +233,22 @@ sets bootstrap `GH_TOKEN` / `GITHUB_TOKEN`, strips inherited operator tokens and
 `GITHUB_APP_*` private-key variable, and wires **refresh** so long runs are not capped at
 the one-hour installation TTL:
 
+- On the **fleet hub** (`MACHINE_ROLE=hub`), tokens are minted locally with the hub's
+  `GITHUB_APP_*` credentials.
+- On **spoke nodes** (`MACHINE_ROLE=node`), the dashboard calls
+  `POST /api/fleet/run-token` on `HUB_URL` with `HUB_FLEET_TOKEN` and `X-Fleet-Node`
+  (the node's registry name). The hub mints the installation token and returns it with
+  its expiry. The GitHub App private key never leaves the hub.
 - `git` uses a credential helper (`staff.github_git_credential`) that calls
-  `POST /api/staff/runs/{id}/github-credential` with the run's `FLEET_API_TOKEN`.
+  `POST /api/staff/runs/{id}/github-credential` with the run's `FLEET_API_TOKEN` (on the
+  node this re-requests a token from the hub through the same path).
 - `gh` is wrapped on `PATH` (`staff/wrappers/gh`) and refreshes the token the same way
   before each invocation.
 
-When the App is missing or minting fails, the run **fails closed** with `failure_class=auth_error`
-unless `STAFF_ALLOW_OPERATOR_TOKEN=1` is set for an explicit operator-PAT fallback. Operator
-`GH_TOKEN` in `~/.config/runner-dashboard/env` remains for dashboard polling and API fallback
-only; agents act as the GitHub App.
+When minting fails, the run **fails closed** with `failure_class=auth_error`. On the hub only,
+`STAFF_ALLOW_OPERATOR_TOKEN=1` enables an explicit operator-PAT fallback; spoke nodes never
+use operator `GH_TOKEN` for staff runs. Operator `GH_TOKEN` in `~/.config/runner-dashboard/env`
+remains for dashboard polling and API fallback only; agents act as the GitHub App.
 
 ## Fleet focus (#1239)
 

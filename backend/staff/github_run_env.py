@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from dashboard_config import HUB_URL, MACHINE_ROLE
 from github_app_auth import (
     github_app_auth_configured,
     mint_installation_access_token,
@@ -71,7 +72,43 @@ def github_permissions_for_role(role: RoleSpec) -> dict[str, str]:
     return out
 
 
-def mint_staff_run_github_token(role: RoleSpec, repo: str) -> StaffGithubToken:
+def _staff_github_mint_uses_hub() -> bool:
+    """True when this node must request GitHub tokens from the fleet hub (#2051)."""
+    if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
+        return False
+    role = (MACHINE_ROLE or os.environ.get("MACHINE_ROLE", "node")).strip().lower()
+    hub = (HUB_URL or os.environ.get("HUB_URL", "")).strip()
+    return role == "node" and bool(hub)
+
+
+def mint_staff_run_github_token_local(role: RoleSpec, repo: str) -> StaffGithubToken:
+    """Mint on the hub using local GitHub App credentials (#2038, #2051)."""
+    if github_app_auth_configured():
+        repositories = [repo] if repo else None
+        try:
+            minted = mint_installation_access_token(
+                repositories=repositories,
+                permissions=github_permissions_for_role(role),
+            )
+        except Exception as exc:
+            if operator_token_fallback_enabled() and not _staff_github_mint_uses_hub():
+                op = _operator_token_from_environ()
+                if op:
+                    return StaffGithubToken(token=op, expires_at=0.0, source="operator")
+            raise RuntimeError(f"GitHub App installation token minting failed: {exc}") from exc
+        return StaffGithubToken(token=minted.token, expires_at=minted.expires_at, source="github_app")
+
+    if operator_token_fallback_enabled() and not _staff_github_mint_uses_hub():
+        op = _operator_token_from_environ()
+        if op:
+            return StaffGithubToken(token=op, expires_at=0.0, source="operator")
+    raise RuntimeError(
+        "GitHub App is not configured for staff runs; set GITHUB_APP_* on the hub "
+        "dashboard node or opt in with STAFF_ALLOW_OPERATOR_TOKEN=1 on the hub only."
+    )
+
+
+def mint_staff_run_github_token(role: RoleSpec, repo: str, *, run_id: str = "") -> StaffGithubToken:
     """Mint or resolve the GitHub credential for one staff run.
 
     Post: never returns an empty token. Raises ``RuntimeError`` when App auth is
@@ -81,29 +118,12 @@ def mint_staff_run_github_token(role: RoleSpec, repo: str) -> StaffGithubToken:
         token = "ghs_" + "E2E" * 12 + "_hermetic"
         return StaffGithubToken(token=token, expires_at=0.0, source="e2e_hermetic")
 
-    if github_app_auth_configured():
-        repositories = [repo] if repo else None
-        try:
-            minted = mint_installation_access_token(
-                repositories=repositories,
-                permissions=github_permissions_for_role(role),
-            )
-        except Exception as exc:
-            if operator_token_fallback_enabled():
-                op = _operator_token_from_environ()
-                if op:
-                    return StaffGithubToken(token=op, expires_at=0.0, source="operator")
-            raise RuntimeError(f"GitHub App installation token minting failed: {exc}") from exc
-        return StaffGithubToken(token=minted.token, expires_at=minted.expires_at, source="github_app")
+    if _staff_github_mint_uses_hub():
+        from staff.fleet_run_token_client import mint_staff_run_github_token_via_hub  # noqa: PLC0415
 
-    if operator_token_fallback_enabled():
-        op = _operator_token_from_environ()
-        if op:
-            return StaffGithubToken(token=op, expires_at=0.0, source="operator")
-    raise RuntimeError(
-        "GitHub App is not configured for staff runs; set GITHUB_APP_* on the dashboard "
-        "node or opt in with STAFF_ALLOW_OPERATOR_TOKEN=1 (operator PAT fallback only)."
-    )
+        return mint_staff_run_github_token_via_hub(role.name, repo, run_id)
+
+    return mint_staff_run_github_token_local(role, repo)
 
 
 def strip_github_secrets_from_child_env(env: Mapping[str, str]) -> dict[str, str]:
@@ -155,7 +175,7 @@ def prepare_staff_run_github_env(
     python_executable: str | None = None,
     dashboard_port: str | None = None,
 ) -> tuple[dict[str, str], StaffGithubToken]:
-    cred = mint_staff_run_github_token(role, repo)
+    cred = mint_staff_run_github_token(role, repo, run_id=run_id)
     env = build_staff_run_env(
         base_env,
         cred.token,

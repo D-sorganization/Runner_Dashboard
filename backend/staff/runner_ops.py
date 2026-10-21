@@ -29,9 +29,10 @@ from staff.watchdog import StaffWatchdog
 log = logging.getLogger("dashboard.staff.runner_ops")
 
 _GITHUB_AUTH_REMEDIATION = (
-    "Configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and "
-    "GITHUB_APP_PRIVATE_KEY_FILE on the dashboard node, or set "
-    "STAFF_ALLOW_OPERATOR_TOKEN=1 only for explicit operator-PAT fallback."
+    "On the fleet hub (DeskComputer), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
+    "and GITHUB_APP_PRIVATE_KEY_FILE. On spoke nodes, ensure HUB_URL and HUB_FLEET_TOKEN "
+    "are set so staff runs can mint tokens via POST /api/fleet/run-token on the hub. "
+    "STAFF_ALLOW_OPERATOR_TOKEN=1 is hub-only and does not apply on fleet nodes."
 )
 
 
@@ -74,7 +75,7 @@ def apply_staff_run_github_child_env(
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint GitHub credential for staff run %s", run_id)
-        err = f"GitHub auth for run failed: {exc}"
+        err = redact_sensitive_content(f"GitHub auth for run failed: {exc}")
         store.update_run(
             rec.id,
             status="failed",
