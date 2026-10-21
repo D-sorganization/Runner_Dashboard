@@ -33,6 +33,7 @@ class Principal(BaseModel):
     name: str
     roles: list[str] = []
     scopes: list[str] = []
+    assistant_kind: str | None = None  # grokbot | codex | claude | other (config/agent_principals.yml)
     github_username: str | None = None
     email: str | None = None
     quotas: Quota = Field(default_factory=Quota)
