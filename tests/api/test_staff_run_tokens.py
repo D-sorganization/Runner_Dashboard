@@ -8,10 +8,27 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from server import app
+from staff.github_run_env import StaffGithubToken, build_staff_run_env
 from staff.reconcile import reconcile_orphaned_runs
 from staff.runner import RunRecord, RunRequest, StaffRunner
 from staff.store import RunStore
 from staff.tokens import mint_run_token, revoke_run_token
+
+_FAKE_GHS = "ghs_" + "B" * 40 + "_tok"
+
+
+def _github_env_patch(run_id: str = "run-exec-test-01") -> tuple[dict[str, str], StaffGithubToken]:
+    import sys
+
+    env = build_staff_run_env(
+        {"PATH": "/usr/bin"},
+        _FAKE_GHS,
+        run_id=run_id,
+        real_gh_path="/usr/bin/gh",
+        python_executable=sys.executable,
+    )
+    cred = StaffGithubToken(token=_FAKE_GHS, expires_at=0.0, source="test")
+    return env, cred
 
 
 @pytest.fixture
@@ -119,25 +136,27 @@ def test_runner_injects_and_revokes_fleet_api_token(tmp_path: Any) -> None:
     store.create_run(rec)
     plan = runner.plan(RunRequest(role="maintenance", prompt="do maintenance", provider="dummy"))
 
-    with patch("subprocess.Popen") as mock_popen:
-        mock_proc = MagicMock()
-        mock_proc.pid = 99999
-        mock_proc.stdout = iter(["STAFF_RESULT: done\n"])
-        mock_proc.wait.return_value = 0
-        mock_proc.poll.return_value = 0
+    gh_env, gh_cred = _github_env_patch()
+    with patch("staff.runner_ops.prepare_staff_run_github_env", return_value=(gh_env, gh_cred)):
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.pid = 99999
+            mock_proc.stdout = iter(["STAFF_RESULT: done\n"])
+            mock_proc.wait.return_value = 0
+            mock_proc.poll.return_value = 0
 
-        def capture_call(*args: Any, **kwargs: Any) -> Any:
-            nonlocal captured_env
-            captured_env = dict(kwargs.get("env", {}))
-            if "FLEET_API_TOKEN" in captured_env:
-                captured_token.append(captured_env["FLEET_API_TOKEN"])
-            return mock_proc
+            def capture_call(*args: Any, **kwargs: Any) -> Any:
+                nonlocal captured_env
+                captured_env = dict(kwargs.get("env", {}))
+                if "FLEET_API_TOKEN" in captured_env:
+                    captured_token.append(captured_env["FLEET_API_TOKEN"])
+                return mock_proc
 
-        mock_popen.side_effect = capture_call
+            mock_popen.side_effect = capture_call
 
-        workdir = tmp_path / "work"
-        workdir.mkdir()
-        runner._execute(rec, plan, workdir, lease_note="")
+            workdir = tmp_path / "work"
+            workdir.mkdir()
+            runner._execute(rec, plan, workdir, lease_note="")
 
     assert captured_token, "FLEET_API_TOKEN was not injected into subprocess env"
     raw_token = captured_token[0]
@@ -206,10 +225,12 @@ def test_runner_minting_failure_sets_workspace_error(tmp_path: Any) -> None:
     workdir = tmp_path / "work"
     workdir.mkdir()
 
-    with patch("staff.runner.mint_run_token", side_effect=RuntimeError("entropy failure")):
-        with patch("subprocess.Popen") as mock_popen:
-            runner._execute(rec, plan, workdir, lease_note="")
-            assert not mock_popen.called, "CLI subprocess must not be called when token minting fails"
+    gh_env, gh_cred = _github_env_patch()
+    with patch("staff.runner_ops.prepare_staff_run_github_env", return_value=(gh_env, gh_cred)):
+        with patch("staff.runner_ops.mint_run_token", side_effect=RuntimeError("entropy failure")):
+            with patch("subprocess.Popen") as mock_popen:
+                runner._execute(rec, plan, workdir, lease_note="")
+                assert not mock_popen.called, "CLI subprocess must not be called when token minting fails"
 
     updated = store.get_run(rec.id)
     assert updated is not None

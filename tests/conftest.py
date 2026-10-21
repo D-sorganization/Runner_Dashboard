@@ -346,6 +346,41 @@ def _staff_verification_off(monkeypatch):
     monkeypatch.setenv("STAFF_VERIFY_MODE", "off")
 
 
+def _staff_run_test_path(path: str) -> bool:
+    """True when the test module may execute ``StaffRunner._execute`` (#2038)."""
+    if "test_staff_github_run_env.py" in path:
+        return False
+    markers = (
+        "/test_staff",
+        "\\test_staff",
+        "/staff/test_",
+        "tests/staff/",
+    )
+    return any(m in path for m in markers)
+
+
+@pytest.fixture(autouse=True)
+def _stub_staff_github_run_env(monkeypatch, request):  # noqa: ANN001
+    """Staff runs mint a real GitHub App token in production; staff tests stub it (#2038)."""
+    path = str(request.node.fspath or "")
+    if not _staff_run_test_path(path):
+        return
+    from staff.github_run_env import StaffGithubToken, build_staff_run_env  # noqa: PLC0415
+
+    token = "ghs_" + "F" * 40 + "_teststub"
+
+    def _prep(base_env, role, repo, **kwargs):  # noqa: ANN001
+        env = build_staff_run_env(
+            base_env,
+            token,
+            run_id=kwargs.get("run_id", "run-test-stub"),
+            real_gh_path=kwargs.get("real_gh_path", "/usr/bin/gh"),
+        )
+        return env, StaffGithubToken(token=token, expires_at=0.0, source="test")
+
+    monkeypatch.setattr("staff.runner_ops.prepare_staff_run_github_env", _prep)
+
+
 def _live_staff_run_threads() -> set[threading.Thread]:
     return {t for t in threading.enumerate() if t.name.startswith("staff-run-") and t.is_alive()}
 

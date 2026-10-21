@@ -99,6 +99,8 @@ def backend_env(state: Path, port: int) -> dict[str, str]:
         # Disable the GitHub-backed staff inbox sources (board proposals,
         # project decisions) so the inbox never reaches api.github.com.
         "STAFF_INBOX_GITHUB_SOURCES": "0",
+        # Staff runs need a GitHub-shaped credential without reaching api.github.com (#2038).
+        "STAFF_E2E_HERMETIC": "1",
     }
 
 

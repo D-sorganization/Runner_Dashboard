@@ -1579,6 +1579,21 @@
         "title": "ExecutorTier",
         "type": "string"
       },
+      "GithubCredentialResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": ["token", "expires_at"],
+        "title": "GithubCredentialResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -15502,6 +15517,55 @@
           }
         ],
         "summary": "Cancel Run",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/runs/{run_id}/github-credential": {
+      "post": {
+        "description": "Mint a fresh GitHub App installation token for an active staff run (#2038).",
+        "operationId": "refresh_github_credential_api_staff_runs__run_id__github_credential_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubCredentialResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Refresh Github Credential",
         "tags": ["staff"]
       }
     },

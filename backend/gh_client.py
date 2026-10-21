@@ -29,13 +29,11 @@ import os
 import random
 import time
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from hashlib import sha256
-from pathlib import Path
 from typing import Any
 
 import httpx
-import jwt
 
 log = logging.getLogger("dashboard.gh_client")
 
@@ -179,73 +177,32 @@ def get_auth_fingerprint() -> str:
 
 
 def _github_app_auth_configured() -> bool:
-    return bool(
-        os.environ.get("GITHUB_APP_ID", "").strip()
-        and os.environ.get("GITHUB_APP_INSTALLATION_ID", "").strip()
-        and _github_app_private_key_configured()
-    )
+    from github_app_auth import github_app_auth_configured
+
+    return github_app_auth_configured()
 
 
 def _github_app_private_key_configured() -> bool:
-    return bool(
-        os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
-        or os.environ.get("GITHUB_APP_PRIVATE_KEY_FILE", "").strip()
-    )
+    from github_app_auth import github_app_private_key_configured
 
-
-def _github_app_private_key() -> str:
-    key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
-    if key:
-        return key.replace("\\n", "\n")
-
-    key_file = os.environ.get("GITHUB_APP_PRIVATE_KEY_FILE", "").strip()
-    if not key_file:
-        return ""
-    return Path(key_file).expanduser().read_text(encoding="utf-8")
+    return github_app_private_key_configured()
 
 
 def _build_app_jwt(now: datetime | None = None) -> str:
-    app_id = os.environ["GITHUB_APP_ID"].strip()
-    issued_at = now or datetime.now(UTC)
-    payload = {
-        "iat": int((issued_at - timedelta(seconds=60)).timestamp()),
-        "exp": int((issued_at + timedelta(minutes=9)).timestamp()),
-        "iss": app_id,
-    }
-    return jwt.encode(payload, _github_app_private_key(), algorithm="RS256")
+    from github_app_auth import build_app_jwt
+
+    return build_app_jwt(now)
 
 
 async def _fetch_github_app_installation_token() -> str:
-    """Exchange a GitHub App JWT for an installation access token.
-
-    Issue #938(c): uses an ``httpx.AsyncClient`` so the exchange never blocks the
-    event loop. The previous sync ``httpx.Client`` froze the whole dashboard for
-    up to ~50s on every (~hourly) App-token expiry.
-    """
+    """Exchange a GitHub App JWT for an installation access token (#938c, #2038)."""
     global _cached_token_expires_at
 
-    installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"].strip()
-    url = f"{_GITHUB_API_BASE}/app/installations/{installation_id}/access_tokens"
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Authorization": f"Bearer {_build_app_jwt()}",
-    }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)) as client:
-        resp = await client.post(url, headers=headers)
-    if resp.status_code not in (200, 201):
-        raise GhServerError(resp.status_code, "/app/installations/.../access_tokens", resp.text)
-    body = resp.json()
-    token = str(body.get("token", "")).strip()
-    if not token:
-        raise GhAuthError("GitHub App installation token response did not include token")
-    expires_at = str(body.get("expires_at", "")).strip()
-    try:
-        expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        expiry = time.time() + 3300
-    _cached_token_expires_at = max(time.time() + 60, expiry - 300)
-    return token
+    from github_app_auth import mint_installation_access_token
+
+    minted = await asyncio.to_thread(mint_installation_access_token)
+    _cached_token_expires_at = max(time.time() + 60, minted.expires_at - 300)
+    return minted.token
 
 
 # ── Pooled client ─────────────────────────────────────────────────────────────

@@ -39,6 +39,7 @@ from staff.audit import (
 )
 from staff.cli_version import provider_versions
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
+from staff.github_credential_service import mint_github_credential_for_run
 from staff.models import (
     StaffAuditListResponse,
     StaffBoardResponse,
@@ -299,6 +300,32 @@ async def stream_run(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class GithubCredentialResponse(BaseModel):
+    token: str
+    expires_at: float
+
+
+def _assert_staff_run_principal(principal: Principal, run_id: str) -> None:
+    parts = principal.id.split(":")
+    if len(parts) != 3 or parts[0] != "staff" or parts[2] != run_id:
+        raise HTTPException(status_code=403, detail="token is not authorized for this run")
+
+
+@router.post(
+    "/runs/{run_id}/github-credential",
+    response_model=GithubCredentialResponse,
+    response_model_exclude_none=True,
+)
+async def refresh_github_credential(
+    run_id: str,
+    caller: Principal = Depends(require_scope("staff.github_credential")),
+) -> GithubCredentialResponse:
+    """Mint a fresh GitHub App installation token for an active staff run (#2038)."""
+    _assert_staff_run_principal(caller, run_id)
+    cred = mint_github_credential_for_run(run_id)
+    return GithubCredentialResponse(token=cred.token, expires_at=cred.expires_at)
 
 
 @router.post(
