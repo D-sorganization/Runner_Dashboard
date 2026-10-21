@@ -71,7 +71,7 @@ def test_strip_operator_tokens_and_app_private_key() -> None:
         "GH_TOKEN": _FAKE_GHP,
         "GITHUB_TOKEN": _FAKE_GHP,
         "GITHUB_APP_PRIVATE_KEY_FILE": "/secret/key.pem",
-        "GITHUB_APP_PRIVATE_KEY": "inline-key-placeholder-not-pem",
+        "GITHUB_APP_PRIVATE_KEY": "inline-key-placeholder-not-pem",  # pragma: allowlist secret
         "GITHUB_APP_ID": "123",
         "HOME": "/home/runner",
     }
