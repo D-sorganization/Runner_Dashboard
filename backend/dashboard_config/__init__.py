@@ -148,6 +148,7 @@ def apply_fleet_identity(machine_role: str, hub_url: str | None) -> None:
     else:
         HUB_URL = None
 
+
 # Fleet topology
 FLEET_NODES: dict[str, str] = {}
 _nodes_raw = os.environ.get("FLEET_NODES", "")

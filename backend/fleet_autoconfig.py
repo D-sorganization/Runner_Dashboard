@@ -238,11 +238,7 @@ class FleetIdentity:
 
 def _active_machines(registry: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     machines = registry.get("machines", []) or []
-    return [
-        m
-        for m in machines
-        if isinstance(m, Mapping) and not m.get("retired")
-    ]
+    return [m for m in machines if isinstance(m, Mapping) and not m.get("retired")]
 
 
 def hub_machine_names(registry: Mapping[str, Any]) -> list[str]:

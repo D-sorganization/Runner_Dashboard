@@ -12,8 +12,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from security import validate_config_path
-
 log = logging.getLogger("dashboard.staff.provider_defaults")
 
 _DEFAULTS_PATH = Path(__file__).resolve().parents[2] / "config" / "staff_provider_defaults.json"
