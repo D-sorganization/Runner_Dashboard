@@ -51,6 +51,7 @@ ALLOWED_ACTIONS = frozenset(
         "message_reconcile",
         "decision_default_applied",
         "decision_default_refused",
+        "memory_append",
     }
 )
 
