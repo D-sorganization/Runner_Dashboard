@@ -263,7 +263,8 @@ def test_build_command_substitutes_and_drops_empty_model_flag() -> None:
     assert argv[argv.index("--permission-mode") + 1] == "dontAsk"  # allow-listed, never bypassed (#1586)
     assert "do the thing" in argv
     codex = adapters_mod.ADAPTERS["codex"]
-    assert "--model" not in codex.build_command("x", "/tmp/wt", model=None)
+    codex_argv = codex.build_command("x", "/tmp/wt", model=None)
+    assert codex_argv[codex_argv.index("--model") + 1] == "gpt-6-luna"
     argv2 = claude.build_command("x", "/tmp/wt", model="claude-opus-5")
     assert argv2[-2:] == ["--model", "claude-opus-5"]
 

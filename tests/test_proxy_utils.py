@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
+import dashboard_config  # noqa: E402
 import proxy_utils  # noqa: E402
 
 
@@ -20,98 +21,98 @@ def _make_request(query_params: dict[str, str]) -> MagicMock:
 
 class TestShouldProxyFleetToHub:
     def test_not_node_role_returns_false(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "hub"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "hub"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_no_hub_url_returns_false(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", None):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", None):
                 req = _make_request({})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_node_with_hub_no_local_params_returns_true(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is True
 
     def test_local_param_true_returns_false(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "true"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_local_param_yes_returns_false(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "yes"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_local_param_1_returns_false(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "1"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_local_param_local_returns_false(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "local"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_local_param_false_returns_true(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "false"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is True
 
     def test_local_param_0_returns_true(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "0"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is True
 
     def test_scope_local_returns_false(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"scope": "local"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_scope_fleet_returns_true(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"scope": "fleet"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is True
 
     def test_local_case_insensitive(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "TRUE"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_scope_case_insensitive(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"scope": "LOCAL"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_multiple_params_local_wins(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "true", "scope": "fleet"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_multiple_params_scope_wins(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({"local": "false", "scope": "local"})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_empty_hub_url_string_not_configured(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", ""):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", ""):
                 req = _make_request({})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
@@ -203,31 +204,31 @@ class TestHubCircuitBreaker:
     def test_open_breaker_forces_local_even_for_node_with_hub(self) -> None:
         # Normally a node with a hub and no local/scope params proxies (returns True);
         # with the breaker open it must serve local (False) instead.
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 req = _make_request({})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is True
                 proxy_utils.mark_hub_unreachable()
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
 
     def test_open_breaker_marks_degraded_for_node_hub_fallback(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 proxy_utils.mark_hub_unreachable()
                 assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({})) is True
 
     def test_explicit_local_request_is_not_hub_circuit_degraded(self) -> None:
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 proxy_utils.mark_hub_unreachable()
                 assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({"local": "true"})) is False
                 assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({"scope": "local"})) is False
 
     def test_non_node_or_missing_hub_is_not_hub_circuit_degraded(self) -> None:
         proxy_utils.mark_hub_unreachable()
-        with patch.object(proxy_utils, "MACHINE_ROLE", "hub"):
-            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "hub"):
+            with patch.object(dashboard_config, "HUB_URL", "http://hub.internal"):
                 assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({})) is False
-        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
-            with patch.object(proxy_utils, "HUB_URL", ""):
+        with patch.object(dashboard_config, "MACHINE_ROLE", "node"):
+            with patch.object(dashboard_config, "HUB_URL", ""):
                 assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({})) is False

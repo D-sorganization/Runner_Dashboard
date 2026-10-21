@@ -1,0 +1,6 @@
+{
+  "schema_version": "staff-provider-defaults.v1",
+  "default_models": {
+    "codex": "gpt-6-luna"
+  }
+}
