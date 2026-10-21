@@ -28,6 +28,7 @@ agents:
     name: Barb (Grok fleet secretary)
     scopes:
       - fleet.read
+      - memory.read
   - id: agent-codex-hands
     kind: codex
     name: Codex hands (computer control)
