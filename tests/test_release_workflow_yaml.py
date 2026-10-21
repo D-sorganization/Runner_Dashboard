@@ -12,10 +12,15 @@ Validates `.github/workflows/release.yml` and `.github/workflows/verify-tag.yml`
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
+from bash_host import as_bash_path, require_bash
 
 ROOT = Path(__file__).resolve().parent.parent
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
@@ -165,14 +170,95 @@ def test_release_workflow_defines_dry_run_input() -> None:
     assert inputs["recover_existing_tag"].get("default") is False
 
 
+def _release_tarball_step() -> dict:
+    steps = _load_workflow(RELEASE_WORKFLOW)["jobs"]["release"]["steps"]
+    return next(step for step in steps if step.get("name") == "Build release tarball")
+
+
 def test_release_uses_canonical_schema_v2_packager() -> None:
-    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-    assert "bash deploy/package-dashboard-artifact.sh \\" in text
-    assert '--output-dir "$OUTPUT_DIR" \\' in text
-    assert '--version "$VERSION" \\' in text
-    assert '--sha "$GITHUB_SHA"' in text
-    assert "bash deploy/write-deployment-metadata.sh" not in text
-    assert 'tar czf "$TMP_ARTIFACT"' not in text
+    step = _release_tarball_step()
+    assert "bash deploy/package-dashboard-artifact.sh \\" in step["run"]
+    assert '--output-dir "$OUTPUT_DIR" \\' in step["run"]
+    assert '--version "$VERSION" \\' in step["run"]
+    assert step["env"]["SOURCE_SHA"] == "${{ steps.source.outputs.sha }}"
+    assert '--sha "$SOURCE_SHA"' in step["run"]
+    assert '--sha "$GITHUB_SHA"' not in step["run"]
+    assert "bash deploy/write-deployment-metadata.sh" not in step["run"]
+    assert 'tar czf "$TMP_ARTIFACT"' not in step["run"]
+
+
+@pytest.mark.parametrize(
+    ("checked_out_sha", "event_sha"),
+    [
+        ("b" * 40, "b" * 40),  # ordinary release: source and event are the same
+        ("a" * 40, "b" * 40),  # recovery: checked-out tag differs from dispatch SHA
+    ],
+    ids=("normal-release", "existing-tag-recovery"),
+)
+def test_release_tarball_step_packages_the_recorded_checkout_sha(
+    tmp_path: Path, checked_out_sha: str, event_sha: str
+) -> None:
+    """Run the actual workflow Bash step with a stub packager that writes metadata."""
+    step = _release_tarball_step()
+    output_dir = tmp_path / "runner-temp"
+    output_file = tmp_path / "github-output"
+    output_file.write_text("", encoding="utf-8")
+    fake_packager = tmp_path / "deploy" / "package-dashboard-artifact.sh"
+    fake_packager.parent.mkdir()
+    fake_packager.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT_DIR=
+VERSION=
+SHA=
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --version) VERSION="$2"; shift 2 ;;
+        --sha) SHA="$2"; shift 2 ;;
+        --python-minor) shift 2 ;;
+        *) echo "unexpected packager argument: $1" >&2; exit 2 ;;
+    esac
+done
+mkdir -p "$OUTPUT_DIR"
+printf '{"git_sha":"%s"}\\n' "$SHA" > "$OUTPUT_DIR/deployment.json"
+ARTIFACT="$OUTPUT_DIR/dashboard-${VERSION}.tar.gz"
+printf 'artifact for %s\\n' "$SHA" > "$ARTIFACT"
+(cd "$OUTPUT_DIR" && sha256sum "$(basename "$ARTIFACT")" > "$(basename "$ARTIFACT").sha256")
+touch "$OUTPUT_DIR/dashboard-${VERSION}.bundle"
+""",
+        encoding="utf-8",
+    )
+
+    step_env = step.get("env", {})
+    assert step_env.get("SOURCE_SHA") == "${{ steps.source.outputs.sha }}"
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "GITHUB_OUTPUT": as_bash_path(output_file),
+        "RUNNER_TEMP": as_bash_path(output_dir),
+        "GITHUB_SHA": event_sha,
+        "VERSION": "8.1.0",
+        "ARTIFACT_PYTHON_MINOR": "3.12",
+        "SOURCE_SHA": checked_out_sha,
+    }
+    result = subprocess.run(
+        [require_bash(), "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    metadata = json.loads((output_dir / "release-artifacts" / "deployment.json").read_text(encoding="utf-8"))
+    assert metadata["git_sha"] == checked_out_sha
+    outputs = dict(line.split("=", 1) for line in output_file.read_text(encoding="utf-8").splitlines() if "=" in line)
+    assert outputs["artifact"] == as_bash_path(output_dir / "release-artifacts" / "dashboard-8.1.0.tar.gz")
+    assert outputs["checksum"].endswith("dashboard-8.1.0.tar.gz.sha256")
+    assert outputs["bundle"].endswith("dashboard-8.1.0.bundle")
+    assert len(outputs["sha256"]) == 64
 
 
 def test_release_publication_does_not_depend_on_checkout_discovery() -> None:

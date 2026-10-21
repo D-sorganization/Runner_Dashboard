@@ -259,6 +259,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
           # Wheelhouse ABI == declared python_minor (#1212); qualified deploys require 3.12.
           ARTIFACT_PYTHON_MINOR: "3.12"
         run: |
@@ -267,7 +268,7 @@ jobs:
           bash deploy/package-dashboard-artifact.sh \
             --output-dir "$OUTPUT_DIR" \
             --version "$VERSION" \
-            --sha "$GITHUB_SHA" \
+            --sha "$SOURCE_SHA" \
             --python-minor "$ARTIFACT_PYTHON_MINOR"
           ARTIFACT="$OUTPUT_DIR/dashboard-${VERSION}.tar.gz"
           CHECKSUM="${ARTIFACT}.sha256"
