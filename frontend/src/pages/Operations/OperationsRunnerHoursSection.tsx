@@ -11,7 +11,12 @@ export interface RunnerScheduleEntry {
 }
 
 interface ScheduleConfig {
+  enabled?: boolean;
+  timezone?: string;
+  default_count?: number;
+  max_count?: number;
   schedules?: RunnerScheduleEntry[];
+  [key: string]: unknown;
 }
 
 interface ScheduleState {
@@ -37,6 +42,25 @@ export interface RunnerScheduleData {
   timers?: Record<string, string>;
 }
 
+function hasCompleteSchedulePolicy(
+  schedule: ScheduleConfig | undefined,
+): schedule is ScheduleConfig & {
+  enabled: boolean;
+  timezone: string;
+  default_count: number;
+  max_count: number;
+  schedules: RunnerScheduleEntry[];
+} {
+  return (
+    schedule !== undefined &&
+    typeof schedule.enabled === "boolean" &&
+    typeof schedule.timezone === "string" &&
+    typeof schedule.default_count === "number" &&
+    typeof schedule.max_count === "number" &&
+    Array.isArray(schedule.schedules)
+  );
+}
+
 export interface OperationsRunnerHoursSectionProps {
   initialData?: RunnerScheduleData;
   onDataChange?: (data: RunnerScheduleData) => void;
@@ -51,6 +75,7 @@ export function OperationsRunnerHoursSection({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<RunnerScheduleEntry[]>([]);
+  const canSaveSchedule = hasCompleteSchedulePolicy(data.schedule);
 
   const load = useCallback((signal?: AbortSignal) => {
     setLoading(true);
@@ -87,6 +112,8 @@ export function OperationsRunnerHoursSection({
   }, [load, initialData]);
 
   const handleSave = (applyNow: boolean) => {
+    if (!hasCompleteSchedulePolicy(data.schedule)) return;
+
     setSaving(true);
     setError(null);
     legacyFetch("/api/fleet/schedule", {
@@ -96,8 +123,8 @@ export function OperationsRunnerHoursSection({
         "X-Requested-With": "XMLHttpRequest",
       },
       body: JSON.stringify({
-        schedules: entries,
-        apply_now: applyNow,
+        schedule: { ...data.schedule, schedules: entries },
+        apply: applyNow,
       }),
     })
       .then((r) => {
@@ -188,7 +215,7 @@ export function OperationsRunnerHoursSection({
           <button
             type="button"
             onClick={() => handleSave(false)}
-            disabled={loading || saving}
+            disabled={loading || saving || !canSaveSchedule}
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -205,7 +232,7 @@ export function OperationsRunnerHoursSection({
           <button
             type="button"
             onClick={() => handleSave(true)}
-            disabled={loading || saving}
+            disabled={loading || saving || !canSaveSchedule}
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -221,6 +248,12 @@ export function OperationsRunnerHoursSection({
           </button>
         </div>
       </div>
+
+      {!canSaveSchedule && !loading && (
+        <div role="status" style={{ marginBottom: "1rem", color: "var(--text-muted, #8b949e)" }}>
+          Complete runner schedule settings are required before saving.
+        </div>
+      )}
 
       {error && (
         <div

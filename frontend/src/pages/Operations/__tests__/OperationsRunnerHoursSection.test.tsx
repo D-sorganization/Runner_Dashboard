@@ -27,13 +27,17 @@ const SCHEDULE_DATA = {
     timestamp: "2026-06-15T12:00:00Z",
   },
   schedule: {
+    enabled: false,
+    timezone: "Etc/UTC",
+    default_count: 3,
+    max_count: 7,
     schedules: [
       {
         name: "workday-core",
         days: ["mon", "tue", "wed", "thu", "fri"],
         start: "08:00",
         end: "18:00",
-        runners: 8,
+        runners: 5,
       },
     ],
   },
@@ -61,7 +65,7 @@ describe("OperationsRunnerHoursSection", () => {
     expect(screen.getByText("/etc/runner-schedule.json")).toBeInTheDocument();
   });
 
-  it("handles Save & Apply Now button click", async () => {
+  it("preserves the complete schedule and its windows when saving without applying", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
       if (String(url) === "/api/fleet/schedule" && init?.method === "POST") {
         return Promise.resolve(jsonResponse({ ...SCHEDULE_DATA, saved: true }));
@@ -71,19 +75,53 @@ describe("OperationsRunnerHoursSection", () => {
 
     render(<OperationsRunnerHoursSection />);
 
-    const applyBtn = await screen.findByRole("button", { name: /Apply Now/i });
-    await waitFor(() => expect(applyBtn).not.toBeDisabled());
-    fireEvent.click(applyBtn);
+    const saveBtn = await screen.findByRole("button", { name: /Save Schedule/i });
+    await waitFor(() => expect(saveBtn).not.toBeDisabled());
+    fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/fleet/schedule",
-        expect.objectContaining({
-          method: "POST",
-          body: expect.stringContaining('"apply_now":true'),
-        }),
+      const post = fetchMock.mock.calls.find(([url, init]) =>
+        String(url) === "/api/fleet/schedule" && init?.method === "POST",
       );
+      expect(post).toBeDefined();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body).toEqual({ schedule: SCHEDULE_DATA.schedule, apply: false });
     });
+  });
+
+  it("uses the canonical apply field for Apply Now", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+      if (String(url) === "/api/fleet/schedule" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse(SCHEDULE_DATA));
+      }
+      return Promise.resolve(jsonResponse(SCHEDULE_DATA));
+    });
+
+    render(<OperationsRunnerHoursSection />);
+    fireEvent.click(await screen.findByRole("button", { name: /Apply Now/i }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([url, init]) =>
+        String(url) === "/api/fleet/schedule" && init?.method === "POST",
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body).toEqual({ schedule: SCHEDULE_DATA.schedule, apply: true });
+    });
+  });
+
+  it("does not allow saving a partial initial schedule without its policy envelope", () => {
+    render(
+      <OperationsRunnerHoursSection
+        initialData={{ schedule: { schedules: SCHEDULE_DATA.schedule.schedules } }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Save Schedule/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Apply Now/i })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Complete runner schedule settings are required before saving.",
+    );
   });
 
   it("shows an error banner with a Retry button when fetch fails", async () => {
