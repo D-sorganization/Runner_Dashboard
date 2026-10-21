@@ -165,11 +165,7 @@ def try_chain_failover(
     from staff.model_tiers import normalize_tier
 
     raw_tier = (getattr(latest, "model_tier", None) or "").strip().lower()
-    active_tier = (
-        normalize_tier(raw_tier)
-        if raw_tier in ("routine", "standard", "complex")
-        else role_base_tier(role)
-    )
+    active_tier = normalize_tier(raw_tier) if raw_tier in ("routine", "standard", "complex") else role_base_tier(role)
     append_chain_attempt(
         runner.store,
         root_id,
