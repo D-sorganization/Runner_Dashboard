@@ -11,11 +11,28 @@ class AdapterFailureHint:
     detail: str = ""
 
 
+def _generic_quota_hint(lower: str) -> AdapterFailureHint | None:
+    quota_patterns = (
+        "exceeded your current quota",
+        "quota exhausted",
+        "out of quota",
+        "usage limit",
+        "plan limit",
+        "billing hard limit",
+    )
+    if "disk quota" in lower:
+        return None
+    if any(pat in lower for pat in quota_patterns):
+        return AdapterFailureHint("quota_exhausted", "quota exhausted")
+    return None
+
+
 def adapter_failure_classification(
     provider: str, combined: str
 ) -> tuple[str, bool, str, str] | None:
     """Return (failure_class, retryable, remediation, error) when adapter rules match."""
-    hint = classify_adapter_output(provider, combined)
+    lower = (combined or "").lower()
+    hint = classify_adapter_output(provider, combined) or _generic_quota_hint(lower)
     if hint is None:
         return None
     if hint.failure_class == "rate_limited":

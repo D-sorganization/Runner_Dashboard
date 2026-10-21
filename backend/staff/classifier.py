@@ -308,24 +308,7 @@ def classify_run_failure(
             error=detail,
         )
 
-    # 5. Quota exhaustion (plan / billing limits — distinct from transient rate limits)
-    quota_patterns = (
-        "exceeded your current quota",
-        "quota exhausted",
-        "out of quota",
-        "usage limit",
-        "plan limit",
-        "billing hard limit",
-    )
-    if "disk quota" not in lower and any(pat in lower for pat in quota_patterns):
-        return FailureClassification(
-            failure_class="quota_exhausted",
-            retryable=True,
-            remediation=f"Provider {provider} quota exhausted; failover chain will try the next provider.",
-            error=f"Quota exhausted on {provider}",
-        )
-
-    # 5b. Rate limits
+    # 5. Rate limits
     rate_patterns = (
         "429",
         "rate limit",
