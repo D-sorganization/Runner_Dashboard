@@ -7,14 +7,28 @@ Loads RM-OPS-017 exclusively through the vendored
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 
-from shared_scripts.runner_disk_guard_config import (
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from shared_scripts.runner_disk_guard_config import (  # noqa: E402
     DEFAULT_CONFIG_PATH,
+    DiskGuardThresholds,
     RunnerDiskGuardConfig,
     load_runner_disk_guard_config,
 )
+
+__all__ = [
+    "DEFAULT_CONFIG_PATH",
+    "DiskGuardThresholds",
+    "RunnerDiskGuardConfig",
+    "clear_runner_disk_guard_policy_cache",
+    "load_runner_disk_guard_policy",
+]
 
 
 def _resolve_config_path(path: str | None) -> Path:

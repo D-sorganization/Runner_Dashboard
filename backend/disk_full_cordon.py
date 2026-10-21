@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from shared_scripts.runner_disk_guard_config import DiskGuardThresholds, RunnerDiskGuardConfig
+from runner_disk_guard_policy import DiskGuardThresholds, RunnerDiskGuardConfig
 
 CordonPhase = Literal["normal", "tripping", "cordoned"]
 

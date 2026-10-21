@@ -94,7 +94,20 @@ def _load_scheduler():
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
-def test_scheduler_lock_signal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+@pytest.mark.parametrize(
+    "cleanup_stale",
+    [
+        pytest.param(None, id="default-read-only"),
+        pytest.param(False, id="explicit-read-only"),
+        pytest.param(True, id="explicit-cleanup"),
+    ],
+)
+def test_scheduler_lock_signal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    cleanup_stale: bool | None,
+) -> None:
     sched = _load_scheduler()
     body, procs, busy_expected = CASES[case]
     workdir = tmp_path / "runner-1"
@@ -108,5 +121,11 @@ def test_scheduler_lock_signal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(sched, "PROC_ROOT", _fake_proc(tmp_path, procs))
     monkeypatch.setattr(sched, "runner_busy_via_process", lambda _w: False)
 
-    assert sched.runner_busy_via_lock(workdir) is busy_expected
-    assert lock.exists() is busy_expected
+    if cleanup_stale is None:
+        busy = sched.runner_busy_via_lock(workdir)
+    else:
+        busy = sched.runner_busy_via_lock(workdir, cleanup_stale=cleanup_stale)
+
+    assert busy is busy_expected
+    expected_lock_exists = busy_expected if cleanup_stale is True else True
+    assert lock.exists() is expected_lock_exists

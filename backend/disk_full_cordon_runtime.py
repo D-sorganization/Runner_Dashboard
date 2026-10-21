@@ -19,9 +19,10 @@ from disk_full_cordon import (
     plan_cordon_tick,
 )
 from host_volume import probe_host_volume
-from runner_disk_guard_policy import load_runner_disk_guard_policy
-
-from shared_scripts.runner_disk_guard_config import RunnerDiskGuardConfig
+from runner_disk_guard_policy import (
+    RunnerDiskGuardConfig,
+    load_runner_disk_guard_policy,
+)
 
 log = logging.getLogger("dashboard.disk_full_cordon_runtime")
 

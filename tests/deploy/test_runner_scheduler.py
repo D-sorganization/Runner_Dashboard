@@ -10,6 +10,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEDULER_PATH = REPO_ROOT / "deploy" / "runner-scheduler.py"
 
@@ -165,6 +167,101 @@ def test_runner_busy_detects_fresh_hook_lock(monkeypatch, tmp_path: Path) -> Non
     )
 
     assert runner_scheduler.runner_busy(workdir) is True
+
+
+@pytest.mark.parametrize("worker_state", ["dead", "reused"])
+def test_preview_lock_inspection_preserves_stale_lock_bytes(monkeypatch, tmp_path: Path, worker_state: str) -> None:
+    workdir = tmp_path / "runner-5"
+    workdir.mkdir()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    if worker_state == "reused":
+        pid_dir = proc_root / "4242"
+        pid_dir.mkdir()
+        (pid_dir / "cmdline").write_bytes(b"python\x00other")
+
+    lock_dir = tmp_path / "runner-busy"
+    lock_dir.mkdir()
+    lock = lock_dir / "runner-5.lock"
+    original = b"pid=101\nworker_pid=4242\n"
+    lock.write_bytes(original)
+    monkeypatch.setattr(runner_scheduler, "RUNNER_BUSY_LOCK_DIR", lock_dir)
+    monkeypatch.setattr(runner_scheduler, "PROC_ROOT", proc_root)
+
+    assert runner_scheduler.runner_busy_via_lock(workdir, cleanup_stale=False) is False
+    assert runner_scheduler.runner_busy_via_lock(workdir, cleanup_stale=False) is False
+    assert lock.read_bytes() == original
+
+
+@pytest.mark.parametrize("worker_state", ["dead", "reused"])
+def test_applied_lock_inspection_removes_stale_lock(monkeypatch, tmp_path: Path, worker_state: str) -> None:
+    workdir = tmp_path / "runner-5"
+    workdir.mkdir()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    if worker_state == "reused":
+        pid_dir = proc_root / "4242"
+        pid_dir.mkdir()
+        (pid_dir / "cmdline").write_bytes(b"python\x00other")
+    lock_dir = tmp_path / "runner-busy"
+    lock_dir.mkdir()
+    lock = lock_dir / "runner-5.lock"
+    lock.write_bytes(b"pid=101\nworker_pid=4242\n")
+    monkeypatch.setattr(runner_scheduler, "RUNNER_BUSY_LOCK_DIR", lock_dir)
+    monkeypatch.setattr(runner_scheduler, "PROC_ROOT", proc_root)
+
+    assert runner_scheduler.runner_busy_via_lock(workdir, cleanup_stale=True) is False
+    assert not lock.exists()
+
+
+@pytest.mark.parametrize("worker_state", ["dead", "reused"])
+def test_main_dry_run_preserves_stale_lock_during_scale_down(
+    monkeypatch, tmp_path: Path, capsys, worker_state: str
+) -> None:
+    runner_root = tmp_path / "runners"
+    runner_root.mkdir()
+    for number in (1, 2):
+        (runner_root / f"runner-{number}").mkdir()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    if worker_state == "reused":
+        pid_dir = proc_root / "4242"
+        pid_dir.mkdir()
+        (pid_dir / "cmdline").write_bytes(b"python\x00other")
+    lock_dir = tmp_path / "runner-busy"
+    lock_dir.mkdir()
+    lock = lock_dir / "runner-2.lock"
+    original = b"pid=101\nworker_pid=4242\n"
+    lock.write_bytes(original)
+    monkeypatch.setattr(runner_scheduler, "RUNNER_ROOT", runner_root)
+    monkeypatch.setattr(runner_scheduler, "RUNNER_BUSY_LOCK_DIR", lock_dir)
+    monkeypatch.setattr(runner_scheduler, "PROC_ROOT", proc_root)
+    monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
+    monkeypatch.setattr(runner_scheduler, "load_config", lambda: {"enabled": True, "default_count": 1, "schedules": []})
+    monkeypatch.setattr(sys, "argv", [str(SCHEDULER_PATH), "--dry-run", "--json"])
+
+    def fake_run(command, **_kwargs):
+        if command[:3] == ["systemctl", "list-unit-files", "--type=service"]:
+            return _process_result(
+                stdout=(
+                    "actions.runner.example.runner-1.service enabled\nactions.runner.example.runner-2.service enabled\n"
+                )
+            )
+        if command[:2] == ["systemctl", "show"]:
+            runner_name = command[2].removesuffix(".service").rsplit(".", 1)[-1]
+            return _process_result(stdout=str(runner_root / runner_name) + "\n")
+        if command[:2] == ["systemctl", "is-active"]:
+            return _process_result(returncode=0)
+        if command[:2] == ["ps", "-eo"]:
+            return _process_result(stdout="")
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", fake_run)
+
+    assert runner_scheduler.main() == 0
+    state = json.loads(capsys.readouterr().out)
+    assert [action["runner"] for action in state["actions"] if action["action"] == "stop"] == [2]
+    assert lock.read_bytes() == original
 
 
 def test_apply_capacity_does_not_start_inactive_busy_runner(tmp_path: Path) -> None:
@@ -368,7 +465,7 @@ def _drain_env(monkeypatch, tmp_path: Path, worker_running):
         return worker_running(int(workdir.name.split("-")[-1]), clock.now)
 
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda workdir: busy(workdir))
-    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda workdir, unit=None: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda workdir, unit=None, **_kwargs: False)
     return clock, commands
 
 
@@ -506,7 +603,7 @@ def test_main_drains_surplus_left_by_the_tick_pass(monkeypatch, tmp_path: Path, 
     units = [_active_unit(n, tmp_path, busy=True) for n in (1, 2)]
     config = {"enabled": True, "default_count": 1, "schedules": []}
     monkeypatch.setattr(runner_scheduler, "load_config", lambda: config)
-    monkeypatch.setattr(runner_scheduler, "list_units", lambda: units)
+    monkeypatch.setattr(runner_scheduler, "list_units", lambda **_kwargs: units)
     monkeypatch.setattr(runner_scheduler, "apply_capacity", lambda *_a, **_k: [])
     monkeypatch.setattr(
         runner_scheduler,
@@ -643,7 +740,7 @@ def test_unit_is_thawed_when_systemctl_stop_fails(monkeypatch, tmp_path: Path) -
 
     monkeypatch.setattr(runner_scheduler, "run_cmd", run)
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
-    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: False)
 
     assert runner_scheduler.stop_runner_safely(unit) is False
     assert _thaws(commands) == [unit.unit]
@@ -654,7 +751,7 @@ def test_successful_stop_is_not_followed_by_a_thaw(monkeypatch, tmp_path: Path) 
     commands: list[list[str]] = []
     monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
-    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: False)
 
     assert runner_scheduler.stop_runner_safely(unit) is True
     assert _thaws(commands) == []
@@ -672,7 +769,11 @@ def test_tick_stop_also_freezes_and_reverifies(monkeypatch, tmp_path: Path) -> N
         return looks["n"] >= 3
 
     clock, commands = _drain_env(monkeypatch, tmp_path, late_job)
-    monkeypatch.setattr(runner_scheduler, "runner_busy", lambda workdir, unit=None: late_job(int(workdir.name[-1]), 0))
+    monkeypatch.setattr(
+        runner_scheduler,
+        "runner_busy",
+        lambda workdir, **_kwargs: late_job(int(workdir.name[-1]), 0),
+    )
 
     actions = runner_scheduler.apply_capacity(units, desired=1, dry_run=False)
 
@@ -748,7 +849,7 @@ def test_main_resume_clears_hold(monkeypatch, tmp_path: Path) -> None:
     runner_scheduler.set_maintenance(True)
     config = {"enabled": True, "default_count": 1, "schedules": []}
     monkeypatch.setattr(runner_scheduler, "load_config", lambda: config)
-    monkeypatch.setattr(runner_scheduler, "list_units", lambda: [])
+    monkeypatch.setattr(runner_scheduler, "list_units", lambda **_kwargs: [])
     monkeypatch.setattr(runner_scheduler, "write_state", lambda _s: None)
     monkeypatch.setattr(sys, "argv", ["runner-scheduler", "--apply", "--resume"])
 
@@ -771,7 +872,7 @@ def test_stop_timeout_counts_as_stopped_when_the_unit_went_down(monkeypatch, tmp
 
     monkeypatch.setattr(runner_scheduler, "run_cmd", run)
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
-    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: False)
 
     assert runner_scheduler.stop_runner_safely(unit) is True
     assert _thaws(commands) == []
@@ -789,7 +890,7 @@ def test_stop_timeout_with_unit_still_active_thaws_and_keeps_it(monkeypatch, tmp
 
     monkeypatch.setattr(runner_scheduler, "run_cmd", run)
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
-    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: False)
 
     assert runner_scheduler.stop_runner_safely(unit) is False
     assert _thaws(commands) == [unit.unit]
@@ -806,7 +907,7 @@ def test_systemctl_stop_gets_its_own_longer_timeout(monkeypatch, tmp_path: Path)
 
     monkeypatch.setattr(runner_scheduler, "run_cmd", run)
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
-    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: False)
 
     assert runner_scheduler.stop_runner_safely(unit) is True
     assert timeouts["stop"] == runner_scheduler.STOP_TIMEOUT_SECONDS
