@@ -13,6 +13,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from staff.adapter_policies import READ_ONLY_RUN_PROVIDERS
+
 # RoleSpec is passed at runtime; avoid importing staff.roles (cycle).
 
 log = logging.getLogger("dashboard.staff.provider_failover_config")
@@ -131,18 +133,28 @@ def resolve_failover_chain(
     When ``requested_provider`` is set, the chain starts at that provider (if allowed)
     and continues through later steps; earlier defaults are skipped.
     """
-    providers: tuple[str, ...] = tuple(role.providers)
+    raw_providers: tuple[str, ...] = tuple(role.providers)
+    providers = raw_providers
+    if getattr(role, "code_read_only", False):
+        read_only = tuple(p for p in raw_providers if p in READ_ONLY_RUN_PROVIDERS)
+        if read_only:
+            providers = read_only
     role_model: str | None = getattr(role, "model", None)
     allowed = frozenset(providers)
-    base = default_failover_chain()
     override = getattr(role, "failover_chain", ()) or ()
-    if override:
-        base = override
+    default_by_provider = {s.provider: s for s in default_failover_chain()}
 
-    filtered: list[FailoverStep] = []
-    for step in base:
-        if step.provider in allowed:
-            filtered.append(step)
+    if override:
+        filtered = [step for step in override if step.provider in allowed]
+    else:
+        filtered = []
+        for pid in providers:
+            if pid not in allowed:
+                continue
+            if pid in default_by_provider:
+                filtered.append(default_by_provider[pid])
+            else:
+                filtered.append(FailoverStep(pid, role_model if pid == providers[0] else None))
 
     if not filtered:
         filtered = [FailoverStep(p, role_model if p == providers[0] else None) for p in providers]
