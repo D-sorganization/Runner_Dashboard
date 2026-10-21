@@ -10,12 +10,14 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from staff.roles import role_validation_errors
+from staff.rm_reconcile import HoldReconcileError, format_hold_reconcile_diff, reconcile_holds_for_roles_dir
+from staff.roles import role_validation_errors, roles_dir
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.rm_sync")
@@ -108,6 +110,7 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     previous = _read(path)
     now = time.time()
     if previous.get("root") == str(root) and 0 <= now - previous.get("checked_at", 0) < INTERVAL_SECONDS:
+        _reconcile_holds_after_refresh(root, previous)
         return previous
     state: dict[str, Any] = {
         "root": str(root),
@@ -152,6 +155,7 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
         state["commit_time"] = int(_git(root, "show", "-s", "--format=%ct", "HEAD"))
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
+    _reconcile_holds_after_refresh(root, state)
     _write(path, state)
     log.info(
         "RM source refresh: %s (%s)",
@@ -161,13 +165,54 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     return state
 
 
+def _reconcile_holds_after_refresh(root: Path, state: dict[str, Any]) -> None:
+    """Best-effort hold reconcile from role YAML; never raises to the timer."""
+    commit = state.get("commit")
+    if not commit:
+        return
+    default_roles = root / "staff" / "roles"
+    roles_path = default_roles if default_roles.is_dir() else roles_dir()
+    try:
+        diff = reconcile_holds_for_roles_dir(roles_path, str(commit))
+    except HoldReconcileError as exc:
+        state["hold_reconcile"] = {"status": "error", "reason": str(exc)}
+        log.error("RM hold reconcile failed (fail closed): %s", exc)
+        return
+    if diff is None:
+        return
+    state["hold_reconcile"] = {"status": "ok", "changed": diff.changed, **diff.to_dict()}
+    if diff.changed:
+        log.info("RM hold reconcile commit=%s %s", commit, format_hold_reconcile_diff(diff))
+
+
 def main() -> None:
+    import argparse
+
     logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser(description="Fast-forward STAFF_RM_ROOT and reconcile holds from role YAML.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print hold reconcile diff without writing staff_holds.json",
+    )
+    args = parser.parse_args()
+    if args.dry_run:
+        os.environ["STAFF_RM_RECONCILE_DRY_RUN"] = "1"
     configured = os.environ.get("STAFF_RM_ROOT")
     if not configured:
         log.warning("STAFF_RM_ROOT is unset; RM refresh skipped")
         return
-    refresh(Path(configured))
+    root = Path(configured)
+    state = refresh(root)
+    if args.dry_run and state.get("hold_reconcile"):
+        sys.stdout.write(format_hold_reconcile_diff_from_state(state) + "\n")
+
+
+def format_hold_reconcile_diff_from_state(state: dict[str, Any]) -> str:
+    """Extract reconcile diff fields written by ``_reconcile_holds_after_refresh``."""
+    keys = ("added", "deactivated", "updated", "unchanged")
+    payload = {k: state["hold_reconcile"].get(k, []) for k in keys if "hold_reconcile" in state}
+    return json.dumps(payload, indent=2, sort_keys=True)
 
 
 if __name__ == "__main__":
