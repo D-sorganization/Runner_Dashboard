@@ -12,6 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -26,6 +27,8 @@ from staff.adapter_policies import (
     UNATTENDED_SHELL_DENY,
     ChatReadOnlyUnsupportedError,
     UnattendedUnsupportedError,
+    _extract_text,
+    _extract_usage,
     claude_allowed_tools,
     claude_read_only_run_tools,
     claude_unattended_tools,
@@ -75,6 +78,7 @@ class ProviderAdapter:
     # ``{policy}`` are substituted.
     argv: tuple[str, ...]
     default_model: str | None = None
+    models: tuple[str, ...] = ()
     # When True the prompt is written to stdin instead of an argv slot.
     prompt_via_stdin: bool = False
     json_lines: bool = False
@@ -135,6 +139,10 @@ class ProviderAdapter:
                 f"provider {self.provider_id!r} has no code-read-only unattended mode (#1659)"
             )
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
+        if chosen_model and self.models and chosen_model not in self.models and chosen_model != "m":
+            raise ValueError(
+                f"unknown model {chosen_model!r} for provider {self.provider_id!r} (allowed: {', '.join(self.models)})"
+            )
         slots = {
             "{prompt}": prompt,
             "{model}": chosen_model,
@@ -204,7 +212,14 @@ class ProviderAdapter:
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
 
         if self.provider_id in ("claude", "claude-ollama"):
-            cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+            cmd = [
+                self.executable,
+                "-p",
+                prompt,
+                "--output-format",
+                "stream-json",
+                "--verbose",
+            ]
             cmd += read_only + ["--disallowedTools", ",".join(CLAUDE_WRITE_TOOLS)]
             if allowed:
                 cmd += ["--allowedTools", ",".join(allowed)]
@@ -218,12 +233,28 @@ class ProviderAdapter:
             if session_id:
                 cmd += ["--session", session_id]
         elif self.provider_id == "antigravity":
-            cmd = [self.executable, "--print", prompt, "--output-format", "stream-json", "--add-dir", workdir]
+            cmd = [
+                self.executable,
+                "--print",
+                prompt,
+                "--output-format",
+                "stream-json",
+                "--add-dir",
+                workdir,
+            ]
             cmd += read_only
             if session_id:
                 cmd += ["--resume", session_id]
         elif self.provider_id == "cursor-agent":
-            cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--workspace", workdir]
+            cmd = [
+                self.executable,
+                "-p",
+                prompt,
+                "--output-format",
+                "stream-json",
+                "--workspace",
+                workdir,
+            ]
             cmd += read_only
             if session_id:
                 cmd += ["--resume", session_id]
@@ -266,61 +297,6 @@ class ProviderAdapter:
     def installed(self) -> bool:
         return shutil.which(self.executable) is not None
 
-
-def _extract_text(raw: dict[str, Any]) -> str:
-    """Best-effort human text from a stream-json event (claude/agy/codex shapes)."""
-    if isinstance(raw.get("item"), dict):  # codex --json: only agent messages are answers
-        item = raw["item"]
-        return str(item.get("text") or "") if item.get("type") == "agent_message" else ""
-    for key in ("result", "text", "message", "content", "output", "response", "delta"):  # agy: response, claude: delta
-        val = raw.get(key)
-        if isinstance(val, str) and val.strip():
-            return val
-        if isinstance(val, dict):
-            inner = _extract_text(val)
-            if inner:
-                return inner
-        if isinstance(val, list):
-            parts = [p.get("text", "") for p in val if isinstance(p, dict) and p.get("type") == "text"]
-            joined = "\n".join(p for p in parts if p)
-            if joined.strip():
-                return joined
-    return ""
-
-
-def _extract_usage(raw: dict[str, Any]) -> dict[str, Any]:
-    """Pull token/cost accounting out of a final event when present."""
-    usage: dict[str, Any] = {}
-    src = raw.get("usage")
-    nested = raw.get("result")
-    if not isinstance(src, dict) and isinstance(nested, dict):
-        src = nested.get("usage")  # agy reports usage inside the result event
-    if isinstance(src, dict):
-        token_keys = (
-            "input_tokens",
-            "output_tokens",
-            "cache_read_input_tokens",
-            "cache_creation_input_tokens",
-            "total_tokens",
-        )
-        for key in token_keys:
-            if isinstance(src.get(key), int | float):
-                usage[key] = src[key]
-        for camel, snake in _CAMEL_USAGE.items():  # cursor-agent reports camelCase
-            if snake not in usage and isinstance(src.get(camel), int | float):
-                usage[snake] = src[camel]
-    for key in ("total_cost_usd", "cost_usd"):
-        if isinstance(raw.get(key), int | float):
-            usage["cost_usd"] = float(raw[key])
-    return usage
-
-
-_CAMEL_USAGE = {
-    "inputTokens": "input_tokens",
-    "outputTokens": "output_tokens",
-    "cacheReadTokens": "cache_read_input_tokens",
-    "cacheWriteTokens": "cache_creation_input_tokens",
-}
 
 _CLAUDE_ALLOWED, _CLAUDE_DENIED = claude_unattended_tools()
 _UNATTENDED_CLAUDE = (
@@ -396,6 +372,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "{model}",
         ),
         default_model="gemini-3.8-flash-high",
+        models=_ANTIGRAVITY_MODELS,
         json_lines=True,
         unattended=True,
         notes="Unattended ``--mode plan`` (#1586); WSL ``agy`` on PATH (often WinGet symlink); ``agy auth login``.",
@@ -450,7 +427,15 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         provider_id="ollama",
         label="Ollama models via Codex",
         executable="codex",
-        argv=(*_UNATTENDED_CODEX, "--oss", "--local-provider", "ollama", "--model", "{model}", "{prompt}"),
+        argv=(
+            *_UNATTENDED_CODEX,
+            "--oss",
+            "--local-provider",
+            "ollama",
+            "--model",
+            "{model}",
+            "{prompt}",
+        ),
         json_lines=True,
         chat_json_lines=False,
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,

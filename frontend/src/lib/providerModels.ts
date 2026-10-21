@@ -31,10 +31,17 @@ export const PROVIDER_MODELS: Record<string, ProviderModel[]> = {
     { value: "gemini-2.0-flash", label: "2.0 Flash" },
   ],
   jules_api: [{ value: "gemini-2.5-pro", label: "2.5 Pro" }],
+  antigravity: [
+    { value: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)" },
+    { value: "gemini-4-argon-high", label: "Gemini 4 Argon (High)" },
+    { value: "gemini-4-argon-medium", label: "Gemini 4 Argon (Medium)" },
+    { value: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)" },
+  ],
 };
 
 /** Providers whose dispatch envelope accepts a `model` field. */
 export const PROVIDERS_WITH_MODEL = [
+  "antigravity",
   "claude_code_cli",
   "codex_cli",
   "gemini_cli",

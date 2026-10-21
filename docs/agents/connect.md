@@ -12,6 +12,7 @@ Dedicated setup guides with least-privilege token minting, verification steps, a
 
 - [**Claude Code & Claude Cowork Guide**](claude.md) — MCP configuration (`claude mcp add` & `claude_desktop_config.json`), token scopes, and talking to Barb.
 - [**Codex CLI Guide**](codex.md) — `~/.codex/config.toml` MCP configuration, least-privilege token minting, and work-item tracking.
+- [**Antigravity (agy) Guide**](antigravity.md) — Antigravity CLI headless execution, model selection, and fallback dispatch.
 - [**Grok Bot Guide**](grok.md) — Local-exec `curl` recipes against `/api/v1/staff`, active Barb/Orchestrator roles, and remote-access notes (cloud-hosted clients are unsupported, ADR 0007).
 
 | Client         | Use it from                             | Entry point                     |

@@ -305,8 +305,12 @@ def classify_run_failure(
         "overloaded_error",
         "overloaded",
         "exceeded your current quota",
+        "resource_exhausted",
+        "quota exceeded",
+        "quota exhausted",
+        "out of quota",
     )
-    if any(pat in lower for pat in rate_patterns):
+    if "disk quota" not in lower and any(pat in lower for pat in rate_patterns):
         return FailureClassification(
             failure_class="rate_limited",
             retryable=True,

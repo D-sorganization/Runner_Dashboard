@@ -620,6 +620,64 @@ def _probe_ollama() -> dict[str, Any]:
     }
 
 
+def _antigravity_login_present() -> bool:
+    """True when Antigravity CLI holds a Google sign-in session."""
+    return (
+        _cli_login_file_present("ANTIGRAVITY_HOME", ".gemini", "settings.json")
+        or _cli_login_file_present("ANTIGRAVITY_HOME", ".gemini/antigravity-cli", "installation_id")
+        or _cli_login_file_present("ANTIGRAVITY_HOME", ".gemini/antigravity-cli", "jetski_state.pbtxt")
+    )
+
+
+def _antigravity_quota_status() -> tuple[bool, str]:
+    """Check quota headroom for antigravity."""
+    try:
+        from staff import quota as quota_mod
+
+        return quota_mod.headroom("antigravity", 100.0)
+    except Exception:  # noqa: BLE001
+        return True, ""
+
+
+def _probe_antigravity_cli() -> dict[str, Any]:
+    """Probe Antigravity (agy) CLI presence, authentication, and quota."""
+    agy_binary = _find_binary("agy")
+    installed = agy_binary is not None
+    login_present = _antigravity_login_present()
+    api_key = _env_present("ANTIGRAVITY_API_KEY") or _env_present("GOOGLE_API_KEY")
+    authenticated = bool(login_present or api_key)
+    quota_available, quota_detail = _antigravity_quota_status()
+
+    if not installed:
+        status, detail = "not_installed", "agy not found on PATH"
+    elif not authenticated:
+        status, detail = "missing_key", "not signed in: run `agy` or `agy auth login`"
+    elif not quota_available:
+        status, detail = "quota_exhausted", quota_detail or "antigravity quota exhausted"
+    else:
+        status, detail = "ready", "Ready"
+
+    usable = installed and authenticated and quota_available
+    return {
+        "id": "antigravity",
+        "label": "Antigravity CLI",
+        "icon": "google",
+        "installed": installed,
+        "authenticated": authenticated,
+        "quota_available": quota_available,
+        "reachable": usable,
+        "usable": usable,
+        "binary_found": installed,
+        "key_status": "oauth" if login_present else ("set" if api_key else "missing"),
+        "status": status,
+        "detail": detail,
+        "config_source": "system" if authenticated else "unavailable",
+        "docs_url": "https://github.com/google/antigravity",
+        "setup_hint": "Install Antigravity CLI (agy), then run `agy auth login`",
+        "key_provider": "antigravity",
+    }
+
+
 async def _probe_linear_workspaces() -> list[dict[str, Any]]:
     """Probe configured Linear workspaces."""
     probes: list[dict[str, Any]] = []
@@ -680,6 +738,7 @@ async def _collect_all_probes() -> list[dict[str, Any]]:
         cline_probe,
         _probe_gemini_cli(),
         _probe_ollama(),
+        _probe_antigravity_cli(),
     ]
     probes.extend(linear_probes)
     return probes

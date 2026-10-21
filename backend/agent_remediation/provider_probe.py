@@ -54,7 +54,9 @@ def _default_credential_probes() -> dict[str, CredentialProbe]:
     (e.g. Cline's VS Code extension probe) are excluded: this function runs in
     the request path and must stay cheap and synchronous.
     """
-    from routers import credentials  # noqa: PLC0415 — lazy on purpose (see module docstring)
+    from routers import (
+        credentials,
+    )  # noqa: PLC0415 — lazy on purpose (see module docstring)
 
     candidates: dict[str, CredentialProbe] = {
         "jules_cli": credentials._probe_jules_cli,  # noqa: SLF001
@@ -63,6 +65,7 @@ def _default_credential_probes() -> dict[str, CredentialProbe]:
         "claude_code_cli": credentials._probe_claude_code_cli,  # noqa: SLF001
         "gemini_cli": credentials._probe_gemini_cli,  # noqa: SLF001
         "ollama": credentials._probe_ollama,  # noqa: SLF001
+        "antigravity": credentials._probe_antigravity_cli,  # noqa: SLF001
     }
     return {k: v for k, v in candidates.items() if not inspect.iscoroutinefunction(v)}
 
@@ -79,7 +82,11 @@ def _probe_one(
         try:
             probe = credential_probe()
         except Exception as exc:  # noqa: BLE001 — resilience: never 500 the registry.
-            log.warning("Credential probe for %s failed: %s", entry.dashboard_id, type(exc).__name__)
+            log.warning(
+                "Credential probe for %s failed: %s",
+                entry.dashboard_id,
+                type(exc).__name__,
+            )
             return {
                 "installed": installed,
                 "authenticated": False,
@@ -92,7 +99,11 @@ def _probe_one(
         }
 
     if not installed:
-        return {"installed": False, "authenticated": False, "detail": f"{binary} not found on PATH"}
+        return {
+            "installed": False,
+            "authenticated": False,
+            "detail": f"{binary} not found on PATH",
+        }
     if entry.auth_mode == "local":
         return {
             "installed": True,
