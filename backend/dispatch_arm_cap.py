@@ -70,6 +70,7 @@ class ArmCapPolicy:
             scope_tuple = tuple(str(r) for r in scope)
         else:
             raise ValueError("scope_repositories must be null or a list of repo slugs")
+
         def _resolve(path_value: str) -> Path:
             path = Path(path_value)
             return path if path.is_absolute() else repo_root / path
@@ -108,9 +109,7 @@ class PrArmSnapshot:
     def from_github(cls, repo: str, raw: dict[str, Any], checks: list[tuple[str, str]] | None = None) -> PrArmSnapshot:
         labels = tuple(str(x) for x in raw.get("labels", []) if isinstance(x, str))
         if not labels and isinstance(raw.get("labels"), list):
-            labels = tuple(
-                str(item.get("name", "")) for item in raw.get("labels", []) if isinstance(item, dict)
-            )
+            labels = tuple(str(item.get("name", "")) for item in raw.get("labels", []) if isinstance(item, dict))
         mq = raw.get("merge_queue_entry") or {}
         mq_state = str(mq.get("state") or "") if isinstance(mq, dict) else ""
         return cls(
@@ -271,31 +270,25 @@ class ArmCapStore:
         now = now_iso or _iso_now()
         with self._lock, self._connect() as conn:
             cur = conn.execute(
-                "UPDATE arm_reservations SET status = 'expired' "
-                "WHERE status = 'pending' AND expires_at <= ?",
+                "UPDATE arm_reservations SET status = 'expired' WHERE status = 'pending' AND expires_at <= ?",
                 (now,),
             )
             return int(cur.rowcount)
 
     def count_healthy_armed(self) -> int:
         with self._lock, self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1").fetchone()
             return int(row["c"] if row else 0)
 
     def count_pending_reservations(self, exclude_token: str | None = None) -> int:
         with self._lock, self._connect() as conn:
             if exclude_token:
                 row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM arm_reservations "
-                    "WHERE status = 'pending' AND token != ?",
+                    "SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending' AND token != ?",
                     (exclude_token,),
                 ).fetchone()
             else:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'"
-                ).fetchone()
+                row = conn.execute("SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'").fetchone()
             return int(row["c"] if row else 0)
 
     def effective_healthy_load(self, exclude_token: str | None = None) -> int:
@@ -398,9 +391,7 @@ class ArmCapStore:
     def recover_pending_as_inventory_gap(self) -> int:
         """After restart, pending reservations still occupy cap until expired or confirmed."""
         with self._lock, self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'").fetchone()
             return int(row["c"] if row else 0)
 
     def get_disarm_state(self, key: str) -> str:
@@ -419,17 +410,14 @@ class ArmCapStore:
     @staticmethod
     def _expire_in_conn(conn: sqlite3.Connection, now_iso: str) -> None:
         conn.execute(
-            "UPDATE arm_reservations SET status = 'expired' "
-            "WHERE status = 'pending' AND expires_at <= ?",
+            "UPDATE arm_reservations SET status = 'expired' WHERE status = 'pending' AND expires_at <= ?",
             (now_iso,),
         )
 
     @staticmethod
     def _effective_load_in_conn(conn: sqlite3.Connection) -> int:
         inv = conn.execute("SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1").fetchone()
-        pending = conn.execute(
-            "SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'"
-        ).fetchone()
+        pending = conn.execute("SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'").fetchone()
         return int(inv["c"] if inv else 0) + int(pending["c"] if pending else 0)
 
 
