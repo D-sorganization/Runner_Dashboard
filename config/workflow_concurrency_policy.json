@@ -1,6 +1,7 @@
 {
   "cancel_in_progress_false_allowlist": {
     "conflict-disarm.yml": "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state.",
+    "arm-cap-reconcile.yml": "Armed-PR inventory reconcile must finish SQLite inventory sync before optional disarm dispatch; cancel mid-run risks cap drift.",
     "deploy-qualified-release.yml": "A root deployment transaction must reach commit or rollback and cannot be interrupted safely.",
     "release.yml": "Release publishing must not be interrupted after versioning and tag orchestration begin."
   },
