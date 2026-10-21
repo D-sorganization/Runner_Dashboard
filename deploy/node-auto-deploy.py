@@ -10,6 +10,15 @@ import sys
 import tempfile
 from pathlib import Path
 
+_MIN_PYTHON = (3, 11)
+if sys.version_info < _MIN_PYTHON:
+    sys.stderr.write(
+        "node-auto-deploy requires Python "
+        f"{_MIN_PYTHON[0]}.{_MIN_PYTHON[1]}+ (use the dashboard .venv); "
+        f"got {sys.version_info.major}.{sys.version_info.minor} from {sys.executable}\n"
+    )
+    raise SystemExit(2)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEPLOY_LIB = Path(__file__).resolve().parent
 sys.path.insert(0, str(DEPLOY_LIB))

@@ -33,3 +33,5 @@ def test_install_renders_user_unit_without_system_user_line() -> None:
     text = (DEPLOY / "install-node-auto-deploy.sh").read_text(encoding="utf-8")
     assert "sed '/^User=/d'" in text
     assert "auto-deploy-env.sh" in text
+    assert "resolve-auto-deploy-python.sh" in text
+    assert "PYTHON_BIN" in text

@@ -11,16 +11,25 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 DEPLOY = REPO / "deploy"
-BASH = os.environ.get("BASH", "bash")
+BASH = os.environ.get("BASH", "/bin/bash")
 
 
-def _render_system_unit(tmp_path: Path, *, user: str, home: str, deploy: str, env_file: str) -> str:
+def _render_system_unit(
+    tmp_path: Path,
+    *,
+    user: str,
+    home: str,
+    deploy: str,
+    env_file: str,
+    python_bin: str,
+) -> str:
     template = (DEPLOY / "systemd" / "runner-dashboard-auto-deploy.service").read_text(encoding="utf-8")
     rendered = (
         template.replace("@DASHBOARD_USER@", user)
         .replace("@DASHBOARD_HOME@", home)
         .replace("@DEPLOY_DIR@", deploy)
         .replace("@ENV_FILE@", env_file)
+        .replace("@PYTHON_BIN@", python_bin)
     )
     unit = tmp_path / "runner-dashboard-auto-deploy.service"
     unit.write_text(rendered, encoding="utf-8")
@@ -34,10 +43,12 @@ def test_system_unit_sets_user_and_home(tmp_path: Path) -> None:
         home="/home/dieterolson",
         deploy="/home/dieterolson/actions-runners/dashboard",
         env_file="/home/dieterolson/.config/runner-dashboard/env",
+        python_bin="/home/dieterolson/actions-runners/dashboard/.venv/bin/python",
     )
     assert "User=dieterolson" in text
     assert "Environment=HOME=/home/dieterolson" in text
     assert "Environment=RUNNER_DASHBOARD_ENV_FILE=/home/dieterolson/.config/runner-dashboard/env" in text
+    assert "Environment=RUNNER_DASHBOARD_PYTHON=/home/dieterolson/actions-runners/dashboard/.venv/bin/python" in text
 
 
 @pytest.mark.skipif(not Path(BASH).exists(), reason="bash required")
@@ -52,6 +63,13 @@ def test_entrypoint_runs_with_home_unset(tmp_path: Path) -> None:
         (DEPLOY / "auto-deploy-env.sh").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
+    (deploy / "deploy" / "resolve-auto-deploy-python.sh").write_text(
+        (DEPLOY / "resolve-auto-deploy-python.sh").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    venv_python = deploy / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.symlink_to(sys.executable)
     stub = deploy / "deploy" / "node-auto-deploy.py"
     stub.write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
     os.chmod(script, 0o755)
