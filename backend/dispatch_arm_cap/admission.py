@@ -8,8 +8,8 @@ from datetime import timedelta
 from pathlib import Path
 
 from dispatch_arm_cap.health import classify_arm_health, load_required_contexts
-from dispatch_arm_cap.time_parse import parse_iso_timestamp
 from dispatch_arm_cap.store import ArmCapStore
+from dispatch_arm_cap.time_parse import parse_iso_timestamp
 from dispatch_arm_cap.types import (
     DEFAULT_POLICY_PATH,
     AdmitContext,
