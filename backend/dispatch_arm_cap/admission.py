@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 from dispatch_arm_cap.health import classify_arm_health, load_required_contexts
+from dispatch_arm_cap.time_parse import parse_iso_timestamp
 from dispatch_arm_cap.store import ArmCapStore
 from dispatch_arm_cap.types import (
     DEFAULT_POLICY_PATH,
@@ -19,10 +20,6 @@ from dispatch_arm_cap.types import (
 from time_utils import utc_now_iso
 
 logger = logging.getLogger("dispatch_arm_cap.admission")
-
-
-def _parse_iso(iso: str) -> datetime:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
 
 
 def load_policy(repo_root: Path | None = None, policy_path: Path | None = None) -> ArmCapPolicy:
@@ -117,9 +114,9 @@ def should_trigger_cap_disarm(
         return False
     if healthy_count <= policy.max_healthy_armed:
         return False
-    now = _parse_iso(now_iso or utc_now_iso())
+    now = parse_iso_timestamp(now_iso or utc_now_iso())
     last = store.get_disarm_state("last_disarm_at")
-    if last and now - _parse_iso(last) < timedelta(seconds=policy.disarm_cooldown_seconds):
+    if last and now - parse_iso_timestamp(last) < timedelta(seconds=policy.disarm_cooldown_seconds):
         return False
     streak = int(store.get_disarm_state("over_cap_streak") or "0")
     if streak < policy.disarm_transient_streak_limit:

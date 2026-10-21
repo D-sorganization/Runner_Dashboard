@@ -6,9 +6,10 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
+from dispatch_arm_cap.time_parse import parse_iso_timestamp
 from dispatch_arm_cap.types import AdmitContext, AdmitDecision, HealthVerdict
 from time_utils import utc_now_iso
 
@@ -40,10 +41,6 @@ CREATE TABLE IF NOT EXISTS cap_disarm_state (
     value TEXT NOT NULL
 );
 """
-
-
-def _parse_iso(iso: str) -> datetime:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
 
 
 class ArmCapStore:
@@ -134,7 +131,7 @@ class ArmCapStore:
     ) -> AdmitDecision:
         """Atomically reserve a cap slot if load < cap (single-flight per repo#pr)."""
         now = now_iso or utc_now_iso()
-        expires = (_parse_iso(now) + timedelta(seconds=ttl_seconds)).isoformat().replace("+00:00", "Z")
+        expires = (parse_iso_timestamp(now) + timedelta(seconds=ttl_seconds)).isoformat().replace("+00:00", "Z")
         token = str(uuid.uuid4())
         with self._lock, self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
