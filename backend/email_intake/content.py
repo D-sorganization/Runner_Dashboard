@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import re
 from email import policy as email_policy
+from email.message import Message
 from email.parser import BytesParser
 
 from staff.redaction import redact_sensitive_content
 
 _TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _payload_bytes(part: Message) -> bytes:
+    raw = part.get_payload(decode=True)
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    return b""
 
 
 def html_to_plain(text: str) -> str:
@@ -25,13 +33,13 @@ def extract_plain_body(raw_bytes: bytes) -> str:
         for part in msg.walk():
             ctype = part.get_content_type()
             if ctype == "text/plain":
-                payload = part.get_payload(decode=True) or b""
+                payload = _payload_bytes(part)
                 plain_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
             elif ctype == "text/html":
-                payload = part.get_payload(decode=True) or b""
+                payload = _payload_bytes(part)
                 html_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
     else:
-        payload = msg.get_payload(decode=True) or b""
+        payload = _payload_bytes(msg)
         body = payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
         if msg.get_content_type() == "text/html":
             html_parts.append(body)
