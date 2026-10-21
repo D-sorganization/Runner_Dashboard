@@ -22,6 +22,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
+from time_utils import utc_now_iso
+
 logger = logging.getLogger("dispatch_arm_cap")
 
 CONFLICT_DISARMED_LABEL = "conflict:disarmed"
@@ -33,10 +35,6 @@ ReservationStatus = Literal["pending", "confirmed", "released", "expired"]
 Lifecycle = Literal["awaiting_checks", "queued", "building", "evicted", "unarmed"]
 
 _FAILING_CONCLUSIONS = frozenset({"failure", "cancelled", "timed_out", "action_required"})
-
-
-def _iso_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _parse_iso(iso: str) -> datetime:
@@ -267,7 +265,7 @@ class ArmCapStore:
             conn.executescript(_SCHEMA)
 
     def expire_stale_reservations(self, now_iso: str | None = None) -> int:
-        now = now_iso or _iso_now()
+        now = now_iso or utc_now_iso()
         with self._lock, self._connect() as conn:
             cur = conn.execute(
                 "UPDATE arm_reservations SET status = 'expired' WHERE status = 'pending' AND expires_at <= ?",
@@ -315,7 +313,7 @@ class ArmCapStore:
                     1 if verdict.healthy else 0,
                     verdict.lifecycle,
                     json.dumps(list(verdict.reasons)),
-                    updated_at or _iso_now(),
+                    updated_at or utc_now_iso(),
                 ),
             )
 
@@ -334,7 +332,7 @@ class ArmCapStore:
         now_iso: str | None = None,
     ) -> AdmitDecision:
         """Atomically reserve a cap slot if load < cap (single-flight per repo#pr)."""
-        now = now_iso or _iso_now()
+        now = now_iso or utc_now_iso()
         expires = (_parse_iso(now) + timedelta(seconds=ttl_seconds)).isoformat().replace("+00:00", "Z")
         token = str(uuid.uuid4())
         with self._lock, self._connect() as conn:
@@ -372,7 +370,7 @@ class ArmCapStore:
             return AdmitDecision(allowed=True, reservation_token=token, healthy_armed=load + 1, cap=cap)
 
     def confirm_reservation(self, token: str, *, now_iso: str | None = None) -> bool:
-        now = now_iso or _iso_now()
+        now = now_iso or utc_now_iso()
         with self._lock, self._connect() as conn:
             cur = conn.execute(
                 "UPDATE arm_reservations SET status = 'confirmed', confirmed_at = ? "
@@ -521,7 +519,7 @@ def should_trigger_cap_disarm(
         return False
     if healthy_count <= policy.max_healthy_armed:
         return False
-    now = _parse_iso(now_iso or _iso_now())
+    now = _parse_iso(now_iso or utc_now_iso())
     last = store.get_disarm_state("last_disarm_at")
     if last:
         if now - _parse_iso(last) < timedelta(seconds=policy.disarm_cooldown_seconds):
@@ -534,7 +532,7 @@ def should_trigger_cap_disarm(
 
 
 def record_disarm_triggered(store: ArmCapStore, *, now_iso: str | None = None) -> None:
-    store.set_disarm_state("last_disarm_at", now_iso or _iso_now())
+    store.set_disarm_state("last_disarm_at", now_iso or utc_now_iso())
     store.set_disarm_state("over_cap_streak", "0")
 
 
