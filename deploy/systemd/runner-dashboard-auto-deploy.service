@@ -1,0 +1,15 @@
+[Unit]
+Description=Runner Dashboard node-local auto-deploy (one shot)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-@ENV_FILE@
+Environment=RUNNER_DASHBOARD_DEPLOY_DIR=@DEPLOY_DIR@
+Environment=RUNNER_DASHBOARD_AUTO_DEPLOY=1
+ExecStart=@DEPLOY_DIR@/deploy/node-auto-deploy.sh
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

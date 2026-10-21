@@ -1,0 +1,12 @@
+[Unit]
+Description=Runner Dashboard auto-deploy poll (every 10 minutes)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Persistent=true
+Unit=runner-dashboard-auto-deploy.service
+
+[Install]
+WantedBy=timers.target
