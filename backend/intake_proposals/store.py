@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from email_intake.dispatch_role import UnknownStaffRoleError, normalize_staff_role
 from intake_proposals.models import IntakeProposal
 from staff.store import _config_dir, first_touch_lock
 
@@ -52,6 +53,11 @@ class IntakeProposalStore:
         message_id: str,
         dispatch: dict[str, Any],
     ) -> IntakeProposal:
+        role_raw = str(dispatch.get("role") or "").strip()
+        try:
+            dispatch = {**dispatch, "role": normalize_staff_role(role_raw)}
+        except UnknownStaffRoleError:
+            raise
         prop = IntakeProposal(
             id=f"ip_{uuid.uuid4().hex[:12]}",
             state="pending",

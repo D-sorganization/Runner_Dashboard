@@ -10,7 +10,7 @@ def test_inbound_message_roundtrip_dict() -> None:
         message_id="<abc@example.com>",
         from_address="user@affinedrift.com",
         from_domain="affinedrift.com",
-        to_addresses=("intake@mail.affinedrift.com",),
+        to_addresses=("intake@work.affinedrift.com",),
         subject="Please run tests",
         body_plain="role: maintenance\nfix CI",
         received_at=datetime(2026, 10, 21, 12, 0, tzinfo=UTC),

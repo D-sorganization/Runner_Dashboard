@@ -6,6 +6,7 @@ import logging
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, principal_has_scope, require_principal
+from email_intake.dispatch_role import UnknownStaffRoleError, normalize_staff_role
 from intake_proposals.store import IntakeProposalStore, default_intake_proposal_store
 from pydantic import BaseModel, Field
 from staff.audit import record_audit
@@ -93,13 +94,23 @@ def create_intake_proposal(
     store: IntakeProposalStore = Depends(_store),  # noqa: B008
     caller: Principal = Depends(_require_create),  # noqa: B008
 ) -> dict[str, Any]:
-    prop = store.create_pending(
-        subject=body.subject,
-        body_plain=body.body_plain,
-        sender=body.sender or caller.id,
-        message_id=body.message_id or f"manual-{caller.id}",
-        dispatch=body.dispatch,
-    )
+    dispatch = dict(body.dispatch or {})
+    if not str(dispatch.get("role") or "").strip():
+        raise HTTPException(status_code=422, detail="dispatch.role is required")
+    try:
+        dispatch["role"] = normalize_staff_role(str(dispatch["role"]))
+    except UnknownStaffRoleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        prop = store.create_pending(
+            subject=body.subject,
+            body_plain=body.body_plain,
+            sender=body.sender or caller.id,
+            message_id=body.message_id or f"manual-{caller.id}",
+            dispatch=dispatch,
+        )
+    except UnknownStaffRoleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     record_audit(
         action="intake_proposal_create",
         target=prop.id,
@@ -141,9 +152,10 @@ async def decide_intake_proposal(
     )
     if body.decision == "approved" and body.execute_dispatch:
         dispatch = prop.dispatch or {}
-        role = str(dispatch.get("role") or "").strip()
-        if not role:
-            raise HTTPException(status_code=422, detail="dispatch.role required")
+        try:
+            role = normalize_staff_role(str(dispatch.get("role") or ""))
+        except UnknownStaffRoleError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         cmd = DispatchCommand(
             role=role,
             requested_by=caller.id,

@@ -12,7 +12,7 @@ def _msg(**kwargs: object) -> InboundMessage:
         "from_domain": "gmail.com",
         "to_addresses": ("intake@test",),
         "subject": "hi",
-        "body_plain": "role: barb\nplease triage",
+        "body_plain": "role: maintenance\nplease triage",
         "received_at": datetime.now(UTC),
         "authentication_results": "dmarc=pass header.from=gmail.com",
         "size_bytes": 100,
