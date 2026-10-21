@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from typing import Any
 
 import httpx
@@ -27,6 +28,7 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
     FleetEventPoller,
     nodes_from_fleet_status,
 )
+from fleet_status_cache import fleet_status_cache_key, serve_fleet_status
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
 from machine_registry import load_machine_registry
@@ -128,14 +130,15 @@ async def _fleet_control_local(action: str) -> dict:
 
 
 def _node_probe_timeout() -> httpx.Timeout:
-    """Bounded HTTP timeout for cross-node fleet probes.
+    """Bounded HTTP timeout for cross-node fleet probes (#2110).
 
-    Caps the TCP connect phase at ``NODE_CONNECT_S`` so a black-holed node
-    (firewall drop, no RST) fails fast instead of consuming the full
-    ``PROXY_NODE_SYSTEM_S`` read budget on the handshake, while a slow-but-alive
-    node keeps that full read budget.
+    Fleet status fans out concurrently; each peer gets a ~2 s read budget and
+    a 1 s connect cap so one offline host cannot dominate hub latency.
     """
-    return httpx.Timeout(HttpTimeout.PROXY_NODE_SYSTEM_S, connect=HttpTimeout.NODE_CONNECT_S)
+    return httpx.Timeout(
+        HttpTimeout.FLEET_NODE_PROBE_READ_S,
+        connect=HttpTimeout.FLEET_NODE_PROBE_CONNECT_S,
+    )
 
 
 async def _fetch_peer_pool(peer: dict, *, local_dashboard_urls: frozenset[str]) -> dict[str, dict]:
@@ -185,33 +188,14 @@ async def _fetch_peer_pool(peer: dict, *, local_dashboard_urls: frozenset[str]) 
         }
 
 
-@router.get("/api/fleet/status", dependencies=[Depends(require_fleet_peer)])
-async def get_fleet_status(request: Request, response: Response, exclude_pools: bool = False):
-    """Get full system metrics state for all machines in the fleet network.
-
-    Gated by require_fleet_peer (#922): when HUB_FLEET_TOKEN is set on this node,
-    callers must present a valid principal or the fleet bearer token; otherwise
-    (no token configured) fleet reads remain tailnet-public.
-    """
-    if should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    degraded_by_hub_circuit = should_mark_hub_circuit_degraded(request)
-
-    responses: dict[str, Any] = {}
-    local_metrics = await get_system_metrics_snapshot()
-    local_metrics["deployment"] = get_deployment_info(VERSION, DEPLOYMENT_FILE)
-    local_metrics["auto_deploy"] = read_auto_deploy_fleet_status()
-    local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
-    local_res_reason = resource_offline_reason(local_metrics)
-    if local_res_reason:
-        local_metrics.update(local_res_reason)
+async def _collect_fleet_status(*, exclude_pools: bool) -> dict[str, Any]:
+    """Build the fleet status aggregate (uncached)."""
+    import os
 
     from dashboard_config import PORT, RUNNER_ALIASES
 
-    # Issue #942: derive split-pool topology from machine_registry.yml instead of
-    # hardcoding one machine's port layout. Single-pool machines (the common
-    # case) get local_pool_name=None and no peer pools, so no phantom offline
-    # node is emitted.
+    responses: dict[str, Any] = {}
+
     registry = load_machine_registry()
     local_pool_name, peer_pools = derive_pool_topology(
         registry,
@@ -230,9 +214,16 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         )
     )
 
-    responses[local_pool_name or HOSTNAME] = local_metrics
+    nodes_to_query = dict(FLEET_NODES)
+    if not nodes_to_query and os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in {"0", "false", "no", ""}:
+        nodes_to_query = derive_fleet_nodes_from_registry(
+            registry,
+            display_name=HOSTNAME,
+            platform_node="",
+            runner_aliases=RUNNER_ALIASES,
+        )
 
-    async def fetch_node(name, url):
+    async def fetch_node(name: str, url: str) -> tuple[str, dict[str, Any]]:
         try:
             async with httpx.AsyncClient() as client:
                 target = f"{url}/api/system"
@@ -259,35 +250,55 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
                 **reason,
             }
 
-    import os
+    tasks: list[Awaitable[Any]] = [get_system_metrics_snapshot()]
+    node_items = list(nodes_to_query.items())
+    tasks.extend(fetch_node(name, url) for name, url in node_items)
+    peer_list = peer_pools if not exclude_pools else []
+    tasks.extend(_fetch_peer_pool(peer, local_dashboard_urls=local_dashboard_urls) for peer in peer_list)
 
-    nodes_to_query = dict(FLEET_NODES)
-    if not nodes_to_query and os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in {"0", "false", "no", ""}:
-        nodes_to_query = derive_fleet_nodes_from_registry(
-            registry,
-            display_name=HOSTNAME,
-            platform_node="",
-            runner_aliases=RUNNER_ALIASES,
-        )
+    gathered = await asyncio.gather(*tasks)
+    local_metrics = gathered[0]
+    local_metrics["deployment"] = get_deployment_info(VERSION, DEPLOYMENT_FILE)
+    local_metrics["auto_deploy"] = read_auto_deploy_fleet_status()
+    local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
+    local_res_reason = resource_offline_reason(local_metrics)
+    if local_res_reason:
+        local_metrics.update(local_res_reason)
+    responses[local_pool_name or HOSTNAME] = local_metrics
 
-    if nodes_to_query:
-        results = await asyncio.gather(*[fetch_node(n, u) for n, u in nodes_to_query.items()])
-        for name, data in results:
-            responses[name] = data
+    node_results = gathered[1 : 1 + len(node_items)]
+    for item in node_results:
+        name, data = item
+        responses[name] = data
 
-    if not exclude_pools and peer_pools:
-        # Fan out to peer pools concurrently. The previous sequential loop let a
-        # single unreachable pool stall the whole response for its full connect
-        # budget; gather collapses N peer timeouts into one wall-clock window.
-        peer_results = await asyncio.gather(
-            *[_fetch_peer_pool(peer, local_dashboard_urls=local_dashboard_urls) for peer in peer_pools]
-        )
-        for updates in peer_results:
-            responses.update(updates)
+    peer_results = gathered[1 + len(node_items) :]
+    for updates in peer_results:
+        responses.update(updates)
 
     _record_fleet_events(responses)
+    return responses
+
+
+@router.get("/api/fleet/status", dependencies=[Depends(require_fleet_peer)])
+async def get_fleet_status(request: Request, response: Response, exclude_pools: bool = False):
+    """Get full system metrics state for all machines in the fleet network.
+
+    Gated by require_fleet_peer (#922): when HUB_FLEET_TOKEN is set on this node,
+    callers must present a valid principal or the fleet bearer token; otherwise
+    (no token configured) fleet reads remain tailnet-public.
+    """
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    degraded_by_hub_circuit = should_mark_hub_circuit_degraded(request)
+
+    cache_key = fleet_status_cache_key(exclude_pools=exclude_pools)
+
+    async def collect() -> dict[str, Any]:
+        return await _collect_fleet_status(exclude_pools=exclude_pools)
+
+    responses = await serve_fleet_status(cache_key, collect)
     if degraded_by_hub_circuit:
-        responses["_degraded"] = True
+        responses = {**responses, "_degraded": True}
         response.headers["X-Dashboard-Degraded"] = "hub-circuit-open"
     return responses
 
