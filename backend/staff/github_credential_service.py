@@ -28,4 +28,4 @@ def mint_github_credential_for_run(run_id: str) -> StaffGithubToken:
     role = roles.get(rec.role)
     if role is None:
         raise HTTPException(status_code=500, detail=f"unknown staff role {rec.role}")
-    return mint_staff_run_github_token(role, rec.repo or "")
+    return mint_staff_run_github_token(role, rec.repo or "", run_id=run_id)

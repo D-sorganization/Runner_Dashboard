@@ -2384,6 +2384,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/run-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Fleet Run Token
+         * @description Mint a short-lived GitHub App token for a staff run executing on a spoke node.
+         */
+        post: operations["post_fleet_run_token_api_fleet_run_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/schedule": {
         parameters: {
             query?: never;
@@ -7572,6 +7592,22 @@ export interface components {
          * @enum {string}
          */
         ExecutorTier: "ollama" | "cli" | "strong";
+        /** FleetRunTokenRequest */
+        FleetRunTokenRequest: {
+            /** Repositories */
+            repositories: string[];
+            /** Role */
+            role: string;
+            /** Run Id */
+            run_id: string;
+        };
+        /** FleetRunTokenResponse */
+        FleetRunTokenResponse: {
+            /** Expires At */
+            expires_at: number;
+            /** Token */
+            token: string;
+        };
         /** GithubCredentialResponse */
         GithubCredentialResponse: {
             /** Expires At */
@@ -13308,6 +13344,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    post_fleet_run_token_api_fleet_run_token_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Fleet-Node"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetRunTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetRunTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
