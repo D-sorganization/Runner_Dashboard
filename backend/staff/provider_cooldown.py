@@ -10,14 +10,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-log = logging.getLogger("dashboard.staff.provider_cooldown")
+from staff.provider_failover_config import failover_cooldown_seconds
 
-# Slice 2 defaults; slice 3a+ reads config/provider_failover.json via provider_failover_config.
-_DEFAULT_COOLDOWN_SECONDS: dict[str, float] = {
-    "provider_capacity": 600.0,
-    "quota_exhausted": 3600.0,
-    "rate_limited": 120.0,
-}
+log = logging.getLogger("dashboard.staff.provider_cooldown")
 
 _RESET_IN_RE = re.compile(
     r"(?:resets?|retry)(?:\s+at|\s+in|\s+after)?\s+(\d{1,4})\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)",
@@ -75,7 +70,7 @@ def cooldown_until_from_message(failure_class: str, message: str) -> datetime:
     delay = _parse_delay_seconds(message)
     if delay is not None and delay > 0:
         return now + timedelta(seconds=delay)
-    seconds = _DEFAULT_COOLDOWN_SECONDS.get(failure_class, 600.0)
+    seconds = failover_cooldown_seconds().get(failure_class, 600.0)
     return now + timedelta(seconds=seconds)
 
 
