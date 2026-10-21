@@ -71,14 +71,16 @@ def _patch_topology(port: int = 8321):
         patch("dashboard_config.FLEET_NODES", {}),
         patch("routers.fleet.FLEET_NODES", {}),
         patch("routers.fleet.load_machine_registry", return_value=_SPLIT_POOL_REGISTRY),
+        patch("routers.fleet.should_proxy_fleet_to_hub", return_value=False),
+        patch("routers.fleet.should_mark_hub_circuit_degraded", return_value=False),
     )
 
 
 @pytest.mark.asyncio
 async def test_fleet_status_exclude_pools(client) -> None:
     """When exclude_pools is True, the endpoint should not query the peer port."""
-    p_port, p_host, p1, p2, p3, p_reg = _patch_topology()
-    with p_port, p_host, p1, p2, p3, p_reg, patch("httpx.AsyncClient") as mock_client_cls:
+    p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit = _patch_topology()
+    with p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit, patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -100,8 +102,8 @@ async def test_fleet_status_exclude_pools(client) -> None:
 @pytest.mark.asyncio
 async def test_fleet_status_aggregates_peer_successfully(client) -> None:
     """When exclude_pools is False, the endpoint should query the peer and merge."""
-    p_port, p_host, p1, p2, p3, p_reg = _patch_topology()
-    with p_port, p_host, p1, p2, p3, p_reg, patch("httpx.AsyncClient") as mock_client_cls:
+    p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit = _patch_topology()
+    with p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit, patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -136,8 +138,8 @@ async def test_fleet_status_aggregates_peer_successfully(client) -> None:
 @pytest.mark.asyncio
 async def test_fleet_status_peer_offline_fallback(client) -> None:
     """When the peer is offline/unreachable, it should handle the exception gracefully."""
-    p_port, p_host, p1, p2, p3, p_reg = _patch_topology()
-    with p_port, p_host, p1, p2, p3, p_reg, patch("httpx.AsyncClient") as mock_client_cls:
+    p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit = _patch_topology()
+    with p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit, patch("httpx.AsyncClient") as mock_client_cls:
         import httpx
 
         mock_client = MagicMock()
@@ -160,7 +162,7 @@ async def test_fleet_status_peer_offline_fallback(client) -> None:
 
 @pytest.mark.asyncio
 async def test_fleet_status_marks_hub_circuit_fallback_degraded(client) -> None:
-    p_port, p_host, p1, p2, p3, p_reg = _patch_topology()
+    p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit = _patch_topology()
     with (
         p_port,
         p_host,
@@ -168,8 +170,9 @@ async def test_fleet_status_marks_hub_circuit_fallback_degraded(client) -> None:
         p2,
         p3,
         p_reg,
+        p_proxy,
+        p_circuit,
         patch("routers.fleet.MACHINE_ROLE", "node"),
-        patch("routers.fleet.should_proxy_fleet_to_hub", return_value=False),
         patch("routers.fleet.should_mark_hub_circuit_degraded", return_value=True),
         patch("httpx.AsyncClient") as mock_client_cls,
     ):
@@ -188,7 +191,7 @@ async def test_fleet_status_marks_hub_circuit_fallback_degraded(client) -> None:
 
 @pytest.mark.asyncio
 async def test_fleet_status_keeps_explicit_local_response_plain(client) -> None:
-    p_port, p_host, p1, p2, p3, p_reg = _patch_topology()
+    p_port, p_host, p1, p2, p3, p_reg, p_proxy, p_circuit = _patch_topology()
     with (
         p_port,
         p_host,
@@ -196,8 +199,9 @@ async def test_fleet_status_keeps_explicit_local_response_plain(client) -> None:
         p2,
         p3,
         p_reg,
+        p_proxy,
+        p_circuit,
         patch("routers.fleet.MACHINE_ROLE", "node"),
-        patch("routers.fleet.should_proxy_fleet_to_hub", return_value=False),
         patch("routers.fleet.should_mark_hub_circuit_degraded", return_value=False),
         patch("httpx.AsyncClient") as mock_client_cls,
     ):

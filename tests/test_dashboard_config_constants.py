@@ -101,6 +101,8 @@ def test_http_timeout_values() -> None:
     assert HttpTimeout.HUB_VERSION_FETCH_S == 5.0
     assert HttpTimeout.SYSTEMCTL_S == 5
     assert HttpTimeout.PROXY_NODE_SYSTEM_S == 30.0
+    assert HttpTimeout.FLEET_NODE_PROBE_CONNECT_S == 1.0
+    assert HttpTimeout.FLEET_NODE_PROBE_READ_S == 2.0
     assert HttpTimeout.PROXY_TO_HUB_S == 15.0
     assert HttpTimeout.GH_API_DEFAULT_S == 15
     assert HttpTimeout.RUN_CMD_DEFAULT_S == 20

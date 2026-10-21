@@ -14,10 +14,16 @@ def test_codex_falls_back_to_repo_default() -> None:
     )
 
 
-def test_antigravity_falls_back_to_repo_default() -> None:
+def test_antigravity_uses_standard_tier_by_default() -> None:
     agy = adapters_mod.ADAPTERS["antigravity"]
     assert (
-        resolve_staff_run_model(requested=None, role_model=None, provider_id="antigravity", adapter=agy)
+        resolve_staff_run_model(
+            requested=None,
+            role_model=None,
+            provider_id="antigravity",
+            adapter=agy,
+            role_tier="standard",
+        )
         == "gemini-3.8-flash-high"
     )
 
@@ -26,12 +32,12 @@ def test_request_overrides_role_and_repo_default() -> None:
     codex = adapters_mod.ADAPTERS["codex"]
     assert (
         resolve_staff_run_model(
-            requested="gpt-custom",
-            role_model="gpt-role",
+            requested="gpt-6-luna",
+            role_model="gpt-6-luna",
             provider_id="codex",
             adapter=codex,
         )
-        == "gpt-custom"
+        == "gpt-6-luna"
     )
 
 
@@ -40,11 +46,11 @@ def test_role_model_overrides_repo_default() -> None:
     assert (
         resolve_staff_run_model(
             requested=None,
-            role_model="gpt-role",
+            role_model="gpt-6-luna",
             provider_id="codex",
             adapter=codex,
         )
-        == "gpt-role"
+        == "gpt-6-luna"
     )
 
 

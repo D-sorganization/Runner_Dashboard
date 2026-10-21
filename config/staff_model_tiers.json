@@ -1,0 +1,24 @@
+{
+  "schema_version": "staff-model-tiers.v1",
+  "tier_order": ["routine", "standard", "complex"],
+  "models_by_tier": {
+    "routine": {
+      "claude": "haiku",
+      "codex": "gpt-6-luna",
+      "antigravity": "gemini-3.8-flash",
+      "cursor-agent": "composer-2.5"
+    },
+    "standard": {
+      "claude": "sonnet",
+      "codex": "gpt-6-luna",
+      "antigravity": "gemini-3.8-flash-high",
+      "cursor-agent": "composer-2.5"
+    },
+    "complex": {
+      "claude": "opus",
+      "codex": "gpt-6-luna",
+      "antigravity": "gemini-3.8-flash-high",
+      "cursor-agent": "grok-4.7-high"
+    }
+  }
+}
