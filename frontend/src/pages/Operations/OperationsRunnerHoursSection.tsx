@@ -107,6 +107,7 @@ export function OperationsRunnerHoursSection({
       load(controller.signal);
       return () => controller.abort();
     } else {
+      setData(initialData);
       setEntries(initialData.schedule?.schedules || []);
     }
   }, [load, initialData]);

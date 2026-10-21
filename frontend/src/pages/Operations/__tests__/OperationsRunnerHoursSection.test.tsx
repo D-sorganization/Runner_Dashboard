@@ -124,6 +124,48 @@ describe("OperationsRunnerHoursSection", () => {
     );
   });
 
+  it("uses updated complete policy and windows when initialData changes", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(SCHEDULE_DATA));
+    const partialData = { schedule: { schedules: SCHEDULE_DATA.schedule.schedules } };
+    const updatedData = {
+      ...SCHEDULE_DATA,
+      schedule: {
+        ...SCHEDULE_DATA.schedule,
+        enabled: true,
+        timezone: "Europe/Berlin",
+        default_count: 2,
+        max_count: 6,
+        schedules: [
+          {
+            ...SCHEDULE_DATA.schedule.schedules[0],
+            name: "updated-window",
+            start: "09:00",
+            runners: 4,
+          },
+        ],
+      },
+    };
+    const { rerender } = render(<OperationsRunnerHoursSection initialData={partialData} />);
+
+    expect(screen.getByRole("button", { name: /Save Schedule/i })).toBeDisabled();
+    rerender(<OperationsRunnerHoursSection initialData={updatedData} />);
+
+    const saveBtn = screen.getByRole("button", { name: /Save Schedule/i });
+    await waitFor(() => expect(saveBtn).toBeEnabled());
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([url, init]) =>
+        String(url) === "/api/fleet/schedule" && init?.method === "POST",
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+        schedule: updatedData.schedule,
+        apply: false,
+      });
+    });
+  });
+
   it("shows an error banner with a Retry button when fetch fails", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Schedule unavailable"));
 
