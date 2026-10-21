@@ -26,7 +26,7 @@ missing binary is classified `cli_missing`, an expired Google session `auth_expi
 | ------ | ----------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/staff/roster`           | fleet peer        | Roster: roles, provider availability, active counts                                                                                                                                                      |
 | GET    | `/api/staff/board`            | fleet peer        | Status monitor. Fleet-wide when peers are configured (`machines`, `online`, `offline`, merged `running`/`queued`/spend, `liveness_alerts`); `?local=1` returns this node only (with its `liveness` list) |
-| GET    | `/api/staff/summary`          | fleet peer        | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `holds`, `liveness_alerts`, `roles`                      |
+| GET    | `/api/staff/summary`          | fleet peer        | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `providers_cooldown`, `holds`, `liveness_alerts`, `roles` |
 | GET    | `/api/staff/runs`             | fleet peer        | History; filters `role`, `status`, `since`, `limit`                                                                                                                                                      |
 | GET    | `/api/staff/runs/{id}`        | fleet peer        | One run plus its events                                                                                                                                                                                  |
 | GET    | `/api/staff/runs/{id}/stream` | fleet peer        | Server-sent events until the run ends                                                                                                                                                                    |
@@ -572,6 +572,26 @@ Dollars are a notional effort figure: the Staff tab prints them as `≈ $`, and
 `/api/staff/usage` totals carry `cost_basis: "notional"`. The budget day and the usage day
 are the same: local midnight in the schedule timezone (`America/Los_Angeles`).
 The Board shows a **Plan quota** panel from `GET /api/staff/quota`.
+
+### Fleet provider failover chain (#2047)
+
+Every dispatchable role uses the repo default chain in ``config/provider_failover.json``
+(codex → claude → antigravity → cursor-agent), filtered to the role's ``providers`` list.
+Per-provider models come from the role's **tier** (``routine`` | ``standard`` | ``complex``)
+in ``config/staff_model_tiers.json`` unless the run or role overrides the model.
+Roles may **tighten** the order with ``retry.failover_chain`` (each step must stay in
+``providers``); they cannot widen beyond allowed providers.
+
+Before launch, the runner and scheduler skip providers that are **cooling down** on this
+node after ``provider_capacity``, ``quota_exhausted``, or ``rate_limited`` failures.
+``GET /api/staff/summary`` exposes ``providers_cooldown`` per machine so Barb can see
+when Codex or Claude will be healthy again. With ``machine: auto``, placement prefers an
+online peer that still has a healthy chain provider.
+
+When the whole chain is exhausted, the run moves to attention state
+``providers_exhausted`` (status ``blocked``) with the earliest reset time — never dropped
+silently. Each run records the attempted chain in ``provider_chain`` and the brief can
+report *Codex was out, ran on Claude*.
 
 ### Declarative provider fallback (#2021)
 
