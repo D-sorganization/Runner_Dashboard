@@ -170,9 +170,8 @@ def _reconcile_holds_after_refresh(root: Path, state: dict[str, Any]) -> None:
     commit = state.get("commit")
     if not commit:
         return
-    roles_path = root / "staff" / "roles"
-    if not roles_path.is_dir():
-        roles_path = roles_dir()
+    default_roles = root / "staff" / "roles"
+    roles_path = default_roles if default_roles.is_dir() else roles_dir()
     try:
         diff = reconcile_holds_for_roles_dir(roles_path, str(commit))
     except HoldReconcileError as exc:
