@@ -23,10 +23,6 @@ def default_db_path() -> Path:
     return Path(os.environ.get("ASSISTANT_MEMORY_DB", str(base / "assistant_memory.sqlite3"))).expanduser()
 
 
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 @dataclass
 class _Row:
     id: str
