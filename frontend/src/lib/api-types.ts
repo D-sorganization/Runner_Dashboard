@@ -5321,6 +5321,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Entries */
+        get: operations["get_memory_entries_api_v1_memory_get"];
+        put?: never;
+        /** Post Memory Entry */
+        post: operations["post_memory_entry_api_v1_memory_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/context-pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Context Pack */
+        get: operations["get_context_pack_api_v1_memory_context_pack_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/actions": {
         parameters: {
             query?: never;
@@ -7760,6 +7795,63 @@ export interface components {
             repo?: string | null;
             /** Repo Root */
             repo_root?: string | null;
+        };
+        /** MemoryAppendRequest */
+        MemoryAppendRequest: {
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /**
+             * Entry Type
+             * @enum {string}
+             */
+            entry_type: "session_digest" | "decision" | "task" | "transcript";
+            /** Expires At */
+            expires_at?: string | null;
+            /** Source Product */
+            source_product: string;
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+            /** Tags */
+            tags?: string[];
+        };
+        /** MemoryAppendResponse */
+        MemoryAppendResponse: {
+            entry: components["schemas"]["MemoryEntry"];
+        };
+        /** MemoryEntry */
+        MemoryEntry: {
+            /** Author Principal */
+            author_principal: string;
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at: string;
+            /**
+             * Entry Type
+             * @enum {string}
+             */
+            entry_type: "session_digest" | "decision" | "task" | "transcript";
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: string;
+            /** Source Product */
+            source_product: string;
+            /** Superseded By */
+            superseded_by?: string | null;
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+            /** Tags */
+            tags?: string[];
+        };
+        /** MemoryListResponse */
+        MemoryListResponse: {
+            /** Entries */
+            entries: components["schemas"]["MemoryEntry"][];
         };
         /**
          * MessageBody
@@ -17282,6 +17374,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_memory_entries_api_v1_memory_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                type?: string | null;
+                tag?: string | null;
+                author?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_memory_entry_api_v1_memory_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryAppendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryAppendResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_context_pack_api_v1_memory_context_pack_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
