@@ -51,13 +51,15 @@ def _items(payload: Any, key: str) -> list[dict[str, Any]] | None:
     return values
 
 
-def _next_repo(cursor: dict[str, int], repos: list[dict[str, Any]], repo_page_full: bool) -> None:
+def _next_repo(cursor: dict[str, int], repos: list[dict[str, Any]], repo_page_full: bool) -> bool:
     cursor["repo_offset"] += 1
     cursor["run_page"] = 1
     cursor["run_offset"] = 0
     if cursor["repo_offset"] >= len(repos) and repo_page_full:
         cursor["repo_page"] += 1
         cursor["repo_offset"] = 0
+        return True
+    return False
 
 
 def _reset_job_cursor(cursor: dict[str, Any]) -> None:
@@ -67,12 +69,14 @@ def _reset_job_cursor(cursor: dict[str, Any]) -> None:
     cursor["job_run_updated_at"] = ""
 
 
-def _advance_run(cursor: dict[str, Any], runs: list[dict[str, Any]], run_page_full: bool) -> None:
+def _advance_run(cursor: dict[str, Any], runs: list[dict[str, Any]], run_page_full: bool) -> bool:
     cursor["run_offset"] += 1
     _reset_job_cursor(cursor)
     if cursor["run_offset"] >= len(runs) and run_page_full:
         cursor["run_page"] += 1
         cursor["run_offset"] = 0
+        return True
+    return False
 
 
 def _resume_job_page(cursor: dict[str, Any], run: dict[str, Any], run_id: int) -> int:
@@ -235,7 +239,8 @@ async def collect_job_metrics(
             if not repo:
                 partial_reasons.add("repository_missing_name")
                 skipped_reasons.add("repository_missing_name")
-                _next_repo(cursor, current_repos, len(current_repos) == PAGE_SIZE)
+                if _next_repo(cursor, current_repos, len(current_repos) == PAGE_SIZE):
+                    repos_page_loaded = False
                 repo_count += 1
                 continue
             if not runs_page_loaded or runs_repo != repo:
@@ -258,7 +263,8 @@ async def collect_job_metrics(
                 runs_page_loaded = True
             if cursor["run_offset"] >= len(current_runs):
                 if len(current_runs) < PAGE_SIZE:
-                    _next_repo(cursor, current_repos, len(current_repos) == PAGE_SIZE)
+                    if _next_repo(cursor, current_repos, len(current_repos) == PAGE_SIZE):
+                        repos_page_loaded = False
                     repo_count += 1
                     runs_repo = None
                     runs_page_loaded = False
@@ -276,11 +282,15 @@ async def collect_job_metrics(
             if run_id is None:
                 partial_reasons.add("workflow_run_invalid_id")
                 skipped_reasons.add("workflow_run_invalid_id")
-                _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE)
+                if _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE):
+                    runs_repo = None
+                    runs_page_loaded = False
                 run_count += 1
                 continue
             if completed_run_is_unchanged(org, repo, run):
-                _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE)
+                if _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE):
+                    runs_repo = None
+                    runs_page_loaded = False
                 run_count += 1
                 continue
             if page_count >= max_pages:
@@ -348,10 +358,14 @@ async def collect_job_metrics(
                     break
                 break
             if run_reasons:
-                _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE)
+                if _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE):
+                    runs_repo = None
+                    runs_page_loaded = False
                 run_count += 1
                 continue
-            _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE)
+            if _advance_run(cursor, current_runs, len(current_runs) == PAGE_SIZE):
+                runs_repo = None
+                runs_page_loaded = False
             run_count += 1
     except gh_client.GhRateLimited as exc:
         partial_reasons.add("rate_limited")
