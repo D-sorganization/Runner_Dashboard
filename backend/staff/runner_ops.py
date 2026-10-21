@@ -6,6 +6,8 @@ Contains provider selection, launch arguments resolution, and subprocess output 
 
 from __future__ import annotations
 
+import logging
+import os
 import shutil
 import subprocess
 import uuid
@@ -15,6 +17,8 @@ from typing import Any, TypedDict
 
 import provider_switch
 from staff import cli_version, workspace
+from staff.github_run_env import prepare_staff_run_github_env
+from staff.tokens import mint_run_token
 from staff import quota as quota_mod
 from staff.adapters import ProviderAdapter
 from staff.plan import RunPlan, RunRequest
@@ -22,6 +26,104 @@ from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore, _now
 from staff.watchdog import StaffWatchdog
+
+log = logging.getLogger("dashboard.staff.runner_ops")
+
+_GITHUB_AUTH_REMEDIATION = (
+    "Configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and "
+    "GITHUB_APP_PRIVATE_KEY_FILE on the dashboard node, or set "
+    "STAFF_ALLOW_OPERATOR_TOKEN=1 only for explicit operator-PAT fallback."
+)
+
+
+def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
+    """Resolve clone/worktree for ``rec``; persists ``workdir`` on the run row."""
+    if not plan.repo:
+        workdir = workspace.staff_worktrees_root() / rec.id
+        workdir.mkdir(parents=True, exist_ok=True)
+        store.update_run(rec.id, workdir=str(workdir))
+        return workdir
+    checkout = workspace.find_repo_checkout(plan.repo)
+    if checkout is None:
+        store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
+        checkout = workspace.clone_repo(plan.repo)
+    worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
+    workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
+    store.update_run(rec.id, workdir=str(worktree))
+    store.append_event(rec.id, "worktree", f"{worktree} on {plan.branch}")
+    return worktree
+
+
+def apply_staff_run_github_child_env(
+    store: RunStore,
+    rec: RunRecord,
+    base_env: Mapping[str, str],
+    role: RoleSpec,
+    repo: str,
+    *,
+    run_id: str,
+    real_gh_path: str,
+) -> dict[str, str] | None:
+    """Mint GitHub child env or mark the run ``failed`` with ``auth_error`` (#2038)."""
+    try:
+        env, _cred = prepare_staff_run_github_env(
+            base_env,
+            role,
+            repo,
+            run_id=run_id,
+            real_gh_path=real_gh_path,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Failed to mint GitHub credential for staff run %s", run_id)
+        err = f"GitHub auth for run failed: {exc}"
+        store.update_run(
+            rec.id,
+            status="failed",
+            failure_class="auth_error",
+            retryable=False,
+            remediation=_GITHUB_AUTH_REMEDIATION,
+            error=err,
+            ended_at=_now(),
+        )
+        store.append_event(rec.id, "error", err)
+        return None
+    return env
+
+
+def apply_staff_run_fleet_token(
+    store: RunStore,
+    rec: RunRecord,
+    plan: RunPlan,
+    role: RoleSpec,
+    env: dict[str, str],
+    adapter: ProviderAdapter,
+    *,
+    wall_clock_timeout: float,
+) -> dict[str, str] | None:
+    """Attach fleet API token and adapter runtime env, or fail the run on mint errors."""
+    try:
+        token = mint_run_token(plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Failed to mint staff run token for %s", rec.id)
+        err = f"token minting failed: {exc}"
+        store.update_run(
+            rec.id,
+            status="failed",
+            failure_class="workspace_error",
+            retryable=False,
+            remediation="Token minting failed; verify node identity configuration.",
+            error=err,
+            ended_at=_now(),
+        )
+        store.append_event(rec.id, "error", err)
+        return None
+    return {
+        **env,
+        **adapter.runtime_env(),
+        "STAFF_RUN_ID": rec.id,
+        "STAFF_ROLE": plan.role,
+        "FLEET_API_TOKEN": token,
+    }
 
 
 def can_run_unattended(adapters: Mapping[str, ProviderAdapter], pid: str) -> bool:

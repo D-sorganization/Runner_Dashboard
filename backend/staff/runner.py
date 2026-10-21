@@ -27,23 +27,25 @@ from staff import retry as retry_mod
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, READ_ONLY_RUN_PROVIDERS, ProviderAdapter
 from staff.classifier import classify_execution_result
-from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
 from staff.runner_ops import (
     LaunchPaths,
+    apply_staff_run_fleet_token,
+    apply_staff_run_github_child_env,
     execute_retry_nudge,
     extract_transcript_question,
     fail_if_cli_outdated,
     new_run_record,
+    prepare_run_workdir,
     pump_output,
     read_only_kwargs,
     resolve_launch_paths,
     select_first_available_provider,
 )
 from staff.store import RunRecord, RunStore, _now, get_store
-from staff.tokens import mint_run_token, revoke_run_token
+from staff.tokens import revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
 
 log = logging.getLogger("dashboard.staff.runner")
@@ -250,7 +252,7 @@ class StaffRunner:
                 handle_run_status_change(rec, "preparing")
                 if fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
                     return  # below the CLI floor: no worktree, no lease (#1680)
-                workdir = self._prepare_workdir(rec, plan)
+                workdir = prepare_run_workdir(store, rec, plan)
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
@@ -282,21 +284,7 @@ class StaffRunner:
         retry_mod.handle_post_execution_retry(self, rec, plan)
 
     def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
-        store = self.store
-        if not plan.repo:
-            workdir = workspace.staff_worktrees_root() / rec.id
-            workdir.mkdir(parents=True, exist_ok=True)
-            store.update_run(rec.id, workdir=str(workdir))
-            return workdir
-        checkout = workspace.find_repo_checkout(plan.repo)
-        if checkout is None:
-            store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
-            checkout = workspace.clone_repo(plan.repo)
-        worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
-        workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
-        store.update_run(rec.id, workdir=str(worktree))
-        store.append_event(rec.id, "worktree", f"{worktree} on {plan.branch}")
-        return worktree
+        return prepare_run_workdir(self.store, rec, plan)
 
     def _execute(self, rec: RunRecord, plan: RunPlan, workdir: Path, lease_note: str) -> None:
         store = self.store
@@ -321,57 +309,23 @@ class StaffRunner:
         idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
         real_gh = shutil.which("gh") or "gh"
 
-        try:
-            env, _gh_cred = prepare_staff_run_github_env(
-                os.environ,
-                role,
-                plan.repo or "",
-                run_id=rec.id,
-                real_gh_path=real_gh,
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.exception("Failed to mint GitHub credential for staff run %s", rec.id)
-            err = f"GitHub auth for run failed: {exc}"
-            store.update_run(
-                rec.id,
-                status="failed",
-                failure_class="auth_error",
-                retryable=False,
-                remediation=(
-                    "Configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and "
-                    "GITHUB_APP_PRIVATE_KEY_FILE on the dashboard node, or set "
-                    "STAFF_ALLOW_OPERATOR_TOKEN=1 only for explicit operator-PAT fallback."
-                ),
-                error=err,
-                ended_at=_now(),
-            )
-            store.append_event(rec.id, "error", err)
+        env = apply_staff_run_github_child_env(
+            store,
+            rec,
+            os.environ,
+            role,
+            plan.repo or "",
+            run_id=rec.id,
+            real_gh_path=real_gh,
+        )
+        if env is None:
             return
-
-        try:
-            token = mint_run_token(plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout)
-        except Exception as exc:  # noqa: BLE001
-            log.exception("Failed to mint staff run token for %s", rec.id)
-            err = f"token minting failed: {exc}"
-            store.update_run(
-                rec.id,
-                status="failed",
-                failure_class="workspace_error",
-                retryable=False,
-                remediation="Token minting failed; verify node identity configuration.",
-                error=err,
-                ended_at=_now(),
-            )
-            store.append_event(rec.id, "error", err)
+        env = apply_staff_run_fleet_token(
+            store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
+        )
+        if env is None:
             return
         try:
-            env = {
-                **env,
-                **adapter.runtime_env(),
-                "STAFF_RUN_ID": rec.id,
-                "STAFF_ROLE": plan.role,
-                "FLEET_API_TOKEN": token,
-            }
             exe = shutil.which(adapter.executable) or adapter.executable
             proc = subprocess.Popen(  # noqa: S603
                 [exe, *argv[1:]],
