@@ -273,6 +273,36 @@ def _loopback_auth_enabled() -> bool:
     return os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1"
 
 
+def _loopback_operator_writes_enabled() -> bool:
+    """Dev-only: allow loopback synthetic principal to mutate holds/directives (#2068)."""
+    return os.environ.get("DASHBOARD_LOOPBACK_OPERATOR_WRITES", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+LOOPBACK_OPERATOR_WRITE_SCOPES = frozenset({"staff.holds.write", "priorities.write"})
+
+
+def _is_loopback_synthetic_principal(principal: Principal) -> bool:
+    return principal.id == "__loopback__" or "loopback" in principal.roles
+
+
+def _reject_unauthenticated_bearer(header_token: str | None) -> None:
+    """Fail closed when a Bearer token was sent but did not authenticate (#2068)."""
+    if not header_token or not header_token.startswith("Bearer "):
+        return
+    raw = header_token[len("Bearer ") :]
+    if identity_manager.verify_token(raw):
+        return
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    if hub_token and hmac.compare_digest(raw, hub_token):
+        return
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
 def _is_loopback_request(request: Request) -> bool:
     if not request.client:
         return False
@@ -499,6 +529,8 @@ def require_scope(required_scope: str):
         if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
             if hmac.compare_digest(header_token[7:], hub_token):
                 prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+        if prin is None:
+            _reject_unauthenticated_bearer(header_token)
         if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
             prin = _loopback_principal()
         if prin is None and required_scope == "staff.read" and not hub_token:
@@ -511,6 +543,22 @@ def require_scope(required_scope: str):
 
         if prin is None:
             raise HTTPException(status_code=401, detail="Authentication required")
+        if (
+            _is_loopback_synthetic_principal(prin)
+            and required_scope in LOOPBACK_OPERATOR_WRITE_SCOPES
+            and not _loopback_operator_writes_enabled()
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "Loopback operator writes are disabled in production",
+                    "required_scope": required_scope,
+                    "hint": (
+                        "Use an authenticated operator session or set "
+                        "DASHBOARD_LOOPBACK_OPERATOR_WRITES=1 for local dev only"
+                    ),
+                },
+            )
         if principal_has_scope(prin, required_scope):
             return prin
         raise HTTPException(

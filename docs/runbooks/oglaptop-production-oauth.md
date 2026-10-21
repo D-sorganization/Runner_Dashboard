@@ -40,9 +40,9 @@ origin is authoritative; forwarded Host and protocol headers do not alter it.
    SESSION_SECRET=<independent-random-value-at-least-32-characters>
    ```
 
-   Omit `DASHBOARD_DEV_LOGIN` and `DASHBOARD_LOOPBACK_AUTH` completely. Do not
-   write either key as `0`; production readiness requires that neither variable
-   exist in the service environment.
+   Omit `DASHBOARD_DEV_LOGIN`, `DASHBOARD_LOOPBACK_AUTH`, and
+   `DASHBOARD_LOOPBACK_OPERATOR_WRITES` completely. Do not write any of these keys
+   as `0`; production readiness requires that none exist in the service environment.
 
 3. Reference the protected file from the service unit. Never place a secret in
    unit text, repository files, shell history, workflow inputs, logs,
