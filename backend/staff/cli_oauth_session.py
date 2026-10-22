@@ -23,6 +23,8 @@ from security import safe_subprocess_env
 log = logging.getLogger("dashboard.staff.cli_oauth_session")
 
 _PROBE_CACHE_TTL_S = 60
+# Model discovery can refresh Google OAuth and perform network I/O on cold start.
+_ANTIGRAVITY_PROBE_TIMEOUT_S = 30.0
 _AUTH_EXPIRED_MARKERS = (
     "authentication required",
     "authentication timed out",
@@ -218,7 +220,7 @@ def antigravity_oauth_session_alive(binary: str | None = None) -> tuple[bool, st
         env = {**os.environ, "ANTIGRAVITY_HOME": str(home)}
         # CLI 1.4.5 has no auth subcommand. Listing models requires saved Google
         # authentication without generating a response or consuming model quota.
-        return _run_probe([exe, "models"], env=env)
+        return _run_probe([exe, "models"], env=env, timeout=_ANTIGRAVITY_PROBE_TIMEOUT_S)
 
     return _cached_probe("cli_oauth:antigravity", _probe)
 

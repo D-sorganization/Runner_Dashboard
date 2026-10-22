@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from subprocess import CompletedProcess
+from subprocess import CompletedProcess, TimeoutExpired
 from unittest.mock import patch
 
 import pytest
@@ -68,7 +68,7 @@ def test_antigravity_145_probes_authenticated_models(
             )
         assert cmd == ["/usr/bin/agy", "models"]
         assert kwargs["capture_output"] is True
-        assert kwargs["timeout"] == 8.0
+        assert kwargs["timeout"] == 30.0
         return CompletedProcess(cmd, 0, "gemini-3.8-flash-high" if signed_in else "Not signed in", "")
 
     invalidate_oauth_probe_cache()
@@ -96,6 +96,24 @@ def test_antigravity_probe_treats_auth_timeout_as_expired(tmp_path: Path, monkey
         alive, detail = antigravity_oauth_session_alive("/usr/bin/agy")
     assert alive is False
     assert "authentication timed out" in detail.lower()
+
+
+def test_antigravity_cold_probe_has_time_to_list_models(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replay post-deploy cold startup exceeding the generic eight-second deadline."""
+    home = tmp_path / ".gemini"
+    home.mkdir()
+    (home / "settings.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("ANTIGRAVITY_HOME", str(home))
+
+    def cold_start(cmd: list[str], **kwargs: object) -> CompletedProcess[str]:
+        if kwargs["timeout"] == 8.0:
+            raise TimeoutExpired(cmd, 8.0)
+        assert kwargs["timeout"] == 30.0
+        return CompletedProcess(cmd, 0, "gemini-3.8-flash-high", "")
+
+    invalidate_oauth_probe_cache()
+    with patch("staff.cli_oauth_session.subprocess.run", cold_start):
+        assert antigravity_oauth_session_alive("/usr/bin/agy") == (True, "OAuth session active")
 
 
 def test_claude_probe_treats_auth_expired_message_as_dead(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
