@@ -1,7 +1,4 @@
-"""Staff runner: turns a run request into a CLI subprocess and records it.
-Lifecycle: queued -> preparing -> running -> succeeded | failed | cancelled | blocked.
-Concurrency is bounded by STAFF_MAX_CONCURRENT_RUNS with one daemon thread per run.
-"""
+"""Staff runner: CLI subprocess lifecycle (queued → running → terminal status)."""
 
 from __future__ import annotations
 
@@ -18,7 +15,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, focus as focus_mod, lease as lease_ritual, retry as retry_mod, usage as usage_mod, review, verification, workspace
+from staff import consolidation, review, verification, workspace
+from staff import focus as focus_mod
+from staff import lease as lease_ritual
+from staff import retry as retry_mod
+from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.execution_result import classify_execution_result
 from staff.plan import RunPlan, RunRequest
@@ -483,7 +484,6 @@ class StaffRunner:
 
 _runner: StaffRunner | None = None
 _runner_lock = threading.Lock()
-
 
 def get_runner() -> StaffRunner:
     global _runner  # noqa: PLW0603
