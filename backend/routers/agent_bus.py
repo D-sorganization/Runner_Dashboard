@@ -11,7 +11,14 @@ from agent_bus.models import AckBody, ClaimTrackBody, HandoffBody, HeartbeatBody
 from agent_bus.store import AgentBusStore, get_store
 from coordination.auth import WRITE_SCOPE, _is_loopback_request, _reject_unauthenticated_bearer
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from identity import Principal, _loopback_auth_enabled, _resolve_principal_optional, auth_header, principal_has_scope
+from identity import (
+    Principal,
+    _loopback_auth_enabled,
+    _resolve_principal_optional,
+    auth_header,
+    principal_has_scope,
+    require_fleet_peer,
+)
 from staff.rate_limit import check_rate_limit
 
 log = logging.getLogger("dashboard.agent_bus")
@@ -152,6 +159,14 @@ async def post_track_claim(body: ClaimTrackBody, principal: Writer) -> dict[str,
 async def get_backlog(auth: tuple[Principal, bool] = Depends(_fleet_or_writer)) -> dict[str, Any]:
     _principal, _mint = auth
     return _store().build_backlog()
+
+
+@router.get("/overview", dependencies=[Depends(require_fleet_peer)])
+async def get_overview(
+    inbox_limit: int = Query(default=8, ge=1, le=50),
+    activity_limit: int = Query(default=40, ge=1, le=200),
+) -> dict[str, Any]:
+    return _store().overview(inbox_limit=inbox_limit, activity_limit=activity_limit)
 
 
 @router.put("/handoff")

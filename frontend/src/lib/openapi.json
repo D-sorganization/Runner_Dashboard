@@ -17804,6 +17804,71 @@
         "tags": ["agent-bus"]
       }
     },
+    "/api/v1/agent/overview": {
+      "get": {
+        "operationId": "get_overview_api_v1_agent_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inbox_limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Inbox Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activity_limit",
+            "required": false,
+            "schema": {
+              "default": 40,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Activity Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Overview Api V1 Agent Overview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Overview",
+        "tags": ["agent-bus"]
+      }
+    },
     "/api/v1/agent/register": {
       "post": {
         "operationId": "post_register_api_v1_agent_register_post",

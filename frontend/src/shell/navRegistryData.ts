@@ -28,6 +28,7 @@ import {
   FlagIcon,
   BriefcaseIcon,
   CompassIcon,
+  UsersIcon,
 } from "./navIcons";
 
 export type NavGroupId = "staff" | "work" | "fleet" | "settings";
@@ -78,6 +79,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: CompassIcon,
     tooltip: "Fleet Command: board priorities, directives, who is working on what, claims and staff dispatch.",
     tabId: "fleet-command",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "agent-bus",
+    label: "Agent bus",
+    group: "staff",
+    Icon: UsersIcon,
+    tooltip: "Live agent sessions, inboxes, work-item threads, and coordination backlog.",
+    tabId: "agent-bus",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,
