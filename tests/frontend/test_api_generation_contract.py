@@ -51,6 +51,9 @@ def test_committed_openapi_snapshot_and_generated_types_are_real() -> None:
 
     assert "/" in snapshot["paths"]
     assert "/api/health" in snapshot["paths"]
+    assert "/api/v1/metrics/summary" in snapshot["paths"]
+    assert "/api/v1/metrics/trends" in snapshot["paths"]
+    assert "/api/v1/metrics/pull" in snapshot["paths"]
     assert len(snapshot["paths"]) > 50
     assert "export interface paths" in types
     assert "export interface components" in types
