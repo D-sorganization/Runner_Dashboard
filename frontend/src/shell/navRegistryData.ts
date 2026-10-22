@@ -28,6 +28,7 @@ import {
   FlagIcon,
   BriefcaseIcon,
   CompassIcon,
+  RepoIcon,
   UsersIcon,
 } from "./navIcons";
 
@@ -98,7 +99,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     id: "library",
     label: "Library",
     group: "staff",
-    Icon: BriefcaseIcon,
+    Icon: RepoIcon,
     tooltip: "Alexandria library search, ingest status, and submission review queue.",
     tabId: "library",
     frequent: false,
