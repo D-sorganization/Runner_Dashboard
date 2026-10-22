@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
 from knowledge_pack.pack import _TEXT_WEIGHT, _TITLE_WEIGHT, sanitize_fts_query
-
 from library.db import LibraryStore
 
 DEFAULT_BUDGET = 1500

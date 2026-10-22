@@ -5426,6 +5426,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Library Search */
+        get: operations["library_search_api_v1_library_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory": {
         parameters: {
             query?: never;
@@ -17912,6 +17929,42 @@ export interface operations {
                 "application/json": components["schemas"]["RegisterBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_search_api_v1_library_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                k?: number;
+                budget?: number | null;
+                budget_tokens?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

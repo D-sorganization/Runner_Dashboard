@@ -8,10 +8,9 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from pypdf import PdfReader
-
 from library.db import LibraryStore, init_library_db
 from library.search import estimate_tokens
+from pypdf import PdfReader
 
 _MIN_PAGE_CHARS = 12
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
