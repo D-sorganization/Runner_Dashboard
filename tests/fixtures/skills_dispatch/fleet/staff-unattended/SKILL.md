@@ -5,6 +5,8 @@ description: Default skill for unattended staff dispatches in tests and hub node
 roles:
   - night-watch
   - barb
+  - e2e-analyst
+  - e2e-offline
   - maintenance
   - ad-hoc
   - pr-remediator

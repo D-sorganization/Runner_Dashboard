@@ -86,6 +86,7 @@ def backend_env(state: Path, port: int) -> dict[str, str]:
         # and fail loudly there instead.
         "GH_TOKEN": "",
         "STAFF_ROLES_DIR": str(FAKES / "roles"),
+        "STAFF_SKILLS_DIR": str(REPO / "tests" / "fixtures" / "skills_dispatch"),
         "STAFF_KNOWLEDGE_DIR": str(state / "knowledge"),
         "STAFF_REPOS_ROOT": str(state / "repos"),
         "STAFF_WORKTREES_ROOT": str(state / "worktrees"),
