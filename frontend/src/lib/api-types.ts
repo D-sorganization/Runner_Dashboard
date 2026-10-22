@@ -6394,6 +6394,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Skills V1 */
+        get: operations["list_skills_v1_api_v1_staff_skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/skills/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Skill V1 */
+        get: operations["get_skill_v1_api_v1_staff_skills__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/summary": {
         parameters: {
             query?: never;
@@ -9958,6 +9992,92 @@ export interface components {
             running: boolean;
         } & {
             [key: string]: unknown;
+        };
+        /** StaffSkillAttachment */
+        StaffSkillAttachment: {
+            /** Content */
+            content: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Kind */
+            kind: string;
+            /** Path */
+            path: string;
+        };
+        /** StaffSkillDetailResponse */
+        StaffSkillDetailResponse: {
+            /** Attachments */
+            attachments?: components["schemas"]["StaffSkillAttachment"][];
+            /** Body */
+            body: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+            /** Pin */
+            pin: string;
+            /** Repos */
+            repos?: string[];
+            /** Roles */
+            roles?: string[];
+            /**
+             * Source Path
+             * @default
+             */
+            source_path: string;
+            /** Task Types */
+            task_types?: string[];
+            /** Version */
+            version: string;
+            /**
+             * When To Use
+             * @default
+             */
+            when_to_use: string;
+        };
+        /** StaffSkillListResponse */
+        StaffSkillListResponse: {
+            /** Count */
+            count: number;
+            /** Skills */
+            skills: components["schemas"]["StaffSkillSummary"][];
+        };
+        /** StaffSkillSummary */
+        StaffSkillSummary: {
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+            /** Pin */
+            pin: string;
+            /** Repos */
+            repos?: string[];
+            /** Roles */
+            roles?: string[];
+            /**
+             * Source Path
+             * @default
+             */
+            source_path: string;
+            /** Task Types */
+            task_types?: string[];
+            /** Version */
+            version: string;
+            /**
+             * When To Use
+             * @default
+             */
+            when_to_use: string;
         };
         /**
          * StaffSummaryResponse
@@ -19401,6 +19521,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffScheduleResponse"];
+                };
+            };
+        };
+    };
+    list_skills_v1_api_v1_staff_skills_get: {
+        parameters: {
+            query?: {
+                role?: string | null;
+                repo?: string | null;
+                task_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSkillListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skill_v1_api_v1_staff_skills__name__get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSkillDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
