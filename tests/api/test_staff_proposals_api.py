@@ -146,7 +146,10 @@ def test_list_and_get_actions_endpoints(client: TestClient) -> None:
     assert res_unknown.status_code == 404
 
 
-def test_create_and_execute_staff_dispatch_flow(client: TestClient, clean_conversations: list[str]) -> None:
+def test_create_and_execute_staff_dispatch_flow(
+    client: TestClient, clean_conversations: list[str], staff_cli_installed
+) -> None:
+    staff_cli_installed("codex")
     store = get_conversation_store()
     th = store.create_thread(title="Dispatch Flow", kind="direct", participants=["barb", "user"])
     msg = store.add_message(
@@ -330,7 +333,8 @@ def test_deny_rewrites_the_proposal_card(client: TestClient) -> None:
     assert _card(message_id)["decided_by"]
 
 
-def test_approve_and_execute_marks_the_card_executed(client: TestClient) -> None:
+def test_approve_and_execute_marks_the_card_executed(client: TestClient, staff_cli_installed) -> None:
+    staff_cli_installed("codex")
     prop_id, message_id = _card_proposal(
         "staff.dispatch", {"role": "ad-hoc", "repo": "Repository_Management", "prompt": "verify issues"}
     )
@@ -346,7 +350,8 @@ def test_approve_and_execute_marks_the_card_executed(client: TestClient) -> None
     assert _card(message_id)["status"] == "executed"
 
 
-def test_execute_route_rewrites_the_card(client: TestClient) -> None:
+def test_execute_route_rewrites_the_card(client: TestClient, staff_cli_installed) -> None:
+    staff_cli_installed("codex")
     prop_id, message_id = _card_proposal(
         "staff.dispatch", {"role": "ad-hoc", "repo": "Repository_Management", "prompt": "verify issues"}
     )

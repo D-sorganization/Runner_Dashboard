@@ -96,8 +96,9 @@ def test_loopback_dispatch_with_bad_bearer_is_rejected(loopback_client: TestClie
 
 @pytest.mark.unit
 def test_operator_token_allows_dry_run_and_sets_codex_model(
-    loopback_client: TestClient, dispatch_env: dict[str, str]
+    loopback_client: TestClient, dispatch_env: dict[str, str], staff_cli_installed
 ) -> None:
+    staff_cli_installed("codex")
     resp = loopback_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "supervised dry-run", "provider": "codex", "dry_run": True},
@@ -114,7 +115,10 @@ def test_operator_token_allows_dry_run_and_sets_codex_model(
 
 
 @pytest.mark.unit
-def test_fleet_token_allows_remote_dry_run(remote_client: TestClient, dispatch_env: dict[str, str]) -> None:
+def test_fleet_token_allows_remote_dry_run(
+    remote_client: TestClient, dispatch_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("antigravity")
     resp = remote_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "preview", "provider": "antigravity", "dry_run": True},

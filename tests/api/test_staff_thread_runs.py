@@ -175,8 +175,9 @@ def test_handle_run_status_change_posts_terminal_summary(conv_store: Any) -> Non
 
 @pytest.mark.unit
 def test_needs_input_creates_question_card_and_continuation_run(
-    conv_store: Any, run_store: RunStore, staff_launches: list[str]
+    conv_store: Any, run_store: RunStore, staff_launches: list[str], staff_cli_installed
 ) -> None:
+    staff_cli_installed("claude")
     thread = conv_store.create_thread(title="Needs Input Thread", thread_id="thread-input-1")
     rec = RunRecord(
         id="run-input-001",
@@ -343,8 +344,9 @@ def test_hub_proxies_remote_stream(client: TestClient, monkeypatch: pytest.Monke
 
 @pytest.mark.unit
 def test_answer_thread_run_endpoint(
-    client: TestClient, conv_store: Any, run_store: RunStore, staff_launches: list[str]
+    client: TestClient, conv_store: Any, run_store: RunStore, staff_launches: list[str], staff_cli_installed
 ) -> None:
+    staff_cli_installed("claude")
     thread = conv_store.create_thread(title="Answer Endpoint Thread", thread_id="thread-ans-1")
     rec = RunRecord(
         id="run-ans-001",

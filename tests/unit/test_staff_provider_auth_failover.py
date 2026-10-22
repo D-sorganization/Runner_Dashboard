@@ -15,6 +15,7 @@ if str(_BACKEND) not in sys.path:
 from staff.adapters import ADAPTERS  # noqa: E402
 from staff.failover_dispatch import resolve_provider_and_model  # noqa: E402
 from staff.plan import RunRequest  # noqa: E402
+from staff.provider_failover_config import FailoverStep  # noqa: E402
 from staff.roles import RoleSpec  # noqa: E402
 
 
@@ -27,7 +28,8 @@ def _role() -> RoleSpec:
 
 
 @pytest.mark.unit
-def test_skips_auth_expired_provider_in_chain() -> None:
+def test_skips_auth_expired_provider_in_chain(staff_cli_installed) -> None:
+    staff_cli_installed("claude", "codex", "antigravity")
     req = RunRequest(role="night-watch", prompt="work", repo="Runner_Dashboard")
     role = _role()
 
@@ -36,7 +38,13 @@ def test_skips_auth_expired_provider_in_chain() -> None:
             return type("R", (), {"failure_class": "auth_expired"})()
         return None
 
-    with patch("staff.failover_dispatch._provider_auth_blocks", side_effect=lambda p, m: _refusal(p, m) is not None):
+    with (
+        patch("staff.failover_dispatch._provider_auth_blocks", side_effect=lambda p, m: _refusal(p, m) is not None),
+        patch(
+            "staff.failover_dispatch.resolve_failover_chain",
+            return_value=(FailoverStep("claude"), FailoverStep("codex"), FailoverStep("antigravity")),
+        ),
+    ):
         provider, _model, _tier, skipped = resolve_provider_and_model(ADAPTERS, "Desk", req, role)
     assert provider != "claude"
     assert any(row.get("provider") == "claude" for row in skipped)
@@ -46,7 +54,6 @@ def test_skips_auth_expired_provider_in_chain() -> None:
 def test_provider_auth_preflight_classifies_expiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import time
 
-    from staff.cli_oauth_session import resolve_claude_config_dir
     from staff.provider_auth_preflight import probe_local_provider_auth
 
     cred_dir = tmp_path / "claude"

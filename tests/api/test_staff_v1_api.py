@@ -168,7 +168,10 @@ def test_v1_idempotency_key_required_on_mutating_post(client: TestClient, v1_aut
     assert "Idempotency-Key" in body["error"]["hint"]
 
 
-def test_v1_idempotency_replay_prevents_duplicate_dispatch(client: TestClient, v1_auth_env: dict[str, str]) -> None:
+def test_v1_idempotency_replay_prevents_duplicate_dispatch(
+    client: TestClient, v1_auth_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("claude")
     headers = {
         "Authorization": f"Bearer {v1_auth_env['operator']}",
         "Idempotency-Key": "idem-key-unique-001",

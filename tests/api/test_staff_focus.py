@@ -52,7 +52,8 @@ def test_loader_failure_yields_no_items() -> None:
 
 
 @pytest.mark.unit
-def test_plan_prompt_carries_focus_before_fleet_rules(tmp_path, monkeypatch) -> None:  # noqa: ANN001
+def test_plan_prompt_carries_focus_before_fleet_rules(tmp_path, monkeypatch, staff_cli_installed) -> None:  # noqa: ANN001
+    staff_cli_installed("claude")
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
     role = RoleSpec(
         name="issue-remediator", title="Issue Remediator", instructions="Fix issues.", providers=("claude",)
@@ -65,7 +66,8 @@ def test_plan_prompt_carries_focus_before_fleet_rules(tmp_path, monkeypatch) -> 
 
 
 @pytest.mark.unit
-def test_plan_without_priorities_has_no_focus(tmp_path, monkeypatch) -> None:  # noqa: ANN001
+def test_plan_without_priorities_has_no_focus(tmp_path, monkeypatch, staff_cli_installed) -> None:  # noqa: ANN001
+    staff_cli_installed("claude")
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
     role = RoleSpec(
         name="issue-remediator", title="Issue Remediator", instructions="Fix issues.", providers=("claude",)
@@ -102,7 +104,8 @@ def test_focus_paragraph_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
-def test_plan_survives_a_checklist_directive(tmp_path, monkeypatch) -> None:  # noqa: ANN001
+def test_plan_survives_a_checklist_directive(tmp_path, monkeypatch, staff_cli_installed) -> None:  # noqa: ANN001
+    staff_cli_installed("claude")
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
     staff = runner_mod.StaffRunner(roles_loader=lambda: {_role().name: _role()}, focus_loader=lambda: [CHECKLIST])
     plan = staff.plan(runner_mod.RunRequest(role="issue-remediator", repo="Tools", prompt="sweep"))

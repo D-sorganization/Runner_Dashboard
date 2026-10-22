@@ -64,7 +64,8 @@ def test_claude_matches_its_dashboard_id(monkeypatch: pytest.MonkeyPatch) -> Non
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("gemini_off")
-def test_runner_never_picks_or_accepts_a_disabled_provider(tmp_path: Path) -> None:
+def test_runner_never_picks_or_accepts_a_disabled_provider(tmp_path: Path, staff_cli_installed) -> None:
+    staff_cli_installed("codex")
     role = RoleSpec(name="r", title="R", providers=("gemini", "codex"), surface="dashboard")
     runner = StaffRunner(store=RunStore(tmp_path / "s.db"), roles_loader=lambda: {"r": role})
     assert runner.plan(RunRequest(role="r", prompt="go")).provider == "codex"

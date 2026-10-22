@@ -353,7 +353,9 @@ def test_proposal_replay_protection() -> None:
         )
 
 
-def test_execute_staff_dispatch_success_and_thread_messages() -> None:
+@pytest.mark.unit
+def test_execute_staff_dispatch_success_and_thread_messages(staff_cli_installed) -> None:
+    staff_cli_installed("codex")
     store = get_conversation_store()
     th = store.create_thread(title="Test Dispatch", kind="direct", participants=["barb", "user"])
 
