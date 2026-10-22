@@ -316,8 +316,7 @@ def test_help_about_uses_scoped_classes() -> None:
     """Issue #834 migration: HelpAbout should avoid inline help-panel styles."""
     source = _read(SRC_DIR / "shell" / "HelpAbout.tsx")
     assert "shell-help-trigger" in source
-    assert "help-about__tabs" in source
-    assert "help-about__tab--active" in source
+    assert "help-about__section" in source
     assert "help-about__quick-link" in source
     assert "help-about__kbd" in source
     assert "CSSProperties" not in source
