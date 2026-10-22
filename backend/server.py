@@ -145,6 +145,7 @@ from routers import code_requests as _code_requests_router  # noqa: E402
 from routers import code_requests_board as _code_requests_board_router  # noqa: E402
 from routers import code_requests_executor as _code_requests_executor_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
+from routers import delivery_metrics as _delivery_metrics_router  # noqa: E402  # issue #2121
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
@@ -172,7 +173,6 @@ from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
 from routers import usage_metrics as _usage_metrics_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
-from routers import delivery_metrics as _delivery_metrics_router  # noqa: E402  # issue #2121
 from routers import workflow_stats as _workflow_stats_router  # noqa: E402  # issue #1735
 from routers.queue import _queue_impl  # noqa: E402
 from runners.service_control import (  # noqa: E402
