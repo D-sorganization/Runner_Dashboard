@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Sequence
 
 ServiceScope = Literal["system", "user"]
 

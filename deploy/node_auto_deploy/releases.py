@@ -29,5 +29,7 @@ def atomic_live_switch(live_dir: Path, new_target: Path) -> None:
     if live_dir.is_symlink():
         live_dir.unlink()
     elif live_dir.exists():
-        raise IsADirectoryError(f"{live_dir} is not a symlink; run the one-time migrate step before auto-deploy")
+        raise IsADirectoryError(
+            f"{live_dir} is not a symlink; run the one-time migrate step before auto-deploy"
+        )
     tmp.rename(live_dir)

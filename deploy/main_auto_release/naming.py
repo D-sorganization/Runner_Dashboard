@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 AUTO_RELEASE_NOTES_HEADER = "Auto-generated main CI release (main-ci-auto-release.yml)"
 
@@ -15,8 +15,8 @@ def _commit_day_utc(committer_iso8601: str) -> datetime:
     normalized = committer_iso8601.replace("Z", "+00:00")
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def auto_release_tag_for_commit(full_sha: str, committer_date: str) -> str:
