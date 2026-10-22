@@ -56,16 +56,13 @@ def github_permissions_for_role(role: RoleSpec) -> dict[str, str]:
     perms = role.permissions
     writes_code = bool(perms.get("push_branch") or perms.get("open_pr") or perms.get("merge"))
     access = "write" if writes_code else "read"
-    out: dict[str, str] = {
+    return {
         "contents": access,
         "pull_requests": access,
         "issues": "write" if perms.get("open_pr") else "read",
         "metadata": "read",
         "checks": "read",
     }
-    if writes_code or perms.get("open_pr"):
-        out["workflows"] = "read"
-    return out
 
 
 def _staff_github_mint_uses_hub() -> bool:
