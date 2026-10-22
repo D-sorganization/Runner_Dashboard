@@ -235,7 +235,8 @@ def test_hub_rollout_probe_uses_lightweight_version_not_fleet_status() -> None:
 
     deploy_py = (DEPLOY / "node-auto-deploy.py").read_text(encoding="utf-8")
     assert "fleet/status" not in deploy_py
-    assert "probe_health" in deploy_py
+    assert "wait_for_health" in deploy_py
+    assert "probe_health" in (DEPLOY / "node_auto_deploy" / "health.py").read_text(encoding="utf-8")
 
     lib = (DEPLOY / "lib.sh").read_text(encoding="utf-8")
     match = re.search(r"DEPLOY_HEALTH_DELAYS:-([0-9 ]+)", lib)

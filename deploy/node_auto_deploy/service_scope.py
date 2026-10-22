@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 ServiceScope = Literal["system", "user"]
 
@@ -18,6 +19,11 @@ class ServiceScopeDecision:
         if self.scope == "user":
             return ["systemctl", "--user", "restart", self.unit]
         return ["sudo", "systemctl", "restart", self.unit]
+
+    def stop_argv(self) -> list[str]:
+        if self.scope == "user":
+            return ["systemctl", "--user", "stop", self.unit]
+        return ["sudo", "systemctl", "stop", self.unit]
 
     def is_active_argv(self) -> list[str]:
         if self.scope == "user":

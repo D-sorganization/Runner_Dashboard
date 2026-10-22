@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "deploy"))
 
@@ -72,7 +74,10 @@ def test_atomic_live_switch_uses_symlink(tmp_path: Path) -> None:
     rel = release_dir(live, _SHA)
     rel.mkdir(parents=True)
     (rel / "deployment.json").write_text("{}", encoding="utf-8")
-    atomic_live_switch(live, rel)
+    try:
+        atomic_live_switch(live, rel)
+    except OSError as exc:
+        pytest.skip(f"symlink capability is unavailable: {exc}")
     assert live.is_symlink()
     assert live.resolve() == rel.resolve()
 
