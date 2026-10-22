@@ -4,6 +4,8 @@ folding of codebase Q&A and Maxwell chat surfaces into the Staff Console.
 
 from __future__ import annotations
 
+import pytest
+
 from staff.adapters import ADAPTERS, get_adapter
 from staff.router import route_deterministic
 from staff.router_models import ROLE_KEYWORD_RULES
@@ -61,8 +63,8 @@ def test_maxwell_routing_keywords() -> None:
     assert decision.chosen_role == "maxwell"
 
 
-def test_maxwell_provider_adapter_registered() -> None:
-    """Maxwell must be registered as a provider adapter in staff/adapters.py."""
-    assert "maxwell" in ADAPTERS
-    adapter = get_adapter("maxwell")
-    assert adapter.provider_id == "maxwell"
+def test_maxwell_staff_provider_adapter_retired_from_routing() -> None:
+    """Maxwell is no longer a selectable staff CLI provider (2026-10-22)."""
+    assert "maxwell" not in ADAPTERS
+    with pytest.raises(KeyError):
+        get_adapter("maxwell")

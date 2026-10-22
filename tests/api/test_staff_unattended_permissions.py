@@ -159,8 +159,6 @@ def test_antigravity_unattended_uses_plan_mode() -> None:
 @pytest.mark.unit
 def test_every_chat_argv_stays_free_of_bypass_flags() -> None:
     for pid, adapter in ADAPTERS.items():
-        if pid == "maxwell":
-            continue
         argv = adapter.chat_argv("hi", "/tmp/wt")
         assert not PERMISSION_BYPASS_FLAGS & set(argv), pid
 

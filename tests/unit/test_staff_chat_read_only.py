@@ -6,6 +6,7 @@ import pytest
 from staff.adapters import (
     CHAT_READ_ONLY_TOOLS,
     ChatReadOnlyUnsupportedError,
+    ProviderAdapter,
     get_adapter,
 )
 from staff.validator import validate_role_data
@@ -71,8 +72,14 @@ def test_chat_rejects_a_tool_outside_the_read_only_vocabulary() -> None:
 
 @pytest.mark.unit
 def test_provider_without_read_only_mode_fails_closed() -> None:
-    with pytest.raises(ChatReadOnlyUnsupportedError, match="maxwell"):
-        get_adapter("maxwell").chat_argv("hi", "/tmp/scratch")
+    stub = ProviderAdapter(
+        provider_id="no-read-only-stub",
+        label="stub",
+        executable="stub",
+        argv=("-p", "{prompt}"),
+    )
+    with pytest.raises(ChatReadOnlyUnsupportedError, match="no-read-only-stub"):
+        stub.chat_argv("hi", "/tmp/scratch")
 
 
 def _role(read_only_tools: list[str]) -> dict[str, object]:
@@ -131,7 +138,13 @@ async def test_turn_on_provider_without_read_only_mode_fails_visibly(tmp_path) -
     thread = store.create_thread(title="t", role="barb", created_by="dave")
     user = store.add_message(thread.id, author_kind="user", author="dave", body_md="hi")
     reply = store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
-    runner = ChatTurnRunner(conv_store=store)
+    chat_stub = ProviderAdapter(
+        provider_id="no-read-only-stub",
+        label="stub",
+        executable="stub",
+        argv=("-p", "{prompt}"),
+    )
+    runner = ChatTurnRunner(conv_store=store, adapters={"no-read-only-stub": chat_stub})
 
     with (
         patch("staff.chat.is_provider_healthy", return_value=True),
@@ -142,7 +155,7 @@ async def test_turn_on_provider_without_read_only_mode_fails_visibly(tmp_path) -
             user_message_id=user.id,
             placeholder_id=reply.id,
             role_name="barb",
-            provider="maxwell",
+            provider="no-read-only-stub",
         )
 
     spawn.assert_not_called()
