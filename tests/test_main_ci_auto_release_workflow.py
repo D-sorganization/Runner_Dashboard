@@ -42,6 +42,7 @@ def test_same_repo_guard_on_publish_job() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "workflow_run.head_repository.full_name == github.repository" in text
     assert "workflow_run.head_branch == 'main'" in text
+    assert "github.event_name == 'workflow_run'" in text
 
 
 def test_actions_are_sha_pinned() -> None:
