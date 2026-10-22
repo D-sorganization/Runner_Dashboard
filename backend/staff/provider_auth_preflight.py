@@ -23,7 +23,7 @@ _cache: dict[str, Any] = {"checked_at": None, "providers": {}, "machine": ""}
 
 
 def _skip_live_provider_auth_probe() -> bool:
-    return os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1" or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    return os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1"
 
 
 def provider_auth_cache_snapshot() -> dict[str, Any]:
