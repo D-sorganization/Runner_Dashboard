@@ -231,15 +231,18 @@ class AgentBusStore:
                 return {"message": self._message_dict(existing), "replayed": True}
             conn.close()
 
+        work_number = body.work_number
+        work_kind = body.work_kind
+        assert work_number is not None and work_kind is not None  # noqa: S101 — enforced by SendBody
         cstore = get_conversation_store()
-        thread_id = self._ensure_work_thread(cstore, body.repo, body.work_number, body.work_kind)
+        thread_id = self._ensure_work_thread(cstore, body.repo, work_number, work_kind)
         msg_kind = body.type if body.type in ("handoff", "status") else "text"
         meta = {
             "agent_bus": True,
             "type": body.type,
             "repo": body.repo,
-            "work_kind": body.work_kind,
-            "work_number": body.work_number,
+            "work_kind": work_kind,
+            "work_number": work_number,
             "to": to_address,
             "from_session": body.session,
             "from_role": sender.role,
