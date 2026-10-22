@@ -11,8 +11,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from agent_bus.models import MAX_BODY, SendBody, normalize_to_address
 from agent_bus import store_ops
+from agent_bus.models import MAX_BODY, SendBody, normalize_to_address
 from agent_bus.store_rows import PrincipalRow, iso_after, message_dict
 from agent_bus.store_threads import ensure_work_thread
 from identity import Principal, identity_manager
