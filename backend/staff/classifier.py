@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from staff.adapter_failure import adapter_failure_classification
