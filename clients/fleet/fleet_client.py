@@ -317,6 +317,29 @@ class FleetClient:
         params = {"version": _opt_text(version, "version", 32)} if version else {}
         return self.request("GET", f"/api/v1/staff/skills/{urllib.parse.quote(skill, safe='')}", params=params)
 
+    def staff_project_create(
+        self,
+        title: str,
+        goal: str,
+        *,
+        definition_of_done: str = "",
+        repos: list[str] | None = None,
+    ) -> Any:
+        body = {
+            "title": _text(title, "title", 200),
+            "goal": _text(goal, "goal", 4000),
+            "definition_of_done": _opt_text(definition_of_done, "definition_of_done", 4000) or "",
+            "repos": repos or [],
+        }
+        return self.request("POST", "/api/v1/staff/projects", body=body)
+
+    def staff_projects_list(self) -> Any:
+        return self.request("GET", "/api/v1/staff/projects")
+
+    def staff_project_decompose(self, project_id: str) -> Any:
+        pid = _match(PATTERNS.ident, project_id, "project_id")
+        return self.request("POST", f"/api/v1/staff/projects/{urllib.parse.quote(pid, safe='')}/decompose", body={})
+
     def staff_thread_read(self, thread_id: str, since_seq: int = 0, limit: int = 100) -> Any:
         tid = _match(PATTERNS.ident, thread_id, "thread_id")
         params = {
