@@ -2691,6 +2691,12 @@ async def _startup() -> None:
 
     start_weekly_usage_report_loop(get_session_telemetry_store())
 
+    from delivery_metrics.adapters.github import GhClientDeliveryCollector  # noqa: PLC0415
+    from delivery_metrics.config import delivery_metrics_repos  # noqa: PLC0415
+    from delivery_metrics.sync import start_delivery_metrics_sync_loop  # noqa: PLC0415
+
+    start_delivery_metrics_sync_loop(GhClientDeliveryCollector, delivery_metrics_repos())
+
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
 
