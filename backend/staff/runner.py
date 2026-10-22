@@ -123,6 +123,7 @@ class StaffRunner:
                 repo=req.repo,
                 task_type=req.task_type,
                 standards_extra=req.standards_extra,
+                requested_skill=req.requested_skill,
             )
         except DispatchContractError as exc:
             raise ValueError(str(exc)) from exc

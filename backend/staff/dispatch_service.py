@@ -76,6 +76,10 @@ class DispatchCommand:
     skip_premise_check: bool = False
     # Fix an existing PR: the worktree starts from this branch instead of origin/main (#1881).
     head_ref: str = ""
+    # Skill-matching hint for unattended dispatch (#2157); empty means infer from role/repo.
+    task_type: str = ""
+    standards_extra: str = ""
+    requested_skill: str | None = None
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -256,6 +260,9 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
         pr_lifecycle=cmd.pr_lifecycle,
         head_ref=cmd.head_ref,
+        task_type=cmd.task_type,
+        standards_extra=cmd.standards_extra,
+        requested_skill=cmd.requested_skill,
     )
     try:
         plan = runner.plan(req)
