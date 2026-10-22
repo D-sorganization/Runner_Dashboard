@@ -788,7 +788,6 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
     for marker in [
         "overview: <FleetMobile />",
         "queue: <QueueMobile />",
-        "maxwell: <MaxwellMobile />",
         "remediation: (",
         "<RemediationMobile",
         "reports: <ReportsMobile />",

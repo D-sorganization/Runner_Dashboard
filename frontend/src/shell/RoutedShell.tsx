@@ -43,7 +43,6 @@ import { ShellDensityControl } from "./ShellDensityControl";
 import { ShellThemeControl } from "./ShellThemeControl";
 import { QueueMobile } from "../pages/Queue";
 import { QueueTab } from "../pages/Queue";
-import { MaxwellMobile } from "../pages/Maxwell";
 import { ReportsMobile } from "../pages/Reports";
 import { FleetMobile } from "../pages/Fleet";
 import {
@@ -300,7 +299,6 @@ export function AppShell({
     const mobileTabContent = {
       overview: <FleetMobile />,
       queue: <QueueMobile />,
-      maxwell: <MaxwellMobile />,
       remediation: (
         <RemediationMobile
           inFlightDispatches={mobileRemediationDispatches}
