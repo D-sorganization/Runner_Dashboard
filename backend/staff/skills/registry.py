@@ -15,7 +15,7 @@ SKILLS_DIR_ENV = "STAFF_SKILLS_DIR"
 _SKILL_GLOB = "*/*/SKILL.md"
 
 _CACHE_LOCK = threading.Lock()
-_CACHE_DIR_SIG: tuple[str, tuple[tuple[str, int], ...]] | None = None
+_CACHE_DIR_SIG: tuple[str, tuple[tuple[str, int, int], ...]] | None = None
 _CACHE_SUMMARIES: dict[str, SkillSummary] = {}
 _CACHE_DETAILS: dict[tuple[str, str], SkillDetail] = {}
 _CACHE_ERRORS: dict[str, list[str]] = {}
