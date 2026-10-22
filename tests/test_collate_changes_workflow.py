@@ -41,12 +41,24 @@ def _scripts() -> str:
     return "\n".join(str(step.get("run", "")) for step in _job()["steps"])
 
 
-def test_runs_only_on_push_to_main_touching_fragments() -> None:
+def test_runs_on_a_schedule_and_manual_dispatch_not_every_merge() -> None:
+    """Batch collation avoids a push storm on busy merge days (issue #2119).
+
+    Real 2026-10-21 failures were mostly missing ``JULES_APP_ID`` on
+    ``create-github-app-token`` plus ``cancel-in-progress`` cancellations
+    from overlapping push triggers — not PR open/push races on ``bot/collate-changes``.
+    """
     triggers = _triggers()
-    assert set(triggers) <= {"push", "workflow_dispatch"}
-    assert "merge_group" not in triggers, "a no-op in the merge queue"
-    assert triggers["push"]["branches"] == ["main"]
-    assert triggers["push"]["paths"] == ["changes/**"]
+    assert set(triggers) <= {"schedule", "workflow_dispatch"}
+    assert "push" not in triggers
+    assert "merge_group" not in triggers
+    schedule = triggers["schedule"]
+    if isinstance(schedule, list):
+        cron = [entry["cron"] for entry in schedule]
+    else:
+        cron = schedule["cron"]
+        cron = [cron] if isinstance(cron, str) else list(cron)
+    assert len(cron) >= 1
 
 
 def test_routes_to_the_self_hosted_fleet_with_a_timeout() -> None:
@@ -56,8 +68,25 @@ def test_routes_to_the_self_hosted_fleet_with_a_timeout() -> None:
 
 def test_has_the_required_concurrency_protection() -> None:
     concurrency = _workflow()["concurrency"]
-    assert concurrency["cancel-in-progress"] is True
+    assert concurrency["cancel-in-progress"] is False, "queue overlaps; do not mark main cancelled"
     assert "collate-changes" in concurrency["group"]
+
+
+def test_skips_before_app_token_when_no_fragments_pending() -> None:
+    script = _scripts()
+    assert "credentials-present" in script or "Preflight" in script
+    steps = _job()["steps"]
+    names = [str(step.get("name", "")) for step in steps]
+    fragment_step = next(i for i, n in enumerate(names) if "fragment" in n.lower() and "pending" in n.lower())
+    token_step = next(i for i, n in enumerate(names) if "app token" in n.lower())
+    assert fragment_step < token_step
+
+
+def test_collate_step_continues_after_a_single_fragment_error() -> None:
+    script = _scripts()
+    assert "set +e" in script or "||" in script
+    assert "::warning::" in script
+    assert "SKIPPED=" in script or "SKIPPED_FRAGMENTS" in script
 
 
 def test_collates_every_fragment_keyed_by_its_merged_pr() -> None:
@@ -85,8 +114,13 @@ def test_a_held_collation_pr_is_never_force_pushed() -> None:
 
 
 def test_needs_full_history_to_find_the_adding_commit() -> None:
-    checkout = next(step for step in _job()["steps"] if str(step.get("uses", "")).startswith("actions/checkout"))
-    assert checkout["with"]["fetch-depth"] == 0
+    checkouts = [
+        step
+        for step in _job()["steps"]
+        if str(step.get("uses", "")).startswith("actions/checkout")
+    ]
+    depths = [step["with"]["fetch-depth"] for step in checkouts]
+    assert 0 in depths, "collation needs full history to resolve the adding commit"
 
 
 def test_actions_are_pinned_to_full_commit_shas() -> None:
