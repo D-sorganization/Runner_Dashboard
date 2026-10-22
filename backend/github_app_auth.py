@@ -67,6 +67,92 @@ class InstallationToken:
     expires_at: float
 
 
+_PERMISSION_RANK: dict[str, int] = {"read": 1, "triage": 2, "write": 3, "admin": 4}
+
+
+class GhInstallationPermissionError(Exception):
+    """Installation grant is narrower than the permissions requested at mint time."""
+
+    def __init__(
+        self,
+        missing: list[str],
+        *,
+        endpoint: str = "",
+        body: str = "",
+    ) -> None:
+        detail = ", ".join(missing) if missing else body[:200]
+        super().__init__(f"GitHub App installation token minting failed: missing: {detail}")
+        self.missing = list(missing)
+        self.endpoint = endpoint
+        self.body = body
+
+
+def _app_jwt_headers() -> dict[str, str]:
+    return {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Authorization": f"Bearer {build_app_jwt()}",
+    }
+
+
+def _normalize_permission_level(level: str | None) -> str:
+    return str(level or "").strip().lower()
+
+
+def compare_installation_permissions(
+    requested: Mapping[str, str],
+    granted: Mapping[str, str],
+) -> list[str]:
+    """Return human-readable ``permission:level`` gaps (requested exceeds installation grant)."""
+    missing: list[str] = []
+    for perm, want_raw in sorted(requested.items()):
+        want = _normalize_permission_level(want_raw)
+        if not want:
+            continue
+        have_raw = granted.get(perm)
+        if not have_raw:
+            missing.append(f"{perm}:{want} (installation has none)")
+            continue
+        have = _normalize_permission_level(have_raw)
+        want_rank = _PERMISSION_RANK.get(want, 0)
+        have_rank = _PERMISSION_RANK.get(have, 0)
+        if want_rank > have_rank:
+            missing.append(f"{perm}:{want} (installation has {perm}:{have})")
+    return missing
+
+
+def fetch_installation_permissions(
+    *,
+    client: httpx.Client | None = None,
+    timeout: float = 30.0,
+) -> dict[str, str]:
+    """Read ``permissions`` from GET /app/installations/{installation_id} (App JWT)."""
+    from gh_client import GhAuthError, GhServerError
+
+    if not github_app_auth_configured():
+        raise GhAuthError("GitHub App auth is not configured on this node")
+
+    installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"].strip()
+    url = f"{_GITHUB_API_BASE}/app/installations/{installation_id}"
+    headers = _app_jwt_headers()
+    timeout_cfg = httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0)
+
+    if client is not None:
+        resp = client.get(url, headers=headers)
+    else:
+        with httpx.Client(timeout=timeout_cfg) as owned:
+            resp = owned.get(url, headers=headers)
+
+    if resp.status_code != 200:
+        raise GhServerError(resp.status_code, f"/app/installations/{installation_id}", resp.text)
+
+    body = resp.json()
+    raw = body.get("permissions") if isinstance(body, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): _normalize_permission_level(str(v)) for k, v in raw.items() if v}
+
+
 def _parse_installation_token_response(body: dict[str, Any]) -> InstallationToken:
     from gh_client import GhAuthError
 
@@ -99,11 +185,7 @@ def mint_installation_access_token(
 
     installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"].strip()
     url = f"{_GITHUB_API_BASE}/app/installations/{installation_id}/access_tokens"
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Authorization": f"Bearer {build_app_jwt()}",
-    }
+    headers = _app_jwt_headers()
     payload: dict[str, Any] = {}
     if repositories:
         payload["repositories"] = list(repositories)
@@ -113,5 +195,14 @@ def mint_installation_access_token(
     with httpx.Client(timeout=httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0)) as client:
         resp = client.post(url, headers=headers, json=payload or None)
     if resp.status_code not in (200, 201):
+        if resp.status_code == 422 and permissions:
+            granted = fetch_installation_permissions(client=client, timeout=timeout)
+            missing = compare_installation_permissions(permissions, granted)
+            if missing:
+                raise GhInstallationPermissionError(
+                    missing,
+                    endpoint="/app/installations/.../access_tokens",
+                    body=resp.text,
+                )
         raise GhServerError(resp.status_code, "/app/installations/.../access_tokens", resp.text)
     return _parse_installation_token_response(resp.json())

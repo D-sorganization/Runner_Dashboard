@@ -41,6 +41,7 @@ from staff.audit import (
 from staff.cli_version import provider_versions
 from staff.dispatch_auth import require_staff_run_dispatch
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
+from staff.github_app_preflight import run_preflight_and_cache
 from staff.github_credential_service import mint_github_credential_for_run
 from staff.models import (
     StaffAuditListResponse,
@@ -159,6 +160,15 @@ async def summary(
     roster with schedules.
     """
     return await build_staff_summary()
+
+
+@router.get("/github-app/preflight")
+async def github_app_preflight(
+    _peer: Principal = Depends(require_scope("fleet.read")),
+) -> dict[str, Any]:
+    """Compare staff role GitHub App permission needs to the live installation grant (#2038)."""
+    runner = get_runner()
+    return run_preflight_and_cache(runner.roles())
 
 
 @router.get("/audit", response_model=StaffAuditListResponse, response_model_exclude_none=True)
