@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: T201
 """Portable Barb CLI for any coding agent (#2157 slice 6).
 
 Usage:
