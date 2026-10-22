@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fleet_client import LIMITS, FleetArgumentError, FleetClient
+from fleet_validators import MEMORY_ENTRY_TYPES
 
 REPO = {"type": "string", "description": "Repository name, e.g. Runner_Dashboard (owner/ prefix optional)."}
 BARE_REPO = {"type": "string", "description": "Bare repository name, e.g. Runner_Dashboard."}
@@ -65,6 +66,45 @@ class Command:
 
 
 COMMANDS: tuple[Command, ...] = (
+    # ---------------------------------------------------------------- shared memory
+    Command(
+        "memory-context-pack",
+        "memory_context_pack",
+        "Read the shared memory context pack for this authenticated principal.",
+        tool="fleet_memory_context_pack",
+    ),
+    Command(
+        "memory-list",
+        "memory_list",
+        "List shared memory entries with optional filters (requires memory.read scope).",
+        {
+            "since": {"type": "string", "maxLength": 64, "description": "Return entries at or after this timestamp."},
+            "entry_type": {"type": "string", "enum": list(MEMORY_ENTRY_TYPES)},
+            "tag": {"type": "string", "maxLength": 64},
+            "author": {"type": "string", "maxLength": 128},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+        },
+        tool="fleet_memory_list",
+    ),
+    Command(
+        "memory-append",
+        "memory_append",
+        "Append a shared memory entry (requires memory.write scope).",
+        {
+            "entry_type": {"type": "string", "enum": list(MEMORY_ENTRY_TYPES)},
+            "source_product": {"type": "string", "minLength": 1, "maxLength": 64},
+            "body": {"type": "object", "description": "Structured memory entry content."},
+            "tags": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 32},
+            "expires_at": {"type": "string", "maxLength": 64, "description": "Optional expiration timestamp."},
+            "supersedes_id": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "Optional ID of the entry this replaces.",
+            },
+        },
+        required=("entry_type", "source_product", "body"),
+        tool="fleet_memory_append",
+    ),
     # ---------------------------------------------------------------- coordination
     Command(
         "briefing",
