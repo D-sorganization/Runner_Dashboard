@@ -22,6 +22,12 @@ from staff.runner import get_runner
 __all__ = ["build_staff_summary"]
 
 
+def _operator_auth_health() -> dict[str, Any]:
+    from github_app_user_oauth import aggregate_operator_auth_health  # noqa: PLC0415
+
+    return dict(aggregate_operator_auth_health())
+
+
 async def build_staff_summary() -> dict[str, Any]:
     """The one-call brief for Barb and Orchestrator (#1195).
 
@@ -78,4 +84,5 @@ async def build_staff_summary() -> dict[str, Any]:
             }
             for s in sorted(roles.values(), key=lambda s: s.name)
         ],
+        "operator_auth": _operator_auth_health(),
     }

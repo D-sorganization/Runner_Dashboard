@@ -6187,6 +6187,12 @@
             "title": "Machines Online",
             "type": "array"
           },
+          "operator_auth": {
+            "additionalProperties": true,
+            "description": "Redacted GitHub App user OAuth expiry for hub operators (#2075)",
+            "title": "Operator Auth",
+            "type": "object"
+          },
           "providers": {
             "additionalProperties": true,
             "title": "Providers",
@@ -8045,7 +8051,7 @@
     },
     "/api/auth/refresh": {
       "post": {
-        "description": "Confirm the current session is still valid (issue #1735).\n\nReuses the same principal resolution as ``GET /me``; a valid session\nsimply gets acknowledged, letting the frontend keep the session alive\nwithout re-fetching the full principal payload.",
+        "description": "Confirm the current session is still valid (issue #1735).\n\nReuses the same principal resolution as ``GET /me``; also refreshes the\nGitHub App user access token when it is near expiry (#2075).",
         "operationId": "refresh_session_api_auth_refresh_post",
         "responses": {
           "200": {

@@ -345,6 +345,33 @@ def refresh_user_access_token(
     raise UserOAuthTransientError("malformed GitHub refresh response")
 
 
+def exchange_authorization_code(
+    code: str,
+    config: OAuthConfig | None = None,
+) -> dict[str, Any]:
+    """Exchange the browser authorization code for user access + refresh tokens."""
+    cfg = config or OAuthConfig.from_env()
+    resp = httpx.post(
+        _GITHUB_TOKEN_URL,
+        data=cfg.token_exchange_data(code),
+        headers={"Accept": "application/json"},
+        timeout=30.0,
+    )
+    try:
+        body = resp.json()
+    except ValueError as exc:
+        raise RuntimeError("malformed GitHub OAuth token response") from exc
+    if not isinstance(body, dict):
+        body = {}
+    if resp.status_code in (429, 500, 502, 503, 504) or resp.status_code >= 500:
+        raise UserOAuthTransientError(str(body.get("error") or "GitHub unavailable"))
+    if resp.status_code >= 400 or not body.get("access_token"):
+        raise UserOAuthRevokedError(str(body.get("error") or "authorization code rejected"))
+    if not body.get("refresh_token"):
+        raise UserOAuthRevokedError("missing refresh_token; enable Expire user authorization tokens on the GitHub App")
+    return body
+
+
 def ensure_fresh_access_token(
     principal_id: str,
     *,
