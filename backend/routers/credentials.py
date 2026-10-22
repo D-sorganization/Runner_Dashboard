@@ -456,6 +456,12 @@ def _probe_codex_cli() -> dict[str, Any]:
     }
 
 
+def _claude_login_file_present() -> bool:
+    from staff.cli_oauth_session import resolve_claude_config_dir  # noqa: PLC0415
+
+    return (resolve_claude_config_dir() / ".credentials.json").is_file()
+
+
 def _probe_claude_code_cli() -> dict[str, Any]:
     """Probe Anthropic Claude Code CLI presence and authentication.
 
@@ -463,14 +469,19 @@ def _probe_claude_code_cli() -> dict[str, Any]:
     ``claude login`` subscription session (``.credentials.json`` under
     ``$CLAUDE_CONFIG_DIR``, default ``~/.claude``).
     """
+    from staff.cli_oauth_session import claude_oauth_session_alive  # noqa: PLC0415
+
     claude_binary = shutil.which("claude")
     anthropic_key = _env_present_anywhere("ANTHROPIC_API_KEY")
-    claude_login = _cli_login_file_present("CLAUDE_CONFIG_DIR", ".claude", ".credentials.json")
-    authenticated = anthropic_key or claude_login
+    claude_login = _claude_login_file_present()
+    oauth_alive, oauth_detail = (True, "") if anthropic_key else claude_oauth_session_alive(claude_binary)
+    authenticated = bool(anthropic_key or (claude_login and oauth_alive))
     if anthropic_key:
         auth_detail = "Ready (ANTHROPIC_API_KEY)"
-    elif claude_login:
+    elif claude_login and oauth_alive:
         auth_detail = "Ready (claude login)"
+    elif claude_login:
+        auth_detail = oauth_detail or "OAuth session expired; run `claude auth login`"
     else:
         auth_detail = "not signed in: run `claude login` or set ANTHROPIC_API_KEY"
     return {
@@ -641,17 +652,23 @@ def _antigravity_quota_status() -> tuple[bool, str]:
 
 def _probe_antigravity_cli() -> dict[str, Any]:
     """Probe Antigravity (agy) CLI presence, authentication, and quota."""
+    from staff.cli_oauth_session import antigravity_oauth_session_alive  # noqa: PLC0415
+
     agy_binary = _find_binary("agy")
     installed = agy_binary is not None
     login_present = _antigravity_login_present()
     api_key = _env_present("ANTIGRAVITY_API_KEY") or _env_present("GOOGLE_API_KEY")
-    authenticated = bool(login_present or api_key)
+    oauth_alive, oauth_detail = (True, "") if api_key else antigravity_oauth_session_alive(agy_binary)
+    authenticated = bool(api_key or (login_present and oauth_alive))
     quota_available, quota_detail = _antigravity_quota_status()
 
     if not installed:
         status, detail = "not_installed", "agy not found on PATH"
     elif not authenticated:
-        status, detail = "missing_key", "not signed in: run `agy` or `agy auth login`"
+        if login_present and not oauth_alive:
+            status, detail = "missing_key", oauth_detail or "OAuth session expired; run `agy auth login`"
+        else:
+            status, detail = "missing_key", "not signed in: run `agy` or `agy auth login`"
     elif not quota_available:
         status, detail = "quota_exhausted", quota_detail or "antigravity quota exhausted"
     else:

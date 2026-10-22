@@ -261,6 +261,12 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         plan = runner.plan(req)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not cmd.dry_run:
+        from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
+
+        auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
+        if auth_refusal is not None:
+            raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
     check_rate_limit("dispatches", caller)
     target = await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
     if target != "local":
