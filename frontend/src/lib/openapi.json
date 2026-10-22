@@ -35,30 +35,6 @@
         "title": "AcceptanceCheck",
         "type": "object"
       },
-      "AckBody": {
-        "additionalProperties": false,
-        "description": "``ack``: confirm receipt (not agreement) of a message.",
-        "properties": {
-          "message_id": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Message Id",
-            "type": "string"
-          },
-          "repo": {
-            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
-            "title": "Repo",
-            "type": "string"
-          },
-          "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Session",
-            "type": "string"
-          }
-        },
-        "required": ["session", "repo", "message_id"],
-        "title": "AckBody",
-        "type": "object"
-      },
       "ActionExecuteResponse": {
         "description": "Result of executing an action.",
         "properties": {
@@ -1650,6 +1626,26 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HeartbeatBody": {
+        "additionalProperties": false,
+        "properties": {
+          "lease_seconds": {
+            "default": 300,
+            "maximum": 28800.0,
+            "minimum": 30.0,
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session"],
+        "title": "HeartbeatBody",
+        "type": "object"
+      },
       "HelpChatRequest": {
         "additionalProperties": false,
         "description": "Request body for POST /api/help/chat.",
@@ -3097,6 +3093,43 @@
         "title": "RegisterBeginRequest",
         "type": "object"
       },
+      "RegisterBody": {
+        "additionalProperties": false,
+        "properties": {
+          "lease_seconds": {
+            "default": 300,
+            "maximum": 28800.0,
+            "minimum": 30.0,
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
+          "node": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Node",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "role": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "title": "Role",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "role", "provider", "node"],
+        "title": "RegisterBody",
+        "type": "object"
+      },
       "RegisterCompleteRequest": {
         "properties": {
           "credential": {
@@ -3795,6 +3828,79 @@
         },
         "required": ["enabled"],
         "title": "ScheduleToggleBody",
+        "type": "object"
+      },
+      "SendBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "to": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "To",
+            "type": "string"
+          },
+          "type": {
+            "enum": ["request", "status", "handoff", "blocked"],
+            "title": "Type",
+            "type": "string"
+          },
+          "work_kind": {
+            "anyOf": [
+              {
+                "enum": ["issue", "pr"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Kind"
+          },
+          "work_number": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Number"
+          }
+        },
+        "required": [
+          "session",
+          "to",
+          "type",
+          "repo",
+          "body",
+          "idempotency_key"
+        ],
+        "title": "SendBody",
         "type": "object"
       },
       "SessionTelemetryPayload": {
@@ -6370,6 +6476,49 @@
           }
         },
         "title": "WorkSummary",
+        "type": "object"
+      },
+      "agent_bus__models__AckBody": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "message_id"],
+        "title": "AckBody",
+        "type": "object"
+      },
+      "coordination__models__AckBody": {
+        "additionalProperties": false,
+        "description": "``ack``: confirm receipt (not agreement) of a message.",
+        "properties": {
+          "message_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "message_id"],
+        "title": "AckBody",
         "type": "object"
       }
     },
@@ -9742,7 +9891,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AckBody"
+                "$ref": "#/components/schemas/coordination__models__AckBody"
               }
             }
           },
@@ -17041,6 +17190,261 @@
         },
         "summary": "Get Usage Table",
         "tags": ["usage-metrics"]
+      }
+    },
+    "/api/v1/agent/heartbeat": {
+      "post": {
+        "operationId": "post_heartbeat_api_v1_agent_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Heartbeat Api V1 Agent Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Heartbeat",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/inbox": {
+      "get": {
+        "operationId": "get_inbox_api_v1_agent_inbox_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Session",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since_cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Inbox Api V1 Agent Inbox Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Inbox",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/messages": {
+      "post": {
+        "operationId": "post_message_api_v1_agent_messages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Message Api V1 Agent Messages Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Message",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/messages/ack": {
+      "post": {
+        "operationId": "post_ack_api_v1_agent_messages_ack_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agent_bus__models__AckBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Ack Api V1 Agent Messages Ack Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Ack",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/register": {
+      "post": {
+        "operationId": "post_register_api_v1_agent_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Register Api V1 Agent Register Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Register",
+        "tags": ["agent-bus"]
       }
     },
     "/api/v1/memory": {
