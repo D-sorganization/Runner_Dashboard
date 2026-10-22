@@ -4,6 +4,12 @@
 name: Main CI auto-release
 
 on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full main commit SHA to publish (default main HEAD)
+        required: false
+        type: string
   workflow_run:
     workflows:
       - CI Standard
@@ -29,7 +35,7 @@ jobs:
     timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}
-      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_SHA: ${{ inputs.commit_sha || github.event.workflow_run.head_sha }}
     steps:
       - name: Checkout release source at workflow_run head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

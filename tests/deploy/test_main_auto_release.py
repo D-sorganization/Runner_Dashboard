@@ -9,7 +9,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "deploy"))
 
-from main_auto_release.gate import commit_passes_main_ci_gate, select_green_commit_with_release  # noqa: E402
+from main_auto_release.gate import (  # noqa: E402
+    commit_passes_main_ci_gate,
+    commit_passes_publisher_ci_gate,
+    select_green_commit_with_release,
+)
 from main_auto_release.naming import (  # noqa: E402
     auto_release_tag_for_commit,
     auto_release_version_for_commit,
@@ -38,6 +42,22 @@ def _minimal_failing_runs(sha: str, *, failing_name: str, failing_conclusion: st
         {"head_sha": sha, "name": failing_name, "status": "completed", "conclusion": failing_conclusion},
         {"head_sha": sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
     ]
+
+
+def test_publisher_gate_ignores_in_flight_self_check() -> None:
+    sha = "c" * 40
+    runs = _minimal_green_runs(sha) + [
+        {
+            "head_sha": sha,
+            "name": "Publish dashboard release when CI gate is green",
+            "status": "in_progress",
+            "conclusion": None,
+        }
+    ]
+    ok, _ = commit_passes_publisher_ci_gate(runs, sha)
+    assert ok is True
+    ok_head, _ = commit_passes_main_ci_gate(runs, sha)
+    assert ok_head is False
 
 
 def test_vitest_failure_blocks_release() -> None:

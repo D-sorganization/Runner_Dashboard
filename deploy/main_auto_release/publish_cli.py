@@ -12,7 +12,7 @@ REPO_DEPLOY = Path(__file__).resolve().parents[1]
 if str(REPO_DEPLOY) not in sys.path:
     sys.path.insert(0, str(REPO_DEPLOY))
 
-from main_auto_release.gate import commit_passes_main_ci_gate  # noqa: E402
+from main_auto_release.gate import commit_passes_main_ci_gate, commit_passes_publisher_ci_gate  # noqa: E402
 from main_auto_release.naming import (  # noqa: E402
     AUTO_RELEASE_NOTES_HEADER,
     auto_release_tag_for_commit,
@@ -30,7 +30,8 @@ def _load_json(path: Path) -> Any:
 def cmd_verify_gate(args: argparse.Namespace) -> int:
     payload = _load_json(Path(args.check_runs_json))
     runs = parse_check_runs_payload(payload if isinstance(payload, dict) else {"check_runs": payload})
-    ok, detail = commit_passes_main_ci_gate(runs, args.sha)
+    gate = commit_passes_publisher_ci_gate if args.publisher else commit_passes_main_ci_gate
+    ok, detail = gate(runs, args.sha)
     print(detail)
     return 0 if ok else 1
 
@@ -79,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
     verify = sub.add_parser("verify-gate", help="Exit 0 when check runs pass the deploy CI gate")
     verify.add_argument("--sha", required=True)
     verify.add_argument("--check-runs-json", required=True)
+    verify.add_argument(
+        "--publisher",
+        action="store_true",
+        help="Ignore this workflow's own in-flight check runs",
+    )
     verify.set_defaults(func=cmd_verify_gate)
 
     plan = sub.add_parser("plan-tag", help="Print deterministic auto-release tag and version")
