@@ -9146,8 +9146,23 @@ export interface components {
              * @default
              */
             repo: string;
+            /**
+             * Skill
+             * @description Explicit skill package name; must exist in the registry or dispatch is rejected.
+             */
+            skill?: string | null;
+            /**
+             * Standards Extra
+             * @default
+             */
+            standards_extra: string;
             /** Surface */
             surface?: string | null;
+            /**
+             * Task Type
+             * @default
+             */
+            task_type: string;
             /** Thread Id */
             thread_id?: string | null;
             /** Work Item Id */
