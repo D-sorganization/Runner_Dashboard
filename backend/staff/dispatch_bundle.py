@@ -38,9 +38,7 @@ def _task_matches(skill_tasks: tuple[str, ...], task_type: str) -> bool:
 def match_skills_for_dispatch(role: str, repo: str, task_type: str = "") -> list:
     rows = list_skills(role=role, repo=None, task_type=None)
     return [
-        s
-        for s in rows
-        if role in s.roles and _repo_matches(s.repos, repo) and _task_matches(s.task_types, task_type)
+        s for s in rows if role in s.roles and _repo_matches(s.repos, repo) and _task_matches(s.task_types, task_type)
     ]
 
 
