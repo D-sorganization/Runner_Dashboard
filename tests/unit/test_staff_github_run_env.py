@@ -148,12 +148,14 @@ def test_mint_staff_run_github_token_rejects_foreign_repository_owner() -> None:
     mint.assert_not_called()
 
 
-def test_mint_staff_run_github_token_refuses_unscoped_app_token() -> None:
+def test_mint_staff_run_github_token_preserves_local_repo_less_behavior() -> None:
+    fake = InstallationToken(token=_FAKE_GHS, expires_at=1_700_000_000.0)
     with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
-        with patch("staff.github_run_env.mint_installation_access_token") as mint:
-            with pytest.raises(ValueError, match="repository name is required"):
-                mint_staff_run_github_token(role=_role(), repo="")
-    mint.assert_not_called()
+        with patch("staff.github_run_env.mint_installation_access_token", return_value=fake) as mint:
+            token = mint_staff_run_github_token(role=_role(), repo="")
+    assert token.token == _FAKE_GHS
+    mint.assert_called_once()
+    assert mint.call_args.kwargs["repositories"] is None
 
 
 def test_runner_auth_error_when_github_mint_fails(tmp_path: Any) -> None:
