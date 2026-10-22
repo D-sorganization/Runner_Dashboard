@@ -296,6 +296,7 @@ def compose_prompt(
     consolidation: str = "",
     focus: str = "",
     chat_turn: bool = False,
+    dispatch_bundle: object | None = None,
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
 
@@ -342,6 +343,9 @@ def compose_prompt(
         parts.append(consolidation)
     if focus and not chat_turn:
         parts.append(focus)
+    if dispatch_bundle is not None and not chat_turn:
+        parts.append(dispatch_bundle.standards_block)
+        parts.append(dispatch_bundle.skill_block)
 
     if chat_turn:
         from staff.reply_contract import get_chat_contract_text
