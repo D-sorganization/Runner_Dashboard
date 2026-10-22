@@ -46,7 +46,7 @@ class ImapInboundAdapter(InboundAdapter):
             client.login(self._config.imap_user, self._config.imap_password)
             client.select(self._config.imap_folder)
             criteria = "UNSEEN" if self._last_uid is None else f"UID {self._last_uid + 1}:*"
-            typ, data = client.uid("search", None, criteria)
+            typ, data = client.uid("search", "", criteria)
             if typ != "OK" or not data or not data[0]:
                 client.logout()
                 return InboundFetchResult(messages=tuple(messages))
