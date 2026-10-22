@@ -61,6 +61,8 @@ def _ensure_work(conn: sqlite3.Connection, digest: str, reader: PdfReader, path:
         "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,'pdf','active',?)",
         (digest, author, title, year, needs_ocr),
     )
+    if cur.lastrowid is None:
+        raise RuntimeError("insert work failed")
     return int(cur.lastrowid)
 
 
