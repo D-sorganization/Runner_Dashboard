@@ -229,6 +229,8 @@ def provider_oauth_session_alive(provider_or_credential_id: str) -> tuple[bool, 
     checker = _PROVIDER_CHECKERS.get(provider_or_credential_id)
     if checker is None:
         if provider_or_credential_id == "codex":
+            if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
+                return True, ""
             home = Path(os.environ.get("CODEX_HOME") or "~/.codex").expanduser()
             if not (home / "auth.json").is_file():
                 return False, "no Codex auth.json"

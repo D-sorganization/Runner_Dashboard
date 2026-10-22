@@ -1,0 +1,322 @@
+diff --git a/backend/staff/cli_oauth_session.py b/backend/staff/cli_oauth_session.py
+index 029d1b4d..e1dfb948 100644
+--- a/backend/staff/cli_oauth_session.py
++++ b/backend/staff/cli_oauth_session.py
+@@ -68,6 +68,32 @@ def _expiry_epoch_from_value(raw: Any) -> float | None:
+     return None
+ 
+ 
++def _find_refresh_epoch(data: Any) -> float | None:
++    if isinstance(data, dict):
++        for key in (
++            "lastRefresh",
++            "last_refresh",
++            "refreshed_at",
++            "updated_at",
++            "token_refresh_time",
++            "last_token_refresh",
++        ):
++            if key in data:
++                found = _expiry_epoch_from_value(data[key])
++                if found is not None:
++                    return found
++        for value in data.values():
++            found = _find_refresh_epoch(value)
++            if found is not None:
++                return found
++    elif isinstance(data, list):
++        for item in data:
++            found = _find_refresh_epoch(item)
++            if found is not None:
++                return found
++    return None
++
++
+ def _find_expiry_epoch(data: Any) -> float | None:
+     if isinstance(data, dict):
+         for key in ("expiresAt", "expires_at", "expiry", "expiration", "expirationTime"):
+@@ -194,6 +220,39 @@ _PROVIDER_CHECKERS: dict[str, Callable[[], tuple[bool, str]]] = {
+ }
+ 
+ 
++def _credential_json_paths(provider_or_credential_id: str) -> list[Path]:
++    if provider_or_credential_id in ("claude", "claude_code_cli"):
++        cred = resolve_claude_config_dir() / ".credentials.json"
++        return [cred] if cred.is_file() else []
++    if provider_or_credential_id == "antigravity":
++        oauth_file = resolve_antigravity_home() / "oauth_creds.json"
++        return [oauth_file] if oauth_file.is_file() else []
++    if provider_or_credential_id == "codex":
++        home = Path(os.environ.get("CODEX_HOME") or "~/.codex").expanduser()
++        auth = home / "auth.json"
++        return [auth] if auth.is_file() else []
++    return []
++
++
++def oauth_last_refresh_epoch_for_provider(provider_or_credential_id: str) -> float | None:
++    """When subscription OAuth material was last refreshed (JSON hint or file mtime)."""
++    best: float | None = None
++    for path in _credential_json_paths(provider_or_credential_id):
++        try:
++            mtime = path.stat().st_mtime
++            best = mtime if best is None else max(best, mtime)
++        except OSError:
++            pass
++        try:
++            data = json.loads(path.read_text(encoding="utf-8"))
++        except (OSError, json.JSONDecodeError):
++            continue
++        parsed = _find_refresh_epoch(data)
++        if parsed is not None:
++            best = parsed if best is None else max(best, parsed)
++    return best
++
++
+ def oauth_expiry_epoch_for_provider(provider_or_credential_id: str) -> float | None:
+     """Best-effort OAuth expiry epoch for preflight warnings; ``None`` when unknown."""
+     if provider_or_credential_id in ("claude", "claude_code_cli"):
+diff --git a/backend/staff/dispatch_service.py b/backend/staff/dispatch_service.py
+index 671b2a39..845c6431 100644
+--- a/backend/staff/dispatch_service.py
++++ b/backend/staff/dispatch_service.py
+@@ -301,7 +301,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
+                     "dry_run": True,
+                     **(
+                         {"provider_auth_failover": list(plan.provider_auth_skipped)}
+-                        if plan.provider_auth_skipped
++                        if getattr(plan, "provider_auth_skipped", ())
+                         else {}
+                     ),
+                 },
+@@ -358,11 +358,10 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
+             detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
+         ) from exc
+     rec, plan, created = runner.admit(req, run_id=run_id)
+-    auth_skipped = getattr(plan, "provider_auth_skipped", None)
+-    if created and auth_skipped:
++    if created and getattr(plan, "provider_auth_skipped", ()):
+         from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
+ 
+-        for row in auth_skipped:
++        for row in plan.provider_auth_skipped:
+             append_chain_attempt(
+                 runner.store,
+                 rec.id,
+diff --git a/backend/staff/failover_dispatch.py b/backend/staff/failover_dispatch.py
+index aa18d6fd..f114e4cc 100644
+--- a/backend/staff/failover_dispatch.py
++++ b/backend/staff/failover_dispatch.py
+@@ -410,7 +410,9 @@ def select_provider_from_chain(
+     chain = resolve_failover_chain(role, requested_provider=requested_provider)
+     step = pick_launch_step(chain, adapters, role, skip_cooling=True, machine=machine, auth_skipped=auth_skipped)
+     if step is None:
+-        step = pick_launch_step(chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped)
++        step = pick_launch_step(
++            chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped
++        )
+     if step is None:
+         for candidate in chain:
+             if _provider_auth_blocks(candidate.provider, machine):
+@@ -430,8 +432,6 @@ def select_provider_from_chain(
+             step = chain[0]
+         elif step is None and role.providers:
+             step = FailoverStep(role.providers[0], role.model)
+-    if step is None:
+-        raise ValueError(f"no provider available in failover chain for role '{role.name}'")
+     provider = step.provider
+     if not quota_headroom(provider, ceiling):
+         for alt in chain:
+diff --git a/backend/staff/provider_auth_preflight.py b/backend/staff/provider_auth_preflight.py
+index 4df129ca..046bb24f 100644
+--- a/backend/staff/provider_auth_preflight.py
++++ b/backend/staff/provider_auth_preflight.py
+@@ -4,18 +4,24 @@ from __future__ import annotations
+ 
+ import asyncio
+ import logging
++import os
+ import time
+ from datetime import UTC, datetime, timedelta
+ from typing import Any
+ from zoneinfo import ZoneInfo
+ 
+-from staff.cli_oauth_session import oauth_expiry_epoch_for_provider, provider_oauth_session_alive
++from staff.cli_oauth_session import (
++    oauth_expiry_epoch_for_provider,
++    oauth_last_refresh_epoch_for_provider,
++    provider_oauth_session_alive,
++)
+ 
+ log = logging.getLogger("dashboard.staff.provider_auth_preflight")
+ 
+ _EVENING_TZ = ZoneInfo("America/Los_Angeles")
+ _EVENING_HOUR = 20
+ _EXPIRING_HOURS = 48.0
++_STALE_REFRESH_DAYS = float(os.environ.get("STAFF_PROVIDER_AUTH_STALE_DAYS", "7"))
+ _PROBE_PROVIDERS = ("claude", "antigravity", "codex")
+ 
+ _cache: dict[str, Any] = {"checked_at": None, "providers": {}, "machine": ""}
+@@ -25,14 +31,30 @@ def preflight_cache_snapshot() -> dict[str, Any]:
+     return dict(_cache)
+ 
+ 
+-def _classify(provider: str, alive: bool, detail: str, expires_at: float | None) -> dict[str, Any]:
++def _classify(
++    provider: str,
++    alive: bool,
++    detail: str,
++    expires_at: float | None,
++    last_refresh_at: float | None,
++) -> dict[str, Any]:
+     now = time.time()
+     row: dict[str, Any] = {"provider": provider, "detail": detail}
+     if expires_at is not None:
+         row["expires_at"] = datetime.fromtimestamp(expires_at, UTC).isoformat().replace("+00:00", "Z")
+         row["hours_remaining"] = round(max(0.0, (expires_at - now) / 3600.0), 2)
++    if last_refresh_at is not None:
++        row["last_refresh_at"] = datetime.fromtimestamp(last_refresh_at, UTC).isoformat().replace("+00:00", "Z")
++        row["days_since_refresh"] = round(max(0.0, (now - last_refresh_at) / 86400.0), 2)
+     if not alive:
+         row["status"] = "expired"
++    elif last_refresh_at is not None and (now - last_refresh_at) >= _STALE_REFRESH_DAYS * 86400:
++        row["status"] = "stale"
++        row["detail"] = (
++            f"{detail}; subscription token not refreshed in {int((now - last_refresh_at) // 86400)} days"
++            if detail
++            else f"subscription token not refreshed in {int((now - last_refresh_at) // 86400)} days"
++        )
+     elif expires_at is not None and expires_at <= now + _EXPIRING_HOURS * 3600:
+         row["status"] = "expiring"
+     else:
+@@ -46,7 +68,8 @@ def probe_local_provider_auth(machine: str = "") -> dict[str, Any]:
+     for pid in _PROBE_PROVIDERS:
+         alive, detail = provider_oauth_session_alive(pid)
+         expires = oauth_expiry_epoch_for_provider(pid)
+-        providers[pid] = _classify(pid, alive, detail, expires)
++        refreshed = oauth_last_refresh_epoch_for_provider(pid)
++        providers[pid] = _classify(pid, alive, detail, expires, refreshed)
+     return {
+         "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+         "machine": machine,
+@@ -69,8 +92,13 @@ def attention_items_from_provider_auth(report: dict[str, Any]) -> list[dict[str,
+     machine = str(report.get("machine") or "local")
+     for pid, row in (report.get("providers") or {}).items():
+         status = row.get("status")
+-        if status not in ("expired", "expiring"):
++        if status not in ("expired", "expiring", "stale"):
+             continue
++        failure = {
++            "expired": "auth_expired",
++            "expiring": "auth_expiring",
++            "stale": "auth_stale",
++        }[status]
+         items.append(
+             {
+                 "id": f"provider-auth-{machine}-{pid}",
+@@ -78,9 +106,9 @@ def attention_items_from_provider_auth(report: dict[str, Any]) -> list[dict[str,
+                 "provider": pid,
+                 "machine": machine,
+                 "status": "blocked" if status == "expired" else "attention",
+-                "failure_class": "auth_expired" if status == "expired" else "auth_expiring",
++                "failure_class": failure,
+                 "error": row.get("detail") or f"{pid} auth {status}",
+-                "remediation": row.get("remediation") or f"Refresh {pid} subscription login on {machine}.",
++                "remediation": row.get("remediation") or f"Refresh {pid} credentials on {machine} (see docs/runbooks/durable-provider-credentials.md).",
+             }
+         )
+     return items
+diff --git a/backend/staff/summary_view.py b/backend/staff/summary_view.py
+index 03f1b97c..b0cdd585 100644
+--- a/backend/staff/summary_view.py
++++ b/backend/staff/summary_view.py
+@@ -20,8 +20,6 @@ from staff.github_app_preflight import (
+ from staff.provider_auth_preflight import (
+     aggregate_provider_auth,
+     attention_items_from_provider_auth,
+-)
+-from staff.provider_auth_preflight import (
+     preflight_cache_snapshot as provider_auth_snapshot,
+ )
+ from staff.runner import get_runner
+diff --git a/docs/runbooks/durable-provider-credentials.md b/docs/runbooks/durable-provider-credentials.md
+new file mode 100644
+index 00000000..9acd22e1
+--- /dev/null
++++ b/docs/runbooks/durable-provider-credentials.md
+@@ -0,0 +1,46 @@
++# Durable provider credentials (staff nodes)
++
++Staff Hub unattended runs use **subscription** CLI auth on each node (ChatGPT, Claude Pro/Max, Google Antigravity subscription, etc.). Do not use pay-per-use API keys for fleet staff dispatch.
++
++Monitor seats with `GET /api/staff/summary` → `provider_auth` (evening probe ~20:00 America/Los_Angeles). Statuses include `expired`, `expiring` (access token ends within 48h), and `stale` (refresh token / `auth.json` not updated in 7+ days by default — tune with `STAFF_PROVIDER_AUTH_STALE_DAYS`).
++
++Never commit tokens. Inject long-lived values via root-only `EnvironmentFile=` (systemd) outside git.
++
++## Claude (`claude`)
++
++**Recommended (headless, subscription):** `claude setup-token` mints a long-lived OAuth token for the subscription seat.
++
++1. On the node as the service user: `claude setup-token`.
++2. Store the token in a root-only env file (example `/etc/runner-dashboard/claude.env`):
++
++   ```bash
++   CLAUDE_CODE_OAUTH_TOKEN=<token-from-setup-token>
++   ```
++
++3. Reference that file from the dashboard unit (`EnvironmentFile=`). Set `CLAUDE_CONFIG_DIR` if the seat is not the default `~/.claude`.
++
++**Interactive fallback:** `claude auth login` under the same user/WSL seat the service uses.
++
++## Codex (`codex`)
++
++**Subscription only:** sign in with ChatGPT (`codex login`, device or browser flow). The CLI keeps a refresh token in `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`) and refreshes access tokens automatically.
++
++- Do **not** use `codex login --with-api-key` on staff nodes (pay-per-use; not fleet policy).
++- Ensure `CODEX_HOME` points at the service user's directory.
++- If `provider_auth` reports `stale` for codex, run `codex login` again on that node before overnight schedules.
++
++## Antigravity (`agy`)
++
++**Subscription / Google account:** `agy auth login` (browser). OAuth material lives under `ANTIGRAVITY_HOME` (default `~/.gemini`), including `oauth_creds.json`.
++
++There is **no** documented Antigravity subscription path that avoids periodic Google OAuth refresh comparable to Claude `setup-token` or Codex `auth.json` auto-refresh. Do not use `GEMINI_API_KEY` / Google AI Studio keys for fleet staff (pay-per-use). Plan for re-login when `provider_auth` shows `expired`, `expiring`, or `stale`, or assign overnight work to providers with durable seats.
++
++## Gemini CLI (`gemini`)
++
++If used as a provider, follow that CLI's **subscription / Google account** sign-in only. Do not configure API-key billing for unattended staff runs.
++
++## Verification
++
++- Per-node: `GET /api/staff/board?local=1` → `provider_auth`.
++- Fleet: `GET /api/staff/summary` → `provider_auth`.
++- Dispatch skips `auth_expired` providers in the failover chain; `409 provider_auth_expired` only when no chain member is authenticated.
+diff --git a/tests/unit/test_staff_provider_auth_failover.py b/tests/unit/test_staff_provider_auth_failover.py
+index b9983b46..54571159 100644
+--- a/tests/unit/test_staff_provider_auth_failover.py
++++ b/tests/unit/test_staff_provider_auth_failover.py
+@@ -60,3 +60,25 @@ def test_provider_auth_preflight_classifies_expiring(tmp_path: Path, monkeypatch
+     with patch("staff.cli_oauth_session.claude_oauth_session_alive", return_value=(True, "ok")):
+         report = probe_local_provider_auth("Desk")
+     assert report["providers"]["claude"]["status"] == "expiring"
++
++
++@pytest.mark.unit
++def test_provider_auth_preflight_marks_stale_codex_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    import time
++
++    from staff.provider_auth_preflight import probe_local_provider_auth
++
++    codex_home = tmp_path / "codex"
++    codex_home.mkdir()
++    auth = codex_home / "auth.json"
++    auth.write_text('{"refresh_token":"x","access_token":"y"}', encoding="utf-8")
++    old = time.time() - (10 * 86400)
++    import os
++
++    os.utime(auth, (old, old))
++    monkeypatch.setenv("CODEX_HOME", str(codex_home))
++    monkeypatch.setenv("STAFF_PROVIDER_AUTH_STALE_DAYS", "7")
++
++    with patch("staff.cli_oauth_session.provider_oauth_session_alive", return_value=(True, "ok")):
++        report = probe_local_provider_auth("Desk")
++    assert report["providers"]["codex"]["status"] == "stale"

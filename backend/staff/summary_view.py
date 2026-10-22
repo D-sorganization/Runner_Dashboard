@@ -20,9 +20,7 @@ from staff.github_app_preflight import (
 from staff.provider_auth_preflight import (
     aggregate_provider_auth,
     attention_items_from_provider_auth,
-)
-from staff.provider_auth_preflight import (
-    preflight_cache_snapshot as provider_auth_snapshot,
+    provider_auth_cache_snapshot,
 )
 from staff.runner import get_runner
 
@@ -51,7 +49,7 @@ async def build_staff_summary() -> dict[str, Any]:
         preflight = run_preflight_and_cache(roles)
     provider_auth = aggregate_provider_auth(board_view)
     if not provider_auth.get("machines"):
-        local_auth = provider_auth_snapshot()
+        local_auth = provider_auth_cache_snapshot()
         if local_auth.get("checked_at"):
             provider_auth = {
                 "checked_at": local_auth.get("checked_at"),

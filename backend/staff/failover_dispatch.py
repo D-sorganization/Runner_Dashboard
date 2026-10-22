@@ -427,7 +427,16 @@ def select_provider_from_chain(
                 step = candidate
                 break
         if step is None and chain:
-            step = chain[0]
+            import provider_switch as provider_switch_mod  # noqa: PLC0415
+
+            for candidate in chain:
+                if provider_switch_mod.is_disabled(candidate.provider):
+                    continue
+                if not _provider_auth_blocks(candidate.provider, machine) and _usable_provider(
+                    adapters, role, candidate.provider
+                ):
+                    step = candidate
+                    break
         elif step is None and role.providers:
             step = FailoverStep(role.providers[0], role.model)
     if step is None:

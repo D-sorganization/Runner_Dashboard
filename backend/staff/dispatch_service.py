@@ -346,7 +346,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
                 **(
                     {"provider_auth_failover": list(plan.provider_auth_skipped)}
-                    if getattr(plan, "provider_auth_skipped", ())
+                    if plan.provider_auth_skipped
                     else {}
                 ),
             },

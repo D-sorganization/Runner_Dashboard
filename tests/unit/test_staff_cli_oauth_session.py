@@ -89,4 +89,4 @@ def test_claude_probe_treats_auth_expired_message_as_dead(tmp_path: Path, monkey
 
 
 def test_provider_oauth_session_alive_unknown_provider_is_ok() -> None:
-    assert provider_oauth_session_alive("codex") == (True, "")
+    assert provider_oauth_session_alive("ollama") == (True, "")

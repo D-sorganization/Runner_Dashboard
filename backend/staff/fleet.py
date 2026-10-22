@@ -321,10 +321,10 @@ def local_board(runner: Any) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         avail_stats = {}
 
-    from staff.provider_auth_preflight import preflight_cache_snapshot  # noqa: PLC0415
+    from staff.provider_auth_preflight import provider_auth_cache_snapshot  # noqa: PLC0415
     from staff.provider_cooldown import cooldown_snapshot  # noqa: PLC0415
 
-    provider_auth = preflight_cache_snapshot()
+    provider_auth = provider_auth_cache_snapshot()
     if provider_auth.get("checked_at") is None:
         from staff.provider_auth_preflight import run_preflight_and_cache  # noqa: PLC0415
 

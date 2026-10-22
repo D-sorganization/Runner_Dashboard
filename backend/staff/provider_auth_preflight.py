@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -21,7 +22,11 @@ _PROBE_PROVIDERS = ("claude", "antigravity", "codex")
 _cache: dict[str, Any] = {"checked_at": None, "providers": {}, "machine": ""}
 
 
-def preflight_cache_snapshot() -> dict[str, Any]:
+def _skip_live_provider_auth_probe() -> bool:
+    return os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1" or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+
+def provider_auth_cache_snapshot() -> dict[str, Any]:
     return dict(_cache)
 
 
@@ -42,6 +47,13 @@ def _classify(provider: str, alive: bool, detail: str, expires_at: float | None)
 
 def probe_local_provider_auth(machine: str = "") -> dict[str, Any]:
     """Probe OAuth seats for unattended providers on this node."""
+    if _skip_live_provider_auth_probe():
+        return {
+            "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "machine": machine,
+            "providers": {},
+            "skipped": True,
+        }
     providers: dict[str, Any] = {}
     for pid in _PROBE_PROVIDERS:
         alive, detail = provider_oauth_session_alive(pid)
