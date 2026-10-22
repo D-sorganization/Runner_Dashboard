@@ -359,6 +359,8 @@ def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
         or "test_architecture_map_contract" in path
     ):
         return
+    if not _staff_run_test_path(path):
+        return
     monkeypatch.setattr(
         "staff.cli_oauth_session.provider_oauth_session_alive",
         lambda *_a, **_k: (True, ""),
