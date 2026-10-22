@@ -129,9 +129,11 @@ class ProjectIntakeStore:
 
     def list_projects(self, limit: int = 50) -> list[ProjectRecord]:
         with self._lock:
-            rows = self._connection().execute(
-                "SELECT * FROM staff_projects ORDER BY created_at DESC LIMIT ?", (limit,)
-            ).fetchall()
+            rows = (
+                self._connection()
+                .execute("SELECT * FROM staff_projects ORDER BY created_at DESC LIMIT ?", (limit,))
+                .fetchall()
+            )
         return [_row_to_record(r) for r in rows]
 
     def save_tasks(self, project_id: str, tasks: list[ProjectTask]) -> ProjectRecord:
