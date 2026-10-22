@@ -78,9 +78,7 @@ class AgentBusStore:
                 "created_at TEXT NOT NULL, acked_at TEXT, "
                 "UNIQUE(from_session, idempotency_key))"
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS agent_bus_inbox_to ON agent_bus_inbox(to_address, cursor)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS agent_bus_inbox_to ON agent_bus_inbox(to_address, cursor)")
             conn.close()
 
     def _conn(self) -> sqlite3.Connection:
@@ -92,9 +90,11 @@ class AgentBusStore:
 
     def get_principal(self, session_id: str) -> PrincipalRow | None:
         with self._lock:
-            row = self._conn().execute(
-                "SELECT * FROM agent_bus_principals WHERE session_id = ?", (session_id,)
-            ).fetchone()
+            row = (
+                self._conn()
+                .execute("SELECT * FROM agent_bus_principals WHERE session_id = ?", (session_id,))
+                .fetchone()
+            )
         return self._row_principal(row) if row else None
 
     def _row_principal(self, row: sqlite3.Row) -> PrincipalRow:
@@ -296,11 +296,15 @@ class AgentBusStore:
         addresses = {session_id, row.role}
         placeholders = ",".join("?" for _ in addresses)
         with self._lock:
-            rows = self._conn().execute(
-                f"SELECT * FROM agent_bus_inbox WHERE to_address IN ({placeholders}) "
-                "AND cursor > ? ORDER BY cursor ASC LIMIT ?",
-                (*addresses, since_cursor, limit),
-            ).fetchall()
+            rows = (
+                self._conn()
+                .execute(
+                    f"SELECT * FROM agent_bus_inbox WHERE to_address IN ({placeholders}) "
+                    "AND cursor > ? ORDER BY cursor ASC LIMIT ?",
+                    (*addresses, since_cursor, limit),
+                )
+                .fetchall()
+            )
         messages = [self._message_dict(r) for r in rows]
         next_cursor = messages[-1]["cursor"] if messages else since_cursor
         return {
