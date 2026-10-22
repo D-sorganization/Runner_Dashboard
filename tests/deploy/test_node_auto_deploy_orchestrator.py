@@ -105,6 +105,7 @@ def test_evaluate_cycle_skips_when_ci_red(tmp_path: Path) -> None:
         staff_in_flight=lambda: 0,
         state=AutoDeployState(),
     )
-    result, msg = evaluate_cycle(cfg, deps)
-    assert result == "skipped"
+    result, msg, target = evaluate_cycle(cfg, deps)
+    assert result == "failed"
+    assert target is None
     assert "CI gate" in msg

@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from node_auto_deploy.artifact import pick_release_assets
-from node_auto_deploy.ci_gate import ci_gate_for_commit, parse_check_runs_payload
+from node_auto_deploy.ci_gate import (
+    DEFAULT_MAIN_HISTORY_LIMIT,
+    parse_check_runs_payload,
+    select_deployable_main_commit,
+)
 from node_auto_deploy.contracts import AutoDeployState
 from node_auto_deploy.hub_gate import hub_ready_for_commit
 from node_auto_deploy.kill_switch import auto_deploy_disabled
@@ -36,8 +40,47 @@ def should_skip_already_deployed(deployed_sha: str | None, main_sha: str) -> boo
     return deployed_sha is not None and deployed_sha.lower() == main_sha.lower()
 
 
-def evaluate_cycle(config: CycleConfig, deps: CycleDeps) -> tuple[str, str]:
-    """Return (result, message) where result is skipped|failed|ready."""
+def _main_commit_history(
+    deps: CycleDeps,
+    repo_full_name: str,
+    main_head_sha: str,
+) -> list[str]:
+    payload = deps.github_get(
+        f"/repos/{repo_full_name}/commits?sha=main&per_page={DEFAULT_MAIN_HISTORY_LIMIT}"
+    )
+    shas: list[str] = []
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                sha = str(item.get("sha") or "").lower()
+                if len(sha) == 40:
+                    shas.append(sha)
+    if main_head_sha not in shas:
+        shas.insert(0, main_head_sha)
+    return shas[:DEFAULT_MAIN_HISTORY_LIMIT]
+
+
+def _check_runs_for_commit(
+    deps: CycleDeps,
+    repo_full_name: str,
+    commit_sha: str,
+) -> list[dict[str, Any]]:
+    checks = deps.github_get(
+        f"/repos/{repo_full_name}/commits/{commit_sha}/check-runs?per_page=100"
+    )
+    payload = checks if isinstance(checks, dict) else {}
+    runs = parse_check_runs_payload(payload)
+    out: list[dict[str, Any]] = []
+    for run in runs:
+        if str(run.get("head_sha") or "").lower() != commit_sha:
+            out.append({**run, "head_sha": commit_sha})
+        else:
+            out.append(run)
+    return out
+
+
+def evaluate_cycle(config: CycleConfig, deps: CycleDeps) -> tuple[str, str, str | None]:
+    """Return (result, message, target_commit_sha) where result is skipped|failed|ready."""
     if auto_deploy_disabled():
         return "skipped", "auto-deploy disabled by kill switch"
 
@@ -49,28 +92,38 @@ def evaluate_cycle(config: CycleConfig, deps: CycleDeps) -> tuple[str, str]:
     from pathlib import Path
 
     deployed = deployed_git_sha(Path(config.live_deploy_dir) / "deployment.json")
-    if should_skip_already_deployed(deployed, main_sha):
-        return "skipped", f"already at {main_sha[:7]}"
 
-    checks = deps.github_get(f"/repos/{config.repo_full_name}/commits/{main_sha}/check-runs?per_page=100")
-    ok, detail = ci_gate_for_commit(parse_check_runs_payload(checks), main_sha)
-    if not ok:
-        return "skipped", f"CI gate: {detail}"
+    history = _main_commit_history(deps, config.repo_full_name, main_sha)
+    deployable_sha, gate_detail = select_deployable_main_commit(
+        history,
+        lambda sha: _check_runs_for_commit(deps, config.repo_full_name, sha),
+    )
+    if deployable_sha is None:
+        return "failed", f"CI gate: {gate_detail}", None
 
-    assets = pick_release_assets(deps.list_releases(), main_sha)
+    if should_skip_already_deployed(deployed, deployable_sha):
+        if main_sha != deployable_sha:
+            return (
+                "skipped",
+                f"already at {deployable_sha[:7]} (main HEAD {main_sha[:7]} awaiting CI)",
+                None,
+            )
+        return "skipped", f"already at {deployable_sha[:7]}", None
+
+    assets = pick_release_assets(deps.list_releases(), deployable_sha)
     if not assets:
-        return "skipped", f"no release artifact for {main_sha[:7]}"
+        return "skipped", f"no release artifact for {deployable_sha[:7]}", None
 
     if config.machine_role != "hub" and config.hub_url:
         try:
             fleet = deps.fetch_fleet_status()
         except RuntimeError as exc:
-            return "skipped", f"hub gate: {exc}"
-        ready, hub_detail = hub_ready_for_commit(fleet, main_sha)
+            return "skipped", f"hub gate: {exc}", None
+        ready, hub_detail = hub_ready_for_commit(fleet, deployable_sha)
         if not ready:
-            return "skipped", f"hub gate: {hub_detail}"
+            return "skipped", f"hub gate: {hub_detail}", None
 
     if deps.staff_in_flight() > 0:
-        return "skipped", "staff runs in flight"
+        return "skipped", "staff runs in flight", None
 
-    return "ready", assets["version"]
+    return "ready", assets["version"], deployable_sha

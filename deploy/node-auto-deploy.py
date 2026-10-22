@@ -179,14 +179,14 @@ def main(argv: list[str] | None = None) -> int:
         state=state,
     )
 
-    result, message = evaluate_cycle(cfg, deps)
+    result, message, target_sha = evaluate_cycle(cfg, deps)
     if result != "ready":
         record_event(state, commit=deployed_git_sha(live_dir / "deployment.json") or "unknown", result="skipped", message=message)
         save_state(state_path, state)
         print(message)
         return 0
 
-    main_sha = str(gh_get(f"/repos/{args.repo}/commits/main").get("sha") or "").lower()
+    main_sha = target_sha or str(gh_get(f"/repos/{args.repo}/commits/main").get("sha") or "").lower()
     from node_auto_deploy.artifact import pick_release_assets
 
     assets = pick_release_assets(list_releases(), main_sha)
