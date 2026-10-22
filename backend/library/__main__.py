@@ -17,8 +17,11 @@ def main() -> int:
         raw = args.directory or (str(library_source_dir()) if library_source_dir() else "")
         if not raw:
             raise ValueError("pass a directory or set LIBRARY_SOURCE_DIR")
-        n = ingest_directory(Path(raw))["files_indexed"]
-        sys.stdout.write(f"indexed {n} pdf(s)\n")
+        stats = ingest_directory(Path(raw))
+        sys.stdout.write(
+            f"indexed {stats['files_indexed']} file(s); skipped {stats['files_skipped']};"
+            f" rejected {stats['files_rejected']}; removed {stats['files_removed']}\n"
+        )
         return 0
     except ValueError as exc:
         sys.stderr.write(f"error: {exc}\n")

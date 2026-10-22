@@ -2709,6 +2709,10 @@ async def _startup() -> None:
 
     start_delivery_metrics_sync_loop(GhClientDeliveryCollector, delivery_metrics_repos())
 
+    from library.ingest import start_library_ingest_loop  # noqa: PLC0415
+
+    start_library_ingest_loop()
+
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
 
