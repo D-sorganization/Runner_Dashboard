@@ -19,10 +19,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from oauth_config import OAuthConfig
-
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from oauth_config import OAuthConfig
 
 log = logging.getLogger("dashboard.github_app_user_oauth")
 
