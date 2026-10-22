@@ -11,16 +11,14 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING
 
 from platform_utils.wsl_paths import windows_repositories_root
 from staff import cli_projects
 from staff.roles import RoleSpec
 
-
-class _DispatchPromptBundle(Protocol):
-    standards_block: str
-    skill_block: str
+if TYPE_CHECKING:
+    from staff.dispatch_bundle import DispatchBundle
 
 
 log = logging.getLogger("dashboard.staff.workspace")
@@ -303,7 +301,7 @@ def compose_prompt(
     consolidation: str = "",
     focus: str = "",
     chat_turn: bool = False,
-    dispatch_bundle: _DispatchPromptBundle | None = None,
+    dispatch_bundle: DispatchBundle | None = None,
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
 
