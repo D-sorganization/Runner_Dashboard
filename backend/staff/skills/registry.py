@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 
 from staff.skills.contract import SkillDetail, SkillSummary, SkillValidationError, parse_skill_md, semver_sort_key
+from staff.skills.pointer import resolve_skill_source
 from staff.workspace import rm_root
 
 log = logging.getLogger("dashboard.staff.skills")
@@ -58,10 +59,11 @@ def _load_directory(root: Path) -> None:
     for skill_file in sorted(root.glob(_SKILL_GLOB)):
         rel = str(skill_file.relative_to(root))
         try:
+            body_text, package_dir, _ = resolve_skill_source(skill_file)
             detail = parse_skill_md(
-                skill_file.read_text(encoding="utf-8"),
+                body_text,
                 source_path=rel,
-                package_dir=skill_file.parent,
+                package_dir=package_dir,
             )
         except (OSError, SkillValidationError) as exc:
             errors[rel] = [str(exc)]
