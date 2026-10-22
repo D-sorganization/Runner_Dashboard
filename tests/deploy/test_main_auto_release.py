@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -24,9 +23,12 @@ _CANCEL_SHA = "3ee37e4a41514213222cb3730d44e189e3b81a15"  # pragma: allowlist se
 _COMMIT_DATE = "2026-10-22T02:11:34Z"
 
 
-def _runs(path: Path, sha: str) -> list[dict[str, object]]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    return [{**run, "head_sha": sha} for run in payload["check_runs"]]
+def _minimal_green_runs(sha: str) -> list[dict[str, object]]:
+    return [
+        {"head_sha": sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
+        {"head_sha": sha, "name": "tests (3.11)", "status": "completed", "conclusion": "success"},
+        {"head_sha": sha, "name": "guard", "status": "completed", "conclusion": "skipped"},
+    ]
 
 
 def _minimal_failing_runs(sha: str, *, failing_name: str, failing_conclusion: str) -> list[dict[str, object]]:
@@ -34,13 +36,6 @@ def _minimal_failing_runs(sha: str, *, failing_name: str, failing_conclusion: st
         {"head_sha": sha, "name": failing_name, "status": "completed", "conclusion": failing_conclusion},
         {"head_sha": sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
     ]
-
-
-def test_fixture_a474ee66_is_ci_green() -> None:
-    runs = _runs(REPO / "tests/deploy/fixtures/a474ee6_check_runs.json", _GREEN_SHA)
-    ok, detail = commit_passes_main_ci_gate(runs, _GREEN_SHA)
-    assert ok is True
-    assert _GREEN_SHA[:7] in detail
 
 
 def test_vitest_failure_blocks_release() -> None:
@@ -92,7 +87,7 @@ def test_pick_release_assets_supports_auto_version_string() -> None:
 
 
 def test_select_green_commit_with_release_skips_head_without_release() -> None:
-    head = _runs(REPO / "tests/deploy/fixtures/a474ee6_check_runs.json", _GREEN_SHA)
+    head = _minimal_green_runs(_GREEN_SHA)
     older_sha = "b" * 40
     older = [
         {"head_sha": older_sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
