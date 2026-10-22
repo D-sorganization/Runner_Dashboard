@@ -8,6 +8,7 @@ facade.  These tests verify the systemd module's own interface contracts.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import autoscaler_systemd as sd
@@ -20,6 +21,12 @@ def _cp(stdout: str = "", returncode: int = 0) -> MagicMock:
     cp.returncode = returncode
     cp.stderr = ""
     return cp
+
+
+@pytest.fixture(autouse=True)
+def _prevent_host_runner_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never let lifecycle unit tests clean lockfiles in real runner homes."""
+    monkeypatch.setattr("runner_state_cleanup.cleanup_runner_state", MagicMock())
 
 
 class TestListRunnerUnits:
@@ -46,6 +53,31 @@ class TestListRunnerUnits:
     def test_timeout(self) -> None:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("systemctl", 10)):
             assert sd._list_runner_units() == []
+
+
+def test_systemctl_calls_remain_local_and_use_argv() -> None:
+    assert sd._systemctl_command("show", "example.service") == ["systemctl", "show", "example.service"]
+    assert sd._systemctl_command("stop", "--no-block", "example.service", sudo=True) == [
+        "sudo",
+        "-n",
+        "systemctl",
+        "stop",
+        "--no-block",
+        "example.service",
+    ]
+
+
+def test_autoscaler_installer_checks_identity_before_mutations() -> None:
+    installer = Path(__file__).resolve().parents[1] / "deploy" / "install-autoscaler.sh"
+    source = installer.read_text(encoding="utf-8")
+    guard = source.index('if [[ -n "$EXPECTED_WSL_DISTRO" ]]')
+    first_mutation = source.index('install -Dm 0755 "$PROJECT_ROOT/backend/runner_autoscaler.py"')
+    assert guard < first_mutation
+    assert "exit 2" in source[guard:first_mutation]
+    assert '"$WSL_DISTRO_NAME" != "$EXPECTED_WSL_DISTRO"' in source[guard:first_mutation]
+    assert "wsl.exe" not in source
+    assert '"$DASHBOARD_DIR/backend/autoscaler_config.py"' in source
+    assert '"$DASHBOARD_DIR/backend/autoscaler_identity.py"' in source
 
 
 class TestRunnerNameForUnit:
