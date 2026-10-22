@@ -216,6 +216,22 @@ def test_probe_claude_code_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     assert probe["detail"] == "Ready (ANTHROPIC_API_KEY)"
 
 
+def test_probe_claude_code_cli_expired_oauth_not_authenticated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
+    monkeypatch.setattr(credentials, "_env_present_anywhere", lambda key: False)
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_dir))
+    monkeypatch.setattr(
+        "staff.cli_oauth_session.claude_oauth_session_alive",
+        lambda *_a, **_k: (False, "Authentication expired"),
+    )
+    probe = _probe_claude_code_cli()
+    assert probe["authenticated"] is False
+    assert "expired" in probe["detail"].lower()
+
+
 def test_probe_claude_code_cli_no_auth(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
     monkeypatch.setattr(credentials, "_env_present_anywhere", lambda key: False)
@@ -236,6 +252,10 @@ def test_probe_claude_code_cli_login_file_counts_as_authenticated(
     claude_dir.mkdir()
     (claude_dir / ".credentials.json").write_text("{}", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_dir))
+    monkeypatch.setattr(
+        "staff.cli_oauth_session.claude_oauth_session_alive",
+        lambda *_a, **_k: (True, "OAuth session active"),
+    )
 
     probe = _probe_claude_code_cli()
     assert probe["authenticated"] is True

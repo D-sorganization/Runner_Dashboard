@@ -59,4 +59,13 @@ def test_check_name_passes_aggregates_duplicate_names() -> None:
         )
         is False
     )
+    assert (
+        check_name_passes(
+            [
+                {"status": "completed", "conclusion": "cancelled", "name": "docker-build-scan"},
+                {"status": "completed", "conclusion": "success", "name": "docker-build-scan"},
+            ]
+        )
+        is True
+    )
     assert check_name_passes([{"status": "completed", "conclusion": "neutral", "name": "note"}]) is False

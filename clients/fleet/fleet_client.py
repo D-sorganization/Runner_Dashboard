@@ -299,6 +299,24 @@ class FleetClient:
             "POST", f"/api/v1/staff/threads/{tid}/messages", body={"body": text, "kind": "text"}, headers=headers
         )
 
+    def staff_skills_list(
+        self,
+        role: str | None = None,
+        repo: str | None = None,
+        task_type: str | None = None,
+    ) -> Any:
+        params = {
+            "role": _opt(PATTERNS.ident, role, "role"),
+            "repo": _opt_text(repo, "repo", 128),
+            "task_type": _opt_text(task_type, "task_type", 64),
+        }
+        return self.request("GET", "/api/v1/staff/skills", params=_compact(params))
+
+    def staff_skill_get(self, name: str, version: str | None = None) -> Any:
+        skill = _match(PATTERNS.ident, name, "name")
+        params = {"version": _opt_text(version, "version", 32)} if version else {}
+        return self.request("GET", f"/api/v1/staff/skills/{urllib.parse.quote(skill, safe='')}", params=params)
+
     def staff_thread_read(self, thread_id: str, since_seq: int = 0, limit: int = 100) -> Any:
         tid = _match(PATTERNS.ident, thread_id, "thread_id")
         params = {
@@ -477,6 +495,40 @@ class FleetClient:
     def briefing(self, repo: str | None = None, agent: str | None = None) -> Any:
         params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "agent": self._agent(agent)}
         return self.request("GET", "/api/coordination/briefing", params=params)
+
+    # ------------------------------------------------------------------ agent bus (#2155)
+
+    def agent_register(
+        self,
+        *,
+        session: str,
+        role: str,
+        provider: str,
+        node: str,
+        lease_seconds: int = 300,
+    ) -> Any:
+        _check(30 <= lease_seconds <= 8 * 3600, "lease_seconds must be between 30 and 28800")
+        body = {
+            "session": self._session(session),
+            "role": _match(PATTERNS.agent, role, "role"),
+            "provider": _text(provider, "provider", 64),
+            "node": _text(node, "node", 128),
+            "lease_seconds": lease_seconds,
+        }
+        return self.request("POST", "/api/v1/agent/register", body=body)
+
+    def agent_heartbeat(self, *, session: str | None = None, lease_seconds: int = 300) -> Any:
+        _check(30 <= lease_seconds <= 8 * 3600, "lease_seconds must be between 30 and 28800")
+        body = {"session": self._session(session), "lease_seconds": lease_seconds}
+        return self.request("POST", "/api/v1/agent/heartbeat", body=body)
+
+    def agent_inbox(self, *, session: str | None = None, since_cursor: int = 0, limit: int = 50) -> Any:
+        params = {
+            "session": self._session(session),
+            "since_cursor": _non_negative_int(since_cursor, "since_cursor"),
+            "limit": _positive_int(limit, "limit"),
+        }
+        return self.request("GET", "/api/v1/agent/inbox", params=params)
 
     # ------------------------------------------------------------------ priorities
 

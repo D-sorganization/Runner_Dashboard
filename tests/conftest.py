@@ -42,6 +42,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import sys  # noqa: E402
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
+_skills_dispatch = REPO_ROOT / "tests" / "fixtures" / "skills_dispatch"
+if _skills_dispatch.is_dir():
+    os.environ.setdefault("STAFF_SKILLS_DIR", str(_skills_dispatch))
 backend_dir = str(REPO_ROOT / "backend")
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
@@ -344,6 +347,18 @@ def _cleanup_stores_session_teardown():
 def _staff_verification_off(monkeypatch):
     """Finished test runs never ask GitHub for their PR (#1516); verification tests opt in."""
     monkeypatch.setenv("STAFF_VERIFY_MODE", "off")
+
+
+@pytest.fixture(autouse=True)
+def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
+    """Dispatch tests stub OAuth preflight; oauth probe tests exercise the real check (#2170)."""
+    path = str(request.node.fspath or "")
+    if "test_staff_cli_oauth_session" in path or "test_staff_dispatch_provider_auth" in path:
+        return
+    monkeypatch.setattr(
+        "staff.cli_oauth_session.provider_oauth_session_alive",
+        lambda *_a, **_k: (True, ""),
+    )
 
 
 def _staff_run_test_path(path: str) -> bool:

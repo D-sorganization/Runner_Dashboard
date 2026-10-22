@@ -12,12 +12,11 @@ import yaml
 from src.contracts import require
 
 BRIDGE_REL = "scripts/agent-check-hook-bridge.py"
+AGENT_BUS_BRIDGE_REL = "scripts/agent-bus-hook-bridge.py"
 CURSOR_HOOK_VERSION = 1
 CODEX_CLI_PIN = "0.139.0"
 ANTIGRAVITY_HOOK_GROUP = "fleet-agent-check"
-SUPPORTED_TARGETS = frozenset(
-    {"cursor", "claude", "codex", "antigravity", "gemini", "pre-push"}
-)
+SUPPORTED_TARGETS = frozenset({"cursor", "claude", "codex", "antigravity", "gemini", "pre-push"})
 
 
 class AdapterError(ValueError):
@@ -35,9 +34,7 @@ def load_manifest(root: Path) -> dict[str, Any]:
     require(path.is_file(), f"missing manifest: {path}")
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     require(isinstance(data, dict), "manifest must be a mapping")
-    require(
-        int(data.get("schema_version", 0)) == 1, "unsupported manifest schema_version"
-    )
+    require(int(data.get("schema_version", 0)) == 1, "unsupported manifest schema_version")
     return cast(dict[str, Any], data)
 
 
@@ -52,19 +49,23 @@ def bridge_command(mode: str) -> str:
 
 def bridge_command_git_root(mode: str) -> str:
     """Resolve the bridge from ``git rev-parse --show-toplevel`` (Codex cwd)."""
-    return (
-        'bash -lc \'root="$(git rev-parse --show-toplevel)"; '
-        f'exec python3 "$root/{BRIDGE_REL}" {mode}\'"'
-    )
+    return f'bash -lc \'root="$(git rev-parse --show-toplevel)"; exec python3 "$root/{BRIDGE_REL}" {mode}\'"'
+
+
+def _agent_bus_hook(mode: str, timeout_seconds: int) -> dict[str, Any]:
+    return {
+        "type": "command",
+        "command": f"python3 {AGENT_BUS_BRIDGE_REL} {mode}",
+        "timeout": timeout_seconds,
+    }
 
 
 def generate_cursor_hooks(_root: Path, *, timeout_seconds: int) -> dict[str, Any]:
     return {
         "version": CURSOR_HOOK_VERSION,
         "hooks": {
-            "stop": [
-                {**_command_hook("cursor-stop", timeout_seconds), "failClosed": True}
-            ]
+            "sessionStart": [_agent_bus_hook("session-start", timeout_seconds)],
+            "stop": [{**_command_hook("cursor-stop", timeout_seconds), "failClosed": True}],
         },
     }
 
@@ -81,9 +82,7 @@ def fleet_claude_stop_hook(timeout_seconds: int) -> list[dict[str, Any]]:
     return [{"hooks": [_command_hook("claude-stop", timeout_seconds)]}]
 
 
-def merge_claude_settings(
-    existing: dict[str, Any], *, timeout_seconds: int
-) -> dict[str, Any]:
+def merge_claude_settings(existing: dict[str, Any], *, timeout_seconds: int) -> dict[str, Any]:
     require(isinstance(existing, dict), "settings must be an object")
     merged = dict(existing)
     hooks = dict(merged.get("hooks") or {})
@@ -116,12 +115,8 @@ def validate_cursor_hooks(doc: Any) -> None:
     require(bool(stop), "cursor hooks.stop required")
     for item in stop:
         require(isinstance(item, dict), "cursor stop entry must be an object")
-        require(
-            item.get("type") in {None, "command"}, "cursor stop must be command type"
-        )
-        require(
-            isinstance(item.get("command"), str) and item["command"], "command required"
-        )
+        require(item.get("type") in {None, "command"}, "cursor stop must be command type")
+        require(isinstance(item.get("command"), str) and item["command"], "command required")
 
 
 def _command_hook_git_root(mode: str, timeout_seconds: int) -> dict[str, Any]:
@@ -135,9 +130,7 @@ def _command_hook_git_root(mode: str, timeout_seconds: int) -> dict[str, Any]:
 def generate_codex_hooks(_root: Path, *, timeout_seconds: int) -> dict[str, Any]:
     return {
         "description": f"Fleet agent-check hooks (Codex CLI pin {CODEX_CLI_PIN}).",
-        "hooks": {
-            "Stop": [{"hooks": [_command_hook_git_root("codex-stop", timeout_seconds)]}]
-        },
+        "hooks": {"Stop": [{"hooks": [_command_hook_git_root("codex-stop", timeout_seconds)]}]},
     }
 
 
@@ -147,9 +140,7 @@ def generate_antigravity_hooks(_root: Path, *, timeout_seconds: int) -> dict[str
             "PostToolUse": [
                 {
                     "matcher": "*",
-                    "hooks": [
-                        _command_hook_git_root("antigravity-post-tool", timeout_seconds)
-                    ],
+                    "hooks": [_command_hook_git_root("antigravity-post-tool", timeout_seconds)],
                 }
             ],
             "Stop": [_command_hook_git_root("antigravity-stop", timeout_seconds)],
@@ -157,9 +148,7 @@ def generate_antigravity_hooks(_root: Path, *, timeout_seconds: int) -> dict[str
     }
 
 
-def merge_gemini_settings(
-    existing: dict[str, Any], *, timeout_seconds: int
-) -> dict[str, Any]:
+def merge_gemini_settings(existing: dict[str, Any], *, timeout_seconds: int) -> dict[str, Any]:
     require(isinstance(existing, dict), "gemini settings must be an object")
     merged = dict(existing)
     hooks = dict(merged.get("hooks") or {})
@@ -187,6 +176,7 @@ def generate_pre_push_sample() -> str:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         'root="$(git rev-parse --show-toplevel)"\n'
+        'python3 "$root/scripts/agent-bus-hook-bridge.py" pre-push || true\n'
         'exec python3 "$root/scripts/pre_push_agent_check.py"\n'
     )
 
@@ -248,9 +238,7 @@ def validate_claude_settings(doc: Any) -> None:
         for hook in inner:
             require(isinstance(hook, dict), "claude hook must be an object")
             require(hook.get("type") == "command", "claude hook type must be command")
-            require(
-                isinstance(hook.get("command"), str), "claude hook command required"
-            )
+            require(isinstance(hook.get("command"), str), "claude hook command required")
 
 
 def _write_json(path: Path, doc: dict[str, Any]) -> WriteResult:
@@ -286,11 +274,7 @@ def generate_adapters(
         doc = generate_cursor_hooks(root, timeout_seconds=timeout)
         validate_cursor_hooks(doc)
         path = root / ".cursor/hooks.json"
-        results["cursor"] = (
-            _write_json(path, doc)
-            if write
-            else WriteResult(path.as_posix(), _differs(path, doc))
-        )
+        results["cursor"] = _write_json(path, doc) if write else WriteResult(path.as_posix(), _differs(path, doc))
     if "claude" in targets:
         settings_path = root / ".claude/settings.json"
         existing = _read_json_object(settings_path) if settings_path.is_file() else {}
@@ -299,10 +283,7 @@ def generate_adapters(
         merged = merge_claude_settings(existing, timeout_seconds=timeout)
         validate_claude_settings(merged)
         text = json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
-        changed = (
-            not settings_path.is_file()
-            or settings_path.read_text(encoding="utf-8") != text
-        )
+        changed = not settings_path.is_file() or settings_path.read_text(encoding="utf-8") != text
         if write and changed:
             settings_path.parent.mkdir(parents=True, exist_ok=True)
             settings_path.write_text(text, encoding="utf-8")
@@ -311,30 +292,19 @@ def generate_adapters(
         doc = generate_codex_hooks(root, timeout_seconds=timeout)
         validate_codex_hooks(doc)
         path = root / ".codex/hooks.json"
-        results["codex"] = (
-            _write_json(path, doc)
-            if write
-            else WriteResult(path.as_posix(), _differs(path, doc))
-        )
+        results["codex"] = _write_json(path, doc) if write else WriteResult(path.as_posix(), _differs(path, doc))
     if "antigravity" in targets:
         doc = generate_antigravity_hooks(root, timeout_seconds=timeout)
         validate_antigravity_hooks(doc)
         path = root / ".agents/hooks.json"
-        results["antigravity"] = (
-            _write_json(path, doc)
-            if write
-            else WriteResult(path.as_posix(), _differs(path, doc))
-        )
+        results["antigravity"] = _write_json(path, doc) if write else WriteResult(path.as_posix(), _differs(path, doc))
     if "gemini" in targets:
         settings_path = root / ".gemini/settings.json"
         existing = _read_json_object(settings_path) if settings_path.is_file() else {}
         merged = merge_gemini_settings(existing, timeout_seconds=timeout)
         validate_gemini_settings(merged)
         text = json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
-        changed = (
-            not settings_path.is_file()
-            or settings_path.read_text(encoding="utf-8") != text
-        )
+        changed = not settings_path.is_file() or settings_path.read_text(encoding="utf-8") != text
         if write and changed:
             settings_path.parent.mkdir(parents=True, exist_ok=True)
             settings_path.write_text(text, encoding="utf-8")
@@ -366,9 +336,7 @@ def check_adapters(root: Path, *, targets: frozenset[str]) -> list[str]:
             drift.append(path.as_posix())
     if "claude" in targets:
         path = root / ".claude/settings.json"
-        existing = (
-            _read_json_object(path) if path.is_file() else {"outputStyle": "Proactive"}
-        )
+        existing = _read_json_object(path) if path.is_file() else {"outputStyle": "Proactive"}
         doc = merge_claude_settings(existing, timeout_seconds=timeout)
         expected = json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
         if not path.is_file() or path.read_text(encoding="utf-8") != expected:
@@ -392,9 +360,6 @@ def check_adapters(root: Path, *, targets: frozenset[str]) -> list[str]:
             drift.append(path.as_posix())
     if "pre-push" in targets:
         path = root / "fleet-hooks/pre-push.sample"
-        if (
-            not path.is_file()
-            or path.read_text(encoding="utf-8") != generate_pre_push_sample()
-        ):
+        if not path.is_file() or path.read_text(encoding="utf-8") != generate_pre_push_sample():
             drift.append(path.as_posix())
     return drift

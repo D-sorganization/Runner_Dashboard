@@ -234,6 +234,10 @@ jobs:
             echo "PR touches no Docker surface; image build intentionally skipped."
             exit 0
           fi
+          if [ "$IMAGE" = "cancelled" ]; then
+            echo "::notice::docker-image was cancelled (concurrency overlap); another workflow run may satisfy the gate."
+            exit 0
+          fi
           if [ "$IMAGE" != "success" ]; then
             echo "::error::Docker image build and scan reported '$IMAGE', expected 'success'."
             exit 1

@@ -42,6 +42,7 @@ def test_same_repo_guard_on_publish_job() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "workflow_run.head_repository.full_name == github.repository" in text
     assert "workflow_run.head_branch == 'main'" in text
+    assert "github.event_name == 'workflow_run'" in text
 
 
 def test_actions_are_sha_pinned() -> None:
@@ -60,3 +61,9 @@ def test_publish_script_is_executable() -> None:
     script = ROOT / "deploy" / "publish-main-ci-release.sh"
     assert script.is_file()
     assert (script.stat().st_mode & 0o111) != 0
+
+
+def test_publish_job_sets_up_python_for_wheelhouse() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "actions/setup-python@" in text
+    assert 'python-version: "3.12"' in text
