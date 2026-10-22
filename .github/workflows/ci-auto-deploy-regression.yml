@@ -1,0 +1,50 @@
+# Regression gate for node auto-deploy live bugs (#2083, #2108, #2111, #2114).
+name: Node auto-deploy regression
+
+on:
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "tests/deploy/**"
+      - ".github/workflows/ci-auto-deploy-regression.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "deploy/**"
+      - "tests/deploy/**"
+      - ".github/workflows/ci-auto-deploy-regression.yml"
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-auto-deploy-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auto-deploy-regression:
+    name: Auto-deploy live regression
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@83679a5e5764faebda7aac875df4c0ebe5d3ce59 # v6.1.0
+        with:
+          python-version: |
+            3.10
+            3.12
+
+      - name: Install test runner
+        run: python3.12 -m pip install --quiet pytest
+
+      - name: Node auto-deploy regression suite
+        env:
+          BASH: bash
+        run: python3.12 -m pytest tests/deploy/test_auto_deploy_ci_regression.py -q
