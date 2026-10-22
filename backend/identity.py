@@ -355,6 +355,13 @@ def require_principal(
             # Reject sessions that have been revoked or FIFO-evicted
             if session_id and not sm.touch_session(session_id):
                 raise HTTPException(status_code=401, detail="Session revoked or expired")
+            from github_app_user_oauth import UserOAuthRevokedError, ensure_fresh_access_token  # noqa: PLC0415
+
+            try:
+                ensure_fresh_access_token(principal_id)
+            except UserOAuthRevokedError as exc:
+                request.session.clear()
+                raise HTTPException(status_code=401, detail=str(exc)) from exc
             prin = identity_manager.principals[principal_id]
 
     # 3. Optional phone sign-in over the tailnet via Tailscale identity headers

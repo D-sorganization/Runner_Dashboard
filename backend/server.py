@@ -794,7 +794,9 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=dashboard_config.SESSION_SECRET,
     session_cookie="dashboard_session",
-    max_age=86400 * 7,  # 7 days
+    # Align with GitHub App refresh-token lifetime (~6 months); cookie is renewed
+    # on each response while the server-side refresh token remains valid (#2075).
+    max_age=int(os.environ.get("DASHBOARD_SESSION_MAX_AGE_SECONDS", str(86400 * 180))),
     same_site="strict",
     # Issue #930: Secure cookies are dropped by browsers on http:// origins, so
     # forcing https_only broke session auth on the documented HTTP-over-tailnet

@@ -21,8 +21,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
 _OAUTH_BLOCKED_HINT_BASE = (
-    "Ask an administrator to configure the dedicated GitHub OAuth app for the "
-    "MagicDNS HTTPS callback; development login is not a production fallback."
+    "Ask an administrator to configure the fleet GitHub App user-to-server OAuth "
+    "client (MagicDNS HTTPS callback); development login is not a production fallback."
 )
 
 
@@ -114,23 +114,16 @@ async def github_callback(request: Request, code: str, state: str):
     # Invalidate the state after single use to prevent replay attacks (#354).
     _clear_oauth_state(request)
 
-    try:
-        async with httpx.AsyncClient() as client:
-            # Exchange code for token
-            token_resp = await client.post(
-                "https://github.com/login/oauth/access_token",
-                data=config.token_exchange_data(code),
-                headers={"Accept": "application/json"},
-            )
-            try:
-                token_data = token_resp.json()
-            except ValueError as exc:
-                raise HTTPException(status_code=502, detail="Malformed GitHub OAuth token response") from exc
-            access_token = token_data.get("access_token")
-            if not access_token:
-                raise HTTPException(status_code=400, detail="Failed to get access token")
+    from github_app_user_oauth import (  # noqa: PLC0415
+        UserOAuthRevokedError,
+        apply_authorization_tokens,
+        exchange_authorization_code,
+    )
 
-            # Get user info
+    try:
+        token_data = exchange_authorization_code(code, config)
+        access_token = str(token_data["access_token"])
+        async with httpx.AsyncClient() as client:
             user_resp = await client.get(
                 "https://api.github.com/user",
                 headers={
@@ -141,7 +134,6 @@ async def github_callback(request: Request, code: str, state: str):
             user_data = user_resp.json()
             github_login = user_data.get("login")
 
-            # Verify membership in the exact production organization (#354).
             org_resp = await client.get(
                 f"https://api.github.com/orgs/{config.github_org}/members/{github_login}",
                 headers={
@@ -154,9 +146,11 @@ async def github_callback(request: Request, code: str, state: str):
                     status_code=403,
                     detail=f"You must be a member of the {config.github_org} GitHub organisation to log in.",
                 )
+    except UserOAuthRevokedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
         raise
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, RuntimeError) as exc:
         raise HTTPException(status_code=502, detail="GitHub OAuth request failed") from exc
 
     # Find principal by github username
@@ -169,6 +163,12 @@ async def github_callback(request: Request, code: str, state: str):
     if not matched_principal:
         # Deny access if not in principals.yml
         raise HTTPException(status_code=403, detail="User not authorized")
+
+    apply_authorization_tokens(
+        matched_principal.id,
+        github_login=str(github_login),
+        token_response=token_data,
+    )
 
     request.session["principal_id"] = matched_principal.id
     request.session["session_id"] = sm.register_session(
@@ -225,8 +225,12 @@ async def dev_login(request: Request):
 @router.post("/logout")
 async def logout(request: Request):
     """Logout current user."""
+    from github_app_user_oauth import delete_credentials  # noqa: PLC0415
+
     principal_id = request.session.get("principal_id")
     session_id = request.session.get("session_id")
+    if principal_id:
+        delete_credentials(str(principal_id))
     request.session.clear()
     if principal_id:
         if session_id:
@@ -244,13 +248,22 @@ async def get_me(principal: Principal = Depends(require_principal)):  # noqa: B0
 
 
 @router.post("/refresh")
-async def refresh_session(principal: Principal = Depends(require_principal)):  # noqa: B008
+async def refresh_session(
+    request: Request,
+    principal: Principal = Depends(require_principal),  # noqa: B008
+):
     """Confirm the current session is still valid (issue #1735).
 
-    Reuses the same principal resolution as ``GET /me``; a valid session
-    simply gets acknowledged, letting the frontend keep the session alive
-    without re-fetching the full principal payload.
+    Reuses the same principal resolution as ``GET /me``; also refreshes the
+    GitHub App user access token when it is near expiry (#2075).
     """
+    from github_app_user_oauth import UserOAuthRevokedError, ensure_fresh_access_token  # noqa: PLC0415
+
+    try:
+        ensure_fresh_access_token(principal.id)
+    except UserOAuthRevokedError as exc:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
     return {"ok": True, "principal": principal.id}
 
 
