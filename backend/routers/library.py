@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from library.search import (
     library_stats,
     search_passages,
 )
+from library.sources import add_source, list_sources, remove_source, seed_default_source, update_source
 from library.submissions import create_submission, list_submissions
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
@@ -31,7 +33,61 @@ def set_db_path(path: Path | None) -> None:
 def _db() -> Path:
     path = _db_override or library_db_path()
     init_library_db(path)
+    seed_default_source(path)
     return path
+
+
+@router.get("/sources")
+def library_sources_route(_principal: Principal = Depends(require_scope("fleet.read"))) -> dict[str, Any]:  # noqa: B008
+    return {"sources": list_sources(_db())}
+
+
+@router.post("/sources")
+def library_add_source(
+    body: dict[str, Any],
+    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        return add_source(
+            _db(),
+            source_id=body.get("id", ""),
+            label=body.get("label", ""),
+            root_path=body.get("root_path", ""),
+            shared=body.get("shared", False),
+            include_globs=body.get("include_globs"),
+            exclude_globs=body.get("exclude_globs"),
+            created_by=principal.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="source id or root_path already registered") from exc
+
+
+@router.patch("/sources/{source_id}")
+def library_update_source(
+    source_id: str,
+    body: dict[str, Any],
+    _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        return update_source(_db(), source_id, **body)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/sources/{source_id}")
+def library_remove_source(
+    source_id: str,
+    _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+) -> dict[str, bool]:
+    try:
+        remove_source(_db(), source_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"removed": True}
 
 
 @router.post("/submissions")
