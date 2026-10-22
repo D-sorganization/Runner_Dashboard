@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-DeployResult = Literal["success", "rollback", "skipped", "failed", "in_progress"]
+DeployResult = Literal["success", "rollback", "rollback_failed", "skipped", "failed", "in_progress"]
 DeployScope = Literal["system", "user"]
 
 

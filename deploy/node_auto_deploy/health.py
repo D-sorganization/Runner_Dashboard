@@ -3,9 +3,30 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+
+def wait_for_health(
+    port: int,
+    *,
+    delays: tuple[float, ...] = (1, 2, 4, 8, 15, 15, 15, 15),
+    probe: Callable[[str], tuple[bool, str]] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bool:
+    """Probe localhost health before and after bounded retry delays."""
+    health_probe = probe or (lambda url: probe_health(url, timeout=2.0))
+    url = f"http://127.0.0.1:{port}"
+    if health_probe(url)[0]:
+        return True
+    for delay in delays:
+        sleep(delay)
+        if health_probe(url)[0]:
+            return True
+    return False
 
 
 def probe_health(base_url: str, *, timeout: float = 15.0) -> tuple[bool, str]:

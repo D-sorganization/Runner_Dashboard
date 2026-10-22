@@ -10,7 +10,7 @@ from typing import Any
 from node_auto_deploy.contracts import AutoDeployEvent, AutoDeployState, DeployResult
 
 MAX_EVENTS = 20
-_ATTENTION_RESULTS = frozenset({"failed", "rollback"})
+_ATTENTION_RESULTS = frozenset({"failed", "rollback", "rollback_failed"})
 
 
 def default_state_path(environ: dict[str, str] | None = None) -> Path:
@@ -52,7 +52,7 @@ def record_event(
     rolled_back_from: str | None = None,
     now: datetime | None = None,
 ) -> AutoDeployEvent:
-    when = now or datetime.now(timezone.utc)
+    when = now or datetime.now(timezone.utc)  # noqa: UP017 - dashboard hub supports Python 3.10
     event = AutoDeployEvent(
         at=when.isoformat(),
         commit=commit,
