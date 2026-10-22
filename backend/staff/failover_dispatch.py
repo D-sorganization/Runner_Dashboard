@@ -410,9 +410,7 @@ def select_provider_from_chain(
     chain = resolve_failover_chain(role, requested_provider=requested_provider)
     step = pick_launch_step(chain, adapters, role, skip_cooling=True, machine=machine, auth_skipped=auth_skipped)
     if step is None:
-        step = pick_launch_step(
-            chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped
-        )
+        step = pick_launch_step(chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped)
     if step is None:
         for candidate in chain:
             if _provider_auth_blocks(candidate.provider, machine):
