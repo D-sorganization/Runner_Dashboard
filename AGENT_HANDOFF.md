@@ -2,8 +2,10 @@
 
 ## GitHub Actions Artifact Transport — #2115
 
-- Branch `codex/2115-artifact-transport`; transport and strict pagination are committed; PR not opened.
-- Generic artifact pagination preserves filters, validates the API origin and fails closed on missing, malformed or incomplete results; bounded ZIP streaming is implemented; focused transport, gh_client and retry tests passed (68 total), as did Ruff, format and targeted mypy.
+- Branch `codex/2115-artifact-transport`, PR #2125. Remote head is `092318f4`; local follow-up `ae7e9ef1` is unpushed.
+- The artifact test client now uses an async pytest fixture and closes clients on its owned loop. Python 3.11 xdist reproduced the missing-loop teardown error before the fix; 69 focused artifact/client/retry tests pass after it.
+- Python 3.11 non-slow Linux suite: 7,255 passed, 46 skipped, 1 xfailed. Ruff, format, targeted mypy and detect-secrets baseline comparison pass.
+- Existing deployment receipt identifies Dashboard `b604`; this transport change has not been deployed or activated.
 - Parent owns protected central pre-PR qualification/publication. The unchanged RD base reports inherited 5 WIP entries against its declared limit of 4; no strict-governance-green claim is made.
 
 ## Brick Dashboard Delivery — #2049, #2081 And #2089
@@ -28,8 +30,8 @@
 
 ## Coordinated Dependencies and Evidence
 
-- Brick currently runs a healthy existing user service at deployed `a2f47789`.
-  The token deployment chat reports no active deployment or hold. Its first
+- Existing deployment receipt identifies the Runner Dashboard service at `b604`.
+  The artifact transport in PR #2125 is not part of that deployment; its first
   dashboard dry run and real job remain reserved for the user.
 - Merged #2057 supplies agent token access. Revision `875d355d` had passing
   frontend/quality tests; its collate job failed before checkout because the
