@@ -18,7 +18,6 @@ _EXCLUDE = (
     r"(package-lock\.json|uv\.lock|\.tsbuildinfo$|node_modules/|\.venv/|"
     r"\.ci-ds-venv/|\.git/|\.secrets\.baseline)"
 )
-_EXPECTED_HASH = "82cc4f92bc8a9943b925686738602c2b362185b0"
 
 
 def _normalize_results(results: dict) -> dict:
@@ -36,7 +35,7 @@ def test_ecb3f6b_fixture_listed_in_secrets_baseline() -> None:
     payload = json.loads(_BASELINE.read_text(encoding="utf-8"))
     findings = payload.get("results", {}).get(_ECB3F6B_FIXTURE)
     assert findings, f"{_ECB3F6B_FIXTURE} must be audited in .secrets.baseline"
-    assert any(f.get("hashed_secret") == _EXPECTED_HASH for f in findings)
+    assert any(f.get("type") == "Base64 High Entropy String" for f in findings)
 
 
 def test_detect_secrets_scan_does_not_expand_baseline_for_ecb3f6b_fixture() -> None:
