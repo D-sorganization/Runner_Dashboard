@@ -31,6 +31,7 @@ import logging
 import subprocess
 from typing import Any
 
+from time_utils import parse_github_ts as _parse_ts
 from workflow_stats_db import (
     SCHEMA_SQL,  # noqa: F401 - compatibility export
     connect_stats_db,  # noqa: F401 - public connection boundary
@@ -45,13 +46,6 @@ datetime = _dt_mod.datetime
 timedelta = _dt_mod.timedelta
 
 log = logging.getLogger(__name__)
-
-
-def _parse_ts(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    # GitHub returns ISO 8601 with trailing Z
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _compute_durations(run: dict[str, Any]) -> tuple[float | None, float | None]:

@@ -26,6 +26,13 @@ def utc_now_iso() -> str:
     return utc_now().isoformat().replace("+00:00", "Z")
 
 
+def parse_github_ts(value: str | None) -> datetime | None:
+    """Parse a GitHub REST ISO-8601 timestamp (trailing ``Z``)."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def now_ms() -> int:
     """Return the current UTC time as integer epoch milliseconds.
 
