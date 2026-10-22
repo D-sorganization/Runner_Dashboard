@@ -15,6 +15,7 @@ from typing import Any
 
 from library.collections import load_collections, topics_for_rel_path
 from library.db import LibraryStore, init_library_db, library_source_dir
+from library.sources import get_source, matches_source_globs, seed_default_source
 from library.search import estimate_tokens
 from pypdf import PdfReader
 
@@ -26,11 +27,17 @@ _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _INGEST_SUFFIXES = {".pdf", ".epub"}
 
 
-def ingest_directory(source_root: Path, *, db_path: Path | None = None) -> dict[str, int]:
+def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_id: str = "default") -> dict[str, int]:
     source_root = source_root.resolve()
     if not source_root.is_dir():
         raise ValueError(f"source is not a directory: {source_root}")
     db = init_library_db(db_path)
+    seed_default_source(db)
+    try:
+        source = get_source(db, source_id)
+        include_globs, exclude_globs = source["include_globs"], source["exclude_globs"]
+    except LookupError:
+        include_globs, exclude_globs = [], []
     started = datetime.now(UTC).isoformat()
     stats = {"files_seen": 0, "files_indexed": 0, "files_skipped": 0, "files_rejected": 0, "files_removed": 0}
     seen_paths: set[str] = set()
@@ -40,7 +47,8 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None) -> dict[
             (started, source_root.as_posix()),
         ).lastrowid
         paths = sorted(
-            (p for p in source_root.rglob("*") if p.is_file() and p.suffix.lower() in _INGEST_SUFFIXES),
+            (p for p in source_root.rglob("*") if p.is_file() and p.suffix.lower() in _INGEST_SUFFIXES
+             and matches_source_globs(p.relative_to(source_root).as_posix(), include_globs, exclude_globs)),
             key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()),
         )
         for path in paths:
@@ -48,7 +56,7 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None) -> dict[
             rel = path.relative_to(source_root).as_posix()
             seen_paths.add(rel)
             stat = path.stat()
-            if _should_skip(conn, rel, stat.st_mtime, stat.st_size):
+            if _should_skip(conn, source_id, rel, stat.st_mtime, stat.st_size):
                 stats["files_skipped"] += 1
                 continue
             raw = path.read_bytes()
@@ -63,15 +71,15 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None) -> dict[
             )
             digest = hashlib.sha256(raw).hexdigest()
             if path.suffix.lower() == ".pdf":
-                if not _index_pdf(conn, path, rel, source_root, stat, raw, digest):
+                if not _index_pdf(conn, path, rel, source_root, stat, raw, digest, source_id):
                     stats["files_rejected"] += 1
                     continue
             else:
-                if not _index_epub(conn, path, rel, source_root, stat, raw, digest):
+                if not _index_epub(conn, path, rel, source_root, stat, raw, digest, source_id):
                     stats["files_rejected"] += 1
                     continue
             stats["files_indexed"] += 1
-        stats["files_removed"] = _mark_removals(conn, source_root, seen_paths)
+        stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
         _retire_orphan_works(conn)
         conn.execute(
             "UPDATE ingest_runs SET finished_at=?, files_seen=?, files_indexed=?, files_skipped=?,"
@@ -90,10 +98,10 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None) -> dict[
     return stats
 
 
-def _should_skip(conn: sqlite3.Connection, rel: str, mtime: float, size: int) -> bool:
+def _should_skip(conn: sqlite3.Connection, source_id: str, rel: str, mtime: float, size: int) -> bool:
     row = conn.execute(
-        "SELECT mtime, size, status FROM files WHERE rel_path=?",
-        (rel,),
+        "SELECT mtime, size, status FROM files WHERE source_id=? AND rel_path=?",
+        (source_id, rel),
     ).fetchone()
     return bool(row and row[0] == mtime and row[1] == size and row[2] == "present")
 
@@ -126,6 +134,7 @@ def _index_pdf(
     stat: Any,
     raw: bytes,
     digest: str,
+    source_id: str = "default",
 ) -> bool:
     try:
         reader = PdfReader(BytesIO(raw))
@@ -136,7 +145,7 @@ def _index_pdf(
         _record_rejection(conn, source_root, rel, "zero_pages", datetime.now(UTC).isoformat())
         return False
     work_id = _ensure_work(conn, digest, reader, path, fmt="pdf")
-    _upsert_file(conn, work_id, rel, source_root, stat, digest)
+    _upsert_file(conn, work_id, rel, source_root, stat, digest, source_id)
     _merge_work_topics(conn, work_id, rel)
     _replace_passages(conn, work_id, reader)
     return True
@@ -150,6 +159,7 @@ def _index_epub(
     stat: Any,
     raw: bytes,
     digest: str,
+    source_id: str = "default",
 ) -> bool:
     try:
         meta_author, meta_title, chapters = _extract_epub(raw)
@@ -163,7 +173,7 @@ def _index_epub(
     author = author or meta_author
     title = title or meta_title
     work_id = _ensure_work_epub(conn, digest, author, title, year)
-    _upsert_file(conn, work_id, rel, source_root, stat, digest)
+    _upsert_file(conn, work_id, rel, source_root, stat, digest, source_id)
     _merge_work_topics(conn, work_id, rel)
     _replace_epub_passages(conn, work_id, title or "", chapters)
     return True
@@ -186,27 +196,28 @@ def _upsert_file(
     source_root: Path,
     stat: Any,
     digest: str,
+    source_id: str = "default",
 ) -> None:
     conn.execute(
-        "INSERT INTO files (work_id, rel_path, source_root, mtime, size, sha256, status)"
-        " VALUES (?,?,?,?,?,?,'present')"
-        " ON CONFLICT(rel_path) DO UPDATE SET work_id=excluded.work_id, source_root=excluded.source_root,"
+        "INSERT INTO files (work_id, source_id, rel_path, source_root, mtime, size, sha256, status)"
+        " VALUES (?,?,?,?,?,?,?,'present')"
+        " ON CONFLICT(source_id,rel_path) DO UPDATE SET work_id=excluded.work_id, source_root=excluded.source_root,"
         " mtime=excluded.mtime, size=excluded.size, sha256=excluded.sha256, status='present'",
-        (work_id, rel, source_root.as_posix(), stat.st_mtime, stat.st_size, digest),
+        (work_id, source_id, rel, source_root.as_posix(), stat.st_mtime, stat.st_size, digest),
     )
 
 
-def _mark_removals(conn: sqlite3.Connection, source_root: Path, seen_paths: set[str]) -> int:
+def _mark_removals(conn: sqlite3.Connection, source_root: Path, seen_paths: set[str], source_id: str = "default") -> int:
     root = source_root.as_posix()
     rows = conn.execute(
-        "SELECT rel_path FROM files WHERE source_root=? AND status='present'",
-        (root,),
+        "SELECT rel_path FROM files WHERE source_id=? AND source_root=? AND status='present'",
+        (source_id, root),
     ).fetchall()
     removed = 0
     for (rel_path,) in rows:
         if rel_path in seen_paths:
             continue
-        conn.execute("UPDATE files SET status='removed' WHERE rel_path=?", (rel_path,))
+        conn.execute("UPDATE files SET status='removed' WHERE source_id=? AND rel_path=?", (source_id, rel_path))
         removed += 1
     return removed
 
