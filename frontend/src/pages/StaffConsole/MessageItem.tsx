@@ -35,6 +35,12 @@ import {
 
 /** Message kinds rendered as cards even when the system authored them. */
 const CARD_KINDS = new Set(["run", "run_card", "proposal", "action_proposal", "handoff", "error"]);
+const SUMMARY_LABELS: Record<string, string> = {
+  saved: "Short summary saved to shared Barb memory.",
+  replayed: "Short summary already saved to shared Barb memory.",
+  unavailable: "Shared Barb memory unavailable; summary save is unconfirmed.",
+  omitted: "No valid continuity summary was supplied; nothing was saved.",
+};
 
 export interface MessageItemProps {
   message: ThreadMessage;
@@ -375,6 +381,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
       {renderContent()}
       {warnings.length > 0 && <ActionWarnings warnings={warnings} />}
+      {!isUser && typeof message.meta?.shared_memory_summary === "string" &&
+        SUMMARY_LABELS[message.meta.shared_memory_summary] && (
+          <div className="thread-message-item__warnings" role="status">
+            {SUMMARY_LABELS[message.meta.shared_memory_summary]}
+          </div>
+        )}
     </div>
   );
 };
