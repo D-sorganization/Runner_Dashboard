@@ -1,13 +1,9 @@
-"""Chat turn execution engine for staff conversational replies (SC-B4, Issue #1307).
+"""Read-only staff chat turns (SC-B4, #1307) with Barb pool reservation (SC-C6).
 
-Provides fast, read-only conversational replies with:
-- Dedicated concurrency pool separating chat turns from work runs, with Barb reservation (SC-C6).
-- Per-provider session resume with fallback to history replay within a token budget.
-- Execution in an isolated scratch directory without worktrees, git push, or RM leases.
-- Real-time token streaming to ThreadEventBus for low-latency SSE delivery.
-- Turn latency metrics: time to first token (TTFT) and total turn duration.
-- Reply contract parsing with action proposal extraction and persistence.
-- Classified failure diagnosis with user remediation hints and retry support.
+Uses provider sessions or bounded history replay in isolated scratch directories,
+streaming replies through ThreadEventBus with latency metrics and reply contracts.
+Adds scoped shared-memory reference context when configured. Failures include
+classified diagnoses, remediation hints and retry support.
 """
 
 from __future__ import annotations

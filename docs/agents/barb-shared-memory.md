@@ -1,4 +1,4 @@
-# Shared memory in dashboard Barb chat
+# Shared Memory in Dashboard Barb Chat
 
 The dashboard can add a read-only shared-memory context pack to Barb's prompt. This server-side connection is
 separate from the Fleet MCP/CLI client's `FLEET_API_URL` and `FLEET_API_TOKEN`. Configure the dashboard service

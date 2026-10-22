@@ -16,6 +16,8 @@ from staff.chat import ChatConcurrencyPool, ChatTurnResult, ChatTurnRunner
 from staff.conversations import ConversationStore
 from staff.roles import RoleSpec
 
+pytestmark = pytest.mark.unit
+
 
 def _principal(*scopes: str) -> Principal:
     return Principal(id="agent-codex", type="bot", name="Codex", scopes=list(scopes))
