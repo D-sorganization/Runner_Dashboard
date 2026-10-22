@@ -124,6 +124,17 @@ class StaffRunner:
             )
         except DispatchContractError as exc:
             raise ValueError(str(exc)) from exc
+        references_block = ""
+        library_work_ids: tuple[int, ...] = ()
+        if role.library_references and req.repo:
+            from library.db import library_db_path
+            from library.dispatch_refs import attach_library_references, reference_query_from_task
+
+            db = library_db_path()
+            if db.is_file():
+                references_block, library_work_ids = attach_library_references(
+                    db, repo=req.repo, query=reference_query_from_task(req)
+                )
         prompt = workspace.compose_prompt(
             role,
             repo=req.repo,
@@ -133,6 +144,7 @@ class StaffRunner:
             consolidation=paragraph,
             focus=focus,
             dispatch_bundle=bundle,
+            library_references=references_block,
         )
         from staff.failover_model import resolve_launch_model, role_base_tier
         from staff.provider_failover_config import resolve_failover_chain
@@ -168,6 +180,7 @@ class StaffRunner:
             head_ref=req.head_ref,
             skill_pin=bundle.skill_pin,
             standards_version=bundle.standards_version,
+            library_work_ids=library_work_ids,
         )
 
     def _resolve_role(self, req: RunRequest) -> RoleSpec:

@@ -77,6 +77,7 @@ class RunPlan:
     model_tier: str = ""
     skill_pin: str = ""
     standards_version: str = ""
+    library_work_ids: tuple[int, ...] = ()
 
     @property
     def strategy_mode(self) -> str:

@@ -95,6 +95,10 @@ class RoleSpec:
         return self.permissions.get("code_read_only") is True
 
     @property
+    def library_references(self) -> bool:
+        return self.permissions.get("library_references") is True
+
+    @property
     def fleet_actions(self) -> tuple[str, ...]:
         """Allowed fleet maintenance actions (RM#1734, RD#1310)."""
         actions = self.permissions.get("fleet_actions")
