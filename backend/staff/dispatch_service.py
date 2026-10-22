@@ -344,11 +344,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 "machine": runner.machine,
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
-                **(
-                    {"provider_auth_failover": list(plan.provider_auth_skipped)}
-                    if plan.provider_auth_skipped
-                    else {}
-                ),
+                **({"provider_auth_failover": list(plan.provider_auth_skipped)} if plan.provider_auth_skipped else {}),
             },
             fail_closed=True,
         )

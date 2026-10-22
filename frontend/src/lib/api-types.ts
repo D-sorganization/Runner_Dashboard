@@ -695,9 +695,8 @@ export interface paths {
          * Refresh Session
          * @description Confirm the current session is still valid (issue #1735).
          *
-         *     Reuses the same principal resolution as ``GET /me``; a valid session
-         *     simply gets acknowledged, letting the frontend keep the session alive
-         *     without re-fetching the full principal payload.
+         *     Reuses the same principal resolution as ``GET /me``; also refreshes the
+         *     GitHub App user access token when it is near expiry (#2075).
          */
         post: operations["refresh_session_api_auth_refresh_post"];
         delete?: never;
