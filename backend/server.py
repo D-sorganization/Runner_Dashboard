@@ -755,6 +755,10 @@ from routers import coordination as _coordination_router  # noqa: E402
 
 app.include_router(_coordination_router.router)
 
+from routers import agent_bus as _agent_bus_router  # noqa: E402
+
+app.include_router(_agent_bus_router.router)
+
 from routers import memory_v1 as _memory_v1_router  # noqa: E402
 
 app.include_router(_memory_v1_router.router)

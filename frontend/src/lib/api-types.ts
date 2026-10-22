@@ -5341,6 +5341,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Heartbeat */
+        post: operations["post_heartbeat_api_v1_agent_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Inbox */
+        get: operations["get_inbox_api_v1_agent_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Message */
+        post: operations["post_message_api_v1_agent_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/messages/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Ack */
+        post: operations["post_ack_api_v1_agent_messages_ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Register */
+        post: operations["post_register_api_v1_agent_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory": {
         parameters: {
             query?: never;
@@ -7026,18 +7111,6 @@ export interface components {
             source: "script" | "qa-verifier";
         };
         /**
-         * AckBody
-         * @description ``ack``: confirm receipt (not agreement) of a message.
-         */
-        AckBody: {
-            /** Message Id */
-            message_id: string;
-            /** Repo */
-            repo: string;
-            /** Session */
-            session: string;
-        };
-        /**
          * ActionExecuteResponse
          * @description Result of executing an action.
          */
@@ -7755,6 +7828,16 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HeartbeatBody */
+        HeartbeatBody: {
+            /**
+             * Lease Seconds
+             * @default 300
+             */
+            lease_seconds: number;
+            /** Session */
+            session: string;
+        };
         /**
          * HelpChatRequest
          * @description Request body for POST /api/help/chat.
@@ -8466,6 +8549,22 @@ export interface components {
             /** Label */
             label?: string | null;
         };
+        /** RegisterBody */
+        RegisterBody: {
+            /**
+             * Lease Seconds
+             * @default 300
+             */
+            lease_seconds: number;
+            /** Node */
+            node: string;
+            /** Provider */
+            provider: string;
+            /** Role */
+            role: string;
+            /** Session */
+            session: string;
+        };
         /** RegisterCompleteRequest */
         RegisterCompleteRequest: {
             /** Credential */
@@ -8785,6 +8884,28 @@ export interface components {
         ScheduleToggleBody: {
             /** Enabled */
             enabled: boolean;
+        };
+        /** SendBody */
+        SendBody: {
+            /** Body */
+            body: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+            /** To */
+            to: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "request" | "status" | "handoff" | "blocked";
+            /** Work Kind */
+            work_kind?: ("issue" | "pr") | null;
+            /** Work Number */
+            work_number?: number | null;
         };
         /**
          * SessionTelemetryPayload
@@ -10198,6 +10319,25 @@ export interface components {
              * @default 0
              */
             planned: number;
+        };
+        /** AckBody */
+        agent_bus__models__AckBody: {
+            /** Message Id */
+            message_id: string;
+            /** Session */
+            session: string;
+        };
+        /**
+         * AckBody
+         * @description ``ack``: confirm receipt (not agreement) of a message.
+         */
+        coordination__models__AckBody: {
+            /** Message Id */
+            message_id: string;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
         };
     };
     responses: never;
@@ -12529,7 +12669,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AckBody"];
+                "application/json": components["schemas"]["coordination__models__AckBody"];
             };
         };
         responses: {
@@ -17496,6 +17636,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    post_heartbeat_api_v1_agent_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_inbox_api_v1_agent_inbox_get: {
+        parameters: {
+            query: {
+                session: string;
+                since_cursor?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_message_api_v1_agent_messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_ack_api_v1_agent_messages_ack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["agent_bus__models__AckBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_register_api_v1_agent_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
