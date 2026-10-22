@@ -164,6 +164,29 @@ def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -
     return verdict
 
 
+def deliverable_failure_updates(
+    rec: RunRecord,
+    verdict: Verdict | None,
+    *,
+    opens_pr: bool,
+) -> dict[str, Any]:
+    """Fail succeeded runs that targeted an issue/PR but delivered no commits or PR (#2171)."""
+    if rec.status != "succeeded" or not opens_pr or rec.target_kind not in ("issue", "pr"):
+        return {}
+    if verdict is None or verdict.verification not in ("no_change", "failed"):
+        return {}
+    return {
+        "status": "failed",
+        "failure_class": UNVERIFIED_OUTPUT,
+        "retryable": False,
+        "error": verdict.detail,
+        "remediation": (
+            "Run targeted an issue or pull request but produced no commits or open PR; "
+            "inspect the transcript before re-dispatching."
+        ),
+    }
+
+
 def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
     """The run fields to write. Only ``enforce`` changes the status of a succeeded run."""
     updates: dict[str, Any] = {

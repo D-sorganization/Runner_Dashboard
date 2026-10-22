@@ -37,10 +37,17 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "lease_blocked",
         "orphaned",
         "workspace_error",
+        "environment_error",
         "unkillable",
         "unknown",
         "no_result",
     }
+)
+
+ENVIRONMENT_ERROR_PATTERNS = (
+    "bwrap: no permissions to create new namespace",
+    "shell execution fails before running any command",
+    "sandbox mode is enabled but not available",
 )
 
 LOGIN_COMMANDS: dict[str, str] = {
@@ -91,6 +98,22 @@ def _login_command(provider: str) -> str:
 
 def _upgrade_command(provider: str) -> str:
     return UPGRADE_COMMANDS.get(provider, f"upgrade the {provider} CLI")
+
+
+def environment_error_remediation(provider: str, node: str) -> str:
+    """Actionable fix for sandbox / namespace failures on the worker node."""
+    if provider == "codex":
+        return (
+            f"Codex bubblewrap sandbox cannot create Linux user namespaces on {node}. "
+            "On WSL2 add `[boot]` `sysctl.kernel.unprivileged_userns_clone=1` to `/etc/wsl.conf` and "
+            "restart WSL (`wsl --shutdown`). Staff runs invoke `codex exec --sandbox workspace-write`; "
+            "a top-level `sandbox` key in `~/.codex/config.toml` is ignored by `codex exec`—use CLI flags "
+            "or the `[features]` section documented for your installed Codex version."
+        )
+    return (
+        f"Provider {provider} could not start its command sandbox on {node}; inspect bubblewrap/WSL "
+        "user-namespace settings on the worker."
+    )
 
 
 def classify_cli_below_floor(provider: str, found: str, required: str) -> FailureClassification:
@@ -181,8 +204,19 @@ def classify_run_failure(
             error="orphaned across restart",
         )
 
-    # 2. Check for needs_input: exit 0 without STAFF_RESULT and ending in a question
     combined = f"{error_message}\n{output_text}".strip()
+    lower = combined.lower()
+
+    if any(pat in lower for pat in ENVIRONMENT_ERROR_PATTERNS):
+        detail = _extract_last_line_text(output_text) or error_message or "sandbox/environment failure"
+        return FailureClassification(
+            failure_class="environment_error",
+            retryable=False,
+            remediation=environment_error_remediation(provider, node),
+            error=detail,
+        )
+
+    # 2. Check for needs_input: exit 0 without STAFF_RESULT and ending in a question
     if exit_code == 0 and not result_line:
         last_line = _extract_last_line_text(output_text)
         if last_line.endswith("?"):
@@ -200,8 +234,6 @@ def classify_run_failure(
             remediation="Process exited 0 without emitting STAFF_RESULT or question.",
             error=NO_RESULT_ERROR,
         )
-
-    lower = combined.lower()
 
     adapter_row = adapter_failure_classification(provider, combined)
     if adapter_row is not None:
@@ -463,8 +495,6 @@ def classify_execution_result(
     """Determine (status, failure_class, retryable, remediation, error) for a finished run."""
     if cancelled:
         return "cancelled", "", False, "", ""
-    if rc == 0 and result_line:
-        return "succeeded", "", False, "", ""
 
     output_text = ""
     if transcript_path and transcript_path.exists():
@@ -472,6 +502,17 @@ def classify_execution_result(
             output_text = transcript_path.read_text(encoding="utf-8", errors="replace")
         except Exception:
             pass
+
+    if rc == 0 and result_line:
+        fatal = classify_run_failure(
+            provider=provider,
+            exit_code=1,
+            output_text=output_text,
+            machine=machine,
+        )
+        if fatal.failure_class == "environment_error":
+            return "failed", fatal.failure_class, fatal.retryable, fatal.remediation, fatal.error
+        return "succeeded", "", False, "", ""
 
     diag = classify_run_failure(
         provider=provider,

@@ -442,8 +442,17 @@ class StaffRunner:
                 or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
+            verdict = verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
+            if updated_rec is not None:
+                deliverable = verification.deliverable_failure_updates(
+                    updated_rec,
+                    verdict,
+                    opens_pr=self.opens_pr(rec.role),
+                )
+                if deliverable:
+                    store.update_run(rec.id, **deliverable)
+                    updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
                 if status == "succeeded":
