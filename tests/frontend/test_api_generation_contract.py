@@ -1,7 +1,9 @@
-import io
 import json
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
-from urllib import request
 
 import pytest
 import yaml
@@ -36,13 +38,7 @@ def test_frontend_ci_checks_generated_api_contract() -> None:
     assert workflow.index("npm run generate-api:check") < workflow.index("npm run typecheck")
 
 
-def _assert_api_scope_outputs(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    changed_files: list[str],
-    expected: dict[str, str],
-) -> None:
-    """Execute the workflow classifier for backend, unrelated, and frontend changes."""
+def _api_scope_classifier() -> str:
     workflow = yaml.safe_load((ROOT / ".github/workflows/frontend-tests.yml").read_text(encoding="utf-8"))
     scope_job = workflow["jobs"]["frontend-scope"]
     scope_step = next(step for step in scope_job["steps"] if step.get("id") == "scope")
@@ -57,18 +53,50 @@ def _assert_api_scope_outputs(
     lines = scope_step["run"].splitlines()
     heredoc_start = next(index for index, line in enumerate(lines) if "- <<'EOF'" in line)
     heredoc_end = next(index for index in range(heredoc_start + 1, len(lines)) if lines[index] == "EOF")
-    classifier = "\n".join(lines[heredoc_start + 1 : heredoc_end])
+    return "\n".join(lines[heredoc_start + 1 : heredoc_end])
 
-    payload = json.dumps([{"filename": path} for path in changed_files]).encode()
-    monkeypatch.setenv("REPOSITORY", "D-sorganization/Runner_Dashboard")
-    monkeypatch.setenv("PR_NUMBER", "2196")
-    monkeypatch.setenv("GH_TOKEN", "test-token")
-    monkeypatch.setattr(request, "urlopen", lambda _request, timeout: io.BytesIO(payload))
-    exec(compile(classifier, "frontend-tests.yml:scope", "exec"), {})
 
-    captured = capsys.readouterr()
-    assert dict(line.split("=", 1) for line in captured.out.splitlines()) == expected
-    assert captured.err.strip() == f"changed_file_count={len(changed_files)}"
+def _run_api_scope_classifier(classifier: str, changed_files: list[str]) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        files_path = temp_root / "changed_files.json"
+        files_path.write_text(
+            json.dumps([{"filename": path} for path in changed_files]),
+            encoding="utf-8",
+        )
+        script_path = temp_root / "scope_classifier.py"
+        script_path.write_text(
+            "import io, json, urllib.request\n"
+            f"with open({str(files_path)!r}, encoding='utf-8') as source:\n"
+            "    payload = json.load(source)\n"
+            "def fake_urlopen(request, timeout):\n"
+            "    assert request.full_url == "
+            "'https://api.github.com/repos/D-sorganization/Runner_Dashboard/pulls/2196/files?per_page=100'\n"
+            "    assert request.get_method() == 'GET'\n"
+            "    return io.BytesIO(json.dumps(payload).encode('utf-8'))\n"
+            "urllib.request.urlopen = fake_urlopen\n\n"
+            f"{classifier}",
+            encoding="utf-8",
+        )
+        child_env = {
+            key: value for key, value in os.environ.items() if key in {"PATH", "SYSTEMROOT", "TEMP", "TMP", "WINDIR"}
+        }
+        child_env.update(
+            {
+                "GH_TOKEN": "test-token",
+                "PR_NUMBER": "2196",
+                "REPOSITORY": "D-sorganization/Runner_Dashboard",
+            }
+        )
+        return subprocess.run(
+            [sys.executable, "-I", str(script_path)],
+            cwd=ROOT,
+            env=child_env,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
 
 
 @pytest.mark.parametrize(
@@ -101,12 +129,13 @@ def _assert_api_scope_outputs(
     ],
 )
 def test_api_scope_classifier_outputs(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
     changed_files: list[str],
     expected: dict[str, str],
 ) -> None:
-    _assert_api_scope_outputs(monkeypatch, capsys, changed_files, expected)
+    result = _run_api_scope_classifier(_api_scope_classifier(), changed_files)
+    assert result.returncode == 0, result.stderr
+    assert dict(line.split("=", 1) for line in result.stdout.splitlines()) == expected
+    assert result.stderr.strip() == f"changed_file_count={len(changed_files)}"
 
 
 def test_committed_openapi_snapshot_and_generated_types_are_real() -> None:
