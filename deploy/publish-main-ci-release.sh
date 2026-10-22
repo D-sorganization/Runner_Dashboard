@@ -43,10 +43,24 @@ WORK_DIR="${RUNNER_TEMP:-$(mktemp -d)}"
 CHECK_JSON="${WORK_DIR}/check-runs-${SHA}.json"
 RELEASES_JSON="${WORK_DIR}/releases.json"
 
-gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" > "$CHECK_JSON"
-if ! python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-gate \
-  --sha "$SHA" --check-runs-json "$CHECK_JSON"; then
-  echo "CI gate not satisfied for ${SHA:0:7}; skipping release"
+GATE_ATTEMPTS="${GATE_ATTEMPTS:-90}"
+GATE_SLEEP_SECS="${GATE_SLEEP_SECS:-60}"
+gate_ok=false
+for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
+  gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" > "$CHECK_JSON"
+  if python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-gate \
+    --publisher --sha "$SHA" --check-runs-json "$CHECK_JSON"; then
+    gate_ok=true
+    break
+  fi
+  if [[ "$attempt" -eq "$GATE_ATTEMPTS" ]]; then
+    echo "CI gate not satisfied for ${SHA:0:7} after ${GATE_ATTEMPTS} attempts; skipping release"
+    exit 0
+  fi
+  echo "CI gate waiting (attempt ${attempt}/${GATE_ATTEMPTS}); sleeping ${GATE_SLEEP_SECS}s"
+  sleep "$GATE_SLEEP_SECS"
+done
+if [[ "$gate_ok" != "true" ]]; then
   exit 0
 fi
 
