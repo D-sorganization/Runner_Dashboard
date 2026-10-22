@@ -61,7 +61,9 @@ def _parse_receipt(payload: bytes) -> dict[str, Any]:
         raise ValueError("receipt exceeds maximum size")
     try:
         parsed = json.loads(payload.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, TypeError) as exc:
+    except RecursionError as exc:
+        raise ValueError("receipt JSON nesting exceeds maximum depth") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
         raise ValueError("receipt JSON is invalid") from exc
     pending = [(parsed, 0)]
     while pending:

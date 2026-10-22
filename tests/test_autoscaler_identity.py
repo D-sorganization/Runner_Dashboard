@@ -151,3 +151,19 @@ def test_receipt_parser_bounds_size_and_handles_deep_json() -> None:
         identity._parse_receipt(b" " * (identity.MAX_RECEIPT_BYTES + 1))
     with pytest.raises(ValueError, match="nesting exceeds"):
         identity._parse_receipt(b"[" * 1500 + b"0" + b"]" * 1500)
+
+
+def test_receipt_parser_maps_recursion_and_json_errors_separately(monkeypatch: pytest.MonkeyPatch) -> None:
+    def recursion_error(*_args: object, **_kwargs: object) -> None:
+        raise RecursionError("decoder recursion limit")
+
+    monkeypatch.setattr(identity.json, "loads", recursion_error)
+    with pytest.raises(ValueError, match="nesting exceeds"):
+        identity._parse_receipt(b"{}")
+
+    def invalid_json(*_args: object, **_kwargs: object) -> None:
+        raise json.JSONDecodeError("bad json", "{}", 0)
+
+    monkeypatch.setattr(identity.json, "loads", invalid_json)
+    with pytest.raises(ValueError, match="receipt JSON is invalid"):
+        identity._parse_receipt(b"{}")
