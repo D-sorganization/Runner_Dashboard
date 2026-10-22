@@ -61,7 +61,8 @@ def test_credentials_router_has_credentials_route() -> None:
 
     paths = {r.path for r in credentials.router.routes}  # type: ignore[attr-defined]
     assert "/api/credentials" in paths
-    assert "/api/credentials/set-key" in paths
+    assert "/api/credentials/set-key" not in paths
+    assert "/api/credentials/clear-key" not in paths
 
 
 def test_linear_router_importable() -> None:
