@@ -12,6 +12,8 @@ from github_app_auth import (
     compare_installation_permissions,
     fetch_installation_permissions,
     mint_installation_access_token,
+    normalize_permissions_for_mint,
+    permissions_payload_for_mint,
 )
 from staff.github_app_preflight import (
     attention_items_from_preflight,
@@ -57,6 +59,70 @@ def _role(**perms: Any) -> RoleSpec:
         providers=("codex",),
         permissions=base,
     )
+
+
+def test_normalize_permissions_for_mint_drops_invalid_workflows_read() -> None:
+    """GitHub returns workflows on the installation but rejects workflows:read at mint time."""
+    requested = {
+        "contents": "write",
+        "workflows": "read",
+        "metadata": "read",
+    }
+    assert normalize_permissions_for_mint(requested) == {
+        "contents": "write",
+        "metadata": "read",
+    }
+
+
+def test_permissions_payload_for_mint_fails_closed_before_post() -> None:
+    granted = dict(_REAL_INSTALLATION_BODY["permissions"])
+    requested = github_permissions_for_role(_role(push_branch=True, open_pr=True))
+    requested = {**requested, "organization_administration": "write"}
+    with pytest.raises(GhInstallationPermissionError) as excinfo:
+        permissions_payload_for_mint(requested, granted)
+    assert "organization_administration" in str(excinfo.value)
+
+
+def test_mint_installation_access_token_preflights_against_installation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real hub failure: 422 with generic message when workflows:read was still requested."""
+    monkeypatch.setenv("GITHUB_APP_ID", "1")
+    monkeypatch.setenv("GITHUB_APP_INSTALLATION_ID", "999")
+    monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")  # pragma: allowlist secret
+
+    post_resp = MagicMock()
+    post_resp.status_code = 201
+    post_resp.json.return_value = {
+        "token": "ghs_" + "t" * 40,
+        "expires_at": "2030-01-01T00:00:00Z",
+    }
+
+    get_resp = MagicMock()
+    get_resp.status_code = 200
+    get_resp.json.return_value = _REAL_INSTALLATION_BODY
+
+    client = MagicMock()
+    client.get.return_value = get_resp
+    client.post.return_value = post_resp
+
+    legacy_requested = {
+        **github_permissions_for_role(_role(push_branch=True, open_pr=True)),
+        "workflows": "read",
+    }
+
+    with patch("github_app_auth.github_app_private_key_configured", return_value=True):
+        with patch("github_app_auth.build_app_jwt", return_value="jwt"):
+            with patch("httpx.Client") as client_cls:
+                client_cls.return_value.__enter__.return_value = client
+                mint_installation_access_token(
+                    repositories=["D-sorganization/Gasification_Model"],
+                    permissions=legacy_requested,
+                )
+
+    post_payload = client.post.call_args.kwargs.get("json") or {}
+    assert "workflows" not in (post_payload.get("permissions") or {})
+    client.get.assert_called_once()
 
 
 def test_compare_installation_permissions_detects_missing_write_level() -> None:
@@ -109,6 +175,7 @@ def test_mint_installation_access_token_422_fetches_installation_and_reports_mis
     assert "workflows:write (installation has workflows:read)" in str(excinfo.value)
     client.get.assert_called_once()
     assert "installations/999" in client.get.call_args.args[0]
+    client.post.assert_not_called()
 
 
 def test_fetch_installation_permissions_parses_permissions(monkeypatch: pytest.MonkeyPatch) -> None:

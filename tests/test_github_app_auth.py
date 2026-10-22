@@ -38,10 +38,18 @@ def test_mint_installation_access_token_parses_response(monkeypatch: pytest.Monk
         def json() -> dict[str, str]:
             return {"token": "ghs_" + "x" * 40, "expires_at": "2030-01-01T00:00:00Z"}
 
+    from unittest.mock import MagicMock
+
+    get_resp = MagicMock()
+    get_resp.status_code = 200
+    get_resp.json.return_value = {"permissions": {"contents": "read", "metadata": "read"}}
+
     with patch("github_app_auth.github_app_private_key_configured", return_value=True):
         with patch("github_app_auth.build_app_jwt", return_value="jwt"):
             with patch("httpx.Client") as client_cls:
-                client_cls.return_value.__enter__.return_value.post.return_value = _Resp()
+                client = client_cls.return_value.__enter__.return_value
+                client.get.return_value = get_resp
+                client.post.return_value = _Resp()
                 tok = mint_installation_access_token(repositories=["org/repo"], permissions={"contents": "read"})
     assert isinstance(tok, InstallationToken)
     assert tok.token.startswith("ghs_")

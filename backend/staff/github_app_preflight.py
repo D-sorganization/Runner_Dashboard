@@ -13,6 +13,7 @@ from github_app_auth import (
     compare_installation_permissions,
     fetch_installation_permissions,
     github_app_auth_configured,
+    normalize_permissions_for_mint,
 )
 from staff.github_run_env import github_permissions_for_role
 from staff.roles import RoleSpec
@@ -58,7 +59,7 @@ def preflight_github_app_for_roles(roles: Mapping[str, RoleSpec]) -> dict[str, A
     for name, role in sorted(roles.items()):
         if role.retired:
             continue
-        requested = github_permissions_for_role(role)
+        requested = normalize_permissions_for_mint(github_permissions_for_role(role))
         missing = compare_installation_permissions(requested, granted)
         if missing:
             mismatches.append({"role": name, "requested": requested, "missing": missing})
