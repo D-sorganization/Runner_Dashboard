@@ -8,22 +8,14 @@ import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-
-def _config_dir() -> Path:
-    configured = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
-    return Path(configured).expanduser() if configured else Path("~/.config/runner-dashboard").expanduser()
+from staff.store import _config_dir, _now
 
 
 def default_db_path() -> Path:
     return Path(os.environ.get("STAFF_PROJECTS_DB", str(_config_dir() / "staff_projects.sqlite3"))).expanduser()
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 _SCHEMA = """
