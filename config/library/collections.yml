@@ -1,0 +1,13 @@
+repos:
+  UpstreamDrift:
+    topics: [Golf, Biomechanics]
+  AffineDrift:
+    topics: [AffineDrift References]
+topics:
+  Golf:
+    folders: [Golf]
+  Biomechanics:
+    folders: [Biomechanics]
+  AffineDrift References:
+    folders: [AffineDrift References]
+excluded_folders: []

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import re
@@ -12,6 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from library.collections import load_collections, topics_for_rel_path
 from library.db import LibraryStore, init_library_db, library_source_dir
 from library.search import estimate_tokens
 from pypdf import PdfReader
@@ -135,6 +137,7 @@ def _index_pdf(
         return False
     work_id = _ensure_work(conn, digest, reader, path, fmt="pdf")
     _upsert_file(conn, work_id, rel, source_root, stat, digest)
+    _merge_work_topics(conn, work_id, rel)
     _replace_passages(conn, work_id, reader)
     return True
 
@@ -161,8 +164,19 @@ def _index_epub(
     title = title or meta_title
     work_id = _ensure_work_epub(conn, digest, author, title, year)
     _upsert_file(conn, work_id, rel, source_root, stat, digest)
+    _merge_work_topics(conn, work_id, rel)
     _replace_epub_passages(conn, work_id, title or "", chapters)
     return True
+
+
+def _merge_work_topics(conn: sqlite3.Connection, work_id: int, rel: str) -> None:
+    cfg = load_collections()
+    new = topics_for_rel_path(rel, cfg)
+    if not new:
+        return
+    row = conn.execute("SELECT topics FROM works WHERE id=?", (work_id,)).fetchone()
+    cur = json.loads(row[0] or "[]") if row and row[0] else []
+    conn.execute("UPDATE works SET topics=? WHERE id=?", (json.dumps(sorted(set(cur) | set(new))), work_id))
 
 
 def _upsert_file(
