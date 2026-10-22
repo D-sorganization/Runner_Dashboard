@@ -22,9 +22,9 @@ permissions:
   contents: write
 
 concurrency:
-  # One fleet publish at a time; cancel stale SHAs so d-sorg-fleet is not stuck on a backlog.
+  # One fleet publish at a time; let the active run finish (busy main must not cancel mid-publish).
   group: main-ci-auto-release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish:

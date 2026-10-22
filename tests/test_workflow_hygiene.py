@@ -40,6 +40,7 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
     "conflict-disarm.yml": "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state.",
     "deploy-qualified-release.yml": "A root transaction must run to commit or rollback; never interrupt it mid-stream.",
     "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",
+    "main-ci-auto-release.yml": "Single-flight publish on d-sorg-fleet; cancel-in-progress would abort every in-flight release on a busy main and starve auto-deploy.",
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
@@ -51,7 +52,6 @@ _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
     "issue-taxonomy-backfill.yml": "Backfill is an explicit singleton maintenance workflow.",
     "taxonomy-rollout.yml": "Taxonomy rollout is a singleton governance workflow.",
     "util-queued-job-reaper.yml": "Queue reaper is a singleton maintenance workflow with a max-cancel cap.",
-    "main-ci-auto-release.yml": "Single-flight publish on d-sorg-fleet; cancel stale SHAs so the queue does not backlog.",
 }
 
 
