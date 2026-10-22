@@ -10366,6 +10366,13 @@ export interface components {
             machines_offline?: string[];
             /** Machines Online */
             machines_online?: string[];
+            /**
+             * Operator Auth
+             * @description Redacted GitHub App user OAuth expiry for hub operators (#2075)
+             */
+            operator_auth?: {
+                [key: string]: unknown;
+            };
             /** Providers */
             providers?: {
                 [key: string]: unknown;

@@ -368,9 +368,7 @@ def exchange_authorization_code(
     if resp.status_code >= 400 or not body.get("access_token"):
         raise UserOAuthRevokedError(str(body.get("error") or "authorization code rejected"))
     if not body.get("refresh_token"):
-        raise UserOAuthRevokedError(
-            "missing refresh_token; enable Expire user authorization tokens on the GitHub App"
-        )
+        raise UserOAuthRevokedError("missing refresh_token; enable Expire user authorization tokens on the GitHub App")
     return body
 
 
