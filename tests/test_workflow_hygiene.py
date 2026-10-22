@@ -386,7 +386,7 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
         assert "frontend/src/" in text
     assert "^(backend/|frontend/src/|src/|rust_core/|api/)" in workflow
     assert "phantom_guard_issue_paths.py" in workflow
-    assert "backend|frontend/src|src|tests|rust_core|api" in action
+    assert "phantom_guard_issue_paths.py" in action
 
 
 def test_pre_push_mypy_dependencies_are_installable() -> None:
