@@ -1,0 +1,115 @@
+{
+  "fetched_from": "repos/D-sorganization/Runner_Dashboard/commits/a474ee66/check-runs",
+  "check_runs": [
+    {
+      "name": "Auto-deploy live regression",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and scan image",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Decide CI tier",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Decide Docker validation scope",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Determine frontend validation scope",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Frontend perf budget (real bundle)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Playwright E2E smoke tests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish Trivy SARIF",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Select reversible CI runner",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Staff Console e2e (fake providers)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "TypeScript typecheck (tsc)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Vitest + Coverage",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "ci-health-check",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "detect-secrets (baseline diff)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "docker-build-scan",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "gitleaks (full history scan)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "guard",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "lint",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "quality-gate",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "security-scan",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "tests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "tests (3.11)",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}

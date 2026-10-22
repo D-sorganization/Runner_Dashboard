@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_DASHBOARD_TAR = re.compile(r"^dashboard-(\d+\.\d+\.\d+)\.tar\.gz$")
+_DASHBOARD_TAR = re.compile(r"^dashboard-(?:(\d+\.\d+\.\d+)|(20\d{2}\.\d{2}\.\d{2}-[0-9a-f]{7}))\.tar\.gz$")
 
 
 def pick_release_assets(releases: list[dict[str, Any]], commit_sha: str) -> dict[str, str] | None:
@@ -30,7 +30,7 @@ def pick_release_assets(releases: list[dict[str, Any]], commit_sha: str) -> dict
             url = str(asset.get("url") or "")
             m = _DASHBOARD_TAR.match(name)
             if m and not tarball_url:
-                version = m.group(1)
+                version = m.group(1) or m.group(2) or ""
                 tarball_url = url
             if name.endswith(".tar.gz.sha256") and not checksum_url:
                 checksum_url = url

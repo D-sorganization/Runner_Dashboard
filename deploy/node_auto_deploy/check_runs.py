@@ -6,9 +6,7 @@ import re
 from typing import Any
 
 PASSING_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
-FAILING_CONCLUSIONS = frozenset(
-    {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
-)
+FAILING_CONCLUSIONS = frozenset({"failure", "cancelled", "timed_out", "action_required", "startup_failure"})
 PENDING_STATUSES = frozenset({"queued", "in_progress"})
 """Conclusions that satisfy a check *name* when aggregated (neutral alone does not)."""
 SATISFYING_NAME_CONCLUSIONS = frozenset({"success", "skipped"})
