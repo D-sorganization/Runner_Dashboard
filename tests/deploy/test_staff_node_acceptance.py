@@ -166,8 +166,15 @@ def _run_with_systemctl(tmp_path: Path, restrict_namespaces: str) -> str:
 
 
 def test_unit_namespaces_allowing_cursor_sandbox_pass(tmp_path: Path) -> None:
-    out = _run_with_systemctl(tmp_path, "ipc net mnt user uts")
+    out = _run_with_systemctl(tmp_path, "ipc net mnt user uts pid")
     assert "[PASS] Unit allows cursor-agent sandbox namespaces" in out, out
+
+
+def test_unit_namespaces_missing_codex_pid_fails(tmp_path: Path) -> None:
+    """DeskComputer: shell unshare passes while the service denies bwrap --unshare-pid."""
+    out = _run_with_systemctl(tmp_path, "ipc net mnt user uts")
+    assert "[FAIL] Unit blocks cursor-agent sandbox namespaces" in out, out
+    assert "missing: pid " in out, out
 
 
 def test_unit_namespaces_blocking_cursor_sandbox_fail(tmp_path: Path) -> None:

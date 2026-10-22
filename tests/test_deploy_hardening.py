@@ -30,7 +30,7 @@ _EXPAT_DEBIAN_SECURITY_VERSION = "2.9.0-1~deb13u1"
 # These must appear in both the .service template files AND in the setup.sh
 # heredoc so that installed units stay in sync.
 _NEW_HARDENING_DIRECTIVES_391 = (
-    "RestrictNamespaces=user mnt net ipc uts",
+    "RestrictNamespaces=user mnt net ipc uts pid",
     "CapabilityBoundingSet=",
     "SystemCallFilter=@system-service",
     "LockPersonality=true",
@@ -246,8 +246,9 @@ def test_dashboard_service_allows_wsl_interop_address_families() -> None:
 def test_dashboard_service_has_restrict_namespaces() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
     # #1698: cursor-agent --sandbox enabled (#1586) runs commands in bubblewrap, which
-    # needs these namespace types; cgroup and pid stay forbidden.
-    assert "RestrictNamespaces=user mnt net ipc uts" in content
+    # needs these namespace types; Codex also unshares pid. cgroup stays forbidden.
+    directive = next(line for line in content.splitlines() if line.startswith("RestrictNamespaces="))
+    assert set(directive.split("=", 1)[1].split()) == {"user", "mnt", "net", "ipc", "uts", "pid"}
     assert "RestrictNamespaces=true" not in content
 
 
@@ -267,7 +268,7 @@ def test_cursor_sandbox_dropin_matches_unit_template() -> None:
     lines = [ln.strip() for ln in dropin.splitlines() if ln.strip() and not ln.startswith("#")]
     assert lines[0] == "[Service]"
     # The empty assignment resets the unit's value before the allow-list is applied.
-    assert lines[1:3] == ["RestrictNamespaces=", "RestrictNamespaces=user mnt net ipc uts"]
+    assert lines[1:3] == ["RestrictNamespaces=", "RestrictNamespaces=user mnt net ipc uts pid"]
     filters = [ln for ln in lines if ln.startswith("SystemCallFilter=")]
     assert len(filters) == 1
     assert "~" not in filters[0], "an additive allow-list must not become a deny-list"

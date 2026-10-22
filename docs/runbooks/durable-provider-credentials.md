@@ -29,9 +29,13 @@ Never commit tokens. Inject long-lived values via root-only `EnvironmentFile=` (
 - Ensure `CODEX_HOME` points at the service user's directory.
 - If `provider_auth` reports `stale` for codex, run `codex login` again on that node before overnight schedules.
 
+The systemd service must allow `pid` alongside `user mnt net ipc uts` in `RestrictNamespaces`. Codex bubblewrap creates a PID namespace; a working shell `unshare -Ur true` does not prove the hardened service permits it. The shipped unit and `40-cursor-sandbox.conf` drop-in carry this allow-list while keeping cgroup namespaces restricted. No kernel sysctl change is needed for this service-only denial.
+
 ## Antigravity (`agy`)
 
-**Subscription / Google account:** `agy auth login` (browser). OAuth material lives under `ANTIGRAVITY_HOME` (default `~/.gemini`), including `oauth_creds.json`.
+**Subscription / Google account (CLI 1.4.5):** run `agy` interactively as the service user and select Google OAuth. Complete the browser flow and paste any authorization code only into that terminal. The CLI has no `auth login` or `auth status` subcommand; `agy models` verifies the saved login without generating a response. OAuth material lives under `ANTIGRAVITY_HOME` (default `~/.gemini`), including `oauth_creds.json`.
+
+On WSL, install the native Linux CLI using the [official installer](https://antigravity.google/cli/install.sh) rather than linking a Windows `agy.exe`: the Windows binary can lose access to its saved login when launched in a Linux worktree. Keep the service user, HOME and ANTIGRAVITY_HOME consistent between sign-in and dispatch.
 
 There is **no** documented Antigravity subscription path that avoids periodic Google OAuth refresh comparable to Claude `setup-token` or Codex `auth.json` auto-refresh. Do not use `GEMINI_API_KEY` / Google AI Studio keys for fleet staff (pay-per-use). Plan for re-login when `provider_auth` shows `expired`, `expiring`, or `stale`, or assign overnight work to providers with durable seats.
 

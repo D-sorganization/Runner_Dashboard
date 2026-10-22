@@ -237,13 +237,13 @@ else
     fi
 fi
 
-# cursor-agent's command sandbox (#1586) needs these namespace types (#1698).
+# CLI command sandboxes need these namespace types (#1698, #2209), including Codex pid.
 # systemd reports "no" when nothing is restricted, else the allowed types.
 if [[ "$SKIP_SERVICE" != "1" ]]; then
     UNIT_NS="$(systemctl show runner-dashboard -p RestrictNamespaces --value 2>/dev/null || true)"
     NS_MISSING=""
     if [[ "$UNIT_NS" != "no" ]]; then
-        for ns in user mnt net ipc uts; do
+        for ns in user mnt net ipc uts pid; do
             [[ " ${UNIT_NS} " == *" ${ns} "* ]] || NS_MISSING+="${ns} "
         done
     fi

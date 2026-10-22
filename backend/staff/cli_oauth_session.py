@@ -30,6 +30,7 @@ _AUTH_EXPIRED_MARKERS = (
     "please visit the url to log in",
     "waiting for authentication",
     "not authenticated",
+    "not signed in",
     "please run claude auth login",
     "auth login",
 )
@@ -215,7 +216,9 @@ def antigravity_oauth_session_alive(binary: str | None = None) -> tuple[bool, st
 
     def _probe() -> tuple[bool, str]:
         env = {**os.environ, "ANTIGRAVITY_HOME": str(home)}
-        return _run_probe([exe, "auth", "status"], env=env)
+        # CLI 1.4.5 has no auth subcommand. Listing models requires saved Google
+        # authentication without generating a response or consuming model quota.
+        return _run_probe([exe, "models"], env=env)
 
     return _cached_probe("cli_oauth:antigravity", _probe)
 
