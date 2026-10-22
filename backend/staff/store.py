@@ -94,7 +94,7 @@ class RunRecord:
     fallback_provider: str = ""
     thread_id: str = ""
     work_item_id: str = ""
-    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | not_applicable.
+    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | no_change | not_applicable.
     verification: str = ""
     verification_detail: str = ""
     pr_number: int | None = None

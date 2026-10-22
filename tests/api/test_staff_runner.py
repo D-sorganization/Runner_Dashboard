@@ -642,6 +642,9 @@ def test_finished_run_is_verified_and_only_enforce_changes_its_status(
         def find(self, repo: str, branch: str) -> None:
             lookups.append((repo, branch))
 
+        def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
+            return 1  # branch has commits but no PR — verification should still fail
+
     monkeypatch.setenv(verification.MODE_ENV, mode)
     monkeypatch.setattr(verification, "GhCliPrProbe", NoPr)
     # night-watch opens PRs, but no PR exists for this run's branch.
