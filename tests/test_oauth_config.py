@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import pytest
 from oauth_config import (
-    EXPECTED_CALLBACK_URL,
     EXPECTED_GITHUB_ORG,
-    EXPECTED_PUBLIC_ORIGIN,
+    OAUTH_CALLBACK_PATH,
     OAuthConfig,
     OAuthConfigurationError,
 )
+
+_DESK_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+_DESK_CALLBACK = f"{_DESK_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 
 def _valid_env() -> dict[str, str]:
@@ -17,8 +19,8 @@ def _valid_env() -> dict[str, str]:
         "GITHUB_CLIENT_ID": "12345678",
         "GITHUB_CLIENT_SECRET": "a" * 32,
         "GITHUB_ORG": EXPECTED_GITHUB_ORG,
-        "DASHBOARD_PUBLIC_ORIGIN": EXPECTED_PUBLIC_ORIGIN,
-        "GITHUB_OAUTH_CALLBACK_URL": EXPECTED_CALLBACK_URL,
+        "DASHBOARD_PUBLIC_ORIGIN": _DESK_ORIGIN,
+        "GITHUB_OAUTH_CALLBACK_URL": _DESK_CALLBACK,
         "SESSION_SECRET": "b" * 32,
         "DASHBOARD_TLS": "1",
     }

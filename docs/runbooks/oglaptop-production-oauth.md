@@ -1,5 +1,6 @@
 # Production browser OAuth (fleet hub)
 
+<<<<<<< HEAD
 Human operator sign-in for the Runner Dashboard uses the **fleet GitHub App**
 user-to-server OAuth flow (#2075, #2193): expiring user access tokens (~8 hours)
 and rotating refresh tokens (~6 months), with refresh tokens stored encrypted on
@@ -143,3 +144,75 @@ Rotate **client secret** in GitHub App settings, update hub `env`, restart servi
 verify login, revoke old secret. Rotating `SESSION_SECRET` invalidates browser
 sessions. On failure, restore previous `env` and release; do not enable dev login,
 loopback auth, or Funnel as a workaround.
+=======
+Human operator sign-in uses the **fleet GitHub App** user-to-server OAuth flow
+(#2075): expiring user access tokens and encrypted refresh storage on the hub.
+This is not a separate OAuth App and not installation-token auth for operators.
+
+**Fleet hub:** **DeskComputer** (`role: hub` in `backend/machine_registry.yml`).
+
+## HTTPS origin and callback
+
+Tailscale **Serve** terminates TLS at the tailnet edge; uvicorn stays on loopback
+`:8321`. The browser origin is **HTTPS MagicDNS without a port**.
+
+| Setting | DeskComputer (hub) |
+| ------- | ------------------ |
+| Public origin | `https://deskcomputer.tail2bbcc7.ts.net` |
+| Callback | `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback` |
+
+`oauth_config` accepts any `DASHBOARD_PUBLIC_ORIGIN` that matches a registry
+`role: hub` HTTPS origin, or an entry in `DASHBOARD_OAUTH_ALLOWED_ORIGINS`
+(comma-separated). When `DASHBOARD_PUBLIC_ORIGIN` /
+`GITHUB_OAUTH_CALLBACK_URL` are omitted, they default from the registry hub.
+`GITHUB_OAUTH_CALLBACK_URL` must always equal
+`{origin}/api/auth/callback`.
+
+Register **multiple** user authorization callback URLs on the GitHub App when
+migrating (for example legacy `https://oglaptop.tail2bbcc7.ts.net/api/auth/callback`).
+
+## Tailscale Serve on DeskComputer (hub)
+
+The repository cannot verify live Serve state from CI. On the hub host, with
+the dashboard listening on loopback `8321`:
+
+```bash
+tailscale serve reset
+tailscale serve --bg http://localhost:8321
+tailscale serve status
+tailscale funnel status   # must show no public dashboard mapping
+```
+
+This matches `deploy/setup-tailscale.sh` and
+[phone-access-tailnet.md](./phone-access-tailnet.md). Use **Serve**, not Funnel.
+
+## Hub environment (`~/.config/runner-dashboard/env`)
+
+```dotenv
+GITHUB_CLIENT_ID=<github-app-oauth-client-id>
+GITHUB_CLIENT_SECRET=<github-app-oauth-client-secret>
+GITHUB_ORG=D-sorganization
+DASHBOARD_PUBLIC_ORIGIN=https://deskcomputer.tail2bbcc7.ts.net
+GITHUB_OAUTH_CALLBACK_URL=https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback
+DASHBOARD_TLS=1
+SESSION_SECRET=<at-least-32-characters>
+```
+
+Omit `DASHBOARD_DEV_LOGIN`, `DASHBOARD_LOOPBACK_AUTH`, and
+`DASHBOARD_LOOPBACK_OPERATOR_WRITES`. Hub-only: `GITHUB_APP_PRIVATE_KEY_FILE`.
+
+## Verification
+
+1. `GET https://deskcomputer.tail2bbcc7.ts.net/api/health` — `oauth.ready: true`.
+2. Private tailnet browser: **Login** → GitHub shows `read:user` only.
+3. Logout clears the session; non-members and non-principals are denied.
+
+## Safe diagnostics
+
+| Reason | Action |
+| ------ | ------ |
+| `public_origin_mismatch` | Set origin to a registry hub HTTPS hostname or add `DASHBOARD_OAUTH_ALLOWED_ORIGINS`. |
+| `callback_url_mismatch` | Set callback to `{origin}/api/auth/callback`. |
+
+See `/api/health` for the full reason list; values never include secrets.
+>>>>>>> 41674c1e (feat: validate OAuth origin against fleet hub registry (#2075))

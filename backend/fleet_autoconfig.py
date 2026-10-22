@@ -58,6 +58,36 @@ def registry_machine_matches_current_dashboard(machine: Mapping[str, Any], ident
     return bool(registry_machine_identity_names(machine) & identities)
 
 
+def dashboard_url_to_tailscale_https_origin(dashboard_url: str) -> str:
+    """Map a registry ``dashboard_url`` to the Tailscale Serve HTTPS origin (no port)."""
+    parts = urlsplit(dashboard_url.strip())
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        raise ValueError(f"Invalid dashboard_url for HTTPS origin: {dashboard_url!r}")
+    return f"https://{parts.hostname}"
+
+
+def hub_public_origins_from_registry(registry: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return HTTPS origins for every non-retired machine with ``role: hub``."""
+    origins: list[str] = []
+    for machine in _active_machines(registry):
+        role = str(machine.get("role") or "node").strip().lower()
+        if role != "hub":
+            continue
+        url = registry_machine_url(machine)
+        if not url:
+            continue
+        origins.append(dashboard_url_to_tailscale_https_origin(url))
+    return tuple(origins)
+
+
+def resolve_hub_public_origin_from_registry(registry: Mapping[str, Any]) -> str:
+    """Return the canonical hub HTTPS origin when exactly one hub is declared."""
+    origins = hub_public_origins_from_registry(registry)
+    if len(origins) == 1:
+        return origins[0]
+    return ""
+
+
 def registry_machine_url(machine: Mapping[str, Any]) -> str:
     """Return the preferred dashboard URL for a registry machine."""
     candidate = str(machine.get("dashboard_url") or "").strip()
