@@ -161,9 +161,8 @@ async def get_backlog(auth: tuple[Principal, bool] = Depends(_fleet_or_writer)) 
     return _store().build_backlog()
 
 
-@router.get("/overview")
+@router.get("/overview", dependencies=[Depends(require_fleet_peer)])
 async def get_overview(
-    _peer: Principal = Depends(require_fleet_peer),
     inbox_limit: int = Query(default=8, ge=1, le=50),
     activity_limit: int = Query(default=40, ge=1, le=200),
 ) -> dict[str, Any]:

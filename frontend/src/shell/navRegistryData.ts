@@ -28,6 +28,7 @@ import {
   FlagIcon,
   BriefcaseIcon,
   CompassIcon,
+  UsersIcon,
 } from "./navIcons";
 
 export type NavGroupId = "staff" | "work" | "fleet" | "settings";
@@ -86,7 +87,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     id: "agent-bus",
     label: "Agent bus",
     group: "staff",
-    Icon: InboxIcon,
+    Icon: UsersIcon,
     tooltip: "Live agent sessions, inboxes, work-item threads, and coordination backlog.",
     tabId: "agent-bus",
     frequent: false,
