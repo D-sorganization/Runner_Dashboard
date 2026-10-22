@@ -113,8 +113,16 @@ ROLE_KEYWORD_RULES: dict[str, tuple[str, ...]] = {
     ),
     "night-watch": (
         "nightly scan",
-        "hygiene audit",
         "night watch",
+    ),
+    "test-hygiene": (
+        "vacuous test",
+        "fake test",
+        "meaningless test",
+        "mutation testing",
+        "test hygiene",
+        "test quality",
+        "hygiene audit",
         "test fix sweep",
     ),
     "project-steward": (
