@@ -90,3 +90,28 @@ def test_claude_probe_treats_auth_expired_message_as_dead(tmp_path: Path, monkey
 
 def test_provider_oauth_session_alive_unknown_provider_is_ok() -> None:
     assert provider_oauth_session_alive("ollama") == (True, "")
+
+
+def test_claude_setup_token_env_counts_as_alive_without_credentials_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DeskComputer durable seat: CLAUDE_CODE_OAUTH_TOKEN only (no .credentials.json)."""
+    cfg = tmp_path / "empty-claude-seat"
+    cfg.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "setup-token-seat-secret")
+    assert not (cfg / ".credentials.json").is_file()
+
+    def _probe_must_not_run(*_args: object, **_kwargs: object) -> CompletedProcess[str]:
+        raise AssertionError("subprocess must not run when setup-token env is configured")
+
+    invalidate_oauth_probe_cache()
+    with patch("staff.cli_oauth_session.subprocess.run", _probe_must_not_run):
+        alive, detail = claude_oauth_session_alive("/usr/bin/claude")
+        via_provider, provider_detail = provider_oauth_session_alive("claude")
+
+    assert alive is True
+    assert via_provider is True
+    assert "setup-token-seat-secret" not in detail
+    assert "setup-token-seat-secret" not in provider_detail
+    assert "setup-token" in detail.lower() or "oauth" in detail.lower()

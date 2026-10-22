@@ -175,8 +175,15 @@ def invalidate_oauth_probe_cache() -> None:
     cache_delete("cli_oauth:antigravity")
 
 
+def _claude_setup_token_configured() -> bool:
+    """True when ``claude setup-token`` material is present via env (subscription seat)."""
+    return bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+
+
 def claude_oauth_session_alive(binary: str | None = None) -> tuple[bool, str]:
     """Whether the Claude Code seat on this node can run without an interactive login."""
+    if _claude_setup_token_configured():
+        return True, "OAuth session active (CLAUDE_CODE_OAUTH_TOKEN)"
     cred = resolve_claude_config_dir() / ".credentials.json"
     if not cred.is_file():
         return False, "no Claude login file"
