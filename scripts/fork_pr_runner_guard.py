@@ -1,4 +1,5 @@
-# Vendored from D-sorganization/Repository_Management scripts/fork_pr_runner_guard.py (RM#2003 @ 3854595b).
+# Vendored from D-sorganization/Repository_Management scripts/fork_pr_runner_guard.py (RM#2198).
+# Protected source: c9a5731685bad4b6dee3242810a85f9ff59d6d9b.
 # Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line length.
 """Reject workflow jobs that can run fork pull-request code on self-hosted runners.
 
@@ -20,6 +21,10 @@ vendored to the other fleet repositories. This checker enforces two rules over
      of its ``runs-on`` expression (:data:`FORK_ROUTE_CONJUNCTS`), so a fork PR
      still gets a result on a hosted runner. Use this only for lanes that must
      report on fork PRs, such as required checks.
+
+   A ``workflow_call`` job requiring ``pull_request_target`` as a top-level
+   conjunct runs only in the trusted base context, including for fork PRs.
+   It remains subject to the privileged-event head-code checks below.
 
 2. **Privileged events never check out PR head code on the fleet.** In a
    workflow triggered by ``pull_request_target``, ``issue_comment`` or
@@ -52,11 +57,11 @@ import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
-try:
+if TYPE_CHECKING or __package__:
     from scripts.fork_pr_guard_analysis import (
         PULL_REQUEST_ONLY,
         SAME_REPO_CONDITIONS,
@@ -69,7 +74,7 @@ try:
         same_repo_conditioned,
         split_top_level,
     )
-except ImportError:  # executed as a file: scripts/ is on sys.path
+else:  # executed as a file: scripts/ is on sys.path
     from fork_pr_guard_analysis import (
         PULL_REQUEST_ONLY,
         SAME_REPO_CONDITIONS,
@@ -181,7 +186,13 @@ def job_violations(
     if hosted_only(job):
         return []
     violations: list[str] = []
-    pr_events = sorted(events & PR_CODE_TRIGGERS)
+    pr_code_events = events & PR_CODE_TRIGGERS
+    if requires_conjunct(job.get("if"), "github.event_name == 'pull_request_target'"):
+        # A callee inherits the caller's event. This exact mandatory condition
+        # excludes PR-code callers without excluding trusted fork metadata.
+        # Do not remove direct PR-code triggers or privileged head-code checks.
+        pr_code_events = pr_code_events - {"workflow_call"}
+    pr_events = sorted(pr_code_events)
     if pr_events and not (requires_conjunct(job.get("if"), SAME_REPO_GUARD) or fork_routed(job)):
         violations.append(
             f"{wf_name}::{job_id}: runs on {', '.join(pr_events)} and can reach "
