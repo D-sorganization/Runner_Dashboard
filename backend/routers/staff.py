@@ -56,6 +56,7 @@ from staff.models import (
 from staff.rm_sync import source_status as source_status  # noqa: F401
 from staff.runner import get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
+from staff.github_app_preflight import run_preflight_and_cache
 from staff.summary_view import build_staff_summary
 
 log = logging.getLogger("dashboard.staff")
@@ -159,6 +160,15 @@ async def summary(
     roster with schedules.
     """
     return await build_staff_summary()
+
+
+@router.get("/github-app/preflight")
+async def github_app_preflight(
+    _peer: Principal = Depends(require_scope("fleet.read")),
+) -> dict[str, Any]:
+    """Compare staff role GitHub App permission needs to the live installation grant (#2038)."""
+    runner = get_runner()
+    return run_preflight_and_cache(runner.roles())
 
 
 @router.get("/audit", response_model=StaffAuditListResponse, response_model_exclude_none=True)

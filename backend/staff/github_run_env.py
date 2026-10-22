@@ -65,10 +65,6 @@ def github_permissions_for_role(role: RoleSpec) -> dict[str, str]:
     }
     if writes_code or perms.get("open_pr"):
         out["workflows"] = "read"
-    fleet_actions = role.fleet_actions
-    if any("workflow" in a or "queue" in a for a in fleet_actions):
-        out["actions"] = "read"
-        out["workflows"] = "write"
     return out
 
 
