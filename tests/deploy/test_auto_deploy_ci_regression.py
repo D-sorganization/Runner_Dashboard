@@ -2,6 +2,7 @@
 
 Would have failed on pre-fix code: HOME-unbound install paths, system Python 3.10
 imports, hub gate hitting /api/fleet/status, CI gate treating skipped checks as failed.
+Validated under ``pytest --confcutdir=tests/deploy`` to avoid backend conftest deps.
 """
 
 from __future__ import annotations
