@@ -43,6 +43,15 @@ router = APIRouter(tags=["health"])
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
 
+def _oauth_health_payload() -> dict:
+    """OAuth readiness plus redacted operator token expiry (#2075)."""
+    from github_app_user_oauth import aggregate_operator_auth_health  # noqa: PLC0415
+
+    payload: dict = dict(OAuthConfig.from_env().diagnostic())
+    payload["operator_sessions"] = aggregate_operator_auth_health()
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # /livez — liveness probe (NO I/O, always 200 if process is alive)
 # ---------------------------------------------------------------------------
@@ -177,7 +186,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         "runners_registered": runner_count,
         "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),
         "deployment": _deployment_info(),
-        "oauth": OAuthConfig.from_env().diagnostic(),
+        "oauth": _oauth_health_payload(),
         "staff_availability": staff_avail,
     }
 

@@ -30,6 +30,7 @@ def test_oauth_config_ready() -> None:
     assert diag["ready"] is True
     assert diag["status"] == "ready"
     assert diag["reason"] == "configured"
+    assert diag["flow"] == "github_app_user_to_server"
     assert cfg.client_id_configured is True
 
     # repr check

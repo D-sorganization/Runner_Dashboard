@@ -54,7 +54,12 @@ def test_exact_production_configuration_is_ready_and_redacted() -> None:
     config = OAuthConfig.from_env(_production_env())
     diagnostic = config.diagnostic()
 
-    assert diagnostic == {"ready": True, "status": "ready", "reason": "configured"}
+    assert diagnostic == {
+        "ready": True,
+        "status": "ready",
+        "reason": "configured",
+        "flow": "github_app_user_to_server",
+    }
     serialized = repr(diagnostic)
     assert _CLIENT_ID not in serialized
     assert _CLIENT_SECRET not in serialized
@@ -137,7 +142,7 @@ def test_health_diagnostic_contract_contains_no_credential_fields() -> None:
 
     diagnostic = OAuthConfig.from_env(_production_env()).diagnostic()
 
-    assert set(diagnostic) == {"ready", "status", "reason"}
+    assert set(diagnostic) == {"ready", "status", "reason", "flow"}
     assert not any("client" in key or "secret" in key or "token" in key for key in diagnostic)
 
 

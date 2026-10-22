@@ -7,6 +7,10 @@ Usage:
   python3 clients/fleet/barb.py status
   python3 clients/fleet/barb.py project new --title T --goal G --repo Runner_Dashboard
   python3 clients/fleet/barb.py dispatch issue-remediator Runner_Dashboard --prompt "Fix CI"
+  python3 clients/fleet/barb.py lib search "hip torque golf" --repo UpstreamDrift --budget 1200
+  python3 clients/fleet/barb.py lib get 42
+  python3 clients/fleet/barb.py lib submit --doi 10.5555/x --title T --authors "A" --reason R \\
+    --requesting-ref UpstreamDrift#1
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from barb_lib import cmd_lib_get, cmd_lib_search, cmd_lib_submit, register_lib_commands  # noqa: E402
 from fleet_client import FleetAPIError, FleetArgumentError, FleetClient  # noqa: E402
 
 
@@ -88,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     disp.add_argument("--prompt", required=True)
     disp.add_argument("--issue", type=int, default=0)
 
+    register_lib_commands(sub)
+
     args = parser.parse_args(argv)
     try:
         client = _client()
@@ -103,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_project_new(client, args)
         if args.command == "dispatch":
             return cmd_dispatch(client, args)
+        if args.command == "lib" and args.lib_cmd == "search":
+            return cmd_lib_search(client, args)
+        if args.command == "lib" and args.lib_cmd == "get":
+            return cmd_lib_get(client, args.work_id)
+        if args.command == "lib" and args.lib_cmd == "submit":
+            return cmd_lib_submit(client, args)
     except FleetAPIError as exc:
         print(json.dumps(exc.to_envelope(), indent=2), file=sys.stderr)
         return 1

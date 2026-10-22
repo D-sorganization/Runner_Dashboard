@@ -1,9 +1,11 @@
 """Fail-closed production GitHub OAuth configuration.
 
-The browser OAuth credential is distinct from the GitHub App credential used
-for backend API calls.  This module is deliberately pure and reads the process
-environment only when :meth:`OAuthConfig.from_env` is called, so tests and
-operators cannot observe stale import-time configuration.
+Browser sign-in uses the fleet GitHub App's user-to-server OAuth client
+(``GITHUB_CLIENT_ID`` / ``GITHUB_CLIENT_SECRET`` from the App settings, not a
+separate OAuth App). Installation JWT credentials remain hub-only for agents.
+This module is deliberately pure and reads the process environment only when
+:meth:`OAuthConfig.from_env` is called, so tests and operators cannot observe
+stale import-time configuration.
 """
 
 from __future__ import annotations
@@ -26,12 +28,13 @@ _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _DEVELOPMENT_AUTH_FLAGS = ("DASHBOARD_DEV_LOGIN", "DASHBOARD_LOOPBACK_AUTH", "DASHBOARD_LOOPBACK_OPERATOR_WRITES")
 
 
-class OAuthDiagnostic(TypedDict):
+class OAuthDiagnostic(TypedDict, total=False):
     """Redacted readiness payload safe for health responses and logs."""
 
     ready: bool
     status: str
     reason: str
+    flow: str
 
 
 class OAuthConfigurationError(RuntimeError):
@@ -111,8 +114,18 @@ class OAuthConfig:
         if self.development_auth_present:
             reasons.append("development_auth_must_be_unset")
         if reasons:
-            return {"ready": False, "status": "blocked", "reason": ";".join(reasons)}
-        return {"ready": True, "status": "ready", "reason": "configured"}
+            return {
+                "ready": False,
+                "status": "blocked",
+                "reason": ";".join(reasons),
+                "flow": "github_app_user_to_server",
+            }
+        return {
+            "ready": True,
+            "status": "ready",
+            "reason": "configured",
+            "flow": "github_app_user_to_server",
+        }
 
     def require_ready(self) -> None:
         """Raise a redacted error unless every production invariant holds."""

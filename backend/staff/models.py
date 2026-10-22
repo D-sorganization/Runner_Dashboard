@@ -324,6 +324,10 @@ class StaffSummaryResponse(BaseModel):
     holds: list[dict[str, Any]] = Field(default_factory=list)
     liveness_alerts: list[StaffRoleLiveness] = Field(default_factory=list)
     roles: list[dict[str, Any]] = Field(default_factory=list)
+    operator_auth: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Redacted GitHub App user OAuth expiry for hub operators (#2075)",
+    )
 
     model_config = ConfigDict(extra="allow")
 
