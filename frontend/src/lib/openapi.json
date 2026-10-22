@@ -17945,6 +17945,35 @@
         "tags": ["library"]
       }
     },
+    "/api/v1/library/stats": {
+      "get": {
+        "operationId": "library_stats_route_api_v1_library_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Stats Route Api V1 Library Stats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Stats Route",
+        "tags": ["library"]
+      }
+    },
     "/api/v1/memory": {
       "get": {
         "operationId": "get_memory_entries_api_v1_memory_get",

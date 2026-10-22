@@ -25,8 +25,23 @@ CREATE TABLE IF NOT EXISTS submissions (
     id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS ingest_runs (
     id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, source_root TEXT NOT NULL,
-    files_seen INTEGER NOT NULL DEFAULT 0, files_indexed INTEGER NOT NULL DEFAULT 0, notes TEXT);
+    files_seen INTEGER NOT NULL DEFAULT 0, files_indexed INTEGER NOT NULL DEFAULT 0,
+    files_skipped INTEGER NOT NULL DEFAULT 0, files_rejected INTEGER NOT NULL DEFAULT 0,
+    files_removed INTEGER NOT NULL DEFAULT 0, notes TEXT);
+CREATE TABLE IF NOT EXISTS ingest_rejections (
+    id INTEGER PRIMARY KEY, source_root TEXT NOT NULL, rel_path TEXT NOT NULL,
+    reason TEXT NOT NULL, seen_at TEXT NOT NULL, UNIQUE(source_root, rel_path));
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
+    if "source_root" not in cols:
+        conn.execute("ALTER TABLE files ADD COLUMN source_root TEXT NOT NULL DEFAULT ''")
+    run_cols = {row[1] for row in conn.execute("PRAGMA table_info(ingest_runs)")}
+    for name in ("files_skipped", "files_rejected", "files_removed"):
+        if name not in run_cols:
+            conn.execute(f"ALTER TABLE ingest_runs ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
 
 
 def library_data_dir() -> Path:
@@ -48,6 +63,7 @@ def init_library_db(path: Path | None = None) -> Path:
     db.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(db)) as conn:
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         conn.commit()
     return db
 
