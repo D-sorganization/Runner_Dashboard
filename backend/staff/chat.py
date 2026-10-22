@@ -1,13 +1,9 @@
-"""Chat turn execution engine for staff conversational replies (SC-B4, Issue #1307).
+"""Read-only staff chat turns (SC-B4, #1307) with Barb pool reservation (SC-C6).
 
-Provides fast, read-only conversational replies with:
-- Dedicated concurrency pool separating chat turns from work runs, with Barb reservation (SC-C6).
-- Per-provider session resume with fallback to history replay within a token budget.
-- Execution in an isolated scratch directory without worktrees, git push, or RM leases.
-- Real-time token streaming to ThreadEventBus for low-latency SSE delivery.
-- Turn latency metrics: time to first token (TTFT) and total turn duration.
-- Reply contract parsing with action proposal extraction and persistence.
-- Classified failure diagnosis with user remediation hints and retry support.
+Uses provider sessions or bounded history replay in isolated scratch directories,
+streaming replies through ThreadEventBus with latency metrics and reply contracts.
+Adds scoped shared-memory reference context when configured. Failures include
+classified diagnoses, remediation hints and retry support.
 """
 
 from __future__ import annotations
@@ -57,6 +53,7 @@ from staff.chat_pool import (
     get_chat_pool,
 )
 from staff.chat_scratch import thread_scratch_dir
+from staff.chat_shared_memory import build_shared_memory_context_block
 from staff.chat_streaming import (
     LiveProcessReader,
     spawn_cli_process,
@@ -164,8 +161,9 @@ class ChatTurnRunner:
         knowledge_block = build_knowledge_turn_block(role, raw_prompt)
         fleet_block = await build_fleet_context_block(role, raw_prompt=raw_prompt)
         issue_block = await build_issue_context_block(role, raw_prompt)
+        shared_memory_block = await build_shared_memory_context_block(role_name, requester)
         pending_block = build_pending_proposals_block(self.conv_store, thread_id)
-        context_blocks = (fleet_block, issue_block, knowledge_block, pending_block)
+        context_blocks = (fleet_block, issue_block, knowledge_block, shared_memory_block, pending_block)
         prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
