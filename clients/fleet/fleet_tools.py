@@ -105,6 +105,38 @@ COMMANDS: tuple[Command, ...] = (
         required=("entry_type", "source_product", "body"),
         tool="fleet_memory_append",
     ),
+    Command(
+        "memory-append-session-digest",
+        "memory_append_session_digest",
+        "Append a short, transcript-free summary for one Codex or Dashboard conversation turn "
+        "(requires memory.write; retries of the same turn are idempotent).",
+        {
+            "source_product": {"type": "string", "enum": ["codex", "dashboard"]},
+            "conversation_id": {
+                "type": "string",
+                "pattern": r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$",
+                "maxLength": 200,
+            },
+            "user_message_id": {
+                "type": "string",
+                "pattern": r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$",
+                "maxLength": 200,
+            },
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "decisions": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1, "maxLength": 120},
+                "maxItems": 3,
+            },
+            "open_items": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1, "maxLength": 120},
+                "maxItems": 3,
+            },
+        },
+        required=("source_product", "conversation_id", "user_message_id", "summary"),
+        tool="fleet_memory_append_session_digest",
+    ),
     # ---------------------------------------------------------------- coordination
     Command(
         "briefing",

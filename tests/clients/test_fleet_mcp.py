@@ -57,7 +57,7 @@ def test_handshake_list_and_call(fake_api: Any) -> None:
     assert "tools" in init["capabilities"]
 
     tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
-    assert len(tools) == 30
+    assert len(tools) == 31
     claim_schema = tools["fleet_claim_issue"]["inputSchema"]
     assert claim_schema["type"] == "object"
     assert set(claim_schema["required"]) == {"repo", "issue"}
@@ -207,15 +207,34 @@ def test_shared_memory_tools_use_api_contract_without_replaying_append(fake_api:
                     "expires_at": "2026-12-31T00:00:00Z",
                 },
             ),
+            _call(
+                6,
+                "fleet_memory_append_session_digest",
+                {
+                    "source_product": "codex",
+                    "conversation_id": "thread-12",
+                    "user_message_id": "message-2",
+                    "summary": "Useful checkpoint",
+                    "decisions": ["Keep canonical memory"],
+                    "open_items": ["Wire chat writer"],
+                },
+            ),
         ],
     )
     tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
-    assert set(tools) >= {"fleet_memory_context_pack", "fleet_memory_list", "fleet_memory_append"}
+    assert set(tools) >= {
+        "fleet_memory_context_pack",
+        "fleet_memory_list",
+        "fleet_memory_append",
+        "fleet_memory_append_session_digest",
+    }
+    assert "reported_origin_principal" not in tools["fleet_memory_append_session_digest"]["inputSchema"]["properties"]
     assert all(r["result"]["isError"] is False for r in responses[2:])
     assert [(r.method, r.path) for r in fake_api.requests] == [
         ("GET", "/api/v1/memory/context-pack"),
         ("GET", "/api/v1/memory"),
         ("POST", "/api/v1/memory"),
+        ("POST", "/api/v1/memory/session-digest"),
     ]
     assert fake_api.requests[1].query == {"type": "decision", "tag": "fleet", "limit": "12"}
     assert fake_api.requests[2].body == {
@@ -226,6 +245,14 @@ def test_shared_memory_tools_use_api_contract_without_replaying_append(fake_api:
         "expires_at": "2026-12-31T00:00:00Z",
     }
     assert "idempotency-key" not in fake_api.requests[2].headers
+    assert fake_api.requests[3].body == {
+        "source_product": "codex",
+        "conversation_id": "thread-12",
+        "user_message_id": "message-2",
+        "summary": "Useful checkpoint",
+        "decisions": ["Keep canonical memory"],
+        "open_items": ["Wire chat writer"],
+    }
 
 
 # --- generated connect.md tool table (#1802 step 2) ---
