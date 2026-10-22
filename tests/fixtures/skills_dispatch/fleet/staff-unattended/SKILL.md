@@ -12,6 +12,9 @@ roles:
   - pr-remediator
   - issue-remediator
   - project-steward
+  - serial-worker
+  - flaky-worker
+  - code-reviewer
   - r
   - fake
   - dummy
