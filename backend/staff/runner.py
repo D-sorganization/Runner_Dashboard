@@ -20,6 +20,7 @@ from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import usage as usage_mod
+from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.execution_result import classify_execution_result
 from staff.plan import RunPlan, RunRequest
@@ -298,9 +299,14 @@ class StaffRunner:
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
         )
-        argv = adapter.build_command(
-            prompt, str(workdir), plan.model, **read_only_kwargs(role), **self._launch_paths(adapter, workdir)
-        )
+        launch_paths = self._launch_paths(adapter, workdir)
+        if plan.provider == "antigravity":
+            antigravity_permissions(
+                read_only=role.code_read_only,
+                workdir=workdir,
+                gitdir=Path(launch_paths.get("gitdir", str(workdir))),
+            )
+        argv = adapter.build_command(prompt, str(workdir), plan.model, **read_only_kwargs(role), **launch_paths)
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
