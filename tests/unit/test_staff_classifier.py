@@ -29,11 +29,47 @@ def test_allowed_failure_classes_complete() -> None:
         "lease_blocked",
         "orphaned",
         "workspace_error",
+        "environment_error",
         "unkillable",
         "unknown",
         "no_result",
     }
     assert ALLOWED_FAILURE_CLASSES == expected
+
+
+CODEX_BWRAP_TRANSCRIPT = (
+    "shell execution fails before running any command: the sandbox reports "
+    "`bwrap: No permissions to create new namespace`\n"
+    "STAFF_RESULT: ok\n"
+)
+
+
+def test_codex_bwrap_namespace_failure_is_environment_error() -> None:
+    diag = classify_run_failure("codex", 0, output_text=CODEX_BWRAP_TRANSCRIPT)
+    assert diag.failure_class == "environment_error"
+    assert diag.retryable is False
+    assert "unprivileged_userns_clone" in diag.remediation
+    assert "config.toml" in diag.remediation
+
+
+def test_classify_execution_result_fails_success_with_bwrap_in_transcript(tmp_path) -> None:
+    from staff.execution_result import classify_execution_result
+
+    transcript = tmp_path / "t.log"
+    transcript.write_text(CODEX_BWRAP_TRANSCRIPT, encoding="utf-8")
+    status, failure_class, retryable, remediation, error = classify_execution_result(
+        cancelled=False,
+        rc=0,
+        result_line="STAFF_RESULT: ok",
+        provider="codex",
+        transcript_path=transcript,
+        machine="DeskComputer",
+    )
+    assert status == "failed"
+    assert failure_class == "environment_error"
+    assert not retryable
+    assert "wsl.conf" in remediation.lower()
+    assert error
 
 
 @pytest.mark.parametrize(

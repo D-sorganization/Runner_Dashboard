@@ -1,7 +1,4 @@
-"""Staff runner: turns a run request into a CLI subprocess and records it.
-Lifecycle: queued -> preparing -> running -> succeeded | failed | cancelled | blocked.
-Concurrency is bounded by STAFF_MAX_CONCURRENT_RUNS with one daemon thread per run.
-"""
+"""Staff runner: CLI subprocess lifecycle (queued → running → terminal status)."""
 
 from __future__ import annotations
 
@@ -24,7 +21,7 @@ from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
-from staff.classifier import classify_execution_result
+from staff.execution_result import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
@@ -442,8 +439,15 @@ class StaffRunner:
                 or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
+            verdict = verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
+            if updated_rec is not None:
+                updated_rec = verification.apply_deliverable_failure(
+                    store,
+                    updated_rec,
+                    verdict,
+                    opens_pr=self.opens_pr(rec.role),
+                )
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
                 if status == "succeeded":
