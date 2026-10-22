@@ -430,6 +430,8 @@ def select_provider_from_chain(
             step = chain[0]
         elif step is None and role.providers:
             step = FailoverStep(role.providers[0], role.model)
+    if step is None:
+        raise ValueError(f"no provider available in failover chain for role '{role.name}'")
     provider = step.provider
     if not quota_headroom(provider, ceiling):
         for alt in chain:

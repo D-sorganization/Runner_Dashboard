@@ -301,7 +301,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                     "dry_run": True,
                     **(
                         {"provider_auth_failover": list(plan.provider_auth_skipped)}
-                        if getattr(plan, "provider_auth_skipped", ())
+                        if plan.provider_auth_skipped
                         else {}
                     ),
                 },
@@ -358,10 +358,11 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
         ) from exc
     rec, plan, created = runner.admit(req, run_id=run_id)
-    if created and getattr(plan, "provider_auth_skipped", ()):
+    auth_skipped = getattr(plan, "provider_auth_skipped", None)
+    if created and auth_skipped:
         from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
 
-        for row in plan.provider_auth_skipped:
+        for row in auth_skipped:
             append_chain_attempt(
                 runner.store,
                 rec.id,
