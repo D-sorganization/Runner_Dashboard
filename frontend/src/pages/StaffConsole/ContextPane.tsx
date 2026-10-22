@@ -5,6 +5,7 @@
  */
 import React, { useState, useEffect } from "react";
 import type { ContextPaneProps } from "./contextTypes";
+import { FleetCatalogPane } from "./FleetCatalogPane";
 import { RoleReadinessSection, RunList, WorkItemList } from "./ContextReadiness";
 import { Skeleton, SkeletonLine } from "../../primitives/Skeleton";
 import "./context.css";
@@ -17,7 +18,7 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
   className = "",
   isLoading = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<"role" | "thread">("role");
+  const [activeTab, setActiveTab] = useState<"role" | "thread" | "skills" | "projects">("role");
   // Unknown (null) until the schedule source answers; never defaulted to enabled (#1804).
   const [scheduleEnabled, setScheduleEnabled] = useState<boolean | null>(role?.schedule?.enabled ?? null);
   const [isToggling, setIsToggling] = useState<boolean>(false);
@@ -89,6 +90,24 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
           className={`context-tab ${activeTab === "thread" ? "context-tab--active" : ""}`}
         >
           Thread
+        </button>
+        <button
+          role="tab"
+          type="button"
+          aria-selected={activeTab === "skills"}
+          onClick={() => setActiveTab("skills")}
+          className={`context-tab ${activeTab === "skills" ? "context-tab--active" : ""}`}
+        >
+          Skills
+        </button>
+        <button
+          role="tab"
+          type="button"
+          aria-selected={activeTab === "projects"}
+          onClick={() => setActiveTab("projects")}
+          className={`context-tab ${activeTab === "projects" ? "context-tab--active" : ""}`}
+        >
+          Projects
         </button>
       </div>
 
@@ -348,6 +367,12 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {(activeTab === "skills" || activeTab === "projects") && (
+          <div role="tabpanel" className="context-tabpanel" aria-label="Fleet catalog">
+            <FleetCatalogPane view={activeTab} />
           </div>
         )}
       </div>

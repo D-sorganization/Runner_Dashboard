@@ -76,6 +76,10 @@ class DispatchCommand:
     skip_premise_check: bool = False
     # Fix an existing PR: the worktree starts from this branch instead of origin/main (#1881).
     head_ref: str = ""
+    # Skill-matching hint for unattended dispatch (#2157); empty means infer from role/repo.
+    task_type: str = ""
+    standards_extra: str = ""
+    requested_skill: str | None = None
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -256,11 +260,20 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
         pr_lifecycle=cmd.pr_lifecycle,
         head_ref=cmd.head_ref,
+        task_type=cmd.task_type,
+        standards_extra=cmd.standards_extra,
+        requested_skill=cmd.requested_skill,
     )
     try:
         plan = runner.plan(req)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not cmd.dry_run:
+        from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
+
+        auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
+        if auth_refusal is not None:
+            raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
     check_rate_limit("dispatches", caller)
     target = await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
     if target != "local":

@@ -65,6 +65,8 @@ def test_pre_router_keyword_rules_for_specialist_roles() -> None:
         ("Clean up stale git branches and orphaned worktrees", "sanitation"),
         ("Update documentation and README with latest API guides", "librarian"),
         ("Runner linux-1 is offline and jobs are stalled, compact disk and restart", "maintenance"),
+        ("Remove vacuous tests and improve test quality in the auth module", "test-hygiene"),
+        ("Run a hygiene audit on flaky tests and mutation testing gaps", "test-hygiene"),
     ]
     for prompt, expected_role in cases:
         decision = route_deterministic(prompt)

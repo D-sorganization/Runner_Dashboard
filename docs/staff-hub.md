@@ -62,6 +62,14 @@ curl -s -X POST http://127.0.0.1:8321/api/staff/night-watch/run \
   -d '{"repo": "UpstreamDrift", "issue": 10622, "provider": "claude"}'
 ```
 
+Optional dispatch body fields for unattended skill injection (#2157):
+
+| Field | Purpose |
+| ----- | ------- |
+| `task_type` | Narrows the skills registry match (for example `staff-dispatch`, `open-pr`). Omit to match any task type declared on the skill. |
+| `skill` | Explicit skill package name (`SKILL.md` `name:`). When set, the name must exist or dispatch returns 422; when omitted, the hub matches `role` + `repo` + `task_type` and falls back to `fleet-staff-unattended` or standards-only. |
+| `standards_extra` | Additional standards text appended to the fleet standards block for this run only. |
+
 ## Machine targeting
 
 `machine` in the dispatch body is `local` (default; also this host's own

@@ -25,7 +25,9 @@ from routers.staff import (
     RunBody,
 )
 from routers.staff_knowledge import router as staff_knowledge_router
+from routers.staff_projects import router as staff_projects_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
+from routers.staff_skills import router as staff_skills_router
 from staff import fleet as staff_fleet
 from staff import summary_view, usage
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
@@ -63,6 +65,8 @@ from staff.store import USAGE_GROUPS
 log = logging.getLogger("dashboard.staff.v1")
 router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
 router.include_router(staff_knowledge_router)
+router.include_router(staff_skills_router)
+router.include_router(staff_projects_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:

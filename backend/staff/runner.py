@@ -1,7 +1,4 @@
-"""Staff runner: turns a run request into a CLI subprocess and records it.
-Lifecycle: queued -> preparing -> running -> succeeded | failed | cancelled | blocked.
-Concurrency is bounded by STAFF_MAX_CONCURRENT_RUNS with one daemon thread per run.
-"""
+"""Staff runner: CLI subprocess lifecycle (queued → running → terminal status)."""
 
 from __future__ import annotations
 
@@ -24,7 +21,7 @@ from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
-from staff.classifier import classify_execution_result
+from staff.execution_result import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
@@ -102,7 +99,9 @@ class StaffRunner:
 
         Raises ``ValueError`` with an operator-readable message on bad input.
         """
-        role = self._resolve_role(req)
+        from staff.role_dispatch import resolve_dispatch_role
+
+        role = resolve_dispatch_role(self.roles(), req)
         from staff.failover_dispatch import resolve_provider_and_model
 
         provider, _chain_model, model_tier = resolve_provider_and_model(self._adapters, self.machine, req, role)
@@ -116,6 +115,21 @@ class StaffRunner:
         lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
         paragraph = consolidation.prompt_paragraph(req.consolidation) if req.consolidation else ""
         focus = focus_mod.focus_paragraph(req.repo, focus_mod.load_items(self._focus_loader)) if req.repo else ""
+        from staff.dispatch_bundle import DispatchContractError, resolve_dispatch_bundle
+
+        try:
+            bundle = resolve_dispatch_bundle(
+                role=role.name,
+                repo=req.repo,
+                task_type=req.task_type,
+                standards_extra=req.standards_extra,
+                requested_skill=req.requested_skill,
+            )
+        except DispatchContractError as exc:
+            raise ValueError(str(exc)) from exc
+        from library.dispatch_hook import library_references_for_plan
+
+        references_block, library_work_ids = library_references_for_plan(role, req)
         prompt = workspace.compose_prompt(
             role,
             repo=req.repo,
@@ -124,6 +138,8 @@ class StaffRunner:
             branch=branch,
             consolidation=paragraph,
             focus=focus,
+            dispatch_bundle=bundle,
+            library_references=references_block,
         )
         from staff.failover_model import resolve_launch_model, role_base_tier
         from staff.provider_failover_config import resolve_failover_chain
@@ -157,20 +173,10 @@ class StaffRunner:
             focus=focus,
             pr_lifecycle=req.pr_lifecycle,
             head_ref=req.head_ref,
+            skill_pin=bundle.skill_pin,
+            standards_version=bundle.standards_version,
+            library_work_ids=library_work_ids,
         )
-
-    def _resolve_role(self, req: RunRequest) -> RoleSpec:
-        role = self.roles().get(req.role)
-        if role is None:
-            raise ValueError(f"unknown role '{req.role}'")
-        if not role.dispatchable:
-            reason = (
-                f"schema errors: {'; '.join(role.errors)}"
-                if not role.valid
-                else f"surface={role.surface}, retired={role.retired}"
-            )
-            raise ValueError(f"role '{req.role}' is not dispatchable from the dashboard ({reason})")
-        return role
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
         return select_first_available_provider(self._adapters, providers, ceiling)
@@ -428,8 +434,15 @@ class StaffRunner:
                 or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
+            verdict = verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
+            if updated_rec is not None:
+                updated_rec = verification.apply_deliverable_failure(
+                    store,
+                    updated_rec,
+                    verdict,
+                    opens_pr=self.opens_pr(rec.role),
+                )
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
                 if status == "succeeded":

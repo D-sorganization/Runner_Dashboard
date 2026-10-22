@@ -188,6 +188,7 @@ _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/credentials/",
     "/api/staff/",
     "/api/coordination/",
+    "/api/v1/agent/",
     "/api/priorities/",
     "/api/proposals/",
 )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from typing import Any
 
 from node_auto_deploy.check_runs import (
@@ -11,6 +12,29 @@ from node_auto_deploy.check_runs import (
     run_is_pending,
     validate_check_run_record,
 )
+
+DEFAULT_MAIN_HISTORY_LIMIT = 20
+
+# Advisory / self-referential checks must not block node auto-deploy or main CI auto-release.
+NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
+    {
+        "Publish dashboard release when CI gate is green",
+        "Publish dashboard release (manual dispatch)",
+        "Main CI auto-release",
+        "compare",  # Maxwell Contract Drift
+        "reconcile",  # Armed PR cap reconcile
+        "refresh",  # Agent Fleet Dashboard
+    }
+)
+
+
+def filter_non_blocking_check_runs(check_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [r for r in check_runs if str(r.get("name") or "") not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
+
+
+def ci_gate_for_deploy_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+    """Deploy/release gate: required CI checks only (excludes publisher and fleet hygiene jobs)."""
+    return ci_gate_for_commit(filter_non_blocking_check_runs(check_runs), expected_sha)
 
 
 def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -60,3 +84,56 @@ def ci_gate_for_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> t
         return False, f"checks failed: {names}"
 
     return True, f"{len(by_name)} check name(s) succeeded for {sha[:7]}"
+
+
+def select_deployable_main_commit(
+    commits_newest_first: list[str],
+    fetch_check_runs: Callable[[str], list[dict[str, Any]]],
+) -> tuple[str | None, str]:
+    """Return the newest main commit in ``commits_newest_first`` that passes ``ci_gate_for_commit``.
+
+    Pre: ``commits_newest_first`` is ordered from HEAD toward ancestors (bounded window).
+    Post: when a sha is returned, ``ci_gate_for_commit`` passes for that sha; otherwise None.
+    """
+    if not commits_newest_first:
+        return None, "no commits in main history window"
+
+    last_detail = "no qualifying commit"
+    for raw_sha in commits_newest_first:
+        sha = normalize_commit_sha(str(raw_sha))
+        if sha is None:
+            continue
+        runs = fetch_check_runs(sha)
+        ok, detail = ci_gate_for_deploy_commit(runs, sha)
+        if ok:
+            return sha, detail
+        last_detail = detail
+
+    return None, (f"no green commit in last {len(commits_newest_first)} main commits: {last_detail}")
+
+
+def select_deployable_main_commit_with_release(
+    commits_newest_first: list[str],
+    fetch_check_runs: Callable[[str], list[dict[str, Any]]],
+    has_release: Callable[[str], bool],
+) -> tuple[str | None, str]:
+    """Newest commit that passes ``ci_gate_for_deploy_commit`` and ``has_release(sha)``."""
+    if not commits_newest_first:
+        return None, "no commits in main history window"
+
+    last_detail = "no qualifying commit"
+    for raw_sha in commits_newest_first:
+        sha = normalize_commit_sha(str(raw_sha))
+        if sha is None:
+            continue
+        runs = fetch_check_runs(sha)
+        ok, detail = ci_gate_for_deploy_commit(runs, sha)
+        if not ok:
+            last_detail = detail
+            continue
+        if not has_release(sha):
+            last_detail = f"CI green at {sha[:7]} but no published release"
+            continue
+        return sha, detail
+
+    return None, (f"no green released commit in last {len(commits_newest_first)} main commits: {last_detail}")

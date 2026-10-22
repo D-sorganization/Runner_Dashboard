@@ -177,7 +177,11 @@ def test_probe_antigravity_cli_installed_and_authenticated() -> None:
     with (
         patch("routers.credentials.shutil.which", return_value="/usr/local/bin/agy"),
         patch("routers.credentials._find_binary", return_value="/usr/local/bin/agy"),
-        patch("routers.credentials._cli_login_file_present", return_value=True),
+        patch("routers.credentials._antigravity_login_present", return_value=True),
+        patch(
+            "staff.cli_oauth_session.antigravity_oauth_session_alive",
+            return_value=(True, "OAuth session active"),
+        ),
         patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         probe = _probe_antigravity_cli()
@@ -223,7 +227,11 @@ def test_probe_antigravity_cli_quota_exhausted() -> None:
     with (
         patch("routers.credentials.shutil.which", return_value="/usr/local/bin/agy"),
         patch("routers.credentials._find_binary", return_value="/usr/local/bin/agy"),
-        patch("routers.credentials._cli_login_file_present", return_value=True),
+        patch("routers.credentials._antigravity_login_present", return_value=True),
+        patch(
+            "staff.cli_oauth_session.antigravity_oauth_session_alive",
+            return_value=(True, "OAuth session active"),
+        ),
         patch(
             "staff.quota.headroom",
             return_value=(False, "antigravity: plan limit reached"),
@@ -245,7 +253,11 @@ def test_provider_probe_availability_includes_antigravity() -> None:
             return_value="/usr/local/bin/agy",
         ),
         patch("routers.credentials._find_binary", return_value="/usr/local/bin/agy"),
-        patch("routers.credentials._cli_login_file_present", return_value=True),
+        patch("routers.credentials._antigravity_login_present", return_value=True),
+        patch(
+            "staff.cli_oauth_session.antigravity_oauth_session_alive",
+            return_value=(True, "OAuth session active"),
+        ),
         patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         res = probe_provider_availability()

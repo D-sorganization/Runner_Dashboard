@@ -12,9 +12,20 @@ from typing import Any
 
 from staff import fleet as staff_fleet
 from staff.classifier import format_attention_items
+from staff.github_app_preflight import (
+    attention_items_from_preflight,
+    preflight_cache_snapshot,
+    run_preflight_and_cache,
+)
 from staff.runner import get_runner
 
 __all__ = ["build_staff_summary"]
+
+
+def _operator_auth_health() -> dict[str, Any]:
+    from github_app_user_oauth import aggregate_operator_auth_health  # noqa: PLC0415
+
+    return dict(aggregate_operator_auth_health())
 
 
 async def build_staff_summary() -> dict[str, Any]:
@@ -33,7 +44,11 @@ async def build_staff_summary() -> dict[str, Any]:
     counts: dict[str, int] = {}
     for run in recent:
         counts[run.status] = counts.get(run.status, 0) + 1
-    attention = format_attention_items(recent)
+    roles = runner.roles()
+    preflight = preflight_cache_snapshot()
+    if preflight.get("checked_at") is None:
+        preflight = run_preflight_and_cache(roles)
+    attention = attention_items_from_preflight(preflight) + format_attention_items(recent)
     keep = (
         "id",
         "role",
@@ -46,7 +61,6 @@ async def build_staff_summary() -> dict[str, Any]:
         "last_line",
     )
     in_flight = [{k: r.get(k) for k in keep} for r in [*board_view["running"], *board_view["queued"]]]
-    roles = runner.roles()
     return {
         "generated_at": board_view["generated_at"],
         "hub": board_view["hub"],
@@ -70,4 +84,5 @@ async def build_staff_summary() -> dict[str, Any]:
             }
             for s in sorted(roles.values(), key=lambda s: s.name)
         ],
+        "operator_auth": _operator_auth_health(),
     }

@@ -82,19 +82,12 @@ def test_oauth_callback_malformed_token_response_returns_502() -> None:
     from fastapi import HTTPException
     from routers.auth import github_callback
 
-    bad_resp = MagicMock()
-    bad_resp.status_code = 200
-    bad_resp.json.side_effect = ValueError("not json")
-
-    mock_client = MagicMock()
-    mock_client.post = AsyncMock(return_value=bad_resp)
-    mock_cm = MagicMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
-
     req = _mock_request({"oauth_state": "st2", "oauth_state_ts": time.time()})
 
-    with patch("httpx.AsyncClient", return_value=mock_cm):
+    with patch(
+        "github_app_user_oauth.exchange_authorization_code",
+        side_effect=RuntimeError("malformed"),
+    ):
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(github_callback(req, code="code", state="st2"))
 
@@ -108,15 +101,12 @@ def test_oauth_callback_network_error_returns_502() -> None:
     from fastapi import HTTPException
     from routers.auth import github_callback
 
-    mock_client = MagicMock()
-    mock_client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
-    mock_cm = MagicMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
-
     req = _mock_request({"oauth_state": "st3", "oauth_state_ts": time.time()})
 
-    with patch("httpx.AsyncClient", return_value=mock_cm):
+    with patch(
+        "github_app_user_oauth.exchange_authorization_code",
+        side_effect=httpx.ConnectError("refused"),
+    ):
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(github_callback(req, code="code", state="st3"))
 
@@ -134,8 +124,12 @@ def test_oauth_callback_non_member_rejected_with_403() -> None:
     from fastapi import HTTPException
     from routers.auth import github_callback
 
-    token_resp = MagicMock()
-    token_resp.json.return_value = {"access_token": "tok123"}
+    token_bundle = {
+        "access_token": "ghu_" + "T" * 36,
+        "refresh_token": "ghr_" + "R" * 36,
+        "expires_in": 28800,
+        "refresh_token_expires_in": 15897600,
+    }
 
     user_resp = MagicMock()
     user_resp.json.return_value = {"login": "outsider"}
@@ -144,7 +138,6 @@ def test_oauth_callback_non_member_rejected_with_403() -> None:
     membership_resp.status_code = 404  # not a member
 
     mock_client = MagicMock()
-    mock_client.post = AsyncMock(return_value=token_resp)
     mock_client.get = AsyncMock(side_effect=[user_resp, membership_resp])
     mock_cm = MagicMock()
     mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
@@ -152,10 +145,27 @@ def test_oauth_callback_non_member_rejected_with_403() -> None:
 
     req = _mock_request({"oauth_state": "st4", "oauth_state_ts": time.time()})
 
-    with patch("httpx.AsyncClient", return_value=mock_cm):
-        with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(github_callback(req, code="code", state="st4"))
+    with patch("github_app_user_oauth.exchange_authorization_code", return_value=token_bundle):
+        with patch("httpx.AsyncClient", return_value=mock_cm):
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(github_callback(req, code="code", state="st4"))
 
     assert exc_info.value.status_code == 403
     assert "D-sorganization" in exc_info.value.detail
     assert "oauth_state" not in req.session
+
+
+def test_oauth_callback_rejects_missing_refresh_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+    from github_app_user_oauth import UserOAuthRevokedError
+    from routers.auth import github_callback
+
+    req = _mock_request({"oauth_state": "st5", "oauth_state_ts": time.time()})
+    with patch("routers.auth.check_auth_rate_limit"):
+        with patch(
+            "github_app_user_oauth.exchange_authorization_code",
+            side_effect=UserOAuthRevokedError("missing refresh_token"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(github_callback(req, code="code", state="st5"))
+    assert exc_info.value.status_code == 503

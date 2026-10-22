@@ -299,6 +299,47 @@ class FleetClient:
             "POST", f"/api/v1/staff/threads/{tid}/messages", body={"body": text, "kind": "text"}, headers=headers
         )
 
+    def staff_skills_list(
+        self,
+        role: str | None = None,
+        repo: str | None = None,
+        task_type: str | None = None,
+    ) -> Any:
+        params = {
+            "role": _opt(PATTERNS.ident, role, "role"),
+            "repo": _opt_text(repo, "repo", 128),
+            "task_type": _opt_text(task_type, "task_type", 64),
+        }
+        return self.request("GET", "/api/v1/staff/skills", params=_compact(params))
+
+    def staff_skill_get(self, name: str, version: str | None = None) -> Any:
+        skill = _match(PATTERNS.ident, name, "name")
+        params = {"version": _opt_text(version, "version", 32)} if version else {}
+        return self.request("GET", f"/api/v1/staff/skills/{urllib.parse.quote(skill, safe='')}", params=params)
+
+    def staff_project_create(
+        self,
+        title: str,
+        goal: str,
+        *,
+        definition_of_done: str = "",
+        repos: list[str] | None = None,
+    ) -> Any:
+        body = {
+            "title": _text(title, "title", 200),
+            "goal": _text(goal, "goal", 4000),
+            "definition_of_done": _opt_text(definition_of_done, "definition_of_done", 4000) or "",
+            "repos": repos or [],
+        }
+        return self.request("POST", "/api/v1/staff/projects", body=body)
+
+    def staff_projects_list(self) -> Any:
+        return self.request("GET", "/api/v1/staff/projects")
+
+    def staff_project_decompose(self, project_id: str) -> Any:
+        pid = _match(PATTERNS.ident, project_id, "project_id")
+        return self.request("POST", f"/api/v1/staff/projects/{urllib.parse.quote(pid, safe='')}/decompose", body={})
+
     def staff_thread_read(self, thread_id: str, since_seq: int = 0, limit: int = 100) -> Any:
         tid = _match(PATTERNS.ident, thread_id, "thread_id")
         params = {
@@ -477,6 +518,96 @@ class FleetClient:
     def briefing(self, repo: str | None = None, agent: str | None = None) -> Any:
         params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "agent": self._agent(agent)}
         return self.request("GET", "/api/coordination/briefing", params=params)
+
+    # ------------------------------------------------------------------ agent bus (#2155)
+
+    def agent_register(
+        self,
+        *,
+        session: str,
+        role: str,
+        provider: str,
+        node: str,
+        lease_seconds: int = 300,
+    ) -> Any:
+        _check(30 <= lease_seconds <= 8 * 3600, "lease_seconds must be between 30 and 28800")
+        body = {
+            "session": self._session(session),
+            "role": _match(PATTERNS.agent, role, "role"),
+            "provider": _text(provider, "provider", 64),
+            "node": _text(node, "node", 128),
+            "lease_seconds": lease_seconds,
+        }
+        return self.request("POST", "/api/v1/agent/register", body=body)
+
+    def agent_heartbeat(self, *, session: str | None = None, lease_seconds: int = 300) -> Any:
+        _check(30 <= lease_seconds <= 8 * 3600, "lease_seconds must be between 30 and 28800")
+        body = {"session": self._session(session), "lease_seconds": lease_seconds}
+        return self.request("POST", "/api/v1/agent/heartbeat", body=body)
+
+    def agent_inbox(self, *, session: str | None = None, since_cursor: int = 0, limit: int = 50) -> Any:
+        params = {
+            "session": self._session(session),
+            "since_cursor": _non_negative_int(since_cursor, "since_cursor"),
+            "limit": _positive_int(limit, "limit"),
+        }
+        return self.request("GET", "/api/v1/agent/inbox", params=params)
+
+    def agent_bus_send(
+        self,
+        *,
+        to: str,
+        repo: str,
+        work_kind: str,
+        work_number: int,
+        body: str,
+        msg_type: str = "status",
+        session: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        _check(work_kind in ("issue", "pr"), "work_kind must be issue or pr")
+        key = idempotency_key or f"{self._session(session)}-lib-{uuid.uuid4().hex[:12]}"
+        payload = {
+            "session": self._session(session),
+            "to": _text(to, "to", 128),
+            "type": msg_type,
+            "repo": _match(PATTERNS.repo, repo, "repo"),
+            "work_kind": work_kind,
+            "work_number": _positive_int(work_number, "work_number"),
+            "body": _text(body, "body", 4000),
+            "idempotency_key": key,
+        }
+        return self.request("POST", "/api/v1/agent/messages", body=payload)
+
+    def library_search(
+        self,
+        query: str,
+        *,
+        repo: str | None = None,
+        topic: str | None = None,
+        budget: int | None = None,
+        k: int | None = None,
+    ) -> Any:
+        q = _text(query, "query", 512)
+        params: dict[str, Any] = {"q": q}
+        if repo:
+            params["repo"] = _match(PATTERNS.repo, repo, "repo")
+        if topic:
+            params["topic"] = _text(topic, "topic", 128)
+        if budget is not None:
+            params["budget"] = _positive_int(budget, "budget")
+        if k is not None:
+            params["k"] = _positive_int(k, "k")
+        return self.request("GET", "/api/v1/library/search", params=_compact(params))
+
+    def library_work(self, work_id: int) -> Any:
+        wid = _positive_int(work_id, "work_id")
+        return self.request("GET", f"/api/v1/library/works/{wid}")
+
+    def library_submit(self, payload: dict[str, Any]) -> Any:
+        if not isinstance(payload, dict):
+            raise FleetArgumentError("payload must be an object")
+        return self.request("POST", "/api/v1/library/submissions", body=payload)
 
     # ------------------------------------------------------------------ priorities
 

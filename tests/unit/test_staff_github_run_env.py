@@ -62,7 +62,7 @@ def test_github_permissions_write_when_push_or_pr() -> None:
     assert perms["pull_requests"] == "write"
     assert perms["issues"] == "write"
     assert perms["checks"] == "read"
-    assert perms["workflows"] == "read"
+    assert "workflows" not in perms
 
 
 def test_strip_operator_tokens_and_app_private_key() -> None:

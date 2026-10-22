@@ -319,8 +319,15 @@ ROUTING_EVAL_CASES: tuple[RoutingEvalCase, ...] = (
     C("hyg-02", "prune orphaned worktrees in the repo cache", "sanitation", "route", "hygiene", True),
     C("hyg-03", "purge unused worktrees and temporary build artifacts", "sanitation", "route", "hygiene", True),
     C("hyg-04", "run a nightly scan across the fleet test suites", "night-watch", "route", "hygiene", True),
-    C("hyg-05", "perform a hygiene audit on flaky tests in CI", "night-watch", "route", "hygiene", True),
-    C("hyg-06", "execute a night watch test fix sweep before morning", "night-watch", "route", "hygiene", True),
+    C("hyg-05", "perform a hygiene audit on flaky tests in CI", "test-hygiene", "route", "hygiene", True),
+    C(
+        "hyg-06",
+        "execute a test fix sweep on flaky unit tests before morning",
+        "test-hygiene",
+        "route",
+        "hygiene",
+        True,
+    ),
     C(
         "hyg-07",
         "search for academic paper on arxiv regarding agent coordination",

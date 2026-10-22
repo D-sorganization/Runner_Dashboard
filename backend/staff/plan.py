@@ -36,6 +36,10 @@ class RunRequest:
     pr_lifecycle: str = "arm_and_exit"
     # Existing branch the worktree starts from instead of origin/main (RD-1 CI fixes, #1881).
     head_ref: str = ""
+    task_type: str = ""
+    standards_extra: str = ""
+    # When set, must exist in the skills registry (#2157); omit to use role/repo matching + fallback.
+    requested_skill: str | None = None
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
@@ -73,6 +77,9 @@ class RunPlan:
     pr_lifecycle: str = "arm_and_exit"
     head_ref: str = ""
     model_tier: str = ""
+    skill_pin: str = ""
+    standards_version: str = ""
+    library_work_ids: tuple[int, ...] = ()
 
     @property
     def strategy_mode(self) -> str:
@@ -105,4 +112,6 @@ class RunPlan:
             "pr_lifecycle": self.pr_lifecycle,
             "head_ref": self.head_ref,
             "consolidation": dict(self.consolidation) if self.consolidation else None,
+            "skill_pin": self.skill_pin,
+            "skill": None if not self.skill_pin else {"pin": self.skill_pin},
         }

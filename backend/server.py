@@ -154,6 +154,7 @@ from routers import fleet as _fleet_router  # noqa: E402
 from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import label_guidance as _label_guidance_router  # noqa: E402  # issue #757
+from routers import library as _library_router  # noqa: E402  # issue #2165
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_sync as _linear_sync_router  # noqa: E402  # issue #236
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
@@ -749,11 +750,16 @@ app.include_router(_staff_schedule_router.v1_router)  # role schedule override (
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
+app.include_router(_library_router.router)  # Alexandria library (#2165)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402
 
 app.include_router(_coordination_router.router)
+
+from routers import agent_bus as _agent_bus_router  # noqa: E402
+
+app.include_router(_agent_bus_router.router)
 
 from routers import memory_v1 as _memory_v1_router  # noqa: E402
 
@@ -788,7 +794,9 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=dashboard_config.SESSION_SECRET,
     session_cookie="dashboard_session",
-    max_age=86400 * 7,  # 7 days
+    # Align with GitHub App refresh-token lifetime (~6 months); cookie is renewed
+    # on each response while the server-side refresh token remains valid (#2075).
+    max_age=int(os.environ.get("DASHBOARD_SESSION_MAX_AGE_SECONDS", str(86400 * 180))),
     same_site="strict",
     # Issue #930: Secure cookies are dropped by browsers on http:// origins, so
     # forcing https_only broke session auth on the documented HTTP-over-tailnet
@@ -2687,6 +2695,10 @@ async def _startup() -> None:
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())
 
+    from agent_bus.reaper import reaper_loop as _agent_bus_reaper_loop  # noqa: PLC0415
+
+    asyncio.create_task(_agent_bus_reaper_loop())
+
     # Weekly agent usage report (#1865); no-op unless USAGE_REPORT_WEEKLY_ENABLED.
     from session_telemetry import get_session_telemetry_store  # noqa: PLC0415
     from usage_report import start_weekly_usage_report_loop  # noqa: PLC0415
@@ -2698,6 +2710,10 @@ async def _startup() -> None:
     from delivery_metrics.sync import start_delivery_metrics_sync_loop  # noqa: PLC0415
 
     start_delivery_metrics_sync_loop(GhClientDeliveryCollector, delivery_metrics_repos())
+
+    from library.ingest import start_library_ingest_loop  # noqa: PLC0415
+
+    start_library_ingest_loop()
 
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
@@ -2715,6 +2731,13 @@ async def _startup() -> None:
     from staff.chat_fleet_context import warm_fleet_context_snapshots
 
     asyncio.create_task(warm_fleet_context_snapshots())
+
+    from github_app_auth import github_app_auth_configured  # noqa: PLC0415
+    from staff.github_app_preflight import periodic_github_app_preflight_loop  # noqa: PLC0415
+    from staff.runner import get_runner  # noqa: PLC0415
+
+    if github_app_auth_configured():
+        asyncio.create_task(periodic_github_app_preflight_loop(lambda: get_runner().roles()))
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)

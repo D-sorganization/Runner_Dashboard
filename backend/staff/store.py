@@ -94,7 +94,7 @@ class RunRecord:
     fallback_provider: str = ""
     thread_id: str = ""
     work_item_id: str = ""
-    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | not_applicable.
+    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | no_change | not_applicable.
     verification: str = ""
     verification_detail: str = ""
     pr_number: int | None = None
@@ -104,6 +104,9 @@ class RunRecord:
     # JSON list of {provider, model, outcome} attempts for failover briefs (#2047).
     provider_chain: str = ""
     model_tier: str = ""
+    skill_pin: str = ""
+    standards_version: str = ""
+    library_work_ids: str = "[]"
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
@@ -115,6 +118,7 @@ class RunRecord:
         d["retryable"] = bool(self.retryable)
         d["attempt"] = int(self.attempt)
         d["max_attempts"] = int(self.max_attempts)
+        d["skill"] = None if not self.skill_pin else {"pin": self.skill_pin}
         return d
 
 

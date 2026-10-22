@@ -60,6 +60,20 @@ def test_summary_404_when_flag_off(app: FastAPI, monkeypatch: pytest.MonkeyPatch
     assert client.get("/api/v1/metrics/summary", headers=_XHR).status_code == 404
 
 
+def test_weekly_summary(app: FastAPI) -> None:
+    client = TestClient(app)
+    resp = client.get(
+        "/api/v1/metrics/weekly-summary",
+        params={"since": "2026-10-01T00:00:00Z", "until": "2026-10-31T00:00:00Z"},
+        headers=_XHR,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["delivery"]["summary"]["prs"] >= 1
+    assert "staff" in body
+    assert "markdown" in body
+
+
 def test_summary_and_pull_drill_down(app: FastAPI) -> None:
     client = TestClient(app)
     summary = client.get(

@@ -41,6 +41,7 @@ from staff.audit import (
 from staff.cli_version import provider_versions
 from staff.dispatch_auth import require_staff_run_dispatch
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
+from staff.github_app_preflight import run_preflight_and_cache
 from staff.github_credential_service import mint_github_credential_for_run
 from staff.models import (
     StaffAuditListResponse,
@@ -85,6 +86,14 @@ class RunBody(BaseModel):
     ignore_budget: bool = False
     # Set by a forwarding peer so a retried forward admits one run (#1796); ignored from others.
     operation_id: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9-]+$")
+    # Unattended skill selection (#2157): filters registry skills; omit to match role/repo automatically.
+    task_type: str = Field(default="", max_length=80)
+    standards_extra: str = Field(default="", max_length=8000)
+    skill: str | None = Field(
+        default=None,
+        max_length=120,
+        description="Explicit skill package name; must exist in the registry or dispatch is rejected.",
+    )
 
     @field_validator("repo")
     @classmethod
@@ -159,6 +168,15 @@ async def summary(
     roster with schedules.
     """
     return await build_staff_summary()
+
+
+@router.get("/github-app/preflight")
+async def github_app_preflight(
+    _peer: Principal = Depends(require_scope("fleet.read")),
+) -> dict[str, Any]:
+    """Compare staff role GitHub App permission needs to the live installation grant (#2038)."""
+    runner = get_runner()
+    return run_preflight_and_cache(runner.roles())
 
 
 @router.get("/audit", response_model=StaffAuditListResponse, response_model_exclude_none=True)
@@ -426,5 +444,8 @@ async def run_dispatch(
         origin_node=origin_node,
         ignore_budget=body.ignore_budget,
         operation_id=operation_id,
+        task_type=body.task_type,
+        standards_extra=body.standards_extra,
+        requested_skill=body.skill,
     )
     return await dispatch_staff_run(cmd, caller)

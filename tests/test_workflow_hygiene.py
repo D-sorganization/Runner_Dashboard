@@ -56,6 +56,7 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
     ),
     "deploy-qualified-release.yml": "A root transaction must run to commit or rollback; never interrupt it mid-stream.",
     "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",
+    "main-ci-auto-release.yml": "Single-flight publish on d-sorg-fleet; cancel-in-progress would abort every in-flight release on a busy main and starve auto-deploy.",
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
@@ -482,7 +483,9 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
     for text in (workflow, action):
         assert "backend/" in text
         assert "frontend/src/" in text
-        assert "backend|frontend/src|src|tests|rust_core|api" in text
+    assert "^(backend/|frontend/src/|src/|rust_core/|api/)" in workflow
+    assert "phantom_guard_issue_paths.py" in workflow
+    assert "phantom_guard_issue_paths.py" in action
 
 
 def test_pre_push_mypy_dependencies_are_installable() -> None:

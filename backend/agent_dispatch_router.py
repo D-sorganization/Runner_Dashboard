@@ -347,6 +347,18 @@ async def dispatch_to_prs(
         return {"error": targets_or_err, "status_code": 422}
     targets = targets_or_err
 
+    # ── Queue depth delay guard (RD-CI-033 / #2034) ───────────────────────────
+    from dispatch_queue_delay import check_dispatch_queue_delay  # noqa: PLC0415
+
+    q_verdict = check_dispatch_queue_delay(
+        repo_root=repo_root,
+        principal=req.principal,
+        dispatch_kind=req.dispatch_kind,
+        is_repair=bool(req.auto_fix or req.dispatch_kind.strip().lower().startswith(("ci_fix", "conflict"))),
+    )
+    if q_verdict.delayed:
+        return {"error": q_verdict.reason, "status_code": 429}
+
     # ── PR lifecycle & Auto-fix subscription guard (#1845 / RD-0) ─────────────
     if req.auto_fix or req.pr_lifecycle == "subscribed":
         from pr_subscription import evaluate_pr_subscription
@@ -614,6 +626,25 @@ async def dispatch_to_issues(
                         run_cmd_fn=run_cmd_fn,
                     )
                 continue
+        # ── Queue depth delay guard (RD-CI-033 / #2034) ───────────────────────
+        from dispatch_queue_delay import check_dispatch_queue_delay  # noqa: PLC0415
+
+        q_verdict = check_dispatch_queue_delay(
+            repo_root=repo_root,
+            principal=req.principal,
+            dispatch_kind=req.dispatch_kind,
+            is_repair=req.dispatch_kind.strip().lower().startswith(("ci_fix", "conflict")),
+        )
+        if q_verdict.delayed:
+            pre_rejected.append(
+                {
+                    "repository": repo,
+                    "number": num,
+                    "reason": q_verdict.reason,
+                }
+            )
+            continue
+
         if not req.force:
             declared_paths = extract_declared_paths(req.prompt)
             attempt = dispatch_queue_manager.try_dispatch(
