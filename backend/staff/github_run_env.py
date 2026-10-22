@@ -80,7 +80,7 @@ def _staff_github_mint_uses_hub() -> bool:
 def mint_staff_run_github_token_local(role: RoleSpec, repo: str) -> StaffGithubToken:
     """Mint on the hub using local GitHub App credentials (#2038, #2051)."""
     if github_app_auth_configured():
-        repositories = [_installation_repository_name(repo)]
+        repositories = [_installation_repository_name(repo)] if repo else None
         try:
             minted = mint_installation_access_token(
                 repositories=repositories,
