@@ -53,7 +53,6 @@ import { AnalysisTab } from "../pages/Analysis";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
 import { MachinesPage } from "../pages/Machines";
-import { MaxwellPage } from "../pages/MaxwellPage";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
 import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { WorkflowsPage } from "../pages/WorkflowsPage";
@@ -135,8 +134,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LazyLibraryPage />;
     case "machines":
       return <MachinesPage />;
-    case "maxwell":
-      return <MaxwellPage />;
     case "projects":
       return <LazyProjectsPage />;
     case "queue":

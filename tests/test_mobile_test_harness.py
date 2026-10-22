@@ -65,7 +65,6 @@ def test_mobile_smoke_page_contract_targets_existing_frontend_markers() -> None:
         "Reports",
         "Assessments",
         "Feature Requests",
-        "Maxwell",
     }
     for page in smoke_pages:
         assert page["tabLabel"], f"{page['name']} must name the tab a smoke test opens"

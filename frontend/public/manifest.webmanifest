@@ -98,10 +98,10 @@
       ]
     },
     {
-      "name": "Maxwell Chat",
-      "short_name": "Maxwell",
-      "description": "Chat with the Maxwell AI control plane",
-      "url": "/maxwell",
+      "name": "Staff Console",
+      "short_name": "Staff",
+      "description": "Chat with fleet staff roles and providers",
+      "url": "/",
       "icons": [
         {
           "src": "/icons/icon-192.png",
