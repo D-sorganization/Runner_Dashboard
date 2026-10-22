@@ -60,3 +60,24 @@ def test_provider_auth_preflight_classifies_expiring(tmp_path: Path, monkeypatch
     with patch("staff.cli_oauth_session.claude_oauth_session_alive", return_value=(True, "ok")):
         report = probe_local_provider_auth("Desk")
     assert report["providers"]["claude"]["status"] == "expiring"
+
+
+@pytest.mark.unit
+def test_provider_auth_preflight_marks_stale_codex_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import time
+
+    from staff.provider_auth_preflight import probe_local_provider_auth
+
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    auth = codex_home / "auth.json"
+    auth.write_text('{"refresh_token":"x","access_token":"y"}', encoding="utf-8")
+    old = time.time() - (10 * 86400)
+    os.utime(auth, (old, old))
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("STAFF_PROVIDER_AUTH_STALE_DAYS", "7")
+
+    with patch("staff.provider_auth_preflight.provider_oauth_session_alive", return_value=(True, "ok")):
+        report = probe_local_provider_auth("Desk")
+    assert report["providers"]["codex"]["status"] == "stale"
