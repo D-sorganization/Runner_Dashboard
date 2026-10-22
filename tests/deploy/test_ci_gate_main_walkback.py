@@ -97,6 +97,58 @@ def test_cancelled_check_on_skipped_commit_does_not_block_newer_green() -> None:
     assert chosen == _GREEN_SHA
 
 
+def test_evaluate_cycle_walks_back_when_head_green_but_unreleased(tmp_path: Path) -> None:
+    """HEAD passes CI but has no GitHub release; deploy the newest green commit that does."""
+    from node_auto_deploy.runner import CycleConfig, CycleDeps, evaluate_cycle  # noqa: E402
+    from node_auto_deploy.state import AutoDeployState  # noqa: E402
+
+    head_green_sha = "f" * 40
+    deploy = tmp_path / "dashboard"
+    deploy.mkdir()
+    (deploy / "deployment.json").write_text('{"git_sha": "' + ("e" * 40) + '"}', encoding="utf-8")
+    green_runs = _runs_from_fixture(_GREEN_FIXTURE, _GREEN_SHA)
+
+    def gh(path: str):
+        if path.endswith("/commits/main"):
+            return {"sha": head_green_sha}
+        if "commits?sha=main" in path:
+            return [{"sha": head_green_sha}, {"sha": _GREEN_SHA}]
+        if head_green_sha in path and "check-runs" in path:
+            return {"check_runs": [{**r, "head_sha": head_green_sha} for r in green_runs]}
+        if _GREEN_SHA in path and "check-runs" in path:
+            return {"check_runs": json.loads(_GREEN_FIXTURE.read_text())["check_runs"]}
+        return {}
+
+    releases = [
+        {
+            "draft": False,
+            "target_commitish": _GREEN_SHA,
+            "assets": [
+                {"name": "dashboard-1.0.0.tar.gz", "url": "https://example/tar"},
+                {"name": "dashboard-1.0.0.tar.gz.sha256", "url": "https://example/sum"},
+            ],
+        }
+    ]
+
+    cfg = CycleConfig(
+        repo_full_name="D-sorganization/Runner_Dashboard",
+        live_deploy_dir=str(deploy),
+        machine_role="node",
+        hub_url=None,
+        fleet_token=None,
+    )
+    deps = CycleDeps(
+        github_get=gh,
+        list_releases=lambda: releases,
+        fetch_fleet_status=lambda: {},
+        staff_in_flight=lambda: 0,
+        state=AutoDeployState(),
+    )
+    result, _msg, target = evaluate_cycle(cfg, deps)
+    assert result == "ready"
+    assert target == _GREEN_SHA
+
+
 def test_evaluate_cycle_uses_walkback_commit(tmp_path: Path) -> None:
     from node_auto_deploy.runner import CycleConfig, CycleDeps, evaluate_cycle  # noqa: E402
     from node_auto_deploy.state import AutoDeployState  # noqa: E402

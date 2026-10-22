@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from node_auto_deploy.check_runs import (
     check_name_passes,
@@ -87,6 +88,31 @@ def select_deployable_main_commit(
             return sha, detail
         last_detail = detail
 
-    return None, (
-        f"no green commit in last {len(commits_newest_first)} main commits: {last_detail}"
-    )
+    return None, (f"no green commit in last {len(commits_newest_first)} main commits: {last_detail}")
+
+
+def select_deployable_main_commit_with_release(
+    commits_newest_first: list[str],
+    fetch_check_runs: Callable[[str], list[dict[str, Any]]],
+    has_release: Callable[[str], bool],
+) -> tuple[str | None, str]:
+    """Newest commit that passes ``ci_gate_for_commit`` and ``has_release(sha)``."""
+    if not commits_newest_first:
+        return None, "no commits in main history window"
+
+    last_detail = "no qualifying commit"
+    for raw_sha in commits_newest_first:
+        sha = normalize_commit_sha(str(raw_sha))
+        if sha is None:
+            continue
+        runs = fetch_check_runs(sha)
+        ok, detail = ci_gate_for_commit(runs, sha)
+        if not ok:
+            last_detail = detail
+            continue
+        if not has_release(sha):
+            last_detail = f"CI green at {sha[:7]} but no published release"
+            continue
+        return sha, detail
+
+    return None, (f"no green released commit in last {len(commits_newest_first)} main commits: {last_detail}")

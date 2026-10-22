@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from node_auto_deploy.artifact import pick_release_assets
 from node_auto_deploy.ci_gate import (
     DEFAULT_MAIN_HISTORY_LIMIT,
     parse_check_runs_payload,
-    select_deployable_main_commit,
+    select_deployable_main_commit_with_release,
 )
 from node_auto_deploy.contracts import AutoDeployState
 from node_auto_deploy.hub_gate import hub_ready_for_commit
 from node_auto_deploy.kill_switch import auto_deploy_disabled
-from node_auto_deploy.state import record_event
 from node_auto_deploy.version import deployed_git_sha
 
 
@@ -45,9 +45,7 @@ def _main_commit_history(
     repo_full_name: str,
     main_head_sha: str,
 ) -> list[str]:
-    payload = deps.github_get(
-        f"/repos/{repo_full_name}/commits?sha=main&per_page={DEFAULT_MAIN_HISTORY_LIMIT}"
-    )
+    payload = deps.github_get(f"/repos/{repo_full_name}/commits?sha=main&per_page={DEFAULT_MAIN_HISTORY_LIMIT}")
     shas: list[str] = []
     if isinstance(payload, list):
         for item in payload:
@@ -65,9 +63,7 @@ def _check_runs_for_commit(
     repo_full_name: str,
     commit_sha: str,
 ) -> list[dict[str, Any]]:
-    checks = deps.github_get(
-        f"/repos/{repo_full_name}/commits/{commit_sha}/check-runs?per_page=100"
-    )
+    checks = deps.github_get(f"/repos/{repo_full_name}/commits/{commit_sha}/check-runs?per_page=100")
     payload = checks if isinstance(checks, dict) else {}
     runs = parse_check_runs_payload(payload)
     out: list[dict[str, Any]] = []
@@ -94,9 +90,15 @@ def evaluate_cycle(config: CycleConfig, deps: CycleDeps) -> tuple[str, str, str 
     deployed = deployed_git_sha(Path(config.live_deploy_dir) / "deployment.json")
 
     history = _main_commit_history(deps, config.repo_full_name, main_sha)
-    deployable_sha, gate_detail = select_deployable_main_commit(
+    releases = deps.list_releases()
+
+    def _has_release(sha: str) -> bool:
+        return pick_release_assets(releases, sha) is not None
+
+    deployable_sha, gate_detail = select_deployable_main_commit_with_release(
         history,
         lambda sha: _check_runs_for_commit(deps, config.repo_full_name, sha),
+        _has_release,
     )
     if deployable_sha is None:
         return "failed", f"CI gate: {gate_detail}", None
@@ -105,12 +107,12 @@ def evaluate_cycle(config: CycleConfig, deps: CycleDeps) -> tuple[str, str, str 
         if main_sha != deployable_sha:
             return (
                 "skipped",
-                f"already at {deployable_sha[:7]} (main HEAD {main_sha[:7]} awaiting CI)",
+                f"already at {deployable_sha[:7]} (main HEAD {main_sha[:7]} awaiting CI/release)",
                 None,
             )
         return "skipped", f"already at {deployable_sha[:7]}", None
 
-    assets = pick_release_assets(deps.list_releases(), deployable_sha)
+    assets = pick_release_assets(releases, deployable_sha)
     if not assets:
         return "skipped", f"no release artifact for {deployable_sha[:7]}", None
 
