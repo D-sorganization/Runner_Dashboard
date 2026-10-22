@@ -61,7 +61,8 @@
         "ci-standard.yml",
         "frontend-tests.yml",
         "lockfile-upgrade.yml",
-        "release.yml"
+        "release.yml",
+        "main-ci-auto-release.yml"
       ]
     }
   }

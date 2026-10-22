@@ -1,0 +1,64 @@
+# Automatic GitHub release for every green main commit (Dieter 2026-10-21).
+# Re-verifies the node auto-deploy CI gate, packages dashboard artifacts, and
+# publishes an idempotent vYYYY.MM.DD-<shortsha> release with SHA-256 sidecar.
+name: Main CI auto-release
+
+on:
+  workflow_run:
+    workflows:
+      - CI Standard
+      - Frontend Tests
+    types: [completed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: main-ci-auto-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Publish dashboard release when CI gate is green
+    if: >-
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: d-sorg-fleet
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Checkout release source at workflow_run head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Resolve committer date for deterministic tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMITTER_DATE="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}" --jq '.commit.committer.date')"
+          echo "committer_date=${COMMITTER_DATE}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js (frontend bundle in artifact)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
+
+      - name: Publish main CI release (gate, package, tag, retention)
+        shell: bash
+        env:
+          COMMITTER_DATE: ${{ steps.meta.outputs.committer_date }}
+          PROTECTED_RELEASE_SHAS: ${{ vars.AUTO_RELEASE_PROTECTED_SHAS }}
+        run: |
+          set -euo pipefail
+          bash deploy/publish-main-ci-release.sh \
+            --sha "${HEAD_SHA}" \
+            --committer-date "${COMMITTER_DATE}" \
+            --keep 30 \
+            --protected-sha "${PROTECTED_RELEASE_SHAS}"
