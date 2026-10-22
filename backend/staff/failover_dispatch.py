@@ -68,7 +68,18 @@ def _usable_provider(
 ) -> bool:
     if role.code_read_only and pid not in READ_ONLY_RUN_PROVIDERS:
         return False
-    return can_run_unattended(adapters, pid)
+    return _provider_installed(adapters, pid) and can_run_unattended(adapters, pid)
+
+
+def _provider_installed(adapters: Mapping[str, ProviderAdapter], provider: str) -> bool:
+    """Whether the adapter's executable is available on this node."""
+    adapter = adapters.get(provider)
+    if adapter is None:
+        return False
+    try:
+        return bool(adapter.installed())
+    except Exception:  # noqa: BLE001 - a broken local PATH probe makes this candidate unavailable
+        return False
 
 
 def _provider_auth_blocks(provider: str, machine: str) -> bool:
@@ -349,12 +360,27 @@ def resolve_provider_and_model(
 
     if req.provider:
         provider = req.provider
-        if _provider_auth_blocks(provider, machine):
+        if provider not in adapters:
+            raise ValueError(f"unknown provider '{provider}'")
+        if provider not in role.providers and role.name != "ad-hoc":
+            allowed = ", ".join(role.providers)
+            raise ValueError(f"provider '{provider}' is not allowed for role '{role.name}' (allowed: {allowed})")
+        if provider_switch_mod.is_disabled(provider):
+            raise ValueError(f"provider '{provider}' is {provider_switch_mod.DISABLED_DETAIL}")
+        if not getattr(adapters[provider], "unattended", True):
+            raise ValueError(
+                f"provider '{provider}' is chat-only: it cannot run unattended without bypassing permissions"
+            )
+        if (
+            _provider_auth_blocks(provider, machine)
+            or provider_in_cooldown(provider)
+            or not _provider_installed(adapters, provider)
+        ):
             provider, model, tier, _skipped = select_provider_from_chain(
                 adapters,
                 role,
                 req=req,
-                requested_provider=req.provider,
+                requested_provider=provider,
                 ceiling=ceiling,
                 quota_headroom=_headroom,
                 machine=machine,

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from staff import consolidation
+from staff.model_tiers import validate_role_tier
 
 _SAFE_BRANCH = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
@@ -21,6 +22,8 @@ class RunRequest:
     role: str
     provider: str | None = None
     model: str | None = None
+    # Internal dispatch intent; not a public HTTP request field.
+    model_tier: str | None = None
     repo: str = ""
     issue: int | None = None
     pr: int | None = None
@@ -44,6 +47,11 @@ class RunRequest:
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
             raise ValueError("head_ref must be a safe branch name of the target repo")
+        tier_errors = validate_role_tier(self.model_tier)
+        if tier_errors:
+            raise ValueError(f"model_tier {tier_errors[0]}")
+        if self.model_tier is not None and self.model_tier.strip():
+            object.__setattr__(self, "model_tier", self.model_tier.strip().lower())
 
     @property
     def target_kind(self) -> str:

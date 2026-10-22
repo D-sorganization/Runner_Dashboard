@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from staff.provider_failover_config import FailoverStep, default_failover_chain, resolve_failover_chain
 from staff.roles import RoleSpec
+
+pytestmark = pytest.mark.unit
 
 
 def test_default_chain_order_matches_repo_config() -> None:
@@ -17,6 +20,12 @@ def test_resolve_chain_filters_to_role_providers() -> None:
     role = RoleSpec(name="worker", title="Worker", providers=("codex", "antigravity"))
     steps = resolve_failover_chain(role)
     assert [s.provider for s in steps] == ["codex", "antigravity"]
+
+
+def test_resolve_default_chain_preserves_config_order_not_role_yaml_order() -> None:
+    role = RoleSpec(name="ad-hoc", title="Ad-hoc", providers=("claude", "codex", "antigravity"))
+    steps = resolve_failover_chain(role)
+    assert [step.provider for step in steps] == ["codex", "claude", "antigravity"]
 
 
 def test_role_failover_override_must_stay_in_providers() -> None:

@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import MagicMock
-
 import pytest
 from staff import adapters as adapters_mod
-from staff.failover_dispatch import try_chain_failover, tried_slots_for_root
 from staff.failover_model import resolve_launch_model, role_base_tier
 from staff.model_resolution import resolve_staff_run_model_detail
 from staff.model_tiers import (
@@ -17,10 +13,12 @@ from staff.model_tiers import (
     validate_role_tier,
     validate_tier_config,
 )
-from staff.provider_cooldown import mark_provider_cooldown, reset_provider_cooldowns
+from staff.plan import RunRequest
+from staff.provider_cooldown import reset_provider_cooldowns
 from staff.provider_failover_config import FailoverStep, reset_failover_config_cache
 from staff.roles import RoleSpec
-from staff.store import RunRecord, RunStore
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
@@ -80,13 +78,108 @@ def test_resolve_launch_model_rejects_unknown() -> None:
     adapter = adapters_mod.ADAPTERS["codex"]
     with pytest.raises(ValueError, match="not valid"):
         resolve_launch_model(
-            req=MagicMock(model="not-a-real-codex-model"),
+            req=RunRequest(role="r", model="not-a-real-codex-model"),
             role=role,
             provider="codex",
             adapter=adapter,
             step=None,
             active_tier=role_base_tier(role),
         )
+
+
+def test_launch_fallback_uses_target_provider_tier_not_primary_override() -> None:
+    role = RoleSpec(name="r", title="R", providers=("codex", "claude"), tier="routine")
+    req = RunRequest(role="r", provider="codex", model="gpt-6-luna", model_tier="complex")
+    model, tier = resolve_launch_model(
+        req=req,
+        role=role,
+        provider="claude",
+        adapter=adapters_mod.ADAPTERS["claude"],
+        step=FailoverStep("claude"),
+        active_tier="standard",
+    )
+    assert (model, tier) == (model_for_provider_tier("claude", "complex"), "complex")
+
+
+def test_higher_internal_tier_overrides_lower_tier_failover_step_model() -> None:
+    role = RoleSpec(name="r", title="R", providers=("codex", "claude"), tier="routine")
+    req = RunRequest(role="r", provider="codex", model_tier="complex")
+    model, tier = resolve_launch_model(
+        req=req,
+        role=role,
+        provider="claude",
+        adapter=adapters_mod.ADAPTERS["claude"],
+        step=FailoverStep("claude", "haiku"),
+        active_tier="routine",
+    )
+    assert (model, tier) == (model_for_provider_tier("claude", "complex"), "complex")
+
+
+def test_launch_fallback_still_rejects_invalid_model_for_requested_primary() -> None:
+    role = RoleSpec(name="r", title="R", providers=("codex", "claude"), tier="routine")
+    req = RunRequest(role="r", provider="codex", model="sonnet")
+    with pytest.raises(ValueError, match="not valid for provider 'codex'"):
+        resolve_launch_model(
+            req=req,
+            role=role,
+            provider="claude",
+            adapter=adapters_mod.ADAPTERS["claude"],
+            step=FailoverStep("claude"),
+            active_tier="routine",
+        )
+
+
+def test_launch_primary_keeps_explicit_model() -> None:
+    role = RoleSpec(name="r", title="R", providers=("codex",), tier="routine")
+    model, tier = resolve_launch_model(
+        req=RunRequest(role="r", provider="codex", model="gpt-6-luna"),
+        role=role,
+        provider="codex",
+        adapter=adapters_mod.ADAPTERS["codex"],
+        step=FailoverStep("codex"),
+        active_tier="routine",
+    )
+    assert (model, tier) == ("gpt-6-luna", "routine")
+
+
+def test_launch_fallback_uses_configured_primary_when_provider_is_omitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff import provider_failover_config
+
+    monkeypatch.setattr(
+        provider_failover_config,
+        "default_failover_chain",
+        lambda: (FailoverStep("claude"), FailoverStep("codex")),
+    )
+    role = RoleSpec(name="r", title="R", providers=("claude", "codex"), tier="routine")
+    model, tier = resolve_launch_model(
+        req=RunRequest(role="r", model="opus"),
+        role=role,
+        provider="codex",
+        adapter=adapters_mod.ADAPTERS["codex"],
+        step=FailoverStep("codex"),
+        active_tier="routine",
+    )
+    assert (model, tier) == (model_for_provider_tier("codex", "routine"), "routine")
+
+
+def test_fallback_does_not_reuse_primary_role_model() -> None:
+    role = RoleSpec(name="r", title="R", providers=("codex", "claude"), tier="routine", model="gpt-6-luna")
+    model, tier = resolve_launch_model(
+        req=RunRequest(role="r", provider="codex"),
+        role=role,
+        provider="claude",
+        adapter=adapters_mod.ADAPTERS["claude"],
+        step=FailoverStep("claude"),
+        active_tier="routine",
+    )
+    assert (model, tier) == (model_for_provider_tier("claude", "routine"), "routine")
+
+
+def test_run_request_validates_optional_internal_model_tier() -> None:
+    assert RunRequest(role="r").model_tier in (None, "")
+    assert RunRequest(role="r", model_tier="complex").model_tier == "complex"
+    with pytest.raises(ValueError, match="model_tier"):
+        RunRequest(role="r", model_tier="turbo")
 
 
 def test_next_tier_up() -> None:
