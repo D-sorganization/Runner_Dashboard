@@ -39,19 +39,13 @@ from workflow_stats_db import (
 from workflow_stats_db import (
     open_stats_db as _connect,
 )
+from time_utils import parse_github_ts as _parse_ts
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 timedelta = _dt_mod.timedelta
 
 log = logging.getLogger(__name__)
-
-
-def _parse_ts(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    # GitHub returns ISO 8601 with trailing Z
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _compute_durations(run: dict[str, Any]) -> tuple[float | None, float | None]:

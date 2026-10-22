@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from delivery_metrics.models import CheckRunSnapshot, PrSnapshot
-
-
-def _parse_ts(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+from time_utils import parse_github_ts
 
 
 def parse_pr_snapshot(repo_full: str, payload: dict[str, Any]) -> PrSnapshot:
@@ -23,8 +17,8 @@ def parse_pr_snapshot(repo_full: str, payload: dict[str, Any]) -> PrSnapshot:
     head = payload.get("head") or {}
     base = payload.get("base") or {}
     user = payload.get("user") or {}
-    created = _parse_ts(payload.get("created_at"))
-    updated = _parse_ts(payload.get("updated_at"))
+    created = parse_github_ts(payload.get("created_at"))
+    updated = parse_github_ts(payload.get("updated_at"))
     if created is None or updated is None:
         raise ValueError("pull payload missing created_at or updated_at")
     return PrSnapshot(
@@ -39,8 +33,8 @@ def parse_pr_snapshot(repo_full: str, payload: dict[str, Any]) -> PrSnapshot:
         author_login=str(user.get("login") or ""),
         created_at=created,
         updated_at=updated,
-        closed_at=_parse_ts(payload.get("closed_at")),
-        merged_at=_parse_ts(payload.get("merged_at")),
+        closed_at=parse_github_ts(payload.get("closed_at")),
+        merged_at=parse_github_ts(payload.get("merged_at")),
         additions=int(payload.get("additions") or 0),
         deletions=int(payload.get("deletions") or 0),
         changed_files=int(payload.get("changed_files") or 0),
@@ -67,8 +61,8 @@ def parse_check_runs(repo_full: str, head_sha: str, payload: dict[str, Any]) -> 
                 name=str(raw.get("name") or ""),
                 status=str(raw.get("status") or ""),
                 conclusion=raw.get("conclusion") if raw.get("conclusion") is not None else None,
-                started_at=_parse_ts(raw.get("started_at")),
-                completed_at=_parse_ts(raw.get("completed_at")),
+                started_at=parse_github_ts(raw.get("started_at")),
+                completed_at=parse_github_ts(raw.get("completed_at")),
                 details_url=str(raw.get("details_url") or raw.get("html_url") or ""),
                 app_slug=str(app.get("slug") or ""),
             )
