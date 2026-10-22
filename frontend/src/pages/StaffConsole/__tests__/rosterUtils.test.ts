@@ -23,6 +23,12 @@ describe("categorizeRole advisors (Repository_Management#1788)", () => {
   });
 });
 
+describe("categorizeRole operations (Repository_Management#2317)", () => {
+  it.each(["test-hygiene", "test_hygiene"])("puts %s with operations", (name) => {
+    expect(categorizeRole(role(name))).toBe("operations");
+  });
+});
+
 describe("computeRoleStatus and standing rules (guardrail holds, #1726)", () => {
   it("a role with only standing rules (declared holds:) stays dispatchable, not unavailable", () => {
     const heldRole: StaffRoleItem = {
