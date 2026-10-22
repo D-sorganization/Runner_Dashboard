@@ -5436,6 +5436,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics/weekly-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Metrics Weekly Summary
+         * @description Markdown-friendly weekly JSON for staff consumers (#2123).
+         */
+        get: operations["metrics_weekly_summary_api_v1_metrics_weekly_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/actions": {
         parameters: {
             query?: never;
@@ -17645,6 +17665,40 @@ export interface operations {
                 since?: string | null;
                 until?: string | null;
                 repo_full?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    metrics_weekly_summary_api_v1_metrics_weekly_summary_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                until?: string | null;
             };
             header?: never;
             path?: never;
