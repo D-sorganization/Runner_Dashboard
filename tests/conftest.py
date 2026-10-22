@@ -42,6 +42,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import sys  # noqa: E402
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
+_skills_dispatch = REPO_ROOT / "tests" / "fixtures" / "skills_dispatch"
+if _skills_dispatch.is_dir():
+    os.environ.setdefault("STAFF_SKILLS_DIR", str(_skills_dispatch))
 backend_dir = str(REPO_ROOT / "backend")
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)

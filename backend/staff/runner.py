@@ -116,6 +116,17 @@ class StaffRunner:
         lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
         paragraph = consolidation.prompt_paragraph(req.consolidation) if req.consolidation else ""
         focus = focus_mod.focus_paragraph(req.repo, focus_mod.load_items(self._focus_loader)) if req.repo else ""
+        from staff.dispatch_bundle import DispatchContractError, resolve_dispatch_bundle
+
+        try:
+            bundle = resolve_dispatch_bundle(
+                role=role.name,
+                repo=req.repo,
+                task_type=req.task_type,
+                standards_extra=req.standards_extra,
+            )
+        except DispatchContractError as exc:
+            raise ValueError(str(exc)) from exc
         prompt = workspace.compose_prompt(
             role,
             repo=req.repo,
@@ -124,6 +135,7 @@ class StaffRunner:
             branch=branch,
             consolidation=paragraph,
             focus=focus,
+            dispatch_bundle=bundle,
         )
         from staff.failover_model import resolve_launch_model, role_base_tier
         from staff.provider_failover_config import resolve_failover_chain
@@ -157,6 +169,8 @@ class StaffRunner:
             focus=focus,
             pr_lifecycle=req.pr_lifecycle,
             head_ref=req.head_ref,
+            skill_pin=bundle.skill_pin,
+            standards_version=bundle.standards_version,
         )
 
     def _resolve_role(self, req: RunRequest) -> RoleSpec:

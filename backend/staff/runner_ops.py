@@ -426,4 +426,6 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         thread_id=req.thread_id,
         work_item_id=req.work_item_id,
         origin_node=getattr(req, "origin_node", "") or "",
+        skill_pin=getattr(plan, "skill_pin", "") or "",
+        standards_version=getattr(plan, "standards_version", "") or "",
     )

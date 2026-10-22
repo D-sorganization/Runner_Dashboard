@@ -104,6 +104,8 @@ class RunRecord:
     # JSON list of {provider, model, outcome} attempts for failover briefs (#2047).
     provider_chain: str = ""
     model_tier: str = ""
+    skill_pin: str = ""
+    standards_version: str = ""
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
