@@ -1,4 +1,4 @@
-"""CI regression suite for node auto-deploy (#2083, #2108, #2111, #2114).
+"""CI regression suite for node auto-deploy live bugs (#2083, #2108, #2111, #2114).
 
 Would have failed on pre-fix code: HOME-unbound install paths, system Python 3.10
 imports, hub gate hitting /api/fleet/status, CI gate treating skipped checks as failed.
