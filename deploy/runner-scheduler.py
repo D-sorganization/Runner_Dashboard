@@ -394,19 +394,35 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
 
     Checking idle and then stopping leaves milliseconds in which the listener can
     accept a job. Freeze the whole unit first (a stopped listener cannot pick up or
-    fork a job), re-verify no Worker exists, and only then stop; ``systemctl stop``
-    follows SIGTERM with SIGCONT. A job seen after the freeze thaws the unit and
-    vetoes the stop; the unit is thawed on every path except a successful
-    stop (including errors). Fails closed if the freeze fails. Returns True only when the
-    stop was issued.
+    fork a job), re-verify no Worker exists, and only then submit the stop.
+    KillMode=mixed resumes only the main process; explicitly queue SIGTERM for
+    every frozen child before SIGCONT so none can accept work when resumed.
+    A job seen after the freeze vetoes the stop and thaws the unit. Errors also
+    thaw it. Fails closed if the freeze fails.
     """
     if run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGSTOP", unit.unit]).returncode != 0:
         log.warning("could not freeze %s; not stopping it", unit.unit)
         return False
     stopped = False
+    resumed = False
     try:
         if not _worker_absent(unit, cleanup_stale=True):
             return False
+        if run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGTERM", unit.unit]).returncode != 0:
+            # An external stop may have completed while we checked the unit.
+            stopped = (
+                run_cmd(["systemctl", "show", unit.unit, "-p", "ActiveState", "--value"]).stdout.strip() == "inactive"
+            )
+            if stopped:
+                return True
+            log.warning("could not signal stopping children of %s", unit.unit)
+            return False
+        # All processes are still frozen: SIGTERM remains pending until the
+        # stop job is queued. systemd may then resume only the main process;
+        # resume its children too, with termination already pending.
+        if run_cmd(["systemctl", "--no-block", "stop", unit.unit]).returncode != 0:
+            return False
+        resumed = run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit]).returncode == 0
         try:
             stopped = run_cmd(["systemctl", "stop", unit.unit], timeout=STOP_TIMEOUT_SECONDS).returncode == 0
         except subprocess.TimeoutExpired:
@@ -414,7 +430,7 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
             stopped = not unit_active(unit.unit)
             log.warning("systemctl stop %s timed out; unit %s", unit.unit, "going down" if stopped else "still active")
     finally:
-        if not stopped:
+        if not stopped and not resumed:
             # Every path except a successful stop must leave the unit running.
             run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit])
     if stopped:

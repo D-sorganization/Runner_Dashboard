@@ -746,7 +746,7 @@ def test_unit_is_thawed_when_systemctl_stop_fails(monkeypatch, tmp_path: Path) -
     assert _thaws(commands) == [unit.unit]
 
 
-def test_successful_stop_is_not_followed_by_a_thaw(monkeypatch, tmp_path: Path) -> None:
+def test_successful_stop_resumes_children_after_stop_submission(monkeypatch, tmp_path: Path) -> None:
     unit = _active_unit(2, tmp_path, busy=True)
     commands: list[list[str]] = []
     monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_k: commands.append(cmd) or _process_result())
@@ -754,7 +754,13 @@ def test_successful_stop_is_not_followed_by_a_thaw(monkeypatch, tmp_path: Path) 
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: False)
 
     assert runner_scheduler.stop_runner_safely(unit) is True
-    assert _thaws(commands) == []
+    queued = commands.index(["systemctl", "--no-block", "stop", unit.unit])
+    terminated = commands.index(["systemctl", "kill", "--kill-who=all", "--signal=SIGTERM", unit.unit])
+    resumed = commands.index(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit])
+    waited = commands.index(["systemctl", "stop", unit.unit])
+    frozen = commands.index(["systemctl", "kill", "--kill-who=all", "--signal=SIGSTOP", unit.unit])
+    assert frozen < terminated < queued < resumed < waited
+    assert _thaws(commands) == [unit.unit]
 
 
 def test_tick_stop_also_freezes_and_reverifies(monkeypatch, tmp_path: Path) -> None:
@@ -778,8 +784,57 @@ def test_tick_stop_also_freezes_and_reverifies(monkeypatch, tmp_path: Path) -> N
     actions = runner_scheduler.apply_capacity(units, desired=1, dry_run=False)
 
     assert units[1].unit not in _stops(commands)
-    assert _thaws(commands) == [units[1].unit]
+    assert _thaws(commands) == [units[1].unit, units[0].unit]
     assert [a["runner"] for a in actions] == [1]  # the genuinely idle runner covers the surplus
+
+
+def test_failed_stop_submission_resumes_the_idle_unit(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    commands: list[list[str]] = []
+
+    def run(cmd, **_kwargs):
+        commands.append(cmd)
+        return _process_result(returncode=1 if cmd[:3] == ["systemctl", "--no-block", "stop"] else 0)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "_worker_absent", lambda *_args, **_kwargs: True)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+    assert _thaws(commands) == [unit.unit]
+    assert any("--signal=SIGTERM" in cmd for cmd in commands)
+    assert _stops(commands) == []
+
+
+def test_busy_worker_vetoes_stop_submission_and_termination(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd, **_kwargs: commands.append(cmd) or _process_result())
+    monkeypatch.setattr(runner_scheduler, "_worker_absent", lambda *_args, **_kwargs: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+    assert _thaws(commands) == [unit.unit]
+    assert not any("stop" in cmd or "--signal=SIGTERM" in cmd for cmd in commands)
+
+
+@pytest.mark.parametrize("state, expected", [("inactive", True), ("active", False), ("deactivating", False)])
+def test_failed_termination_only_counts_an_already_stopped_unit(monkeypatch, tmp_path: Path, state, expected) -> None:
+    unit = _active_unit(2, tmp_path)
+    commands: list[list[str]] = []
+
+    def run(cmd, **_kwargs):
+        commands.append(cmd)
+        if "--signal=SIGTERM" in cmd:
+            return _process_result(returncode=1)
+        if cmd[:2] == ["systemctl", "show"]:
+            return _process_result(stdout=state + "\n")
+        return _process_result()
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "_worker_absent", lambda *_args, **_kwargs: True)
+
+    assert runner_scheduler.stop_runner_safely(unit) is expected
+    assert not any("stop" in cmd for cmd in commands)
+    assert _thaws(commands) == ([] if expected else [unit.unit])
 
 
 # --- #1929 item 3: maintenance drain (target 0, drain fast, report, reboot) ---
@@ -875,7 +930,12 @@ def test_stop_timeout_counts_as_stopped_when_the_unit_went_down(monkeypatch, tmp
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: False)
 
     assert runner_scheduler.stop_runner_safely(unit) is True
-    assert _thaws(commands) == []
+    queued = commands.index(["systemctl", "--no-block", "stop", unit.unit])
+    terminated = commands.index(["systemctl", "kill", "--kill-who=all", "--signal=SIGTERM", unit.unit])
+    resumed = commands.index(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit])
+    waited = commands.index(["systemctl", "stop", unit.unit])
+    assert terminated < queued < resumed < waited
+    assert _thaws(commands) == [unit.unit]
 
 
 def test_stop_timeout_with_unit_still_active_thaws_and_keeps_it(monkeypatch, tmp_path: Path) -> None:
