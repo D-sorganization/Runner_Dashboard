@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent_bus.models import MAX_BODY, SendBody, normalize_to_address
-from agent_bus.store_ops import AgentBusOpsMixin
+from agent_bus import store_ops
 from agent_bus.store_rows import PrincipalRow, iso_after, message_dict
 from agent_bus.store_threads import ensure_work_thread
 from identity import Principal, identity_manager
@@ -37,7 +37,7 @@ def reset_store() -> None:
     _store = None
 
 
-class AgentBusStore(AgentBusOpsMixin):
+class AgentBusStore:
     def __init__(self, db_path: Any | None = None) -> None:
         self.db_path = db_path or default_db_path()
         self._lock = threading.RLock()
@@ -250,7 +250,7 @@ class AgentBusStore(AgentBusOpsMixin):
         from agent_bus.store_rows import BARB_ROLE  # noqa: PLC0415
 
         if body.type == "blocked" and to_address != BARB_ROLE:
-            self.mirror_blocked_to_barb(body, sender)
+            store_ops.mirror_blocked_to_barb(self, body, sender)
         return out
 
     def list_inbox(self, session_id: str, since_cursor: int, limit: int) -> dict[str, Any]:
@@ -296,3 +296,45 @@ class AgentBusStore(AgentBusOpsMixin):
             )
             conn.close()
         return {"message_id": message_id, "acked": True, "generated_at": utc_now_iso()}
+
+    def expire_session(self, session_id: str) -> None:
+        store_ops.expire_session(self, session_id)
+
+    def list_stale_principals(self) -> list[PrincipalRow]:
+        return store_ops.list_stale_principals(self)
+
+    def drop_principal(self, session_id: str) -> None:
+        store_ops.drop_principal(self, session_id)
+
+    def track_claim(self, session_id: str, role: str, repo: str, issue: int) -> dict[str, Any]:
+        return store_ops.track_claim(self, session_id, role, repo, issue)
+
+    def release_tracked_claims(self, session_id: str, role: str, *, reason: str) -> int:
+        return store_ops.release_tracked_claims(self, session_id, role, reason=reason)
+
+    def list_inbox_for_address(self, to_address: str, since_cursor: int, limit: int) -> dict[str, Any]:
+        return store_ops.list_inbox_for_address(self, to_address, since_cursor, limit)
+
+    def build_backlog(self) -> dict[str, Any]:
+        return store_ops.build_backlog(self)
+
+    def upsert_handoff(
+        self,
+        *,
+        session_id: str,
+        repo: str,
+        work_kind: str,
+        work_number: int,
+        body: dict[str, str],
+    ) -> dict[str, Any]:
+        return store_ops.upsert_handoff(
+            self,
+            session_id=session_id,
+            repo=repo,
+            work_kind=work_kind,
+            work_number=work_number,
+            body=body,
+        )
+
+    def mirror_blocked_to_barb(self, body: SendBody, sender: PrincipalRow) -> None:
+        store_ops.mirror_blocked_to_barb(self, body, sender)
