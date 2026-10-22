@@ -361,6 +361,10 @@ def exchange_authorization_code(
         body = resp.json()
     except ValueError as exc:
         raise RuntimeError("malformed GitHub OAuth token response") from exc
+    if not isinstance(body, dict):
+        body = {}
+    if resp.status_code in (429, 500, 502, 503, 504) or resp.status_code >= 500:
+        raise UserOAuthTransientError(str(body.get("error") or "GitHub unavailable"))
     if resp.status_code >= 400 or not body.get("access_token"):
         raise UserOAuthRevokedError(str(body.get("error") or "authorization code rejected"))
     if not body.get("refresh_token"):

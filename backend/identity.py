@@ -355,10 +355,16 @@ def require_principal(
             # Reject sessions that have been revoked or FIFO-evicted
             if session_id and not sm.touch_session(session_id):
                 raise HTTPException(status_code=401, detail="Session revoked or expired")
-            from github_app_user_oauth import UserOAuthRevokedError, ensure_fresh_access_token  # noqa: PLC0415
+            from github_app_user_oauth import (  # noqa: PLC0415
+                UserOAuthRevokedError,
+                UserOAuthTransientError,
+                ensure_fresh_access_token,
+            )
 
             try:
                 ensure_fresh_access_token(principal_id)
+            except UserOAuthTransientError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
             except UserOAuthRevokedError as exc:
                 request.session.clear()
                 raise HTTPException(status_code=401, detail=str(exc)) from exc

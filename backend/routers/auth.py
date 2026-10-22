@@ -116,6 +116,7 @@ async def github_callback(request: Request, code: str, state: str):
 
     from github_app_user_oauth import (  # noqa: PLC0415
         UserOAuthRevokedError,
+        UserOAuthTransientError,
         apply_authorization_tokens,
         exchange_authorization_code,
     )
@@ -146,6 +147,8 @@ async def github_callback(request: Request, code: str, state: str):
                     status_code=403,
                     detail=f"You must be a member of the {config.github_org} GitHub organisation to log in.",
                 )
+    except UserOAuthTransientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except UserOAuthRevokedError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
@@ -257,10 +260,16 @@ async def refresh_session(
     Reuses the same principal resolution as ``GET /me``; also refreshes the
     GitHub App user access token when it is near expiry (#2075).
     """
-    from github_app_user_oauth import UserOAuthRevokedError, ensure_fresh_access_token  # noqa: PLC0415
+    from github_app_user_oauth import (  # noqa: PLC0415
+        UserOAuthRevokedError,
+        UserOAuthTransientError,
+        ensure_fresh_access_token,
+    )
 
     try:
         ensure_fresh_access_token(principal.id)
+    except UserOAuthTransientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except UserOAuthRevokedError as exc:
         request.session.clear()
         raise HTTPException(status_code=401, detail=str(exc)) from exc
