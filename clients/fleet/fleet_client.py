@@ -553,6 +553,62 @@ class FleetClient:
         }
         return self.request("GET", "/api/v1/agent/inbox", params=params)
 
+    def agent_bus_send(
+        self,
+        *,
+        to: str,
+        repo: str,
+        work_kind: str,
+        work_number: int,
+        body: str,
+        msg_type: str = "status",
+        session: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        _check(work_kind in ("issue", "pr"), "work_kind must be issue or pr")
+        key = idempotency_key or f"{self._session(session)}-lib-{uuid.uuid4().hex[:12]}"
+        payload = {
+            "session": self._session(session),
+            "to": _text(to, "to", 128),
+            "type": msg_type,
+            "repo": _match(PATTERNS.repo, repo, "repo"),
+            "work_kind": work_kind,
+            "work_number": _positive_int(work_number, "work_number"),
+            "body": _text(body, "body", 4000),
+            "idempotency_key": key,
+        }
+        return self.request("POST", "/api/v1/agent/messages", body=payload)
+
+    def library_search(
+        self,
+        query: str,
+        *,
+        repo: str | None = None,
+        topic: str | None = None,
+        budget: int | None = None,
+        k: int | None = None,
+    ) -> Any:
+        q = _text(query, "query", 512)
+        params: dict[str, Any] = {"q": q}
+        if repo:
+            params["repo"] = _match(PATTERNS.repo, repo, "repo")
+        if topic:
+            params["topic"] = _text(topic, "topic", 128)
+        if budget is not None:
+            params["budget"] = _positive_int(budget, "budget")
+        if k is not None:
+            params["k"] = _positive_int(k, "k")
+        return self.request("GET", "/api/v1/library/search", params=_compact(params))
+
+    def library_work(self, work_id: int) -> Any:
+        wid = _positive_int(work_id, "work_id")
+        return self.request("GET", f"/api/v1/library/works/{wid}")
+
+    def library_submit(self, payload: dict[str, Any]) -> Any:
+        if not isinstance(payload, dict):
+            raise FleetArgumentError("payload must be an object")
+        return self.request("POST", "/api/v1/library/submissions", body=payload)
+
     # ------------------------------------------------------------------ priorities
 
     def priorities(self) -> Any:
