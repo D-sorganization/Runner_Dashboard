@@ -341,3 +341,33 @@ async def test_download_cancellation_closes_stream(artifact_client) -> None:
         await gh_client.download_actions_artifact("owner/repo", 123, max_bytes=100)
 
     assert body.closed
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repos/owner/repo/actions/runs/42/artifacts?name=report%20name&page=7&per_page=99",
+        "https://api.github.com/repos/owner/repo/actions/runs/42/artifacts?name=report%20name",
+    ],
+)
+async def test_artifact_pagination_preserves_filters_and_controls_pages(artifact_client, path: str) -> None:
+    gh_client, install = artifact_client
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["name"] == "report name"
+        assert request.url.params.get_list("per_page") == ["1"]
+        assert len(request.url.params.get_list("page")) == 1
+        page = int(request.url.params["page"])
+        return httpx.Response(200, json={"total_count": 2, "artifacts": [{"id": page}]})
+
+    install(handler)
+    assert [item async for item in gh_client.paginate(path, per_page=1)] == [{"id": 1}, {"id": 2}]
+
+
+@pytest.mark.unit
+async def test_artifact_pagination_rejects_external_origin_before_request(artifact_client) -> None:
+    gh_client, install = artifact_client
+    install(lambda request: pytest.fail("external artifact collection must not receive credentials"))
+    with pytest.raises(ValueError, match="origin"):
+        _ = [item async for item in gh_client.paginate("https://external.example/repos/owner/repo/actions/artifacts")]

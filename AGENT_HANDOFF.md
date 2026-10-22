@@ -2,8 +2,8 @@
 
 ## GitHub Actions Artifact Transport — #2115
 
-- Branch `codex/2115-artifact-transport`, head `72cef9e2` (transport `48798bda`); PR not opened.
-- Generic artifact collection pagination now fails closed on 404, malformed, or incomplete results; bounded ZIP streaming is implemented; focused transport, gh_client and retry tests passed (65 total), as did Ruff, format and targeted mypy.
+- Branch `codex/2115-artifact-transport`; transport and strict pagination are committed; PR not opened.
+- Generic artifact pagination preserves filters, validates the API origin and fails closed on missing, malformed or incomplete results; bounded ZIP streaming is implemented; focused transport, gh_client and retry tests passed (68 total), as did Ruff, format and targeted mypy.
 - Parent owns protected central pre-PR qualification/publication. The unchanged RD base reports inherited 5 WIP entries against its declared limit of 4; no strict-governance-green claim is made.
 
 ## Brick Dashboard Delivery — #2049, #2081 And #2089

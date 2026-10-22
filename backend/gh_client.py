@@ -33,7 +33,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
 
@@ -506,6 +506,17 @@ async def list_run_artifacts(repo_full: str, run_id: int, *, max_pages: int = 10
     return await _list_artifact_collection(path, max_pages=max_pages)
 
 
+def _artifact_page_url(path: str, page: int, per_page: int) -> str:
+    parsed = urlsplit(path)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in {"page", "per_page"}
+    ]
+    query.extend((("page", str(page)), ("per_page", str(per_page))))
+    return parsed._replace(query=urlencode(query)).geturl()
+
+
 async def _list_artifact_collection(path: str, *, max_pages: int = 10, per_page: int = 100) -> list[dict[str, Any]]:
     if isinstance(max_pages, bool) or not isinstance(max_pages, int) or not 1 <= max_pages <= _MAX_ARTIFACT_PAGES:
         raise ValueError(f"max_pages must be from 1 to {_MAX_ARTIFACT_PAGES}")
@@ -515,7 +526,7 @@ async def _list_artifact_collection(path: str, *, max_pages: int = 10, per_page:
     expected_total: int | None = None
     seen_ids: set[int] = set()
     for page in range(1, max_pages + 1):
-        response = await _request("GET", f"{path}?per_page={per_page}&page={page}")
+        response = await _request("GET", _artifact_page_url(path, page, per_page))
         total, items = _validate_artifact_page(response.json())
         if expected_total is not None and total != expected_total:
             raise GhClientError("Actions artifact pagination changed during listing", kind="pagination")
@@ -542,7 +553,18 @@ async def _list_artifact_collection(path: str, *, max_pages: int = 10, per_page:
 
 def _is_artifact_collection_path(path: str) -> bool:
     parsed = urlsplit(path)
-    return not parsed.scheme and not parsed.netloc and _ARTIFACT_COLLECTION_PATH.fullmatch(parsed.path) is not None
+    if _ARTIFACT_COLLECTION_PATH.fullmatch(parsed.path) is None:
+        return False
+    if parsed.scheme or parsed.netloc:
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.github.com"
+            or parsed.port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("Artifact collection origin must be https://api.github.com")
+    return True
 
 
 def _validate_artifact_redirect(location: str) -> str:
