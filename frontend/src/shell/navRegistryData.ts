@@ -83,6 +83,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     mobileDrawer: true,
   },
   {
+    id: "agent-bus",
+    label: "Agent bus",
+    group: "staff",
+    Icon: InboxIcon,
+    tooltip: "Live agent sessions, inboxes, work-item threads, and coordination backlog.",
+    tabId: "agent-bus",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
     id: "maxwell",
     label: "Maxwell",
     group: "staff",

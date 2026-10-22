@@ -297,6 +297,59 @@ class AgentBusStore:
             conn.close()
         return {"message_id": message_id, "acked": True, "generated_at": utc_now_iso()}
 
+    def overview(self, inbox_limit: int = 8, activity_limit: int = 40) -> dict[str, Any]:
+        now = datetime.now(UTC)
+        with self._lock:
+            principal_rows = self._conn().execute("SELECT * FROM agent_bus_principals").fetchall()
+        agents: list[dict[str, Any]] = []
+        for raw in principal_rows:
+            row = self._row_principal(raw)
+            if not row.live(now):
+                continue
+            preview = self.list_inbox(row.session_id, 0, inbox_limit)
+            agents.append(
+                {
+                    "session": row.session_id,
+                    "role": row.role,
+                    "provider": row.provider,
+                    "node": row.node,
+                    "lease_expires_at": row.lease_expires_at,
+                    "inbox_preview": preview["messages"],
+                }
+            )
+        with self._lock:
+            activity_rows = (
+                self._conn()
+                .execute(
+                    "SELECT * FROM agent_bus_inbox ORDER BY cursor DESC LIMIT ?",
+                    (activity_limit,),
+                )
+                .fetchall()
+            )
+        activity = [message_dict(r) for r in activity_rows]
+        threads: dict[str, dict[str, Any]] = {}
+        for msg in activity:
+            tid = str(msg["thread_id"])
+            if tid not in threads:
+                threads[tid] = {
+                    "thread_id": tid,
+                    "repo": msg["repo"],
+                    "work_kind": msg["work_kind"],
+                    "work_number": msg["work_number"],
+                    "last_message": msg,
+                }
+        backlog = self.build_backlog()
+        return {
+            "agents": agents,
+            "threads": list(threads.values()),
+            "activity": activity,
+            "backlog": {
+                "stale_sessions": backlog["stale_sessions"],
+                "blocked": backlog["blocked"],
+            },
+            "generated_at": utc_now_iso(),
+        }
+
     def expire_session(self, session_id: str) -> None:
         store_ops.expire_session(self, session_id)
 
