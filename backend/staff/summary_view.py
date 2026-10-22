@@ -22,10 +22,10 @@ from staff.runner import get_runner
 __all__ = ["build_staff_summary"]
 
 
-def _operator_auth_health() -> dict:
+def _operator_auth_health() -> dict[str, Any]:
     from github_app_user_oauth import aggregate_operator_auth_health  # noqa: PLC0415
 
-    return aggregate_operator_auth_health()
+    return dict(aggregate_operator_auth_health())
 
 
 async def build_staff_summary() -> dict[str, Any]:
