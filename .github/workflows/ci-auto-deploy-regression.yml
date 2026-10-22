@@ -47,4 +47,4 @@ jobs:
       - name: Node auto-deploy regression suite
         env:
           BASH: bash
-        run: python3.12 -m pytest tests/deploy/test_auto_deploy_ci_regression.py -q
+        run: python3.12 -m pytest --confcutdir=tests/deploy tests/deploy/test_auto_deploy_ci_regression.py -q
