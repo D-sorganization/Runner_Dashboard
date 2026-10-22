@@ -56,9 +56,7 @@ def _ensure_work(conn: sqlite3.Connection, digest: str, reader: PdfReader, path:
         return int(row[0])
     author, title, year = _parse_filename(path.stem)
     author, title, year = _merge_pdf_meta(author, title, year, reader.metadata)
-    needs_ocr = int(
-        any(len(_page_text(reader, i).strip()) < _MIN_PAGE_CHARS for i in range(len(reader.pages)))
-    )
+    needs_ocr = int(any(len(_page_text(reader, i).strip()) < _MIN_PAGE_CHARS for i in range(len(reader.pages))))
     cur = conn.execute(
         "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,'pdf','active',?)",
         (digest, author, title, year, needs_ocr),
@@ -100,6 +98,7 @@ def _merge_pdf_meta(
 ) -> tuple[str | None, str | None, int | None]:
     if not pdf_meta:
         return author, title, year
+
     def _s(v: object) -> str | None:
         t = str(v).strip() if v is not None else ""
         return t or None

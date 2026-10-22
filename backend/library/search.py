@@ -41,9 +41,7 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(words) if words else (len(text) + 3) // 4)
 
 
-def search_passages(
-    db_path: Path, query: str, *, k: int = 32, budget_tokens: int = DEFAULT_BUDGET
-) -> list[SearchHit]:
+def search_passages(db_path: Path, query: str, *, k: int = 32, budget_tokens: int = DEFAULT_BUDGET) -> list[SearchHit]:
     match = sanitize_fts_query(query)
     if match is None:
         return []
@@ -69,8 +67,16 @@ def search_passages(
         used += tokens
         hits.append(
             SearchHit(
-                int(row[0]), row[1], row[2], row[3], int(row[4]), int(row[5]), str(row[6]),
-                -float(row[9]), row[8], tokens,
+                int(row[0]),
+                row[1],
+                row[2],
+                row[3],
+                int(row[4]),
+                int(row[5]),
+                str(row[6]),
+                -float(row[9]),
+                row[8],
+                tokens,
             )
         )
     return hits
