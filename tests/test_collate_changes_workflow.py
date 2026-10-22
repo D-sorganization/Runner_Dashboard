@@ -49,9 +49,11 @@ def test_runs_on_a_schedule_and_manual_dispatch_not_every_merge() -> None:
     from overlapping push triggers — not PR open/push races on ``bot/collate-changes``.
     """
     triggers = _triggers()
-    assert set(triggers) <= {"schedule", "workflow_dispatch"}
-    assert "push" not in triggers
+    assert set(triggers) <= {"schedule", "workflow_dispatch", "push"}
     assert "merge_group" not in triggers
+    if "push" in triggers:
+        assert triggers["push"]["branches"] == ["main"]
+        assert triggers["push"]["paths"] == [".github/workflows/collate-changes.yml"]
     schedule = triggers["schedule"]
     if isinstance(schedule, list):
         cron = [entry["cron"] for entry in schedule]
