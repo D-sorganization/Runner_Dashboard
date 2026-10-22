@@ -10,6 +10,13 @@ from identity import Principal
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 
 
+def test_dispatch_skips_oauth_preflight_in_e2e_hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STAFF_E2E_HERMETIC", "1")
+    from staff.provider_dispatch_preflight import refusal_for_provider_auth
+
+    assert refusal_for_provider_auth("claude", "local") is None
+
+
 @pytest.mark.asyncio
 async def test_dispatch_refuses_expired_antigravity_oauth() -> None:
     cmd = DispatchCommand(
