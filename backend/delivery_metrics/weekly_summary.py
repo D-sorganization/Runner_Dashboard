@@ -103,9 +103,7 @@ def build_weekly_summary(
     staff = _staff_window(runs, since=since, until=until)
     staff["dieter_wait_seconds"] = dieter_wait_seconds(proposals, since=since, until=until)
     staff["proposal_decisions"] = sum(
-        1
-        for p in proposals
-        if p.decided_at and _in_window(_parse_ts(p.decided_at), since, until)
+        1 for p in proposals if p.decided_at and _in_window(_parse_ts(p.decided_at), since, until)
     )
     staff["cost_per_merged_pr"] = (session_metrics or {}).get("cost_per_merged_pr", {})
     body: dict[str, Any] = {
