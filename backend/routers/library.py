@@ -109,6 +109,7 @@ def library_search(
 
 def _hit(hit: SearchHit) -> dict[str, Any]:
     return {
+        "passage_id": hit.passage_id,
         "work_id": hit.work_id,
         "author": hit.author,
         "title": hit.title,

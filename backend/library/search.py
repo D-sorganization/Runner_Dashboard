@@ -29,6 +29,7 @@ class SearchOptions:
 
 @dataclass(frozen=True)
 class SearchHit:
+    passage_id: int
     work_id: int
     author: str | None
     title: str | None
@@ -106,6 +107,53 @@ def search_passages(
     options: SearchOptions | None = None,
     collections: CollectionsConfig | None = None,
 ) -> list[SearchHit]:
+    if k < 1 or budget_tokens < 1 or budget_tokens > MAX_BUDGET:
+        raise ValueError("invalid k or budget_tokens")
+    from library.hybrid_search import hybrid_enabled, hybrid_search_passages
+
+    if hybrid_enabled():
+        return hybrid_search_passages(db_path, query, k=k, budget_tokens=budget_tokens, options=options)
+    ranked = bm25_ranked_passages(db_path, query, k=k, options=options, collections=collections)
+    return _pack_hits(ranked, budget_tokens=budget_tokens)
+
+
+def passage_hits_by_id(db_path: Path, passage_ids: list[int]) -> dict[int, SearchHit]:
+    if not passage_ids:
+        return {}
+    placeholders = ",".join("?" for _ in passage_ids)
+    sql = (
+        "SELECT p.id,p.work_id,w.author,w.title,w.year,p.page_start,p.page_end,p.text,p.token_estimate,"
+        " (SELECT rel_path FROM files WHERE work_id=w.id AND status='present' ORDER BY id LIMIT 1)"
+        f" FROM passages p JOIN works w ON w.id=p.work_id WHERE p.id IN ({placeholders}) AND w.status='active'"
+    )
+    with closing(LibraryStore(db_path).connect()) as conn:
+        rows = conn.execute(sql, passage_ids).fetchall()
+    out: dict[int, SearchHit] = {}
+    for row in rows:
+        out[int(row[0])] = SearchHit(
+            int(row[0]),
+            int(row[1]),
+            row[2],
+            row[3],
+            row[4],
+            int(row[5]),
+            int(row[6]),
+            str(row[7]),
+            0.0,
+            row[9],
+            int(row[8]) or estimate_tokens(str(row[7])),
+        )
+    return out
+
+
+def bm25_ranked_passages(
+    db_path: Path,
+    query: str,
+    *,
+    k: int = 32,
+    options: SearchOptions | None = None,
+    collections: CollectionsConfig | None = None,
+) -> list[SearchHit]:
     opts = options or SearchOptions()
     cfg = collections or load_collections()
     if opts.topic:
@@ -115,10 +163,10 @@ def search_passages(
     match = sanitize_fts_query(query)
     if match is None:
         return []
-    if k < 1 or budget_tokens < 1 or budget_tokens > MAX_BUDGET:
-        raise ValueError("invalid k or budget_tokens")
+    if k < 1:
+        raise ValueError("invalid k")
     sql = (
-        "SELECT p.work_id,w.author,w.title,w.year,p.page_start,p.page_end,p.text,p.token_estimate,w.topics,"
+        "SELECT p.id,p.work_id,w.author,w.title,w.year,p.page_start,p.page_end,p.text,p.token_estimate,w.topics,"
         " (SELECT rel_path FROM files WHERE work_id=w.id AND status='present' ORDER BY id LIMIT 1),"
         f" bm25(passages_fts,{_TITLE_WEIGHT},{_TEXT_WEIGHT})"
         " FROM passages_fts JOIN passages p ON p.id=passages_fts.rowid JOIN works w ON w.id=p.work_id"
@@ -128,10 +176,10 @@ def search_passages(
         rows = conn.execute(sql, (match, k * 4)).fetchall()
     ranked: list[SearchHit] = []
     for row in rows:
-        topics = json.loads(row[8] or "[]")
+        topics = json.loads(row[9] or "[]")
         if opts.topic and opts.topic not in topics:
             continue
-        score = -float(row[10])
+        score = -float(row[11])
         if opts.repo and opts.topic is None:
             if set(topics) & set(cfg.repo_topics(opts.repo)):
                 score *= _REPO_BOOST
@@ -141,19 +189,20 @@ def search_passages(
         ranked.append(
             SearchHit(
                 int(row[0]),
-                row[1],
+                int(row[1]),
                 row[2],
                 row[3],
-                int(row[4]),
+                row[4],
                 int(row[5]),
-                str(row[6]),
+                int(row[6]),
+                str(row[7]),
                 score,
-                row[9],
-                int(row[7]) or estimate_tokens(str(row[6])),
+                row[10],
+                int(row[8]) or estimate_tokens(str(row[7])),
             )
         )
     ranked.sort(key=lambda h: h.score, reverse=True)
-    return _pack_hits(ranked, budget_tokens=budget_tokens)
+    return ranked
 
 
 def _pack_hits(ranked: list[SearchHit], *, budget_tokens: int) -> list[SearchHit]:
