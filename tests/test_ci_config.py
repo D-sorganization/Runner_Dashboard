@@ -201,12 +201,29 @@ def test_test_matrix_fanout_is_bounded() -> None:
 def test_docker_build_uses_docker_runners() -> None:
     """Docker builds require Docker-capable runner labels."""
     workflow = _workflow_yaml(DOCKER_WORKFLOW)
-    labels = _runs_on_labels(workflow["jobs"]["docker-build-scan"])
+    labels = _runs_on_labels(workflow["jobs"]["docker-image"])
     assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker"}.issubset(labels)
     text = DOCKER_WORKFLOW.read_text(encoding="utf-8")
-    assert "cache-from: type=gha" in text
-    assert "cache-to: type=gha,mode=max" in text
-    assert "github/codeql-action/upload-sarif" not in str(workflow["jobs"]["docker-build-scan"])
+    assert "cache-from" in text and "type=gha" in text
+    assert "cache-to" in text and "type=gha,mode=max" in text
+    assert "github/codeql-action/upload-sarif" not in str(workflow["jobs"]["docker-image"])
+
+
+def test_docker_workflow_runs_in_merge_queue() -> None:
+    """Merge-queue events must always exercise the Docker image build."""
+    workflow = _workflow_yaml(DOCKER_WORKFLOW)
+    triggers = workflow.get("on") or workflow.get(True) or {}
+    assert "merge_group" in triggers, "docker-build.yml must list merge_group so queue runs can build the image"
+
+
+def test_docker_pull_request_has_no_workflow_path_filter() -> None:
+    """PR path filters skip the workflow entirely and leave checks pending."""
+    workflow = _workflow_yaml(DOCKER_WORKFLOW)
+    triggers = workflow.get("on") or workflow.get(True) or {}
+    pull_request = triggers.get("pull_request")
+    assert pull_request is None or not isinstance(pull_request, dict) or not pull_request.get("paths"), (
+        "docker-build.yml must not filter pull_request by paths; use decide-docker-scope instead"
+    )
 
 
 def test_docker_sarif_publication_uses_reversible_lightweight_route() -> None:
@@ -675,6 +692,76 @@ def test_python_gated_jobs_are_known() -> None:
         f"set of detector-gated jobs changed: {sorted(gated)}. Every job added "
         "here inherits the scope detector's blind spots — confirm that is intended"
     )
+
+
+# ---------------------------------------------------------------------------
+# Docker workflow — image build scope detector
+# ---------------------------------------------------------------------------
+
+DOCKER_SCOPE_PREFIX_NOUNS = {
+    "backend/": "backend",
+    "frontend/": "frontend",
+    "config/": "config",
+    "docker/": "docker",
+}
+
+
+def _docker_scope_steps() -> list[dict]:
+    return _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["decide-docker-scope"]["steps"]
+
+
+def _docker_scope_detector_source() -> str:
+    run = next(step for step in _docker_scope_steps() if step.get("id") == "scope")["run"]
+    lines = run.splitlines()
+    start = next(i for i, line in enumerate(lines) if "<<'EOF'" in line)
+    end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == "EOF")
+    return "\n".join(lines[start + 1 : end])
+
+
+def _docker_detector_literal(name: str) -> object:
+    tree = ast.parse(_docker_scope_detector_source())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"docker scope detector does not assign {name!r}")
+
+
+def _docker_detector_selects(files: list[str]) -> bool:
+    prefixes = _docker_detector_literal("prefixes")
+    exact = _docker_detector_literal("exact")
+    assert isinstance(prefixes, tuple)
+    return any(
+        path.startswith(prefixes) or path in exact or (path.startswith("Dockerfile") and path != "Dockerfile.sample")
+        for path in files
+    )
+
+
+def test_docker_scope_detector_covers_backend_changes() -> None:
+    assert _docker_detector_selects(["backend/server.py"])
+
+
+def test_docker_scope_detector_covers_dockerfile() -> None:
+    assert _docker_detector_selects(["Dockerfile"])
+
+
+def test_docker_scope_detector_skips_docs_only_pr() -> None:
+    assert not _docker_detector_selects(["docs/architecture.md", "README.md"])
+
+
+def test_docker_build_scan_gate_is_fail_closed() -> None:
+    gate = _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["docker-build-scan"]
+    assert "always()" in str(gate.get("if", ""))
+    assert set(gate.get("needs", [])) == {"decide-docker-scope", "docker-image"}
+
+
+def test_docker_skip_message_and_detector_agree() -> None:
+    message = next(step for step in _docker_scope_steps() if step.get("name") == "Report skipped Docker validation")[
+        "run"
+    ]
+    prefixes = _docker_detector_literal("prefixes")
+    for prefix, noun in DOCKER_SCOPE_PREFIX_NOUNS.items():
+        if prefix in prefixes:
+            assert noun in message
 
 
 def test_ci_nightly_suppresses_empty_marker_exit_code() -> None:
