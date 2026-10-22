@@ -44,9 +44,7 @@ def drop_principal(store: AgentBusStore, session_id: str) -> None:
         conn.close()
 
 
-def track_claim(
-    store: AgentBusStore, session_id: str, role: str, repo: str, issue: int
-) -> dict[str, Any]:
+def track_claim(store: AgentBusStore, session_id: str, role: str, repo: str, issue: int) -> dict[str, Any]:
     store.require_live(session_id)
     now = utc_now_iso()
     with store._lock:
@@ -81,9 +79,7 @@ def release_tracked_claims(store: AgentBusStore, session_id: str, role: str, *, 
     return released
 
 
-def list_inbox_for_address(
-    store: AgentBusStore, to_address: str, since_cursor: int, limit: int
-) -> dict[str, Any]:
+def list_inbox_for_address(store: AgentBusStore, to_address: str, since_cursor: int, limit: int) -> dict[str, Any]:
     with store._lock:
         rows = (
             store._conn()
