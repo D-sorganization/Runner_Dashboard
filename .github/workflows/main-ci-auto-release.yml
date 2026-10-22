@@ -31,6 +31,7 @@ jobs:
     name: Publish dashboard release when CI gate is green
     if: >-
       github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: d-sorg-fleet
@@ -75,7 +76,8 @@ jobs:
             --sha "${HEAD_SHA}" \
             --committer-date "${COMMITTER_DATE}" \
             --keep 30 \
-            --protected-sha "${PROTECTED_RELEASE_SHAS}"
+            --protected-sha "${PROTECTED_RELEASE_SHAS}" \
+            --require-current-main
 
   publish-dispatch:
     name: Publish dashboard release (manual dispatch)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,7 @@ def test_actions_are_sha_pinned() -> None:
         assert SHA_PINNED_RE.match(ref), f"unpinned action: {ref}"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="NTFS cannot represent the POSIX executable bit")
 def test_publish_script_is_executable() -> None:
     script = ROOT / "deploy" / "publish-main-ci-release.sh"
     assert script.is_file()
