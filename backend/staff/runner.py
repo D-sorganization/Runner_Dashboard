@@ -18,13 +18,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, review, verification, workspace
-from staff import focus as focus_mod
-from staff import lease as lease_ritual
-from staff import retry as retry_mod
-from staff import usage as usage_mod
+from staff import consolidation, focus as focus_mod, lease as lease_ritual, retry as retry_mod, usage as usage_mod, review, verification, workspace
 from staff.adapters import ADAPTERS, ProviderAdapter
-from staff.classifier import classify_execution_result
+from staff.execution_result import classify_execution_result
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
@@ -445,14 +441,12 @@ class StaffRunner:
             verdict = verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
-                deliverable = verification.deliverable_failure_updates(
+                updated_rec = verification.apply_deliverable_failure(
+                    store,
                     updated_rec,
                     verdict,
                     opens_pr=self.opens_pr(rec.role),
                 )
-                if deliverable:
-                    store.update_run(rec.id, **deliverable)
-                    updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
                 if status == "succeeded":

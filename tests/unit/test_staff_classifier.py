@@ -53,7 +53,7 @@ def test_codex_bwrap_namespace_failure_is_environment_error() -> None:
 
 
 def test_classify_execution_result_fails_success_with_bwrap_in_transcript(tmp_path) -> None:
-    from staff.classifier import classify_execution_result
+    from staff.execution_result import classify_execution_result
 
     transcript = tmp_path / "t.log"
     transcript.write_text(CODEX_BWRAP_TRANSCRIPT, encoding="utf-8")

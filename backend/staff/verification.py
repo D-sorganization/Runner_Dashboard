@@ -164,6 +164,21 @@ def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -
     return verdict
 
 
+def apply_deliverable_failure(
+    store: RunStore,
+    rec: RunRecord,
+    verdict: Verdict | None,
+    *,
+    opens_pr: bool,
+) -> RunRecord | None:
+    """Apply deliverable-failure fields when a succeeded run produced no PR/commits."""
+    updates = deliverable_failure_updates(rec, verdict, opens_pr=opens_pr)
+    if not updates:
+        return rec
+    store.update_run(rec.id, **updates)
+    return store.get_run(rec.id)
+
+
 def deliverable_failure_updates(
     rec: RunRecord,
     verdict: Verdict | None,
