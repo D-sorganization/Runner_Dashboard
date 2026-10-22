@@ -148,6 +148,48 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "staff_work_items",
         "staff_approvals_list",
         "staff_approval_decide",
+        "fleet_memory_context_pack",
+        "fleet_memory_list",
+        "fleet_memory_append",
         "submit_proposal",
         "list_proposals",
     }
+
+
+def test_memory_commands(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, _ = _run(capsys, fake_api, "memory-context-pack")
+    assert code == 0
+    assert (fake_api.last.method, fake_api.last.path) == ("GET", "/api/v1/memory/context-pack")
+
+    code, _ = _run(
+        capsys, fake_api, "memory-list", "--entry-type", "task", "--tag", "Runner_Dashboard", "--limit", "25"
+    )
+    assert code == 0
+    assert (fake_api.last.method, fake_api.last.path, fake_api.last.query) == (
+        "GET",
+        "/api/v1/memory",
+        {"type": "task", "tag": "Runner_Dashboard", "limit": "25"},
+    )
+
+    code, _ = _run(
+        capsys,
+        fake_api,
+        "memory-append",
+        "--entry-type",
+        "session_digest",
+        "--source-product",
+        "grokbot",
+        "--body",
+        '{"summary":"checkpoint"}',
+    )
+    assert code == 0
+    assert (fake_api.last.method, fake_api.last.path, fake_api.last.body) == (
+        "POST",
+        "/api/v1/memory",
+        {
+            "entry_type": "session_digest",
+            "source_product": "grokbot",
+            "tags": [],
+            "body": {"summary": "checkpoint"},
+        },
+    )

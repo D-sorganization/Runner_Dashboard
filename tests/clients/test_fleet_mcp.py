@@ -57,7 +57,7 @@ def test_handshake_list_and_call(fake_api: Any) -> None:
     assert "tools" in init["capabilities"]
 
     tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
-    assert len(tools) == 27
+    assert len(tools) == 30
     claim_schema = tools["fleet_claim_issue"]["inputSchema"]
     assert claim_schema["type"] == "object"
     assert set(claim_schema["required"]) == {"repo", "issue"}
@@ -186,6 +186,46 @@ def test_staff_tools_mcp_flow(fake_api: Any) -> None:
         "/api/v1/staff/proposals",
         "/api/v1/staff/proposals/prop_1/decide",
     ]
+
+
+def test_shared_memory_tools_use_api_contract_without_replaying_append(fake_api: Any) -> None:
+    responses = _session(
+        fake_api,
+        [
+            INIT,
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            _call(3, "fleet_memory_context_pack", {}),
+            _call(4, "fleet_memory_list", {"entry_type": "decision", "tag": "fleet", "limit": 12}),
+            _call(
+                5,
+                "fleet_memory_append",
+                {
+                    "entry_type": "task",
+                    "source_product": "grokbot",
+                    "tags": ["fleet", "barb"],
+                    "body": {"text": "coordinate work"},
+                    "expires_at": "2026-12-31T00:00:00Z",
+                },
+            ),
+        ],
+    )
+    tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
+    assert set(tools) >= {"fleet_memory_context_pack", "fleet_memory_list", "fleet_memory_append"}
+    assert all(r["result"]["isError"] is False for r in responses[2:])
+    assert [(r.method, r.path) for r in fake_api.requests] == [
+        ("GET", "/api/v1/memory/context-pack"),
+        ("GET", "/api/v1/memory"),
+        ("POST", "/api/v1/memory"),
+    ]
+    assert fake_api.requests[1].query == {"type": "decision", "tag": "fleet", "limit": "12"}
+    assert fake_api.requests[2].body == {
+        "entry_type": "task",
+        "source_product": "grokbot",
+        "tags": ["fleet", "barb"],
+        "body": {"text": "coordinate work"},
+        "expires_at": "2026-12-31T00:00:00Z",
+    }
+    assert "idempotency-key" not in fake_api.requests[2].headers
 
 
 # --- generated connect.md tool table (#1802 step 2) ---

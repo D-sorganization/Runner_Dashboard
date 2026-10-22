@@ -183,6 +183,37 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
         {},
         {"decision": "denied", "reason": ""},
     ),
+    ("memory_context_pack", {}, "GET", "/api/v1/memory/context-pack", {}, None),
+    (
+        "memory_list",
+        {"since": "2026-10-20T00:00:00Z", "entry_type": "task", "tag": "repo", "author": "agent-grok", "limit": 50},
+        "GET",
+        "/api/v1/memory",
+        {"since": "2026-10-20T00:00:00Z", "type": "task", "tag": "repo", "author": "agent-grok", "limit": "50"},
+        None,
+    ),
+    (
+        "memory_append",
+        {
+            "entry_type": "session_digest",
+            "source_product": "grokbot",
+            "body": {"summary": "checkpoint"},
+            "tags": ["Runner_Dashboard"],
+            "expires_at": "2026-11-01T00:00:00Z",
+            "supersedes_id": "mem_old",
+        },
+        "POST",
+        "/api/v1/memory",
+        {},
+        {
+            "entry_type": "session_digest",
+            "source_product": "grokbot",
+            "body": {"summary": "checkpoint"},
+            "tags": ["Runner_Dashboard"],
+            "expires_at": "2026-11-01T00:00:00Z",
+            "supersedes_id": "mem_old",
+        },
+    ),
 ]
 
 
@@ -215,6 +246,38 @@ def test_every_request_carries_csrf_and_bearer(client: FleetClient, fake_api: An
         assert rec.headers["authorization"] == "Bearer tok-123"
         assert rec.headers["accept"] == "application/json"
     assert fake_api.last.headers["content-type"] == "application/json"
+
+
+@pytest.mark.parametrize(
+    ("method", "kwargs", "message"),
+    [
+        ("memory_list", {"limit": 0}, "limit must be between 1 and 500"),
+        ("memory_list", {"limit": 501}, "limit must be between 1 and 500"),
+        ("memory_append", {"entry_type": "unknown", "source_product": "grokbot", "body": {}}, "entry_type"),
+        ("memory_append", {"entry_type": "task", "source_product": " ", "body": {}}, "source_product"),
+        ("memory_append", {"entry_type": "task", "source_product": "codex", "body": []}, "body must be an object"),
+        (
+            "memory_append",
+            {"entry_type": "task", "source_product": "codex", "body": {}, "tags": {}},
+            "tags must be an array",
+        ),
+        (
+            "memory_append",
+            {"entry_type": "task", "source_product": "codex", "body": {}, "tags": ""},
+            "tags must be an array",
+        ),
+    ],
+)
+def test_memory_invalid_arguments_fail_before_network(
+    client: FleetClient,
+    fake_api: Any,
+    method: str,
+    kwargs: dict[str, Any],
+    message: str,
+) -> None:
+    with pytest.raises(FleetArgumentError, match=message):
+        getattr(client, method)(**kwargs)
+    assert fake_api.requests == []
 
 
 def test_no_token_means_no_authorization_header(fake_api: Any) -> None:
@@ -481,6 +544,14 @@ def test_idempotent_retry(client: FleetClient, fake_api: Any) -> None:
     fake_api.respond("POST", "/api/staff/runs/run-1/cancel", 503, {"error": "unavailable"})
     with pytest.raises(FleetAPIError):
         client.cancel("run-1")
+    assert len(fake_api.requests) == 1
+
+
+def test_memory_append_503_is_not_replayed(client: FleetClient, fake_api: Any) -> None:
+    fake_api.respond("POST", "/api/v1/memory", 503, {"detail": "temporarily unavailable"})
+    with pytest.raises(FleetAPIError) as exc:
+        client.memory_append("task", "codex", {"summary": "checkpoint"})
+    assert exc.value.status == 503
     assert len(fake_api.requests) == 1
 
 

@@ -92,6 +92,11 @@ def test_artifact_install_preserves_mutable_runtime_state():
     assert "--exclude='*.db'" in content
     assert "--exclude='*.db-*'" in content
     assert "--exclude='*_history.json'" in content
+    assert "--exclude='*.sqlite3'" in content
+    assert "--exclude='*.sqlite3-*'" in content
+    assert "--exclude='*.ndjson'" in content
+    assert "--exclude='*.jsonl'" in content
+    assert "--exclude='/backend/data/'" in content
     assert 'rm -rf "${DEPLOY_DIR}"' not in content
 
 

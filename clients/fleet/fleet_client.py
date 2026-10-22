@@ -29,6 +29,7 @@ from typing import Any
 from fleet_validators import (
     BROADCAST,
     LIMITS,
+    MEMORY_ENTRY_TYPES,
     PATTERNS,
     PROPOSAL_DECISIONS,
     PROPOSAL_ESTIMATED_EFFORTS,
@@ -410,6 +411,66 @@ class FleetClient:
         if decision == "approved":
             body["params_hash"] = _opt(PATTERNS.sha256_hex, params_hash, "params_hash") or self._previewed_hash(pid)
         return self.request("POST", f"/api/v1/staff/proposals/{pid}/decide", body=body)
+
+    # ------------------------------------------------------------------ shared memory
+
+    def memory_context_pack(self) -> Any:
+        """Read the shared memory context pack for the authenticated principal."""
+        return self.request("GET", "/api/v1/memory/context-pack")
+
+    def memory_list(
+        self,
+        since: str | None = None,
+        entry_type: str | None = None,
+        tag: str | None = None,
+        author: str | None = None,
+        limit: int = 100,
+    ) -> Any:
+        """List shared memory entries with optional contract filters."""
+        kind = _opt_text(entry_type, "entry_type", 32)
+        if kind is not None:
+            _check(kind in MEMORY_ENTRY_TYPES, "invalid entry_type")
+        _check(
+            isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 500,
+            "limit must be between 1 and 500",
+        )
+        params = {
+            "since": _opt_text(since, "since", 64),
+            "type": kind,
+            "tag": _opt_text(tag, "tag", 64),
+            "author": _opt_text(author, "author", 128),
+            "limit": limit,
+        }
+        return self.request("GET", "/api/v1/memory", params=params)
+
+    def memory_append(
+        self,
+        entry_type: str,
+        source_product: str,
+        body: dict[str, Any],
+        tags: list[str] | None = None,
+        expires_at: str | None = None,
+        supersedes_id: str | None = None,
+    ) -> Any:
+        """Append one memory entry. Writes are never automatically replayed."""
+        kind = _text(entry_type, "entry_type", 32)
+        _check(kind in MEMORY_ENTRY_TYPES, "invalid entry_type")
+        source = _text(source_product, "source_product", 64)
+        _check(isinstance(body, dict), "body must be an object")
+        tag_values = [] if tags is None else tags
+        _check(isinstance(tag_values, list) and len(tag_values) <= 32, "tags must be an array with at most 32 items")
+        normalized_tags = [_text(value, "tag", 64) for value in tag_values]
+        payload: dict[str, Any] = {
+            "entry_type": kind,
+            "source_product": source,
+            "tags": normalized_tags,
+            "body": body,
+        }
+        if expires_at is not None:
+            payload["expires_at"] = _text(expires_at, "expires_at", 64)
+        if supersedes_id is not None:
+            payload["supersedes_id"] = _text(supersedes_id, "supersedes_id", 128)
+        return self.request("POST", "/api/v1/memory", body=payload)
 
     def _previewed_hash(self, pid: str) -> str:
         preview = self.request("GET", f"/api/v1/staff/proposals/{pid}")
