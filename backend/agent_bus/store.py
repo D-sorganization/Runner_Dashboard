@@ -8,21 +8,19 @@ import secrets
 import sqlite3
 import threading
 import uuid
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
-from agent_bus.handoff import next_handoff_document, validate_handoff_body
 from agent_bus.models import MAX_BODY, SendBody, normalize_to_address
-from agent_bus.work_item_thread import ensure_handoff_document_slot, new_work_item_thread_meta
+from agent_bus.store_ops import AgentBusOpsMixin
+from agent_bus.store_rows import PrincipalRow, iso_after, message_dict
+from agent_bus.store_threads import ensure_work_thread
 from identity import Principal, identity_manager
-from staff.conversations import ConversationStore, get_conversation_store
+from staff.conversations import get_conversation_store
 from staff.store import _now, default_db_path, first_touch_lock
 from time_utils import utc_now_iso
 
 log = logging.getLogger("dashboard.agent_bus")
-
-BARB_ROLE = "barb"
 
 _store: AgentBusStore | None = None
 
@@ -39,29 +37,7 @@ def reset_store() -> None:
     _store = None
 
 
-def _iso_after(seconds: int) -> str:
-    return (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
-
-
-@dataclass(frozen=True)
-class PrincipalRow:
-    session_id: str
-    role: str
-    provider: str
-    node: str
-    principal_id: str
-    lease_expires_at: str
-
-    def live(self, now: datetime | None = None) -> bool:
-        when = now or datetime.now(UTC)
-        try:
-            exp = datetime.fromisoformat(self.lease_expires_at.replace("Z", "+00:00"))
-        except ValueError:
-            return False
-        return exp > when
-
-
-class AgentBusStore:
+class AgentBusStore(AgentBusOpsMixin):
     def __init__(self, db_path: Any | None = None) -> None:
         self.db_path = db_path or default_db_path()
         self._lock = threading.RLock()
@@ -129,7 +105,7 @@ class AgentBusStore:
         mint_token: bool,
     ) -> dict[str, Any]:
         now = utc_now_iso()
-        lease_expires = _iso_after(lease_seconds)
+        lease_expires = iso_after(lease_seconds)
         principal_id = principal.id
         token: str | None = None
         if mint_token:
@@ -178,7 +154,7 @@ class AgentBusStore:
         row = self.get_principal(session_id)
         if row is None:
             raise KeyError(session_id)
-        lease_expires = _iso_after(lease_seconds)
+        lease_expires = iso_after(lease_seconds)
         now = utc_now_iso()
         with self._lock:
             conn = self._conn()
@@ -189,146 +165,11 @@ class AgentBusStore:
             conn.close()
         return {"session": session_id, "lease_expires_at": lease_expires, "generated_at": utc_now_iso()}
 
-    def expire_session(self, session_id: str) -> None:
-        past = (datetime.now(UTC) - timedelta(seconds=60)).isoformat().replace("+00:00", "Z")
-        with self._lock:
-            conn = self._conn()
-            conn.execute(
-                "UPDATE agent_bus_principals SET lease_expires_at = ? WHERE session_id = ?",
-                (past, session_id),
-            )
-            conn.close()
-
-    def list_stale_principals(self) -> list[PrincipalRow]:
-        now = datetime.now(UTC)
-        with self._lock:
-            rows = self._conn().execute("SELECT * FROM agent_bus_principals").fetchall()
-        return [self._row_principal(r) for r in rows if not self._row_principal(r).live(now)]
-
-    def drop_principal(self, session_id: str) -> None:
-        with self._lock:
-            conn = self._conn()
-            conn.execute("DELETE FROM agent_bus_principals WHERE session_id = ?", (session_id,))
-            conn.execute("DELETE FROM agent_bus_claims WHERE session_id = ?", (session_id,))
-            conn.close()
-
-    def track_claim(self, session_id: str, role: str, repo: str, issue: int) -> dict[str, Any]:
-        self.require_live(session_id)
-        now = utc_now_iso()
-        with self._lock:
-            conn = self._conn()
-            conn.execute(
-                "INSERT INTO agent_bus_claims (session_id, repo, issue, role, claimed_at) "
-                "VALUES (?, ?, ?, ?, ?) "
-                "ON CONFLICT(session_id, repo, issue) DO UPDATE SET role=excluded.role, claimed_at=excluded.claimed_at",
-                (session_id, repo, issue, role, now),
-            )
-            conn.close()
-        return {"session": session_id, "repo": repo, "issue": issue, "tracked": True, "generated_at": now}
-
-    def release_tracked_claims(self, session_id: str, role: str, *, reason: str) -> int:
-        from coordination import claims as coord_claims  # noqa: PLC0415
-
-        with self._lock:
-            rows = (
-                self._conn()
-                .execute("SELECT repo, issue FROM agent_bus_claims WHERE session_id = ?", (session_id,))
-                .fetchall()
-            )
-        released = 0
-        for row in rows:
-            coord_claims.release(row["repo"], int(row["issue"]), agent=role, session=session_id, reason=reason)
-            released += 1
-        with self._lock:
-            conn = self._conn()
-            conn.execute("DELETE FROM agent_bus_claims WHERE session_id = ?", (session_id,))
-            conn.close()
-        return released
-
-    def list_inbox_for_address(self, to_address: str, since_cursor: int, limit: int) -> dict[str, Any]:
-        with self._lock:
-            rows = (
-                self._conn()
-                .execute(
-                    "SELECT * FROM agent_bus_inbox WHERE to_address = ? AND cursor > ? ORDER BY cursor ASC LIMIT ?",
-                    (to_address, since_cursor, limit),
-                )
-                .fetchall()
-            )
-        messages = [self._message_dict(r) for r in rows]
-        next_cursor = messages[-1]["cursor"] if messages else since_cursor
-        return {"to": to_address, "messages": messages, "next_cursor": next_cursor, "generated_at": utc_now_iso()}
-
-    def build_backlog(self) -> dict[str, Any]:
-        stale = [
-            {
-                "session": row.session_id,
-                "role": row.role,
-                "node": row.node,
-                "lease_expires_at": row.lease_expires_at,
-            }
-            for row in self.list_stale_principals()
-        ]
-        barb = self.list_inbox_for_address(BARB_ROLE, since_cursor=0, limit=100)
-        blocked = [m for m in barb["messages"] if m["type"] == "blocked" and not m.get("acked_at")]
-        return {
-            "stale_sessions": stale,
-            "blocked": blocked,
-            "generated_at": utc_now_iso(),
-        }
-
-    def upsert_handoff(
-        self,
-        *,
-        session_id: str,
-        repo: str,
-        work_kind: str,
-        work_number: int,
-        body: dict[str, str],
-    ) -> dict[str, Any]:
-        self.require_live(session_id)
-        parsed = validate_handoff_body(body)
-        cstore = get_conversation_store()
-        thread_id = self._ensure_work_thread(cstore, repo, work_number, work_kind)
-        thread = cstore.get_thread(thread_id)
-        if thread is None:
-            raise LookupError(thread_id)
-        meta = ensure_handoff_document_slot(thread.meta)
-        existing = meta.get("handoff_document") if isinstance(meta.get("handoff_document"), dict) else None
-        doc = next_handoff_document(existing, parsed, updated_at=utc_now_iso())
-        meta = {**meta, "handoff_document": doc}
-        cstore.update_thread(thread_id, meta=meta)
-        return {"thread_id": thread_id, "handoff_document": doc, "generated_at": utc_now_iso()}
-
     def require_live(self, session_id: str) -> PrincipalRow:
         row = self.get_principal(session_id)
         if row is None or not row.live():
             raise RuntimeError(f"session {session_id!r} is not registered or lease expired")
         return row
-
-    def _work_thread_id(self, repo: str, number: int) -> str:
-        safe = repo.replace("/", "-")
-        return f"wi-{safe}-{number}"
-
-    def _ensure_work_thread(self, cstore: ConversationStore, repo: str, number: int, kind: str) -> str:
-        tid = self._work_thread_id(repo, number)
-        existing = cstore.get_thread(tid)
-        if existing:
-            patched = ensure_handoff_document_slot(existing.meta)
-            if patched != existing.meta:
-                cstore.update_thread(tid, meta=patched)
-            return tid
-        title = f"{repo}#{number} ({kind})"
-        meta = new_work_item_thread_meta(repo, number, kind)  # type: ignore[arg-type]
-        cstore.create_thread(
-            title=title,
-            kind="auto",
-            participants=["barb"],
-            created_by="agent-bus",
-            thread_id=tid,
-            meta=meta,
-        )
-        return tid
 
     def send(self, body: SendBody) -> dict[str, Any]:
         if len(body.body.encode("utf-8")) > MAX_BODY:
@@ -343,14 +184,14 @@ class AgentBusStore:
             ).fetchone()
             if existing:
                 conn.close()
-                return {"message": self._message_dict(existing), "replayed": True}
+                return {"message": message_dict(existing), "replayed": True}
             conn.close()
 
         work_number = body.work_number
         work_kind = body.work_kind
-        assert work_number is not None and work_kind is not None  # noqa: S101 — enforced by SendBody
+        assert work_number is not None and work_kind is not None  # noqa: S101
         cstore = get_conversation_store()
-        thread_id = self._ensure_work_thread(cstore, body.repo, work_number, work_kind)
+        thread_id = ensure_work_thread(cstore, body.repo, work_number, work_kind)
         msg_kind = body.type if body.type in ("handoff", "status") else "text"
         meta = {
             "agent_bus": True,
@@ -405,82 +246,12 @@ class AgentBusStore:
             body.repo,
             body.work_number,
         )
-        out = {"message": self._message_dict(row), "replayed": False}
-        if body.type == "blocked" and to_address != BARB_ROLE:
-            self._mirror_blocked_to_barb(body, sender)
-        return out
+        out = {"message": message_dict(row), "replayed": False}
+        from agent_bus.store_rows import BARB_ROLE  # noqa: PLC0415
 
-    def _mirror_blocked_to_barb(self, body: SendBody, sender: PrincipalRow) -> None:
-        barb_key = f"{body.idempotency_key}-barb"
-        with self._lock:
-            conn = self._conn()
-            existing = conn.execute(
-                "SELECT * FROM agent_bus_inbox WHERE from_session = ? AND idempotency_key = ?",
-                (body.session, barb_key),
-            ).fetchone()
-            if existing:
-                conn.close()
-                return
-            conn.close()
-        mirror = SendBody(
-            session=body.session,
-            to=BARB_ROLE,
-            type="blocked",
-            repo=body.repo,
-            work_kind=body.work_kind,
-            work_number=body.work_number,
-            body=body.body,
-            idempotency_key=barb_key,
-        )
-        work_number = mirror.work_number
-        work_kind = mirror.work_kind
-        assert work_number is not None and work_kind is not None  # noqa: S101
-        cstore = get_conversation_store()
-        thread_id = self._ensure_work_thread(cstore, mirror.repo, work_number, work_kind)
-        meta = {
-            "agent_bus": True,
-            "type": "blocked",
-            "repo": mirror.repo,
-            "work_kind": work_kind,
-            "work_number": work_number,
-            "to": BARB_ROLE,
-            "from_session": body.session,
-            "from_role": sender.role,
-        }
-        cstore.add_message(
-            thread_id=thread_id,
-            author_kind="role",
-            author=sender.role,
-            kind="text",
-            body_md=mirror.body,
-            meta=meta,
-            idempotency_key=barb_key,
-        )
-        message_id = f"abm_{uuid.uuid4().hex[:12]}"
-        now = _now()
-        with self._lock:
-            conn = self._conn()
-            conn.execute(
-                "INSERT INTO agent_bus_inbox "
-                "(message_id, idempotency_key, from_session, to_address, msg_type, repo, work_kind, work_number, "
-                "body_md, thread_id, thread_message_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    message_id,
-                    barb_key,
-                    body.session,
-                    BARB_ROLE,
-                    "blocked",
-                    mirror.repo,
-                    work_kind,
-                    work_number,
-                    mirror.body,
-                    thread_id,
-                    "",
-                    now,
-                ),
-            )
-            conn.close()
+        if body.type == "blocked" and to_address != BARB_ROLE:
+            self.mirror_blocked_to_barb(body, sender)
+        return out
 
     def list_inbox(self, session_id: str, since_cursor: int, limit: int) -> dict[str, Any]:
         row = self.get_principal(session_id)
@@ -498,7 +269,7 @@ class AgentBusStore:
                 )
                 .fetchall()
             )
-        messages = [self._message_dict(r) for r in rows]
+        messages = [message_dict(r) for r in rows]
         next_cursor = messages[-1]["cursor"] if messages else since_cursor
         return {
             "session": session_id,
@@ -525,21 +296,3 @@ class AgentBusStore:
             )
             conn.close()
         return {"message_id": message_id, "acked": True, "generated_at": utc_now_iso()}
-
-    @staticmethod
-    def _message_dict(row: sqlite3.Row) -> dict[str, Any]:
-        return {
-            "id": row["message_id"],
-            "cursor": row["cursor"],
-            "from_session": row["from_session"],
-            "to": row["to_address"],
-            "type": row["msg_type"],
-            "repo": row["repo"],
-            "work_kind": row["work_kind"],
-            "work_number": row["work_number"],
-            "body": row["body_md"],
-            "thread_id": row["thread_id"],
-            "thread_message_id": row["thread_message_id"],
-            "created_at": row["created_at"],
-            "acked_at": row["acked_at"],
-        }
