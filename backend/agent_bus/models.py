@@ -77,6 +77,30 @@ class AckBody(_Body):
     message_id: str = Field(min_length=8, max_length=128)
 
 
+class ClaimTrackBody(_Body):
+    session: str = Field(pattern=SESSION_PATTERN)
+    repo: str = Field(pattern=REPO_PATTERN)
+    issue: int = Field(gt=0)
+
+    @field_validator("repo")
+    @classmethod
+    def _repo_claim(cls, value: str) -> str:
+        return bare_repo(value)
+
+
+class HandoffBody(_Body):
+    session: str = Field(pattern=SESSION_PATTERN)
+    repo: str = Field(pattern=REPO_PATTERN)
+    work_kind: Literal["issue", "pr"]
+    work_number: int = Field(gt=0)
+    body: dict[str, str]
+
+    @field_validator("repo")
+    @classmethod
+    def _repo_handoff(cls, value: str) -> str:
+        return bare_repo(value)
+
+
 def normalize_to_address(raw: str) -> str:
     text = raw.strip()
     if "#" in text:

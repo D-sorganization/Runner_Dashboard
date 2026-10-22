@@ -353,7 +353,11 @@ def _staff_verification_off(monkeypatch):
 def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
     """Dispatch tests stub OAuth preflight; oauth probe tests exercise the real check (#2170)."""
     path = str(request.node.fspath or "")
-    if "test_staff_cli_oauth_session" in path or "test_staff_dispatch_provider_auth" in path:
+    if (
+        "test_staff_cli_oauth_session" in path
+        or "test_staff_dispatch_provider_auth" in path
+        or "test_architecture_map_contract" in path
+    ):
         return
     if not _staff_run_test_path(path):
         return
