@@ -80,6 +80,7 @@ class RunPlan:
     skill_pin: str = ""
     standards_version: str = ""
     library_work_ids: tuple[int, ...] = ()
+    provider_auth_skipped: tuple[dict[str, str], ...] = ()
 
     @property
     def strategy_mode(self) -> str:
@@ -112,6 +113,10 @@ class RunPlan:
             "pr_lifecycle": self.pr_lifecycle,
             "head_ref": self.head_ref,
             "consolidation": dict(self.consolidation) if self.consolidation else None,
+<<<<<<< HEAD
             "skill_pin": self.skill_pin,
             "skill": None if not self.skill_pin else {"pin": self.skill_pin},
+=======
+            "provider_auth_skipped": [dict(row) for row in self.provider_auth_skipped],
+>>>>>>> 513b42e5 (fix: provider auth failover and evening OAuth preflight)
         }

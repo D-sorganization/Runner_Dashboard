@@ -2737,6 +2737,10 @@ async def _startup() -> None:
     if github_app_auth_configured():
         asyncio.create_task(periodic_github_app_preflight_loop(lambda: get_runner().roles()))
 
+    from staff.provider_auth_preflight import periodic_provider_auth_evening_loop  # noqa: PLC0415
+
+    asyncio.create_task(periodic_provider_auth_evening_loop(lambda: get_runner().machine))
+
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
 

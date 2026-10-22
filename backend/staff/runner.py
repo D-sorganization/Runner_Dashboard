@@ -104,7 +104,9 @@ class StaffRunner:
         role = resolve_dispatch_role(self.roles(), req)
         from staff.failover_dispatch import resolve_provider_and_model
 
-        provider, _chain_model, model_tier = resolve_provider_and_model(self._adapters, self.machine, req, role)
+        provider, _chain_model, model_tier, auth_skipped = resolve_provider_and_model(
+            self._adapters, self.machine, req, role
+        )
         if req.repo and not _SAFE_REF.match(req.repo):
             raise ValueError("repo must be a bare repository name")
         if role.repos and req.repo and req.repo not in role.repos:
@@ -176,6 +178,7 @@ class StaffRunner:
             skill_pin=bundle.skill_pin,
             standards_version=bundle.standards_version,
             library_work_ids=library_work_ids,
+            provider_auth_skipped=tuple(auth_skipped),
         )
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:

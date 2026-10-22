@@ -1,0 +1,62 @@
+"""Provider auth failover at dispatch planning (#2170)."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+_BACKEND = Path(__file__).resolve().parents[2] / "backend"
+if str(_BACKEND) not in sys.path:
+    sys.path.insert(0, str(_BACKEND))
+
+from staff.adapters import ADAPTERS  # noqa: E402
+from staff.failover_dispatch import resolve_provider_and_model  # noqa: E402
+from staff.plan import RunRequest  # noqa: E402
+from staff.roles import RoleSpec  # noqa: E402
+
+
+def _role() -> RoleSpec:
+    return RoleSpec(
+        name="night-watch",
+        title="Night Watch",
+        providers=("claude", "codex", "antigravity"),
+    )
+
+
+@pytest.mark.unit
+def test_skips_auth_expired_provider_in_chain() -> None:
+    req = RunRequest(role="night-watch", prompt="work", repo="Runner_Dashboard")
+    role = _role()
+
+    def _refusal(provider: str, _machine: str):
+        if provider == "claude":
+            return type("R", (), {"failure_class": "auth_expired"})()
+        return None
+
+    with patch("staff.failover_dispatch._provider_auth_blocks", side_effect=lambda p, m: _refusal(p, m) is not None):
+        provider, _model, _tier, skipped = resolve_provider_and_model(ADAPTERS, "Desk", req, role)
+    assert provider != "claude"
+    assert any(row.get("provider") == "claude" for row in skipped)
+
+
+@pytest.mark.unit
+def test_provider_auth_preflight_classifies_expiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from staff.cli_oauth_session import resolve_claude_config_dir
+    from staff.provider_auth_preflight import probe_local_provider_auth
+
+    cred_dir = tmp_path / "claude"
+    cred_dir.mkdir()
+    cred = cred_dir / ".credentials.json"
+    soon = time.time() + 3600
+    cred.write_text(f'{{"expiresAt": {int(soon * 1000)}}}', encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cred_dir))
+    monkeypatch.setattr("staff.cli_oauth_session.resolve_claude_config_dir", lambda: cred_dir)
+
+    with patch("staff.cli_oauth_session.claude_oauth_session_alive", return_value=(True, "ok")):
+        report = probe_local_provider_auth("Desk")
+    assert report["providers"]["claude"]["status"] == "expiring"
