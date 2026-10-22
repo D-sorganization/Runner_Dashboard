@@ -127,6 +127,8 @@ def _run_gh_api(args: list[str], run: _RUNNER) -> subprocess.CompletedProcess[st
         args,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         check=False,
         timeout=30,
     )

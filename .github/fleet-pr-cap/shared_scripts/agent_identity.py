@@ -51,6 +51,7 @@ AGENT_IDS: Final[tuple[str, ...]] = (
     "conductor",
     "night-watch",
     "cartographer",
+    "test-hygiene",
     "sanitation",
     "pr-remediator",
     "issue-remediator",
@@ -201,6 +202,16 @@ PROFILES: Final[dict[str, AgentProfile]] = {
         # role; any agent or human can run the inventory and refresh workflows.
         author_logins=frozenset(),
         wip_cap=10,
+        is_scheduler=False,
+    ),
+    "test-hygiene": AgentProfile(
+        agent_id="test-hygiene",
+        display_name="Test Hygiene",
+        # Test Hygiene hardens fleet tests: vacuous assertions, over-mocking,
+        # and mutation survivors. Bot-optional role; any agent or human can
+        # execute the playbook.
+        author_logins=frozenset(),
+        wip_cap=8,
         is_scheduler=False,
     ),
     "sanitation": AgentProfile(
