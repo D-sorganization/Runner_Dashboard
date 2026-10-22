@@ -299,6 +299,24 @@ class FleetClient:
             "POST", f"/api/v1/staff/threads/{tid}/messages", body={"body": text, "kind": "text"}, headers=headers
         )
 
+    def staff_skills_list(
+        self,
+        role: str | None = None,
+        repo: str | None = None,
+        task_type: str | None = None,
+    ) -> Any:
+        params = {
+            "role": _opt(PATTERNS.ident, role, "role"),
+            "repo": _opt_text(repo, "repo", 128),
+            "task_type": _opt_text(task_type, "task_type", 64),
+        }
+        return self.request("GET", "/api/v1/staff/skills", params=_compact(params))
+
+    def staff_skill_get(self, name: str, version: str | None = None) -> Any:
+        skill = _match(PATTERNS.ident, name, "name")
+        params = {"version": _opt_text(version, "version", 32)} if version else {}
+        return self.request("GET", f"/api/v1/staff/skills/{urllib.parse.quote(skill, safe='')}", params=params)
+
     def staff_thread_read(self, thread_id: str, since_seq: int = 0, limit: int = 100) -> Any:
         tid = _match(PATTERNS.ident, thread_id, "thread_id")
         params = {
