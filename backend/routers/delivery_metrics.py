@@ -12,8 +12,12 @@ from typing import Any
 from delivery_metrics.config import delivery_metrics_enabled
 from delivery_metrics.db import init_db
 from delivery_metrics.report import build_metrics_report, pr_drill_down
+from delivery_metrics.weekly_summary import build_weekly_summary
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
+from session_telemetry import get_session_telemetry_store
+from staff.conversations import get_conversation_store
+from staff.store import get_run_store
 
 log = logging.getLogger("dashboard.delivery_metrics.api")
 
@@ -62,6 +66,35 @@ def _run_report(**kwargs: Any) -> dict[str, Any]:
     conn = _with_conn()
     try:
         return build_metrics_report(conn, **kwargs)
+    finally:
+        conn.close()
+
+
+def _load_staff_context(since: datetime, until: datetime) -> tuple[list, list]:
+    since_iso = since.isoformat().replace("+00:00", "Z")
+    runs = get_run_store().list_runs(limit=500, since=since_iso)
+    try:
+        proposals = get_conversation_store().list_proposals(limit=500)
+    except Exception as exc:
+        log.warning("weekly-summary: proposals unavailable: %s", exc)
+        proposals = []
+    return runs, proposals
+
+
+def _run_weekly_summary(since: datetime, until: datetime) -> dict[str, Any]:
+    conn = _with_conn()
+    try:
+        runs, proposals = _load_staff_context(since, until)
+        window_days = max(1, int((until - since).total_seconds() // 86400))
+        session_metrics = get_session_telemetry_store().get_metrics_window(days=window_days)
+        return build_weekly_summary(
+            conn,
+            since=since,
+            until=until,
+            runs=runs,
+            proposals=proposals,
+            session_metrics=session_metrics,
+        )
     finally:
         conn.close()
 
@@ -117,6 +150,18 @@ async def metrics_trends(
         "repo_full": report["repo_full"],
         "weekly_trends": report["weekly_trends"],
     }
+
+
+@router.get("/weekly-summary")
+async def metrics_weekly_summary(
+    since: str | None = Query(default=None, max_length=40),
+    until: str | None = Query(default=None, max_length=40),
+    _principal: Principal = Depends(require_scope("fleet.read")),  # noqa: B008
+) -> dict[str, Any]:
+    """Markdown-friendly weekly JSON for staff consumers (#2123)."""
+    _ensure_enabled()
+    start, end = _window(since, until)
+    return await asyncio.to_thread(_run_weekly_summary, start, end)
 
 
 @router.get("/pull")
