@@ -17,8 +17,8 @@ from node_auto_deploy.ci_gate import (  # noqa: E402
 
 _HEAD_FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "916a571_check_runs.json"
 _GREEN_FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "4ece23d_check_runs.json"
-_HEAD_SHA = "916a571bae7b8eb45134ac02af4009a9877dec92"
-_GREEN_SHA = "4ece23d6a70f6c1eb3acc276f38c490ef6793a07"
+_HEAD_SHA = "916a571bae7b8eb45134ac02af4009a9877dec92"  # pragma: allowlist secret
+_GREEN_SHA = "4ece23d6a70f6c1eb3acc276f38c490ef6793a07"  # pragma: allowlist secret
 
 
 def _runs_from_fixture(path: Path, sha: str) -> list[dict[str, object]]:
