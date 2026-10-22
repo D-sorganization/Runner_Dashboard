@@ -8,6 +8,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+import pytest_asyncio
 
 _BACKEND = Path(__file__).resolve().parents[1] / "backend"
 if str(_BACKEND) not in sys.path:
@@ -30,8 +31,8 @@ class _Chunks(httpx.AsyncByteStream):
         self.closed = True
 
 
-@pytest.fixture
-def artifact_client(monkeypatch: pytest.MonkeyPatch):
+@pytest_asyncio.fixture
+async def artifact_client(monkeypatch: pytest.MonkeyPatch):
     import gh_client
 
     gh_client.clear_token_cache()
@@ -55,9 +56,7 @@ def artifact_client(monkeypatch: pytest.MonkeyPatch):
 
     yield gh_client, install
     for client in clients:
-        import asyncio
-
-        asyncio.get_event_loop().run_until_complete(client.aclose())
+        await client.aclose()
     gh_client.clear_token_cache()
 
 
@@ -169,7 +168,11 @@ async def test_download_rejects_content_encoding_expansion(artifact_client) -> N
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "location",
-    ["http://objects.example.test/a", "https://user:pass@objects.example.test/a", "/relative/path"],
+    [
+        "http://objects.example.test/a",
+        "https://user:pass@objects.example.test/a",  # pragma: allowlist secret
+        "/relative/path",
+    ],
 )
 async def test_download_rejects_unsafe_redirects(artifact_client, location: str) -> None:
     gh_client, install = artifact_client
@@ -341,6 +344,19 @@ async def test_download_cancellation_closes_stream(artifact_client) -> None:
         await gh_client.download_actions_artifact("owner/repo", 123, max_bytes=100)
 
     assert body.closed
+
+
+@pytest.mark.unit
+async def test_artifact_client_cleanup_survives_missing_global_loop(
+    artifact_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _gh_client, install = artifact_client
+    install(lambda _request: httpx.Response(200, json={"ok": True}))
+
+    def no_global_loop() -> asyncio.AbstractEventLoop:
+        raise RuntimeError("There is no current event loop")
+
+    monkeypatch.setattr(asyncio, "get_event_loop", no_global_loop)
 
 
 @pytest.mark.unit
