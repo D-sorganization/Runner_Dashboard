@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from agent_bus.models import MAX_BODY, SendBody, normalize_to_address
+from agent_bus.work_item_thread import ensure_handoff_document_slot, new_work_item_thread_meta
 from identity import Principal, identity_manager
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.store import _now, default_db_path, first_touch_lock
@@ -201,10 +202,14 @@ class AgentBusStore:
 
     def _ensure_work_thread(self, cstore: ConversationStore, repo: str, number: int, kind: str) -> str:
         tid = self._work_thread_id(repo, number)
-        if cstore.get_thread(tid):
+        existing = cstore.get_thread(tid)
+        if existing:
+            patched = ensure_handoff_document_slot(existing.meta)
+            if patched != existing.meta:
+                cstore.update_thread(tid, meta=patched)
             return tid
         title = f"{repo}#{number} ({kind})"
-        meta = {"agent_bus_work_item": True, "repo": repo, "number": number, "work_kind": kind}
+        meta = new_work_item_thread_meta(repo, number, kind)  # type: ignore[arg-type]
         cstore.create_thread(
             title=title,
             kind="auto",
