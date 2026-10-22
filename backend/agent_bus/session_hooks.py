@@ -19,7 +19,7 @@ log = logging.getLogger("dashboard.agent_bus.session_hooks")
 DEFAULT_LEASE_SECONDS = 300
 
 
-def _fleet_client_types():
+def _fleet_client_types() -> tuple[type, type, Any]:
     fleet_dir = Path(__file__).resolve().parents[2] / "clients" / "fleet"
     if str(fleet_dir) not in sys.path:
         sys.path.insert(0, str(fleet_dir))
