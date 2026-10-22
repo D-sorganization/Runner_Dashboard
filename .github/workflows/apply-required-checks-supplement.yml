@@ -1,0 +1,30 @@
+name: Apply required checks supplement
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-required-checks-supplement-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-supplement:
+    name: Apply repository ruleset supplement
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Apply supplemental required status checks ruleset
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::BRANCH_PROTECTION_TOKEN secret is not configured on this repository."
+            exit 1
+          fi
+          python3 scripts/apply_supplemental_required_checks_ruleset.py
