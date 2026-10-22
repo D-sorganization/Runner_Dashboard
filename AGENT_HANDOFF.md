@@ -2,55 +2,29 @@
 
 ## GitHub Actions Artifact Transport — #2115
 
-- Branch `codex/2115-artifact-transport`, PR #2125. Remote head is `092318f4`; local follow-up `ae7e9ef1` is unpushed.
-- The artifact test client now uses an async pytest fixture and closes clients on its owned loop. Python 3.11 xdist reproduced the missing-loop teardown error before the fix; 69 focused artifact/client/retry tests pass after it.
-- Python 3.11 non-slow Linux suite: 7,255 passed, 46 skipped, 1 xfailed. Ruff, format, targeted mypy and detect-secrets baseline comparison pass.
-- Existing deployment receipt identifies Dashboard `b604`; this transport change has not been deployed or activated.
-- Parent owns protected central pre-PR qualification/publication. The unchanged RD base reports inherited 5 WIP entries against its declared limit of 4; no strict-governance-green claim is made.
+- PR #2125, branch `codex/2115-artifact-transport`: bounded transport and async fixture correction are qualified locally; follow required source and merge-group CI.
+- The fixture closes clients on the pytest-owned loop. Its missing-global-loop regression failed before the correction; 69 focused tests pass on Python 3.11 and 3.12.
+- Python 3.11 non-slow Linux suite: 7,255 passed, 46 skipped, 1 xfailed. Ruff, formatting, targeted mypy and the unchanged detect-secrets baseline comparison pass.
+- All eight local pre-PR gates passed on the corrected code. Semgrep is advisory/unavailable; absent consumer fleet-policy/development-log providers are explicitly skipped.
+- A separate protected canonical check still rejects inherited five in-progress entries against the declared limit of four and historical verification fields. This source does not establish strict-governance adoption.
+- The original nine-run source cohort is terminal. Only test-fixture teardown and the synthetic credential URL baseline check failed; a single qualified follow-up replaces that source.
 
-## Brick Dashboard Delivery — #2049, #2081 And #2089
+## Brick Dashboard Deployment
 
-- Owner: `codex-brick-20261021-artifact-provenance`; active combined branch
-  `codex/2081-artifact-provenance` is based on actual merged #2082 (`d4e3060b`).
-- Release caller correction #2082 merged at `d4e3060b`: packaging receives
-  `steps.source.outputs.sha`, including existing-tag recovery where the event
-  SHA differs. Its YAML/runtime tests, Actionlint and ShellCheck passed.
-- This follow-up makes local/CI provenance truthful and binds metadata to the
-  initial clean checkout across the build. Preserve release and installer
-  compatibility; a context hint is not a signing or attestation proof.
-- Focused provenance, artifact and offline-installer tests passed before the
-  dependency merge. The metadata input object preserves the CLI contract and function-size budget.
-  Combined qualification and follow-up publication remain required.
-- #2089 restores existing explicitly enabled loopback GET/HEAD fleet reads.
-  Invalid credentials, remote peers and unauthorized writes remain denied.
-- This branch incorporates this chat's stopped #2050 source with a normal merge;
-  leave redundant-PR closure to the designated closer. Do not mutate peer PRs.
-- Keep source delivery separate from the operational artifact/deployment gates;
-  issue #2081 closes only after its source criteria are proven through merge.
+- Deployed baseline: merged PR #2086, source `b604bd4081d51c78df90144cdb086aace65a2cc1`, Dashboard 4.10.0. The artifact transport above is not deployed or activated.
+- Qualified artifact SHA-256: `340ae8cdd6329f664852335723223930eb11446a63a91985fe3854b26b7ae571`. The reviewed user-scope installer preserved rollback at `dashboard.bak.20261021_152852`.
+- Read-only health on 2026-10-22 reported healthy, GitHub App authentication OK and GitHub API connected. Earlier settled Queue/Fleet browser verification populated data without JavaScript errors; API health does not establish production OAuth readiness.
+- Preserve user/system scope selection, truthful source provenance and scoped local fleet-read authorization from that deployed baseline. No new settings, credentials, flags, services or runner capacity changed in this transport slice.
 
-## Coordinated Dependencies and Evidence
+## Governance Dependencies
 
-- Existing deployment receipt identifies the Runner Dashboard service at `b604`.
-  The artifact transport in PR #2125 is not part of that deployment; its first
-  dashboard dry run and real job remain reserved for the user.
-- Merged #2057 supplies agent token access. Revision `875d355d` had passing
-  frontend/quality tests; its collate job failed before checkout because the
-  App client ID was unavailable. That did not establish a fragment error.
-- The earlier `2cfa3e3c` Operations runner-hours frontend failure is outside
-  this packaging scope; #2082's source frontend cohort passed.
-- Current-consumer pre-PR reports absent fleet-policy/development-log providers.
-  A stronger #2253 provider probe rejected inherited verification placeholders
-  and missing SHAs. Do not claim new-governance adoption or erase that debt.
+- Repository_Management #2299 merged at `5c573e3804494b47bf71c639107ae80f2cd4d6da`: private provider App read access and isolated publisher concurrency are implemented.
+- UpstreamDrift #13618 owns the governed public-consumer local workflow copy and natural CI report publication. Public callers cannot directly call the internal provider's reusable workflow.
+- Report/receipt provenance consumption, trusted dispatch classification, atomic operation-backed reservations and historical reconciliation remain separate acceptance gates under Repository_Management #2253/#2278.
 
-## Operational Boundaries and Remaining Gates
+## Operational Boundaries
 
-- Before deployment: qualify exact source, build a checksum-bound artifact with
-  truthful provenance, preserve rollback, and use the existing user service with
-  live health/version checks. API health does not prove browser OAuth readiness.
-- The combined branch includes #2049 user/system scope selection and scope-correct
-  rollback, plus a missing-token diagnostic correction. Qualify the combined
-  source before deployment; user scope must skip unrelated privileged maintenance.
-- Repository_Management #2253/#2278 govern admission, trusted dispatch context,
-  reservations and reviewed migration. Provider packaging does not activate them.
-- No capacity increase, settings/protection change, peer PR/CI mutation,
-  fabricated acceptance, or first-user-job dispatch is part of this slice.
+- The user's first Dashboard dry run and real job remain reserved. Do not dispatch either during validation.
+- Before another deployment, qualify the exact merged source and checksum-bound artifact, preserve rollback and verify the existing user service live.
+- Do not alter capacity, repository protection/settings, credentials or peer PR/CI state; do not fabricate acceptance or historical completion dates.
+- Leave redundant PR #2050 closure to its designated closer. History remains in Git; this handoff records current state only.
