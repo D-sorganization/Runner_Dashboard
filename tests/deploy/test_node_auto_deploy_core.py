@@ -7,13 +7,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "deploy"))
 
 from node_auto_deploy.ci_gate import ci_gate_for_commit  # noqa: E402
-from node_auto_deploy.kill_switch import auto_deploy_disabled, default_flag_path  # noqa: E402
+from node_auto_deploy.kill_switch import auto_deploy_disabled  # noqa: E402
 from node_auto_deploy.service_scope import detect_service_scope  # noqa: E402
 from node_auto_deploy.state import load_state, record_event, save_state  # noqa: E402
 from node_auto_deploy.version import deployed_git_sha  # noqa: E402
@@ -80,8 +78,9 @@ def test_ci_gate_treats_skipped_and_duplicate_names_as_passing() -> None:
 
 
 def test_ci_gate_passes_ecb3f6b_main_check_list() -> None:
-    runs = json.loads(_ECB3F6B_FIXTURE.read_text(encoding="utf-8"))
-    runs = [{**run, "head_sha": _ECB3F6B_SHA} for run in runs]
+    payload = json.loads(_ECB3F6B_FIXTURE.read_text(encoding="utf-8"))
+    assert _ECB3F6B_SHA in payload["fetched_from"]
+    runs = [{**run, "head_sha": _ECB3F6B_SHA} for run in payload["check_runs"]]
     assert len(runs) == 29
     conclusions = {str(r.get("conclusion")) for r in runs}
     assert conclusions == {"success", "skipped"}
@@ -91,6 +90,16 @@ def test_ci_gate_passes_ecb3f6b_main_check_list() -> None:
     ok, detail = ci_gate_for_commit(runs, _ECB3F6B_SHA)
     assert ok is True
     assert _ECB3F6B_SHA[:7] in detail
+
+
+def test_ci_gate_rejects_malformed_inputs() -> None:
+    ok, detail = ci_gate_for_commit("not-a-list", _SHA)  # type: ignore[arg-type]
+    assert ok is False
+    assert "list" in detail
+
+    ok, detail = ci_gate_for_commit([{"name": "ci", "head_sha": _SHA}], _SHA)
+    assert ok is False
+    assert "invalid check run" in detail
 
 
 def test_service_scope_prefers_system_when_both_active() -> None:
