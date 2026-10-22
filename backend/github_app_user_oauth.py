@@ -16,6 +16,7 @@ import logging
 import os
 import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -99,7 +100,7 @@ def _principal_lock_path(store_path: Path, principal_id: str) -> Path:
 
 
 @contextmanager
-def _inter_process_lock(lock_path: Path):
+def _inter_process_lock(lock_path: Path) -> Iterator[None]:
     """Exclusive flock for cross-worker serialization (issue #2075 review)."""
     if fcntl is None:
         yield
@@ -115,13 +116,13 @@ def _inter_process_lock(lock_path: Path):
 
 
 @contextmanager
-def _store_lock(store_path: Path):
+def _store_lock(store_path: Path) -> Iterator[None]:
     with _inter_process_lock(_store_lock_path(store_path)):
         yield
 
 
 @contextmanager
-def _principal_lock(store_path: Path, principal_id: str):
+def _principal_lock(store_path: Path, principal_id: str) -> Iterator[None]:
     with _inter_process_lock(_principal_lock_path(store_path, principal_id)):
         yield
 
