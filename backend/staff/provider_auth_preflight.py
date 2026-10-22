@@ -80,7 +80,7 @@ def attention_items_from_provider_auth(report: dict[str, Any]) -> list[dict[str,
                 "status": "blocked" if status == "expired" else "attention",
                 "failure_class": "auth_expired" if status == "expired" else "auth_expiring",
                 "error": row.get("detail") or f"{pid} auth {status}",
-                "remediation": row.get("remediation") or f"Refresh {pid} credentials on {machine} (see docs/runbooks/durable-provider-credentials.md).",
+                "remediation": row.get("remediation") or f"Refresh {pid} subscription login on {machine}.",
             }
         )
     return items
