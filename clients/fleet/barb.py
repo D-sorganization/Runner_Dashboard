@@ -9,7 +9,8 @@ Usage:
   python3 clients/fleet/barb.py dispatch issue-remediator Runner_Dashboard --prompt "Fix CI"
   python3 clients/fleet/barb.py lib search "hip torque golf" --repo UpstreamDrift --budget 1200
   python3 clients/fleet/barb.py lib get 42
-  python3 clients/fleet/barb.py lib submit --doi 10.5555/x --title T --authors "A" --reason R --requesting-ref UpstreamDrift#1
+  python3 clients/fleet/barb.py lib submit --doi 10.5555/x --title T --authors "A" --reason R \\
+    --requesting-ref UpstreamDrift#1
 """
 
 from __future__ import annotations

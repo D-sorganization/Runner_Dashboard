@@ -1,5 +1,6 @@
 """Alexandria ``barb lib`` subcommands (#2165 slice 8)."""
 
+# ruff: noqa: T201
 from __future__ import annotations
 
 import argparse
