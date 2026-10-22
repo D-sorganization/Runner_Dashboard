@@ -315,7 +315,7 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         models=_ANTIGRAVITY_MODELS,
         availability_probe=("agy",),
         credential_id="antigravity",
-        setup_hint="Install Antigravity CLI (agy) on the node",
+        setup_hint="Install Antigravity CLI (agy), then sign in with your Google account (subscription; no API key)",
         editable=True,
         notes=(
             "Uses `agy --print --output-format stream-json` for headless branch-local "

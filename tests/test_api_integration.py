@@ -212,22 +212,12 @@ async def test_credentials_endpoint_includes_linear_probe(client, monkeypatch) -
 
 
 @pytest.mark.asyncio
-async def test_credentials_set_key_accepts_linear_provider(client, monkeypatch, tmp_path) -> None:
-    from routers import credentials as credentials_router  # noqa: PLC0415
-
-    dashboard_env = tmp_path / "runner-dashboard.env"
-    maxwell_env = tmp_path / "maxwell.env"
-    monkeypatch.setattr(credentials_router, "_DASHBOARD_ENV", dashboard_env)
-    monkeypatch.setattr(credentials_router, "_MAXWELL_ENV", maxwell_env)
-
+async def test_credentials_set_key_endpoint_retired(client) -> None:
     resp = await client.post(
         "/api/credentials/set-key",
         json={"provider": "linear", "key": "lin_api_test", "restart_maxwell": False},
     )
-
-    assert resp.status_code == 200
-    assert "LINEAR_API_KEY=lin_api_test" in dashboard_env.read_text(encoding="utf-8")
-    assert "LINEAR_API_KEY=lin_api_test" in maxwell_env.read_text(encoding="utf-8")
+    assert resp.status_code in (404, 405)
 
 
 @pytest.mark.asyncio

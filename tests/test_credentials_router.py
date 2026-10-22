@@ -22,13 +22,10 @@ from cache_utils import cache_clear, cache_get, cache_set  # noqa: E402
 from dashboard_config import CacheTtl  # noqa: E402
 from routers import credentials  # noqa: E402
 from routers.credentials import (  # noqa: E402
-    ClearKeyRequest,
     LaunchAuthRequest,
-    SetKeyRequest,
     _build_credentials_summary,
     _collect_all_probes,
     _env_present_anywhere,
-    _patch_maxwell_yaml_api_key,
     _probe_claude_code_cli,
     _probe_cline,
     _probe_codex_cli,
@@ -39,16 +36,13 @@ from routers.credentials import (  # noqa: E402
     _probe_linear_workspaces,
     _probe_ollama,
     _resolve_cline_detail,
-    _restart_maxwell_daemon,
     _vscode_extension_installed,
     _vscode_has_extension,
-    clear_credential_key,
     get_cline_status,
     get_credentials,
     get_ollama_models,
     get_ollama_status,
     launch_auth,
-    set_credential_key,
 )
 
 
@@ -166,10 +160,10 @@ def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     probe = _probe_codex_cli()
     assert probe["id"] == "codex_cli"
     assert probe["installed"] is True
-    assert probe["authenticated"] is True
-    assert probe["usable"] is True
-    assert probe["status"] == "ready"
-    assert probe["detail"] == "Ready (OPENAI_API_KEY)"
+    assert probe["authenticated"] is False
+    assert probe["usable"] is False
+    assert probe["status"] == "missing_key"
+    assert probe["detail"] == "not signed in: run `codex login`"
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     probe_no_key = _probe_codex_cli()
@@ -177,7 +171,7 @@ def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     assert probe_no_key["authenticated"] is False
     assert probe_no_key["usable"] is False
     assert probe_no_key["status"] == "missing_key"
-    assert probe_no_key["detail"] == "not signed in: run `codex login` or set OPENAI_API_KEY"
+    assert probe_no_key["detail"] == "not signed in: run `codex login`"
 
     monkeypatch.setattr(credentials, "_find_binary", lambda name: None)
     probe_not_installed = _probe_codex_cli()
@@ -199,21 +193,23 @@ def test_probe_codex_cli_login_file_counts_as_authenticated(monkeypatch: pytest.
     assert probe["usable"] is True
     assert probe["status"] == "ready"
     assert probe["detail"] == "Ready (codex login)"
-    # key_status reflects the API key only, never the login file.
-    assert probe["key_status"] == "missing"
+    assert probe["key_status"] == "oauth"
 
 
-def test_probe_claude_code_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_probe_claude_code_cli_api_key_env_ignored(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
     monkeypatch.setattr(credentials, "_env_present_anywhere", lambda key: key == "ANTHROPIC_API_KEY")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-login"))
+    monkeypatch.setattr(
+        "staff.cli_oauth_session.claude_oauth_session_alive",
+        lambda *_a, **_k: (False, "not signed in"),
+    )
     probe = _probe_claude_code_cli()
     assert probe["id"] == "claude_code_cli"
     assert probe["installed"] is True
-    assert probe["authenticated"] is True
-    assert probe["usable"] is True
-    assert probe["status"] == "ready"
-    assert probe["detail"] == "Ready (ANTHROPIC_API_KEY)"
+    assert probe["authenticated"] is False
+    assert probe["usable"] is False
+    assert probe["status"] == "missing_key"
 
 
 def test_probe_claude_code_cli_expired_oauth_not_authenticated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -240,7 +236,7 @@ def test_probe_claude_code_cli_no_auth(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert probe["authenticated"] is False
     assert probe["usable"] is False
     assert probe["status"] == "missing_key"
-    assert probe["detail"] == "not signed in: run `claude login` or set ANTHROPIC_API_KEY"
+    assert probe["detail"] == "not signed in: run `claude login`"
 
 
 def test_probe_claude_code_cli_login_file_counts_as_authenticated(
@@ -262,8 +258,7 @@ def test_probe_claude_code_cli_login_file_counts_as_authenticated(
     assert probe["usable"] is True
     assert probe["status"] == "ready"
     assert probe["detail"] == "Ready (claude login)"
-    # key_status reflects the API key only, never the login file.
-    assert probe["key_status"] == "missing"
+    assert probe["key_status"] == "oauth"
 
 
 @pytest.mark.asyncio
@@ -291,15 +286,16 @@ async def test_probe_cline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     assert probe_installed["status"] == "ready"
 
 
-def test_probe_gemini_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_gemini_cli_ignores_api_key_without_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/gemini" if cmd == "gemini" else None)
     monkeypatch.setenv("GOOGLE_API_KEY", "google-key")
+    monkeypatch.setattr(credentials, "_gemini_oauth_present", lambda: False)
     probe = _probe_gemini_cli()
     assert probe["id"] == "gemini_cli"
     assert probe["installed"] is True
-    assert probe["authenticated"] is True
-    assert probe["usable"] is True
-    assert probe["status"] == "ready"
+    assert probe["authenticated"] is False
+    assert probe["usable"] is False
+    assert probe["status"] == "missing_key"
 
 
 def test_probe_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -427,35 +423,6 @@ async def test_get_credentials_endpoint_caching(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
-async def test_set_and_clear_key_invalidates_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Setting or clearing an API key must invalidate the credentials probe cache."""
-    monkeypatch.setattr(credentials, "_require_local_request", lambda req: None)
-    monkeypatch.setattr(credentials, "_MAXWELL_ENV", tmp_path / "maxwell-env")
-    monkeypatch.setattr(credentials, "_DASHBOARD_ENV", tmp_path / "dashboard-env")
-    monkeypatch.setattr(credentials, "_MAXWELL_YAML", tmp_path / "maxwell.yaml")
-
-    req = _mock_request()
-
-    cache_set("credentials_probe", {"cached": True})
-    assert cache_get("credentials_probe", CacheTtl.CREDENTIALS_S) is not None
-
-    resp_set = await set_credential_key(
-        SetKeyRequest(provider="claude", key="sk-ant-new-key", restart_maxwell=False),
-        req,
-    )
-    assert resp_set["ok"] is True
-    assert cache_get("credentials_probe", CacheTtl.CREDENTIALS_S) is None
-
-    cache_set("credentials_probe", {"cached": True})
-    resp_clear = await clear_credential_key(
-        ClearKeyRequest(provider="claude", restart_maxwell=False),
-        req,
-    )
-    assert resp_clear["ok"] is True
-    assert cache_get("credentials_probe", CacheTtl.CREDENTIALS_S) is None
-
-
-@pytest.mark.asyncio
 async def test_get_cline_status_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     """GET /api/cline/status returns structured status."""
     monkeypatch.setattr(credentials, "_require_local_request", lambda req: None)
@@ -520,36 +487,6 @@ def test_env_present_anywhere_oserror(
         found = _env_present_anywhere("SOME_KEY")
     assert found is False
     assert any("Failed reading env file" in rec.message and "OSError" in rec.message for rec in caplog.records)
-
-
-def test_patch_maxwell_yaml_api_key_error_handling(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    yaml_file = tmp_path / "maxwell.yaml"
-    yaml_file.write_text("invalid: yaml: [", encoding="utf-8")
-    monkeypatch.setattr(credentials, "_MAXWELL_YAML", yaml_file)
-
-    with caplog.at_level(logging.WARNING):
-        _patch_maxwell_yaml_api_key("ANTHROPIC_API_KEY", "secret-val")
-    assert any(
-        "Could not patch maxwell YAML api_key for env_var=ANTHROPIC_API_KEY" in rec.message for rec in caplog.records
-    )
-
-
-@pytest.mark.asyncio
-async def test_restart_maxwell_daemon_failure(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    async def mock_subprocess_exec(*args: Any, **kwargs: Any) -> Any:
-        raise OSError("systemctl not found")
-
-    monkeypatch.setattr(credentials.asyncio, "create_subprocess_exec", mock_subprocess_exec)
-    with caplog.at_level(logging.WARNING):
-        result = await _restart_maxwell_daemon()
-    assert result["attempted"] is True
-    assert result["success"] is False
-    assert result["detail"] == "OSError"
-    assert any("Failed to restart maxwell-daemon: OSError" in rec.message for rec in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -624,45 +561,6 @@ async def test_launch_auth_handling(monkeypatch: pytest.MonkeyPatch, caplog: pyt
     assert any(
         "launch_auth binary not found for provider claude: FileNotFoundError" in rec.message for rec in caplog.records
     )
-
-
-@pytest.mark.asyncio
-async def test_credential_values_never_reach_logs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Security verification: Assert credential values NEVER appear in any log output."""
-    secret_key = "dummy-secret-key-for-testing-12345"  # pragma: allowlist secret
-    monkeypatch.setattr(credentials, "_require_local_request", lambda req: None)
-    monkeypatch.setattr(credentials, "_MAXWELL_ENV", tmp_path / "maxwell-env")
-    monkeypatch.setattr(credentials, "_DASHBOARD_ENV", tmp_path / "dashboard-env")
-    monkeypatch.setattr(credentials, "_MAXWELL_YAML", tmp_path / "maxwell.yaml")
-
-    # 1. Success set-key: logs should contain provider and length, NEVER secret_key
-    with caplog.at_level(logging.DEBUG):
-        await set_credential_key(
-            SetKeyRequest(provider="claude", key=secret_key, restart_maxwell=False),
-            _mock_request(),
-        )
-    for record in caplog.records:
-        assert secret_key not in record.message
-        assert secret_key not in str(record.args)
-
-    caplog.clear()
-
-    # 2. Failing set-key write: logs should mention env var name and exception class, NEVER secret_key
-    def mock_write_error(*args: Any, **kwargs: Any) -> None:
-        raise OSError("Disk write failed")
-
-    monkeypatch.setattr(credentials, "_write_env_var", mock_write_error)
-    with caplog.at_level(logging.DEBUG):
-        with pytest.raises(HTTPException):
-            await set_credential_key(
-                SetKeyRequest(provider="claude", key=secret_key, restart_maxwell=False),
-                _mock_request(),
-            )
-    for record in caplog.records:
-        assert secret_key not in record.message
-        assert secret_key not in str(record.args)
 
 
 def test_all_functions_in_credentials_router_under_50_lines() -> None:

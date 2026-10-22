@@ -244,7 +244,7 @@ describe("CredentialsMobile", () => {
     });
   });
 
-  it("BottomSheet shows Set API Key action for key-provider credentials", async () => {
+  it("BottomSheet is read-only (no API key mutation actions)", async () => {
     setupFetch();
     render(<CredentialsMobile />);
 
@@ -260,109 +260,8 @@ describe("CredentialsMobile", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /set api key/i })).toBeInTheDocument();
-  });
-
-  it("shows key input form when Set API Key is clicked", async () => {
-    setupFetch();
-    render(<CredentialsMobile />);
-
-    await unlockCredentials();
-
-    await waitFor(() => {
-      expect(screen.getByText("Claude Code CLI")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /Credential: Claude Code CLI/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /set api key/i })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /set api key/i }));
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/paste your api key/i)).toBeInTheDocument();
-    });
-  });
-
-  it("Save Key calls POST /api/credentials/set-key", async () => {
-    const fetchMock = setupFetch();
-    render(<CredentialsMobile />);
-
-    await unlockCredentials();
-
-    await waitFor(() => {
-      expect(screen.getByText("Claude Code CLI")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /Credential: Claude Code CLI/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /set api key/i })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /set api key/i }));
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/paste your api key/i)).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByPlaceholderText(/paste your api key/i), {
-      target: { value: "sk-ant-test-key-12345" },
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /save key/i }));
-    });
-
-    await waitFor(() => {
-      const setKeyCalls = (fetchMock.mock.calls as [string, RequestInit?][]).filter(
-        ([url, opts]) =>
-          url.includes("/api/credentials/set-key") && opts?.method === "POST",
-      );
-      expect(setKeyCalls).toHaveLength(1);
-    });
-
-    const setKeyCall = (fetchMock.mock.calls as [string, RequestInit?][]).find(
-      ([url, opts]) =>
-        url.includes("/api/credentials/set-key") && opts?.method === "POST",
-    );
-    expect(setKeyCall).toBeDefined();
-    const body = JSON.parse(setKeyCall![1]!.body as string);
-    expect(body.provider).toBe("claude");
-    expect(body.key).toBe("sk-ant-test-key-12345");
-  });
-
-  it("Clear Key calls POST /api/credentials/clear-key", async () => {
-    const fetchMock = setupFetch();
-    render(<CredentialsMobile />);
-
-    await unlockCredentials();
-
-    await waitFor(() => {
-      expect(screen.getByText("Claude Code CLI")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /Credential: Claude Code CLI/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    const clearBtn = await screen.findByRole("button", { name: /clear key/i });
-
-    await act(async () => {
-      fireEvent.click(clearBtn);
-    });
-
-    await waitFor(() => {
-      const clearKeyCalls = (fetchMock.mock.calls as [string, RequestInit?][]).filter(
-        ([url, opts]) =>
-          url.includes("/api/credentials/clear-key") && opts?.method === "POST",
-      );
-      expect(clearKeyCalls).toHaveLength(1);
-    });
+    expect(screen.queryByRole("button", { name: /set api key/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /clear key/i })).not.toBeInTheDocument();
   });
 
   it("Lock button re-locks the view", async () => {
