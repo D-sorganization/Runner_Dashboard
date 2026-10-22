@@ -485,6 +485,7 @@ class StaffRunner:
 _runner: StaffRunner | None = None
 _runner_lock = threading.Lock()
 
+
 def get_runner() -> StaffRunner:
     global _runner  # noqa: PLW0603
     with _runner_lock:
