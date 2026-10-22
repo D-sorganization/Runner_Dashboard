@@ -15,12 +15,19 @@ name: Collate Change Fragments
 # (commit 1cfc3466cffd753e22ebd48bc964bff7ed153dfa): RD action pins, scripts/
 # paths for the vendored modules, Python 3.11.
 #
+<<<<<<< HEAD
 # Trigger policy (Runner_Dashboard#2119): batch on a twice-daily schedule; do not
 # run on every ``changes/**`` merge (that caused 40+ failures/day on busy merge
 # days). Overlapping runs queue in one concurrency group (cancel-in-progress:
 # false). ``push`` is limited to edits of this workflow so shipping a collation
 # fix can immediately run against every pending fragment on main without waiting
 # for the cron. ``workflow_dispatch`` remains for manual catch-up.
+=======
+# Trigger policy (Runner_Dashboard#2119): twice-daily schedule; no push on every
+# ``changes/**`` merge. Queue overlaps (cancel-in-progress: false). ``push`` only
+# when this workflow changes so shipping a collation fix runs immediately.
+# ``workflow_dispatch`` for manual catch-up.
+>>>>>>> b55fcb1a (fix(ci): green collate on main for auto-deploy (#2119))
 
 on:
   schedule:
