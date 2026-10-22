@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agent_remediation.provider_registry import PROVIDER_REGISTRY, by_dashboard_id
-from staff.classifier import FailureClassification, _login_command
+from staff.classifier import _login_command
 from staff.cli_oauth_session import provider_oauth_session_alive
 
 
