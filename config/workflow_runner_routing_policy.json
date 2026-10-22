@@ -41,6 +41,8 @@
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
         "lint-workflow-files.yml",
+        "pr-cap.yml",
+        "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",
         "Verify-Issue-Closure.yml",
         "verify-tag.yml"

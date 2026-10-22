@@ -35,9 +35,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "run_frontend_tests=true" >> "$GITHUB_OUTPUT"
-            echo "run_staff_e2e=true" >> "$GITHUB_OUTPUT"
-            echo "run_api_contract=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "run_frontend_tests=true"
+              echo "run_staff_e2e=true"
+              echo "run_api_contract=true"
+            } >> "$GITHUB_OUTPUT"
             echo "Non-PR event: full frontend validation required."
             exit 0
           fi
@@ -115,7 +117,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         if: needs.frontend-scope.outputs.run_api_contract == 'true'
         with:
           python-version: "3.11"
@@ -198,7 +200,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 
@@ -240,7 +242,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Set up Python for backend
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 
@@ -324,7 +326,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 

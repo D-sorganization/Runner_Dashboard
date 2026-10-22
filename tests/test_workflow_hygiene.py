@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from bash_host import require_bash
+from bash_host import as_bash_path, require_bash
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 _POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
@@ -35,9 +35,25 @@ _PR_GROUP_TOKENS = (
 )
 
 _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
-    "arm-cap-reconcile.yml": "Armed-PR inventory reconcile must finish SQLite inventory sync before optional disarm dispatch; cancel mid-run risks cap drift.",
-    "collate-changes.yml": "Batch collation updates one rolling bot PR; cancel mid-run leaves bot/collate-changes inconsistent and recreates cancelled main runs from overlap.",
-    "conflict-disarm.yml": "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state.",
+    "pr-cap.yml": (
+        "PR-cap caller must await its separately serialized metadata workflow "
+        "without interrupting the one-shot advisory comment."
+    ),
+    "reusable-pr-cap.yml": (
+        "PR-cap metadata reporting and its one-shot comment must finish "
+        "without cancellation during a potentially committed POST."
+    ),
+    "arm-cap-reconcile.yml": (
+        "Armed-PR inventory reconcile must finish SQLite inventory sync before optional disarm dispatch; "
+        "cancel mid-run risks cap drift."
+    ),
+    "collate-changes.yml": (
+        "Batch collation updates one rolling bot PR; cancel mid-run leaves bot/collate-changes inconsistent "
+        "and recreates cancelled main runs from overlap."
+    ),
+    "conflict-disarm.yml": (
+        "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state."
+    ),
     "deploy-qualified-release.yml": "A root transaction must run to commit or rollback; never interrupt it mid-stream.",
     "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",
 }
@@ -336,6 +352,88 @@ def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
         "nightly-publish.yml",
     ):
         assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
+
+
+@pytest.mark.parametrize(
+    ("dry_run", "agent_filter", "action", "number", "stub_exit", "optional"),
+    [
+        ("false", "", "opened", "", "0", []),
+        ("true", "codex", "closed", "42", "0", ["--dry-run", "--agent-filter", "codex", "--backstop-pr", "42"]),
+        (
+            "false",
+            "agent with spaces *",
+            "closed",
+            "43",
+            "0",
+            ["--agent-filter", "agent with spaces *", "--backstop-pr", "43"],
+        ),
+        ("false", "", "opened", "", "17", []),
+    ],
+)
+def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
+    tmp_path: Path,
+    dry_run: str,
+    agent_filter: str,
+    action: str,
+    number: str,
+    stub_exit: str,
+    optional: list[str],
+) -> None:
+    """Capture argv with a shell function; never execute the real PR closer."""
+    workflow = _load_workflow(_WORKFLOWS_DIR / "Agent-Redundant-PR-Closer.yml")
+    jobs = workflow["jobs"].values()
+    step = next(
+        step for job in jobs for step in job.get("steps", []) if step.get("name") == "Close redundant agent PRs"
+    )
+    arguments = tmp_path / "argv.bin"
+    bash = require_bash()
+    stub = 'python() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+    result = subprocess.run(
+        [bash, "-c", stub + step["run"]],
+        cwd=tmp_path,
+        env=os.environ
+        | {
+            "ARGV_OUTPUT": as_bash_path(arguments),
+            "STUB_EXIT": stub_exit,
+            "REPO_NAME": "Runner_Dashboard",
+            "DRY_RUN_INPUT": dry_run,
+            "AGENT_FILTER": agent_filter,
+            "PR_ACTION": action,
+            "EVENT_PR_NUMBER": number,
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    actual = [value.decode() for value in arguments.read_bytes().split(b"\0")[:-1]]
+    assert actual == ["-m", "scripts.close_redundant_agent_prs", "--repo", "Runner_Dashboard", *optional]
+    assert ("continuing" in result.stdout) == (stub_exit != "0")
+
+
+def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> None:
+    workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
+    step = workflow["jobs"]["frontend-scope"]["steps"][0]
+    output = tmp_path / "github-output"
+    bash = require_bash()
+    # A stub also prevents executing Python if this branch accidentally falls through.
+    script = "python() { return 99; };\n" + step["run"]
+    result = subprocess.run(
+        [bash, "-c", script],
+        cwd=tmp_path,
+        env=os.environ | {"EVENT_NAME": "push", "GITHUB_OUTPUT": as_bash_path(output)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert output.read_text().splitlines() == [
+        "run_frontend_tests=true",
+        "run_staff_e2e=true",
+        "run_api_contract=true",
+    ]
 
 
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
