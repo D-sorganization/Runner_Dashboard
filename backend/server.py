@@ -172,6 +172,7 @@ from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
 from routers import usage_metrics as _usage_metrics_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
+from routers import delivery_metrics as _delivery_metrics_router  # noqa: E402  # issue #2121
 from routers import workflow_stats as _workflow_stats_router  # noqa: E402  # issue #1735
 from routers.queue import _queue_impl  # noqa: E402
 from runners.service_control import (  # noqa: E402
@@ -747,6 +748,7 @@ app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
+app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402
