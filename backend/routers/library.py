@@ -17,6 +17,7 @@ from library.search import (
     library_stats,
     search_passages,
 )
+from library.submissions import create_submission, list_submissions
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
 _db_override: Path | None = None
@@ -31,6 +32,28 @@ def _db() -> Path:
     path = _db_override or library_db_path()
     init_library_db(path)
     return path
+
+
+@router.post("/submissions")
+def library_create_submission(
+    body: dict[str, Any],
+    principal: Principal = Depends(require_scope("fleet.write")),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        return create_submission(_db(), principal_id=principal.id, payload=body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/submissions")
+def library_list_submissions(
+    status: str | None = Query(None),
+    _principal: Principal = Depends(require_scope("fleet.read")),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        return {"submissions": list_submissions(_db(), status=status)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/stats")
