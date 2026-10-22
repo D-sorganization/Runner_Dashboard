@@ -7,7 +7,7 @@ import logging
 import os
 from typing import Annotated, Any
 
-from agent_bus.models import AckBody, HeartbeatBody, RegisterBody, SendBody
+from agent_bus.models import AckBody, ClaimTrackBody, HandoffBody, HeartbeatBody, RegisterBody, SendBody
 from agent_bus.store import AgentBusStore, get_store
 from coordination.auth import WRITE_SCOPE, _is_loopback_request, _reject_unauthenticated_bearer
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -134,6 +134,46 @@ async def post_message(body: SendBody, principal: Writer) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/claims")
+async def post_track_claim(body: ClaimTrackBody, principal: Writer) -> dict[str, Any]:
+    row = _store().get_principal(body.session)
+    if row is None:
+        raise HTTPException(status_code=404, detail="session not registered")
+    _assert_session_owner(body.session, principal, row.principal_id)
+    try:
+        return _store().track_claim(body.session, row.role, body.repo, body.issue)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+
+
+@router.get("/backlog")
+async def get_backlog(auth: tuple[Principal, bool] = Depends(_fleet_or_writer)) -> dict[str, Any]:
+    _principal, _mint = auth
+    return _store().build_backlog()
+
+
+@router.put("/handoff")
+async def put_handoff(body: HandoffBody, principal: Writer) -> dict[str, Any]:
+    row = _store().get_principal(body.session)
+    if row is None:
+        raise HTTPException(status_code=404, detail="session not registered")
+    _assert_session_owner(body.session, principal, row.principal_id)
+    try:
+        return _store().upsert_handoff(
+            session_id=body.session,
+            repo=body.repo,
+            work_kind=body.work_kind,
+            work_number=body.work_number,
+            body=body.body,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/messages/ack")
