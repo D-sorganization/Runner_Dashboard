@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from delivery_metrics.db import get_repo_sync_cursor, init_db, upsert_pull
-from delivery_metrics.models import CheckRunSnapshot, PrSnapshot
+from delivery_metrics.models import PrSnapshot
 from delivery_metrics.parse import parse_check_runs, parse_pr_snapshot
 from delivery_metrics.ports import GitHubDeliveryCollectorPort
 from delivery_metrics.sync import collect_delivery_metrics_once

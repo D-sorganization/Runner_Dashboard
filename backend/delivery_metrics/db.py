@@ -187,7 +187,13 @@ def get_repo_sync_cursor(conn: sqlite3.Connection, repo_full: str) -> datetime |
     return datetime.fromisoformat(str(row["last_pull_updated_at"]).replace("Z", "+00:00"))
 
 
-def set_repo_sync_cursor(conn: sqlite3.Connection, repo_full: str, *, last_pull_updated_at: datetime, synced_at: datetime) -> None:
+def set_repo_sync_cursor(
+    conn: sqlite3.Connection,
+    repo_full: str,
+    *,
+    last_pull_updated_at: datetime,
+    synced_at: datetime,
+) -> None:
     conn.execute(
         """
         INSERT INTO dm_repo_sync (repo_full, last_sync_at, last_pull_updated_at)
