@@ -1,0 +1,38 @@
+{
+  "since": "2026-10-01T00:00:00Z",
+  "until": "2026-10-31T00:00:00Z",
+  "repo_full": "D-sorganization/Runner_Dashboard",
+  "summary": {
+    "prs": 1,
+    "merged": 1,
+    "closed_unmerged": 0,
+    "open": 0,
+    "median_ci_rounds": 1.0,
+    "top_failing_checks": [],
+    "escapes_weighted": []
+  },
+  "weekly_trends": [
+    {
+      "week_start": "2026-10-19",
+      "prs": 1,
+      "merged": 1,
+      "closed_unmerged": 0,
+      "open": 0,
+      "median_ci_rounds": 1.0,
+      "top_failing_checks": [],
+      "escapes_weighted": []
+    }
+  ],
+  "pr_drill_down": [
+    {
+      "repo_full": "D-sorganization/Runner_Dashboard",
+      "number": 2111,
+      "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/2111",
+      "ci_rounds_to_green": 1,
+      "lead_time_seconds": 1904.0,
+      "ci_wait_seconds": 1191.0,
+      "dieter_wait_seconds": null,
+      "churn_flags": []
+    }
+  ]
+}
