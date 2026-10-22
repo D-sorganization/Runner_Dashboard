@@ -355,6 +355,8 @@ def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
     path = str(request.node.fspath or "")
     if "test_staff_cli_oauth_session" in path or "test_staff_dispatch_provider_auth" in path:
         return
+    if not _staff_run_test_path(path):
+        return
     monkeypatch.setattr(
         "staff.cli_oauth_session.provider_oauth_session_alive",
         lambda *_a, **_k: (True, ""),
