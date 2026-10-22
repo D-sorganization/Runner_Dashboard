@@ -99,6 +99,37 @@ def _normalize_permission_level(level: str | None) -> str:
     return str(level or "").strip().lower()
 
 
+_MINT_UNSUPPORTED_READ: frozenset[str] = frozenset({"workflows"})
+
+
+def normalize_permissions_for_mint(requested: Mapping[str, str]) -> dict[str, str]:
+    """Drop permission levels GitHub's mint API rejects even when the installation lists them."""
+    out: dict[str, str] = {}
+    for perm, level_raw in requested.items():
+        level = _normalize_permission_level(level_raw)
+        if not level:
+            continue
+        if perm in _MINT_UNSUPPORTED_READ and level == "read":
+            continue
+        out[str(perm)] = level
+    return out
+
+
+def permissions_payload_for_mint(
+    requested: Mapping[str, str],
+    granted: Mapping[str, str],
+) -> dict[str, str]:
+    """Build the ``permissions`` object for POST access_tokens (subset of installation grant)."""
+    normalized = normalize_permissions_for_mint(requested)
+    missing = compare_installation_permissions(normalized, granted)
+    if missing:
+        raise GhInstallationPermissionError(
+            missing,
+            endpoint="/app/installations/.../access_tokens",
+        )
+    return normalized
+
+
 def compare_installation_permissions(
     requested: Mapping[str, str],
     granted: Mapping[str, str],
@@ -186,23 +217,34 @@ def mint_installation_access_token(
     installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"].strip()
     url = f"{_GITHUB_API_BASE}/app/installations/{installation_id}/access_tokens"
     headers = _app_jwt_headers()
-    payload: dict[str, Any] = {}
-    if repositories:
-        payload["repositories"] = list(repositories)
+    mint_permissions: dict[str, str] | None = None
     if permissions:
-        payload["permissions"] = dict(permissions)
+        mint_permissions = normalize_permissions_for_mint(permissions)
 
-    with httpx.Client(timeout=httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0)) as client:
-        resp = client.post(url, headers=headers, json=payload or None)
-    if resp.status_code not in (200, 201):
-        if resp.status_code == 422 and permissions:
+    timeout_cfg = httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0)
+    with httpx.Client(timeout=timeout_cfg) as client:
+        payload: dict[str, Any] = {}
+        if repositories:
+            payload["repositories"] = list(repositories)
+        if mint_permissions:
             granted = fetch_installation_permissions(client=client, timeout=timeout)
-            missing = compare_installation_permissions(permissions, granted)
-            if missing:
+            mint_permissions = permissions_payload_for_mint(mint_permissions, granted)
+            payload["permissions"] = mint_permissions
+
+        resp = client.post(url, headers=headers, json=payload or None)
+        if resp.status_code not in (200, 201):
+            if resp.status_code == 422 and mint_permissions:
+                granted = fetch_installation_permissions(client=client, timeout=timeout)
+                missing = compare_installation_permissions(mint_permissions, granted)
+                if not missing:
+                    missing = [
+                        "GitHub rejected token mint (422); permissions may be invalid for mint "
+                        f"even though installation metadata lists them: {resp.text[:160]}"
+                    ]
                 raise GhInstallationPermissionError(
                     missing,
                     endpoint="/app/installations/.../access_tokens",
                     body=resp.text,
                 )
-        raise GhServerError(resp.status_code, "/app/installations/.../access_tokens", resp.text)
-    return _parse_installation_token_response(resp.json())
+            raise GhServerError(resp.status_code, "/app/installations/.../access_tokens", resp.text)
+        return _parse_installation_token_response(resp.json())
