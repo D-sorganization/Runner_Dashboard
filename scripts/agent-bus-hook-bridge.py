@@ -8,34 +8,34 @@ import sys
 from pathlib import Path
 
 
-def _fleet_client():
+def _paths() -> None:
     root = Path(__file__).resolve().parents[1]
-    fleet_dir = root / "clients" / "fleet"
-    if str(fleet_dir) not in sys.path:
-        sys.path.insert(0, str(fleet_dir))
-    from fleet_client import FleetClient  # noqa: PLC0415
-
-    return FleetClient()
+    backend = root / "backend"
+    fleet = root / "clients" / "fleet"
+    for p in (backend, fleet):
+        if str(p) not in sys.path:
+            sys.path.insert(0, str(p))
 
 
 def session_start() -> int:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "clients" / "fleet"))
-    import agent_bus_hooks  # noqa: PLC0415
+    _paths()
+    from agent_bus.session_hooks import session_start as run_start  # noqa: PLC0415
+    from fleet_client import FleetClient  # noqa: PLC0415
 
     _ = sys.stdin.read()
-    client = _fleet_client()
+    client = FleetClient()
     if not client.session:
         return 0
-    summary = agent_bus_hooks.session_start(client)
+    summary = run_start(client)
     print(json.dumps(summary))
     return 0
 
 
 def pre_push() -> int:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "clients" / "fleet"))
-    import agent_bus_hooks  # noqa: PLC0415
+    _paths()
+    from agent_bus.session_hooks import pre_push as run_pre_push  # noqa: PLC0415
 
-    agent_bus_hooks.pre_push()
+    run_pre_push()
     return 0
 
 

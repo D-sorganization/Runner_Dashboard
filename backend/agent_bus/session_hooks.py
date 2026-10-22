@@ -10,15 +10,23 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
-from fleet_client import FleetAPIError, FleetClient
-from fleet_validators import short_host
-
-log = logging.getLogger("fleet.agent_bus_hooks")
+log = logging.getLogger("dashboard.agent_bus.session_hooks")
 
 DEFAULT_LEASE_SECONDS = 300
+
+
+def _fleet_client_types():
+    fleet_dir = Path(__file__).resolve().parents[2] / "clients" / "fleet"
+    if str(fleet_dir) not in sys.path:
+        sys.path.insert(0, str(fleet_dir))
+    from fleet_client import FleetAPIError, FleetClient  # noqa: PLC0415
+    from fleet_validators import short_host  # noqa: PLC0415
+
+    return FleetAPIError, FleetClient, short_host
 
 
 def _identity_dir() -> Path:
@@ -57,7 +65,7 @@ def _save_state(session: str, token: str, role: str) -> None:
         pass
 
 
-def _resolve_role(client: FleetClient, explicit: str | None) -> str:
+def _resolve_role(client: Any, explicit: str | None) -> str:
     if explicit:
         return explicit
     if client.agent:
@@ -69,17 +77,17 @@ def _provider() -> str:
     return (os.environ.get("FLEET_PROVIDER") or os.environ.get("CURSOR_AGENT") or "unknown").strip()[:64]
 
 
-def _node() -> str:
+def _node(short_host: Any) -> str:
     return (os.environ.get("FLEET_NODE") or short_host()).strip()[:128]
 
 
-def _offline_summary(exc: FleetAPIError) -> dict[str, Any]:
+def _offline_summary(exc: Any) -> dict[str, Any]:
     log.debug("agent bus offline: status=%s", exc.status)
     return {"offline": True, "registered": False, "inbox_count": 0}
 
 
 def session_start(
-    client: FleetClient,
+    client: Any,
     *,
     role: str | None = None,
     provider: str | None = None,
@@ -87,6 +95,7 @@ def session_start(
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
 ) -> dict[str, Any]:
     """Register this session and fetch inbox; no-op when the dashboard is down."""
+    FleetAPIError, _FleetClient, short_host = _fleet_client_types()
     session = client.session
     if not session:
         raise ValueError("session is required on the FleetClient")
@@ -101,7 +110,7 @@ def session_start(
                 session=session,
                 role=resolved_role,
                 provider=provider or _provider(),
-                node=node or _node(),
+                node=node or _node(short_host),
                 lease_seconds=lease_seconds,
             )
             minted = reg.get("token") if isinstance(reg, dict) else None
@@ -119,8 +128,9 @@ def session_start(
         raise
 
 
-def pre_push(client: FleetClient | None = None, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> dict[str, Any]:
+def pre_push(client: Any | None = None, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> dict[str, Any]:
     """Heartbeat and refresh inbox cursor; no-op when offline or no saved session."""
+    FleetAPIError, FleetClient, _short_host = _fleet_client_types()
     state = _load_state()
     if not state or not state.get("session") or not state.get("token"):
         return {"skipped": True, "reason": "no agent-bus state"}

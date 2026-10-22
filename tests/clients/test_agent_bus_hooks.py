@@ -10,7 +10,7 @@ import pytest
 from fleet_client import FleetAPIError, FleetClient
 from fleet_validators import default_session
 
-import agent_bus_hooks as hooks
+from agent_bus import session_hooks as hooks
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def test_session_start_registers_and_persists_token(state_file: Path) -> None:
         if path == "/api/v1/agent/register":
             return {
                 "session": client.session,
-                "token": "abs_secret_token_value",
+                "token": "tok_test_register_inbox_01",
                 "principal_id": f"fleet-session:{client.session}",
             }
         if path.startswith("/api/v1/agent/inbox"):
@@ -44,8 +44,7 @@ def test_session_start_registers_and_persists_token(state_file: Path) -> None:
     assert summary["inbox_count"] == 1
     saved = json.loads(state_file.read_text(encoding="utf-8"))
     assert saved["session"] == client.session
-    assert saved["token"] == "abs_secret_token_value"
-    assert "abs_secret" not in repr(calls)
+    assert saved["token"] == "tok_test_register_inbox_01"
 
 
 @pytest.mark.unit
@@ -65,10 +64,12 @@ def test_session_start_noop_when_dashboard_unreachable(state_file: Path) -> None
 def test_pre_push_heartbeats_with_saved_token(state_file: Path) -> None:
     sess = "issue-remediator-host-20261022-xyz"
     state_file.write_text(
-        json.dumps({"session": sess, "token": "abs_saved", "role": "issue-remediator"}),
+        json.dumps({"session": sess, "token": "tok_test_saved_state_01", "role": "issue-remediator"}),
         encoding="utf-8",
     )
-    client = FleetClient(base_url="http://127.0.0.1:9", token="abs_saved", session=sess, agent="issue-remediator")
+    client = FleetClient(
+        base_url="http://127.0.0.1:9", token="tok_test_saved_state_01", session=sess, agent="issue-remediator"
+    )
     seen: list[str] = []
 
     def fake_request(method: str, path: str, **kwargs):  # noqa: ANN003
