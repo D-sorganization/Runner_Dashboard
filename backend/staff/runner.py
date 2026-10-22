@@ -1,6 +1,10 @@
 """Staff runner: turns a run request into a CLI subprocess and records it.
 Lifecycle: queued -> preparing -> running -> succeeded | failed | cancelled | blocked.
 Concurrency is bounded by STAFF_MAX_CONCURRENT_RUNS with one daemon thread per run.
+
+Per-run GitHub App tokens are injected in ``runner_ops`` before ``_execute`` spawns
+the provider CLI (#2038); mint failures surface as ``auth_error`` with installation
+permission detail from ``github_app_auth``.
 """
 
 from __future__ import annotations

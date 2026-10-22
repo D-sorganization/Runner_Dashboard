@@ -204,7 +204,11 @@ def _build_app_jwt(now: datetime | None = None) -> str:
 
 
 async def _fetch_github_app_installation_token() -> str:
-    """Exchange a GitHub App JWT for an installation access token (#938c, #2038)."""
+    """Exchange a GitHub App JWT for an installation access token (#938c, #2038).
+
+    Scoped staff-run minting and permission diagnostics live in ``github_app_auth``;
+    this path keeps the dashboard cache on an unscoped installation token.
+    """
     global _cached_token_expires_at
 
     from github_app_auth import mint_installation_access_token

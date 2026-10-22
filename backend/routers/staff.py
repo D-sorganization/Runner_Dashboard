@@ -41,6 +41,7 @@ from staff.audit import (
 from staff.cli_version import provider_versions
 from staff.dispatch_auth import require_staff_run_dispatch
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
+from staff.github_app_preflight import run_preflight_and_cache
 from staff.github_credential_service import mint_github_credential_for_run
 from staff.models import (
     StaffAuditListResponse,
@@ -56,7 +57,6 @@ from staff.models import (
 from staff.rm_sync import source_status as source_status  # noqa: F401
 from staff.runner import get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
-from staff.github_app_preflight import run_preflight_and_cache
 from staff.summary_view import build_staff_summary
 
 log = logging.getLogger("dashboard.staff")
