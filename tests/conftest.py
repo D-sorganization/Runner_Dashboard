@@ -346,6 +346,18 @@ def _staff_verification_off(monkeypatch):
     monkeypatch.setenv("STAFF_VERIFY_MODE", "off")
 
 
+@pytest.fixture(autouse=True)
+def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
+    """Dispatch tests stub OAuth preflight; oauth probe tests exercise the real check (#2170)."""
+    path = str(request.node.fspath or "")
+    if "test_staff_cli_oauth_session" in path or "test_staff_dispatch_provider_auth" in path:
+        return
+    monkeypatch.setattr(
+        "staff.cli_oauth_session.provider_oauth_session_alive",
+        lambda *_a, **_k: (True, ""),
+    )
+
+
 def _staff_run_test_path(path: str) -> bool:
     """True when the test module may execute ``StaffRunner._execute`` (#2038)."""
     if "test_staff_github_run_env.py" in path:
