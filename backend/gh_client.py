@@ -27,11 +27,13 @@ import asyncio
 import logging
 import os
 import random
+import re
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
 
@@ -44,6 +46,13 @@ _DEFAULT_RETRY_AFTER = 60
 
 _MAX_RETRIES: int = 5
 assert _MAX_RETRIES > 0, "MAX_RETRIES must be positive"
+_MAX_ARTIFACT_PAGES = 100
+_MAX_ARTIFACT_REDIRECTS = 3
+_MAX_ARTIFACT_DOWNLOAD_BYTES = 20 * 1024 * 1024
+_REPOSITORY_SLUG = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_ARTIFACT_COLLECTION_PATH = re.compile(
+    r"^/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/(?:runs/[1-9][0-9]*/)?artifacts$"
+)
 
 # ── Token cache ──────────────────────────────────────────────────────────────
 
@@ -276,6 +285,14 @@ class GhNotFound(GhClientError):
         self.endpoint = endpoint
 
 
+class GhArtifactExpired(GhClientError):
+    """GitHub reports an artifact archive as expired or gone."""
+
+    def __init__(self, endpoint: str) -> None:
+        super().__init__(f"GitHub artifact is expired or gone: {endpoint}", kind="artifact_expired")
+        self.endpoint = endpoint
+
+
 class GhServerError(GhClientError):
     """GitHub returned 5xx."""
 
@@ -461,6 +478,220 @@ async def get_text(path: str) -> str:
     return resp.text
 
 
+def _validate_artifact_request(repo_full: str, ident: int, limit: int) -> None:
+    if not _REPOSITORY_SLUG.fullmatch(repo_full) or any(part in {".", ".."} for part in repo_full.split("/")):
+        raise ValueError("repo_full must be an owner/repository slug")
+    if isinstance(ident, bool) or not isinstance(ident, int) or ident <= 0:
+        raise ValueError("artifact and run IDs must be positive integers")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_ARTIFACT_DOWNLOAD_BYTES:
+        raise ValueError(f"max_bytes must be from 1 to {_MAX_ARTIFACT_DOWNLOAD_BYTES}")
+
+
+def _validate_artifact_page(body: Any) -> tuple[int, list[dict[str, Any]]]:
+    if not isinstance(body, dict):
+        raise GhClientError("Malformed Actions artifact pagination response", kind="pagination")
+    total = body.get("total_count")
+    artifacts = body.get("artifacts")
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        raise GhClientError("Malformed Actions artifact pagination total_count", kind="pagination")
+    if not isinstance(artifacts, list) or len(artifacts) > 100 or any(not isinstance(item, dict) for item in artifacts):
+        raise GhClientError("Malformed Actions artifact pagination items", kind="pagination")
+    return total, artifacts
+
+
+async def list_run_artifacts(repo_full: str, run_id: int, *, max_pages: int = 10) -> list[dict[str, Any]]:
+    """List every artifact for a workflow run, refusing incomplete bounded pagination."""
+    _validate_artifact_request(repo_full, run_id, 1)
+    path = f"/repos/{repo_full}/actions/runs/{run_id}/artifacts"
+    return await _list_artifact_collection(path, max_pages=max_pages)
+
+
+def _artifact_page_url(path: str, page: int, per_page: int) -> str:
+    parsed = urlsplit(path)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in {"page", "per_page"}
+    ]
+    query.extend((("page", str(page)), ("per_page", str(per_page))))
+    return parsed._replace(query=urlencode(query)).geturl()
+
+
+async def _list_artifact_collection(path: str, *, max_pages: int = 10, per_page: int = 100) -> list[dict[str, Any]]:
+    if isinstance(max_pages, bool) or not isinstance(max_pages, int) or not 1 <= max_pages <= _MAX_ARTIFACT_PAGES:
+        raise ValueError(f"max_pages must be from 1 to {_MAX_ARTIFACT_PAGES}")
+    if isinstance(per_page, bool) or not isinstance(per_page, int) or not 1 <= per_page <= 100:
+        raise ValueError("per_page must be from 1 to 100")
+    result: list[dict[str, Any]] = []
+    expected_total: int | None = None
+    seen_ids: set[int] = set()
+    for page in range(1, max_pages + 1):
+        response = await _request("GET", _artifact_page_url(path, page, per_page))
+        total, items = _validate_artifact_page(response.json())
+        if expected_total is not None and total != expected_total:
+            raise GhClientError("Actions artifact pagination changed during listing", kind="pagination")
+        expected_total = total
+        for item in items:
+            artifact_id = item.get("id")
+            if (
+                isinstance(artifact_id, bool)
+                or not isinstance(artifact_id, int)
+                or artifact_id <= 0
+                or artifact_id in seen_ids
+            ):
+                raise GhClientError("Actions artifact pagination contains invalid or duplicate IDs", kind="pagination")
+            seen_ids.add(artifact_id)
+            result.append(item)
+        if len(result) > total:
+            raise GhClientError("Actions artifact pagination exceeded total_count", kind="pagination")
+        if len(result) == total:
+            return result
+        if not items:
+            raise GhClientError("Actions artifact pagination ended before total_count", kind="pagination")
+    raise GhClientError("Actions artifact pagination exceeded max_pages", kind="pagination")
+
+
+def _is_artifact_collection_path(path: str) -> bool:
+    parsed = urlsplit(path)
+    if _ARTIFACT_COLLECTION_PATH.fullmatch(parsed.path) is None:
+        return False
+    if parsed.scheme or parsed.netloc:
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.github.com"
+            or parsed.port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("Artifact collection origin must be https://api.github.com")
+    return True
+
+
+def _validate_artifact_redirect(location: str) -> str:
+    if not location or len(location) > 8192 or any(char in location for char in "\r\n"):
+        raise GhClientError("Invalid Actions artifact redirect", kind="redirect")
+    try:
+        parsed = urlsplit(location)
+        port = parsed.port
+    except ValueError as exc:
+        raise GhClientError("Invalid Actions artifact redirect", kind="redirect") from exc
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+        or port not in (None, 443)
+    ):
+        raise GhClientError("Invalid Actions artifact redirect", kind="redirect")
+    return location
+
+
+async def _read_artifact_body(response: httpx.Response, limit: int, endpoint: str) -> bytes:
+    encoding = response.headers.get("Content-Encoding", "identity").lower().strip()
+    if encoding not in ("", "identity"):
+        raise GhClientError("Content-Encoding on Actions artifact is not accepted", kind="content_encoding")
+    declared = response.headers.get("Content-Length")
+    if declared is not None:
+        if not declared.isdigit():
+            raise GhClientError("Invalid Actions artifact Content-Length", kind="content_length")
+        if int(declared) > limit:
+            raise GhClientError("Actions artifact exceeds download byte limit", kind="size_limit")
+    data = bytearray()
+    async for chunk in response.aiter_raw(chunk_size=min(64 * 1024, limit + 1)):
+        if len(data) + len(chunk) > limit:
+            raise GhClientError("Actions artifact exceeds download byte limit", kind="size_limit")
+        data.extend(chunk)
+    size = len(data)
+    if declared is not None and size != int(declared):
+        raise GhClientError(f"Actions artifact length mismatch for {endpoint}", kind="content_length")
+    return bytes(data)
+
+
+async def _read_error_prefix(response: httpx.Response, limit: int = 512) -> str:
+    prefix = bytearray()
+    async for chunk in response.aiter_raw(chunk_size=limit):
+        prefix.extend(chunk[: limit - len(prefix)])
+        if len(prefix) >= limit:
+            break
+    return prefix.decode("utf-8", errors="replace").lower()
+
+
+async def _raise_artifact_http_error(response: httpx.Response, endpoint: str) -> None:
+    status = response.status_code
+    if status == 404:
+        raise GhNotFound(endpoint)
+    if status == 410:
+        raise GhArtifactExpired(endpoint)
+    if status in (403, 429):
+        retry_after = response.headers.get("Retry-After")
+        remaining = response.headers.get("X-RateLimit-Remaining")
+        body = await _read_error_prefix(response) if status == 403 else ""
+        limited = (
+            status == 429
+            or remaining == "0"
+            or retry_after is not None
+            or "api rate limit exceeded" in body
+            or "secondary rate limit" in body
+            or "rate limit exceeded" in body
+        )
+        if limited:
+            raise GhRateLimited(retry_after_seconds=_parse_retry_after(response), endpoint=endpoint)
+    raise GhServerError(status, endpoint)
+
+
+async def _download_artifact(client: httpx.AsyncClient, endpoint: str, auth: dict[str, str], limit: int) -> bytes:
+    url = endpoint
+    request_headers = auth
+    visited: set[str] = set()
+    for redirect_count in range(_MAX_ARTIFACT_REDIRECTS + 1):
+        request = client.build_request("GET", url, headers=request_headers)
+        if redirect_count:
+            host = request.headers.get("host")
+            request.headers.clear()
+            if host:
+                request.headers["Host"] = host
+            request.headers["Accept"] = "application/octet-stream"
+        response: httpx.Response | None = None
+        try:
+            response = await client.send(request, stream=True, follow_redirects=False, auth=None)
+            if response.status_code in {301, 302, 303, 307, 308}:
+                if redirect_count >= _MAX_ARTIFACT_REDIRECTS:
+                    raise GhClientError("Actions artifact exceeded redirect limit", kind="redirect")
+                target = _validate_artifact_redirect(response.headers.get("Location", ""))
+                if target in visited or target == url:
+                    raise GhClientError("Actions artifact redirect loop", kind="redirect")
+                visited.add(url)
+                url, request_headers = target, {}
+                continue
+            if response.status_code != 200:
+                await _raise_artifact_http_error(response, endpoint)
+            return await _read_artifact_body(response, limit, endpoint)
+        except httpx.TimeoutException as exc:
+            raise GhClientError("GitHub artifact download timed out", kind="timeout", attempts=1) from exc
+        except httpx.TransportError as exc:
+            raise GhClientError("GitHub artifact download failed", kind="connection", attempts=1) from exc
+        finally:
+            if response is not None:
+                await response.aclose()
+    raise GhClientError("Actions artifact exceeded redirect limit", kind="redirect")
+
+
+async def download_actions_artifact(repo_full: str, artifact_id: int, *, max_bytes: int) -> bytes:
+    """Download one artifact ZIP with bounded bytes and unauthenticated HTTPS redirects."""
+    _validate_artifact_request(repo_full, artifact_id, max_bytes)
+    endpoint = f"/repos/{repo_full}/actions/artifacts/{artifact_id}/zip"
+    try:
+        result = await _download_artifact(_get_client(), endpoint, await _auth_headers(), max_bytes)
+    except GhClientError:
+        raise
+    except httpx.TimeoutException as exc:
+        raise GhClientError("GitHub artifact download timed out", kind="timeout", attempts=1) from exc
+    if result:
+        _set_status("ok", "GitHub Actions artifact download succeeded.", endpoint=endpoint)
+    return result
+
+
 async def post(path: str, *, json: Any = None) -> Any:
     """POST to a GitHub API path.
 
@@ -506,6 +737,12 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
     Yields:
         Individual item dicts.
     """
+    if _is_artifact_collection_path(path):
+        artifacts = await _list_artifact_collection(path, per_page=per_page)
+        for artifact in artifacts:
+            yield artifact
+        return
+
     sep = "&" if "?" in path else "?"
     url: str | None = f"{path}{sep}per_page={per_page}"
 
