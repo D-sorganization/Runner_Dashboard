@@ -130,18 +130,19 @@ def test_fetch_installation_permissions_parses_permissions(monkeypatch: pytest.M
     assert granted["contents"] == "write"
 
 
-def test_github_permissions_fleet_actions_do_not_request_workflows_write() -> None:
+def test_github_permissions_fleet_actions_do_not_request_workflows() -> None:
+    """GitHub App only defines workflows:write; staff runs must not request workflows:read (#2169)."""
     role = _role(
         push_branch=True,
         open_pr=True,
         fleet_actions=["run.cancel", "queue.diagnose", "run.rerun"],
     )
     perms = github_permissions_for_role(role)
-    assert perms.get("workflows") == "read"
+    assert "workflows" not in perms
     assert "actions" not in perms
 
 
-def test_preflight_github_app_for_roles_reports_role_mismatches() -> None:
+def test_preflight_github_app_for_roles_ok_without_workflows_scope() -> None:
     role = _role(push_branch=True, open_pr=True, fleet_actions=["run.cancel"])
     roles = {"pr-remediator": role}
     granted = {k: v for k, v in _REAL_INSTALLATION_BODY["permissions"].items() if k != "workflows"}
@@ -149,11 +150,8 @@ def test_preflight_github_app_for_roles_reports_role_mismatches() -> None:
         with patch("staff.github_app_preflight.fetch_installation_permissions", return_value=granted):
             report = preflight_github_app_for_roles(roles)
 
-    assert report["ok"] is False
-    assert report["mismatches"]
-    first = report["mismatches"][0]
-    assert first["role"] == "pr-remediator"
-    assert "workflows:read (installation has none)" in first["missing"]
+    assert report["ok"] is True
+    assert not report["mismatches"]
 
 
 def test_attention_items_from_preflight() -> None:
