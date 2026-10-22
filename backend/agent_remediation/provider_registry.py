@@ -344,24 +344,6 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
             "it requires SuperGrok."
         ),
     ),
-    ProviderEntry(
-        dashboard_id="maxwell",
-        conductor_id="maxwell-daemon",
-        label="Maxwell Daemon",
-        execution_mode="remote_session",
-        dispatch_mode="dashboard_local",
-        auth_mode="local",
-        resource="local",
-        capabilities=("code_edit", "code_review", "doc"),
-        cost_per_task=0.0,
-        max_concurrency=1,
-        credential_id="maxwell",
-        setup_hint="Optional: run Maxwell_Daemon on this host; the dashboard proxies it over HTTP",
-        editable=False,
-        remote=True,
-        experimental=True,
-        notes="optional; daemon has been dormant since 2026-06",
-    ),
 )
 
 

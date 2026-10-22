@@ -292,8 +292,6 @@ def test_parse_line_json_text_and_usage() -> None:
     assert ev["usage"] == {"input_tokens": 5, "output_tokens": 7, "cost_usd": 0.5}
     assert claude.parse_line("not json") == {"kind": "text", "text": "not json"}
     assert claude.parse_line("{broken") == {"kind": "text", "text": "{broken"}
-    maxwell = adapters_mod.ADAPTERS["maxwell"]
-    assert maxwell.parse_line('{"type": "x"}')["kind"] == "text"  # plain-text provider never parses
 
 
 @pytest.mark.unit

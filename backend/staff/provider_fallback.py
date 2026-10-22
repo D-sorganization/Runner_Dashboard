@@ -31,7 +31,6 @@ KNOWN_PROVIDERS = frozenset(
         "cursor-agent",
         "ollama",
         "claude-ollama",
-        "maxwell",
         "grok-chat",
     }
 )
