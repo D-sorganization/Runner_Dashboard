@@ -301,13 +301,14 @@ def test_mobile_credentials_tab_is_locked_and_webauthn_gated() -> None:
     assert "Credentials re-locked when the tab lost focus." in content
 
 
-def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> None:
-    content = _read_index()
-    assert "mobile-credentials-sheet" in content
-    assert "Confirm sensitive operation" in content
-    assert "Continue only if you intend to change credential state." in content
-    assert "setMobileConfirmProbe(probe)" in content
-    assert "onSetKey(probe)" in content
+def test_mobile_credentials_are_probe_only_without_key_mutation_sheet() -> None:
+    credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
+    action_sheet = (_FRONTEND_DIR / "src" / "pages" / "Credentials" / "CredentialActionSheet.tsx").read_text(
+        encoding="utf-8",
+    )
+    assert "mobile-credentials-sheet" not in credentials_page
+    assert "onSetKey" not in credentials_page
+    assert "/api/credentials/set-key" not in action_sheet
 
 
 def test_credentials_api_is_excluded_from_frontend_cache_contract() -> None:
@@ -404,7 +405,6 @@ def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
         "Queue health summary",
         "Stale queued runs",
         "Mobile remediation dispatch",
-        "Confirm mobile credential change",
         "Feature request history",
     ]:
         assert f'"aria-label": "{label}"' in content or f'aria-label="{label}"' in content

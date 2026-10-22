@@ -353,7 +353,9 @@ class TestRegistryV2Providers:
         assert entry.availability_probe == ("agy",)
         assert set(entry.capabilities) == {"code_edit", "ci_fix", "test_fix", "refactor", "doc"}
         assert entry.max_concurrency == 1
-        assert entry.setup_hint == "Install Antigravity CLI (agy) on the node"
+        assert entry.setup_hint == (
+            "Install Antigravity CLI (agy), then sign in with your Google account (subscription; no API key)"
+        )
 
     def test_cursor_agent_exposes_a_grok_model(self) -> None:
         from agent_remediation import by_dashboard_id  # noqa: PLC0415

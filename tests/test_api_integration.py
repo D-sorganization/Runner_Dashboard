@@ -208,7 +208,10 @@ async def test_credentials_endpoint_includes_linear_probe(client, monkeypatch) -
     assert resp.status_code == 200
     data = resp.json()
     probes = data.get("probes", []) if isinstance(data, dict) else []
-    assert any(probe.get("key_provider") == "linear" for probe in probes if isinstance(probe, dict))
+    assert any(
+        isinstance(probe, dict) and str(probe.get("id", "")).startswith("linear:")
+        for probe in probes
+    )
 
 
 @pytest.mark.asyncio
