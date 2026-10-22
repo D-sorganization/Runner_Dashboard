@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from typing import Callable
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 
