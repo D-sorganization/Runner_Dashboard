@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  merge_group:
 
 permissions:
   contents: read
@@ -96,26 +97,35 @@ jobs:
   typecheck:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
-    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
-    if: >-
-      (needs.frontend-scope.outputs.run_api_contract == 'true')
+    # Required on main: never skip the job — gate heavy steps so the context
+    # always reports (docs-only PRs and merge_group included).
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
+      - name: Note when TypeScript validation is out of scope
+        if: needs.frontend-scope.outputs.run_api_contract != 'true'
+        run: |
+          echo "Change set does not touch the API contract / TypeScript surface; heavy steps skipped."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         with:
           node-version: "20"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: npm ci
 
       - name: Install backend dependencies for API contract generation
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: |
           python -m venv "$RUNNER_TEMP/api-contract-venv"
           source "$RUNNER_TEMP/api-contract-venv/bin/activate"
@@ -131,9 +141,11 @@ jobs:
           fi
 
       - name: Verify generated API contract types
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: npm run generate-api:check
 
       - name: Typecheck (tsc, no emit)
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: npm run typecheck
 
   vitest:

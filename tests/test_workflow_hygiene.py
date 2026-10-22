@@ -415,6 +415,21 @@ def test_ci_secrets_keeps_the_full_history_gitleaks_scan() -> None:
     assert "--no-git" not in text
 
 
+def test_required_typecheck_job_always_reports_context() -> None:
+    """TypeScript typecheck (tsc) is required on main; the job must not be SKIPPED."""
+    workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
+    job = workflow["jobs"]["typecheck"]
+    assert job.get("if") is None, "typecheck must not use a job-level `if` that skips the required context"
+    assert job["name"] == "TypeScript typecheck (tsc)"
+
+
+def test_detect_secrets_runs_on_fork_prs() -> None:
+    text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
+    job_block = text.split("detect-secrets:", 1)[1].split("gitleaks:", 1)[0]
+    assert "head.repo.full_name == github.repository" not in job_block
+    assert "ubuntu-latest" in job_block
+
+
 _REQUIRED_CHECKS_POLICY = Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
 
 
