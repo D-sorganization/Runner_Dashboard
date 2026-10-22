@@ -72,6 +72,8 @@ pydantic-core==2.46.3
     # via pydantic
 pyjwt==2.15.0
     # via runner-dashboard
+pypdf==6.7.5
+    # via runner-dashboard
 python-dotenv==1.2.2
     # via uvicorn
 pyyaml==6.0.3

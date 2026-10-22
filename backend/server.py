@@ -146,6 +146,7 @@ from routers import code_requests_board as _code_requests_board_router  # noqa: 
 from routers import code_requests_executor as _code_requests_executor_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import delivery_metrics as _delivery_metrics_router  # noqa: E402  # issue #2121
+from routers import library as _library_router  # noqa: E402  # issue #2165
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
@@ -749,6 +750,7 @@ app.include_router(_staff_schedule_router.v1_router)  # role schedule override (
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
+app.include_router(_library_router.router)  # Alexandria library (#2165)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402
