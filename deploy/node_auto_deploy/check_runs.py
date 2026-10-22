@@ -9,6 +9,8 @@ PASSING_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 FAILING_CONCLUSIONS = frozenset(
     {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
 )
+# Superseded runs (concurrency cancel) neither pass nor fail when a green rerun exists.
+_IGNORED_WHEN_SUPERSEDED = frozenset({"cancelled", "stale"})
 PENDING_STATUSES = frozenset({"queued", "in_progress"})
 """Conclusions that satisfy a check *name* when aggregated (neutral alone does not)."""
 SATISFYING_NAME_CONCLUSIONS = frozenset({"success", "skipped"})
@@ -57,6 +59,10 @@ def completed_run_conclusion_fails(run: dict[str, Any]) -> bool:
 def check_name_passes(runs: list[dict[str, Any]]) -> bool:
     """Aggregate by name: pass when no failing completed run and ≥1 success or skipped."""
     completed = [r for r in runs if not run_is_pending(r)]
-    if any(completed_run_conclusion_fails(r) for r in completed):
+    has_satisfying = any(str(r.get("conclusion") or "") in SATISFYING_NAME_CONCLUSIONS for r in completed)
+    to_score = completed
+    if has_satisfying:
+        to_score = [r for r in completed if str(r.get("conclusion") or "") not in _IGNORED_WHEN_SUPERSEDED]
+    if any(completed_run_conclusion_fails(r) for r in to_score):
         return False
-    return any(str(r.get("conclusion") or "") in SATISFYING_NAME_CONCLUSIONS for r in completed)
+    return has_satisfying
