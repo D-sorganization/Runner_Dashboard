@@ -14,7 +14,6 @@ from gh_client import GhRateLimited
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "delivery_metrics"
 REPO = "D-sorganization/Runner_Dashboard"
-HEAD = "7f27228dc515dbe4f4ef24c62eb97fc2c423028e"
 
 
 @pytest.fixture
@@ -44,17 +43,18 @@ async def test_fetch_pull_uses_gh_client_and_cache(monkeypatch: pytest.MonkeyPat
 @pytest.mark.asyncio
 async def test_list_check_runs_from_fixture(monkeypatch: pytest.MonkeyPatch, collector: GhClientDeliveryCollector) -> None:
     payload = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
+    head_sha = payload["check_runs"][0]["head_sha"]
 
     async def fake_get(path: str) -> Any:
-        assert HEAD in path
+        assert head_sha in path
         return payload
 
     monkeypatch.setattr(gh_client, "get", fake_get)
     monkeypatch.setattr(gh_client, "get_auth_fingerprint", lambda: "test-fp")
 
-    runs = await collector.list_check_runs(REPO, HEAD)
+    runs = await collector.list_check_runs(REPO, head_sha)
     assert len(runs) >= 20
-    assert runs[0].head_sha == HEAD
+    assert runs[0].head_sha == head_sha
 
 
 @pytest.mark.asyncio
