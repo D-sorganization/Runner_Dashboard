@@ -110,6 +110,38 @@ def test_registry_filters_and_pin(skills_env: Path) -> None:
     assert get_skill("upstreamdrift-run-simulation", version="9.9.9") is None
 
 
+def test_attachment_edit_refreshes_without_skill_md_change(skills_env: Path) -> None:
+    detail = get_skill("affinedrift-add-article")
+    assert detail is not None
+    before = detail.attachments[0].content_hash
+    att_path = skills_env / "affinedrift/add-article/templates/article-quarto.md"
+    att_path.write_text("# updated draft\n", encoding="utf-8")
+    after = get_skill("affinedrift-add-article")
+    assert after is not None
+    assert after.attachments[0].content_hash != before
+
+
+def test_latest_version_uses_semver_precedence(skills_env: Path) -> None:
+    pkg = skills_env / "fleet/demo"
+    pkg.mkdir(parents=True)
+    (pkg / "SKILL.md").write_text(
+        "---\nname: fleet-demo\nversion: 2.0.0\ndescription: old major\nroles: [demo]\n"
+        "repos: [Runner_Dashboard]\ntask_types: [demo]\n---\n",
+        encoding="utf-8",
+    )
+    pkg2 = skills_env / "fleet/demo-v10"
+    pkg2.mkdir(parents=True)
+    (pkg2 / "SKILL.md").write_text(
+        "---\nname: fleet-demo\nversion: 10.0.0\ndescription: newer major\nroles: [demo]\n"
+        "repos: [Runner_Dashboard]\ntask_types: [demo]\n---\n",
+        encoding="utf-8",
+    )
+    clear_skills_cache()
+    latest = get_skill("fleet-demo")
+    assert latest is not None
+    assert latest.version == "10.0.0"
+
+
 def test_skills_api(skills_env: Path) -> None:
     client = TestClient(app, headers={"X-Requested-With": "XMLHttpRequest"}, raise_server_exceptions=False)
     listed = client.get("/api/v1/staff/skills", params={"repo": "UpstreamDrift"}).json()
