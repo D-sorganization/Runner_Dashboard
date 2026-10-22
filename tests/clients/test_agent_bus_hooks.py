@@ -35,6 +35,21 @@ def test_session_start_registers_and_persists_token(state_file: Path) -> None:
             }
         if path.startswith("/api/v1/agent/inbox"):
             return {"session": client.session, "messages": [{"id": "abm_1", "type": "request"}], "next_cursor": 1}
+        if path.startswith("/api/v1/staff/skills"):
+            if path == "/api/v1/staff/skills":
+                return {"count": 0, "skills": []}
+            return {
+                "name": "demo",
+                "version": "1.0.0",
+                "description": "d",
+                "roles": ["local"],
+                "repos": ["Runner_Dashboard"],
+                "task_types": ["demo"],
+                "content_hash": "abc",
+                "pin": "demo@1.0.0+abc",
+                "body": "x",
+                "attachments": [],
+            }
         raise AssertionError(path)
 
     with mock.patch.object(client, "request", side_effect=fake_request):
@@ -42,6 +57,7 @@ def test_session_start_registers_and_persists_token(state_file: Path) -> None:
 
     assert summary["registered"] is True
     assert summary["inbox_count"] == 1
+    assert summary.get("skills_exported", 0) >= 0
     saved = json.loads(state_file.read_text(encoding="utf-8"))
     assert saved["session"] == client.session
     assert saved["token"] == "tok_test_register_inbox_01"

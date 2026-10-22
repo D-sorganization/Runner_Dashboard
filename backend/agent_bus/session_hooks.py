@@ -117,7 +117,20 @@ def session_start(
         messages = inbox.get("messages", []) if isinstance(inbox, dict) else []
         count = len(messages) if isinstance(messages, list) else 0
         log.info("agent bus session start: session=%s inbox=%d", session, count)
-        return {"offline": False, "registered": True, "inbox_count": count, "session": session}
+        summary: dict[str, Any] = {"offline": False, "registered": True, "inbox_count": count, "session": session}
+        try:
+            from agent_bus.skills_delivery import export_skills_at_session_start
+
+            summary.update(
+                export_skills_at_session_start(
+                    client,
+                    role=resolved_role,
+                    provider=provider or _provider(),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            log.debug("skills export at session start failed", exc_info=True)
+        return summary
     except FleetAPIError as exc:
         if exc.status == 0:
             return _offline_summary(exc)
