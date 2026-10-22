@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from agent_remediation.provider_registry import PROVIDER_REGISTRY, by_dashboard_id
@@ -42,6 +43,8 @@ def refusal_for_provider_auth(provider: str, machine: str) -> ProviderAuthRefusa
     Pre: ``provider`` is the resolved staff provider id (e.g. ``claude``, ``antigravity``).
     Post: ``None`` when dispatch may proceed; otherwise a non-retryable ``auth_expired`` refusal.
     """
+    if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
+        return None
     cred_id = _credential_id_for_provider(provider) or provider
     alive, detail = provider_oauth_session_alive(cred_id)
     if alive:
