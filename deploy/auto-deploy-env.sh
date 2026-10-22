@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared path resolution for node auto-deploy (safe under systemd with empty HOME).
+# Shared path resolution for node auto-deploy (safe when HOME is unset under systemd).
 # Source from node-auto-deploy.sh and install-node-auto-deploy.sh — do not execute.
 set -euo pipefail
 
