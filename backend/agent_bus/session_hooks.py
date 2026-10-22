@@ -14,19 +14,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_fleet_dir = Path(__file__).resolve().parents[2] / "clients" / "fleet"
+if str(_fleet_dir) not in sys.path:
+    sys.path.insert(0, str(_fleet_dir))
+
+from fleet_client import FleetAPIError, FleetClient  # noqa: E402
+from fleet_validators import short_host  # noqa: E402
+
 log = logging.getLogger("dashboard.agent_bus.session_hooks")
 
 DEFAULT_LEASE_SECONDS = 300
-
-
-def _fleet_client_types() -> tuple[type, type, Any]:
-    fleet_dir = Path(__file__).resolve().parents[2] / "clients" / "fleet"
-    if str(fleet_dir) not in sys.path:
-        sys.path.insert(0, str(fleet_dir))
-    from fleet_client import FleetAPIError, FleetClient  # noqa: PLC0415
-    from fleet_validators import short_host  # noqa: PLC0415
-
-    return FleetAPIError, FleetClient, short_host
 
 
 def _identity_dir() -> Path:
@@ -95,7 +92,6 @@ def session_start(
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
 ) -> dict[str, Any]:
     """Register this session and fetch inbox; no-op when the dashboard is down."""
-    FleetAPIError, _FleetClient, short_host = _fleet_client_types()
     session = client.session
     if not session:
         raise ValueError("session is required on the FleetClient")
@@ -130,7 +126,6 @@ def session_start(
 
 def pre_push(client: Any | None = None, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> dict[str, Any]:
     """Heartbeat and refresh inbox cursor; no-op when offline or no saved session."""
-    FleetAPIError, FleetClient, _short_host = _fleet_client_types()
     state = _load_state()
     if not state or not state.get("session") or not state.get("token"):
         return {"skipped": True, "reason": "no agent-bus state"}
