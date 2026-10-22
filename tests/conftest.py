@@ -3,6 +3,8 @@
 # See Repository_Management/docs/FLEET_TESTING_STANDARDS.md.
 # ---------------------------------------------------------------------------
 import os  # noqa: E402
+import shlex  # noqa: E402
+import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -64,6 +66,34 @@ if deploy_tests_dir not in sys.path:
     sys.path.insert(0, deploy_tests_dir)
 
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_real_provider_cli(monkeypatch):
+    """Provider CLIs are never launched by tests; provider fixtures use fakes."""
+    real_popen = subprocess.Popen
+    provider_names = {"codex", "claude", "agy", "antigravity"}
+
+    def guarded_popen(args, *positional, **kwargs):
+        command = args if isinstance(args, (list, tuple)) else shlex.split(os.fspath(args))
+        if kwargs.get("shell"):
+            shell_command = next(
+                (command[index + 1] for index, token in enumerate(command[:-1]) if token == "-c"),
+                None,
+            )
+            if shell_command is not None:
+                command = shlex.split(os.fspath(shell_command))
+        executable_index = 1 if command and os.path.basename(os.fspath(command[0])).lower() == "env" else 0
+        executable = (
+            os.path.basename(os.fspath(command[executable_index])).lower().removesuffix(".exe")
+            if len(command) > executable_index
+            else ""
+        )
+        if executable in provider_names:
+            raise AssertionError(f"Tests must not execute a real provider CLI: {executable}")
+        return real_popen(args, *positional, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", guarded_popen)
 
 
 # ---------------------------------------------------------------------------
