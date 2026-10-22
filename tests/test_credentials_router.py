@@ -216,9 +216,7 @@ def test_probe_claude_code_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     assert probe["detail"] == "Ready (ANTHROPIC_API_KEY)"
 
 
-def test_probe_claude_code_cli_expired_oauth_not_authenticated(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_probe_claude_code_cli_expired_oauth_not_authenticated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
     monkeypatch.setattr(credentials, "_env_present_anywhere", lambda key: False)
     claude_dir = tmp_path / ".claude"

@@ -151,10 +151,7 @@ def test_table_driven_classifier_patterns(
 
 def test_classify_codex_unsupported_chatgpt_model_as_config() -> None:
     """Unsupported Codex ChatGPT-account models are config failures, not unknown (#2022)."""
-    text = (
-        "Error code: 400 - The 'gpt-5.5' model is not supported when using "
-        "Codex with a ChatGPT account"
-    )
+    text = "Error code: 400 - The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account"
     classification = classify_run_failure(
         provider="codex",
         exit_code=1,
@@ -163,7 +160,10 @@ def test_classify_codex_unsupported_chatgpt_model_as_config() -> None:
     )
     assert classification.failure_class == "config"
     assert classification.retryable is False
-    assert "gpt-6-luna" in classification.remediation.lower() or "config/staff_provider_defaults" in classification.remediation
+    assert (
+        "gpt-6-luna" in classification.remediation.lower()
+        or "config/staff_provider_defaults" in classification.remediation
+    )
 
 
 def test_classify_watchdog_timeout() -> None:
