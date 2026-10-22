@@ -29,10 +29,3 @@ def make_text_pdf(*lines: str) -> bytes:
     writer.write(buf)
     return buf.getvalue()
 
-
-def make_blank_pdf() -> bytes:
-    writer = PdfWriter()
-    writer.add_blank_page(width=612, height=792)
-    buf = BytesIO()
-    writer.write(buf)
-    return buf.getvalue()

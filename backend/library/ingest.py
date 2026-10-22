@@ -4,7 +4,6 @@ import hashlib
 import re
 import sqlite3
 from contextlib import closing
-from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -48,17 +47,6 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None) -> dict[
             )
             _replace_passages(conn, work_id, reader)
             indexed += 1
-        conn.execute(
-            "INSERT INTO ingest_runs (started_at, finished_at, source_root, files_seen, files_indexed)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (
-                datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                str(source_root),
-                seen,
-                indexed,
-            ),
-        )
         conn.commit()
     return {"files_seen": seen, "files_indexed": indexed}
 
