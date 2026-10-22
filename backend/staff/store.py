@@ -118,6 +118,7 @@ class RunRecord:
         d["retryable"] = bool(self.retryable)
         d["attempt"] = int(self.attempt)
         d["max_attempts"] = int(self.max_attempts)
+        d["skill"] = None if not self.skill_pin else {"pin": self.skill_pin}
         return d
 
 

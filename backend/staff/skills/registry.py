@@ -111,6 +111,12 @@ def skill_validation_errors() -> dict[str, list[str]]:
         return dict(_CACHE_ERRORS)
 
 
+def repo_matches_skill(skill_repos: tuple[str, ...], repo: str) -> bool:
+    if not skill_repos or "*" in skill_repos:
+        return True
+    return bool(repo) and repo in skill_repos
+
+
 def list_skills(
     *,
     role: str | None = None,
@@ -123,7 +129,7 @@ def list_skills(
     if role:
         rows = [r for r in rows if role in r.roles]
     if repo:
-        rows = [r for r in rows if repo in r.repos]
+        rows = [r for r in rows if repo_matches_skill(r.repos, repo)]
     if task_type:
         rows = [r for r in rows if task_type in r.task_types]
     return sorted(rows, key=lambda r: r.name)

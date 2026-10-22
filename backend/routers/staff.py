@@ -86,6 +86,14 @@ class RunBody(BaseModel):
     ignore_budget: bool = False
     # Set by a forwarding peer so a retried forward admits one run (#1796); ignored from others.
     operation_id: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9-]+$")
+    # Unattended skill selection (#2157): filters registry skills; omit to match role/repo automatically.
+    task_type: str = Field(default="", max_length=80)
+    standards_extra: str = Field(default="", max_length=8000)
+    skill: str | None = Field(
+        default=None,
+        max_length=120,
+        description="Explicit skill package name; must exist in the registry or dispatch is rejected.",
+    )
 
     @field_validator("repo")
     @classmethod
@@ -436,5 +444,8 @@ async def run_dispatch(
         origin_node=origin_node,
         ignore_budget=body.ignore_budget,
         operation_id=operation_id,
+        task_type=body.task_type,
+        standards_extra=body.standards_extra,
+        requested_skill=body.skill,
     )
     return await dispatch_staff_run(cmd, caller)

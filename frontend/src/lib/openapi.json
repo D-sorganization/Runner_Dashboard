@@ -3891,6 +3891,25 @@
             "title": "Repo",
             "type": "string"
           },
+          "skill": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit skill package name; must exist in the registry or dispatch is rejected.",
+            "title": "Skill"
+          },
+          "standards_extra": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Standards Extra",
+            "type": "string"
+          },
           "surface": {
             "anyOf": [
               {
@@ -3902,6 +3921,12 @@
               }
             ],
             "title": "Surface"
+          },
+          "task_type": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Task Type",
+            "type": "string"
           },
           "thread_id": {
             "anyOf": [
