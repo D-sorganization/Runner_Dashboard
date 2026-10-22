@@ -250,8 +250,7 @@ class AgentBusStore:
             rows = (
                 self._conn()
                 .execute(
-                    "SELECT * FROM agent_bus_inbox WHERE to_address = ? AND cursor > ? "
-                    "ORDER BY cursor ASC LIMIT ?",
+                    "SELECT * FROM agent_bus_inbox WHERE to_address = ? AND cursor > ? ORDER BY cursor ASC LIMIT ?",
                     (to_address, since_cursor, limit),
                 )
                 .fetchall()

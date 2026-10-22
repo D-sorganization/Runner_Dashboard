@@ -823,6 +823,29 @@
         "title": "ClaimReleaseBody",
         "type": "object"
       },
+      "ClaimTrackBody": {
+        "additionalProperties": false,
+        "properties": {
+          "issue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Issue",
+            "type": "integer"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "issue"],
+        "title": "ClaimTrackBody",
+        "type": "object"
+      },
       "ClearKeyRequest": {
         "properties": {
           "provider": {
@@ -1624,6 +1647,41 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HandoffBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Body",
+            "type": "object"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "work_kind": {
+            "enum": ["issue", "pr"],
+            "title": "Work Kind",
+            "type": "string"
+          },
+          "work_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Work Number",
+            "type": "integer"
+          }
+        },
+        "required": ["session", "repo", "work_kind", "work_number", "body"],
+        "title": "HandoffBody",
         "type": "object"
       },
       "HeartbeatBody": {
@@ -17363,6 +17421,124 @@
         },
         "summary": "Get Usage Table",
         "tags": ["usage-metrics"]
+      }
+    },
+    "/api/v1/agent/backlog": {
+      "get": {
+        "operationId": "get_backlog_api_v1_agent_backlog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Backlog Api V1 Agent Backlog Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Backlog",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/claims": {
+      "post": {
+        "operationId": "post_track_claim_api_v1_agent_claims_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTrackBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Track Claim Api V1 Agent Claims Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Track Claim",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/handoff": {
+      "put": {
+        "operationId": "put_handoff_api_v1_agent_handoff_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Handoff Api V1 Agent Handoff Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Handoff",
+        "tags": ["agent-bus"]
       }
     },
     "/api/v1/agent/heartbeat": {
