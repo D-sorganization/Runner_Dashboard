@@ -155,8 +155,12 @@ def test_entrypoint_runs_under_systemd_like_env_home_unset(tmp_path: Path) -> No
 
 
 def _ecb3f6b_runs() -> list[dict[str, object]]:
-    runs = json.loads(_FIXTURE.read_text(encoding="utf-8"))
-    return [{**run, "head_sha": _ECB3F6B_SHA} for run in runs]
+    payload = json.loads(_FIXTURE.read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        raw = payload.get("check_runs", [])
+    else:
+        raw = payload
+    return [{**run, "head_sha": _ECB3F6B_SHA} for run in raw]
 
 
 def test_ci_gate_passes_recorded_ecb3f6b_check_runs() -> None:
