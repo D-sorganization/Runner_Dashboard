@@ -58,7 +58,11 @@ def _load_directory(root: Path) -> None:
     for skill_file in sorted(root.glob(_SKILL_GLOB)):
         rel = str(skill_file.relative_to(root))
         try:
-            detail = parse_skill_md(skill_file.read_text(encoding="utf-8"), source_path=rel, package_dir=skill_file.parent)
+            detail = parse_skill_md(
+                skill_file.read_text(encoding="utf-8"),
+                source_path=rel,
+                package_dir=skill_file.parent,
+            )
         except (OSError, SkillValidationError) as exc:
             errors[rel] = [str(exc)]
             continue
@@ -98,7 +102,12 @@ def skill_validation_errors() -> dict[str, list[str]]:
         return dict(_CACHE_ERRORS)
 
 
-def list_skills(*, role: str | None = None, repo: str | None = None, task_type: str | None = None) -> list[SkillSummary]:
+def list_skills(
+    *,
+    role: str | None = None,
+    repo: str | None = None,
+    task_type: str | None = None,
+) -> list[SkillSummary]:
     _ensure_loaded()
     with _CACHE_LOCK:
         rows = list(_CACHE_SUMMARIES.values())

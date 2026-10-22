@@ -25,8 +25,8 @@ from routers.staff import (
     RunBody,
 )
 from routers.staff_knowledge import router as staff_knowledge_router
-from routers.staff_skills import router as staff_skills_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
+from routers.staff_skills import router as staff_skills_router
 from staff import fleet as staff_fleet
 from staff import summary_view, usage
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
