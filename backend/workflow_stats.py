@@ -31,6 +31,7 @@ import logging
 import subprocess
 from typing import Any
 
+from time_utils import parse_github_ts as _parse_ts
 from workflow_stats_db import (
     SCHEMA_SQL,  # noqa: F401 - compatibility export
     connect_stats_db,  # noqa: F401 - public connection boundary
@@ -39,7 +40,6 @@ from workflow_stats_db import (
 from workflow_stats_db import (
     open_stats_db as _connect,
 )
-from time_utils import parse_github_ts as _parse_ts
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
