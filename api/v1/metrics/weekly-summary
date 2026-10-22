@@ -1,2 +1,0 @@
-# HTTP route: GET /api/v1/metrics/weekly-summary (issue #2123).
-# Implementation: backend/delivery_metrics/weekly_summary.py
