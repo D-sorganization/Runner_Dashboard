@@ -60,6 +60,22 @@ def test_publisher_gate_ignores_in_flight_self_check() -> None:
     assert ok_head is False
 
 
+def test_deploy_gate_ignores_pending_publisher_and_fleet_hygiene_jobs() -> None:
+    runs = _minimal_green_runs(_GREEN_SHA) + [
+        {
+            "head_sha": _GREEN_SHA,
+            "name": "Publish dashboard release when CI gate is green",
+            "status": "queued",
+            "conclusion": None,
+        },
+        {"head_sha": _GREEN_SHA, "name": "compare", "status": "in_progress", "conclusion": None},
+        {"head_sha": _GREEN_SHA, "name": "reconcile", "status": "queued", "conclusion": None},
+        {"head_sha": _GREEN_SHA, "name": "refresh", "status": "in_progress", "conclusion": None},
+    ]
+    ok, _ = commit_passes_publisher_ci_gate(runs, _GREEN_SHA)
+    assert ok is True
+
+
 def test_vitest_failure_blocks_release() -> None:
     runs = _minimal_failing_runs(_FAIL_SHA, failing_name="Vitest + Coverage", failing_conclusion="failure")
     ok, detail = commit_passes_main_ci_gate(runs, _FAIL_SHA)

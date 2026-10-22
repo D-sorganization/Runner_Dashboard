@@ -15,6 +15,27 @@ from node_auto_deploy.check_runs import (
 
 DEFAULT_MAIN_HISTORY_LIMIT = 20
 
+# Advisory / self-referential checks must not block node auto-deploy or main CI auto-release.
+NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
+    {
+        "Publish dashboard release when CI gate is green",
+        "Publish dashboard release (manual dispatch)",
+        "Main CI auto-release",
+        "compare",  # Maxwell Contract Drift
+        "reconcile",  # Armed PR cap reconcile
+        "refresh",  # Agent Fleet Dashboard
+    }
+)
+
+
+def filter_non_blocking_check_runs(check_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [r for r in check_runs if str(r.get("name") or "") not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
+
+
+def ci_gate_for_deploy_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+    """Deploy/release gate: required CI checks only (excludes publisher and fleet hygiene jobs)."""
+    return ci_gate_for_commit(filter_non_blocking_check_runs(check_runs), expected_sha)
+
 
 def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     runs = payload.get("check_runs")
@@ -83,7 +104,7 @@ def select_deployable_main_commit(
         if sha is None:
             continue
         runs = fetch_check_runs(sha)
-        ok, detail = ci_gate_for_commit(runs, sha)
+        ok, detail = ci_gate_for_deploy_commit(runs, sha)
         if ok:
             return sha, detail
         last_detail = detail
@@ -96,7 +117,7 @@ def select_deployable_main_commit_with_release(
     fetch_check_runs: Callable[[str], list[dict[str, Any]]],
     has_release: Callable[[str], bool],
 ) -> tuple[str | None, str]:
-    """Newest commit that passes ``ci_gate_for_commit`` and ``has_release(sha)``."""
+    """Newest commit that passes ``ci_gate_for_deploy_commit`` and ``has_release(sha)``."""
     if not commits_newest_first:
         return None, "no commits in main history window"
 
@@ -106,7 +127,7 @@ def select_deployable_main_commit_with_release(
         if sha is None:
             continue
         runs = fetch_check_runs(sha)
-        ok, detail = ci_gate_for_commit(runs, sha)
+        ok, detail = ci_gate_for_deploy_commit(runs, sha)
         if not ok:
             last_detail = detail
             continue
