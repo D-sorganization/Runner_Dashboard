@@ -28,10 +28,17 @@ def test_source_write_requires_fleet_control(tmp_path: Path) -> None:
 
 
 def test_source_api_register_update_and_unregister(tmp_path: Path) -> None:
-    root = tmp_path / "source"; root.mkdir()
-    principal = Principal(id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"])
+    root = tmp_path / "source"
+    root.mkdir()
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
     client = _client(tmp_path / "library.sqlite", principal)
-    post = client.post("/api/v1/library/sources", json={"id": "docs", "label": "Docs", "root_path": str(root)}, headers=_XHR)
+    post = client.post(
+        "/api/v1/library/sources",
+        json={"id": "docs", "label": "Docs", "root_path": str(root)},
+        headers=_XHR,
+    )
     assert post.status_code == 200
     assert client.patch("/api/v1/library/sources/docs", json={"shared": True}, headers=_XHR).json()["shared"]
     assert client.get("/api/v1/library/sources", headers=_XHR).json()["sources"][0]["id"] == "docs"
@@ -39,10 +46,23 @@ def test_source_api_register_update_and_unregister(tmp_path: Path) -> None:
 
 
 def test_source_api_rejects_overlapping_roots_with_422(tmp_path: Path) -> None:
-    root = tmp_path / "source"; root.mkdir()
-    child = root / "child"; child.mkdir()
-    principal = Principal(id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"])
+    root = tmp_path / "source"
+    root.mkdir()
+    child = root / "child"
+    child.mkdir()
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
     client = _client(tmp_path / "library.sqlite", principal)
-    assert client.post("/api/v1/library/sources", json={"id": "one", "label": "One", "root_path": str(root)}, headers=_XHR).status_code == 200
-    response = client.post("/api/v1/library/sources", json={"id": "two", "label": "Two", "root_path": str(child)}, headers=_XHR)
+    resp_one = client.post(
+        "/api/v1/library/sources",
+        json={"id": "one", "label": "One", "root_path": str(root)},
+        headers=_XHR,
+    )
+    assert resp_one.status_code == 200
+    response = client.post(
+        "/api/v1/library/sources",
+        json={"id": "two", "label": "Two", "root_path": str(child)},
+        headers=_XHR,
+    )
     assert response.status_code == 422

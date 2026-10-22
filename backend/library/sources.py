@@ -40,8 +40,15 @@ def _validated_root(root_path: str | Path, *, data_dir: Path | None = None) -> P
 
 
 def add_source(
-    db_path: Path, *, source_id: str, label: str, root_path: str | Path,
-    shared: bool = False, include_globs: Any = None, exclude_globs: Any = None, created_by: str | None = None,
+    db_path: Path,
+    *,
+    source_id: str,
+    label: str,
+    root_path: str | Path,
+    shared: bool = False,
+    include_globs: Any = None,
+    exclude_globs: Any = None,
+    created_by: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(source_id, str) or not _SLUG.fullmatch(source_id):
         raise ValueError("source id must be a lowercase slug")
@@ -53,17 +60,25 @@ def add_source(
     db = init_library_db(db_path)
     includes, excludes = _globs(include_globs), _globs(exclude_globs)
     with closing(sqlite3.connect(db)) as conn:
-        overlap = conn.execute(
-            "SELECT id,root_path FROM library_sources WHERE status='active'"
-        ).fetchall()
+        overlap = conn.execute("SELECT id,root_path FROM library_sources WHERE status='active'").fetchall()
         for other_id, other_path in overlap:
             other = Path(other_path).resolve()
             if root == other or root in other.parents or other in root.parents:
                 raise ValueError(f"source root overlaps existing source {other_id}")
         conn.execute(
-            "INSERT INTO library_sources(id,label,root_path,shared,include_globs,exclude_globs,created_at,created_by,status) "
+            "INSERT INTO library_sources("
+            "id,label,root_path,shared,include_globs,exclude_globs,created_at,created_by,status) "
             "VALUES(?,?,?,?,?,?,?,?, 'active')",
-            (source_id, label.strip(), str(root), int(shared), includes, excludes, datetime.now(UTC).isoformat(), created_by),
+            (
+                source_id,
+                label.strip(),
+                str(root),
+                int(shared),
+                includes,
+                excludes,
+                datetime.now(UTC).isoformat(),
+                created_by,
+            ),
         )
         conn.commit()
     return get_source(db, source_id)
@@ -83,6 +98,7 @@ def seed_default_source(db_path: Path | None = None) -> None:
         # A legacy configured source remains usable by the ingest loop; invalid
         # paths are deliberately not registered.
         import logging
+
         logging.getLogger("dashboard.library.sources").warning("could not seed default library source: %s", exc)
 
 
@@ -119,7 +135,8 @@ def update_source(db_path: Path, source_id: str, **changes: Any) -> dict[str, An
         else:
             values[key] = _globs(value)
     with closing(sqlite3.connect(db_path)) as conn:
-        conn.execute("UPDATE library_sources SET " + ",".join(f"{key}=?" for key in values) + " WHERE id=?", (*values.values(), source_id))
+        set_clause = ",".join(f"{key}=?" for key in values)
+        conn.execute(f"UPDATE library_sources SET {set_clause} WHERE id=?", (*values.values(), source_id))
         conn.commit()
     return get_source(db_path, source_id)
 
@@ -132,7 +149,10 @@ def remove_source(db_path: Path, source_id: str) -> None:
             raise LookupError(f"unknown source: {source_id}")
         conn.execute("DELETE FROM files WHERE source_id=?", (source_id,))
         conn.execute("DELETE FROM library_sources WHERE id=?", (source_id,))
-        conn.execute("UPDATE works SET status='retired' WHERE status='active' AND id NOT IN (SELECT work_id FROM files WHERE status='present')")
+        conn.execute(
+            "UPDATE works SET status='retired' WHERE status='active' "
+            "AND id NOT IN (SELECT work_id FROM files WHERE status='present')"
+        )
         conn.commit()
 
 

@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS works (
     doi TEXT, isbn TEXT, format TEXT NOT NULL, topics TEXT, provenance TEXT,
     status TEXT NOT NULL DEFAULT 'active', needs_ocr INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS files (
-    id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id), source_id TEXT NOT NULL DEFAULT 'default', rel_path TEXT NOT NULL,
+    id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id),
+    source_id TEXT NOT NULL DEFAULT 'default', rel_path TEXT NOT NULL,
     drive_id TEXT, drive_link TEXT, mtime REAL NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'present', UNIQUE(source_id, rel_path));
 CREATE TABLE IF NOT EXISTS library_sources (
@@ -57,7 +58,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         source = "source_id" if "source_id" in legacy_cols else "'default'"
         conn.execute(
             "INSERT INTO files(id,work_id,source_id,rel_path,drive_id,drive_link,mtime,size,sha256,status,source_root) "
-            f"SELECT id,work_id,{source},rel_path,drive_id,drive_link,mtime,size,sha256,status,source_root FROM files_legacy"
+            f"SELECT id,work_id,{source},rel_path,drive_id,drive_link,mtime,size,sha256,status,source_root "
+            "FROM files_legacy"
         )
         conn.execute("DROP TABLE files_legacy")
     run_cols = {row[1] for row in conn.execute("PRAGMA table_info(ingest_runs)")}

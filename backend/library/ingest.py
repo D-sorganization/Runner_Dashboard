@@ -15,8 +15,8 @@ from typing import Any
 
 from library.collections import load_collections, topics_for_rel_path
 from library.db import LibraryStore, init_library_db, library_source_dir
-from library.sources import get_source, matches_source_globs, seed_default_source
 from library.search import estimate_tokens
+from library.sources import get_source, matches_source_globs, seed_default_source
 from pypdf import PdfReader
 
 log = logging.getLogger("dashboard.library.ingest")
@@ -47,8 +47,13 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_i
             (started, source_root.as_posix()),
         ).lastrowid
         paths = sorted(
-            (p for p in source_root.rglob("*") if p.is_file() and p.suffix.lower() in _INGEST_SUFFIXES
-             and matches_source_globs(p.relative_to(source_root).as_posix(), include_globs, exclude_globs)),
+            (
+                p
+                for p in source_root.rglob("*")
+                if p.is_file()
+                and p.suffix.lower() in _INGEST_SUFFIXES
+                and matches_source_globs(p.relative_to(source_root).as_posix(), include_globs, exclude_globs)
+            ),
             key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()),
         )
         for path in paths:
@@ -207,7 +212,9 @@ def _upsert_file(
     )
 
 
-def _mark_removals(conn: sqlite3.Connection, source_root: Path, seen_paths: set[str], source_id: str = "default") -> int:
+def _mark_removals(
+    conn: sqlite3.Connection, source_root: Path, seen_paths: set[str], source_id: str = "default"
+) -> int:
     root = source_root.as_posix()
     rows = conn.execute(
         "SELECT rel_path FROM files WHERE source_id=? AND source_root=? AND status='present'",

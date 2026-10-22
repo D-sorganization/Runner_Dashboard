@@ -20,11 +20,15 @@ def main() -> int:
     source_cmd = sources.add_subparsers(dest="source_command", required=True)
     source_cmd.add_parser("list")
     add = source_cmd.add_parser("add")
-    add.add_argument("id"); add.add_argument("label"); add.add_argument("root_path")
+    add.add_argument("id")
+    add.add_argument("label")
+    add.add_argument("root_path")
     add.add_argument("--shared", action="store_true")
     for name in ("share", "unshare"):
-        cmd = source_cmd.add_parser(name); cmd.add_argument("id")
-    remove = source_cmd.add_parser("remove"); remove.add_argument("id")
+        cmd = source_cmd.add_parser(name)
+        cmd.add_argument("id")
+    remove = source_cmd.add_parser("remove")
+    remove.add_argument("id")
     args = p.parse_args()
     try:
         if args.command == "embed":
@@ -36,7 +40,9 @@ def main() -> int:
             if args.source_command == "list":
                 rows = list_sources(db)
                 for row in rows:
-                    sys.stdout.write(f"{row['id']}\t{row['label']}\t{row['root_path']}\tshared={str(row['shared']).lower()}\n")
+                    sys.stdout.write(
+                        f"{row['id']}\t{row['label']}\t{row['root_path']}\tshared={str(row['shared']).lower()}\n"
+                    )
             elif args.source_command == "add":
                 add_source(db, source_id=args.id, label=args.label, root_path=args.root_path, shared=args.shared)
             elif args.source_command in {"share", "unshare"}:

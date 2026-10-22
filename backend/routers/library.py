@@ -9,7 +9,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from library.db import init_library_db, library_db_path
-from library.sources import add_source, list_sources, remove_source, seed_default_source, update_source
 from library.search import (
     DEFAULT_BUDGET,
     MAX_BUDGET,
@@ -19,6 +18,7 @@ from library.search import (
     library_stats,
     search_passages,
 )
+from library.sources import add_source, list_sources, remove_source, seed_default_source, update_source
 from library.submissions import create_submission, list_submissions
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
@@ -44,13 +44,18 @@ def library_sources_route(_principal: Principal = Depends(require_scope("fleet.r
 
 @router.post("/sources")
 def library_add_source(
-    body: dict[str, Any], principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+    body: dict[str, Any],
+    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ) -> dict[str, Any]:
     try:
         return add_source(
-            _db(), source_id=body.get("id", ""), label=body.get("label", ""),
-            root_path=body.get("root_path", ""), shared=body.get("shared", False),
-            include_globs=body.get("include_globs"), exclude_globs=body.get("exclude_globs"),
+            _db(),
+            source_id=body.get("id", ""),
+            label=body.get("label", ""),
+            root_path=body.get("root_path", ""),
+            shared=body.get("shared", False),
+            include_globs=body.get("include_globs"),
+            exclude_globs=body.get("exclude_globs"),
             created_by=principal.id,
         )
     except ValueError as exc:
@@ -61,7 +66,8 @@ def library_add_source(
 
 @router.patch("/sources/{source_id}")
 def library_update_source(
-    source_id: str, body: dict[str, Any],
+    source_id: str,
+    body: dict[str, Any],
     _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ) -> dict[str, Any]:
     try:
@@ -74,7 +80,8 @@ def library_update_source(
 
 @router.delete("/sources/{source_id}")
 def library_remove_source(
-    source_id: str, _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+    source_id: str,
+    _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ) -> dict[str, bool]:
     try:
         remove_source(_db(), source_id)
