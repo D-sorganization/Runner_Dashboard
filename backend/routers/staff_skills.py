@@ -6,6 +6,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from pydantic import BaseModel, ConfigDict, Field
+from staff.skills.contract import SkillSummary
 from staff.skills.registry import get_skill, list_skills
 
 router = APIRouter(prefix="/skills", tags=["staff-skills"])
@@ -44,7 +45,7 @@ class StaffSkillDetailResponse(StaffSkillSummary):
     model_config = ConfigDict(extra="forbid")
 
 
-def _summary(skill: object) -> dict[str, object]:
+def _summary(skill: SkillSummary) -> dict[str, object]:
     return {
         "name": skill.name,
         "version": skill.version,
