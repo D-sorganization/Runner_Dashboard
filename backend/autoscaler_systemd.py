@@ -21,6 +21,11 @@ log = logging.getLogger("runner-autoscaler")
 _MIN_SAFE_STOP_TIMEOUT_SECONDS = 120
 
 
+def _systemctl_command(*args: str, sudo: bool = False) -> list[str]:
+    """Build argv for the systemd manager local to this process."""
+    return (["sudo", "-n", "systemctl"] if sudo else ["systemctl"]) + list(args)
+
+
 def _dry_run_enabled() -> bool:
     runner_autoscaler = sys.modules.get("runner_autoscaler")
     if runner_autoscaler is not None:
@@ -32,7 +37,7 @@ def _list_runner_units() -> list[str]:
     """Enumerate this machine's GitHub Actions runner systemd units."""
     try:
         r = subprocess.run(
-            ["systemctl", "list-unit-files", "--type=service", "--no-legend"],
+            _systemctl_command("list-unit-files", "--type=service", "--no-legend"),
             capture_output=True,
             text=True,
             timeout=10,
@@ -40,6 +45,9 @@ def _list_runner_units() -> list[str]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.warning("systemctl list failed: %s", exc)
+        return []
+    if r.returncode != 0:
+        log.warning("systemctl list failed in configured manager (exit=%s)", r.returncode)
         return []
     units = []
     for line in r.stdout.splitlines():
@@ -52,7 +60,7 @@ def _list_runner_units() -> list[str]:
 def _unit_is_active(unit: str) -> bool:
     """Return True when *unit* is currently active (running) according to systemd."""
     r = subprocess.run(
-        ["systemctl", "is-active", "--quiet", unit],
+        _systemctl_command("is-active", "--quiet", unit),
         check=False,
         timeout=_SYSTEMCTL_TIMEOUT_S,
     )
@@ -62,7 +70,7 @@ def _unit_is_active(unit: str) -> bool:
 def _unit_state(unit: str) -> tuple[str, str]:
     """Return (ActiveState, SubState) for *unit* from systemctl, or ('', '')."""
     r = subprocess.run(
-        ["systemctl", "show", unit, "--property=ActiveState,SubState"],
+        _systemctl_command("show", unit, "--property=ActiveState,SubState"),
         capture_output=True,
         text=True,
         timeout=_SYSTEMCTL_TIMEOUT_S,
@@ -103,7 +111,7 @@ def _runner_workdir_for_unit(unit: str) -> str:
     """
     try:
         r = subprocess.run(
-            ["systemctl", "show", unit, "--property=WorkingDirectory", "--value"],
+            _systemctl_command("show", unit, "--property=WorkingDirectory", "--value"),
             capture_output=True,
             text=True,
             timeout=_SYSTEMCTL_TIMEOUT_S,
@@ -149,7 +157,7 @@ def _unit_has_safe_stop_contract(unit: str) -> bool:
     """
     try:
         r = subprocess.run(
-            ["systemctl", "show", unit, "--property=KillMode,TimeoutStopUSec"],
+            _systemctl_command("show", unit, "--property=KillMode,TimeoutStopUSec"),
             capture_output=True,
             text=True,
             timeout=_SYSTEMCTL_TIMEOUT_S,
@@ -215,7 +223,7 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
     # systemctl client call itself (job enqueue), never the drain.
     try:
         r = subprocess.run(
-            ["sudo", "-n", "systemctl", "stop", "--no-block", unit],
+            _systemctl_command("stop", "--no-block", unit, sudo=True),
             capture_output=True,
             text=True,
             timeout=_SYSTEMCTL_TIMEOUT_S,
@@ -259,7 +267,7 @@ def _start_unit(unit: str) -> bool:
     # re-reads ActiveState to confirm the unit came up.
     try:
         r = subprocess.run(
-            ["sudo", "-n", "systemctl", "start", "--no-block", unit],
+            _systemctl_command("start", "--no-block", unit, sudo=True),
             capture_output=True,
             text=True,
             timeout=_SYSTEMCTL_TIMEOUT_S,

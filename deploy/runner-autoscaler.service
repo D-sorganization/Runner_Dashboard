@@ -42,6 +42,9 @@ Environment=AUTOSCALER_DRY_RUN=0
 Environment=AUTOSCALER_LOG_LEVEL=INFO
 Environment=RUNNER_SCHEDULE_CONFIG=/home/YOUR_USER/.config/runner-dashboard/runner-schedule.json
 Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
+# Empty preserves legacy behavior. A configured value is a same-distro
+# assertion verified from a root-owned installation receipt at startup.
+Environment=AUTOSCALER_EXPECTED_WSL_DISTRO=
 
 # Needs passwordless sudo for `systemctl start/stop actions.runner.*.service`.
 # Install this sudoers drop-in when deploying (see deploy/install-autoscaler.sh):

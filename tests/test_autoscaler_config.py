@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import re
+from pathlib import Path
 
 import autoscaler_config as cfg
 import pytest
@@ -28,6 +30,7 @@ NUMERIC_ENV_CASES = [
 @pytest.fixture(autouse=True)
 def _restore_config_module(monkeypatch: pytest.MonkeyPatch) -> None:
     yield
+    monkeypatch.delenv("AUTOSCALER_EXPECTED_WSL_DISTRO", raising=False)
     for env_name, *_rest in NUMERIC_ENV_CASES:
         monkeypatch.delenv(env_name, raising=False)
     importlib.reload(cfg)
@@ -92,6 +95,37 @@ def test_constants_have_expected_types() -> None:
 def test_load_per_core_default_is_1_2() -> None:
     result = cfg._env_float("AUTOSCALER_LOAD_PER_CORE_UNSET_TEST", 1.2)
     assert result == pytest.approx(1.2)
+
+
+def test_expected_wsl_distro_is_unset_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AUTOSCALER_EXPECTED_WSL_DISTRO", raising=False)
+    importlib.reload(cfg)
+    assert cfg.AUTOSCALER_EXPECTED_WSL_DISTRO == ""
+
+
+@pytest.mark.parametrize("distro", ["Ubuntu-22.04", "WSL", "Debian_12"])
+def test_expected_wsl_distro_accepts_names(monkeypatch: pytest.MonkeyPatch, distro: str) -> None:
+    monkeypatch.setenv("AUTOSCALER_EXPECTED_WSL_DISTRO", distro)
+    importlib.reload(cfg)
+    assert cfg.AUTOSCALER_EXPECTED_WSL_DISTRO == distro
+
+
+@pytest.mark.parametrize("distro", ["-e", "Ubuntu;touch", "Ubuntu name", "-Ubuntu", " Ubuntu", "Ubuntu "])
+def test_expected_wsl_distro_rejects_invalid_names(monkeypatch: pytest.MonkeyPatch, distro: str) -> None:
+    monkeypatch.setenv("AUTOSCALER_EXPECTED_WSL_DISTRO", distro)
+    with pytest.raises(ValueError, match="AUTOSCALER_EXPECTED_WSL_DISTRO"):
+        importlib.reload(cfg)
+
+
+def test_expected_wsl_distro_name_contract_matches_installer() -> None:
+    pattern = r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}"
+    root = Path(__file__).resolve().parents[1]
+    config_source = (root / "backend" / "autoscaler_config.py").read_text(encoding="utf-8")
+    installer_source = (root / "deploy" / "install-autoscaler.sh").read_text(encoding="utf-8")
+    assert f'fullmatch(r"{pattern}", value)' in config_source
+    assert f"=~ ^{pattern}$" in installer_source
+    assert all(re.fullmatch(pattern, value) for value in ["Ubuntu-22.04", "Debian_12", "WSL.1"])
+    assert not any(re.fullmatch(pattern, value) for value in ["Ubuntu 24.04", "-Ubuntu", "Ubuntu;bad"])
 
 
 @pytest.mark.parametrize(("env_name", "attr_name", "raw_value", "expected"), NUMERIC_ENV_CASES)

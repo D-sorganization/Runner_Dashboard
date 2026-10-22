@@ -82,6 +82,32 @@ curl -fsS http://localhost:8321/api/fleet/runners | jq '.[] | {name,status,busy}
 sudo systemctl status runner-autoscaler --no-pager
 ```
 
+## Autoscaler WSL Installation Identity
+
+The autoscaler only reads and controls resources in its own distro: systemd,
+runner work directories, process state, scheduler files, and cleanup all stay
+local to the service process. The optional `AUTOSCALER_EXPECTED_WSL_DISTRO`
+setting is a fail-closed same-distro assertion. Leave it blank to preserve the
+existing native/current-manager behavior. Do not infer it from registry
+`storage.wsl_distro`, which describes storage rather than process identity.
+
+For opt-in WSL deployments, set the expected distro in the install shell and
+run `deploy/install-autoscaler.sh` inside that distro. The installer requires
+the real `WSL_DISTRO_NAME` to match before it writes anything, then creates
+`/etc/runner-dashboard/autoscaler-installation.json`, owned by root and bound
+to `/etc/machine-id`. The service receives the expected name but never a
+fabricated `WSL_DISTRO_NAME`. Startup validates receipt schema, ownership,
+permissions, machine id, and any live `WSL_DISTRO_NAME` before acquiring its
+lock or doing systemd, filesystem, or cleanup work. Identity failures stop the
+service without taking action.
+
+Some systemd environments do not provide `WSL_DISTRO_NAME`; there the receipt
+is install-time attestation only, not proof of current Windows registration.
+Reinstall in the target distro after cloning, renaming, or rebuilding it. This
+guard does not provide cross-distro control or qualify an actual host install;
+the owner must verify the service and runner units in the same distro before
+enabling autoscaling.
+
 ## Mitigation
 
 ```bash
