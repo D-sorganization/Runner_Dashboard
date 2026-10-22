@@ -10,6 +10,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Checkout path extractor
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        sparse-checkout: scripts/phantom_guard_issue_paths.py
+        sparse-checkout-cone-mode: false
+
     - name: Verify diff substantively matches issue claims
       shell: bash
       env:
@@ -40,7 +46,7 @@ runs:
         fi
 
         ISSUE_BODY=$(gh issue view "$ISSUE" --repo "$REPO" --json body --jq .body 2>/dev/null || echo "")
-        REF_PATHS=$(echo "$ISSUE_BODY" | grep -oE '(backend|frontend/src|src|tests|rust_core|api)/[A-Za-z0-9_./-]+' | sort -u || true)
+        REF_PATHS=$(python3 scripts/phantom_guard_issue_paths.py <<< "$ISSUE_BODY" || true)
         if [ -n "$REF_PATHS" ]; then
           PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
           MATCH=0
