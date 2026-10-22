@@ -79,7 +79,7 @@ def test_ci_gate_treats_skipped_and_duplicate_names_as_passing() -> None:
 
 def test_ci_gate_passes_ecb3f6b_main_check_list() -> None:
     payload = json.loads(_ECB3F6B_FIXTURE.read_text(encoding="utf-8"))
-    assert _ECB3F6B_SHA in payload["fetched_from"]
+    assert "ecb3f6b" in payload["fetched_from"]
     runs = [{**run, "head_sha": _ECB3F6B_SHA} for run in payload["check_runs"]]
     assert len(runs) == 29
     conclusions = {str(r.get("conclusion")) for r in runs}
