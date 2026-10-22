@@ -22,8 +22,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: main-ci-auto-release-${{ inputs.commit_sha || github.event.workflow_run.head_sha || github.sha }}
-  cancel-in-progress: false
+  # One fleet publish at a time; cancel stale SHAs so d-sorg-fleet is not stuck on a backlog.
+  group: main-ci-auto-release
+  cancel-in-progress: true
 
 jobs:
   publish:

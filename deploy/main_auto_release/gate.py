@@ -6,16 +6,16 @@ from collections.abc import Callable
 from typing import Any
 
 from node_auto_deploy.check_runs import normalize_commit_sha
-from node_auto_deploy.ci_gate import ci_gate_for_commit, select_deployable_main_commit
+from node_auto_deploy.ci_gate import (
+    NON_BLOCKING_DEPLOY_CHECK_NAMES,
+    ci_gate_for_commit,
+    ci_gate_for_deploy_commit,
+    select_deployable_main_commit,
+)
 
 from main_auto_release.release_index import commit_has_release
 
-PUBLISHER_IGNORED_CHECK_NAMES = frozenset(
-    {
-        "Publish dashboard release when CI gate is green",
-        "Main CI auto-release",
-    }
-)
+PUBLISHER_IGNORED_CHECK_NAMES = NON_BLOCKING_DEPLOY_CHECK_NAMES
 
 
 def commit_passes_main_ci_gate(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
@@ -24,9 +24,8 @@ def commit_passes_main_ci_gate(check_runs: list[dict[str, Any]], expected_sha: s
 
 
 def commit_passes_publisher_ci_gate(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
-    """CI gate for the release publisher (ignores this workflow's in-flight check)."""
-    filtered = [r for r in check_runs if str(r.get("name") or "") not in PUBLISHER_IGNORED_CHECK_NAMES]
-    return ci_gate_for_commit(filtered, expected_sha)
+    """CI gate for the release publisher (ignores non-blocking advisory checks)."""
+    return ci_gate_for_deploy_commit(check_runs, expected_sha)
 
 
 def select_green_commit_with_release(
@@ -44,7 +43,7 @@ def select_green_commit_with_release(
         if sha is None:
             continue
         runs = fetch_check_runs(sha)
-        ok, detail = ci_gate_for_commit(runs, sha)
+        ok, detail = ci_gate_for_deploy_commit(runs, sha)
         if not ok:
             last_detail = detail
             continue

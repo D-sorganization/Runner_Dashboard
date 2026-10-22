@@ -181,7 +181,10 @@ def main(argv: list[str] | None = None) -> int:
 
     result, message, target_sha = evaluate_cycle(cfg, deps)
     if result != "ready":
-        record_event(state, commit=deployed_git_sha(live_dir / "deployment.json") or "unknown", result="skipped", message=message)
+        deployed_sha = deployed_git_sha(live_dir / "deployment.json")
+        main_head = str(gh_get(f"/repos/{args.repo}/commits/main").get("sha") or "").lower()
+        record_commit = target_sha or main_head or deployed_sha or "unknown"
+        record_event(state, commit=record_commit, result="skipped", message=message)
         save_state(state_path, state)
         print(message)
         return 0
