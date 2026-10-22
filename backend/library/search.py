@@ -6,7 +6,6 @@ import re
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from knowledge_pack.pack import _TEXT_WEIGHT, _TITLE_WEIGHT, sanitize_fts_query
 from library.db import LibraryStore
@@ -35,41 +34,6 @@ class SearchHit:
         year = f" ({self.year})" if self.year else ""
         page = self.page_start if self.page_start == self.page_end else f"{self.page_start}-{self.page_end}"
         return f"{who}{year}, {tit}, p. {page}"
-
-
-def library_stats(db_path: Path) -> dict[str, Any]:
-    sql = {
-        "works_active": "SELECT COUNT(*) FROM works WHERE status='active'",
-        "works_needs_ocr": "SELECT COUNT(*) FROM works WHERE status='active' AND needs_ocr=1",
-        "files_present": "SELECT COUNT(*) FROM files WHERE status='present'",
-        "passages": "SELECT COUNT(*) FROM passages",
-        "rejections": "SELECT COUNT(*) FROM ingest_rejections",
-    }
-    with closing(LibraryStore(db_path).connect()) as conn:
-        out: dict[str, Any] = {k: int(conn.execute(q).fetchone()[0]) for k, q in sql.items()}
-        last = conn.execute(
-            "SELECT started_at, finished_at, files_seen, files_indexed, files_skipped,"
-            " files_rejected, files_removed, source_root FROM ingest_runs ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-    out["last_ingest"] = None
-    if last:
-        out["last_ingest"] = dict(
-            zip(
-                (
-                    "started_at",
-                    "finished_at",
-                    "files_seen",
-                    "files_indexed",
-                    "files_skipped",
-                    "files_rejected",
-                    "files_removed",
-                    "source_root",
-                ),
-                last,
-                strict=True,
-            )
-        )
-    return out
 
 
 def estimate_tokens(text: str) -> int:

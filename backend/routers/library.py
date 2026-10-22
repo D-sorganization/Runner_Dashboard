@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from library.db import init_library_db, library_db_path
-from library.search import DEFAULT_BUDGET, MAX_BUDGET, SearchHit, library_stats, search_passages
+from library.search import DEFAULT_BUDGET, MAX_BUDGET, SearchHit, search_passages
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
 _db_override: Path | None = None
@@ -23,13 +23,6 @@ def _db() -> Path:
     path = _db_override or library_db_path()
     init_library_db(path)
     return path
-
-
-@router.get("/stats")
-def library_stats_route(
-    _principal: Principal = Depends(require_scope("fleet.read")),  # noqa: B008
-) -> dict[str, Any]:
-    return library_stats(_db())
 
 
 @router.get("/search")
