@@ -99,7 +99,9 @@ class StaffRunner:
 
         Raises ``ValueError`` with an operator-readable message on bad input.
         """
-        role = self._resolve_role(req)
+        from staff.role_dispatch import resolve_dispatch_role
+
+        role = resolve_dispatch_role(self.roles(), req)
         from staff.failover_dispatch import resolve_provider_and_model
 
         provider, _chain_model, model_tier = resolve_provider_and_model(self._adapters, self.machine, req, role)
@@ -124,6 +126,9 @@ class StaffRunner:
             )
         except DispatchContractError as exc:
             raise ValueError(str(exc)) from exc
+        from library.dispatch_hook import library_references_for_plan
+
+        references_block, library_work_ids = library_references_for_plan(role, req)
         prompt = workspace.compose_prompt(
             role,
             repo=req.repo,
@@ -133,6 +138,7 @@ class StaffRunner:
             consolidation=paragraph,
             focus=focus,
             dispatch_bundle=bundle,
+            library_references=references_block,
         )
         from staff.failover_model import resolve_launch_model, role_base_tier
         from staff.provider_failover_config import resolve_failover_chain
@@ -168,20 +174,8 @@ class StaffRunner:
             head_ref=req.head_ref,
             skill_pin=bundle.skill_pin,
             standards_version=bundle.standards_version,
+            library_work_ids=library_work_ids,
         )
-
-    def _resolve_role(self, req: RunRequest) -> RoleSpec:
-        role = self.roles().get(req.role)
-        if role is None:
-            raise ValueError(f"unknown role '{req.role}'")
-        if not role.dispatchable:
-            reason = (
-                f"schema errors: {'; '.join(role.errors)}"
-                if not role.valid
-                else f"surface={role.surface}, retired={role.retired}"
-            )
-            raise ValueError(f"role '{req.role}' is not dispatchable from the dashboard ({reason})")
-        return role
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
         return select_first_available_provider(self._adapters, providers, ceiling)
