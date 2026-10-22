@@ -7,7 +7,7 @@ import os
 import threading
 from pathlib import Path
 
-from staff.skills.contract import SkillDetail, SkillSummary, SkillValidationError, parse_skill_md
+from staff.skills.contract import SkillDetail, SkillSummary, SkillValidationError, parse_skill_md, semver_sort_key
 from staff.workspace import rm_root
 
 log = logging.getLogger("dashboard.staff.skills")
@@ -72,7 +72,7 @@ def _load_directory(root: Path) -> None:
             continue
         details[key] = detail
         prev = summaries.get(detail.name)
-        if prev is None or detail.version > prev.version:
+        if prev is None or semver_sort_key(detail.version) > semver_sort_key(prev.version):
             summaries[detail.name] = SkillSummary(**{f: getattr(detail, f) for f in SkillSummary.__dataclass_fields__})
     _CACHE_SUMMARIES, _CACHE_DETAILS, _CACHE_ERRORS = summaries, details, errors
 
@@ -87,8 +87,15 @@ def _ensure_loaded() -> None:
             _CACHE_DETAILS.clear()
             _CACHE_ERRORS.clear()
         return
-    files = sorted(root.glob(_SKILL_GLOB))
-    sig = (str(root.resolve()), tuple((str(p.relative_to(root)), p.stat().st_mtime_ns) for p in files))
+    file_stats: list[tuple[str, int, int]] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            try:
+                st = path.stat()
+                file_stats.append((str(path.relative_to(root)), st.st_mtime_ns, st.st_size))
+            except OSError:
+                file_stats.append((str(path.relative_to(root)), -1, -1))
+    sig = (str(root.resolve()), tuple(file_stats))
     with _CACHE_LOCK:
         if _CACHE_DIR_SIG == sig:
             return

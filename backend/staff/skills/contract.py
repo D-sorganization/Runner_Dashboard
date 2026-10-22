@@ -12,6 +12,7 @@ import yaml
 
 _NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+_SEMVER_PARSE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 _ATTACHMENT_KINDS = frozenset({"template", "requirements", "fixture", "other"})
 
 
@@ -50,6 +51,17 @@ class SkillDetail(SkillSummary):
 
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def semver_sort_key(version: str) -> tuple[int, int, int, int, str]:
+    """Precedence key for SemVer 2.0 (stable releases beat prereleases)."""
+    match = _SEMVER_PARSE.match(version.strip())
+    if not match:
+        return (0, 0, 0, 0, version)
+    major, minor, patch = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    prerelease = match.group(4)
+    stable_rank = 1 if prerelease is None else 0
+    return (major, minor, patch, stable_rank, prerelease or "")
 
 
 def _as_str_tuple(value: Any, field: str, problems: list[str]) -> tuple[str, ...]:
