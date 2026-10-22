@@ -351,20 +351,29 @@ def _staff_verification_off(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
-    """Dispatch tests stub OAuth preflight; oauth probe tests exercise the real check (#2170)."""
+    """Stub OAuth preflight unless a module exercises the real probe (#2170)."""
     path = str(request.node.fspath or "")
     if (
         "test_staff_cli_oauth_session" in path
         or "test_staff_dispatch_provider_auth" in path
+        or "test_staff_provider_auth_failover" in path
         or "test_architecture_map_contract" in path
     ):
         return
-    if not _staff_run_test_path(path):
-        return
-    monkeypatch.setattr(
+    alive = lambda *_a, **_k: (True, "")
+    for target in (
         "staff.cli_oauth_session.provider_oauth_session_alive",
-        lambda *_a, **_k: (True, ""),
-    )
+        "staff.provider_dispatch_preflight.provider_oauth_session_alive",
+        "staff.provider_auth_preflight.provider_oauth_session_alive",
+    ):
+        monkeypatch.setattr(target, alive)
+    try:
+        from staff.provider_auth_preflight import _cache  # noqa: PLC0415
+
+        _cache.clear()
+        _cache.update({"checked_at": None, "providers": {}, "machine": ""})
+    except Exception:
+        pass
 
 
 def _staff_run_test_path(path: str) -> bool:

@@ -268,12 +268,11 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         plan = runner.plan(req)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if not cmd.dry_run:
-        from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
+    from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
 
-        auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
-        if auth_refusal is not None:
-            raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
+    auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
+    if auth_refusal is not None:
+        raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
     check_rate_limit("dispatches", caller)
     target = await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
     if target != "local":
@@ -300,6 +299,11 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                     "model": plan.model,
                     "machine": runner.machine,
                     "dry_run": True,
+                    **(
+                        {"provider_auth_failover": list(plan.provider_auth_skipped)}
+                        if plan.provider_auth_skipped
+                        else {}
+                    ),
                 },
                 fail_closed=False,
             )
@@ -340,6 +344,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 "machine": runner.machine,
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
+                **({"provider_auth_failover": list(plan.provider_auth_skipped)} if plan.provider_auth_skipped else {}),
             },
             fail_closed=True,
         )
@@ -349,6 +354,18 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
         ) from exc
     rec, plan, created = runner.admit(req, run_id=run_id)
+    auth_skipped = getattr(plan, "provider_auth_skipped", None)
+    if created and auth_skipped:
+        from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
+
+        for row in auth_skipped:
+            append_chain_attempt(
+                runner.store,
+                rec.id,
+                provider=str(row.get("provider") or ""),
+                model=None,
+                outcome=str(row.get("outcome") or "auth_expired"),
+            )
     if created:
         try:
             runner.launch(rec, plan)

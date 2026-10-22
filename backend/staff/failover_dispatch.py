@@ -71,16 +71,28 @@ def _usable_provider(
     return can_run_unattended(adapters, pid)
 
 
+def _provider_auth_blocks(provider: str, machine: str) -> bool:
+    from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
+
+    return refusal_for_provider_auth(provider, machine) is not None
+
+
 def pick_launch_step(
     chain: tuple[FailoverStep, ...],
     adapters: Mapping[str, ProviderAdapter],
     role: RoleSpec,
     *,
     skip_cooling: bool = True,
+    machine: str = "local",
+    auth_skipped: list[dict[str, str]] | None = None,
 ) -> FailoverStep | None:
     """First chain step that can run on this node (optionally skipping cooling providers)."""
     for step in chain:
         if skip_cooling and provider_in_cooldown(step.provider):
+            continue
+        if _provider_auth_blocks(step.provider, machine):
+            if auth_skipped is not None:
+                auth_skipped.append({"provider": step.provider, "outcome": "auth_expired"})
             continue
         if _usable_provider(adapters, role, step.provider):
             return step
@@ -322,7 +334,7 @@ def resolve_provider_and_model(
     machine: str,
     req: RunRequest,
     role: RoleSpec,
-) -> tuple[str, str | None, str]:
+) -> tuple[str, str | None, str, list[dict[str, str]]]:
     """Pick provider and optional chain model for a staff run (#2047)."""
     import provider_switch as provider_switch_mod
 
@@ -337,16 +349,28 @@ def resolve_provider_and_model(
 
     if req.provider:
         provider = req.provider
+        if _provider_auth_blocks(provider, machine):
+            provider, model, tier, _skipped = select_provider_from_chain(
+                adapters,
+                role,
+                req=req,
+                requested_provider=req.provider,
+                ceiling=ceiling,
+                quota_headroom=_headroom,
+                machine=machine,
+            )
+            return provider, model, tier, _skipped
     else:
-        provider, model, tier = select_provider_from_chain(
+        provider, model, tier, skipped = select_provider_from_chain(
             adapters,
             role,
             req=req,
             requested_provider=None,
             ceiling=ceiling,
             quota_headroom=_headroom,
+            machine=machine,
         )
-        return provider, model, tier
+        return provider, model, tier, skipped
     if provider not in adapters:
         raise ValueError(f"unknown provider '{provider}'")
     if req.provider and req.provider not in role.providers and role.name != "ad-hoc":
@@ -366,7 +390,7 @@ def resolve_provider_and_model(
         step=None,
         active_tier=role_base_tier(role),
     )
-    return provider, model, tier
+    return provider, model, tier, []
 
 
 def select_provider_from_chain(
@@ -377,26 +401,55 @@ def select_provider_from_chain(
     requested_provider: str | None,
     ceiling: float | None,
     quota_headroom: Callable[[str, float | None], bool],
-) -> tuple[str, str | None, str]:
+    machine: str = "local",
+) -> tuple[str, str | None, str, list[dict[str, str]]]:
     """Resolve provider + model + tier for launch using failover chain and cooldown skip."""
     from staff.failover_model import resolve_launch_model, role_base_tier
 
+    auth_skipped: list[dict[str, str]] = []
     chain = resolve_failover_chain(role, requested_provider=requested_provider)
-    step = pick_launch_step(chain, adapters, role, skip_cooling=True)
+    step = pick_launch_step(chain, adapters, role, skip_cooling=True, machine=machine, auth_skipped=auth_skipped)
     if step is None:
-        step = pick_launch_step(chain, adapters, role, skip_cooling=False)
+        step = pick_launch_step(chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped)
     if step is None:
         for candidate in chain:
+            if _provider_auth_blocks(candidate.provider, machine):
+                auth_skipped.append({"provider": candidate.provider, "outcome": "auth_expired"})
+                continue
             if _usable_provider(adapters, role, candidate.provider):
                 step = candidate
                 break
     if step is None:
-        step = chain[0] if chain else FailoverStep(role.providers[0], role.model)
+        for candidate in chain:
+            if not _provider_auth_blocks(candidate.provider, machine) and _usable_provider(
+                adapters, role, candidate.provider
+            ):
+                step = candidate
+                break
+        if step is None and chain:
+            import provider_switch as provider_switch_mod  # noqa: PLC0415
+
+            for candidate in chain:
+                if provider_switch_mod.is_disabled(candidate.provider):
+                    continue
+                if not _provider_auth_blocks(candidate.provider, machine) and _usable_provider(
+                    adapters, role, candidate.provider
+                ):
+                    step = candidate
+                    break
+        elif step is None and role.providers:
+            step = FailoverStep(role.providers[0], role.model)
+    if step is None:
+        raise ValueError(f"no provider available in failover chain for role '{role.name}'")
     provider = step.provider
     if not quota_headroom(provider, ceiling):
         for alt in chain:
             if alt.provider != provider and quota_headroom(alt.provider, ceiling):
-                if not provider_in_cooldown(alt.provider) and _usable_provider(adapters, role, alt.provider):
+                if (
+                    not provider_in_cooldown(alt.provider)
+                    and not _provider_auth_blocks(alt.provider, machine)
+                    and _usable_provider(adapters, role, alt.provider)
+                ):
                     step = alt
                     provider = alt.provider
                     break
@@ -409,4 +462,4 @@ def select_provider_from_chain(
         step=step,
         active_tier=role_base_tier(role),
     )
-    return provider, model, tier
+    return provider, model, tier, auth_skipped

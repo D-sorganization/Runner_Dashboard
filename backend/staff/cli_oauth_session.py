@@ -194,9 +194,47 @@ _PROVIDER_CHECKERS: dict[str, Callable[[], tuple[bool, str]]] = {
 }
 
 
+def oauth_expiry_epoch_for_provider(provider_or_credential_id: str) -> float | None:
+    """Best-effort OAuth expiry epoch for preflight warnings; ``None`` when unknown."""
+    if provider_or_credential_id in ("claude", "claude_code_cli"):
+        cred = resolve_claude_config_dir() / ".credentials.json"
+        if cred.is_file():
+            try:
+                data = json.loads(cred.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            return _find_expiry_epoch(data)
+    if provider_or_credential_id == "antigravity":
+        oauth_file = resolve_antigravity_home() / "oauth_creds.json"
+        if oauth_file.is_file():
+            try:
+                data = json.loads(oauth_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            return _find_expiry_epoch(data)
+    if provider_or_credential_id == "codex":
+        home = Path(os.environ.get("CODEX_HOME") or "~/.codex").expanduser()
+        auth = home / "auth.json"
+        if auth.is_file():
+            try:
+                data = json.loads(auth.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            return _find_expiry_epoch(data)
+    return None
+
+
 def provider_oauth_session_alive(provider_or_credential_id: str) -> tuple[bool, str]:
     """Map dashboard provider / credential id to a live OAuth session check."""
     checker = _PROVIDER_CHECKERS.get(provider_or_credential_id)
     if checker is None:
+        if provider_or_credential_id == "codex":
+            if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
+                return True, ""
+            home = Path(os.environ.get("CODEX_HOME") or "~/.codex").expanduser()
+            if not (home / "auth.json").is_file():
+                return False, "no Codex auth.json"
+            if oauth_expired_in_file(home / "auth.json"):
+                return False, "Codex OAuth token expired (auth.json)"
         return True, ""
     return checker()

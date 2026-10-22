@@ -17,6 +17,11 @@ from staff.github_app_preflight import (
     preflight_cache_snapshot,
     run_preflight_and_cache,
 )
+from staff.provider_auth_preflight import (
+    aggregate_provider_auth,
+    attention_items_from_provider_auth,
+    provider_auth_cache_snapshot,
+)
 from staff.runner import get_runner
 
 __all__ = ["build_staff_summary"]
@@ -48,7 +53,18 @@ async def build_staff_summary() -> dict[str, Any]:
     preflight = preflight_cache_snapshot()
     if preflight.get("checked_at") is None:
         preflight = run_preflight_and_cache(roles)
-    attention = attention_items_from_preflight(preflight) + format_attention_items(recent)
+    provider_auth = aggregate_provider_auth(board_view)
+    if not provider_auth.get("machines"):
+        local_auth = provider_auth_cache_snapshot()
+        if local_auth.get("checked_at"):
+            provider_auth = {
+                "checked_at": local_auth.get("checked_at"),
+                "machines": {runner.machine: local_auth},
+            }
+    auth_attention: list[dict[str, Any]] = []
+    for _machine, snap in (provider_auth.get("machines") or {}).items():
+        auth_attention.extend(attention_items_from_provider_auth(snap))
+    attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
     keep = (
         "id",
         "role",
@@ -74,6 +90,7 @@ async def build_staff_summary() -> dict[str, Any]:
         "providers_cooldown": board_view.get("providers_cooldown", {}),
         "holds": staff_fleet.holds_snapshot(),
         "liveness_alerts": board_view.get("liveness_alerts", []),
+        "provider_auth": provider_auth,
         "roles": [
             {
                 "name": s.name,
