@@ -18,6 +18,8 @@ from staff.cli_oauth_session import (
     resolve_claude_config_dir,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def test_oauth_expired_in_file_detects_past_expiry(tmp_path: Path) -> None:
     cred = tmp_path / "oauth_creds.json"
@@ -48,6 +50,33 @@ AGY_AUTH_TIMEOUT_OUTPUT = (
     "Error: authentication timed out\n"
 )
 
+
+@pytest.mark.parametrize("signed_in", [True, False])
+def test_antigravity_145_probes_authenticated_models(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_in: bool
+) -> None:
+    """Replay native CLI 1.4.5: auth status is invalid even after Google sign-in."""
+    home = tmp_path / ".gemini"
+    home.mkdir()
+    (home / "settings.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("ANTIGRAVITY_HOME", str(home))
+
+    def fake_run(cmd: list[str], **kwargs: object) -> CompletedProcess[str]:
+        if cmd[1:] == ["auth", "status"]:
+            return CompletedProcess(
+                cmd, 1, "", "Prompts are read only from -p/--print, -i/--prompt-interactive, or stdin"
+            )
+        assert cmd == ["/usr/bin/agy", "models"]
+        assert kwargs["capture_output"] is True
+        assert kwargs["timeout"] == 8.0
+        return CompletedProcess(cmd, 0, "gemini-3.8-flash-high" if signed_in else "Not signed in", "")
+
+    invalidate_oauth_probe_cache()
+    with patch("staff.cli_oauth_session.subprocess.run", fake_run):
+        alive, _detail = antigravity_oauth_session_alive("/usr/bin/agy")
+    assert alive is signed_in
+
+
 CLAUDE_AUTH_EXPIRED_OUTPUT = (
     "Authentication expired. Please run CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login\n"
 )
@@ -60,7 +89,7 @@ def test_antigravity_probe_treats_auth_timeout_as_expired(tmp_path: Path, monkey
     monkeypatch.setenv("ANTIGRAVITY_HOME", str(home))
 
     def _fake_run(*_args: object, **_kwargs: object) -> CompletedProcess[str]:
-        return CompletedProcess(args=["agy", "auth", "status"], returncode=1, stdout="", stderr=AGY_AUTH_TIMEOUT_OUTPUT)
+        return CompletedProcess(args=["agy", "models"], returncode=1, stdout="", stderr=AGY_AUTH_TIMEOUT_OUTPUT)
 
     invalidate_oauth_probe_cache()
     with patch("staff.cli_oauth_session.subprocess.run", _fake_run):

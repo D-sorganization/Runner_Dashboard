@@ -82,8 +82,8 @@ RemoveIPC=true
 RestrictAddressFamilies=
 # Namespace allow-list (#1698): cursor-agent --sandbox enabled (#1586) confines the
 # commands it runs with bubblewrap, which needs user, mount, network, IPC and UTS
-# namespaces. cgroup and pid namespaces stay forbidden.
-RestrictNamespaces=user mnt net ipc uts
+# namespaces. Codex bubblewrap also needs a PID namespace; cgroup stays forbidden.
+RestrictNamespaces=user mnt net ipc uts pid
 # Drop all ambient/effective capabilities.
 CapabilityBoundingSet=
 # Syscall allow-list: system-service set covers all normal server operations.

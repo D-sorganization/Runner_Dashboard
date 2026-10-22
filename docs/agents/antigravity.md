@@ -36,17 +36,7 @@ agy --version
 
 ### Linux / WSL (ControlTower, DeskComputer WSL)
 
-Symlink from host or install binary to `/usr/local/bin/agy`:
-
-```bash
-sudo ln -sf /mnt/c/Users/diete/AppData/Local/Microsoft/WinGet/Packages/Google.AntigravityCLI_Microsoft.Winget.Source_8wekyb3d8bbwe/agy.exe /usr/local/bin/agy
-```
-
-or install via npm:
-
-```bash
-npm install -g @google/antigravity-cli
-```
+Install the native Linux CLI using the [official installer](https://antigravity.google/cli/install.sh), as the service user. Ensure the installed `agy` is on the dashboard service PATH. Avoid linking a Windows `agy.exe`: sign-in can work from a Windows directory and fail from a Linux worktree.
 
 ---
 
@@ -58,14 +48,14 @@ The Antigravity CLI manages its own Google sign-in session.
    Run on the target node:
 
    ```bash
-   agy auth login
+   agy
    ```
 
-   Follow the printed URL, sign in with your Google account, and complete authorization.
+   Select Google OAuth (CLI 1.4.5 has no `auth login` subcommand). Follow the printed URL, sign in with your Google account, and complete authorization.
 
 2. **Session Persistence:**
    The login state is stored under `~/.gemini/settings.json` and `~/.gemini/antigravity-cli/`.
-   Environment variables `ANTIGRAVITY_HOME` and `GOOGLE_API_KEY` / `ANTIGRAVITY_API_KEY` are also supported for headless/containerized nodes.
+   Use the same service user, HOME and `ANTIGRAVITY_HOME` for sign-in and dispatch. Staff runs require subscription Google OAuth; do not configure API-key billing.
 
 3. **Status Check:**
    Verify authentication:

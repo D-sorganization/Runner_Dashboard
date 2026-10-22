@@ -53,7 +53,7 @@ LOGIN_COMMANDS: dict[str, str] = {
     "claude": "CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login",
     "codex": "codex login --device-auth",
     "cursor-agent": "cursor-agent login",
-    "antigravity": "agy auth login",
+    "antigravity": "agy",
     "gemini": "gemini login",
     "ollama": "systemctl --user start ollama",
     "claude-ollama": "systemctl --user start ollama",

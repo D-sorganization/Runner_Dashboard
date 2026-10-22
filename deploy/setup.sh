@@ -372,7 +372,7 @@ fi
 # in sync with deploy/runner-dashboard.service so tests catch installer drift.
 # ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py
 # RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-# RestrictNamespaces=user mnt net ipc uts
+# RestrictNamespaces=user mnt net ipc uts pid
 # CapabilityBoundingSet=
 # SystemCallFilter=@system-service
 # SystemCallFilter=@mount landlock_create_ruleset landlock_add_rule landlock_restrict_self seccomp

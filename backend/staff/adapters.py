@@ -375,7 +375,10 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         models=_ANTIGRAVITY_MODELS,
         json_lines=True,
         unattended=True,
-        notes="Unattended ``--mode plan`` (#1586); WSL ``agy`` on PATH (often WinGet symlink); ``agy auth login``.",
+        notes=(
+            "Unattended ``--mode plan`` (#1586); native Linux ``agy`` on WSL PATH; "
+            "run ``agy`` for Google OAuth sign-in."
+        ),
     ),
     "gemini": ProviderAdapter(
         provider_id="gemini",
