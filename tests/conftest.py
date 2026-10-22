@@ -215,6 +215,29 @@ def admin_principal():
 
 
 @pytest.fixture
+def staff_cli_installed(monkeypatch):
+    """Mark only named provider CLIs as present for provider-selection tests.
+
+    Dispatch planning checks the real executable path. Tests that exercise policy
+    rather than host installation use this opt-in fixture so CI does not depend on
+    which agent CLIs happen to be on its PATH.
+    """
+    from staff.adapters import ProviderAdapter  # noqa: PLC0415
+
+    installed_providers: set[str] = set()
+
+    def _installed(adapter):  # noqa: ANN001
+        return adapter.provider_id in installed_providers
+
+    monkeypatch.setattr(ProviderAdapter, "installed", _installed)
+
+    def _mark_installed(*providers: str) -> None:
+        installed_providers.update(providers)
+
+    return _mark_installed
+
+
+@pytest.fixture
 def operator_principal():
     """Pre-built operator Principal for opt-in use in tests."""
     return _make_principal("test-operator", "operator")
@@ -360,7 +383,10 @@ def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
         or "test_architecture_map_contract" in path
     ):
         return
-    alive = lambda *_a, **_k: (True, "")
+
+    def alive(*_args, **_kwargs):
+        return True, ""
+
     for target in (
         "staff.cli_oauth_session.provider_oauth_session_alive",
         "staff.provider_dispatch_preflight.provider_oauth_session_alive",

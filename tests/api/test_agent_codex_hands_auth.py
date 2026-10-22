@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 
-import identity
 import pytest
 from fastapi.testclient import TestClient
 from identity import identity_manager
@@ -89,7 +87,10 @@ def test_codex_hands_reads_priorities_and_denies_writes(remote_client: TestClien
 
 
 @pytest.mark.integration
-def test_codex_hands_staff_dispatch_dry_run(remote_client: TestClient, hands_env: dict[str, str]) -> None:
+def test_codex_hands_staff_dispatch_dry_run(
+    remote_client: TestClient, hands_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("claude")
     dispatch = remote_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "dry", "provider": "claude", "dry_run": True},

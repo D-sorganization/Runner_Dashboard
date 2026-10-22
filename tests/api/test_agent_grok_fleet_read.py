@@ -50,9 +50,7 @@ def grok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     merge_agent_principal_defaults(identity_manager)
 
     raw_bot = "svc_plain_bot_no_fleet_read"  # pragma: allowlist secret
-    identity_manager.principals["agent-codex"] = Principal(
-        id="agent-codex", type="bot", name="Codex", roles=["bot"]
-    )
+    identity_manager.principals["agent-codex"] = Principal(id="agent-codex", type="bot", name="Codex", roles=["bot"])
     identity_manager.tokens.append(
         TokenRecord(
             token_hash=hashlib.sha256(raw_bot.encode()).hexdigest(),
@@ -131,7 +129,10 @@ def test_grok_cannot_write_directives_or_holds(remote_client: TestClient, grok_e
 
 
 @pytest.mark.integration
-def test_grok_staff_summary_and_dispatch_dry_run(remote_client: TestClient, grok_env: dict[str, str]) -> None:
+def test_grok_staff_summary_and_dispatch_dry_run(
+    remote_client: TestClient, grok_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("claude")
     summary = remote_client.get("/api/staff/summary", headers=_auth(grok_env["grok"]))
     assert summary.status_code == 200
 

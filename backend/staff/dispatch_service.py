@@ -50,6 +50,9 @@ class DispatchCommand:
     requested_by: str
     provider: str | None = None
     model: str | None = None
+    # Internal routing hint used by trusted callers such as CI-fix; never exposed as
+    # an unauthenticated provider-selection surface.
+    model_tier: str = ""
     repo: str = ""
     issue: int | None = None
     pr: int | None = None
@@ -98,6 +101,8 @@ class DispatchCommand:
             body.pop("skip_premise_check")
         if not body["head_ref"]:
             body.pop("head_ref")
+        if not body["model_tier"]:
+            body.pop("model_tier")
         return body
 
     def run_id(self) -> str:
@@ -220,6 +225,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
 
     runner = get_runner()
     spec = runner.roles().get(cmd.role)
+    resolved_target: str | None = None
     decision = None
     if spec is not None and cmd.repo and consolidation.threshold(spec) is not None:
         decision = await asyncio.to_thread(consolidation.decide, spec, cmd.repo)  # #1213: gh + capacity I/O
@@ -243,10 +249,34 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 },
             )
 
+    # Resolve remote and auto targets after origin-side admission policies but before
+    # local planning: only the selected runtime can authoritatively plan its providers.
+    if spec is not None and cmd.machine.strip().lower() != "local":
+        from staff.provider_failover_config import resolve_failover_chain
+
+        configured_chain = resolve_failover_chain(spec)
+        target_provider = cmd.provider or (configured_chain[0].provider if configured_chain else "")
+        resolved_target = await _resolve_target(runner, cmd.machine, target_provider, role=spec)
+        if resolved_target != "local":
+            if cmd.model_tier:
+                raise HTTPException(
+                    status_code=422,
+                    detail="internal model_tier is supported only for local dispatch",
+                )
+            check_rate_limit("dispatches", caller)
+            obo_hdr = staff_fleet.sign_on_behalf_of(
+                cmd.requested_by,
+                cmd.surface,
+                cmd.thread_id,
+                origin_node=cmd.origin_node or runner.machine,
+            )
+            return await _forward(resolved_target, cmd, obo_hdr)
+
     req = RunRequest(
         role=cmd.role,
         provider=cmd.provider,
         model=cmd.model,
+        model_tier=cmd.model_tier,
         repo=cmd.repo,
         issue=cmd.issue,
         pr=cmd.pr,
@@ -274,7 +304,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     if auth_refusal is not None:
         raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
     check_rate_limit("dispatches", caller)
-    target = await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
+    target = resolved_target or await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
     if target != "local":
         obo_hdr = staff_fleet.sign_on_behalf_of(
             cmd.requested_by,

@@ -203,7 +203,8 @@ def test_message_send_rate_limit_returns_429(client: TestClient) -> None:
     assert error_obj.get("retryable") is True
 
 
-def test_dispatch_rate_limit_returns_429(client: TestClient) -> None:
+def test_dispatch_rate_limit_returns_429(client: TestClient, staff_cli_installed) -> None:
+    staff_cli_installed("claude")
     app.dependency_overrides[require_principal] = lambda: BOT_PRINCIPAL
     app.dependency_overrides[require_scope("staff.dispatch")] = lambda: BOT_PRINCIPAL
 

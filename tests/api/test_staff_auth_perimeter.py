@@ -56,7 +56,8 @@ def test_remote_read_requires_fleet_token_when_configured(remote_client: TestCli
 
 
 @pytest.mark.unit
-def test_fleet_token_can_dry_run_dispatch(remote_client: TestClient) -> None:
+def test_fleet_token_can_dry_run_dispatch(remote_client: TestClient, staff_cli_installed) -> None:
+    staff_cli_installed("claude")
     resp = remote_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "preview only", "provider": "claude", "dry_run": True},

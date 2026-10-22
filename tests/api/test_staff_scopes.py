@@ -152,7 +152,10 @@ def test_dispatch_rejects_token_missing_staff_dispatch(remote_client: TestClient
 
 
 @pytest.mark.integration
-def test_dispatch_allows_token_with_staff_dispatch(remote_client: TestClient, auth_env: dict[str, str]) -> None:
+def test_dispatch_allows_token_with_staff_dispatch(
+    remote_client: TestClient, auth_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("claude")
     # Bot token has staff.dispatch
     resp = remote_client.post(
         "/api/staff/ad-hoc/run",
@@ -245,7 +248,10 @@ def test_fleet_peer_token_admitted_for_dispatch_and_cancel_and_read(
 
 
 @pytest.mark.integration
-def test_loopback_auth_scope_enforcement(monkeypatch: pytest.MonkeyPatch, auth_env: dict[str, str]) -> None:
+def test_loopback_auth_scope_enforcement(
+    monkeypatch: pytest.MonkeyPatch, auth_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("claude")
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
     from server import app
 

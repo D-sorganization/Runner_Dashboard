@@ -142,19 +142,16 @@ def resolve_failover_chain(
     role_model: str | None = getattr(role, "model", None)
     allowed = frozenset(providers)
     override = getattr(role, "failover_chain", ()) or ()
-    default_by_provider = {s.provider: s for s in default_failover_chain()}
+    default_chain = default_failover_chain()
 
     if override:
         filtered = [step for step in override if step.provider in allowed]
     else:
-        filtered = []
-        for pid in providers:
-            if pid not in allowed:
-                continue
-            if pid in default_by_provider:
-                filtered.append(default_by_provider[pid])
-            else:
-                filtered.append(FailoverStep(pid, role_model if pid == providers[0] else None))
+        filtered = [step for step in default_chain if step.provider in allowed]
+        included = {step.provider for step in filtered}
+        filtered.extend(
+            FailoverStep(pid, role_model if pid == providers[0] else None) for pid in providers if pid not in included
+        )
 
     if not filtered:
         filtered = [FailoverStep(p, role_model if p == providers[0] else None) for p in providers]
