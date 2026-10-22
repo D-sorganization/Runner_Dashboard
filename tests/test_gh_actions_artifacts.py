@@ -272,6 +272,33 @@ async def test_generic_paginate_supports_artifacts_collection(artifact_client) -
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "status,body",
+    [
+        (404, {"total_count": 0, "artifacts": []}),
+        (200, {}),
+        (200, {"total_count": 1, "artifacts": {"id": 8}}),
+        (200, {"total_count": 2, "artifacts": [{"id": 8}]}),
+    ],
+    ids=("not-found", "missing-collection", "malformed-collection", "partial-listing"),
+)
+async def test_generic_artifact_pagination_fails_closed(artifact_client, status: int, body) -> None:
+    gh_client, install = artifact_client
+    install(lambda _request: httpx.Response(status, json=body))
+
+    with pytest.raises(gh_client.GhClientError):
+        _ = [item async for item in gh_client.paginate("/repos/owner/repo/actions/runs/42/artifacts")]
+
+
+@pytest.mark.unit
+async def test_generic_repo_artifact_endpoint_uses_complete_listing_contract(artifact_client) -> None:
+    gh_client, install = artifact_client
+    install(lambda _request: httpx.Response(200, json={"total_count": 1, "artifacts": [{"id": 9}]}))
+
+    assert [item async for item in gh_client.paginate("/repos/owner/repo/actions/artifacts")] == [{"id": 9}]
+
+
+@pytest.mark.unit
 async def test_download_rejects_invalid_id_and_limit_without_request(artifact_client) -> None:
     gh_client, install = artifact_client
     install(lambda _request: pytest.fail("invalid arguments must not make an HTTP request"))

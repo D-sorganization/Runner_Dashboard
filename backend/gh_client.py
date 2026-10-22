@@ -50,6 +50,9 @@ _MAX_ARTIFACT_PAGES = 100
 _MAX_ARTIFACT_REDIRECTS = 3
 _MAX_ARTIFACT_DOWNLOAD_BYTES = 20 * 1024 * 1024
 _REPOSITORY_SLUG = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_ARTIFACT_COLLECTION_PATH = re.compile(
+    r"^/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/(?:runs/[1-9][0-9]*/)?artifacts$"
+)
 
 # ── Token cache ──────────────────────────────────────────────────────────────
 
@@ -499,14 +502,20 @@ def _validate_artifact_page(body: Any) -> tuple[int, list[dict[str, Any]]]:
 async def list_run_artifacts(repo_full: str, run_id: int, *, max_pages: int = 10) -> list[dict[str, Any]]:
     """List every artifact for a workflow run, refusing incomplete bounded pagination."""
     _validate_artifact_request(repo_full, run_id, 1)
+    path = f"/repos/{repo_full}/actions/runs/{run_id}/artifacts"
+    return await _list_artifact_collection(path, max_pages=max_pages)
+
+
+async def _list_artifact_collection(path: str, *, max_pages: int = 10, per_page: int = 100) -> list[dict[str, Any]]:
     if isinstance(max_pages, bool) or not isinstance(max_pages, int) or not 1 <= max_pages <= _MAX_ARTIFACT_PAGES:
         raise ValueError(f"max_pages must be from 1 to {_MAX_ARTIFACT_PAGES}")
-    path = f"/repos/{repo_full}/actions/runs/{run_id}/artifacts"
+    if isinstance(per_page, bool) or not isinstance(per_page, int) or not 1 <= per_page <= 100:
+        raise ValueError("per_page must be from 1 to 100")
     result: list[dict[str, Any]] = []
     expected_total: int | None = None
     seen_ids: set[int] = set()
     for page in range(1, max_pages + 1):
-        response = await _request("GET", f"{path}?per_page=100&page={page}")
+        response = await _request("GET", f"{path}?per_page={per_page}&page={page}")
         total, items = _validate_artifact_page(response.json())
         if expected_total is not None and total != expected_total:
             raise GhClientError("Actions artifact pagination changed during listing", kind="pagination")
@@ -529,6 +538,11 @@ async def list_run_artifacts(repo_full: str, run_id: int, *, max_pages: int = 10
         if not items:
             raise GhClientError("Actions artifact pagination ended before total_count", kind="pagination")
     raise GhClientError("Actions artifact pagination exceeded max_pages", kind="pagination")
+
+
+def _is_artifact_collection_path(path: str) -> bool:
+    parsed = urlsplit(path)
+    return not parsed.scheme and not parsed.netloc and _ARTIFACT_COLLECTION_PATH.fullmatch(parsed.path) is not None
 
 
 def _validate_artifact_redirect(location: str) -> str:
@@ -701,6 +715,12 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
     Yields:
         Individual item dicts.
     """
+    if _is_artifact_collection_path(path):
+        artifacts = await _list_artifact_collection(path, per_page=per_page)
+        for artifact in artifacts:
+            yield artifact
+        return
+
     sep = "&" if "?" in path else "?"
     url: str | None = f"{path}{sep}per_page={per_page}"
 
@@ -716,7 +736,7 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
             return
         body = resp.json()
         items: list[dict] = body if isinstance(body, list) else []
-        for key in ("workflow_runs", "jobs", "runners", "items", "repositories", "artifacts"):
+        for key in ("workflow_runs", "jobs", "runners", "items", "repositories"):
             if isinstance(body, dict) and key in body:
                 items = body[key]
                 break
