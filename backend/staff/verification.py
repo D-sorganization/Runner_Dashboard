@@ -6,10 +6,12 @@ open or merged with head CI green. The verdict is recorded beside the status and
 kept apart from the classifier, so a GitHub outage can never make a run look failed.
 
 Verdicts: ``verified`` | ``unverified`` (CI pending, or GitHub unreachable) |
-``failed`` (no PR, PR closed unmerged, head CI red, or CI still pending after
-:data:`PENDING_LIMIT`) | ``not_applicable`` (the run claimed nothing, or its role does
-not open PRs). ``STAFF_VERIFY_MODE``: ``report`` (default) records only; ``enforce``
-also fails a ``succeeded`` run whose verdict is ``failed``; ``off`` skips the check.
+``failed`` (commits were pushed but no PR, PR closed unmerged, head CI red, or CI
+still pending after :data:`PENDING_LIMIT`) | ``no_change`` (the run claimed success but
+pushed no commits to its staff branch on the remote) | ``not_applicable`` (the run
+claimed nothing, or its role does not open PRs). ``STAFF_VERIFY_MODE``: ``report``
+(default) records only; ``enforce`` also fails a ``succeeded`` run whose verdict is
+``failed``; ``off`` skips the check.
 """
 
 from __future__ import annotations
@@ -73,6 +75,9 @@ class PrProbe(Protocol):
     def find(self, repo: str, branch: str) -> PullRequest | None:
         """The newest PR whose head is ``branch`` in ``repo``, or None. Raises GitHubLookupError."""
 
+    def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
+        """Commits ``branch`` is ahead of ``base`` on the remote (0 if absent). Raises GitHubLookupError."""
+
 
 def verify_mode() -> str:
     """``STAFF_VERIFY_MODE``, defaulting to ``report`` when unset or unknown."""
@@ -92,13 +97,22 @@ def ci_state(check_runs: Iterable[Mapping[str, Any]]) -> str:
     return "green"
 
 
-def decide(*, claimed: str, opens_pr: bool, branch: str, pr: PullRequest | None) -> Verdict:
+def decide(
+    *,
+    claimed: str,
+    opens_pr: bool,
+    branch: str,
+    pr: PullRequest | None,
+    remote_ahead_by: int = 1,
+) -> Verdict:
     """The verdict for one run. Pure: every input is a plain value."""
     if claimed != "succeeded":
         return Verdict("not_applicable", f"run ended {claimed}; nothing claimed to verify")
     if not opens_pr:
         return Verdict("not_applicable", "role does not open pull requests")
     if pr is None:
+        if branch and remote_ahead_by == 0:
+            return Verdict("no_change", f"no commits pushed to remote branch {branch}")
         reason = f"no pull request found for branch {branch}" if branch else "run recorded no branch"
         return Verdict("failed", reason)
     if pr.state == "closed":
@@ -126,12 +140,24 @@ def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -
     if rec.role == AD_HOC_ROLE and not rec.repo:
         return Verdict("not_applicable", "ad-hoc run had no repository, so no pull request was expected")
     pr: PullRequest | None = None
+    remote_ahead_by = 1
     if rec.status == "succeeded" and opens_pr and rec.branch:
         try:
             pr = probe.find(rec.repo, rec.branch)
         except GitHubLookupError as exc:
             return Verdict("unverified", f"GitHub lookup failed: {exc}")
-    verdict = decide(claimed=rec.status, opens_pr=opens_pr, branch=rec.branch, pr=pr)
+        if pr is None:
+            try:
+                remote_ahead_by = probe.remote_ahead_by(rec.repo, rec.branch)
+            except GitHubLookupError as exc:
+                return Verdict("unverified", f"GitHub lookup failed: {exc}")
+    verdict = decide(
+        claimed=rec.status,
+        opens_pr=opens_pr,
+        branch=rec.branch,
+        pr=pr,
+        remote_ahead_by=remote_ahead_by,
+    )
     if verdict.verification == "unverified" and _age(rec, now) > PENDING_LIMIT:
         hours = int(PENDING_LIMIT.total_seconds() // 3600)
         return Verdict("failed", f"{verdict.detail} {hours}h after the run ended", verdict.pr_number)
@@ -261,6 +287,19 @@ class GhCliPrProbe:
         head = quote(f"{owner}:{branch}", safe=":")
         pulls = self._api(f"/repos/{full}/pulls?head={head}&state=all&per_page=1")
         return self._with_ci(full, pulls[0]) if pulls else None
+
+    def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
+        """How many commits ``branch`` is ahead of ``base`` on the remote (0 if the branch is missing)."""
+        full = self._full(repo)
+        path = f"/repos/{full}/compare/{quote(base, safe='')}...{quote(branch, safe='')}"
+        try:
+            body = self._api(path)
+        except GitHubLookupError as exc:
+            msg = str(exc).lower()
+            if "404" in msg or "not found" in msg:
+                return 0
+            raise
+        return int(body.get("ahead_by") or 0)
 
     def get(self, repo: str, number: int) -> PullRequest:
         """PR ``number`` in ``repo`` with its head CI state (the Code Request acceptance check, #1605)."""

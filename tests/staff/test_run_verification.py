@@ -49,14 +49,29 @@ def _rec(**overrides: Any) -> RunRecord:
 class FakeProbe:
     """A PrProbe returning a fixed answer (or raising) and recording its calls."""
 
-    def __init__(self, pr: v.PullRequest | None = None, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        pr: v.PullRequest | None = None,
+        error: Exception | None = None,
+        *,
+        remote_ahead_by: int = 1,
+        ahead_error: Exception | None = None,
+    ) -> None:
         self.pr, self.error, self.calls = pr, error, []
+        self.remote_ahead_by_value, self.ahead_error = remote_ahead_by, ahead_error
+        self.ahead_calls: list[tuple[str, str]] = []
 
     def find(self, repo: str, branch: str) -> v.PullRequest | None:
         self.calls.append((repo, branch))
         if self.error is not None:
             raise self.error
         return self.pr
+
+    def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
+        self.ahead_calls.append((repo, branch))
+        if self.ahead_error is not None:
+            raise self.ahead_error
+        return self.remote_ahead_by_value
 
 
 # ── the verdict table ────────────────────────────────────────────────────
@@ -93,6 +108,38 @@ def test_a_closed_unmerged_pr_fails() -> None:
 def test_no_pr_and_no_branch_explain_themselves() -> None:
     assert "b-1" in v.decide(claimed="succeeded", opens_pr=True, branch="b-1", pr=None).detail
     assert "no branch" in v.decide(claimed="succeeded", opens_pr=True, branch="", pr=None).detail
+
+
+def test_no_op_pr_remediator_run_with_unpushed_branch_is_no_change() -> None:
+    """Regression: run-2c7153637624 (2026-10-22) on AffineDrift #5117 — PR already merged, agent made no changes."""
+    rec = _rec(
+        id="run-2c7153637624",
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_ref="5117",
+        branch="staff/pr-remediator-5117-78e20c",
+    )
+    probe = FakeProbe(pr=None, remote_ahead_by=0)
+
+    verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "no_change"
+    assert "staff/pr-remediator-5117-78e20c" in verdict.detail
+    assert probe.ahead_calls == [("AffineDrift", "staff/pr-remediator-5117-78e20c")]
+
+
+def test_run_with_pushed_commits_but_no_pr_still_fails() -> None:
+    probe = FakeProbe(pr=None, remote_ahead_by=2)
+
+    verdict = v.evaluate(_rec(branch="staff/night-watch-99"), opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "failed"
+    assert "no pull request found" in verdict.detail
+
+
+def test_zero_remote_ahead_without_pr_is_no_change_in_decide() -> None:
+    verdict = v.decide(claimed="succeeded", opens_pr=True, branch="staff/x", pr=None, remote_ahead_by=0)
+    assert verdict.verification == "no_change"
 
 
 # ── head CI ──────────────────────────────────────────────────────────────
@@ -332,6 +379,19 @@ def test_gh_probe_gets_a_pr_by_number_with_its_head_ci() -> None:
 
 def test_gh_probe_returns_none_without_a_pr() -> None:
     assert v.GhCliPrProbe(org="o", run=_gh({"/pulls?": []})).find("r", "b") is None
+
+
+def test_gh_probe_remote_ahead_by_is_zero_when_branch_is_missing() -> None:
+    def run(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        assert "/compare/" in argv[2]
+        return subprocess.CompletedProcess(argv, 1, "", "HTTP 404: Not Found")
+
+    assert v.GhCliPrProbe(org="o", run=run).remote_ahead_by("r", "staff/missing") == 0
+
+
+def test_gh_probe_remote_ahead_by_reads_compare_ahead_by() -> None:
+    runner = _gh({"/compare/main...staff%2Fx": {"ahead_by": 3}})
+    assert v.GhCliPrProbe(org="o", run=runner).remote_ahead_by("r", "staff/x") == 3
 
 
 @pytest.mark.parametrize("failure", ["exit", "bad-json", "missing-gh"])

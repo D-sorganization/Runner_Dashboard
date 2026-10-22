@@ -38,7 +38,7 @@ FIX_WINDOW = timedelta(hours=48)
 MAX_PRS = 50
 CONCURRENCY = 4
 # Verdicts that mean a run was checked; ``not_applicable`` and unchecked runs are not.
-_CHECKED = frozenset({"verified", "failed", "unverified"})
+_CHECKED = frozenset({"verified", "failed", "unverified", "no_change"})
 
 PrKey = tuple[str, int]
 
