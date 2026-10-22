@@ -312,7 +312,7 @@ def test_reusable_call_with_base_inputs_is_allowed(tmp_path: Path) -> None:
           call:
             uses: ./.github/workflows/build.yml
             with:
-              ref: ${{ github.event.workflow_run.head_repository.default_branch }}
+              ref: ${{ github.event.repository.default_branch }}
         """
     assert _violations(tmp_path, text) == []
 

@@ -1,32 +1,35 @@
-# Vendored from D-sorganization/Repository_Management scripts/fork_pr_guard_analysis.py (RM#2006 @ c79aec82).
+# Vendored from D-sorganization/Repository_Management scripts/fork_pr_guard_analysis.py (RM#2338 @ 3436bd9d).
 # Re-sync from upstream; do not fork. No local changes except ruff format at this repository's line length.
 """Condition and head-checkout analysis for ``fork_pr_runner_guard`` (RM#1996).
 
 Pure helpers over workflow expressions and steps; no I/O. Split out of the
-guard so each module stays small. Vendored next to the guard, so both must live
-in the same directory.
+guard so each module stays small. Vendor this module and ``fork_pr_context_refs``
+next to the guard; the context scanner is a required dependency.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
-from typing import Any
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING or __package__:
+    from scripts.fork_pr_context_refs import (
+        expression_string_literals,
+        outside_actions_expressions,
+        reads_head_context,
+        render_literal_interpolations,
+    )
+else:
+    from fork_pr_context_refs import (
+        expression_string_literals,
+        outside_actions_expressions,
+        reads_head_context,
+        render_literal_interpolations,
+    )
 
 #: Text that checks out or fetches a pull request's head.
 HEAD_REF_PATTERNS = (
-    re.compile(r"github\.event\.pull_request\.head\.(sha|ref)"),
-    re.compile(r"github\.head_ref"),
-    re.compile(r"github\.event\.workflow_run\.head_(sha|branch)"),
-    # The fork repository itself: checkout without a ref takes its default branch.
-    re.compile(
-        r"github\.event\.pull_request\.head\.repo\."
-        r"(full_name|clone_url|ssh_url|git_url|html_url)"
-    ),
-    re.compile(
-        r"github\.event\.workflow_run\.head_repository\."
-        r"(full_name|clone_url|ssh_url|git_url|html_url)"
-    ),
     re.compile(r"refs/pull/"),
     re.compile(r"pull/(\$\{\{[^}]*\}\}|[^\s/]+)/(head|merge)"),
     re.compile(r"gh\s+pr\s+checkout"),
@@ -133,6 +136,32 @@ def _strings(value: Any) -> Iterable[str]:
             yield from _strings(item)
 
 
+def reads_head(text: str, aliases: Iterable[str] = ()) -> bool:
+    """Combine textual head/alias checks with quote-aware context recognition.
+
+    Pass original text to the context scanner: normalization must not rewrite
+    bracket-looking text inside expression string literals.
+    """
+    normalized = dotted(text)
+    names = tuple(aliases)
+    patterns = (*HEAD_REF_PATTERNS, *(_alias_reference(name) for name in names))
+    if any(pattern.search(normalized) for pattern in patterns):
+        return True
+    native = dotted(outside_actions_expressions(text))
+    native_patterns = tuple(_native_alias_reference(name) for name in names)
+    if any(pattern.search(native) for pattern in native_patterns):
+        return True
+    rendered = dotted(render_literal_interpolations(text)).strip()
+    if any(pattern.search(rendered) and not pattern.fullmatch(rendered) for pattern in native_patterns):
+        return True
+    for literal in expression_string_literals(text):
+        source = dotted(literal).strip()
+        # Bare env.NAME values are metadata; containing script programs can read it.
+        if any(pattern.search(source) and not pattern.fullmatch(source) for pattern in native_patterns):
+            return True
+    return reads_head_context(text, names)
+
+
 def head_ref_aliases(*scopes: Any, known: Iterable[str] = ()) -> set[str]:
     """Return env names, across ``scopes``, whose value reads the PR head.
 
@@ -150,22 +179,29 @@ def head_ref_aliases(*scopes: Any, known: Iterable[str] = ()) -> set[str]:
         env = scope.get("env") if isinstance(scope, dict) else None
         if not isinstance(env, dict):
             continue
-        patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(n) for n in names)]
-        names |= {
-            str(name)
-            for name, value in env.items()
-            if any(p.search(dotted("\n".join(_strings(value)))) for p in patterns)
-        }
+        names |= {str(name) for name, value in env.items() if reads_head("\n".join(_strings(value)), names)}
     return names
 
 
 def _alias_reference(name: str) -> re.Pattern[str]:
-    """Match an expression or shell reference to env var ``name``."""
+    """Match a shell reference to env var ``name``.
+
+    PowerShell's env provider and Windows env keys are case-insensitive. Cover
+    braced and unbraced forms; POSIX shell names remain exact. Actions references
+    use the context scanner instead of a separate alias-expression regex.
+    """
     n = re.escape(name)
-    return re.compile(
-        rf"env\.{n}(?!\w)|env\[\s*['\"]{n}['\"]\s*\]"
-        rf"|\$\{{?{n}(?!\w)|\$env:{n}(?!\w)"
-    )
+    return re.compile(rf"\$\{{?{n}(?!\w)|(?i:\$\{{?env:{n}(?!\w))")
+
+
+def _native_alias_reference(name: str) -> re.Pattern[str]:
+    """Preserve native env.NAME reads, including normalized Node bracket access.
+
+    Only known head aliases count. Script programs retain the generic env.NAME
+    fallback, including a local env binding; this is not general data flow.
+    """
+    # Windows native environment keys are case-insensitive; fail closed across OSes.
+    return re.compile(rf"\benv\s*\.\s*(?i:{re.escape(name)})(?!\w)")
 
 
 def _swap_operands(equality: str) -> str:
@@ -194,7 +230,7 @@ def same_repo_conditioned(condition: Any) -> bool:
     )
 
 
-def _checkout_action_reads_head(inputs: Any, patterns: Sequence[re.Pattern[str]]) -> bool:
+def _checkout_action_reads_head(inputs: Any, aliases: Iterable[str]) -> bool:
     """True when an ``actions/checkout`` ``with:`` names the head in ref/repository.
 
     Precondition: ``inputs`` is the step's ``with:`` value (any type).
@@ -204,8 +240,8 @@ def _checkout_action_reads_head(inputs: Any, patterns: Sequence[re.Pattern[str]]
         return False
     # The runner upper-cases input keys (INPUT_REF), so ``REF:`` is ``ref:``.
     named = {str(key).lower(): value for key, value in inputs.items()}
-    text = dotted("\n".join(_strings([named.get("ref"), named.get("repository")])))
-    return any(pattern.search(text) for pattern in patterns)
+    text = "\n".join(_strings([named.get("ref"), named.get("repository")]))
+    return reads_head(text, aliases)
 
 
 def _is_checkout_action(uses: Any) -> bool:
@@ -239,12 +275,10 @@ def _step_checks_out_head(step: dict[str, Any], aliases: set[str]) -> bool:
     # Step-level env aliases (``env: REF: <head>`` or ``REF: ${{ env.HEAD }}``)
     # read the head as surely as workflow- or job-level ones do.
     step_aliases = head_ref_aliases(step, known=aliases)
-    patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(a) for a in step_aliases)]
     if _is_checkout_action(step.get("uses")):
-        return _checkout_action_reads_head(step.get("with"), patterns)
+        return _checkout_action_reads_head(step.get("with"), step_aliases)
     fields = {k: v for k, v in step.items() if k not in _INERT_STEP_KEYS}
-    text = dotted("\n".join(_strings(fields)))
-    return any(pattern.search(text) for pattern in patterns)
+    return reads_head("\n".join(_strings(fields)), step_aliases)
 
 
 def head_checkout_steps(job: dict[str, Any], aliases: set[str]) -> list[str]:
@@ -273,6 +307,4 @@ def passes_head_ref(job: dict[str, Any], aliases: set[str]) -> bool:
     """
     if not isinstance(job.get("uses"), str):
         return False
-    patterns = [*HEAD_REF_PATTERNS, *(_alias_reference(a) for a in aliases)]
-    text = dotted("\n".join(_strings(job.get("with", {}))))
-    return any(pattern.search(text) for pattern in patterns)
+    return reads_head("\n".join(_strings(job.get("with", {}))), aliases)
