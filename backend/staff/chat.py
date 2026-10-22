@@ -57,6 +57,7 @@ from staff.chat_pool import (
     get_chat_pool,
 )
 from staff.chat_scratch import thread_scratch_dir
+from staff.chat_shared_memory import build_shared_memory_context_block
 from staff.chat_streaming import (
     LiveProcessReader,
     spawn_cli_process,
@@ -164,8 +165,9 @@ class ChatTurnRunner:
         knowledge_block = build_knowledge_turn_block(role, raw_prompt)
         fleet_block = await build_fleet_context_block(role, raw_prompt=raw_prompt)
         issue_block = await build_issue_context_block(role, raw_prompt)
+        shared_memory_block = await build_shared_memory_context_block(role_name, requester)
         pending_block = build_pending_proposals_block(self.conv_store, thread_id)
-        context_blocks = (fleet_block, issue_block, knowledge_block, pending_block)
+        context_blocks = (fleet_block, issue_block, knowledge_block, shared_memory_block, pending_block)
         prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
