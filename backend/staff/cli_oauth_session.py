@@ -68,6 +68,32 @@ def _expiry_epoch_from_value(raw: Any) -> float | None:
     return None
 
 
+def _find_refresh_epoch(data: Any) -> float | None:
+    if isinstance(data, dict):
+        for key in (
+            "lastRefresh",
+            "last_refresh",
+            "refreshed_at",
+            "updated_at",
+            "token_refresh_time",
+            "last_token_refresh",
+        ):
+            if key in data:
+                found = _expiry_epoch_from_value(data[key])
+                if found is not None:
+                    return found
+        for value in data.values():
+            found = _find_refresh_epoch(value)
+            if found is not None:
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = _find_refresh_epoch(item)
+            if found is not None:
+                return found
+    return None
+
+
 def _find_expiry_epoch(data: Any) -> float | None:
     if isinstance(data, dict):
         for key in ("expiresAt", "expires_at", "expiry", "expiration", "expirationTime"):
@@ -192,6 +218,39 @@ _PROVIDER_CHECKERS: dict[str, Callable[[], tuple[bool, str]]] = {
     "claude_code_cli": lambda: claude_oauth_session_alive(),
     "antigravity": lambda: antigravity_oauth_session_alive(),
 }
+
+
+def _credential_json_paths(provider_or_credential_id: str) -> list[Path]:
+    if provider_or_credential_id in ("claude", "claude_code_cli"):
+        cred = resolve_claude_config_dir() / ".credentials.json"
+        return [cred] if cred.is_file() else []
+    if provider_or_credential_id == "antigravity":
+        oauth_file = resolve_antigravity_home() / "oauth_creds.json"
+        return [oauth_file] if oauth_file.is_file() else []
+    if provider_or_credential_id == "codex":
+        home = Path(os.environ.get("CODEX_HOME") or "~/.codex").expanduser()
+        auth = home / "auth.json"
+        return [auth] if auth.is_file() else []
+    return []
+
+
+def oauth_last_refresh_epoch_for_provider(provider_or_credential_id: str) -> float | None:
+    """When subscription OAuth material was last refreshed (JSON hint or file mtime)."""
+    best: float | None = None
+    for path in _credential_json_paths(provider_or_credential_id):
+        try:
+            mtime = path.stat().st_mtime
+            best = mtime if best is None else max(best, mtime)
+        except OSError:
+            pass
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        parsed = _find_refresh_epoch(data)
+        if parsed is not None:
+            best = parsed if best is None else max(best, parsed)
+    return best
 
 
 def oauth_expiry_epoch_for_provider(provider_or_credential_id: str) -> float | None:

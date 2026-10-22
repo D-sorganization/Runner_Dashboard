@@ -10,13 +10,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff.cli_oauth_session import oauth_expiry_epoch_for_provider, provider_oauth_session_alive
+from staff.cli_oauth_session import (
+    oauth_expiry_epoch_for_provider,
+    oauth_last_refresh_epoch_for_provider,
+    provider_oauth_session_alive,
+)
 
 log = logging.getLogger("dashboard.staff.provider_auth_preflight")
 
 _EVENING_TZ = ZoneInfo("America/Los_Angeles")
 _EVENING_HOUR = 20
 _EXPIRING_HOURS = 48.0
+_STALE_REFRESH_DAYS = float(os.environ.get("STAFF_PROVIDER_AUTH_STALE_DAYS", "7"))
 _PROBE_PROVIDERS = ("claude", "antigravity", "codex")
 
 _cache: dict[str, Any] = {"checked_at": None, "providers": {}, "machine": ""}
@@ -30,14 +35,30 @@ def provider_auth_cache_snapshot() -> dict[str, Any]:
     return dict(_cache)
 
 
-def _classify(provider: str, alive: bool, detail: str, expires_at: float | None) -> dict[str, Any]:
+def _classify(
+    provider: str,
+    alive: bool,
+    detail: str,
+    expires_at: float | None,
+    last_refresh_at: float | None,
+) -> dict[str, Any]:
     now = time.time()
     row: dict[str, Any] = {"provider": provider, "detail": detail}
     if expires_at is not None:
         row["expires_at"] = datetime.fromtimestamp(expires_at, UTC).isoformat().replace("+00:00", "Z")
         row["hours_remaining"] = round(max(0.0, (expires_at - now) / 3600.0), 2)
+    if last_refresh_at is not None:
+        row["last_refresh_at"] = datetime.fromtimestamp(last_refresh_at, UTC).isoformat().replace("+00:00", "Z")
+        row["days_since_refresh"] = round(max(0.0, (now - last_refresh_at) / 86400.0), 2)
     if not alive:
         row["status"] = "expired"
+    elif last_refresh_at is not None and (now - last_refresh_at) >= _STALE_REFRESH_DAYS * 86400:
+        row["status"] = "stale"
+        row["detail"] = (
+            f"{detail}; subscription token not refreshed in {int((now - last_refresh_at) // 86400)} days"
+            if detail
+            else f"subscription token not refreshed in {int((now - last_refresh_at) // 86400)} days"
+        )
     elif expires_at is not None and expires_at <= now + _EXPIRING_HOURS * 3600:
         row["status"] = "expiring"
     else:
@@ -58,7 +79,8 @@ def probe_local_provider_auth(machine: str = "") -> dict[str, Any]:
     for pid in _PROBE_PROVIDERS:
         alive, detail = provider_oauth_session_alive(pid)
         expires = oauth_expiry_epoch_for_provider(pid)
-        providers[pid] = _classify(pid, alive, detail, expires)
+        refreshed = oauth_last_refresh_epoch_for_provider(pid)
+        providers[pid] = _classify(pid, alive, detail, expires, refreshed)
     return {
         "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "machine": machine,
@@ -81,8 +103,13 @@ def attention_items_from_provider_auth(report: dict[str, Any]) -> list[dict[str,
     machine = str(report.get("machine") or "local")
     for pid, row in (report.get("providers") or {}).items():
         status = row.get("status")
-        if status not in ("expired", "expiring"):
+        if status not in ("expired", "expiring", "stale"):
             continue
+        failure = {
+            "expired": "auth_expired",
+            "expiring": "auth_expiring",
+            "stale": "auth_stale",
+        }[status]
         items.append(
             {
                 "id": f"provider-auth-{machine}-{pid}",
@@ -90,9 +117,10 @@ def attention_items_from_provider_auth(report: dict[str, Any]) -> list[dict[str,
                 "provider": pid,
                 "machine": machine,
                 "status": "blocked" if status == "expired" else "attention",
-                "failure_class": "auth_expired" if status == "expired" else "auth_expiring",
+                "failure_class": failure,
                 "error": row.get("detail") or f"{pid} auth {status}",
-                "remediation": row.get("remediation") or f"Refresh {pid} subscription login on {machine}.",
+                "remediation": row.get("remediation")
+                or f"Refresh {pid} credentials on {machine} (see docs/runbooks/durable-provider-credentials.md).",
             }
         )
     return items
