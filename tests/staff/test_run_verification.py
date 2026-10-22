@@ -142,6 +142,14 @@ def test_zero_remote_ahead_without_pr_is_no_change_in_decide() -> None:
     assert verdict.verification == "no_change"
 
 
+def test_deliverable_failure_updates_issue_target_with_no_change() -> None:
+    rec = _rec(target_kind="issue", target_ref="5414")
+    verdict = v.Verdict("no_change", "no commits pushed to remote branch staff/x")
+    updates = v.deliverable_failure_updates(rec, verdict, opens_pr=True)
+    assert updates["status"] == "failed"
+    assert updates["failure_class"] == v.UNVERIFIED_OUTPUT
+
+
 # ── head CI ──────────────────────────────────────────────────────────────
 def _check(status: str = "completed", conclusion: str | None = "success") -> dict[str, Any]:
     return {"status": status, "conclusion": conclusion}
