@@ -1,4 +1,4 @@
-"""Ensure deploy CI-gate fixtures stay audited in `.secrets.baseline` (issue #396)."""
+"""Ensure deploy CI-gate fixtures stay compatible with detect-secrets (issue #396)."""
 
 from __future__ import annotations
 
@@ -31,11 +31,18 @@ def _normalize_results(results: dict) -> dict:
     return normalized
 
 
-def test_ecb3f6b_fixture_listed_in_secrets_baseline() -> None:
-    payload = json.loads(_BASELINE.read_text(encoding="utf-8"))
-    findings = payload.get("results", {}).get(_ECB3F6B_FIXTURE)
-    assert findings, f"{_ECB3F6B_FIXTURE} must be audited in .secrets.baseline"
-    assert any(f.get("type") == "Base64 High Entropy String" for f in findings)
+def test_ecb3f6b_fixture_scans_clean_without_baseline_row() -> None:
+    pytest.importorskip("detect_secrets")
+    fixture_path = REPO / _ECB3F6B_FIXTURE
+    scan = json.loads(
+        subprocess.check_output(
+            [sys.executable, "-m", "detect_secrets", "scan", str(fixture_path)],
+            text=True,
+        )
+    )
+    assert scan.get("results") == {}
+    baseline = json.loads(_BASELINE.read_text(encoding="utf-8")).get("results", {})
+    assert _ECB3F6B_FIXTURE not in baseline
 
 
 def test_detect_secrets_scan_does_not_expand_baseline_for_ecb3f6b_fixture() -> None:
