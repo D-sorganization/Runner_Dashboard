@@ -154,6 +154,7 @@ from routers import fleet as _fleet_router  # noqa: E402
 from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import label_guidance as _label_guidance_router  # noqa: E402  # issue #757
+from routers import library as _library_router  # noqa: E402  # issue #2165
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_sync as _linear_sync_router  # noqa: E402  # issue #236
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
@@ -749,6 +750,7 @@ app.include_router(_staff_schedule_router.v1_router)  # role schedule override (
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
+app.include_router(_library_router.router)  # Alexandria library (#2165)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402

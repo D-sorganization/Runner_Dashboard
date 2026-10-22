@@ -38,6 +38,16 @@ _TEXT_WEIGHT = 1.0
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 _MAX_QUERY_TOKENS = 32
 
+
+def sanitize_fts_query(query: str) -> str | None:
+    """Reduce ``query`` to an FTS5 MATCH expression; ``None`` when no tokens remain."""
+    if not isinstance(query, str):
+        raise TypeError("query must be a string")
+    tokens = _TOKEN_RE.findall(query)[:_MAX_QUERY_TOKENS]
+    if not tokens:
+        return None
+    return " OR ".join('"' + t.replace('"', "") + '"' for t in tokens)
+
 _SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE files (
@@ -225,10 +235,9 @@ class KnowledgePack:
             raise TypeError("query must be a string")
         if not isinstance(k, int) or isinstance(k, bool) or k < 1:
             raise ValueError("k must be a positive integer")
-        tokens = _TOKEN_RE.findall(query)[:_MAX_QUERY_TOKENS]
-        if not tokens:
+        match = sanitize_fts_query(query)
+        if match is None:
             return []
-        match = " OR ".join('"' + t.replace('"', "") + '"' for t in tokens)
         hidden = "" if include_superseded else _hidden_clause()
         sql = (
             "SELECT p.repo, p.source, p.anchor, p.title, p.text, p.commit_sha,"

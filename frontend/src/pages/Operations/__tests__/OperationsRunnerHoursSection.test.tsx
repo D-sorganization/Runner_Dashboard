@@ -98,7 +98,9 @@ describe("OperationsRunnerHoursSection", () => {
     });
 
     render(<OperationsRunnerHoursSection />);
-    fireEvent.click(await screen.findByRole("button", { name: /Apply Now/i }));
+    const applyBtn = await screen.findByRole("button", { name: /Apply Now/i });
+    await waitFor(() => expect(applyBtn).toBeEnabled());
+    fireEvent.click(applyBtn);
 
     await waitFor(() => {
       const post = fetchMock.mock.calls.find(([url, init]) =>

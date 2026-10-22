@@ -17850,6 +17850,101 @@
         "tags": ["agent-bus"]
       }
     },
+    "/api/v1/library/search": {
+      "get": {
+        "operationId": "library_search_api_v1_library_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "k",
+            "required": false,
+            "schema": {
+              "default": 32,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "K",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "budget",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget"
+            }
+          },
+          {
+            "in": "query",
+            "name": "budget_tokens",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Tokens"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Search Api V1 Library Search Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Search",
+        "tags": ["library"]
+      }
+    },
     "/api/v1/memory": {
       "get": {
         "operationId": "get_memory_entries_api_v1_memory_get",
