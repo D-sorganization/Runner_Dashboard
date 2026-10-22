@@ -44,8 +44,9 @@ function assertSummary(value: unknown): DeliveryMetricsSummary {
 }
 
 export async function fetchMetricsSummary(repoFull: string | null): Promise<DeliveryMetricsSummary> {
-  const qs = repoFull ? `?repo_full=${encodeURIComponent(repoFull)}` : "";
-  const response = await fetch(`/api/v1/metrics/summary${qs}`, { headers: XHR });
+  const path = "/api/v1/metrics/summary";
+  const qs = repoFull ? "repo_full=" + encodeURIComponent(repoFull) : "";
+  const response = await fetch(qs ? path + "?" + qs : path, { headers: XHR });
   if (response.status === 404) {
     const err = new Error("Delivery metrics are disabled on this node");
     (err as Error & { code?: string }).code = "disabled";
@@ -57,7 +58,7 @@ export async function fetchMetricsSummary(repoFull: string | null): Promise<Deli
 
 export async function fetchPullDrillDown(repoFull: string, number: number): Promise<PullDrillDown> {
   const params = new URLSearchParams({ repo_full: repoFull, number: String(number) });
-  const response = await fetch(`/api/v1/metrics/pull?${params}`, { headers: XHR });
+  const response = await fetch("/api/v1/metrics/pull?" + params.toString(), { headers: XHR });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = (await response.json()) as PullDrillDown;
   if (!body?.pull || !Array.isArray(body.check_runs)) throw new Error("Invalid pull drill-down response");
