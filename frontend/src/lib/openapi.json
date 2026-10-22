@@ -846,23 +846,6 @@
         "title": "ClaimTrackBody",
         "type": "object"
       },
-      "ClearKeyRequest": {
-        "properties": {
-          "provider": {
-            "description": "Provider id whose key should be removed",
-            "title": "Provider",
-            "type": "string"
-          },
-          "restart_maxwell": {
-            "default": true,
-            "title": "Restart Maxwell",
-            "type": "boolean"
-          }
-        },
-        "required": ["provider"],
-        "title": "ClearKeyRequest",
-        "type": "object"
-      },
       "ClientErrorPayload": {
         "description": "Payload sent by TabErrorBoundary when an error is caught.",
         "properties": {
@@ -4167,30 +4150,6 @@
         },
         "required": ["session_id"],
         "title": "SessionTelemetryPayload",
-        "type": "object"
-      },
-      "SetKeyRequest": {
-        "properties": {
-          "key": {
-            "description": "The API key value (never logged)",
-            "minLength": 1,
-            "title": "Key",
-            "type": "string"
-          },
-          "provider": {
-            "description": "Provider id, e.g. 'claude', 'gemini', 'codex'",
-            "title": "Provider",
-            "type": "string"
-          },
-          "restart_maxwell": {
-            "default": true,
-            "description": "Restart maxwell-daemon after saving",
-            "title": "Restart Maxwell",
-            "type": "boolean"
-          }
-        },
-        "required": ["provider", "key"],
-        "title": "SetKeyRequest",
         "type": "object"
       },
       "StaffAuditListResponse": {
@@ -10418,48 +10377,6 @@
         "tags": ["credentials"]
       }
     },
-    "/api/credentials/clear-key": {
-      "post": {
-        "description": "Remove an API key from the server-side env files and maxwell YAML.",
-        "operationId": "clear_credential_key_api_credentials_clear_key_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClearKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Clear Credential Key Api Credentials Clear Key Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Clear Credential Key",
-        "tags": ["credentials"]
-      }
-    },
     "/api/credentials/launch-auth": {
       "post": {
         "description": "Launch a provider's browser auth flow in a subprocess.\n\nReturns immediately with a job_id; the UI can poll /status.",
@@ -10499,48 +10416,6 @@
           }
         },
         "summary": "Launch Auth",
-        "tags": ["credentials"]
-      }
-    },
-    "/api/credentials/set-key": {
-      "post": {
-        "description": "Write an API key to the server-side env files. Never returns the key value.\n\nWrites to ~/.config/maxwell-daemon/env and ~/.config/runner-dashboard/env,\nupdates the current process environment, patches maxwell-daemon.yaml api_key,\nthen optionally restarts maxwell-daemon.",
-        "operationId": "set_credential_key_api_credentials_set_key_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Set Credential Key Api Credentials Set Key Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Credential Key",
         "tags": ["credentials"]
       }
     },

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from cache_utils import cache_delete, cache_get, cache_set
+from cache_utils import cache_get, cache_set
 from dashboard_config import CacheTtl
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
