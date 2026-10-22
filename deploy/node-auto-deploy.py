@@ -25,15 +25,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEPLOY_LIB = Path(__file__).resolve().parent
 sys.path.insert(0, str(DEPLOY_LIB))
 
-from node_auto_deploy.activity import ActivityUnavailableError, local_activity_count, staff_database_path  # noqa: E402
+from node_auto_deploy.activity import (  # noqa: E402
+    ActivityUnavailableError,
+    fetch_staff_activity,
+    local_activity_count,
+    staff_database_path,
+)
 from node_auto_deploy.github_api import github_get, load_token_from_env_file  # noqa: E402
-from node_auto_deploy.health import probe_staff_summary, wait_for_health  # noqa: E402
+from node_auto_deploy.health import wait_for_health  # noqa: E402
 from node_auto_deploy.hub_gate import fetch_fleet_status  # noqa: E402
 from node_auto_deploy.kill_switch import auto_deploy_disabled, kill_switch_reason  # noqa: E402
 from node_auto_deploy.releases import release_dir  # noqa: E402
 from node_auto_deploy.runner import CycleConfig, CycleDeps, evaluate_cycle  # noqa: E402
 from node_auto_deploy.service_scope import ServiceScopeDecision, detect_service_scope  # noqa: E402
-from node_auto_deploy.staff_drain import fetch_staff_summary  # noqa: E402
 from node_auto_deploy.state import default_state_path, load_state, record_event, save_state  # noqa: E402
 from node_auto_deploy.transaction import (  # noqa: E402
     deployment_lock,
@@ -158,14 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         return fetch_fleet_status(hub_url, fleet_token)
 
     def staff_in_flight() -> int:
-        try:
-            summary = fetch_staff_summary(f"http://127.0.0.1:{args.port}", fleet_token)
-        except Exception as exc:  # noqa: BLE001
-            raise ActivityUnavailableError(f"staff summary unavailable: {exc}") from exc
-        rows = summary.get("in_flight")
-        if not isinstance(rows, list):
-            raise ActivityUnavailableError("staff summary has no valid in_flight list")
-        return max(len(rows), local_activity_count(staff_database_path()))
+        return fetch_staff_activity(f"http://127.0.0.1:{args.port}", fleet_token, staff_database_path())
 
     cfg = CycleConfig(
         repo_full_name=args.repo,
@@ -254,9 +251,9 @@ def main(argv: list[str] | None = None) -> int:
             def healthy() -> bool:
                 if not _wait_healthy(args.port):
                     return False
-                ok_staff, staff_detail = probe_staff_summary(f"http://127.0.0.1:{args.port}", fleet_token)
-                if not ok_staff:
-                    raise RuntimeError(staff_detail)
+                # A newly active item is valid after service recovery; this call
+                # only verifies the authenticated local API and full DB are readable.
+                staff_in_flight()
                 return True
 
             outcome = install_and_run_transaction(
