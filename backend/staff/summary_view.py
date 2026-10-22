@@ -20,6 +20,8 @@ from staff.github_app_preflight import (
 from staff.provider_auth_preflight import (
     aggregate_provider_auth,
     attention_items_from_provider_auth,
+)
+from staff.provider_auth_preflight import (
     preflight_cache_snapshot as provider_auth_snapshot,
 )
 from staff.runner import get_runner
