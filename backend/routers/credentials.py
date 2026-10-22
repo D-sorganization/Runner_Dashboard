@@ -112,6 +112,7 @@ log = logging.getLogger("dashboard.credentials")
 _MAXWELL_ENV = Path.home() / ".config" / "maxwell-daemon" / "env"
 _DASHBOARD_ENV = Path.home() / ".config" / "runner-dashboard" / "env"
 
+
 def _env_present(key: str) -> bool:
     val = os.environ.get(key, "")
     return bool(val and val.strip())
@@ -472,9 +473,7 @@ def _probe_gemini_cli() -> dict[str, Any]:
         "usable": gemini_binary is not None and oauth,
         "binary_found": gemini_binary is not None,
         "key_status": "oauth" if oauth else "missing",
-        "status": (
-            "ready" if (gemini_binary and oauth) else ("missing_key" if gemini_binary else "not_installed")
-        ),
+        "status": ("ready" if (gemini_binary and oauth) else ("missing_key" if gemini_binary else "not_installed")),
         "detail": (
             "Ready"
             if (gemini_binary and oauth)
@@ -595,9 +594,7 @@ async def _probe_linear_workspaces() -> list[dict[str, Any]]:
                     "detail": " | ".join(detail_parts),
                     "config_source": workspace.get("auth_kind") or "api_key",
                     "docs_url": "https://linear.app/settings/api",
-                    "setup_hint": (
-                        "Set LINEAR_API_KEY in ~/.config/runner-dashboard/env (Linear personal API key)."
-                    ),
+                    "setup_hint": ("Set LINEAR_API_KEY in ~/.config/runner-dashboard/env (Linear personal API key)."),
                     "workspace_id": workspace_id,
                 }
             )
