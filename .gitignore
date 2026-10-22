@@ -79,3 +79,4 @@ pip-wheel-metadata/
 # Stale compiled vite config artifacts (#1549)
 vite.config.js
 vite.config.d.ts
+.deferred/
