@@ -8,6 +8,7 @@ from main_auto_release.naming import (
     is_auto_release_tag,
 )
 from main_auto_release.release_index import commit_has_release, index_release_targets
+from main_auto_release.retention import select_releases_to_delete
 
 __all__ = [
     "AUTO_RELEASE_NOTES_HEADER",
@@ -18,4 +19,5 @@ __all__ = [
     "index_release_targets",
     "is_auto_release_tag",
     "select_green_commit_with_release",
+    "select_releases_to_delete",
 ]

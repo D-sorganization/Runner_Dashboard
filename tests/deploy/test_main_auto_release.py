@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -15,6 +16,7 @@ from main_auto_release.naming import (  # noqa: E402
     is_auto_release_tag,
 )
 from main_auto_release.release_index import commit_has_release, re_semver_tag  # noqa: E402
+from main_auto_release.retention import select_releases_to_delete  # noqa: E402
 from node_auto_deploy.artifact import pick_release_assets  # noqa: E402
 
 _GREEN_SHA = "a474ee662a55f9437677116a4d269f74946a8d10"  # pragma: allowlist secret
@@ -111,3 +113,17 @@ def test_select_green_commit_with_release_skips_head_without_release() -> None:
     chosen, _ = select_green_commit_with_release([_GREEN_SHA, older_sha], fetch, releases)
     assert chosen == older_sha
 
+
+def test_retention_never_deletes_protected_shas() -> None:
+    rows = [
+        {
+            "draft": False,
+            "tag_name": f"v2026.10.{i:02d}-abc1234",
+            "target_commitish": f"{i:040x}",
+            "published_at": datetime(2026, 10, 1, tzinfo=timezone.utc).isoformat(),
+        }
+        for i in range(35)
+    ]
+    protected = {rows[30]["target_commitish"], rows[31]["target_commitish"]}
+    doomed = select_releases_to_delete(rows, keep_count=30, protected_shas=protected)
+    assert protected.isdisjoint({r["target_commitish"] for r in doomed})
