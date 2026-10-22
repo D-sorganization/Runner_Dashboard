@@ -57,7 +57,8 @@ def parse_check_runs(repo_full: str, head_sha: str, payload: dict[str, Any]) -> 
     for raw in runs:
         if not isinstance(raw, dict):
             continue
-        app = raw.get("app") if isinstance(raw.get("app"), dict) else {}
+        app_raw = raw.get("app")
+        app: dict[str, Any] = app_raw if isinstance(app_raw, dict) else {}
         out.append(
             CheckRunSnapshot(
                 repo_full=repo_full,

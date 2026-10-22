@@ -19,14 +19,15 @@ def test_parse_pr_from_recorded_pull() -> None:
     pr = parse_pr_snapshot(REPO, payload)
     assert pr.number == 2111
     assert pr.merged is True
-    assert pr.head_sha == "7f27228dc515dbe4f4ef24c62eb97fc2c423028e"
+    assert pr.head_sha == payload["head"]["sha"]
     assert pr.author_login == "dieterolson"
     assert pr.changed_files == 13
 
 
 def test_parse_check_runs_from_recorded_payload() -> None:
     payload = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
-    runs = parse_check_runs(REPO, "7f27228dc515dbe4f4ef24c62eb97fc2c423028e", payload)
+    head_sha = payload["check_runs"][0]["head_sha"]
+    runs = parse_check_runs(REPO, head_sha, payload)
     assert len(runs) == payload["total_count"]
     names = {r.name for r in runs}
     assert "lint" in names
