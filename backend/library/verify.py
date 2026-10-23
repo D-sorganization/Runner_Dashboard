@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 from library.citation_claims import claim_is_supported
 from library.codebase_refs import REFERENCE_TOKEN, verify_codebase_citations
-from library.markdown_links import verify_links
+from library.markdown_links import reject_links_without_files, verify_links
 
 _CITATION = re.compile(
     r"\[ref:(?P<node>[A-Za-z0-9][A-Za-z0-9.-]{0,63}):(?P<source>[a-z0-9][a-z0-9-]{0,62}):"
@@ -60,7 +60,9 @@ def verification_repo_root(repo: str | None) -> Path | None:
     return resolved
 
 
-async def _fetch_peer_response(target: str, token: str, content: str, timeout_s: float) -> bytes | None:
+async def _fetch_peer_response(
+    target: str, token: str, content: str, timeout_s: float, *, shared_only: bool = False
+) -> bytes | None:
     """Fetch a bounded peer response under one wall-clock deadline."""
     chunks: list[bytes] = []
     response_size = 0
@@ -69,10 +71,13 @@ async def _fetch_peer_response(target: str, token: str, content: str, timeout_s:
             timeout=httpx.Timeout(timeout_s, connect=min(timeout_s, 1.0)),
             follow_redirects=False,
         ) as client:
+            payload = {"content": content, "local_only": True}
+            if shared_only:
+                payload["shared_only"] = True
             async with client.stream(
                 "POST",
                 f"{target}/api/v1/library/verify",
-                json={"content": content, "local_only": True},
+                json=payload,
                 headers={"Authorization": f"Bearer {token}"},
             ) as response:
                 if response.status_code != 200:
@@ -92,6 +97,7 @@ def _verify_peer_citation(
     deadline: float,
     fleet_nodes: dict[str, str],
     expected_sha256: set[str] | None = None,
+    shared_only: bool = False,
 ) -> dict[str, Any]:
     """Ask only the configured source node to verify its own citation."""
     from library.pool import validate_node_url
@@ -117,10 +123,12 @@ def _verify_peer_citation(
         # peer sees exactly the citation currently being verified.
         context_prefix = content[max(0, match.start() - 500) : match.start()]
         context = _CITATION.sub(" ", context_prefix) + citation
-        body = asyncio.run(_fetch_peer_response(target, token, context, min(remaining, 2.0)))
+        body = asyncio.run(_fetch_peer_response(target, token, context, min(remaining, 2.0), shared_only=shared_only))
         if body is None:
             return result
         payload = json.loads(body)
+        if shared_only and (not isinstance(payload, dict) or payload.get("shared_only") is not True):
+            return result
         citations = payload.get("citations") if isinstance(payload, dict) else None
         if not isinstance(citations, list) or len(citations) != 1 or not isinstance(citations[0], dict):
             return result
@@ -182,6 +190,7 @@ def _verify_citation(
     run_id: str | None,
     *,
     local_only: bool,
+    shared_only: bool,
     deadline: float,
 ) -> dict[str, Any]:
     groups = match.groupdict()
@@ -198,6 +207,8 @@ def _verify_citation(
 
     local_node = HOSTNAME or "local"
     node = groups["node"] or local_node
+    if local_only:
+        result["node"] = local_node
     if node != local_node:
         if local_only:
             result.update(status="node_mismatch")
@@ -222,20 +233,28 @@ def _verify_citation(
                 result.update(status="node_mismatch" if identity_matches else "unretrieved_reference")
                 return result
             expected_sha256 = {item["file_sha256"] for item in node_matches}
+        peer_options: dict[str, Any] = {}
+        if shared_only:
+            peer_options["shared_only"] = True
         return _verify_peer_citation(
             match,
             content,
             deadline=deadline,
             fleet_nodes=dict(FLEET_NODES),
             expected_sha256=expected_sha256,
+            **peer_options,
         )
-    row = conn.execute(
+    query = (
         "SELECT w.id,w.title,w.author,w.year,f.sha256,p.id,p.page_start,p.page_end,p.text "
         "FROM works w JOIN passages p ON p.work_id=w.id "
         "JOIN files f ON f.work_id=w.id AND f.source_id=? AND f.status='present' "
-        "WHERE w.id=? AND p.id=? ORDER BY f.id LIMIT 1",
-        (source, work_id, passage_id),
-    ).fetchone()
+    )
+    if shared_only:
+        query += "JOIN library_sources s ON s.id=f.source_id "
+    query += "WHERE w.id=? AND p.id=?"
+    if shared_only:
+        query += " AND s.shared=1 AND s.status='active'"
+    row = conn.execute(query + " ORDER BY f.id LIMIT 1", (source, work_id, passage_id)).fetchone()
     if row is None:
         result.update(status="citation_not_found")
         return result
@@ -274,8 +293,6 @@ def _verify_citation(
         file={"sha256": file_hash, "source_id": source},
         passage={"id": row[5], "page_start": row[6], "page_end": row[7]},
     )
-    if local_only:
-        result["node"] = local_node
     return result
 
 
@@ -289,10 +306,13 @@ def verify_content(
     knowledge_dir: Path | None = None,
     allow_ambient_knowledge: bool = True,
     local_only: bool = False,
+    shared_only: bool = False,
 ) -> dict[str, Any]:
     """Verify citation tokens and relative links without modifying the library."""
     if not isinstance(content, str):
         raise ValueError("content must be text")
+    if not isinstance(shared_only, bool):
+        raise ValueError("shared_only must be a boolean")
     if len(content) > 1_000_000:
         raise ValueError("content must be at most 1000000 characters")
     if run_id is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", run_id):
@@ -319,25 +339,45 @@ def verify_content(
                     )
                     continue
             citations.append(
-                _verify_citation(conn, db_path, match, content, run_id, local_only=local_only, deadline=deadline)
+                _verify_citation(
+                    conn,
+                    db_path,
+                    match,
+                    content,
+                    run_id,
+                    local_only=local_only,
+                    shared_only=shared_only,
+                    deadline=deadline,
+                )
             )
     citations.extend(
         {"citation": match.group(0), "verified": False, "status": "legacy_unverifiable"}
         for match in _LEGACY.finditer(content)
     )
-    citations.extend(
-        verify_codebase_citations(
-            db_path,
-            content,
-            run_id,
-            knowledge_dir=knowledge_dir,
-            allow_ambient=allow_ambient_knowledge,
+    if shared_only:
+        citations.extend(
+            {"citation": match.group(0)[:500], "verified": False, "status": "unsupported_in_shared_only"}
+            for match in REFERENCE_TOKEN.finditer(content)
+            if ":codebase:" in match.group(0)
         )
-    )
+        links = reject_links_without_files(content)
+    else:
+        citations.extend(
+            verify_codebase_citations(
+                db_path,
+                content,
+                run_id,
+                knowledge_dir=knowledge_dir,
+                allow_ambient=allow_ambient_knowledge,
+            )
+        )
+        links = verify_links(content, repo_root=repo_root, document_path=document_path)
     citations.extend(
         {"citation": match[0][:500], "verified": False, "status": "invalid_citation"}
         for match in REFERENCE_TOKEN.finditer(content)
         if ":codebase:" not in match[0] and _CITATION.fullmatch(match[0]) is None
     )
-    links = verify_links(content, repo_root=repo_root, document_path=document_path)
-    return {"verified": all(item["verified"] for item in citations + links), "citations": citations, "links": links}
+    response = {"verified": all(item["verified"] for item in citations + links), "citations": citations, "links": links}
+    if shared_only:
+        response["shared_only"] = True
+    return response
