@@ -63,34 +63,60 @@ convention.
 
 - **Real scans need a VM scan host.** The host must be declared
   `isolation: "vm"`, reached over `DOCKER_HOST=ssh://`, and have a
-  `build_network`. A WSL distro is not a VM. ControlTower never hosts a scan.
+  `build_network` whose filter is live: `/run/vs-build/<network>.ok` on the VM
+  must hold the network's current id. A WSL distro is not a VM. ControlTower
+  never hosts a scan.
+- **Real scans start only on the hub.** A node answers `409`; dry runs work
+  everywhere.
 - **CI wins.**
   - A scan starts only when the CI queue is idle and the scan host has at least
-    60 GB free.
+    60 GB free. The queue count must come from a complete sample generated in
+    the last 3 minutes; the Queue tab's cached partial or stale fallbacks count
+    as "not idle". An unknown free-disk reading aborts a running scan.
   - Both are re-polled every 30 s during phases A and B. A queued CI job aborts
     the scan.
 - **The night window, one fleet-wide slot, and `usd_per_day` apply.**
 - **The CLI version is pinned** (`executor.cli_version`). The CLI's
   `system/init` event must list exactly the four `scan_sandbox` tools, or the
   run is killed. A tool call outside that set kills the run too.
-- **Requests can't name a SHA.** Only the default-branch head is scanned.
-- **The container, image and temp directories are removed in a `finally`**,
-  including on cancel.
+- **Requests can't name a SHA.** Only the default-branch head is scanned. The
+  `.oss-scanner/` contract is validated again from the downloaded source, and
+  the build uses that copy's Dockerfile. A contract with `disabled: true` is
+  never scanned.
+- **Images that declare a `VOLUME` are refused.** A volume would be writable
+  host storage behind phase B's read-only root. The image digest is recorded on
+  the scan.
+- **Untrusted output is bounded.** No line over 1 MiB and no more than 1000
+  queued lines are held. An oversized agent event aborts the scan; oversized
+  build lines are dropped.
+- **The container (with its volumes), image and temp directories are removed in
+  a `finally`**, including on cancel, and the builder cache is pruned to 20 GB.
+- **A dead dashboard process cannot hold the slot.** A running scan beats every
+  60 s; a row silent for 5 minutes is reclaimed. Before a new scan uses the
+  host, it removes any container or image still carrying the scan label.
 
 ## Enabling a Scan Host (Owner, One Time)
 
 1. Provision a Linux VM: Hyper-V or a separate machine, _not_ a WSL distro, not
    ControlTower. Install Docker and buildx. Give the dashboard host an SSH key
    for a dedicated `scan` user in the `docker` group.
-2. On the VM, review then apply the filtered network:
+2. On the VM, review the filtered network, then install it as a boot unit
+   (iptables rules and the `/run` marker do not survive a reboot, and until the
+   unit has run the dashboard refuses scans):
 
    ```bash
    sudo deploy/security-scan-host/setup-build-network.sh            # dry run
-   sudo deploy/security-scan-host/setup-build-network.sh --apply
+   sudo install -m 0755 deploy/security-scan-host/setup-build-network.sh /usr/local/sbin/
+   sudo install -m 0644 deploy/security-scan-host/vs-build-network.service /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now vs-build-network
    ```
 
-   Re-run it at boot (for example from a systemd unit), because the iptables
-   rules do not persist.
+   The script pins the builder's DNS to the fixed public resolvers in its
+   buildkitd config, so builds never use the VM's own resolver (a LAN router
+   or MagicDNS, which the filter drops). Do not "fix" a DNS failure by allowing
+   a LAN resolver: that reopens a path into the fleet. The VM must hold no
+   outbound credentials, and its tailnet ACL must accept only inbound traffic
+   from the hub. buildkitd runs privileged, so the VM is the trust boundary.
 
 3. In `config/security_scan.json` on the hub:
 
@@ -131,11 +157,14 @@ The scheduler ships **off**. To turn it on, set this in
 `config/security_scan.json`:
 
 ```json
-"schedule": { "enabled": true, "check_minutes": 30 }
+"schedule": { "enabled": true, "check_minutes": 30, "retry_hours": 20 }
 ```
 
-Every `check_minutes` the hub picks the most urgent due repository: the lowest
-`priority`, then the oldest last success. It evaluates admission without writing
+Every `check_minutes`, inside the night window only (daytime ticks make no
+GitHub calls), the hub picks the most urgent due repository: the lowest
+`priority`, then the oldest last success. A repository whose last real scan
+failed or aborted is not due again for `retry_hours` (default 20), so one broken
+contract cannot take the slot every night. It evaluates admission without writing
 a row. It starts a real scan only when every admission rule passes, so outside
 the night window or while CI is busy it does nothing.
 

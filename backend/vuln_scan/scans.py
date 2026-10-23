@@ -3,8 +3,13 @@
 States are ``refused``, ``planned`` (dry run), ``running``, ``succeeded``,
 ``failed`` and ``aborted``. A ``running`` row holds the single fleet-wide slot.
 Scans are dispatched from the hub only, so the hub's database is the slot's one
-source of truth; a row left ``running`` by a crashed process is reclaimed after
-:data:`STALE_RUNNING_HOURS`.
+source of truth.
+
+A running scan beats ``heartbeat`` every :data:`HEARTBEAT_S` seconds from its
+worker thread. A ``running`` row whose heartbeat is older than
+:data:`STALE_HEARTBEAT_MINUTES` belongs to a process that died (a redeploy or a
+crash) and is reclaimed. The workload it may have left on the scan host is
+removed by the next scan's label sweep before that scan uses the host (panel q5).
 """
 
 from __future__ import annotations
@@ -22,7 +27,8 @@ from typing import Any
 from staff.store import _now
 
 SCAN_STATES = ("refused", "planned", "running", "succeeded", "failed", "aborted")
-STALE_RUNNING_HOURS = 14
+HEARTBEAT_S = 60
+STALE_HEARTBEAT_MINUTES = 5
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS vs_scans (
     id            TEXT PRIMARY KEY,
@@ -41,7 +47,8 @@ CREATE TABLE IF NOT EXISTS vs_scans (
     findings_new  INTEGER NOT NULL,
     findings_seen INTEGER NOT NULL,
     image_digest  TEXT NOT NULL,
-    error         TEXT NOT NULL
+    error         TEXT NOT NULL,
+    heartbeat     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_vs_scans_state ON vs_scans(state, created);
 """
@@ -56,6 +63,7 @@ _FIELDS = {
     "findings_seen",
     "image_digest",
     "error",
+    "heartbeat",
 }
 
 
@@ -83,13 +91,13 @@ class ScanLog:
 
     def _reclaim_stale(self, conn: sqlite3.Connection) -> None:
         cutoff = (
-            (datetime.now(UTC) - timedelta(hours=STALE_RUNNING_HOURS))
+            (datetime.now(UTC) - timedelta(minutes=STALE_HEARTBEAT_MINUTES))
             .isoformat()
             .replace("+00:00", "Z")
         )
         conn.execute(
             "UPDATE vs_scans SET state='aborted', error='reclaimed: process died', "
-            "finished=? WHERE state='running' AND created < ?",
+            "finished=? WHERE state='running' AND heartbeat < ?",
             (_now(), cutoff),
         )
 
@@ -125,7 +133,7 @@ class ScanLog:
                 if int(busy[0]):
                     raise SlotBusy("the fleet-wide scan slot is busy")
             conn.execute(
-                "INSERT INTO vs_scans VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO vs_scans VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     scan_id,
                     repo,
@@ -144,9 +152,14 @@ class ScanLog:
                     0,
                     "",
                     "",
+                    _now(),
                 ),
             )
         return scan_id
+
+    def beat(self, scan_id: str) -> None:
+        """Mark a running scan alive; see :data:`STALE_HEARTBEAT_MINUTES`."""
+        self.update(scan_id, heartbeat=_now())
 
     def update(self, scan_id: str, **fields: Any) -> None:
         unknown = set(fields) - _FIELDS

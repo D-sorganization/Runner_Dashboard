@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shutil
 import threading
 from collections.abc import Awaitable, Callable, Coroutine
@@ -29,7 +30,7 @@ from vuln_scan import launch, schedule, service
 from vuln_scan.executor import Probes, ScanExecutor, ScanRequest, codeload_fetch
 from vuln_scan.findings import default_db_path, get_findings_store
 from vuln_scan.operator_config import ScanHost, load_operator_config
-from vuln_scan.sandbox import subprocess_runner
+from vuln_scan.sandbox import ExecResult, subprocess_runner
 from vuln_scan.scans import ScanLog, get_scan_log
 
 log = logging.getLogger("dashboard.vuln_scan.scan_service")
@@ -55,20 +56,43 @@ async def default_branch_sha(repo: str) -> str | None:
     return sha if isinstance(sha, str) and len(sha) == 40 else None
 
 
-async def queued_ci_jobs() -> int | None:
-    """Queued CI jobs across the org; ``None`` (not idle) if the count is partial."""
-    from routers.queue import _queue_impl
+QUEUE_MAX_AGE_S = 180.0
 
-    payload = await _queue_impl()
+
+def queue_count(payload: dict[str, Any], now: datetime) -> int | None:
+    """Queued jobs from a queue payload; ``None`` (not idle) unless complete and fresh.
+
+    The Queue tab serves cached partial and long-stale payloads so its view never
+    goes blank (#641). CI yield must not trust those (panel q5): a partial count
+    can miss a repository's queue, and a stale one can be hours old.
+    """
     stats = payload.get("stats") or {}
-    if not stats.get("complete") and payload.get("data_source") != "cache":
+    if stats.get("complete") is not True:
+        return None
+    try:
+        generated = datetime.fromisoformat(
+            str(payload.get("generated_at", "")).replace("Z", "+00:00")
+        )
+    except ValueError:
+        return None
+    if generated.tzinfo is None:
+        generated = generated.replace(tzinfo=UTC)
+    age = (now - generated).total_seconds()
+    if age < -60 or age > QUEUE_MAX_AGE_S:
         return None
     count = payload.get("queued_jobs_count")
-    return count if isinstance(count, int) else None
+    return count if isinstance(count, int) and count >= 0 else None
 
 
-def ssh_free_gb(host: ScanHost) -> float | None:
-    """Free GB under ``/var/lib/docker`` on an ``ssh://`` scan host."""
+async def queued_ci_jobs() -> int | None:
+    """Queued CI jobs across the org; ``None`` (not idle) if partial or stale."""
+    from routers.queue import _queue_impl
+
+    return queue_count(await _queue_impl(), datetime.now(UTC))
+
+
+def _ssh(host: ScanHost, *remote: str) -> ExecResult | None:
+    """Run a fixed argv on an ``ssh://`` scan host; ``None`` if it has no SSH target."""
     if not host.docker_host or not host.docker_host.startswith("ssh://"):
         return None
     parts = urlsplit(host.docker_host)
@@ -78,13 +102,42 @@ def ssh_free_gb(host: ScanHost) -> float | None:
     argv = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
     if parts.port:
         argv += ["-p", str(parts.port)]
-    argv += [target, "df", "-Pk", "/var/lib/docker"]
-    env = {
+    return subprocess_runner([*argv, target, *remote], 30, 8192, _host_env())
+
+
+def _host_env() -> dict[str, str]:
+    return {
         k: v
         for k, v in safe_subprocess_env().items()
         if k.upper() in ("PATH", "HOME", "USERPROFILE", "SYSTEMROOT")
     }
-    result = subprocess_runner(argv, 30, 8192, env)
+
+
+def build_filter_ok(host: ScanHost) -> bool:
+    """Whether the scan host's phase-A filter is live (panel q5).
+
+    ``setup-build-network.sh --apply`` writes ``/run/vs-build/<network>.ok`` with
+    the network id as its last step. ``/run`` is tmpfs, so after a reboot the
+    marker is gone until the script runs again; a recreated network has a new id.
+    """
+    network = host.build_network or ""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", network):
+        return False
+    marker = _ssh(host, "cat", f"/run/vs-build/{network}.ok")
+    if marker is None or marker.exit_code != 0:
+        return False
+    env = {**_host_env(), "DOCKER_HOST": str(host.docker_host)}
+    argv = ["docker", "network", "inspect", "--format", "{{.Id}}", network]
+    live = subprocess_runner(argv, 60, 8192, env)
+    want = marker.stdout.strip()
+    return live.exit_code == 0 and bool(want) and live.stdout.strip() == want
+
+
+def ssh_free_gb(host: ScanHost) -> float | None:
+    """Free GB under ``/var/lib/docker`` on an ``ssh://`` scan host."""
+    result = _ssh(host, "df", "-Pk", "/var/lib/docker")
+    if result is None:
+        return None
     lines = result.stdout.strip().splitlines()
     if result.exit_code != 0 or len(lines) < 2:
         return None
@@ -127,6 +180,7 @@ def build_executor(loop: asyncio.AbstractEventLoop) -> ScanExecutor:
         contract=lambda repo: bridge(service.contract_status(repo)),
         queued_jobs=lambda: bridge(queued_ci_jobs()),
         free_gb=ssh_free_gb,
+        build_filter_ok=build_filter_ok,
         oauth_ok=oauth_ok,
         cli_version=lambda: claude_cli_version(cli),
         fetch_source=codeload_fetch(ORG),
@@ -140,13 +194,24 @@ def build_executor(loop: asyncio.AbstractEventLoop) -> ScanExecutor:
         docker=subprocess_runner,
         cli_path=cli,
         claude_config_dir=claude_config_dir(),
+        org=ORG,
     )
 
 
 async def request_scan(
     repo: str, *, dry_run: bool, requested_by: str
 ) -> dict[str, Any]:
-    """Plan, refuse or start a scan of the default-branch head of ``repo``."""
+    """Plan, refuse or start a scan of the default-branch head of ``repo``.
+
+    Real scans run only on the hub, which holds the one fleet-wide slot; every
+    node has its own scan log, so a node admitting a scan would be a second slot.
+    """
+    import dashboard_config
+
+    if not dry_run and dashboard_config.MACHINE_ROLE != "hub":
+        raise HTTPException(
+            status_code=409, detail="real scans run only on the hub dashboard"
+        )
     sha = await default_branch_sha(repo)
     if sha is None:
         raise HTTPException(
@@ -210,6 +275,7 @@ async def scheduled_tick() -> dict[str, Any]:
         slot_free=scan_log().slot_free,
         coverage=coverage_rows,
         plan=plan,
+        now=datetime.now(UTC),
     )
 
 

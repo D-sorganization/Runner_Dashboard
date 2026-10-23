@@ -65,13 +65,17 @@ def _config(**overrides: Any) -> Any:
 
 
 class FakeDocker:
-    def __init__(self) -> None:
+    def __init__(self, volumes: str = "null", leftovers: tuple[str, ...] = ()) -> None:
         self.calls: list[list[str]] = []
+        self.volumes = volumes
+        self.leftovers = leftovers
 
     def __call__(self, argv: Sequence[str], timeout: float, cap: int, env: Mapping[str, str]) -> ExecResult:
         self.calls.append(list(argv))
         if argv[1:3] == ["image", "inspect"]:
-            return ExecResult(0, DIGEST + "\n", "")
+            return ExecResult(0, f"{DIGEST} {self.volumes}\n", "")
+        if argv[1:3] in (["ps", "-aq"], ["image", "ls"]):
+            return ExecResult(0, "".join(f"{i}\n" for i in self.leftovers), "")
         return ExecResult(0, "", "")
 
     def verbs(self) -> list[str]:
@@ -93,7 +97,7 @@ class FakeProc:
         self.returncode: int | None = None
         self._code = code
         self.stdin = io.StringIO()
-        self.stdout: Iterator[str] = self._stream()
+        self.stdout = _Lines(self._stream())
         self.pid = 0
 
     def _stream(self) -> Iterator[str]:
@@ -108,6 +112,23 @@ class FakeProc:
 
     def poll(self) -> int | None:
         return self.returncode
+
+
+class _Lines:
+    """``readline(limit)`` over a generator of lines, like a text pipe."""
+
+    def __init__(self, lines: Iterator[str]) -> None:
+        self._lines = lines
+        self._buf = ""
+
+    def readline(self, limit: int = -1) -> str:
+        if not self._buf:
+            self._buf = next(self._lines, "")
+        if 0 <= limit < len(self._buf):
+            out, self._buf = self._buf[:limit], self._buf[limit:]
+            return out
+        out, self._buf = self._buf, ""
+        return out
 
 
 class FakePopen:
@@ -152,15 +173,36 @@ class FakePopen:
         return proc
 
 
+CONTRACT = """\
+repo: https://github.com/D-sorganization/Tools
+primary_contact: security@example.org
+"""
+
+
+def _source(contract: str | None = CONTRACT, dockerfile: bool = True) -> Any:
+    def fetch(repo: str, sha: str, dest: Path) -> None:
+        (dest / "README").write_text("x", encoding="utf-8")
+        scanner = dest / ".oss-scanner"
+        scanner.mkdir()
+        if contract is not None:
+            (scanner / "project.yaml").write_text(contract, encoding="utf-8")
+        if dockerfile:
+            (scanner / "Dockerfile").write_text("FROM python:3.12\n", encoding="utf-8")
+        (scanner / "threat_model.md").write_text("# Threats\n", encoding="utf-8")
+
+    return fetch
+
+
 def _probes(**overrides: Any) -> Probes:
     values: dict[str, Any] = {
         "default_branch_sha": lambda repo: SHA,
         "contract": lambda repo: {"valid": True, "dockerfile": ".oss-scanner/Dockerfile"},
         "queued_jobs": lambda: 0,
         "free_gb": lambda host: 200.0,
+        "build_filter_ok": lambda host: True,
         "oauth_ok": lambda: True,
         "cli_version": lambda: "2.1.263 (Claude Code)",
-        "fetch_source": lambda repo, sha, dest: (dest / "README").write_text("x", encoding="utf-8"),
+        "fetch_source": _source(),
         "now": lambda: NIGHT,
     }
     values.update(overrides)
@@ -184,6 +226,7 @@ def _executor(
         poll_s=0.0,
         work_root=tmp_path,
         kill_tree=kill,
+        org="D-sorganization",
     )
 
 
@@ -193,6 +236,13 @@ def _run(ex: ScanExecutor, dry_run: bool = False) -> dict[str, Any]:
     if row["state"] != "running":
         return row
     return ex.execute(row["id"], req)
+
+
+def _cleaned(docker: FakeDocker) -> bool:
+    """Cleanup ran in order: containers (with volumes), the image, the builder cache."""
+    return docker.verbs()[-3:] == ["rm -f", "rmi -f", "buildx prune"] and all(
+        c[1:4] == ["rm", "-f", "-v"] for c in docker.calls if c[1:3] == ["rm", "-f"]
+    )
 
 
 def _work_dirs(tmp_path: Path) -> list[Path]:
@@ -239,7 +289,7 @@ def test_happy_path_records_findings_and_cleans_up(tmp_path: Path) -> None:
     cli_env = popen.envs[1]
     assert "DOCKER_HOST" not in cli_env and not any("TOKEN" in k for k in cli_env)
     assert "run --detach" in docker.verbs()
-    assert docker.verbs()[-2:] == ["rm -f", "rmi -f"]
+    assert _cleaned(docker)
     assert _work_dirs(tmp_path) == []
     assert ex.scan_log.slot_free()
 
@@ -249,7 +299,7 @@ def test_non_mcp_tools_at_startup_abort(tmp_path: Path) -> None:
     popen = FakePopen([{**INIT, "tools": [*INIT["tools"], "Bash"]}, RESULT], [FINDING])
     row = _run(_executor(tmp_path, popen, docker))
     assert row["state"] == "aborted" and "launch refused" in row["error"]
-    assert docker.verbs()[-2:] == ["rm -f", "rmi -f"] and _work_dirs(tmp_path) == []
+    assert _cleaned(docker) and _work_dirs(tmp_path) == []
     assert row["findings_new"] == 0
 
 
@@ -273,7 +323,7 @@ def test_queued_ci_aborts_a_running_agent(tmp_path: Path) -> None:
     row = _run(_executor(tmp_path, popen, docker, queued_jobs=queued))
     assert row["state"] == "aborted" and "yielding to CI" in row["error"]
     assert popen.procs[-1].killed.is_set()
-    assert docker.verbs()[-2:] == ["rm -f", "rmi -f"]
+    assert _cleaned(docker)
 
 
 def test_turn_budget_aborts(tmp_path: Path) -> None:
@@ -289,7 +339,7 @@ def test_error_result_fails_and_still_cleans_up(tmp_path: Path) -> None:
     popen = FakePopen([INIT, {**RESULT, "is_error": True, "result": "auth expired"}], [])
     row = _run(_executor(tmp_path, popen, docker))
     assert row["state"] == "failed" and "auth expired" in row["error"]
-    assert docker.verbs()[-2:] == ["rm -f", "rmi -f"]
+    assert _cleaned(docker)
 
 
 def test_cancel_before_build(tmp_path: Path) -> None:
@@ -371,8 +421,8 @@ def test_verifier_confirms_reproduced_and_marks_the_rest_inconclusive(tmp_path: 
     runs = [c for c in docker.calls if c[1:3] == ["run", "--detach"]]
     names = [c[c.index("--name") + 1] for c in runs]
     assert len(names) == 2 and names[1] == names[0] + "-v"  # fresh container, same image
-    removed = [c[3] for c in docker.calls if c[1:3] == ["rm", "-f"]]
-    assert set(removed) == set(names) and docker.verbs()[-1] == "rmi -f"
+    removed = [c[4] for c in docker.calls if c[1:4] == ["rm", "-f", "-v"]]
+    assert set(removed) == set(names) and docker.verbs()[-2:] == ["rmi -f", "buildx prune"]
 
 
 def test_verifier_with_the_scan_tool_set_aborts_and_findings_stay_new(tmp_path: Path) -> None:
@@ -414,3 +464,84 @@ def test_plan_reports_reasons_without_writing_a_row(tmp_path: Path) -> None:
     reasons = ex.plan(ScanRequest(repo="Tools", sha=SHA, dry_run=False))
     assert any("window" in r for r in reasons)
     assert ex.scan_log.recent() == []
+
+
+# ── panel q5 hardening (#2603) ──────────────────────────────────────────
+
+
+def test_digest_is_recorded_on_the_scan_row(tmp_path: Path) -> None:
+    ex = _executor(tmp_path, FakePopen([INIT, RESULT], []), FakeDocker())
+    row = _run(ex)
+    assert row["state"] == "succeeded", row["error"]
+    assert row["image_digest"] == DIGEST
+
+
+@pytest.mark.parametrize(
+    ("source", "needle"),
+    [
+        (_source(contract=None), "no project.yaml"),
+        (_source(contract=CONTRACT + "disabled: true\n"), "disabled: true"),
+        (_source(dockerfile=False), "invalid"),
+        (_source(contract="repo: https://github.com/someone-else/Tools\nprimary_contact: a@b.org\n"), "invalid"),
+    ],
+)
+def test_contract_is_rechecked_at_the_scanned_sha(tmp_path: Path, source: Any, needle: str) -> None:
+    docker, popen = FakeDocker(), FakePopen([INIT, RESULT], [])
+    row = _run(_executor(tmp_path, popen, docker, fetch_source=source))
+    assert row["state"] == "aborted" and needle in row["error"], row["error"]
+    assert popen.argvs == []  # nothing was built
+    assert _work_dirs(tmp_path) == []
+
+
+def test_the_build_follows_the_dockerfile_of_the_scanned_sha(tmp_path: Path) -> None:
+    custom = CONTRACT + "dockerfile: .oss-scanner/Dockerfile\n"
+    popen = FakePopen([INIT, RESULT], [])
+    _run(_executor(tmp_path, popen, FakeDocker(), fetch_source=_source(contract=custom)))
+    build = popen.argvs[0]
+    assert build[build.index("--file") + 1].replace("\\", "/").endswith("context/.oss-scanner/Dockerfile")
+
+
+def test_an_image_declaring_a_volume_is_refused(tmp_path: Path) -> None:
+    docker, popen = FakeDocker(volumes='{"/data":{}}'), FakePopen([INIT, RESULT], [])
+    row = _run(_executor(tmp_path, popen, docker))
+    assert row["state"] == "aborted" and "VOLUME" in row["error"]
+    assert "run --detach" not in docker.verbs() and _cleaned(docker)
+
+
+def test_leftovers_from_a_dead_process_are_swept_first(tmp_path: Path) -> None:
+    docker = FakeDocker(leftovers=("0123456789ab", "not an id; rm -rf /"))
+    _run(_executor(tmp_path, FakePopen([INIT, RESULT], []), docker))
+    sweep = [c for c in docker.calls if c[:4] == ["docker", "rm", "-f", "-v"] and "0123456789ab" in c]
+    assert sweep == [["docker", "rm", "-f", "-v", "0123456789ab"]]
+    assert docker.calls[0][1:3] == ["ps", "-aq"]  # before any build
+
+
+def test_an_oversized_agent_event_aborts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(executor_mod, "MAX_LINE_CHARS", 1000)
+    huge = json.dumps(_tool("mcp__scan_sandbox__sandbox_list")) + " " * 5000
+    popen = FakePopen([INIT], [])
+    original = popen.__call__
+
+    def call(argv: list[str], **kwargs: Any) -> Any:
+        proc = original(argv, **kwargs)
+        if argv[0] != "docker":
+            proc.stdout = _Lines(iter([json.dumps(INIT) + "\n", huge + "\n"]))
+        return proc
+
+    row = _run(_executor(tmp_path, call, FakeDocker()))  # type: ignore[arg-type]
+    assert row["state"] == "aborted" and "over 1000 chars" in row["error"]
+
+
+def test_long_build_output_lines_are_dropped_not_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(executor_mod, "MAX_LINE_CHARS", 1000)
+    popen = FakePopen([INIT, RESULT], [])
+    original = popen.__call__
+
+    def call(argv: list[str], **kwargs: Any) -> Any:
+        proc = original(argv, **kwargs)
+        if argv[0] == "docker":
+            proc.stdout = _Lines(iter(["#1 " + "x" * 5000 + "\n", "#9 DONE\n"]))
+        return proc
+
+    row = _run(_executor(tmp_path, call, FakeDocker()))  # type: ignore[arg-type]
+    assert row["state"] == "succeeded", row["error"]

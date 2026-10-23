@@ -76,16 +76,28 @@ def _block(title: str, text: str, lang: str = "") -> str:
     return f"### {title}\n\n{fence}{lang}\n{text}\n{fence}\n"
 
 
+def _inline(text: str) -> str:
+    """``text`` as one inline code span that no backtick or newline can break out of."""
+    flat = " ".join(str(text).split())[:300]
+    longest = max((len(m) for m in re.findall(r"`+", flat)), default=0)
+    tick = "`" * (longest + 1)
+    return f"{tick} {flat} {tick}"
+
+
 def advisory_body(finding: Mapping[str, Any], repo: str) -> dict[str, Any]:
-    """The ``POST /repos/{org}/{repo}/security-advisories`` payload."""
-    location = finding["path"] + (
-        f" (`{finding['symbol']}`)" if finding.get("symbol") else ""
+    """The ``POST /repos/{org}/{repo}/security-advisories`` payload.
+
+    Every model-written field is fenced (blocks) or an escaped inline span, so
+    none of it can add markdown outside its own section (panel q5).
+    """
+    location = _inline(finding["path"]) + (
+        f" ({_inline(finding['symbol'])})" if finding.get("symbol") else ""
     )
     parts = [
         "Reported by the fleet security scanner and confirmed before promotion. "
         "Model-written text below; verify before publishing.\n",
         f"**Location:** {location}\n",
-        f"**Scanned commit:** {finding['scan_sha']}\n",
+        f"**Scanned commit:** {_inline(finding['scan_sha'])}\n",
         _block("Root cause", finding["root_cause"]),
     ]
     if finding.get("repro"):

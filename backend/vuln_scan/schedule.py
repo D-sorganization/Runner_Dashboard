@@ -10,9 +10,12 @@ The scheduler is off by default (``schedule.enabled`` in
 Each tick it re-reads the config, so turning it on or off takes effect without
 a restart. Each tick:
 
-1. does nothing unless the schedule is enabled and the single scan slot is free;
+1. does nothing unless the schedule is enabled, the night window is open and
+   the single scan slot is free, so daytime ticks cost no GitHub calls;
 2. takes the most urgent due repository (lowest ``priority``, then the oldest
-   last success);
+   last success). A repository whose last real attempt failed or aborted is not
+   due again for ``schedule.retry_hours``, so one broken contract cannot starve
+   the rest;
 3. evaluates admission **without** writing a row, so the many ticks outside the
    night window or while CI is busy leave no noise in the scan log;
 4. starts a real scan only if admission has no objection.
@@ -30,9 +33,11 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from vuln_scan.admission import in_window
 from vuln_scan.operator_config import OperatorConfig, load_operator_config
 
 log = logging.getLogger("dashboard.vuln_scan.schedule")
+RETRY_STATES = ("failed", "aborted")
 
 
 def _parse(ts: str) -> datetime | None:
@@ -45,6 +50,18 @@ def _parse(ts: str) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def _backing_off(scans: Mapping[str, Any], now: datetime, retry_hours: int) -> bool:
+    """True while a failed or aborted last real attempt is younger than the backoff.
+
+    Without it a repository whose scan keeps failing would stay first in line and
+    take the single slot every night (panel q5).
+    """
+    if scans.get("last_state") not in RETRY_STATES:
+        return False
+    last = _parse(str(scans.get("last_scan_at", "")))
+    return last is not None and now - last < timedelta(hours=retry_hours)
+
+
 def coverage_rows(
     config: OperatorConfig,
     repos: list[str],
@@ -53,6 +70,7 @@ def coverage_rows(
     now: datetime,
 ) -> list[dict[str, Any]]:
     """One coverage row per repository, most urgent due repository first."""
+    retry_hours = config.schedule.retry_hours
     rows = []
     for repo in repos:
         settings = config.repo(repo)
@@ -75,7 +93,12 @@ def coverage_rows(
                 "last_scan_at": scans.get("last_scan_at", ""),
                 "last_state": scans.get("last_state", ""),
                 "last_success_at": scans.get("last_success_at", ""),
-                "due": settings.enabled and valid and stale,
+                "contract_disabled": bool(contract.get("disabled")),
+                "due": settings.enabled
+                and valid
+                and not contract.get("disabled")
+                and stale
+                and not _backing_off(scans, now, retry_hours),
             }
         )
 
@@ -107,10 +130,13 @@ async def tick(
     slot_free: Callable[[], bool],
     coverage: Callable[[], Awaitable[list[dict[str, Any]]]],
     plan: Planner,
+    now: datetime,
 ) -> dict[str, Any]:
     """One scheduler decision. ``plan(repo)`` returns (refusal reasons, start)."""
     if not config.schedule.enabled:
         return {"started": False, "reason": "schedule disabled"}
+    if not in_window(now, config.window_start, config.window_end, config.timezone):
+        return {"started": False, "reason": "outside the scan window"}
     if not slot_free():
         return {"started": False, "reason": "scan slot busy"}
     due = [row for row in await coverage() if row["due"]]

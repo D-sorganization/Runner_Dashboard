@@ -4,10 +4,16 @@ The flow follows panel verdict q4 (``~/backlog-orchestrator/cli/panel/q4-*``).
 
 1. **Admission** (:mod:`vuln_scan.admission`). A refused or dry-run request is
    logged and returns without touching docker or the CLI.
-2. **Source.** The default-branch SHA is downloaded as a tarball into a temp
-   build context, so there is no ``.git``, no credentials and no SSH agent.
+2. **Source.** Containers and images a dead dashboard process left on the
+   scan host are swept first (this scan holds the slot). The default-branch
+   SHA is downloaded as a tarball into a temp build context, so there is no
+   ``.git``, no credentials and no SSH agent. The ``.oss-scanner/`` contract
+   is validated again from that source (the API copy may be another SHA),
+   and ``disabled: true`` stops the scan.
 3. **Phase A.** ``docker buildx build`` in the scan host's builder on the
-   filtered build network, capped at ``build_timeout_minutes``.
+   filtered build network, capped at ``build_timeout_minutes``. An image that
+   declares a ``VOLUME`` is refused: a volume would be writable host storage
+   behind phase B's read-only root. The image digest is recorded on the scan.
 4. **Recheck.** Admission runs again before phase B.
 5. **Phase B.** The container starts with ``--network=none`` and the full
    hardening in :func:`vuln_scan.sandbox.run_argv`. The claude CLI then runs on
@@ -40,6 +46,7 @@ import json
 import logging
 import os
 import queue
+import re
 import shutil
 import signal
 import subprocess
@@ -57,10 +64,11 @@ from typing import IO, Any
 from staff.store import _now
 from vuln_scan import launch
 from vuln_scan.admission import Facts, admit, runtime_problems
+from vuln_scan.contract import PROJECT_PATH, check_contract
 from vuln_scan.findings import FindingError, FindingsStore, validate_finding
 from vuln_scan.operator_config import OperatorConfig, ScanHost
 from vuln_scan.sandbox import Runner, container_name, image_tag, run_argv
-from vuln_scan.scans import ScanLog, SlotBusy
+from vuln_scan.scans import HEARTBEAT_S, ScanLog, SlotBusy
 
 log = logging.getLogger("dashboard.vuln_scan.executor")
 
@@ -68,6 +76,13 @@ SERVER_PATH = Path(__file__).resolve().parent / "scan_mcp.py"
 MAX_SOURCE_BYTES = 2 * 1024**3
 MAX_SOURCE_FILES = 200_000
 _DOCKER_ENV_KEYS = ("PATH", "HOME", "USERPROFILE", "SYSTEMROOT")
+# Child output is untrusted (a repository's build, the agent's stream): one
+# line and the backlog are both bounded so it cannot exhaust host memory.
+MAX_LINE_CHARS = 1024 * 1024
+MAX_QUEUED_LINES = 1000
+BUILDER_KEEP_STORAGE = "20gb"
+_SCAN_LABEL = "label=fleet.security.scan=1"
+_OVERSIZED = "\x00oversized"
 
 
 def verify_container(scan_id: str) -> str:
@@ -105,6 +120,7 @@ class Probes:
     contract: Callable[[str], Mapping[str, Any]]
     queued_jobs: Callable[[], int | None]
     free_gb: Callable[[ScanHost], float | None]
+    build_filter_ok: Callable[[ScanHost], bool]
     oauth_ok: Callable[[], bool]
     cli_version: Callable[[], str]
     fetch_source: Callable[[str, str, Path], None]
@@ -236,6 +252,17 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
     proc.wait(timeout=30)
 
 
+_DOCKER_ID = re.compile(r"^(?:sha256:)?[0-9a-f]{12,64}$")
+
+
+def _file_size(root: Path, rel: str) -> int | None:
+    """Size of ``rel`` under ``root``, or None if absent or outside ``root``."""
+    path = (root / rel).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        return None
+    return path.stat().st_size
+
+
 class ScanExecutor:
     def __init__(
         self,
@@ -252,6 +279,7 @@ class ScanExecutor:
         work_root: Path | None = None,
         claude_config_dir: str | None = None,
         kill_tree: Callable[[subprocess.Popen[str]], None] | None = None,
+        org: str = "",
     ) -> None:
         self.config = config
         self.probes = probes
@@ -265,6 +293,7 @@ class ScanExecutor:
         self.work_root = work_root
         self.claude_config_dir = claude_config_dir
         self.kill_tree = kill_tree or _kill_tree
+        self.org = org
         self.cancelled = threading.Event()
 
     # ── admission ────────────────────────────────────────────────────────
@@ -279,8 +308,10 @@ class ScanExecutor:
             now=self.probes.now(),
             host=host,
             contract_valid=bool(contract.get("valid")),
+            contract_disabled=bool(contract.get("disabled")),
             default_branch_sha=self.probes.default_branch_sha(repo),
             free_gb=self.probes.free_gb(host) if host else None,
+            build_filter_ok=self.probes.build_filter_ok(host) if host else False,
             queued_jobs=self.probes.queued_jobs(),
             slot_free=self.scan_log.slot_free(),
             spent_usd_today=self.scan_log.spent_today(),
@@ -343,14 +374,18 @@ class ScanExecutor:
         image = image_tag(scan_id, req.sha)
         work = Path(tempfile.mkdtemp(prefix="vs-", dir=self.work_root))
         state, error = "failed", ""
+        alive = self._heartbeat(scan_id)
         try:
             context = work / "context"
             sterile = work / "agent"
             context.mkdir()
             sterile.mkdir()
             self._phase(scan_id, "source")
+            self._sweep(env)
             self.probes.fetch_source(req.repo, req.sha, context)
-            digest = self._build(scan_id, host, env, context, image, req.repo)
+            dockerfile = self._local_contract(req.repo, context)
+            digest = self._build(scan_id, host, env, context, image, dockerfile)
+            self.scan_log.update(scan_id, image_digest=digest)
             reasons = admit(self.config, req.repo, req.sha, self.facts(req.repo, host))
             reasons = [r for r in reasons if "slot is busy" not in r]  # we hold it
             if reasons:
@@ -385,7 +420,10 @@ class ScanExecutor:
             log.exception("scan %s failed", scan_id)
             state, error = "failed", f"{type(exc).__name__}: {exc}"[:2000]
         finally:
-            self._cleanup((container, verify_container(scan_id)), image, env, work)
+            alive.set()
+            self._cleanup(
+                (container, verify_container(scan_id)), image, env, work, host
+            )
             self.scan_log.update(
                 scan_id, state=state, error=error, phase="done", finished=_now()
             )
@@ -413,12 +451,9 @@ class ScanExecutor:
         env: Mapping[str, str],
         context: Path,
         image: str,
-        repo: str,
+        dockerfile: str,
     ) -> str:
         self._phase(scan_id, "build")
-        dockerfile = str(
-            self.probes.contract(repo).get("dockerfile") or ".oss-scanner/Dockerfile"
-        )
         argv = [
             "docker",
             "buildx",
@@ -437,13 +472,81 @@ class ScanExecutor:
         ]
         limit = self.config.executor.build_timeout_minutes * 60
         self._watched(argv, env, limit, idle_s=limit, on_line=None, stdin_text=None)
-        digest = self._docker(
-            ["docker", "image", "inspect", "--format", "{{.Id}}", image],
+        inspect_format = "{{.Id}} {{json .Config.Volumes}}"
+        out = self._docker(
+            ["docker", "image", "inspect", "--format", inspect_format, image],
             env,
             60,
             "inspect",
         )
-        return digest if digest.startswith("sha256:") and len(digest) == 71 else ""
+        digest, _, volumes = out.partition(" ")
+        if not (digest.startswith("sha256:") and len(digest) == 71):
+            raise RuntimeError(f"image inspect returned no digest: {out[:200]!r}")
+        if volumes.strip() not in ("null", "{}"):
+            raise ScanAborted(
+                "the scan image declares a VOLUME, which phase B refuses: "
+                + volumes.strip()[:200]
+            )
+        return digest
+
+    def _local_contract(self, repo: str, context: Path) -> str:
+        """Validate ``.oss-scanner/`` in the downloaded source; return its Dockerfile.
+
+        Admission saw the contract through the API, which may be a different SHA;
+        the build must follow the contract that is actually being built (q5).
+        """
+        project = context / PROJECT_PATH
+        text = (
+            project.read_text(encoding="utf-8", errors="replace")
+            if project.is_file()
+            else None
+        )
+        first = check_contract(org=self.org, repo=repo, project_yaml=text, files={})
+        files = {
+            path: _file_size(context, path)
+            for path in (first.dockerfile, first.threat_model)
+            if path
+        }
+        report = check_contract(org=self.org, repo=repo, project_yaml=text, files=files)
+        if not report.valid or not report.dockerfile:
+            problems = "; ".join(report.problems) or "no project.yaml"
+            raise ScanAborted(f"contract at the scanned SHA is invalid: {problems}")
+        if report.disabled:
+            raise ScanAborted("contract at the scanned SHA sets disabled: true")
+        return report.dockerfile
+
+    def _sweep(self, env: Mapping[str, str]) -> None:
+        """Remove scan containers and images a dead dashboard process left behind.
+
+        Called only while this scan holds the fleet-wide slot, so no live scan
+        owns anything carrying the scan label.
+        """
+        containers = ["docker", "ps", "-aq", "--filter", _SCAN_LABEL]
+        images = ["docker", "image", "ls", "-q", "--filter", _SCAN_LABEL]
+        listings = (
+            (containers, ["docker", "rm", "-f", "-v"]),
+            (images, ["docker", "rmi", "-f"]),
+        )
+        for listing, remove in listings:
+            out = self._docker(listing, env, 60, "sweep list")
+            ids = [i for i in out.split() if _DOCKER_ID.match(i)][:100]
+            if ids:
+                log.warning("sweeping %d leftover scan object(s): %s", len(ids), ids)
+                self._docker([*remove, *ids], env, 120, "sweep")
+
+    def _heartbeat(self, scan_id: str) -> threading.Event:
+        """Beat the scan row until the returned event is set (see ``scans``)."""
+        done = threading.Event()
+
+        def beat() -> None:
+            while not done.wait(HEARTBEAT_S):
+                try:
+                    self.scan_log.beat(scan_id)
+                except Exception:  # noqa: BLE001 - a missed beat is retried
+                    log.warning("scan %s heartbeat failed", scan_id, exc_info=True)
+
+        threading.Thread(target=beat, name=f"scan-beat-{scan_id}", daemon=True).start()
+        return done
 
     def _agent(
         self,
@@ -632,13 +735,29 @@ class ScanExecutor:
             errors="replace",
             **kwargs,
         )
-        lines: queue.Queue[str | None] = queue.Queue()
+        lines: queue.Queue[str | None] = queue.Queue(maxsize=MAX_QUEUED_LINES)
+        stopped = threading.Event()
+
+        def put(item: str | None) -> None:
+            while not stopped.is_set():
+                try:
+                    lines.put(item, timeout=1.0)
+                    return
+                except queue.Full:
+                    continue
 
         def pump() -> None:
             assert proc.stdout is not None  # noqa: S101
-            for line in proc.stdout:
-                lines.put(line)
-            lines.put(None)
+            try:
+                while line := proc.stdout.readline(MAX_LINE_CHARS):
+                    if len(line) >= MAX_LINE_CHARS and not line.endswith("\n"):
+                        while line and not line.endswith("\n"):
+                            line = proc.stdout.readline(MAX_LINE_CHARS)
+                        line = _OVERSIZED
+                    put(line)
+            except (OSError, ValueError):
+                pass  # the pipe closed under us: the process was killed
+            put(None)
 
         threading.Thread(target=pump, daemon=True).start()
         if stdin_text is not None and proc.stdin is not None:
@@ -656,6 +775,10 @@ class ScanExecutor:
                     break
                 if line:
                     last_line = now
+                    if line == _OVERSIZED and on_line is not None:
+                        raise ScanAborted(
+                            f"{argv[0]} wrote a line over {MAX_LINE_CHARS} chars"
+                        )
                     if on_line is not None:
                         on_line(line)
                 if self.cancelled.is_set():
@@ -671,6 +794,7 @@ class ScanExecutor:
             if code != 0 and on_line is None:
                 raise RuntimeError(f"{Path(argv[0]).name} {argv[1]} exited {code}")
         finally:
+            stopped.set()
             self.kill_tree(proc)
 
     def _runtime_check(self) -> None:
@@ -719,9 +843,15 @@ class ScanExecutor:
         image: str,
         env: Mapping[str, str],
         work: Path,
+        host: ScanHost,
     ) -> None:
-        steps = [["docker", "rm", "-f", c] for c in containers]
-        for argv in [*steps, ["docker", "rmi", "-f", image]]:
+        steps = [["docker", "rm", "-f", "-v", c] for c in containers]
+        steps.append(["docker", "rmi", "-f", image])
+        if host.build_network:
+            builder = builder_name(host.build_network)
+            prune = ["docker", "buildx", "prune", "--builder", builder, "--force"]
+            steps.append([*prune, "--keep-storage", BUILDER_KEEP_STORAGE])
+        for argv in steps:
             try:
                 self.docker(argv, 120, 4096, env)
             except Exception as exc:  # noqa: BLE001 - cleanup must try every step

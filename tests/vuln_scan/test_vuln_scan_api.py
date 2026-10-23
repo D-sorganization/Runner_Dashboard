@@ -212,4 +212,5 @@ def test_coverage_route_joins_contracts_settings_and_scans(env: Any, monkeypatch
     by_repo = {r["repo"]: r for r in body["coverage"]}
     assert by_repo["Alpha"]["contract_valid"] and by_repo["Alpha"]["enabled"] and by_repo["Alpha"]["due"]
     assert by_repo["Gamma"]["contract_error"] == "GitHub HTTP 502"
-    assert body["summary"]["due"] == 1 and body["schedule"] == {"enabled": False, "check_minutes": 30}
+    assert body["summary"]["due"] == 1
+    assert body["schedule"] == {"enabled": False, "check_minutes": 30, "retry_hours": 20}

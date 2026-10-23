@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -47,6 +48,9 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setattr(scan_service, "oauth_ok", lambda: True)
     monkeypatch.setattr(scan_service, "claude_config_dir", lambda: str(tmp_path))
     monkeypatch.setattr(scan_service, "claude_cli_version", lambda cli: "2.1.263 (Claude Code)")
+    import dashboard_config
+
+    monkeypatch.setattr(dashboard_config, "MACHINE_ROLE", "hub")
     yield
 
 
@@ -129,3 +133,37 @@ def test_operator_config_parses_executor_and_build_network() -> None:
         }
     )
     assert len(bad.errors) == 4 and bad.executor.cli_version is None
+
+
+def test_real_scans_are_refused_off_the_hub(env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    import dashboard_config
+
+    monkeypatch.setattr(dashboard_config, "MACHINE_ROLE", "node")
+    admin = _client(monkeypatch, ["admin"])
+    resp = admin.post("/api/v1/security/scans", json={"repo": "Tools", "dry_run": False})
+    assert resp.status_code == 409 and "hub" in resp.json()["detail"]
+    assert admin.post("/api/v1/security/scans", json={"repo": "Tools"}).status_code == 200  # dry run
+
+
+NOW = datetime(2026, 10, 23, 9, 0, tzinfo=UTC)
+
+
+def _queue(complete: bool = True, age_s: float = 10, count: Any = 0) -> dict[str, Any]:
+    generated = (NOW - timedelta(seconds=age_s)).isoformat()
+    return {"queued_jobs_count": count, "generated_at": generated, "stats": {"complete": complete}}
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (_queue(), 0),
+        (_queue(count=3), 3),
+        (_queue(complete=False), None),  # a cached partial sample can miss a queue
+        (_queue(age_s=3600), None),  # the stale fallback can be hours old
+        (_queue(age_s=-600), None),
+        (_queue(count="7"), None),
+        ({"queued_jobs_count": 0, "stats": {"complete": True}}, None),
+    ],
+)
+def test_queue_count_trusts_only_complete_fresh_payloads(payload: dict[str, Any], expected: Any) -> None:
+    assert scan_service.queue_count(payload, NOW) == expected

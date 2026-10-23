@@ -26,6 +26,7 @@ GOOD = Facts(
     contract_valid=True,
     default_branch_sha=SHA,
     free_gb=200.0,
+    build_filter_ok=True,
     queued_jobs=0,
     slot_free=True,
     spent_usd_today=0.0,
@@ -53,6 +54,8 @@ def test_default_facts_refuse_everything() -> None:
         ({"host": ScanHost("vm2", "vm", None, "vs-build")}, "docker_host"),
         ({"host": ScanHost("vm2", "vm", "ssh://x@vm2", None)}, "build_network"),
         ({"contract_valid": False}, "contract"),
+        ({"contract_disabled": True}, "disabled: true"),
+        ({"build_filter_ok": False}, "build filter is not live"),
         ({"default_branch_sha": "1" * 40}, "default-branch"),
         ({"default_branch_sha": None}, "default-branch"),
         ({"free_gb": 59.9}, "free disk"),
@@ -87,3 +90,13 @@ def test_runtime_recheck_yields_to_ci() -> None:
     assert runtime_problems(CONFIG, Facts(now=NIGHT, queued_jobs=0, free_gb=100)) == []
     assert "yielding to CI" in runtime_problems(CONFIG, Facts(now=NIGHT, queued_jobs=3))[0]
     assert runtime_problems(CONFIG, Facts(now=NIGHT, queued_jobs=None))
+
+
+def test_runtime_recheck_aborts_when_free_disk_is_unknown() -> None:
+    problems = runtime_problems(CONFIG, Facts(now=NIGHT, queued_jobs=0, free_gb=None))
+    assert problems == ["scan host free disk fell to None GB"]
+
+
+def test_filter_reason_is_only_given_for_an_otherwise_good_host() -> None:
+    bad_host = replace(GOOD, host=ScanHost("vm2", "vm", None, "vs-build"), build_filter_ok=False)
+    assert not any("build filter" in r for r in admit(CONFIG, "Tools", SHA, bad_host))

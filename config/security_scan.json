@@ -34,6 +34,7 @@
   "sarif_export": false,
   "schedule": {
     "enabled": false,
-    "check_minutes": 30
+    "check_minutes": 30,
+    "retry_hours": 20
   }
 }
