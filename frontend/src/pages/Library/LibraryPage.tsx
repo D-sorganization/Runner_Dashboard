@@ -10,7 +10,9 @@ interface LibraryStats {
   last_ingest: { finished_at: string | null; files_indexed: number } | null;
 }
 
-interface LibrarySource { id: string; label: string; root_path: string; shared: boolean; file_count?: number; last_ingest_at?: string | null; status: string; }
+type BackendType = "google_drive_connector" | "google_drive_local" | "local_folder";
+interface LibrarySource { id: string; label: string; root_path: string; shared: boolean; backend_type?: BackendType; drive_folder_id?: string; drive_folder_url?: string; preferential?: boolean; priority?: number; repos?: string[]; file_count?: number; last_ingest_at?: string | null; status: string; }
+const BACKEND_LABELS: Record<BackendType, string> = { google_drive_connector: "Google Drive (Connector · P1)", google_drive_local: "Google Drive Desktop (Local · P2)", local_folder: "Local Folder (P3)" };
 interface PooledSource { id: string; label: string; node: string; file_count: number; available: boolean; last_seen: string; }
 interface SourcesData { sources: LibrarySource[]; pooled_sources?: PooledSource[]; unavailable_sources?: string[]; is_hub: boolean; current_node: string; nodes: { name: string; url: string }[]; }
 interface BrowseData { current_path: string; parent_path: string | null; roots: string[]; entries: { name: string; path: string; child_dirs: number; file_count: number }[]; }
@@ -48,6 +50,13 @@ export function LibraryPage(): React.ReactElement {
   const [newLabel, setNewLabel] = useState("");
   const [newShared, setNewShared] = useState(false);
   const [newExcludes, setNewExcludes] = useState("");
+  const [localBackendType, setLocalBackendType] = useState<BackendType>("local_folder");
+  const [driveModalOpen, setDriveModalOpen] = useState(false);
+  const [driveFolderInput, setDriveFolderInput] = useState("");
+  const [driveLabel, setDriveLabel] = useState("");
+  const [driveRepos, setDriveRepos] = useState("");
+  const [driveShared, setDriveShared] = useState(true);
+  const [drivePreferential, setDrivePreferential] = useState(true);
   const [removingSource, setRemovingSource] = useState<LibrarySource | null>(null);
 
   const loadMeta = useCallback(() => {
@@ -69,12 +78,14 @@ export function LibraryPage(): React.ReactElement {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const toggleShare = (s: LibrarySource) => {
-    legacyFetch(`/api/v1/library/sources/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shared: !s.shared }) })
+  const patchSource = (id: string, patch: Record<string, unknown>) => {
+    legacyFetch(`/api/v1/library/sources/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
       .then((r) => r.json() as Promise<LibrarySource>)
       .then((up) => setSourcesData((p) => (p ? { ...p, sources: p.sources.map((i) => (i.id === up.id ? up : i)) } : null)))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
+  const toggleShare = (s: LibrarySource) => patchSource(s.id, { shared: !s.shared });
+  const togglePreferential = (s: LibrarySource) => patchSource(s.id, { preferential: !s.preferential, priority: !s.preferential ? 1 : 2 });
 
   const confirmRemove = () => {
     if (!removingSource) return;
@@ -92,7 +103,7 @@ export function LibraryPage(): React.ReactElement {
     legacyFetch("/api/v1/library/sources", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: slug, label: newLabel.trim(), root_path: selectedPath, shared: newShared, exclude_globs: newExcludes.split(",").map((s) => s.trim()).filter(Boolean) }),
+      body: JSON.stringify({ id: slug, label: newLabel.trim(), root_path: selectedPath, backend_type: localBackendType, shared: newShared, exclude_globs: newExcludes.split(",").map((s) => s.trim()).filter(Boolean) }),
     })
       .then((r) => (r.ok ? (r.json() as Promise<LibrarySource>) : Promise.reject(`add source ${r.status}`)))
       .then((created) => {
@@ -100,6 +111,20 @@ export function LibraryPage(): React.ReactElement {
         setPickerOpen(false);
         setSelectedPath(null);
       })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  };
+
+  const submitAddDriveSource = () => {
+    if (!driveFolderInput.trim() || !driveLabel.trim()) return;
+    const slug = driveLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "gdrive";
+    const repos = driveRepos.split(",").map((s) => s.trim()).filter(Boolean);
+    legacyFetch("/api/v1/library/sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: slug, label: driveLabel.trim(), backend_type: "google_drive_connector", drive_folder_url: driveFolderInput.trim(), shared: driveShared, preferential: drivePreferential, priority: drivePreferential ? 1 : 2, repos }),
+    })
+      .then((r) => (r.ok ? (r.json() as Promise<LibrarySource>) : Promise.reject(`add drive source ${r.status}`)))
+      .then((created) => { setSourcesData((p) => (p ? { ...p, sources: [created, ...p.sources] } : null)); setDriveModalOpen(false); setDriveFolderInput(""); setDriveLabel(""); setDriveRepos(""); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
 
@@ -152,9 +177,12 @@ export function LibraryPage(): React.ReactElement {
       </section>
 
       <section>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
           <h2>Sources</h2>
-          {!sourcesData?.is_hub && <button type="button" onClick={() => { setPickerOpen(true); setSelectedPath(null); loadBrowse(); }}>Add folder</button>}
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" onClick={() => { setDriveModalOpen(true); setPickerOpen(false); }}>Add Google Drive</button>
+            {!sourcesData?.is_hub && <button type="button" onClick={() => { setPickerOpen(true); setDriveModalOpen(false); setSelectedPath(null); loadBrowse(); }}>Add folder</button>}
+          </div>
         </div>
         {sourcesData?.is_hub && (
           <div style={{ margin: "8px 0", padding: "8px 12px", background: "var(--bg-secondary)", borderRadius: 4 }}>
@@ -168,6 +196,17 @@ export function LibraryPage(): React.ReactElement {
           <div style={{ margin: "12px 0", padding: "12px", border: "1px solid var(--border-color)", borderRadius: 4 }}>
             <p><strong>Files will not be touched on disk.</strong> Remove source "{removingSource.label}"?</p>
             <button type="button" onClick={confirmRemove}>Confirm Remove</button> <button type="button" onClick={() => setRemovingSource(null)}>Cancel</button>
+          </div>
+        )}
+        {driveModalOpen && (
+          <div style={{ margin: "12px 0", padding: "12px", border: "1px solid var(--border-color)", borderRadius: 6, background: "var(--bg-secondary)" }}>
+            <h3>Share Google Drive folder with agents (Preferential · Priority 1)</h3>
+            <label style={{ display: "block", marginBottom: "6px" }}>Drive folder URL or ID: <input aria-label="Drive folder URL or ID" value={driveFolderInput} onChange={(e) => setDriveFolderInput(e.target.value)} placeholder="https://drive.google.com/drive/folders/..." style={{ marginLeft: "6px", width: "360px" }} /></label>
+            <label style={{ display: "block", marginBottom: "6px" }}>Drive label: <input aria-label="Drive label" value={driveLabel} onChange={(e) => setDriveLabel(e.target.value)} placeholder="Agent Shared Library" style={{ marginLeft: "6px" }} /></label>
+            <label style={{ display: "block", marginBottom: "6px" }}>Repo tags (optional): <input aria-label="Repo tags" value={driveRepos} onChange={(e) => setDriveRepos(e.target.value)} placeholder="Runner_Dashboard, AffineDrift" style={{ marginLeft: "6px" }} /></label>
+            <label style={{ display: "block", marginBottom: "6px" }}><input type="checkbox" checked={driveShared} onChange={(e) => setDriveShared(e.target.checked)} /> Share with agents</label>
+            <label style={{ display: "block", marginBottom: "8px" }}><input type="checkbox" checked={drivePreferential} onChange={(e) => setDrivePreferential(e.target.checked)} /> Use preferentially (Priority 1)</label>
+            <button type="button" onClick={submitAddDriveSource}>Save Google Drive source</button> <button type="button" onClick={() => setDriveModalOpen(false)}>Cancel</button>
           </div>
         )}
         {pickerOpen && (
@@ -188,6 +227,7 @@ export function LibraryPage(): React.ReactElement {
                 {selectedPath && (
                   <div style={{ marginTop: "12px", padding: "8px", borderTop: "1px solid var(--border-subtle)" }}>
                     <p>Selected: <code>{selectedPath}</code></p>
+                    <label style={{ display: "block", marginBottom: "6px" }}>Backend option: <select aria-label="Backend option" value={localBackendType} onChange={(e) => setLocalBackendType(e.target.value as BackendType)} style={{ marginLeft: "6px" }}><option value="local_folder">Local folder (Priority 3 · Additional)</option><option value="google_drive_local">Google Drive Desktop mirror (Priority 2 · Additional)</option></select></label>
                     <label style={{ display: "block", marginBottom: "6px" }}>Source label: <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} style={{ marginLeft: "6px" }} /></label>
                     <label style={{ display: "block", marginBottom: "6px" }}><input type="checkbox" checked={newShared} onChange={(e) => setNewShared(e.target.checked)} /> Share with fleet</label>
                     <label style={{ display: "block", marginBottom: "8px" }}>Exclude patterns: <input value={newExcludes} onChange={(e) => setNewExcludes(e.target.value)} placeholder="*.tmp, private/*" style={{ marginLeft: "6px" }} /></label>
@@ -202,18 +242,24 @@ export function LibraryPage(): React.ReactElement {
           <EmptyState title="No sources configured" description="Add a folder to index works into Alexandria." />
         ) : (
           <table className="data-table">
-            <thead><tr><th>Label</th><th>Path</th><th>Files</th><th>Last ingest</th><th>Share</th>{!sourcesData.is_hub && <th>Action</th>}</tr></thead>
+            <thead><tr><th>Label</th><th>Type</th><th>Folder ID / Path</th><th>Files</th><th>Last ingest</th><th>Preferential</th><th>Share</th>{!sourcesData.is_hub && <th>Action</th>}</tr></thead>
             <tbody>
-              {sourcesData.sources.map((s) => (
-                <tr key={s.id}>
-                  <td><strong>{s.label}</strong></td>
-                  <td><code>{s.root_path}</code></td>
-                  <td>{s.file_count ?? 0} files</td>
-                  <td>{s.last_ingest_at ? new Date(s.last_ingest_at).toLocaleString() : "Never"}</td>
-                  <td><label><input type="checkbox" checked={s.shared} disabled={sourcesData.is_hub} aria-label={`Share ${s.label}`} onChange={() => toggleShare(s)} /> Share</label></td>
-                  {!sourcesData.is_hub && <td><button type="button" onClick={() => setRemovingSource(s)}>Remove</button></td>}
-                </tr>
-              ))}
+              {sourcesData.sources.map((s) => {
+                const btype: BackendType = s.backend_type || "local_folder";
+                const canMutate = !sourcesData.is_hub || btype === "google_drive_connector";
+                return (
+                  <tr key={s.id}>
+                    <td><strong>{s.label}</strong></td>
+                    <td>{BACKEND_LABELS[btype]}</td>
+                    <td><code>{s.drive_folder_id || s.root_path}</code></td>
+                    <td>{btype === "google_drive_connector" ? "Drive MCP" : `${s.file_count ?? 0} files`}</td>
+                    <td>{s.last_ingest_at ? new Date(s.last_ingest_at).toLocaleString() : "Never"}</td>
+                    <td><label><input type="checkbox" checked={Boolean(s.preferential)} disabled={!canMutate} aria-label={`Preferential ${s.label}`} onChange={() => togglePreferential(s)} /> Preferential</label></td>
+                    <td><label><input type="checkbox" checked={s.shared} disabled={!canMutate} aria-label={`Share ${s.label}`} onChange={() => toggleShare(s)} /> Share</label></td>
+                    {!sourcesData.is_hub && <td><button type="button" onClick={() => setRemovingSource(s)}>Remove</button></td>}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
