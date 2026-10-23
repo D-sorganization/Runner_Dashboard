@@ -72,30 +72,34 @@ export function ContextPage({
     setError(null);
     try {
       const [sumRes, memRes, runsRes] = await Promise.all([
-        legacyFetch("/api/staff/summary").catch(() => null),
-        legacyFetch("/api/v1/memory?type=lesson").catch(() => null),
-        legacyFetch("/api/staff/runs?limit=50").catch(() => null),
+        legacyFetch("/api/staff/summary").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        legacyFetch("/api/v1/memory?type=lesson").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        legacyFetch("/api/staff/runs?limit=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
       if (sumRes) {
         setPack({
-          version: sumRes.standards_version || "unknown",
-          digest: (sumRes.standards_pin || "").split("#")[1] || "unknown",
-          pin: sumRes.standards_pin || "unknown",
-          source_path: sumRes.standards_source || "<builtin>",
+          version: (sumRes.standards_version as string) || "unknown",
+          digest: ((sumRes.standards_pin as string) || "").split("#")[1] || "unknown",
+          pin: (sumRes.standards_pin as string) || "unknown",
+          source_path: (sumRes.standards_source as string) || "<builtin>",
           is_fallback: Boolean(sumRes.standards_fallback),
         });
       }
-      if (memRes?.entries) setLessons(memRes.entries);
-      if (runsRes?.runs) setRuns(runsRes.runs);
-    } catch (err: any) {
-      setError(err?.message || "Failed to load context data");
+      if (memRes?.entries) setLessons(memRes.entries as ContextLesson[]);
+      if (runsRes?.runs) setRuns(runsRes.runs as ContextRunRecord[]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to load context data";
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (propPack === undefined || propLessons === undefined || propRuns === undefined) fetchData();
+    if (propPack === undefined || propLessons === undefined || propRuns === undefined) {
+      void fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const publicLessons = lessons.filter((l) => l.visibility !== "barb-only");
@@ -223,15 +227,24 @@ export function ContextPage({
               <thead><tr className="border-b border-neutral-800 text-neutral-400 text-xs uppercase"><th className="py-2.5 px-3">Run ID / Role</th><th className="py-2.5 px-3">Tokens (T0 / Skills / Lessons)</th><th className="py-2.5 px-3">Total Injected</th><th className="py-2.5 px-3">Cap Status</th><th className="py-2.5 px-3">Lesson Audit (Selected / Skipped)</th><th className="py-2.5 px-3">Usage & Cost Proxies</th></tr></thead>
               <tbody className="divide-y divide-neutral-800/50">
                 {runs.map((r) => {
-                  let stamp: any = {};
-                  try { if (r.context_stamp) stamp = JSON.parse(r.context_stamp); } catch {}
-                  const t0 = stamp?.token_estimates?.tier0_standards ?? (r.standards_tokens || 0);
-                  const t1Skills = stamp?.token_estimates?.tier1_skills ?? 0;
-                  const t1Lessons = stamp?.token_estimates?.tier1_lessons ?? (r.lessons_tokens || 0);
-                  const total = stamp?.token_estimates?.total_injected ?? (t0 + t1Skills + t1Lessons);
+                  let stamp: Record<string, unknown> | null = null;
+                  try {
+                    if (r.context_stamp) {
+                      stamp = JSON.parse(r.context_stamp) as Record<string, unknown>;
+                    }
+                  } catch (e: unknown) {
+                    void e;
+                  }
+                  const tokenEstimates = stamp?.token_estimates as Record<string, number> | undefined;
+                  const t0 = tokenEstimates?.tier0_standards ?? (r.standards_tokens || 0);
+                  const t1Skills = tokenEstimates?.tier1_skills ?? 0;
+                  const t1Lessons = tokenEstimates?.tier1_lessons ?? (r.lessons_tokens || 0);
+                  const total = tokenEstimates?.total_injected ?? (t0 + t1Skills + t1Lessons);
                   const isOverCap = total > TOTAL_BUDGET_CAP;
-                  const selectedIds: string[] = stamp?.lesson_ids || [];
-                  const skippedItems: Array<{ id: string; reason: string }> = stamp?.lessons_skipped || [];
+                  const selectedIds: string[] = Array.isArray(stamp?.lesson_ids) ? (stamp.lesson_ids as string[]) : [];
+                  const skippedItems: Array<{ id: string; reason: string }> = Array.isArray(stamp?.lessons_skipped)
+                    ? (stamp.lessons_skipped as Array<{ id: string; reason: string }>)
+                    : [];
 
                   return (
                     <tr key={r.id} className="hover:bg-neutral-800/30">
