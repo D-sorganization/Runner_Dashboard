@@ -15,15 +15,16 @@ def register_ops_commands(sub: Any) -> None:
 
     co = sub.add_parser("checkout", help="Check out a scoped Barb sub-role lease (e.g. barb:front-door).")
     co.add_argument("--scope", default="barb:front-door")
-    co.add_argument("--holder", required=True)
+    co.add_argument("--holder", default="", help="Optional; the hub derives it from your token.")
     co.add_argument("--persona", default="rd-barb")
     co.add_argument("--ttl", type=int, default=3600)
     co.add_argument("--summary", default="")
-    co.add_argument("--takeover", action="store_true")
+    co.add_argument("--takeover", action="store_true", help="Operator only; requires --reason.")
+    co.add_argument("--reason", default="")
 
     rel = sub.add_parser("release", help="Release a scoped Barb lease (enforces turnover compliance).")
     rel.add_argument("--scope", required=True)
-    rel.add_argument("--holder", required=True)
+    rel.add_argument("--holder", default="", help="Optional; the hub derives it from your token.")
     rel.add_argument("--summary", default="", help="Turnover summary if not already logged during shift.")
     rel.add_argument("--force", action="store_true")
 
@@ -58,7 +59,7 @@ def register_ops_commands(sub: Any) -> None:
     ho.add_argument("--desktop-app", default="")
     ho.add_argument("--artifact-uri", default="")
     ho.add_argument("--resume-notes", default="")
-    ho.add_argument("--expected-epoch", type=int, default=None)
+    ho.add_argument("--expected-epoch", type=int, required=True)
 
     for cmd_name, desc in (
         ("report-cards", "Fetch zero-LLM-cost Agent Report Cards & routing recommendations."),
@@ -82,11 +83,12 @@ def handle_ops_command(client: FleetClient, args: argparse.Namespace) -> int | N
             "/api/v1/staff/barb/leases/checkout",
             body={
                 "scope": args.scope,
-                "holder": args.holder,
+                **({"holder": args.holder} if args.holder else {}),
                 "persona": args.persona,
                 "ttl_sec": args.ttl,
                 "summary": args.summary,
                 "takeover": bool(args.takeover),
+                "reason": args.reason,
             },
         )
         print(json.dumps(res, indent=2))
@@ -97,7 +99,7 @@ def handle_ops_command(client: FleetClient, args: argparse.Namespace) -> int | N
             "/api/v1/staff/barb/leases/release",
             body={
                 "scope": args.scope,
-                "holder": args.holder,
+                **({"holder": args.holder} if args.holder else {}),
                 "turnover_summary": args.summary,
                 "force": bool(args.force),
             },
@@ -112,7 +114,7 @@ def handle_ops_command(client: FleetClient, args: argparse.Namespace) -> int | N
                 body={
                     "scope": args.scope,
                     "persona": args.persona,
-                    "holder": args.holder or args.persona,
+                    **({"holder": args.holder} if args.holder else {}),
                     "summary": args.summary,
                     "completed_items": args.completed,
                     "in_progress_items": getattr(args, "in_progress", []),

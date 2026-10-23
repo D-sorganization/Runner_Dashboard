@@ -227,15 +227,9 @@
             "type": "string"
           },
           "expected_epoch": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Epoch"
+            "minimum": 0.0,
+            "title": "Expected Epoch",
+            "type": "integer"
           },
           "machine": {
             "default": "",
@@ -268,17 +262,23 @@
             "type": "string"
           }
         },
-        "required": ["task_id", "action", "actor"],
+        "required": ["task_id", "action", "actor", "expected_epoch"],
         "title": "BarbHandoffTransitionRequest",
         "type": "object"
       },
       "BarbLeaseCheckoutRequest": {
         "properties": {
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "machine": {
             "default": "",
@@ -290,6 +290,12 @@
             "default": "rd-barb",
             "maxLength": 64,
             "title": "Persona",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
             "type": "string"
           },
           "scope": {
@@ -311,14 +317,50 @@
           },
           "ttl_sec": {
             "default": 3600,
-            "maximum": 86400.0,
+            "maximum": 14400.0,
             "minimum": 60.0,
             "title": "Ttl Sec",
             "type": "integer"
           }
         },
-        "required": ["holder"],
         "title": "BarbLeaseCheckoutRequest",
+        "type": "object"
+      },
+      "BarbLeaseHeartbeatRequest": {
+        "properties": {
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "scope": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 14400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["scope", "epoch"],
+        "title": "BarbLeaseHeartbeatRequest",
         "type": "object"
       },
       "BarbLeaseReleaseRequest": {
@@ -343,10 +385,16 @@
             "type": "boolean"
           },
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "in_progress_items": {
             "items": {
@@ -375,7 +423,7 @@
             "type": "string"
           }
         },
-        "required": ["scope", "holder"],
+        "required": ["scope"],
         "title": "BarbLeaseReleaseRequest",
         "type": "object"
       },
@@ -530,10 +578,16 @@
             "type": "array"
           },
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "in_progress_items": {
             "items": {
@@ -574,7 +628,7 @@
             "type": "string"
           }
         },
-        "required": ["holder", "summary"],
+        "required": ["summary"],
         "title": "BarbTurnoverCreateRequest",
         "type": "object"
       },
@@ -8020,6 +8074,37 @@
         },
         "required": ["loc", "msg", "type"],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VaultSecretWriteRequest": {
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Key",
+            "type": "string"
+          },
+          "scope": {
+            "default": "global",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "value": {
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": ["key", "value"],
+        "title": "VaultSecretWriteRequest",
         "type": "object"
       },
       "WebVitalEntry": {
@@ -22453,6 +22538,55 @@
         "tags": ["staff-barb"]
       }
     },
+    "/api/v1/staff/barb/leases/heartbeat": {
+      "post": {
+        "operationId": "post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Heartbeat Api V1 Staff Barb Leases Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Extend the caller's own live Barb lease",
+        "tags": ["staff-barb"]
+      }
+    },
     "/api/v1/staff/barb/leases/release": {
       "post": {
         "operationId": "post_barb_lease_release_api_v1_staff_barb_leases_release_post",
@@ -27023,6 +27157,183 @@
         ],
         "summary": "Dispatch V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/vault/audit": {
+      "get": {
+        "operationId": "get_vault_audit_api_v1_vault_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Vault Audit Api V1 Vault Audit Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Vault Audit",
+        "tags": ["vault"]
+      }
+    },
+    "/api/v1/vault/secrets": {
+      "get": {
+        "operationId": "get_secrets_api_v1_vault_secrets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Secrets Api V1 Vault Secrets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Secrets",
+        "tags": ["vault"]
+      },
+      "post": {
+        "operationId": "create_or_update_secret_api_v1_vault_secrets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultSecretWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Or Update Secret Api V1 Vault Secrets Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Or Update Secret",
+        "tags": ["vault"]
+      }
+    },
+    "/api/v1/vault/secrets/{key}": {
+      "delete": {
+        "operationId": "remove_secret_api_v1_vault_secrets__key__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Secret Api V1 Vault Secrets  Key  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Remove Secret",
+        "tags": ["vault"]
       }
     },
     "/api/version": {

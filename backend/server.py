@@ -774,6 +774,9 @@ app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # out
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
 app.include_router(_library_router.router)  # Alexandria library (#2165)
+from routers import vault as _vault_router  # noqa: E402
+
+app.include_router(_vault_router.router)  # Secure storage vault (#2542)
 
 app.include_router(_diagnostics_logs_router.router, prefix="/api/v1/diagnostics")
 

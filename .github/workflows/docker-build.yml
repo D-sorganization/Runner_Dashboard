@@ -136,7 +136,10 @@ jobs:
       needs.decide-docker-scope.outputs.run_docker == 'true' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, Linux, X64, d-sorg-fleet-docker]
+    # Public repo: GitHub-hosted ubuntu-latest (free, has Docker). The 4-runner
+    # self-hosted docker pool starves the blocking deploy check (#2577).
+    # Private repo or CI_RUNNER_MODE=local: the self-hosted Docker-capable pool.
+    runs-on: ${{ fromJSON(!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","d-sorg-fleet-docker"]') }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

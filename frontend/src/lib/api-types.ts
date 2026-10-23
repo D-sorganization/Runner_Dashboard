@@ -6195,6 +6195,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/barb/leases/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extend the caller's own live Barb lease */
+        post: operations["post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/barb/leases/release": {
         parameters: {
             query?: never;
@@ -7597,6 +7614,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/vault/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Vault Audit */
+        get: operations["get_vault_audit_api_v1_vault_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vault/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Secrets */
+        get: operations["get_secrets_api_v1_vault_secrets_get"];
+        put?: never;
+        /** Create Or Update Secret */
+        post: operations["create_or_update_secret_api_v1_vault_secrets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vault/secrets/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Secret */
+        delete: operations["remove_secret_api_v1_vault_secrets__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version": {
         parameters: {
             query?: never;
@@ -8069,7 +8138,7 @@ export interface components {
              */
             desktop_app: string;
             /** Expected Epoch */
-            expected_epoch?: number | null;
+            expected_epoch: number;
             /**
              * Machine
              * @default
@@ -8096,7 +8165,7 @@ export interface components {
         /** BarbLeaseCheckoutRequest */
         BarbLeaseCheckoutRequest: {
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /**
              * Machine
              * @default
@@ -8107,6 +8176,11 @@ export interface components {
              * @default rd-barb
              */
             persona: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
             /**
              * Scope
              * @default barb:front-door
@@ -8128,6 +8202,20 @@ export interface components {
              */
             ttl_sec: number;
         };
+        /** BarbLeaseHeartbeatRequest */
+        BarbLeaseHeartbeatRequest: {
+            /** Epoch */
+            epoch: number;
+            /** Holder */
+            holder?: string | null;
+            /** Scope */
+            scope: string;
+            /**
+             * Ttl Sec
+             * @default 3600
+             */
+            ttl_sec: number;
+        };
         /** BarbLeaseReleaseRequest */
         BarbLeaseReleaseRequest: {
             /** Blockers */
@@ -8140,7 +8228,7 @@ export interface components {
              */
             force: boolean;
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /** In Progress Items */
             in_progress_items?: string[];
             /** Next Actions */
@@ -8233,7 +8321,7 @@ export interface components {
             /** Completed Items */
             completed_items?: string[];
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /** In Progress Items */
             in_progress_items?: string[];
             /**
@@ -11843,6 +11931,23 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VaultSecretWriteRequest */
+        VaultSecretWriteRequest: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Key */
+            key: string;
+            /**
+             * Scope
+             * @default global
+             */
+            scope: string;
+            /** Value */
+            value: string;
         };
         /** WebVitalEntry */
         WebVitalEntry: {
@@ -21190,6 +21295,41 @@ export interface operations {
             };
         };
     };
+    post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseHeartbeatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_barb_lease_release_api_v1_staff_barb_leases_release_post: {
         parameters: {
             query?: never;
@@ -23708,6 +23848,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffDispatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vault_audit_api_v1_vault_audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_secrets_api_v1_vault_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    create_or_update_secret_api_v1_vault_secrets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultSecretWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_secret_api_v1_vault_secrets__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
