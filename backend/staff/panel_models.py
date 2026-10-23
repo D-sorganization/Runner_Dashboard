@@ -60,6 +60,37 @@ class PanelExpert(BaseModel):
         return _check_provider(v)
 
 
+def _default_fleet_barb_experts() -> list[PanelExpert]:
+    enabled = enabled_panel_providers()
+    fallback = enabled[0] if enabled else "claude"
+
+    def _seat(name: str, provider: str, perspective: str, model: str | None = None) -> PanelExpert:
+        use_prov = provider if not provider_switch.is_disabled(provider) else fallback
+        return PanelExpert(
+            name=name,
+            provider=use_prov,
+            model=model if use_prov == provider else None,
+            perspective=perspective,
+        )
+
+    return [
+        _seat("Astra", "codex", "Architecture, DbC/LoD contracts, security boundaries, and testability."),
+        _seat(
+            "Argon",
+            "antigravity",
+            "Systems efficiency, token/latency footprint, and algorithmic rigor.",
+            model="gemini-3.8-flash-high",
+        ),
+        _seat("Fable", "claude", "Skepticism, failure modes, edge cases, and long-term maintainability."),
+        _seat(
+            "Barb",
+            "claude",
+            "Executive secretary & portfolio front door: enforce active holds, <500-line PR slicing, "
+            "priority alignment, and actionable follow-through.",
+        ),
+    ]
+
+
 class PanelCreateRequest(BaseModel):
     """``POST /api/v1/staff/panels`` body.
 
@@ -70,7 +101,7 @@ class PanelCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     topic: str = Field(min_length=1, max_length=4000)
-    experts: list[PanelExpert] = Field(min_length=3, max_length=4)
+    experts: list[PanelExpert] = Field(default_factory=_default_fleet_barb_experts, min_length=3, max_length=4)
     rounds: int = Field(default=3, ge=1, le=6)
     mode: Literal["debate", "brainstorm"] = "debate"
     title: str | None = Field(default=None, max_length=120)
@@ -134,6 +165,36 @@ def _expert(name: str, perspective: str) -> dict[str, Any]:
 
 
 PANEL_PRESETS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "fleet-barb",
+        "title": "Fleet 3-Expert + Barb Panel",
+        "experts": [
+            {
+                "name": "Astra",
+                "provider": "codex",
+                "perspective": "Architecture, DbC/LoD contracts, security boundaries, and testability.",
+            },
+            {
+                "name": "Argon",
+                "provider": "antigravity",
+                "model": "gemini-3.8-flash-high",
+                "perspective": "Systems efficiency, token/latency footprint, and algorithmic rigor.",
+            },
+            {
+                "name": "Fable",
+                "provider": "claude",
+                "perspective": "Skepticism, failure modes, edge cases, and long-term maintainability.",
+            },
+            {
+                "name": "Barb",
+                "provider": "claude",
+                "perspective": (
+                    "Executive secretary & portfolio front door: enforce active holds, <500-line PR slicing, "
+                    "priority alignment, and actionable follow-through."
+                ),
+            },
+        ],
+    },
     {
         "id": "engineering-review",
         "title": "Engineering design review",

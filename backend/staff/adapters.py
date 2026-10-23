@@ -176,7 +176,7 @@ class ProviderAdapter:
                 out[out.index("--mode") + 1] = "plan"
         if session_id:
             if self.provider_id in ("codex", "ollama"):
-                resumed: list[str] = [self.executable, "exec", "resume", "--skip-git-repo-check", "--json"]
+                resumed: list[str] = [self.executable, "--search", "exec", "resume", "--skip-git-repo-check", "--json"]
                 if model:
                     resumed.extend(["-m", model])
                 resumed.extend([session_id, prompt])
@@ -230,7 +230,11 @@ class ProviderAdapter:
             if session_id:
                 cmd += ["--resume", session_id]
         elif self.provider_id in ("codex", "ollama"):
-            cmd = [self.executable, "exec"]
+            cmd = (
+                [self.executable, "--search", "exec"]
+                if "web_search" in read_only_tools
+                else [self.executable, "exec"]
+            )
             if self.provider_id == "ollama":
                 cmd += ["--oss", "--local-provider", "ollama"]
             cmd += read_only + ["--skip-git-repo-check"]
@@ -323,6 +327,7 @@ _UNATTENDED_CLAUDE = (
 # workspace-write confines writes to the worktree plus its git common dir (where
 # a linked worktree's commits land); the network stays on for push and gh.
 _UNATTENDED_CODEX = (
+    "--search",
     "exec",
     "--sandbox",
     "workspace-write",

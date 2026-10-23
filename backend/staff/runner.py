@@ -289,17 +289,27 @@ class StaffRunner:
         store = self.store
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
-        prompt = workspace.compose_prompt(
-            role,
-            repo=plan.repo,
-            target_ref=plan.target_ref,
-            operator_prompt=plan.operator_prompt,
-            branch=plan.branch,
-            lease_note=lease_note,
-            consolidation=plan.consolidation_paragraph,
-            focus=plan.focus,
-            repo_lessons_result=select_repo_lessons(plan.repo),
-        )
+        if plan.prompt and not lease_note:
+            prompt = plan.prompt
+        elif plan.prompt and lease_note:
+            api_note = workspace.dashboard_api_note()
+            prompt = (
+                plan.prompt.replace(api_note, f"{lease_note}\n\n{api_note}", 1)
+                if api_note in plan.prompt
+                else f"{plan.prompt}\n\n{lease_note}"
+            )
+        else:
+            prompt = workspace.compose_prompt(
+                role,
+                repo=plan.repo,
+                target_ref=plan.target_ref,
+                operator_prompt=plan.operator_prompt,
+                branch=plan.branch,
+                lease_note=lease_note,
+                consolidation=plan.consolidation_paragraph,
+                focus=plan.focus,
+                repo_lessons_result=select_repo_lessons(plan.repo),
+            )
         launch_paths = self._launch_paths(adapter, workdir)
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
@@ -402,6 +412,48 @@ class StaffRunner:
                     for k in ("input_tokens", "output_tokens"):
                         usage[k] = int(usage.get(k, 0)) + int(n_usage.get(k, 0))
                     usage["cost_usd"] = float(usage.get("cost_usd", 0.0)) + float(n_usage.get("cost_usd", 0.0))
+            if (
+                not cancelled
+                and rc == 0
+                and result_line
+                and session_id
+                and self.opens_pr(rec.role)
+                and rec.target_kind in ("issue", "pr")
+                and verification.verify_mode() != "off"
+            ):
+                from dataclasses import replace
+
+                pre_v = verification.evaluate(replace(rec, status="succeeded"), opens_pr=True)
+                if not pre_v.ok and pre_v.failure_class in ("no_commits", "no_pr"):
+                    d_line, d_usage, d_rc = ops.execute_retry_nudge(
+                        rec=rec,
+                        adapter=adapter,
+                        plan=plan,
+                        role=role,
+                        workdir=workdir,
+                        env=env,
+                        session_id=session_id,
+                        transcript=transcript,
+                        store=store,
+                        wall_clock_timeout=wall_clock_timeout,
+                        idle_timeout=idle_timeout,
+                        lock=self._lock,
+                        procs=self._procs,
+                        cancel_flags=self._cancel_flags,
+                        nudge_prompt=(
+                            f"Deliverable verification failed ({pre_v.failure_class}: {pre_v.reason}). "
+                            "Please push your commits to the remote branch, open the non-draft PR if required, "
+                            "and end with STAFF_RESULT: <summary>"
+                        ),
+                    )
+                    if d_line:
+                        result_line = d_line
+                    elif d_rc != 0:
+                        rc = d_rc
+                    if d_usage:
+                        for k in ("input_tokens", "output_tokens"):
+                            usage[k] = int(usage.get(k, 0)) + int(d_usage.get(k, 0))
+                        usage["cost_usd"] = float(usage.get("cost_usd", 0.0)) + float(d_usage.get("cost_usd", 0.0))
             status, failure_class, retryable, remediation, error = classify_execution_result(
                 cancelled=cancelled,
                 rc=rc,

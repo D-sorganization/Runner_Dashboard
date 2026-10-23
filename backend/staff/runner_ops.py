@@ -323,6 +323,7 @@ def execute_retry_nudge(
     lock: Any,
     procs: dict[str, subprocess.Popen[str]],
     cancel_flags: set[str],
+    nudge_prompt: str = RESULT_NUDGE_PROMPT,
 ) -> tuple[str, dict[str, Any], int]:
     if not session_id:
         return "", {}, 0
@@ -338,7 +339,7 @@ def execute_retry_nudge(
                 gitdir=Path(launch_paths.get("gitdir", str(workdir))),
             )
         nudge_argv = adapter.build_command(
-            RESULT_NUDGE_PROMPT,
+            nudge_prompt,
             str(workdir),
             model=plan.model,
             session_id=session_id,
@@ -377,7 +378,7 @@ def execute_retry_nudge(
         return "", {}, -1
 
     if adapter.prompt_via_stdin and nudge_proc.stdin is not None:
-        nudge_proc.stdin.write(RESULT_NUDGE_PROMPT + "\n")
+        nudge_proc.stdin.write(nudge_prompt + "\n")
         nudge_proc.stdin.close()
 
     watchdog = StaffWatchdog(

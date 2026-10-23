@@ -52,7 +52,7 @@ def test_ollama_provider_is_an_agent_not_bare_chat(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("STAFF_OLLAMA_URL", "http://10.0.0.1:11434/")
     ollama = adapters_mod.ADAPTERS["ollama"]
     argv = ollama.build_command("fix it", "/tmp/wt", model=None)
-    assert argv[:2] == ["codex", "exec"]
+    assert argv[:3] == ["codex", "--search", "exec"]
     assert "--oss" in argv and argv[argv.index("--local-provider") + 1] == "ollama"
     assert argv[argv.index("--model") + 1] == ollama_env.DEFAULT_OLLAMA_MODEL
     assert not ollama.prompt_via_stdin and argv[-1] == "fix it"

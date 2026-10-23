@@ -34,6 +34,7 @@ FLEET_ACTION_SCOPES: Final[dict[str, tuple[str, ...]]] = {
     "queue.diagnose": ("runners.control", "fleet.maintain"),
     "host.vhdx_compact": ("system.control", "fleet.maintain"),
     "dashboard.restart": ("system.control", "fleet.maintain"),
+    "panel.consult": ("staff.read", "staff.chat"),
 }
 
 ACTION_POLICY: Final[frozenset[str]] = frozenset(FLEET_ACTION_SCOPES.keys())
@@ -67,7 +68,7 @@ def mint_run_token(
     if ttl_seconds <= 0:
         raise ValueError("ttl_seconds must be positive")
 
-    scopes = sorted(set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential"})
+    scopes = sorted(set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential", "staff.read", "staff.chat"})
     principal_id = f"staff:{role}:{run_id}"
     role_preset = f"staff-run:{run_id}"
 

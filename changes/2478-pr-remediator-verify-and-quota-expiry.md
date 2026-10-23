@@ -1,1 +1,1 @@
-Fix `pr-remediator` post-run verification by falling back to `probe.get(repo, target_pr)` when commits are pushed to an existing PR branch, and expire blocking quota windows older than 2 hours so out-of-band quota resets cannot deadlock dispatches (#2478).
+Fallback `pr-remediator` deliverable verification to target PR, expire stale blocking quota snapshots, enable Codex `--search`, preserve `plan.prompt` dispatch bundles with deliverable self-heal nudge, and add the default `fleet-barb` 4-seat panel preset with Barb turnover logging and run-token scopes (#2478).

@@ -50,3 +50,20 @@ def test_pr_remediator_falls_back_to_target_pr_when_staff_branch_has_no_pr() -> 
     assert verdict.verification == "verified"
     assert verdict.pr_number == 13607
     assert probe.get_calls == [("UpstreamDrift", 13607)]
+
+
+def test_default_fleet_barb_panel_and_turnover_and_token_scopes(tmp_path) -> None:
+    from staff.barb_continuity import get_barb_continuity_store
+    from staff.panel_models import PANEL_PRESETS, PanelCreateRequest
+    from staff.tokens import mint_run_token, resolve_run_scopes
+
+    assert PANEL_PRESETS[0]["id"] == "fleet-barb"
+    req = PanelCreateRequest(topic="Architecture trade-off")
+    assert [e.name for e in req.experts] == ["Astra", "Argon", "Fable", "Barb"]
+    assert "staff.read" in resolve_run_scopes(["panel.consult"])
+    assert "staff.chat" in resolve_run_scopes(["panel.consult"])
+    tok = mint_run_token("issue-remediator", "run-test-panel", [], 60.0)
+    assert tok.startswith("run_")
+    store = get_barb_continuity_store(tmp_path / "barb.sqlite3")
+    entry = store.append_turnover(scope="panel", author="Barb", persona="barb", summary="Panel th_1 completed")
+    assert "Panel th_1 completed" in entry["summary"]

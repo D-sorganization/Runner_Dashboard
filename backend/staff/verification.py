@@ -70,6 +70,22 @@ class Verdict:
     pr_number: int | None = None
     artifact: str = ""  # typed completion evidence (#1808): pr_open | pr_merged | ""
 
+    @property
+    def ok(self) -> bool:
+        return self.verification not in ("no_change", "failed")
+
+    @property
+    def reason(self) -> str:
+        return self.detail
+
+    @property
+    def failure_class(self) -> str:
+        if self.verification == "no_change":
+            return "no_commits"
+        if self.verification == "failed" and "no pull request" in self.detail:
+            return "no_pr"
+        return "deliverable_failed" if self.verification == "failed" else ""
+
 
 class PrProbe(Protocol):
     def find(self, repo: str, branch: str) -> PullRequest | None:
@@ -142,12 +158,20 @@ def _target_pr_number(rec: RunRecord) -> int | None:
     return int(digits) if digits else None
 
 
-def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -> Verdict:
+def evaluate(
+    rec: RunRecord,
+    *,
+    opens_pr: bool,
+    probe: PrProbe | None = None,
+    now: datetime | None = None,
+) -> Verdict:
     """Look up the run's PR (only when one is expected) and decide.
 
     Post: a GitHub error yields ``unverified``; CI still pending after PENDING_LIMIT yields ``failed``;
     an ad-hoc run with no repository is ``not_applicable`` and GitHub is not asked.
     """
+    probe = probe or GhCliPrProbe()
+    now = now or datetime.now(UTC)
     if rec.role == AD_HOC_ROLE and not rec.repo:
         return Verdict("not_applicable", "ad-hoc run had no repository, so no pull request was expected")
     pr: PullRequest | None = None

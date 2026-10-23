@@ -339,6 +339,27 @@ async def run_panel(
             status="complete" if ok else "failed",
             synthesis_message_id=synthesis["message_id"] if ok else None,
         )
+        if ok:
+            with contextlib.suppress(Exception):
+                from pathlib import Path
+
+                from staff.barb_continuity import get_barb_continuity_store
+
+                runs_db = os.environ.get("STAFF_RUNS_DB", "").strip()
+                barb_db = (
+                    Path(runs_db).with_name("barb_continuity.sqlite3")
+                    if runs_db and not os.environ.get("BARB_CONTINUITY_DB")
+                    else None
+                )
+                get_barb_continuity_store(barb_db).append_turnover(
+                    scope="panel",
+                    author="Barb",
+                    persona="barb",
+                    summary=(
+                        f"Panel {thread_id} ({request.title or request.topic[:60]}) "
+                        f"completed (consensus={consensus})"
+                    ),
+                )
     except Exception as exc:  # noqa: BLE001 — record the failure on the thread, never leave it "running"
         log.exception("panel %s failed", thread_id)
         _set_panel_state(store, thread_id, status="failed", error=str(exc))

@@ -78,7 +78,7 @@ def test_claude_tool_list_is_rendered_from_the_shared_shell_tables() -> None:
 @pytest.mark.parametrize("provider", ["codex", "ollama"])
 def test_codex_writes_only_inside_its_worktree_and_git_dir(provider: str) -> None:
     argv = ADAPTERS[provider].build_command("do it", "/tmp/wt", model=None, gitdir="/repo/.git")
-    assert argv[:2] == ["codex", "exec"]
+    assert argv[:3] == ["codex", "--search", "exec"]
     assert argv[argv.index("--sandbox") + 1] == "workspace-write"
     assert argv[argv.index("--add-dir") + 1] == "/repo/.git"
     assert "sandbox_workspace_write.network_access=true" in argv  # git push / gh need the network
