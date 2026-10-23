@@ -39,6 +39,10 @@ vi.mock("../../../components/ThemeSettings", () => ({
   ThemeSettings: () => <div data-testid="theme-settings">Theme</div>,
 }));
 
+vi.mock("../../../components/VaultPanel", () => ({
+  VaultPanel: () => <div data-testid="vault-panel">Vault</div>,
+}));
+
 vi.mock("../../LocalApps", () => ({
   LocalAppsPage: () => <div data-testid="local-apps-page">Local apps</div>,
 }));
@@ -77,6 +81,7 @@ describe("SettingsPage (#1338)", () => {
       "principals",
       "theme",
       "local-tools",
+      "vault",
     ]);
     const content: Record<string, string> = {
       credentials: "credentials-page",
