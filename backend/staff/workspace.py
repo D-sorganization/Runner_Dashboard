@@ -13,23 +13,18 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import staff.worktree_hygiene as _wh
 from platform_utils.wsl_paths import windows_repositories_root
 from staff import cli_projects
 from staff.git_hooks import install_pre_push_hook
 from staff.roles import RoleSpec
 from staff.standards_registry import _BUILTIN
-from staff.worktree_hygiene import (
-    finalize_run_worktree as finalize_run_worktree,
-)
-from staff.worktree_hygiene import (
-    persist_run_transcript as persist_run_transcript,
-)
-from staff.worktree_hygiene import (
-    prune_merged_branches as prune_merged_branches,
-)
-from staff.worktree_hygiene import (
-    prune_worktree_branch,
-)
+
+finalize_run_worktree = _wh.finalize_run_worktree
+persist_run_transcript = _wh.persist_run_transcript
+prune_merged_branches = _wh.prune_merged_branches
+prune_worktree_branch = _wh.prune_worktree_branch
+sweep_stale_worktrees = _wh.sweep_stale_worktrees
 
 if TYPE_CHECKING:
     from staff.dispatch_bundle import DispatchBundle
@@ -59,13 +54,7 @@ PLAYBOOK_MAX_CHARS = 16000
 
 
 def dashboard_api_note() -> str:
-    """Where an unattended run reads live fleet facts (Barb's live test, 2026-09-27).
-
-    Runs start in a fresh worktree, often with no repository at all, so without
-    this line an agent asked for "machines online" has no source and either
-    guesses or gives up. GETs from loopback need no token; fleet actions send the
-    run's ``FLEET_API_TOKEN`` (minted per run in ``staff.runner``).
-    """
+    """Where an unattended run reads live fleet facts (#1221)."""
     base = f"http://127.0.0.1:{os.environ.get('DASHBOARD_PORT', '8321')}/api"
     return (
         "Live fleet facts (machines online, runs in flight, holds, schedules, spend) come from the local "

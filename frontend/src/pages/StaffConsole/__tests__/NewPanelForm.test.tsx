@@ -22,7 +22,7 @@ const mockPresets: PanelPresetsResponse = {
       ],
     },
   ],
-  providers: ["claude", "codex", "gemini"],
+  providers: ["claude", "codex", "antigravity"],
 };
 
 const mockThread: ThreadInfo = {

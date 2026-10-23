@@ -321,6 +321,7 @@ export function StaffConsoleDesktop({
               selectedRole={sc.selectedRole ?? undefined}
               onSendMessage={sc.sendMessage}
               placeholder="Message Barb or type /dispatch…"
+              autoFocus={chatFirst}
               prefilledText={composerPrefill}
               prefillSeq={prefillSeq}
             />

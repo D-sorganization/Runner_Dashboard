@@ -37,6 +37,7 @@ export interface MobileShellProps {
   children?: ReactNode
   currentTab: TabId
   onTabChange: (tab: TabId) => void
+  onThreadSelected?: (threadId: string, role: string) => void
   tabContent?: Record<TabId, ReactNode>
 }
 
@@ -81,13 +82,14 @@ const DRAWER_ITEMS = mobileDrawerItems()
 // makes sense. Keyed on registry tabIds.
 const FAB_TABS = new Set<TabId>(['overview', 'workflows', 'remediation', 'queue'])
 
-export function MobileShell({ children, currentTab, onTabChange, tabContent }: MobileShellProps) {
+export function MobileShell({ children, currentTab, onTabChange, onThreadSelected, tabContent }: MobileShellProps) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [askOpen, setAskOpen] = useState(false)
   const [barbMounted, setBarbMounted] = useState(false)
   const [barbOpen, setBarbOpen] = useState(false)
+  const barbToggleRef = useRef<HTMLButtonElement>(null)
   const [drawerAnnouncement, setDrawerAnnouncement] = useState('')
 
   const openAsk = useCallback(() => setAskOpen(true), [])
@@ -195,6 +197,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
           Skip to main content
         </a>
         <button
+          ref={barbToggleRef}
           type="button"
           className="mobile-shell__ask-barb"
           aria-label="Ask Barb"
@@ -270,6 +273,8 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
             mobile
             onClose={() => setBarbOpen(false)}
             onNavigate={handleBarbNavigate}
+            onThreadSelected={onThreadSelected}
+            restoreFocusTargetRef={barbToggleRef}
           />
         </React.Suspense>
       ) : null}

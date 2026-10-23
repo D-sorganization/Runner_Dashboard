@@ -36,11 +36,17 @@ class RunnerSnapshot:
     busy: bool
 
 
+PROACTIVE_CLEANUP_USED_PERCENT: float = 75.0
+PROACTIVE_CLEANUP_MIN_FREE_GB: float = 80.0
+PROACTIVE_CLEANUP_COOLDOWN_S: float = 3600.0
+
+
 @dataclass(slots=True)
 class DiskFullCordonState:
     phase: CordonPhase = "normal"
     tripped_at: float | None = None
     cleanup_done: bool = False
+    last_proactive_cleanup_at: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +56,11 @@ class CordonTickResult:
     scheduling_inhibited: bool
     effective_min_online: int | None
     cordon_active: bool
+
+
+def proactive_cleanup_needed(free_gb: float, used_percent: float) -> bool:
+    """True when host volume reaches soft pre-cordon cleanup thresholds."""
+    return used_percent >= PROACTIVE_CLEANUP_USED_PERCENT or free_gb < PROACTIVE_CLEANUP_MIN_FREE_GB
 
 
 def disk_pressure_trips(free_gb: float, used_percent: float, thresholds: DiskGuardThresholds) -> bool:
@@ -82,6 +93,7 @@ def plan_cordon_tick(
         phase=state.phase,
         tripped_at=state.tripped_at,
         cleanup_done=state.cleanup_done,
+        last_proactive_cleanup_at=state.last_proactive_cleanup_at,
     )
 
     if state.phase == "normal":
@@ -90,6 +102,12 @@ def plan_cordon_tick(
             next_state.tripped_at = now
             actions.append(CordonAction(CordonActionKind.SET_MAINTENANCE_ON))
         else:
+            if proactive_cleanup_needed(free_gb, used_percent) and (
+                state.last_proactive_cleanup_at is None
+                or (now - state.last_proactive_cleanup_at) >= PROACTIVE_CLEANUP_COOLDOWN_S
+            ):
+                next_state.last_proactive_cleanup_at = now
+                actions.append(CordonAction(CordonActionKind.RUN_DISK_CLEANUP))
             return _finish_tick(next_state, actions, config)
 
     if next_state.phase == "tripping":

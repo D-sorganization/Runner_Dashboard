@@ -159,6 +159,7 @@ def _make_artifact(
     wheels: tuple[str, ...] = (),
     *,
     include_library_ingest: bool = True,
+    include_crash_diagnostics: bool = True,
 ) -> Path:
     stage = root / "stage"
     for rel, body in {
@@ -173,6 +174,10 @@ def _make_artifact(
     }.items():
         (stage / rel).parent.mkdir(parents=True, exist_ok=True)
         (stage / rel).write_text(body, encoding="utf-8")
+    crash_helper = stage / "deploy" / "collect-crash-diagnostics.sh"
+    if include_crash_diagnostics:
+        crash_helper.write_text("#!/bin/bash\necho artifact crash diagnostics\n", encoding="utf-8")
+        crash_helper.chmod(0o755)
     if include_library_ingest:
         ingest = stage / "backend" / "library" / "ingest.py"
         ingest.parent.mkdir(parents=True, exist_ok=True)
@@ -327,6 +332,8 @@ exec "{real_python}" "$@"
     shim.chmod(0o755)
     tarball = _make_artifact(tmp_path, minor, include_library_ingest=False)
     deploy = _live_install(tmp_path)
+    installed_hook = deploy / "collect-crash-diagnostics.sh"
+    installed_hook.write_text("#!/bin/bash\necho setup-provisioned helper\n", encoding="utf-8")
     os.utime(deploy / "backend" / "server.py", (1, 1))
 
     result = _install(tarball, deploy, env={"RUNNER_DASHBOARD_PYTHON": as_bash_path(shim)})
@@ -335,6 +342,31 @@ exec "{real_python}" "$@"
     assert "Dashboard artifact installed" in result.stdout
     assert (deploy / "backend" / "server.py").read_text(encoding="utf-8") == "# new server\n"
     assert not (deploy / "backend" / "library" / "ingest.py").exists()
+    helper_in_artifact = tmp_path / "stage" / "deploy" / "collect-crash-diagnostics.sh"
+    assert installed_hook.read_text(encoding="utf-8") == helper_in_artifact.read_text(encoding="utf-8")
+    assert installed_hook.stat().st_mode & 0o111
+    unit = (DEPLOY / "runner-dashboard.service").read_text(encoding="utf-8")
+    assert any(
+        line.startswith("ExecStopPost=") and "collect-crash-diagnostics.sh" in line for line in unit.splitlines()
+    )
+
+
+@needs_host
+def test_installer_rejects_artifact_missing_crash_helper_before_live_mutation(tmp_path: Path) -> None:
+    minor = _host_minor()
+    if minor is None:
+        pytest.skip("host python3 is outside the supported 3.11-3.13 range")
+    tarball = _make_artifact(tmp_path, minor, include_crash_diagnostics=False)
+    deploy = _live_install(tmp_path)
+    installed_hook = deploy / "collect-crash-diagnostics.sh"
+    installed_hook.write_text("#!/bin/bash\necho existing helper\n", encoding="utf-8")
+
+    result = _install(tarball, deploy)
+
+    assert result.returncode != 0
+    assert "Artifact is missing required path: deploy/collect-crash-diagnostics.sh" in result.stdout + result.stderr
+    _assert_untouched(deploy)
+    assert installed_hook.read_text(encoding="utf-8") == "#!/bin/bash\necho existing helper\n"
 
 
 @needs_host

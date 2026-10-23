@@ -4,7 +4,7 @@
  * Defines the 4-area information architecture:
  *   - Staff (Staff Console, Fleet Command, Library, Agent Bus)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
- *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights)
+ *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Security)
  *   - Settings (one Settings page: Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools)
  *
  * Tests lives under Operations → Diagnostics (#1338), not in the nav.
@@ -30,6 +30,7 @@ import {
   RepoIcon,
   UsersIcon,
   BrainIcon,
+  ShieldIcon,
 } from "./navIcons";
 
 export type NavGroupId = "staff" | "work" | "fleet" | "settings";
@@ -207,6 +208,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: ChartIcon,
     tooltip: "Fleet reports, run analysis, and historical trends.",
     tabId: "insights",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "security",
+    label: "Security",
+    group: "fleet",
+    Icon: ShieldIcon,
+    tooltip: "Fleet security scanner: contract coverage, posture, GitHub alert counts and private findings triage.",
+    tabId: "security",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

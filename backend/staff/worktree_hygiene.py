@@ -159,3 +159,49 @@ def prune_worktree_branch(checkout: Path | None, branch: str = "") -> None:
                 _git_out(checkout, "branch", "-D", branch)
     except Exception as exc:  # noqa: BLE001
         log.debug("prune_worktree_branch skipped on %s: %s", checkout, exc)
+
+
+def sweep_stale_worktrees(
+    store: Any = None,
+    *,
+    active_workdirs: set[str] | None = None,
+) -> dict[str, int]:
+    """Prune finished clean git worktrees under ``staff_worktrees_root`` (#2538)."""
+    from staff import workspace  # noqa: PLC0415
+
+    wt_root = workspace.staff_worktrees_root()
+    if not wt_root.is_dir():
+        return {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0}
+
+    active_norm: set[str] = {os.path.normpath(p) for p in (active_workdirs or set()) if p}
+    if store is not None and hasattr(store, "active_runs"):
+        try:
+            for rec in store.active_runs():
+                if getattr(rec, "workdir", None):
+                    active_norm.add(os.path.normpath(str(rec.workdir)))
+        except Exception as exc:  # noqa: BLE001
+            log.debug("active_runs lookup skipped during worktree sweep: %s", exc)
+
+    removed = 0
+    preserved_unpushed = 0
+    skipped_active = 0
+    for child in sorted(wt_root.iterdir()):
+        if not child.is_dir() or child.name.startswith(".") or child.name == "_scratch":
+            continue
+        if not (child / ".git").exists():
+            continue
+        if os.path.normpath(str(child)) in active_norm:
+            skipped_active += 1
+            continue
+        if store is not None and "-run-" in child.name:
+            rec_id = "run-" + child.name.rsplit("-run-", 1)[-1]
+            persist_run_transcript(store, rec_id, child)
+        shutil.rmtree(child / ".staff", ignore_errors=True)
+        if workspace.worktree_has_unpushed_commits(child):
+            preserved_unpushed += 1
+            continue
+        repo_prefix = child.name.split("-run-", 1)[0] if "-run-" in child.name else ""
+        checkout = workspace.find_repo_checkout(repo_prefix) if repo_prefix else None
+        workspace.remove_worktree(child, checkout=checkout)
+        removed += 1
+    return {"removed": removed, "preserved_unpushed": preserved_unpushed, "skipped_active": skipped_active}

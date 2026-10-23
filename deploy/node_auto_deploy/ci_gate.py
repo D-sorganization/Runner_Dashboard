@@ -20,6 +20,7 @@ NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
     {
         "Publish dashboard release when CI gate is green",
         "Publish dashboard release (manual dispatch)",
+        "Wait for CI gate (cancellable; newer candidate supersedes)",
         "Main CI auto-release",
         "compare",  # Maxwell Contract Drift
         "reconcile",  # Armed PR cap reconcile

@@ -46,7 +46,7 @@ class HttpTimeout:
     # tight budget so one offline or overloaded host cannot dominate hub latency
     # (rollout health checks use ~5 s curl windows).
     FLEET_NODE_PROBE_CONNECT_S: float = 1.0
-    FLEET_NODE_PROBE_READ_S: float = 2.0
+    FLEET_NODE_PROBE_READ_S: float = 5.0
 
     # Hub-bound proxies and the default ``gh api`` budget. 15 s tolerates
     # GitHub API tail latency without holding workers too long.

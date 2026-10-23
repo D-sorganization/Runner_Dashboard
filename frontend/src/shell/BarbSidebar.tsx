@@ -14,15 +14,26 @@ const QUICK_ROUTES = [
   { label: "Queue", tabId: "queue" },
 ];
 
+function selectedThreadFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("thread");
+}
 export interface BarbSidebarProps {
   open: boolean;
   onClose: () => void;
   onNavigate: (tabId: string) => void;
   mobile?: boolean;
+  restoreFocusTargetRef?: React.RefObject<HTMLElement | null>;
+  onThreadSelected?: (threadId: string, role: string) => void;
 }
 
-export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbSidebarProps): React.ReactElement {
-  const sc = useStaffConsole({ initialRole: "barb", restoreInitialRoleThread: true });
+export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef, onThreadSelected }: BarbSidebarProps): React.ReactElement {
+  const preferredRoleThreadId = selectedThreadFromUrl();
+  const sc = useStaffConsole({
+    initialRole: "barb",
+    preferredRoleThreadId,
+    restoreInitialRoleThread: true,
+  });
   const [composerPrefill, setComposerPrefill] = useState("");
   const [prefillSeq, setPrefillSeq] = useState(0);
   const applyComposerPrefill = (nextText: string) => {
@@ -37,10 +48,21 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
 
   useEffect(() => {
     if (!open) return;
-    if (document.activeElement instanceof HTMLElement) {
-      restoreFocusRef.current = document.activeElement;
+    const sidebarEl = sidebarRef.current;
+    const focusTarget = restoreFocusTargetRef?.current ?? document.activeElement;
+    restoreFocusRef.current = focusTarget instanceof HTMLElement ? focusTarget : null;
+    if (mobile) {
+      closeButtonRef.current?.focus();
+    } else {
+      const composerInput = sidebarRef.current?.querySelector<HTMLTextAreaElement>(
+        "textarea.staff-composer__textarea",
+      );
+      if (composerInput && !composerInput.disabled) {
+        composerInput.focus();
+      } else {
+        closeButtonRef.current?.focus();
+      }
     }
-    closeButtonRef.current?.focus();
     const siblings = mobile && sidebarRef.current?.parentElement
       ? Array.from(sidebarRef.current.parentElement.children)
           .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== sidebarRef.current)
@@ -61,12 +83,23 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
         if (wasInert) element.setAttribute("inert", "");
         else element.removeAttribute("inert");
       });
-      if (restoreFocusRef.current?.isConnected) {
-        restoreFocusRef.current.focus();
-      }
+      const fallbackToggle = document.querySelector<HTMLElement>('[aria-controls="barb-sidebar"]');
+      const restoreEl =
+        restoreFocusRef.current?.isConnected &&
+        restoreFocusRef.current !== document.body &&
+        !sidebarEl?.contains(restoreFocusRef.current)
+          ? restoreFocusRef.current
+          : fallbackToggle;
+      restoreEl?.focus();
       restoreFocusRef.current = null;
     };
-  }, [open, mobile]);
+  }, [open, mobile, restoreFocusTargetRef]);
+
+  const startNewConversation = async () => {
+    if (sc.selectedRole !== "barb" && !(await sc.openRole("barb"))) return;
+    const thread = await sc.newConversation();
+    if (thread?.participants.includes("barb")) onThreadSelected?.(thread.id, "barb");
+  };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!mobile || !open || event.key !== "Tab") return;
@@ -118,7 +151,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
             <button
               type="button"
               className="barb-sidebar__new"
-              onClick={() => void sc.newConversation()}
+              onClick={() => void startNewConversation()}
             >
               New chat
             </button>
@@ -194,7 +227,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
           selectedRole="barb"
           onSendMessage={sc.sendMessage}
           placeholder="Message Barb..."
-          focusOnThreadChange
+          focusOnThreadChange={open}
           isPanel={false}
           prefilledText={composerPrefill}
           prefillSeq={prefillSeq}

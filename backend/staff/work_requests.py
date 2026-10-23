@@ -33,6 +33,7 @@ from staff.actions import (
     registered_risk,
     stored_params_hash,
 )
+from staff.request_cards import publish_request_card
 
 if TYPE_CHECKING:
     from staff.conversation_models import ThreadRecord
@@ -381,6 +382,7 @@ def submit_request(
         "work_item_id": wi.id,
         "proposal_id": prop.id,
     }
+    publish_request_card(store, msg.id)
     try:
         check_approval_policy(ACTION_REGISTRY.get(kind.action), prop, caller)
     except PermissionError as exc:
@@ -393,6 +395,8 @@ def submit_request(
         )
     except (ActionError, PermissionError) as exc:
         res = ActionResult(success=False, error=str(exc), failure_class="permission_denied")
+    finally:
+        publish_request_card(store, msg.id)
     if not res.success:
         work_items.transition_state(wi.id, "blocked", actor=principal, reason=res.error or "request failed")
         return _failure_outcome(base, res)
