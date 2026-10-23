@@ -71,6 +71,8 @@ def test_auth_perimeter_rejects_bearer_credentials_on_cloudflare_ingress(monkeyp
     assert event.source_ip == "testclient"
     assert event.cf_ray == "test-ray"
     assert event.path == "/api/v1/staff/threads"
+    assert event.request_id == response.headers["X-Request-ID"]
+    assert len(event.request_id) == 12
 
 
 def test_auth_perimeter_rejects_bearer_credentials_with_external_origin(monkeypatch) -> None:

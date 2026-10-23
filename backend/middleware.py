@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
@@ -345,10 +346,12 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
     authorization = request.headers.get("authorization", "")
     if _is_external_ingress(request) and authorization.partition(" ")[0].casefold() == "bearer":
         client_host = request.client.host if request.client else "unknown"
+        request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex[:12]
+        request.state.request_id = request_id
         log.warning(
             "blocked bearer credential on external ingress",
             extra={
-                "request_id": getattr(request.state, "request_id", None),
+                "request_id": request_id,
                 "source_ip": client_host,
                 "cf_ray": request.headers.get("cf-ray"),
                 "path": request.url.path,
@@ -356,7 +359,11 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
                 "reason": "machine_credentials_not_allowed_on_external_ingress",
             },
         )
-        return JSONResponse({"error": "Request not permitted"}, status_code=403)
+        return JSONResponse(
+            {"error": "Request not permitted"},
+            status_code=403,
+            headers={"X-Request-ID": request_id},
+        )
 
     # Defer to the route dependency when a test/explicit override is installed.
     app = request.scope.get("app")
