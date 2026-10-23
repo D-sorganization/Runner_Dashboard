@@ -591,11 +591,11 @@ COMMANDS: tuple[Command, ...] = (
     Command(
         "query",
         "fleet_query",
-        "Consolidated fleet on-request context query tool across context, library, knowledge, and memory.",
+        "Consolidated fleet on-request context query tool across context, library, knowledge, memory, and codebase.",
         {
             "source": {
                 "type": "string",
-                "enum": ["context", "library", "knowledge", "memory"],
+                "enum": ["context", "library", "knowledge", "memory", "codebase"],
                 "description": "Target context source.",
             },
             "op": {
