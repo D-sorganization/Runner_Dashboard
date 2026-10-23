@@ -43,8 +43,8 @@ def test_fleet_query_codebase_returns_verified_citations(monkeypatch: pytest.Mon
                     "source": "SPEC.md",
                     "title": "Architecture",
                     "text": "A verified codebase passage.",
-                    "citation": "[ref:hub:codebase:Runner_Dashboard@abcdef12:SPEC.md#L3-L4]",
-                    "commit": "abcdef123456",
+                    "citation": "[ref:hub:codebase:Runner_Dashboard@11111111:SPEC.md#L3-L4]",
+                    "commit": "111111111111",
                 }
             ],
         }
