@@ -160,6 +160,10 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "fleet_barb_heartbeat",
         "fleet_barb_turnover",
         "fleet_barb_release",
+        "fleet_friction_list",
+        "fleet_friction_report",
+        "fleet_owner_question_ask",
+        "fleet_owner_questions_list",
     }
 
 

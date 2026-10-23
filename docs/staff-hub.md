@@ -666,6 +666,10 @@ Conductor spellings all match (`gemini`, `gemini_cli`, `gemini-cli`). A disabled
 
 Roles keep listing it; removing it from the env re-enables it with no role edits.
 
+## Fleet friction ledger and owner questions (#2502)
+
+See [fleet-friction-ledger.md](fleet-friction-ledger.md): the friction ledger (`/api/v1/fleet/friction`), the owner-questions queue, summary counts and the importer.
+
 ## External Agent Clients (SC-F5, #1334)
 
 External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) interact with the Staff Hub via the Fleet Coordination and Staff v1 API or the fleet MCP server.
