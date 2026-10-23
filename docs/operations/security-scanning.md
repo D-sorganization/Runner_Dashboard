@@ -1,9 +1,9 @@
-# Fleet security scanning: operator runbook
+# Fleet Security Scanning: Operator Runbook
 
 Epic [#2566](https://github.com/D-sorganization/Runner_Dashboard/issues/2566).
 The design comes from panel verdicts q3 and q4 (Argon, Astra, Fable).
 
-## What it does
+## What It Does
 
 A repository opts in by adding `.oss-scanner/`, which holds `project.yaml`, a
 `Dockerfile` and `threat_model.md`. The templates and validator live in
@@ -20,7 +20,7 @@ Repository_Management. The dashboard runs the scan in two phases:
 Findings land in the private findings store as `new`. They are never filed
 publicly, and no patch is applied. An operator triages them on the Security page.
 
-## Safety rules
+## Safety Rules
 
 These are enforced in code (`backend/vuln_scan/admission.py`), not by
 convention.
@@ -41,7 +41,7 @@ convention.
 - **The container, image and temp directories are removed in a `finally`**,
   including on cancel.
 
-## Enabling a scan host (owner, one time)
+## Enabling a Scan Host (Owner, One Time)
 
 1. Provision a Linux VM: Hyper-V or a separate machine, _not_ a WSL distro, not
    ControlTower. Install Docker and buildx. Give the dashboard host an SSH key
@@ -88,7 +88,7 @@ network probes from inside phase A.
 Until the identity presets grant these scopes, only admin principals (`*`)
 hold them.
 
-## Known limits
+## Known Limits
 
 - Only public repositories are supported. The source is fetched from
   codeload.github.com with no token.
