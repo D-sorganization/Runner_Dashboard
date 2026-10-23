@@ -196,8 +196,13 @@ class FindingsStore:
         scan_sha: str,
         image_digest: str = "",
         scan_run_id: str = "",
+        allow_new: bool = True,
     ) -> tuple[str, bool]:
-        """Insert or refresh a finding; return ``(id, created)``."""
+        """Insert or refresh a finding; return ``(id, created)``.
+
+        With ``allow_new=False`` (the per-scan cap is reached) a known finding is
+        still refreshed, but an unknown one is dropped and ``("", False)`` returned.
+        """
         if not _SHA.match(scan_sha):
             raise FindingError("scan_sha must be a hex commit SHA")
         if not _DIGEST.match(image_digest):
@@ -216,6 +221,8 @@ class FindingsStore:
                     (now, state, scan_sha, image_digest, scan_run_id, row["id"]),
                 )
                 return row["id"], False
+            if not allow_new:
+                return "", False
             finding_id = uuid.uuid4().hex
             fields = asdict(finding)
             conn.execute(

@@ -36,6 +36,9 @@ _DOCKER_HOST = re.compile(
     r"^(ssh://[A-Za-z0-9_.@-]+(:\d{1,5})?|unix:///[A-Za-z0-9_./-]+)$"
 )
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_NETWORK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+_CLI_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+_MODEL = re.compile(r"^[a-z0-9][a-z0-9.-]{1,62}$")
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,9 @@ class ScanHost:
     name: str
     isolation: str
     docker_host: str | None = None
+    # Docker network for phase A builds; the host must filter it (DOCKER-USER
+    # rules, IPv6 off, fixed DNS). Without one the host cannot build images.
+    build_network: str | None = None
 
     @property
     def eligible_for_real_scans(self) -> bool:
@@ -67,7 +73,30 @@ class ScanHost:
             "name": self.name,
             "isolation": self.isolation,
             "docker_host": self.docker_host,
+            "build_network": self.build_network,
             "eligible_for_real_scans": self.eligible_for_real_scans,
+        }
+
+
+@dataclass(frozen=True)
+class ExecutorSettings:
+    """How the scanning agent is launched (panel verdict q4, items 2 and 7)."""
+
+    cli_version: str | None = None  # pinned ``claude --version``; unset = no real scans
+    model: str = "claude-opus-5-5"
+    max_turns: int = 200
+    exec_timeout_s: int = 600
+    scan_timeout_minutes: int = 180
+    build_timeout_minutes: int = 30
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "cli_version": self.cli_version,
+            "model": self.model,
+            "max_turns": self.max_turns,
+            "exec_timeout_s": self.exec_timeout_s,
+            "scan_timeout_minutes": self.scan_timeout_minutes,
+            "build_timeout_minutes": self.build_timeout_minutes,
         }
 
 
@@ -83,6 +112,7 @@ class OperatorConfig:
     max_new_findings_per_scan: int = 10
     usd_per_day: float = 5.0
     alerts_ttl_seconds: int = 6 * 3600
+    executor: ExecutorSettings = ExecutorSettings()
     errors: tuple[str, ...] = ()
 
     def repo(self, name: str) -> RepoSettings:
@@ -102,6 +132,7 @@ class OperatorConfig:
             "max_new_findings_per_scan": self.max_new_findings_per_scan,
             "usd_per_day": self.usd_per_day,
             "alerts_ttl_seconds": self.alerts_ttl_seconds,
+            "executor": self.executor.to_dict(),
             "errors": list(self.errors),
         }
 
@@ -162,8 +193,66 @@ def _scan_hosts(raw: Any, errors: list[str]) -> tuple[ScanHost, ...]:
                 f"scan_hosts.{name}.docker_host must be ssh://host or unix:///path"
             )
             continue
-        hosts.append(ScanHost(name=name, isolation=isolation, docker_host=docker_host))
+        network = spec.get("build_network")
+        if network is not None and not (
+            isinstance(network, str) and _NETWORK.match(network)
+        ):
+            errors.append(f"scan_hosts.{name}.build_network is not a network name")
+            continue
+        hosts.append(
+            ScanHost(
+                name=name,
+                isolation=isolation,
+                docker_host=docker_host,
+                build_network=network,
+            )
+        )
     return tuple(hosts)
+
+
+def _executor(raw: Any, errors: list[str]) -> ExecutorSettings:
+    if raw is None:
+        return ExecutorSettings()
+    if not isinstance(raw, dict):
+        errors.append("executor must be an object")
+        return ExecutorSettings()
+    base = ExecutorSettings()
+    version = raw.get("cli_version")
+    if version is not None and not (
+        isinstance(version, str) and _CLI_VERSION.match(version)
+    ):
+        errors.append("executor.cli_version must look like 2.1.263")
+        version = None
+    model = raw.get("model", base.model)
+    if not (isinstance(model, str) and _MODEL.match(model)):
+        errors.append("executor.model is not a model id")
+        model = base.model
+    return ExecutorSettings(
+        cli_version=version,
+        model=model,
+        max_turns=_int(
+            raw.get("max_turns"), "executor.max_turns", 1, 1000, 200, errors
+        ),
+        exec_timeout_s=_int(
+            raw.get("exec_timeout_s"), "executor.exec_timeout_s", 5, 3600, 600, errors
+        ),
+        scan_timeout_minutes=_int(
+            raw.get("scan_timeout_minutes"),
+            "executor.scan_timeout_minutes",
+            5,
+            720,
+            180,
+            errors,
+        ),
+        build_timeout_minutes=_int(
+            raw.get("build_timeout_minutes"),
+            "executor.build_timeout_minutes",
+            1,
+            30,
+            30,
+            errors,
+        ),
+    )
 
 
 def parse_operator_config(payload: Any) -> OperatorConfig:
@@ -235,6 +324,7 @@ def parse_operator_config(payload: Any) -> OperatorConfig:
             6 * 3600,
             errors,
         ),
+        executor=_executor(payload.get("executor"), errors),
         errors=tuple(errors),
     )
 
