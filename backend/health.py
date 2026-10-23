@@ -21,6 +21,7 @@ Issue #332 — split /livez (no I/O) from /readyz (dependency checks).
 from __future__ import annotations
 
 import datetime as _dt_mod
+import logging
 import time
 
 import dashboard_config
@@ -39,6 +40,18 @@ from proxy_utils import (
 from readiness import aggregate, get_default_probes
 
 router = APIRouter(tags=["health"])
+log = logging.getLogger("dashboard.health")
+
+
+def _log_github_probe_failure(stage: str, exc: Exception) -> None:
+    """Log only bounded probe metadata; exception content may contain secrets."""
+    allowed_stages = {"local_probe", "hub_proxy", "hub_summary"}
+    safe_stage = stage if stage in allowed_stages else "unknown"
+    known_types = {"HTTPException", "RuntimeError", "TimeoutError", "ConnectionError", "ValueError"}
+    error_type = type(exc).__name__
+    safe_type = error_type if error_type in known_types else "OtherError"
+    log.warning("github_health_probe_failed stage=%s error_type=%s", safe_stage, safe_type)
+
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
@@ -157,6 +170,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         if isinstance(e, (KeyboardInterrupt, SystemExit)):
             raise
         github_error_type = type(e).__name__
+        _log_github_probe_failure("local_probe", e)
         gh_ok = False
         runner_count = 0
 
@@ -206,13 +220,17 @@ async def health_check(request: Request) -> dict:
         and HEALTH_PROXY_HOP_HEADER in request.headers
     )
     if forwarded_spoke or should_proxy_fleet_to_hub(request) or should_mark_hub_circuit_degraded(request):
+        probe_stage = "hub_proxy"
         try:
             if forwarded_spoke:
                 raise HTTPException(status_code=503, detail="Health proxy hop exceeded")
             if should_mark_hub_circuit_degraded(request):
                 raise HTTPException(status_code=503, detail="Hub circuit open")
-            github_health = _validate_hub_github_health(await proxy_to_hub(request, require_success=True))
+            summary = await proxy_to_hub(request, require_success=True)
+            probe_stage = "hub_summary"
+            github_health = _validate_hub_github_health(summary)
         except (HTTPException, ValueError) as exc:
+            _log_github_probe_failure(probe_stage, exc)
             github_health = {
                 "github_api": "unreachable",
                 "runners_registered": 0,
