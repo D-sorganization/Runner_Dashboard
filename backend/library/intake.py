@@ -8,6 +8,7 @@ import hmac
 import os
 import re
 import sqlite3
+import sys
 import tempfile
 import time
 from contextlib import closing
@@ -71,7 +72,8 @@ def _write_cas_blob(db_path: Path, sha256: str, content: bytes) -> Path:
         return dest
     fd, tmp_name = tempfile.mkstemp(dir=str(root), prefix=".tmp-")
     try:
-        os.fchmod(fd, 0o600)
+        if sys.platform != "win32":  # os.fchmod is POSIX-only
+            os.fchmod(fd, 0o600)
         with os.fdopen(fd, "wb") as handle:
             handle.write(content)
         os.replace(tmp_name, dest)
