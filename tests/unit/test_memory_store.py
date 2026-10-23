@@ -106,3 +106,19 @@ def test_idempotency_insert_failure_rolls_back_entry(store: AssistantMemoryStore
     assert (
         store._db.execute("SELECT 1 FROM memory_idempotency WHERE idempotency_key = ?", ("new-key",)).fetchone() is None
     )
+
+
+def test_unicode_digest_bytes_count_toward_later_generic_write_cap(
+    store: AssistantMemoryStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import memory.store as memory_store
+
+    monkeypatch.setattr(memory_store, "MAX_STORE_BYTES", 100)
+    store.append_idempotent(
+        _entry(body={"summary": "é" * 40}),
+        idempotency_key="unicode-digest",
+        fingerprint="unicode-digest-v1",
+    )
+
+    with pytest.raises(ValueError, match="store_size_cap_exceeded"):
+        store.append(_entry(entry_type="task", body={"summary": "x" * 30}))

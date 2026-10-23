@@ -13,5 +13,6 @@ branch: "feat/barb-auto-summary-2199"
 
 ## Handoff
 
-- Requires the session-digest API release on the canonical DeskComputer origin, a dedicated service token with `memory.write`, and `BARB_SHARED_MEMORY_AUTO_SUMMARIES=1`. Existing read-only integrations remain unchanged until opted in. The authenticated service is the canonical author; original caller provenance is explicitly reported metadata.
+- Requires the session-digest API release on the canonical DeskComputer origin, a dedicated service token with `memory.read` plus `memory.shared.summarize` (no general `memory.write`), and `BARB_SHARED_MEMORY_AUTO_SUMMARIES=1`. Existing read-only integrations remain unchanged until explicitly opted in and separately provisioned. The authenticated service is the canonical author; original caller provenance is explicitly reported metadata.
+- Recognized incomplete, non-final and multiple top-level memory capsules remain hidden in the persisted reply, matching streaming behavior; none can produce a saved digest.
 - Validate actual provider capsule generation and canonical acknowledgement after deployment. A valid human GitHub OAuth session is required to qualify owner UI access; synthetic caller probes do not establish that acceptance.

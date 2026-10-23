@@ -5597,6 +5597,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory/session-digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Session Digest */
+        post: operations["post_session_digest_api_v1_memory_session_digest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/metrics/pull": {
         parameters: {
             query?: never;
@@ -9193,6 +9210,35 @@ export interface components {
             work_kind?: ("issue" | "pr") | null;
             /** Work Number */
             work_number?: number | null;
+        };
+        /**
+         * SessionDigestAppendRequest
+         * @description Small, transcript-free payload for one conversation turn's shared digest.
+         */
+        SessionDigestAppendRequest: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Decisions */
+            decisions?: string[];
+            /** Open Items */
+            open_items?: string[];
+            /** Reported Origin Principal */
+            reported_origin_principal?: string | null;
+            /**
+             * Source Product
+             * @enum {string}
+             */
+            source_product: "codex" | "dashboard";
+            /** Summary */
+            summary: string;
+            /** User Message Id */
+            user_message_id: string;
+        };
+        /** SessionDigestAppendResponse */
+        SessionDigestAppendResponse: {
+            entry: components["schemas"]["MemoryEntry"];
+            /** Replayed */
+            replayed: boolean;
         };
         /**
          * SessionTelemetryPayload
@@ -18570,6 +18616,48 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    post_session_digest_api_v1_memory_session_digest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionDigestAppendRequest"];
+            };
+        };
+        responses: {
+            /** @description Idempotent replay */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDigestAppendResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDigestAppendResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

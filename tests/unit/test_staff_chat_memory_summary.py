@@ -41,6 +41,16 @@ def test_valid_trailing_capsule_is_stripped_and_not_a_transcript():
 
 @pytest.mark.parametrize(
     "raw",
+    [capsule()[:-3], capsule() + "\nMore prose.", capsule() + "\n" + capsule()],
+)
+def test_recognized_metadata_never_reappears_after_stream_filter_hides_it(raw):
+    reply, digest = summaries.extract_summary(raw)
+    assert reply == "Reply."
+    assert digest is None
+
+
+@pytest.mark.parametrize(
+    "raw",
     [
         "```text\n" + capsule() + "\n```",
         "> " + capsule().replace("\n", "\n> "),

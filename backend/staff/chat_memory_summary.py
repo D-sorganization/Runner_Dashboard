@@ -80,7 +80,8 @@ def extract_summary(raw: str) -> tuple[str, dict[str, Any] | None]:
             continue
         if fence is None and line == _MARKER:
             count += 1
-            start = index
+            if start is None:
+                start = index
             fence = "```"
         elif fence is None and line.startswith(("```", "~~~")):
             fence = line[:3]
@@ -88,10 +89,12 @@ def extract_summary(raw: str) -> tuple[str, dict[str, Any] | None]:
             if start is not None and end is None:
                 end = index
             fence = None
-    if count != 1 or start is None or end is None or any(line.strip() for line in lines[end + 1 :]):
+    if start is None:
         return raw, None
-    # Strip recognized malformed metadata too; never persist it as an assistant answer.
+    # Match the streaming filter: once metadata starts, it never becomes reply text.
     reply = "\n".join(lines[:start]).rstrip()
+    if count != 1 or end is None or any(line.strip() for line in lines[end + 1 :]):
+        return reply, None
     capsule = "\n".join(lines[start + 1 : end])
     if len(capsule.encode("utf-8")) > _MAX_CAPSULE:
         return reply, None

@@ -109,7 +109,7 @@ COMMANDS: tuple[Command, ...] = (
         "memory-append-session-digest",
         "memory_append_session_digest",
         "Append a short, transcript-free summary for one Codex or Dashboard conversation turn "
-        "(requires memory.write; retries of the same turn are idempotent).",
+        "(requires memory.shared.summarize; retries of the same turn are idempotent).",
         {
             "source_product": {"type": "string", "enum": ["codex", "dashboard"]},
             "conversation_id": {

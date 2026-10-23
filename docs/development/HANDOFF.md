@@ -1,4 +1,11 @@
-# Current handoff — Fleet hub, Brick, Codex defaults (#2022)
+# Current Handoff — Fleet Hub, Brick, Codex Defaults (#2022)
+
+## Barb Continuity Follow-Up (#2199, PR #2246)
+
+- The summary parser now keeps recognized malformed, incomplete or ambiguous metadata out of persisted replies, matching the streaming filter. Quoted and nested examples remain ordinary reply text.
+- Combined context/summary credentials require an explicit operator opt-in and separate provisioning of exactly `memory.read` plus `memory.shared.summarize`; do not grant generic `memory.write`. Each original caller also needs summary permission.
+- Validation: three regression cases failed before the parser fix; all 38 summary/streaming/result tests pass afterward. Complete canonical and ordinary commit/pre-push checks before publication.
+- Runtime acceptance remains pending the qualified canonical DeskComputer API deployment and actual provider save acknowledgement. Preserve its existing memory and conversations; no ControlTower-local fallback.
 
 - **Repository / worktree:** Runner_Dashboard, `/workspace`; branch `cursor/fleet-hub-brick-codex-7386`; commit SELF; PR: https://github.com/D-sorganization/Runner_Dashboard/pull/2023 (ready).
 - **Governing issue:** #2022 — DeskComputer hub, Brick in registry, repo Codex default model, dual-hub guard.
