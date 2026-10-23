@@ -210,7 +210,8 @@ def test_latest_same_suite_failure_blocks_earlier_success() -> None:
     assert not ci_gate_for_deploy_commit(_fetch(lambda _: {"total_count": 2, "check_runs": checks}), SHA)[0]
 
 
-def test_latest_pending_same_suite_attempt_blocks_earlier_success() -> None:
+@pytest.mark.parametrize("pending_status", ["queued", "in_progress", "requested", "waiting", "pending"])
+def test_latest_pending_same_suite_attempt_blocks_earlier_success(pending_status: str) -> None:
     checks = [
         _api_run(
             100,
@@ -224,7 +225,7 @@ def test_latest_pending_same_suite_attempt_blocks_earlier_success() -> None:
             101,
             name="Docker build",
             conclusion=None,
-            status="queued",
+            status=pending_status,
             suite_id=10,
             started_at=None,
         ),

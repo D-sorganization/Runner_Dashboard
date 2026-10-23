@@ -11,7 +11,7 @@ FAILING_CONCLUSIONS = frozenset(
 )
 # Superseded runs (concurrency cancel) neither pass nor fail when a green rerun exists.
 _IGNORED_WHEN_SUPERSEDED = frozenset({"cancelled", "stale"})
-PENDING_STATUSES = frozenset({"queued", "in_progress"})
+PENDING_STATUSES = frozenset({"queued", "in_progress", "requested", "waiting", "pending"})
 """Conclusions that satisfy a check *name* when aggregated (neutral alone does not)."""
 SATISFYING_NAME_CONCLUSIONS = frozenset({"success", "skipped"})
 
