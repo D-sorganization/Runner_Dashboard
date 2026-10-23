@@ -53,8 +53,14 @@ class DispatchBundle:
                 "tier0_standards": t0,
                 "tier1_skills": t1_skills,
                 "tier1_lessons": lessons_tokens,
-                "total_injected": estimate_tokens(prompt) if prompt else (t0 + t1_skills + lessons_tokens),
+                # This subtotal covers only the categories above. Library blocks are
+                # not yet measured, so consumers must treat it as partial.
+                "total_injected": t0 + t1_skills + lessons_tokens,
+                # The whole prompt includes the operator task and is not comparable
+                # to the context-only budget.
+                "full_prompt": estimate_tokens(prompt) if prompt else None,
             },
+            "context_accounting_version": 2,
             "estimator_version": ESTIMATOR_VERSION,
         }
 

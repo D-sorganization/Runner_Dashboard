@@ -14,12 +14,30 @@ if str(_BACKEND) not in sys.path:
 from staff import roles as roles_mod  # noqa: E402
 from staff.dispatch_bundle import (  # noqa: E402
     DEFAULT_GENERIC_SKILL,
+    DispatchBundle,
     DispatchContractError,
     resolve_dispatch_bundle,
 )
 from staff.skills.registry import clear_skills_cache  # noqa: E402
 
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "skills_dispatch"
+pytestmark = pytest.mark.unit
+
+
+def test_context_stamp_separates_injected_context_from_full_prompt_estimate() -> None:
+    bundle = DispatchBundle(
+        skill_pin="skill@1.0.0",
+        skill_version="1.0.0",
+        standards_version="1.1.0",
+        standards_pin="fleet-standards@1.1.0#abc",
+        skill_block="skill instructions",
+        standards_block="fleet standards",
+        standards_tokens=10,
+    )
+    stamp = bundle.context_stamp(prompt="task prompt " * 40, lessons_tokens=3)
+    estimates = stamp["token_estimates"]
+    assert estimates["total_injected"] == 10 + estimates["tier1_skills"] + 3
+    assert estimates["full_prompt"] > estimates["total_injected"]
 
 
 @pytest.fixture(autouse=True)
