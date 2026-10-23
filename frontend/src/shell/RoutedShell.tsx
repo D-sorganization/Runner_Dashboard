@@ -219,6 +219,20 @@ export function RoutedShell({
     [navigate],
   );
 
+  const onThreadSelected = useCallback(
+    (threadId: string, role: string) => {
+      const search = new URLSearchParams(location.search);
+      search.set("role", role);
+      search.set("thread", threadId);
+      navigate({
+        pathname: location.pathname,
+        search: `?${search.toString()}`,
+        hash: location.hash,
+      });
+    },
+    [location.hash, location.pathname, location.search, navigate],
+  );
+
   React.useEffect(() => {
     const onAssistantNavigate = (event: Event) => {
       const tabId = (event as CustomEvent<{ tabId?: unknown }>).detail?.tabId;
@@ -254,6 +268,7 @@ export function RoutedShell({
       <AppShell
         activeTab={activeTab}
         onSelectTab={onSelectTab}
+        onThreadSelected={onThreadSelected}
         isNotFound={isNotFound}
         unmatchedPath={location.pathname}
       />
@@ -270,11 +285,13 @@ export function RoutedShell({
 export function AppShell({
   activeTab,
   onSelectTab,
+  onThreadSelected,
   isNotFound,
   unmatchedPath,
 }: {
   activeTab: string;
   onSelectTab: (tabId: string) => void;
+  onThreadSelected: (threadId: string, role: string) => void;
   isNotFound?: boolean;
   unmatchedPath?: string;
 }) {
@@ -300,6 +317,7 @@ export function AppShell({
         <MobileShell
           currentTab="staff"
           onTabChange={(t) => onSelectTab(t)}
+          onThreadSelected={onThreadSelected}
         >
           <NotFoundPanel
             path={unmatchedPath || "/"}
@@ -358,6 +376,7 @@ export function AppShell({
       <MobileShell
         currentTab={mobileTab}
         onTabChange={(t) => onSelectTab(t)}
+        onThreadSelected={onThreadSelected}
         tabContent={mobileTabContent as Record<TabId, React.ReactNode>}
       >
         {mobileFallback}
@@ -407,6 +426,7 @@ export function AppShell({
     <DesktopShell
       activeTabId={activeTab}
       onSelect={onSelectTab}
+      onThreadSelected={onThreadSelected}
       actions={buildShellActions(loggedIn, refreshSession, () => {
         showToast("Could not sign out. Please try again.", { variant: "error" });
       })}

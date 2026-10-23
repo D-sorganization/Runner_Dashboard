@@ -24,9 +24,10 @@ export interface BarbSidebarProps {
   onNavigate: (tabId: string) => void;
   mobile?: boolean;
   restoreFocusTargetRef?: React.RefObject<HTMLElement | null>;
+  onThreadSelected?: (threadId: string, role: string) => void;
 }
 
-export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef }: BarbSidebarProps): React.ReactElement {
+export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef, onThreadSelected }: BarbSidebarProps): React.ReactElement {
   const preferredRoleThreadId = selectedThreadFromUrl();
   const sc = useStaffConsole({
     initialRole: "barb",
@@ -89,6 +90,12 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
     };
   }, [open, mobile, restoreFocusTargetRef]);
 
+  const startNewConversation = async () => {
+    if (sc.selectedRole !== "barb" && !(await sc.openRole("barb"))) return;
+    const thread = await sc.newConversation();
+    if (thread?.participants.includes("barb")) onThreadSelected?.(thread.id, "barb");
+  };
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!mobile || !open || event.key !== "Tab") return;
     const panel = sidebarRef.current;
@@ -139,7 +146,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
             <button
               type="button"
               className="barb-sidebar__new"
-              onClick={() => void sc.newConversation()}
+              onClick={() => void startNewConversation()}
             >
               New chat
             </button>

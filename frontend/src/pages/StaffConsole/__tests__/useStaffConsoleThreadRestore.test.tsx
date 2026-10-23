@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadApi } from "../consoleThreads";
 import type { ThreadInfo, ThreadMessage } from "../threadTypes";
@@ -137,4 +137,49 @@ describe("selected role thread restoration", () => {
     expect(deps.listThreads).toHaveBeenCalledWith("barb");
     expect(api.fetchThread).not.toHaveBeenCalledWith(specialistThread.id, expect.anything());
   });
+
+  it("keeps a new conversation when its selected URL id catches up", async () => {
+    const threadA: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_existing_barb",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const threadB: ThreadInfo = {
+      ...threadA,
+      id: "thr_new_barb",
+      title: "Conversation with Barb",
+    };
+    const deps = threadApi({
+      listThreads: vi.fn().mockResolvedValue([threadA]),
+      createThread: vi.fn().mockResolvedValue(threadB),
+    });
+    const { result, rerender } = renderHook(
+      ({ preferredRoleThreadId }: { preferredRoleThreadId: string }) =>
+        useStaffConsole({
+          roles: ROLES,
+          initialRole: "barb",
+          preferredRoleThreadId,
+          restoreInitialRoleThread: true,
+          threadApi: deps,
+          streamEnabled: false,
+        }),
+      { initialProps: { preferredRoleThreadId: threadA.id } },
+    );
+
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(threadA.id));
+    let created: ThreadInfo | null = null;
+    await act(async () => {
+      created = await result.current.newConversation();
+    });
+    expect(created?.id).toBe(threadB.id);
+
+    rerender({ preferredRoleThreadId: threadB.id });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.activeThread?.id).toBe(threadB.id);
+    expect(deps.listThreads).toHaveBeenCalledTimes(1);
+  });
+
 });

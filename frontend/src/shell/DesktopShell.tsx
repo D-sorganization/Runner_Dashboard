@@ -42,6 +42,7 @@ export interface DesktopShellProps {
   activeTabId: string;
   /** Called with a NavItem.tabId when a category is selected in any surface. */
   onSelect: (tabId: string) => void;
+  onThreadSelected?: (threadId: string, role: string) => void;
   /** Flat list of shell action buttons (refresh, chat, login, …). */
   actions: ShellAction[];
   /** Optional persistent controls rendered before actions in the topbar. */
@@ -213,6 +214,7 @@ function ActionButton({ action }: { action: ShellAction }): React.ReactElement {
 export function DesktopShell({
   activeTabId,
   onSelect,
+  onThreadSelected,
   actions,
   headerExtra,
   helpAbout,
@@ -324,6 +326,7 @@ export function DesktopShell({
             open={barbOpen}
             onClose={() => setBarbOpen(false)}
             onNavigate={onSelect}
+            onThreadSelected={onThreadSelected}
             restoreFocusTargetRef={barbToggleRef}
           />
         </React.Suspense>

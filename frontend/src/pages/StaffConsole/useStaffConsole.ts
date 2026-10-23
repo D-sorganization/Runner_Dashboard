@@ -116,6 +116,7 @@ export function useStaffConsole({
   const [rosterLoading, setRosterLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(initialRole ?? null);
   const [activeThread, setActiveThread] = useState<ThreadInfo | null>(initialThread ?? null);
+  const newThreadFromThisConsole = useRef<string | null>(null);
   const [openingRole, setOpeningRole] = useState<string | null>(null);
   const [history, setHistory] = useState<ThreadMessage[]>(initialMessages);
   const [error, setError] = useState<ConsoleError | null>(null);
@@ -167,6 +168,11 @@ export function useStaffConsole({
   const initialRoleThreads = useRef(new Map<string, Promise<ThreadInfo[]>>());
   useEffect(() => {
     if (!restoreInitialRoleThread || !initialRole || initialThread || initialThreadId) return;
+    if (preferredRoleThreadId && newThreadFromThisConsole.current === preferredRoleThreadId) {
+      newThreadFromThisConsole.current = null;
+      return;
+    }
+    newThreadFromThisConsole.current = null;
     let cancelled = false;
     let request = initialRoleThreads.current.get(initialRole);
     if (!request) {
@@ -255,6 +261,7 @@ export function useStaffConsole({
     try {
       const title = roleByName(roleName)?.title || roleName;
       const thread = await createFreshRoleThread(roleName, title, threadApi);
+      newThreadFromThisConsole.current = thread.id;
       setHistory(NO_MESSAGES);
       setActiveThread(thread);
       setSelectedRole(roleName);
