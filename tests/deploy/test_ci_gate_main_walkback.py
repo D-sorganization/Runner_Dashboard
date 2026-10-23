@@ -23,7 +23,17 @@ _GREEN_SHA = "4ece23d6a70f6c1eb3acc276f38c490ef6793a07"  # pragma: allowlist sec
 def _runs_from_fixture(path: Path, sha: str) -> list[dict[str, object]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     raw = payload["check_runs"] if isinstance(payload, dict) else payload
-    return [{**run, "id": index, "head_sha": sha} for index, run in enumerate(raw)]
+    return [
+        {
+            **run,
+            "id": index + 1,
+            "head_sha": sha,
+            "app": {"id": 1},
+            "check_suite": {"id": index + 1},
+            "started_at": "2026-01-01T00:00:00Z",
+        }
+        for index, run in enumerate(raw)
+    ]
 
 
 def _payload(path: Path, sha: str) -> dict:
