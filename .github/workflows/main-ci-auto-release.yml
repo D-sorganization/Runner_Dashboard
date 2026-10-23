@@ -22,20 +22,71 @@ permissions:
   contents: write
 
 concurrency:
-  # One fleet publish at a time; let the active run finish (busy main must not cancel mid-publish).
-  group: main-ci-auto-release
+  # Real serialization lives at job level (gate: cancellable, publish: never cancelled).
+  # A workflow-level lane would let a superseded candidate that is merely waiting on a
+  # slow check hold every newer candidate out (head-of-line blocking).
+  group: main-ci-auto-release-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish dashboard release when CI gate is green
+  gate:
+    name: Wait for CI gate (cancellable; newer candidate supersedes)
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: d-sorg-fleet
+    timeout-minutes: 60
+    # Waiting is cheap and holds nothing worth protecting: a newer main commit replaces it.
+    concurrency:
+      group: main-ci-auto-release-gate
+      cancel-in-progress: true
+    outputs:
+      ok: ${{ steps.gate.outputs.ok }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Checkout release source at workflow_run head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Resolve committer date for deterministic tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMITTER_DATE="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}" --jq '.commit.committer.date')"
+          echo "committer_date=${COMMITTER_DATE}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for CI gate (eligibility + check-runs)
+        id: gate
+        shell: bash
+        env:
+          COMMITTER_DATE: ${{ steps.meta.outputs.committer_date }}
+          # The slow docker scan finished within ~25 min on recent main commits.
+          GATE_ATTEMPTS: "45"
+        run: |
+          set -euo pipefail
+          bash deploy/publish-main-ci-release.sh \
+            --sha "${HEAD_SHA}" \
+            --committer-date "${COMMITTER_DATE}" \
+            --require-main-ancestor \
+            --gate-only
+
+  publish:
+    name: Publish dashboard release when CI gate is green
+    needs: gate
+    if: needs.gate.outputs.ok == 'true'
+    runs-on: d-sorg-fleet
     timeout-minutes: 120
+    # An upload/tag must never be interrupted; the script re-checks ordering before tagging.
+    concurrency:
+      group: main-ci-auto-release-publish
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -77,13 +128,17 @@ jobs:
             --committer-date "${COMMITTER_DATE}" \
             --keep 30 \
             --protected-sha "${PROTECTED_RELEASE_SHAS}" \
-            --require-main-ancestor
+            --require-main-ancestor \
+            --publish-only
 
   publish-dispatch:
     name: Publish dashboard release (manual dispatch)
     if: github.event_name == 'workflow_dispatch'
     runs-on: d-sorg-fleet
     timeout-minutes: 120
+    concurrency:
+      group: main-ci-auto-release-publish
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       HEAD_SHA: ${{ inputs.commit_sha || github.sha }}

@@ -10,6 +10,8 @@ PROTECTED_SHAS=""
 DRY_RUN=false
 REQUIRE_CURRENT_MAIN=false
 REQUIRE_MAIN_ANCESTOR=false
+GATE_ONLY=false
+PUBLISH_ONLY=false
 
 usage() {
   cat <<'EOF'
@@ -22,6 +24,8 @@ Options:
   --protected-sha LIST      Comma-separated SHAs never deleted during retention
   --require-current-main    Skip when this SHA is no longer the current main head
   --require-main-ancestor   Require GitHub to prove this SHA remains on main history
+  --gate-only               Eligibility + CI gate wait only; write ok=true|false to $GITHUB_OUTPUT
+  --publish-only            Re-verify eligibility and one-shot gate, then package/tag/release
   --dry-run                 Plan only; do not create tag/release or delete old rows
   -h, --help                Show help
 EOF
@@ -35,6 +39,8 @@ while [[ $# -gt 0 ]]; do
     --protected-sha) PROTECTED_SHAS="$2"; shift 2 ;;
     --require-current-main) REQUIRE_CURRENT_MAIN=true; shift ;;
     --require-main-ancestor) REQUIRE_MAIN_ANCESTOR=true; shift ;;
+    --gate-only) GATE_ONLY=true; shift ;;
+    --publish-only) PUBLISH_ONLY=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -42,6 +48,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be 40 lowercase hex" >&2; exit 1; }
+if [[ "$GATE_ONLY" == "true" && "$PUBLISH_ONLY" == "true" ]]; then
+  echo "choose either --gate-only or --publish-only" >&2
+  exit 1
+fi
 [[ -n "$COMMITTER_DATE" ]] || { echo "committer-date is required" >&2; exit 1; }
 if [[ "$REQUIRE_CURRENT_MAIN" == "true" && "$REQUIRE_MAIN_ANCESTOR" == "true" ]]; then
   echo "choose either --require-current-main or --require-main-ancestor" >&2
@@ -58,6 +68,21 @@ RELEASE_COMPARE_JSON="${WORK_DIR}/release-compare-${SHA}.json"
 GATE_ATTEMPTS="${GATE_ATTEMPTS:-90}"
 GATE_SLEEP_SECS="${GATE_SLEEP_SECS:-60}"
 gate_ok=false
+
+# publish-only trusts the earlier gate job for the long wait but still takes one
+# fresh look at the check-runs (and every ordering check) right before tagging.
+if [[ "$PUBLISH_ONLY" == "true" ]]; then
+  GATE_ATTEMPTS=1
+fi
+
+if [[ "$GATE_ONLY" == "true" ]]; then
+  # Single exit-time write so every skip/failure path reports ok=false and only a
+  # satisfied gate reports ok=true (the publish job is gated on this output).
+  write_gate_output() {
+    echo "ok=${gate_ok}" >> "${GITHUB_OUTPUT:-/dev/null}"
+  }
+  trap write_gate_output EXIT
+fi
 
 skip_if_main_moved() {
   [[ "$REQUIRE_CURRENT_MAIN" == "true" ]] || return 0
@@ -136,6 +161,10 @@ verify_automatic_release_eligibility
 
 for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
   skip_if_main_moved
+  if [[ "$attempt" -gt 1 ]]; then
+    # A newer commit may have been released (or main may have moved) while we waited.
+    verify_automatic_release_eligibility
+  fi
   gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100&filter=all" --paginate --slurp > "$CHECK_JSON"
   gate_status=0
   python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-gate \
@@ -168,6 +197,10 @@ for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
   sleep "$GATE_SLEEP_SECS"
 done
 if [[ "$gate_ok" != "true" ]]; then
+  exit 0
+fi
+if [[ "$GATE_ONLY" == "true" ]]; then
+  echo "CI gate satisfied for ${SHA:0:7}; handing off to the publish job"
   exit 0
 fi
 
