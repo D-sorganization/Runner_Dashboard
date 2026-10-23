@@ -323,7 +323,7 @@ describe("Composer Component", () => {
     fireEvent.change(screen.getByTestId("composer-file-input"), {
       target: { files: [new File(["private notes"], "original.md", { type: "text/markdown" })] },
     });
-    await waitFor(() => expect(screen.getByTestId("composer-attachment-original.md")).toHaveTextContent("attached"));
+    await waitFor(() => expect(screen.getByTestId("composer-attachment-original.md")).toHaveTextContent("Ready"));
 
     view.rerender(<Composer threadId="thread-next" roles={MOCK_ROLES} onSendMessage={onSend} />);
     expect(screen.queryByTestId("composer-attachment-original.md")).not.toBeInTheDocument();
@@ -347,7 +347,7 @@ describe("Composer Component", () => {
     fireEvent.change(screen.getByTestId("composer-file-input"), {
       target: { files: [new File(["notes"], "first-message.md", { type: "text/markdown" })] },
     });
-    await waitFor(() => expect(screen.getByTestId("composer-attachment-first-message.md")).toHaveTextContent("attached"));
+    await waitFor(() => expect(screen.getByTestId("composer-attachment-first-message.md")).toHaveTextContent("Ready"));
     fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review this file" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(onSend).toHaveBeenCalledOnce();

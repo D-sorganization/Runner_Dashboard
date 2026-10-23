@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useVoiceInput } from "../../hooks/useVoiceInput";
 import type { ComposerAttachment, ComposerProps as BaseComposerProps, IntakeSensitivity, SlashCommand } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
+import { AttachmentList } from "./AttachmentList";
 import { ComposerAutocompletes } from "./ComposerAutocompletes";
 import {
   clearDraft,
@@ -23,22 +24,6 @@ import {
 } from "./composerUtils";
 import "./composer.css";
 import { MicGlyph } from "../decompIcons";
-
-function sensitivityLabel(sensitivity: IntakeSensitivity): string {
-  switch (sensitivity) {
-    case "public_reference": return "Library reference";
-    case "confidential_work": return "Confidential work";
-    case "vault_sensitive": return "Vault sensitive";
-  }
-}
-
-function attachmentStatusLabel(status: ComposerAttachment["status"]): string {
-  switch (status) {
-    case "pending": return "Uploading…";
-    case "attached": return "Ready";
-    case "rejected": return "Needs attention";
-  }
-}
 
 interface ComposerComponentProps extends BaseComposerProps {
   prefilledText?: string;
@@ -407,22 +392,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           }
         }}
       >
-        {attachments.length > 0 && (
-          <div className="staff-composer__attachments" aria-label="Staged attachments">
-            {attachments.map((att) => (
-              <span key={att.id} className={`staff-composer__chip staff-composer__chip--${att.status}`} data-testid={`composer-attachment-${att.filename}`}>
-                <span className="staff-composer__chip-filename">{att.filename}</span>
-                <button type="button" className="staff-composer__chip-remove" aria-label={`Remove ${att.filename}`} onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}>Remove</button>
-                <span className="staff-composer__chip-meta">
-                  <span className="staff-composer__chip-badge">{sensitivityLabel(att.sensitivity)}</span>
-                </span>
-                <span className={`staff-composer__chip-status${att.error ? " staff-composer__chip-status--error" : ""}`} role="status" aria-live="polite">
-                  {attachmentStatusLabel(att.status)}{att.error ? `: ${att.error}` : ""}
-                </span>
-              </span>
-            ))}
-          </div>
-        )}
+        <AttachmentList attachments={attachments} onRemove={(id) => setAttachments((current) => current.filter((item) => item.id !== id))} />
         <textarea
           ref={textareaRef}
           value={text}
