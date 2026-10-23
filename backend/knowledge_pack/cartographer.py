@@ -282,7 +282,9 @@ def preload_panel_context(
             if pack_path.is_file():
                 try:
                     pack = KnowledgePack.open(pack_path)
-                    if pack.is_stale(clean):
+                    if pack.is_stale(clean) or pack.info().commits != {
+                        name: head_commit(root) for name, root in clean.items()
+                    }:
                         pack = None
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Cartographer pack cannot be reused: %s", exc)

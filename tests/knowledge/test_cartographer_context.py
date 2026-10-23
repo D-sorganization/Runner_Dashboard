@@ -3,15 +3,9 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
-
-_BACKEND = Path(__file__).resolve().parents[2] / "backend"
-if str(_BACKEND) not in sys.path:
-    sys.path.insert(0, str(_BACKEND))
-
 from knowledge_pack.cartographer import (  # noqa: E402
     _format_reference,
     build_cartographer_pack,
@@ -19,6 +13,11 @@ from knowledge_pack.cartographer import (  # noqa: E402
     preload_panel_context,
 )
 from knowledge_pack.pack import Passage  # noqa: E402
+
+
+def _commit(root: Path, message: str) -> None:
+    identity = ["-c", "user.name=Test", "-c", "user.email=test@local"]
+    subprocess.run(["git", "-C", str(root), *identity, "commit", "--allow-empty", "-qm", message], check=True)
 
 
 def _repo(root: Path) -> Path:
@@ -39,21 +38,7 @@ def _repo(root: Path) -> Path:
         path.write_text(text, encoding="utf-8")
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "."], check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(root),
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "-qm",
-            "fixture",
-        ],
-        check=True,
-    )
+    _commit(root, "fixture")
     return root
 
 
@@ -176,3 +161,25 @@ def test_pack_does_not_index_a_symlink_outside_registered_roots(tmp_path: Path) 
     output = tmp_path / "cartographer.sqlite"
     build_cartographer_pack({"Runner_Dashboard": root}, output)
     assert KnowledgePack.open(output).search("uniqueprobe", k=5) == []
+
+
+def test_unwritable_missing_pack_degrades_without_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path / "Runner_Dashboard")
+
+    def unavailable(*args: object, **kwargs: object) -> None:
+        raise PermissionError("read-only pack location")
+
+    monkeypatch.setattr("knowledge_pack.cartographer.build_cartographer_pack", unavailable)
+    assert preload_panel_context({"Runner_Dashboard": repo}, "panel", knowledge_dir=tmp_path) == ""
+
+
+def test_stale_pack_refreshes_to_new_repository_revision(tmp_path: Path) -> None:
+    from knowledge_pack.pack import KnowledgePack
+
+    repo = _repo(tmp_path / "Runner_Dashboard")
+    output = tmp_path / "cartographer.sqlite"
+    build_cartographer_pack({"Runner_Dashboard": repo}, output)
+    old = KnowledgePack.open(output).info().commits
+    _commit(repo, "refresh")
+    preload_panel_context({"Runner_Dashboard": repo}, "panel", knowledge_dir=tmp_path)
+    assert KnowledgePack.open(output).info().commits != old
