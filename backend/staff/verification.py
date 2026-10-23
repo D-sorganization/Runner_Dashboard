@@ -87,6 +87,9 @@ class PrProbe(Protocol):
     def find(self, repo: str, branch: str) -> PullRequest | None:
         """The newest PR whose head is ``branch`` in ``repo``, or None. Raises GitHubLookupError."""
 
+    def get(self, repo: str, number: int) -> PullRequest:
+        """PR ``number`` in ``repo`` with head CI state. Raises GitHubLookupError."""
+
     def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
         """Commits ``branch`` is ahead of ``base`` on the remote (0 if absent). Raises GitHubLookupError."""
 
@@ -181,6 +184,22 @@ def _claimed_status(rec: RunRecord) -> str:
     return rec.status
 
 
+def _target_pr_number(rec: RunRecord) -> int | None:
+    """PR number for a ``target_kind=pr`` run from ``pr_number`` or ``target_ref``."""
+    if rec.pr_number is not None:
+        return int(rec.pr_number)
+    if rec.target_kind != "pr":
+        return None
+    ref = rec.target_ref.strip()
+    if ref.isdigit():
+        return int(ref)
+    upper = ref.upper()
+    if upper.startswith("PR #"):
+        digits = ref[4:].strip()
+        return int(digits) if digits.isdigit() else None
+    return None
+
+
 def evaluate(
     rec: RunRecord,
     *,
@@ -212,6 +231,13 @@ def evaluate(
                 remote_ahead_by = probe.remote_ahead_by(rec.repo, rec.branch)
             except GitHubLookupError as exc:
                 return Verdict("unverified", f"GitHub lookup failed: {exc}")
+        if pr is None and rec.target_kind == "pr" and remote_ahead_by > 0:
+            target_pr = _target_pr_number(rec)
+            if target_pr is not None:
+                try:
+                    pr = probe.get(rec.repo, target_pr)
+                except GitHubLookupError as exc:
+                    return Verdict("unverified", f"GitHub lookup failed: {exc}")
     verdict = decide(
         claimed=claimed,
         opens_pr=opens_pr,

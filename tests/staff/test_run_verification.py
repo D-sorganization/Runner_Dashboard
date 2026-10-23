@@ -56,16 +56,28 @@ class FakeProbe:
         *,
         remote_ahead_by: int = 1,
         ahead_error: Exception | None = None,
+        pr_by_number: v.PullRequest | None = None,
+        get_error: Exception | None = None,
     ) -> None:
         self.pr, self.error, self.calls = pr, error, []
         self.remote_ahead_by_value, self.ahead_error = remote_ahead_by, ahead_error
         self.ahead_calls: list[tuple[str, str]] = []
+        self.pr_by_number, self.get_error = pr_by_number, get_error
+        self.get_calls: list[tuple[str, int]] = []
 
     def find(self, repo: str, branch: str) -> v.PullRequest | None:
         self.calls.append((repo, branch))
         if self.error is not None:
             raise self.error
         return self.pr
+
+    def get(self, repo: str, number: int) -> v.PullRequest:
+        self.get_calls.append((repo, number))
+        if self.get_error is not None:
+            raise self.get_error
+        if self.pr_by_number is None:
+            raise v.GitHubLookupError(f"no PR #{number} in {repo}")
+        return self.pr_by_number
 
     def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
         self.ahead_calls.append((repo, branch))
@@ -116,6 +128,7 @@ def test_no_op_pr_remediator_run_with_unpushed_branch_is_no_change() -> None:
         id="run-2c7153637624",
         role="pr-remediator",
         repo="AffineDrift",
+        target_kind="pr",
         target_ref="5117",
         branch="staff/pr-remediator-5117-78e20c",
     )
@@ -126,6 +139,27 @@ def test_no_op_pr_remediator_run_with_unpushed_branch_is_no_change() -> None:
     assert verdict.verification == "no_change"
     assert "staff/pr-remediator-5117-78e20c" in verdict.detail
     assert probe.ahead_calls == [("AffineDrift", "staff/pr-remediator-5117-78e20c")]
+    assert probe.get_calls == []
+
+
+def test_pr_remediator_verifies_via_target_pr_when_branch_lookup_misses() -> None:
+    """Commits on an existing PR head branch may not match ``find``'s head filter (#2478)."""
+    pr = v.PullRequest(5117, "open", "green")
+    rec = _rec(
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_kind="pr",
+        target_ref="PR #5117",
+        branch="staff/pr-remediator-5117-78e20c",
+    )
+    probe = FakeProbe(pr=None, pr_by_number=pr, remote_ahead_by=2)
+
+    verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "verified"
+    assert verdict.pr_number == 5117
+    assert probe.get_calls == [("AffineDrift", 5117)]
+    assert probe.ahead_calls == []
 
 
 def test_run_with_pushed_commits_but_no_pr_still_fails() -> None:

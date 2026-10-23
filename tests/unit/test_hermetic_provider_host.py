@@ -25,7 +25,7 @@ def test_staff_cli_installed_fake_version_is_a_comparable_tuple(staff_cli_instal
     staff_cli_installed("claude")
     version = cli_version.installed_version("claude")
     assert isinstance(version, tuple)
-    assert version >= cli_version.MIN_CLI_VERSIONS["claude"]
+    assert version == (2, 0, 0)
 
 
 @pytest.mark.unit
@@ -34,4 +34,4 @@ def test_cli_status_survives_a_present_cli(monkeypatch: pytest.MonkeyPatch, staf
     staff_cli_installed("claude")
     monkeypatch.setattr(cli_version.shutil, "which", lambda exe, *a, **k: f"/usr/bin/{exe}")
     status = cli_version.cli_status("claude")
-    assert status.installed and not status.outdated
+    assert status.installed and status.version == "2.0.0"
