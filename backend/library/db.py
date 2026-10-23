@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE TABLE IF NOT EXISTS library_sources (
     id TEXT PRIMARY KEY, label TEXT NOT NULL, root_path TEXT NOT NULL UNIQUE, shared INTEGER NOT NULL DEFAULT 0,
     include_globs TEXT NOT NULL DEFAULT '[]', exclude_globs TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL,
-    created_by TEXT, last_ingest_at TEXT, last_ingest_path TEXT, status TEXT NOT NULL DEFAULT 'active');
+    created_by TEXT, last_ingest_at TEXT, last_ingest_path TEXT, status TEXT NOT NULL DEFAULT 'active',
+    backend_type TEXT NOT NULL DEFAULT 'local_folder', drive_folder_id TEXT, drive_folder_url TEXT,
+    preferential INTEGER NOT NULL DEFAULT 0, priority INTEGER NOT NULL DEFAULT 3, repos TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS passages (
     id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id), page_start INTEGER NOT NULL,
     page_end INTEGER NOT NULL, section TEXT, text TEXT NOT NULL, token_estimate INTEGER NOT NULL);
@@ -68,6 +70,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
     source_cols = {row[1] for row in conn.execute("PRAGMA table_info(library_sources)")}
     if "last_ingest_path" not in source_cols:
         conn.execute("ALTER TABLE library_sources ADD COLUMN last_ingest_path TEXT")
+    for name, declaration in (
+        ("backend_type", "TEXT NOT NULL DEFAULT 'local_folder'"),
+        ("drive_folder_id", "TEXT"),
+        ("drive_folder_url", "TEXT"),
+        ("preferential", "INTEGER NOT NULL DEFAULT 0"),
+        ("priority", "INTEGER NOT NULL DEFAULT 3"),
+        ("repos", "TEXT NOT NULL DEFAULT '[]'"),
+    ):
+        if name not in source_cols:
+            conn.execute(f"ALTER TABLE library_sources ADD COLUMN {name} {declaration}")
     run_cols = {row[1] for row in conn.execute("PRAGMA table_info(ingest_runs)")}
     for name in ("files_skipped", "files_rejected", "files_removed"):
         if name not in run_cols:

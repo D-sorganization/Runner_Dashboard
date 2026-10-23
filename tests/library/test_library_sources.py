@@ -6,9 +6,18 @@ from pathlib import Path
 import pytest
 from library.db import init_library_db
 from library.ingest import ingest_directory
-from library.sources import add_source, list_sources, remove_source, seed_default_source
+from library.sources import (
+    add_source,
+    extract_drive_folder_id,
+    list_sources,
+    remove_source,
+    seed_default_source,
+    update_source,
+)
 
 from tests.library.conftest import make_text_pdf
+
+_DRIVE_FOLDER_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz_012"
 
 
 def _legacy_db(path: Path) -> None:
@@ -178,3 +187,96 @@ def test_source_list_cli_reports_unavailable_without_network_or_cleanup(
     assert "availability=unavailable" in output
     assert item.name == "notes.md"
     assert (disconnected / item.name).read_text(encoding="utf-8") == "still on the disconnected source"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (_DRIVE_FOLDER_ID, _DRIVE_FOLDER_ID),
+        (f"https://drive.google.com/drive/folders/{_DRIVE_FOLDER_ID}", _DRIVE_FOLDER_ID),
+        (f"https://drive.google.com/drive/u/0/folders/{_DRIVE_FOLDER_ID}", _DRIVE_FOLDER_ID),
+        (f"https://drive.google.com/open?id={_DRIVE_FOLDER_ID}", _DRIVE_FOLDER_ID),
+        (f"https://drive.google.com/?id={_DRIVE_FOLDER_ID}", _DRIVE_FOLDER_ID),
+    ],
+)
+def test_extract_drive_folder_id_accepts_google_folder_references(value: str, expected: str) -> None:
+    assert extract_drive_folder_id(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://example.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
+        "../folder",
+        "https://drive.google.com/drive/folders/bad.id",
+    ],
+)
+def test_extract_drive_folder_id_rejects_untrusted_references(value: str) -> None:
+    with pytest.raises(ValueError):
+        extract_drive_folder_id(value)
+
+
+def test_connector_source_uses_synthetic_root_and_persists_routing_metadata(tmp_path: Path) -> None:
+    folder_id = _DRIVE_FOLDER_ID
+    db = tmp_path / "library.sqlite"
+    source = add_source(
+        db,
+        source_id="shared-drive",
+        label="Shared Drive",
+        backend_type="google_drive_connector",
+        drive_folder_url=f"https://drive.google.com/drive/folders/{folder_id}",
+        preferential=True,
+        repos=["Runner_Dashboard"],
+    )
+
+    assert source["root_path"] == f"gdrive://{folder_id}"
+    assert source["backend_type"] == "google_drive_connector"
+    assert source["drive_folder_id"] == folder_id
+    assert source["priority"] == 1
+    assert source["preferential"] is True
+    assert source["repos"] == ["Runner_Dashboard"]
+    assert source["availability"] == "configured"
+
+    updated = update_source(db, "shared-drive", preferential=False, priority=4)
+    assert updated["preferential"] is False
+    assert updated["priority"] == 4
+
+
+def test_drive_desktop_mirror_uses_local_path_and_second_priority(tmp_path: Path) -> None:
+    root = tmp_path / "drive-mirror"
+    root.mkdir()
+    source = add_source(
+        tmp_path / "library.sqlite",
+        source_id="drive-mirror",
+        label="Drive mirror",
+        root_path=root,
+        backend_type="google_drive_local",
+        drive_folder_id=_DRIVE_FOLDER_ID,
+    )
+
+    assert source["root_path"] == str(root.resolve())
+    assert source["backend_type"] == "google_drive_local"
+    assert source["priority"] == 2
+    assert source["drive_folder_url"] == f"https://drive.google.com/drive/folders/{_DRIVE_FOLDER_ID}"
+
+
+def test_source_registry_additive_migration_adds_backend_metadata(tmp_path: Path) -> None:
+    db = tmp_path / "library.sqlite"
+    _legacy_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "CREATE TABLE library_sources (id TEXT PRIMARY KEY,label TEXT NOT NULL,root_path TEXT NOT NULL UNIQUE,"
+            "shared INTEGER NOT NULL DEFAULT 0,include_globs TEXT NOT NULL DEFAULT '[]',"
+            "exclude_globs TEXT NOT NULL DEFAULT '[]',created_at TEXT NOT NULL,created_by TEXT,"
+            "last_ingest_at TEXT,status TEXT NOT NULL DEFAULT 'active')"
+        )
+        conn.execute(
+            "INSERT INTO library_sources(id,label,root_path,created_at) VALUES ('legacy','Legacy','/missing','now')"
+        )
+    list_sources(db)
+    with sqlite3.connect(db) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(library_sources)")}
+        row = conn.execute("SELECT backend_type,preferential,priority,repos FROM library_sources").fetchone()
+
+    assert {"backend_type", "drive_folder_id", "drive_folder_url", "preferential", "priority", "repos"} <= columns
+    assert row == ("local_folder", 0, 3, "[]")
