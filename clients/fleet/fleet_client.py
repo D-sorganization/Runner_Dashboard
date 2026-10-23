@@ -707,6 +707,37 @@ class FleetClient:
         wid = _positive_int(work_id, "work_id")
         return self.request("GET", f"/api/v1/library/works/{wid}")
 
+    def library_fetch_page(
+        self,
+        source_id: str,
+        work_id: int,
+        page: int,
+        *,
+        scope: str = "local",
+        node: str | None = None,
+        run_id: str | None = None,
+    ) -> Any:
+        """Resolve one source/work/page locator without broadening its scope."""
+        source = _match(PATTERNS.source_id, source_id, "source_id")
+        wid = _positive_int(work_id, "work_id")
+        page_number = _positive_int(page, "page")
+        _check(scope in ("local", "federated"), "scope must be local or federated")
+        params: dict[str, Any] = {
+            "source_id": source,
+            "work_id": wid,
+            "page": page_number,
+            "scope": scope,
+        }
+        if node is not None:
+            params["node"] = _text(node, "node", 128, form="line")
+        effective_run_id = run_id or os.environ.get("STAFF_RUN_ID")
+        headers = (
+            {"X-Staff-Run-ID": _match(PATTERNS.ident, effective_run_id, "run_id")}
+            if effective_run_id is not None
+            else None
+        )
+        return self.request("GET", "/api/v1/library/fetch", params=params, headers=headers)
+
     def library_submit(self, payload: dict[str, Any]) -> Any:
         if not isinstance(payload, dict):
             raise FleetArgumentError("payload must be an object")

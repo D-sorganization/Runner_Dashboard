@@ -18,6 +18,7 @@ class _Patterns:
     session: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
     agent: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
     repo: re.Pattern[str] = re.compile(r"^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+    source_id: re.Pattern[str] = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
     bare_repo: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
     branch: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$")
     message_id: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")

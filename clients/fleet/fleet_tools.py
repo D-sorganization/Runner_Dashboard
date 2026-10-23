@@ -655,6 +655,24 @@ COMMANDS: tuple[Command, ...] = (
         "Read local and pooled library sources, including peer availability (no mutations).",
     ),
     Command(
+        "library-fetch-page",
+        "library_fetch_page",
+        "Fetch one library passage by source id, work id, and page.",
+        {
+            "source_id": {
+                "type": "string",
+                "pattern": r"^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "Registered library source id.",
+            },
+            "work_id": {"type": "integer", "minimum": 1, "description": "Library work id."},
+            "page": {"type": "integer", "minimum": 1, "description": "One-based page number."},
+            "scope": {"type": "string", "enum": ["local", "federated"]},
+            "node": {"type": "string", "maxLength": 128, "description": "Optional registered fleet node."},
+            "run_id": RUN_ID,
+        },
+        required=("source_id", "work_id", "page"),
+    ),
+    Command(
         "library-verify",
         "library_verify",
         "Verify document citations and links without changing source content.",
