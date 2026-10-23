@@ -204,3 +204,12 @@ def test_sarif_export_is_opt_in(env: Any, monkeypatch: pytest.MonkeyPatch, tmp_p
     assert response.status_code == 200 and response.headers["content-type"].startswith("application/sarif+json")
     assert response.json()["runs"][0]["results"][0]["ruleId"] == "CWE-611"
     assert _client(monkeypatch, ["viewer"]).get("/api/v1/security/export/sarif").status_code == 403
+
+
+def test_coverage_route_joins_contracts_settings_and_scans(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _client(monkeypatch, ["viewer"]).get("/api/v1/security/coverage").status_code == 403
+    body = _client(monkeypatch, ["admin"]).get("/api/v1/security/coverage").json()
+    by_repo = {r["repo"]: r for r in body["coverage"]}
+    assert by_repo["Alpha"]["contract_valid"] and by_repo["Alpha"]["enabled"] and by_repo["Alpha"]["due"]
+    assert by_repo["Gamma"]["contract_error"] == "GitHub HTTP 502"
+    assert body["summary"]["due"] == 1 and body["schedule"] == {"enabled": False, "check_minutes": 30}

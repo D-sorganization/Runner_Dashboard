@@ -287,15 +287,21 @@ class ScanExecutor:
             oauth_ok=self.probes.oauth_ok(),
         )
 
+    def plan(self, req: ScanRequest, host: ScanHost | None = None) -> list[str]:
+        """Every reason ``req`` would be refused; writes nothing (scheduler, #2574)."""
+        host = host or self.host()
+        reasons = admit(self.config, req.repo, req.sha, self.facts(req.repo, host))
+        if not reasons and not req.dry_run:
+            reasons = self._cli_problems()
+        return reasons
+
     def submit(self, req: ScanRequest) -> dict[str, Any]:
         """Admit or refuse; an admitted real scan takes the slot (state ``running``).
 
         The caller then runs :meth:`execute` (normally on a worker thread).
         """
         host = self.host()
-        reasons = admit(self.config, req.repo, req.sha, self.facts(req.repo, host))
-        if not reasons and not req.dry_run:
-            reasons = self._cli_problems()
+        reasons = self.plan(req, host)
         create = functools.partial(
             self.scan_log.create,
             repo=req.repo,

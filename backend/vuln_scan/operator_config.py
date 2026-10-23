@@ -56,6 +56,17 @@ class RepoSettings:
 
 
 @dataclass(frozen=True)
+class ScheduleSettings:
+    """Idle-capacity scheduling (#2574). Off until the owner sets ``enabled``."""
+
+    enabled: bool = False
+    check_minutes: int = 30
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"enabled": self.enabled, "check_minutes": self.check_minutes}
+
+
+@dataclass(frozen=True)
 class ScanHost:
     name: str
     isolation: str
@@ -120,6 +131,7 @@ class OperatorConfig:
     alerts_ttl_seconds: int = 6 * 3600
     executor: ExecutorSettings = ExecutorSettings()
     sarif_export: bool = False  # opt-in (q3): SARIF can leak findings when uploaded
+    schedule: ScheduleSettings = ScheduleSettings()
     errors: tuple[str, ...] = ()
 
     def repo(self, name: str) -> RepoSettings:
@@ -141,8 +153,23 @@ class OperatorConfig:
             "alerts_ttl_seconds": self.alerts_ttl_seconds,
             "executor": self.executor.to_dict(),
             "sarif_export": self.sarif_export,
+            "schedule": self.schedule.to_dict(),
             "errors": list(self.errors),
         }
+
+
+def _schedule(raw: Any, errors: list[str]) -> ScheduleSettings:
+    if raw is None:
+        return ScheduleSettings()
+    if not isinstance(raw, dict):
+        errors.append("schedule must be an object")
+        return ScheduleSettings()
+    return ScheduleSettings(
+        enabled=_bool(raw.get("enabled"), "schedule.enabled", errors),
+        check_minutes=_int(
+            raw.get("check_minutes"), "schedule.check_minutes", 5, 1440, 30, errors
+        ),
+    )
 
 
 def _bool(raw: Any, key: str, errors: list[str]) -> bool:
@@ -361,6 +388,7 @@ def parse_operator_config(payload: Any) -> OperatorConfig:
         ),
         executor=_executor(payload.get("executor"), errors),
         sarif_export=_bool(payload.get("sarif_export"), "sarif_export", errors),
+        schedule=_schedule(payload.get("schedule"), errors),
         errors=tuple(errors),
     )
 

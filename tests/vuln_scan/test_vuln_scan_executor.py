@@ -407,3 +407,10 @@ def test_verifier_must_be_a_different_model() -> None:
     config = _config(executor=same)
     assert config.executor.verifier_model is None
     assert any("must differ" in e for e in config.errors)
+
+
+def test_plan_reports_reasons_without_writing_a_row(tmp_path: Path) -> None:
+    ex = _executor(tmp_path, FakePopen([], []), FakeDocker(), now=lambda: datetime(2026, 10, 23, 20, 0, tzinfo=UTC))
+    reasons = ex.plan(ScanRequest(repo="Tools", sha=SHA, dry_run=False))
+    assert any("window" in r for r in reasons)
+    assert ex.scan_log.recent() == []

@@ -31,5 +31,9 @@
     "verifier_model": "claude-sonnet-5-5",
     "verify_max_turns": 100
   },
-  "sarif_export": false
+  "sarif_export": false,
+  "schedule": {
+    "enabled": false,
+    "check_minutes": 30
+  }
 }
