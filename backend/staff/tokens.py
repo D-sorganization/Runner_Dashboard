@@ -44,7 +44,11 @@ _active_run_tokens: dict[str, str] = {}  # run_id -> principal_id
 def active_run_id_for_principal(principal_id: str) -> str | None:
     """Resolve only an exact principal ID currently bound in the run-token registry."""
     return next(
-        (run_id for run_id, active_principal_id in _active_run_tokens.items() if active_principal_id == principal_id),
+        (
+            run_id
+            for run_id, active_principal_id in tuple(_active_run_tokens.items())
+            if active_principal_id == principal_id
+        ),
         None,
     )
 

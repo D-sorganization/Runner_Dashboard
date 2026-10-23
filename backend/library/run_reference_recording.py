@@ -25,12 +25,15 @@ def requested_run_id(
         run_id = body_run_id
     else:
         run_id = header_run_id or os.environ.get("STAFF_RUN_ID")
-    if run_id is None:
-        from staff.tokens import active_run_id_for_principal
+    from staff.tokens import active_run_id_for_principal
 
-        run_id = active_run_id_for_principal(principal.id)
-        if run_id is None:
-            return None
+    active_run_id = active_run_id_for_principal(principal.id)
+    if active_run_id is not None:
+        if run_id is not None and run_id != active_run_id:
+            raise HTTPException(status_code=403, detail="run token is bound to another run")
+        run_id = active_run_id
+    elif run_id is None:
+        return None
     from library.retrieval_ledger import authorize_run_owner
     from staff.store import get_run_store
 

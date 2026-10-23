@@ -134,6 +134,32 @@ def test_derived_run_identity_still_checks_the_stored_role(api: TestClient, run_
     assert references_for_run(library_routes._db(), "run-agent") == []
 
 
+def test_active_run_token_cannot_select_another_run_it_requested(
+    api: TestClient, run_identity: SimpleNamespace
+) -> None:
+    run_identity.runs["run-other"].requested_by = run_identity.principal.id
+    response = api.get(
+        "/api/v1/library/search",
+        params={"q": "Evidence", "scope": "local"},
+        headers={"Authorization": "Bearer " + run_identity.token, "X-Staff-Run-ID": "run-other"},
+    )
+    assert response.status_code == 403
+    assert references_for_run(library_routes._db(), "run-other") == []
+
+
+def test_active_run_token_cannot_verify_against_another_owned_run_ledger(
+    api: TestClient, run_identity: SimpleNamespace
+) -> None:
+    run_identity.runs["run-other"].requested_by = run_identity.principal.id
+    response = api.post(
+        "/api/v1/library/verify",
+        headers={"Authorization": "Bearer " + run_identity.token},
+        json={"content": CITATION, "run_id": "run-other"},
+    )
+    assert response.status_code == 403
+    assert references_for_run(library_routes._db(), "run-other") == []
+
+
 def test_authenticated_run_verification_without_run_id_uses_its_ledger(
     api: TestClient, run_identity: SimpleNamespace
 ) -> None:
@@ -194,7 +220,7 @@ def test_authenticated_run_cannot_record_or_verify_other_runs(
 ) -> None:
     headers = {"Authorization": "Bearer " + run_identity.token, "X-Staff-Run-ID": run_id}
     response = api.get("/api/v1/library/fetch", params={"cite": CITATION, "scope": "local"}, headers=headers)
-    assert response.status_code == (404 if run_id == "missing" else 403)
+    assert response.status_code == 403
     verified = api.post("/api/v1/library/verify", headers=headers, json={"content": CITATION, "run_id": run_id})
     assert verified.status_code == response.status_code
     assert references_for_run(library_routes._db(), run_id) == []
