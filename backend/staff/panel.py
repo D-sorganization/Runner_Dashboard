@@ -36,6 +36,7 @@ from staff.panel_models import (
     PanelCreateRequest,
     PanelSpeaker,
     TurnOutcome,
+    default_quorum,
 )
 from staff.thread_bus import get_thread_bus
 
@@ -45,6 +46,7 @@ __all__ = [
     "PanelSpeaker",
     "TurnOutcome",
     "TurnRunner",
+    "compute_tally",
     "active_panel_count",
     "default_turn_runner",
     "estimate_panel_cost",
@@ -138,12 +140,54 @@ def build_turn_prompt(
     )
 
 
+def compute_tally(seats: list[str], turns: list[dict[str, Any]], quorum: int | None) -> dict[str, Any]:
+    """Participation tally. A seat participated if at least one of its turns is ``ok``, else it abstained.
+
+    Pre: ``turns`` are records with ``expert``, ``status`` and optionally ``error``.
+    Post: ``tally`` counts add up to ``len(seats)``; each abstention carries a reason (the seat's last
+    error, or "no turn recorded"); ``quorum_met`` is ``participated >= quorum`` (default: majority).
+    """
+    needed = quorum if quorum is not None else default_quorum(len(seats))
+    abstentions: list[dict[str, str]] = []
+    for seat in seats:
+        mine = [t for t in turns if t.get("expert") == seat]
+        if any(t.get("status") == "ok" for t in mine):
+            continue
+        reasons = [str(t.get("error") or t.get("status")) for t in mine]
+        abstentions.append({"expert": seat, "reason": reasons[-1] if reasons else "no turn recorded"})
+    participated = len(seats) - len(abstentions)
+    return {
+        "tally": {"participated": participated, "abstained": len(abstentions)},
+        "abstentions": abstentions,
+        "quorum": needed,
+        "quorum_met": participated >= needed,
+    }
+
+
+def _tally_brief(tally: dict[str, Any], seats: int) -> str:
+    counts = tally["tally"]
+    lines = [
+        f"Participation tally: {counts['participated']} of {seats} seats participated, {counts['abstained']} abstained."
+    ]
+    lines += [f"- {a['expert']} abstained: {a['reason']}" for a in tally["abstentions"]]
+    lines.append(
+        f"Quorum ({tally['quorum']} seats) was met."
+        if tally["quorum_met"]
+        else f"Quorum ({tally['quorum']} seats) was NOT met; say so prominently and lower your confidence."
+    )
+    lines.append(
+        "Your synthesis does not override this tally: report it as is and never imply abstaining seats agreed."
+    )
+    return "\n".join(lines)
+
+
 def build_synthesis_prompt(
     request: PanelCreateRequest,
     turns: list[dict[str, Any]],
     rounds_used: int,
     consensus: bool,
     codebase_context: str = "",
+    tally: dict[str, Any] | None = None,
 ) -> str:
     """The moderator's prompt: the whole discussion and the sections the synthesis must have."""
     if consensus:
@@ -164,6 +208,7 @@ def build_synthesis_prompt(
         f"## Topic\n{request.topic}\n\n"
         f"{codebase_context}\n\n"
         f"## Discussion\n{_transcript(turns)}\n\n"
+        f"{_tally_brief(tally, len(request.experts)) + chr(10) * 2 if tally else ''}"
         f"Write the synthesis in Markdown with these sections: {sections}."
     )
 
@@ -288,7 +333,7 @@ async def _speak(
         delivery="complete" if status == "ok" else "failed",
     )
     await _publish(store, placeholder.id)
-    return {"message_id": placeholder.id, "status": status, "text": text, "stance": stance}
+    return {"message_id": placeholder.id, "status": status, "text": text, "stance": stance, "error": error}
 
 
 async def run_panel(
@@ -326,10 +371,12 @@ async def run_panel(
             if consensus and request.mode == "debate":
                 break
 
+        tally = compute_tally([e.name for e in request.experts], turns, request.quorum)
+        _set_panel_state(store, thread_id, **tally)
         moderator = PanelSpeaker(
             MODERATOR_NAME, "neutral synthesis", request.moderator_provider, request.moderator_model
         )
-        prompt = build_synthesis_prompt(request, turns, rounds_used, consensus, codebase_context)
+        prompt = build_synthesis_prompt(request, turns, rounds_used, consensus, codebase_context, tally)
         meta = {"is_panel_synthesis": True, "panel_expert": MODERATOR_NAME}
         synthesis = await _speak(store, thread_id, moderator, prompt, meta, run, turn_timeout)
         ok = synthesis["status"] == "ok"
@@ -365,11 +412,15 @@ def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | N
                     "stance": meta.get("panel_stance"),
                     "position": meta.get("panel_position"),
                     "body_md": msg.body_md,
+                    "error": meta.get("error"),
                 }
             )
         elif msg.id == state.get("synthesis_message_id"):
             synthesis = msg.body_md
+    seats = [str(e.get("name")) for e in state.get("experts", [])]
+    tally = compute_tally(seats, turns, state.get("quorum")) if seats else {}
     return {
+        **tally,
         "thread_id": thread_id,
         "title": thread.title,
         "status": state.get("status", "running"),
