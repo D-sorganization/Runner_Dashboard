@@ -17,7 +17,7 @@ _HEADERS = {"CF-Ray": "test-edge", "Origin": _ORIGIN, "X-Requested-With": "XMLHt
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DASHBOARD_PUBLIC_ORIGIN", _ORIGIN)
+    monkeypatch.setenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN", _ORIGIN)
     app = FastAPI()
     owner = Principal(id="owner", type="human", name="Owner")
     app.dependency_overrides[require_principal] = lambda: owner
@@ -98,6 +98,25 @@ def test_panel_creation_uses_new_thread_scope(client: TestClient) -> None:
 
 def test_local_requests_keep_existing_csrf_contract(client: TestClient) -> None:
     assert client.post("/api/v1/staff/threads/th_one/messages", headers={"Host": "localhost"}).status_code == 200
+
+
+def test_tailnet_oauth_origin_keeps_existing_mutation_contract(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DASHBOARD_PUBLIC_ORIGIN", "https://desk.example.ts.net")
+    response = client.post("/api/v1/staff/threads/th_one/messages", headers={"Host": "desk.example.ts.net"})
+    assert response.json() == {"executed": True}
+
+
+def test_explicit_public_host_needs_proof_without_edge_headers(client: TestClient) -> None:
+    assert client.post("/api/v1/staff/threads/th_one/messages").status_code == 403
+
+
+def test_unconfigured_edge_origin_cannot_issue_proof(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN")
+    monkeypatch.setenv("DASHBOARD_PUBLIC_ORIGIN", _ORIGIN)
+    response = client.post("/api/auth/browser-csrf", json={"thread_id": "th_one"}, headers=_HEADERS)
+    assert response.status_code == 403
 
 
 def test_issuer_requires_authenticated_session_and_valid_scope(client: TestClient) -> None:
