@@ -35,8 +35,25 @@ def v1_auth_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dic
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
     monkeypatch.setenv("STAFF_ROLES_DIR", str(tmp_path / "roles"))
 
+    from routers import staff as staff_router
+    from routers import staff_v1 as staff_v1_router
     from staff import runner as runner_mod
     from staff import store as store_mod
+
+    # Roster headers are independent of installed provider CLIs. Keep this
+    # contract test deterministic and avoid probing the host's Claude login.
+    fake_provider_versions = {
+        "claude": {
+            "executable": "claude",
+            "installed": False,
+            "version": None,
+            "min_version": "2.1.259",
+            "outdated": False,
+            "detail": "not installed",
+        }
+    }
+    monkeypatch.setattr(staff_router, "provider_versions", lambda _adapters: fake_provider_versions)
+    monkeypatch.setattr(staff_v1_router, "provider_versions", lambda _adapters: fake_provider_versions)
 
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -92,6 +109,10 @@ def test_legacy_routes_have_deprecation_headers(client: TestClient, v1_auth_env:
     assert resp.headers.get("Deprecation") == "true"
     assert "Sunset" in resp.headers
     assert "</api/v1/staff/roster>" in resp.headers.get("Link", "")
+    legacy_version = resp.json()["provider_versions"]["claude"]
+    assert legacy_version["detail"] == "not installed"
+    assert legacy_version["min_version"] == "2.1.259"
+    assert legacy_version["installed"] is False
 
     # v1 route does NOT have deprecation header
     resp_v1 = client.get("/api/v1/staff/roster", headers=headers)
