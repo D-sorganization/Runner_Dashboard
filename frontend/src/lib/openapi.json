@@ -1296,6 +1296,61 @@
         "title": "ClientErrorPayload",
         "type": "object"
       },
+      "CodebaseRunReference": {
+        "additionalProperties": false,
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "kind": {
+            "const": "codebase",
+            "title": "Kind",
+            "type": "string"
+          },
+          "line_end": {
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "node",
+          "repo",
+          "commit_sha",
+          "relative_path",
+          "line_start",
+          "line_end",
+          "content_hash",
+          "citation"
+        ],
+        "title": "CodebaseRunReference",
+        "type": "object"
+      },
       "CreateActionProposalRequest": {
         "properties": {
           "action": {
@@ -2288,6 +2343,61 @@
         },
         "required": ["granted", "ttl_seconds", "idle_runners", "free_slots"],
         "title": "LeaseResponse",
+        "type": "object"
+      },
+      "LibraryRunReference": {
+        "additionalProperties": false,
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "file_sha256": {
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "const": "library",
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "page_end": {
+            "title": "Page End",
+            "type": "integer"
+          },
+          "page_start": {
+            "title": "Page Start",
+            "type": "integer"
+          },
+          "passage_id": {
+            "title": "Passage Id",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "work_id": {
+            "title": "Work Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "node",
+          "source_id",
+          "work_id",
+          "passage_id",
+          "file_sha256",
+          "page_start",
+          "page_end",
+          "citation"
+        ],
+        "title": "LibraryRunReference",
         "type": "object"
       },
       "MaxwellChatBody": {
@@ -6560,6 +6670,39 @@
         },
         "required": ["id"],
         "title": "StaffRunRecord",
+        "type": "object"
+      },
+      "StaffRunReferencesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "references": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "codebase": "#/components/schemas/CodebaseRunReference",
+                  "library": "#/components/schemas/LibraryRunReference"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/LibraryRunReference"
+                },
+                {
+                  "$ref": "#/components/schemas/CodebaseRunReference"
+                }
+              ]
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": ["run_id", "references"],
+        "title": "StaffRunReferencesResponse",
         "type": "object"
       },
       "StaffRunsResponse": {
@@ -23533,6 +23676,55 @@
         ],
         "summary": "Cancel Run V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/runs/{run_id}/references": {
+      "get": {
+        "description": "Return text-free reference identities for a run owned by the caller.",
+        "operationId": "run_references_v1_api_v1_staff_runs__run_id__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffRunReferencesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Run References V1",
+        "tags": ["staff-v1", "staff-run-references"]
       }
     },
     "/api/v1/staff/runs/{run_id}/stream": {

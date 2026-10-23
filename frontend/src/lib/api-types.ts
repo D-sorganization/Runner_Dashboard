@@ -6907,6 +6907,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/runs/{run_id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run References V1
+         * @description Return text-free reference identities for a run owned by the caller.
+         */
+        get: operations["run_references_v1_api_v1_staff_runs__run_id__references_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/runs/{run_id}/stream": {
         parameters: {
             query?: never;
@@ -8301,6 +8321,30 @@ export interface components {
              */
             stack?: string | null;
         };
+        /** CodebaseRunReference */
+        CodebaseRunReference: {
+            /** Citation */
+            citation: string;
+            /** Commit Sha */
+            commit_sha: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "codebase";
+            /** Line End */
+            line_end: number;
+            /** Line Start */
+            line_start: number;
+            /** Node */
+            node: string;
+            /** Relative Path */
+            relative_path: string;
+            /** Repo */
+            repo: string;
+        };
         /** CreateActionProposalRequest */
         CreateActionProposalRequest: {
             /**
@@ -8759,6 +8803,30 @@ export interface components {
             reason: string;
             /** Ttl Seconds */
             ttl_seconds: number;
+        };
+        /** LibraryRunReference */
+        LibraryRunReference: {
+            /** Citation */
+            citation: string;
+            /** File Sha256 */
+            file_sha256: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "library";
+            /** Node */
+            node: string;
+            /** Page End */
+            page_end: number;
+            /** Page Start */
+            page_start: number;
+            /** Passage Id */
+            passage_id: number;
+            /** Source Id */
+            source_id: string;
+            /** Work Id */
+            work_id: number;
         };
         /**
          * MaxwellChatBody
@@ -10858,6 +10926,13 @@ export interface components {
             workdir: string;
         } & {
             [key: string]: unknown;
+        };
+        /** StaffRunReferencesResponse */
+        StaffRunReferencesResponse: {
+            /** References */
+            references: (components["schemas"]["LibraryRunReference"] | components["schemas"]["CodebaseRunReference"])[];
+            /** Run Id */
+            run_id: string;
         };
         /**
          * StaffRunsResponse
@@ -21634,6 +21709,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffCancelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_references_v1_api_v1_staff_runs__run_id__references_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRunReferencesResponse"];
                 };
             };
             /** @description Validation Error */
