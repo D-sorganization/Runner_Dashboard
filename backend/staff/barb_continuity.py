@@ -202,8 +202,8 @@ class BarbContinuityStore:
 
     @staticmethod
     def _row_to_lease(row: sqlite3.Row, now_s: str) -> dict[str, Any]:
-        d = {k: (int(row[k]) if k == "epoch" else str(row[k] or "")) for k in row.keys()}
-        d["active"] = d["expires_at"] > now_s
+        d: dict[str, Any] = {k: (int(row[k]) if k == "epoch" else str(row[k] or "")) for k in row.keys()}
+        d["active"] = str(d["expires_at"]) > now_s
         d["turnover_compliant"] = bool(d["last_turnover_id"])
         return d
 
@@ -430,7 +430,8 @@ class BarbContinuityStore:
     def list_tasks(
         self, *, status: str | None = None, scope: str | None = None, handoff_state: str | None = None, limit: int = 100
     ) -> list[dict[str, Any]]:
-        clauses, params = [], []
+        clauses: list[str] = []
+        params: list[Any] = []
         if status:
             clauses.append("status = ?")
             params.append(status)
