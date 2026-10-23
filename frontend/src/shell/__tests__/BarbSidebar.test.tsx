@@ -76,6 +76,29 @@ describe("BarbSidebar", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it("restores focus to its launcher if focus moved while the lazy drawer mounted", async () => {
+    const originalFocus = document.createElement("button");
+    const launcher = document.createElement("button");
+    document.body.append(originalFocus, launcher);
+    originalFocus.focus();
+    const restoreFocusTargetRef = { current: launcher };
+    const onClose = vi.fn();
+    const view = render(
+      <BarbSidebar open onClose={onClose} onNavigate={vi.fn()} restoreFocusTargetRef={restoreFocusTargetRef} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Close Ask Barb" })).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+    view.rerender(
+      <BarbSidebar open={false} onClose={onClose} onNavigate={vi.fn()} restoreFocusTargetRef={restoreFocusTargetRef} />,
+    );
+
+    await waitFor(() => expect(launcher).toHaveFocus());
+    originalFocus.remove();
+    launcher.remove();
+  });
+
   it("navigates directly to fleet pages from the persistent panel", () => {
     const onNavigate = vi.fn();
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={onNavigate} />);

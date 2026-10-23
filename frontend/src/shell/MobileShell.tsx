@@ -88,6 +88,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
   const [askOpen, setAskOpen] = useState(false)
   const [barbMounted, setBarbMounted] = useState(false)
   const [barbOpen, setBarbOpen] = useState(false)
+  const barbToggleRef = useRef<HTMLButtonElement>(null)
   const [drawerAnnouncement, setDrawerAnnouncement] = useState('')
 
   const openAsk = useCallback(() => setAskOpen(true), [])
@@ -195,6 +196,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
           Skip to main content
         </a>
         <button
+          ref={barbToggleRef}
           type="button"
           className="mobile-shell__ask-barb"
           aria-label="Ask Barb"
@@ -270,6 +272,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
             mobile
             onClose={() => setBarbOpen(false)}
             onNavigate={handleBarbNavigate}
+            restoreFocusTargetRef={barbToggleRef}
           />
         </React.Suspense>
       ) : null}

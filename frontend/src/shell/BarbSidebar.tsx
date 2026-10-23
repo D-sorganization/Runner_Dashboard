@@ -23,9 +23,10 @@ export interface BarbSidebarProps {
   onClose: () => void;
   onNavigate: (tabId: string) => void;
   mobile?: boolean;
+  restoreFocusTargetRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbSidebarProps): React.ReactElement {
+export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef }: BarbSidebarProps): React.ReactElement {
   const preferredRoleThreadId = selectedThreadFromUrl();
   const sc = useStaffConsole({
     initialRole: "barb",
@@ -42,9 +43,8 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
   useEffect(() => {
     if (!open) return;
     const sidebarEl = sidebarRef.current;
-    if (document.activeElement instanceof HTMLElement) {
-      restoreFocusRef.current = document.activeElement;
-    }
+    const focusTarget = restoreFocusTargetRef?.current ?? document.activeElement;
+    restoreFocusRef.current = focusTarget instanceof HTMLElement ? focusTarget : null;
     if (mobile) {
       closeButtonRef.current?.focus();
     } else {
@@ -87,7 +87,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
       restoreEl?.focus();
       restoreFocusRef.current = null;
     };
-  }, [open, mobile]);
+  }, [open, mobile, restoreFocusTargetRef]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!mobile || !open || event.key !== "Tab") return;

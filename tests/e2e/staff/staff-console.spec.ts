@@ -274,6 +274,25 @@ test.describe("send failures keep the draft", () => {
 });
 
 test.describe("Ask Barb drawer keyboard access", () => {
+  test("returns focus to the launcher after focus moves during lazy drawer loading", async ({ page }) => {
+    await page.route("**/src/shell/BarbSidebar.tsx*", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.continue();
+    });
+    await page.goto("/staff");
+    const trigger = page.getByRole("button", { name: "Ask Barb" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("main").focus();
+
+    const drawer = page.getByTestId("barb-sidebar");
+    await expect(drawer).toBeVisible();
+    await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveAttribute("aria-hidden", "true");
+    await expect(trigger).toBeFocused();
+  });
+
   test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }) => {
     for (const viewport of [
       { width: 1440, height: 900 },
