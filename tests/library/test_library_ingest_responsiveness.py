@@ -135,3 +135,36 @@ def test_bounded_source_reconciles_removals_only_after_full_cycle(tmp_path: Path
         ).fetchone()[0]
     assert status == "removed"
     assert work_status == "retired"
+
+
+def test_failed_tail_enumeration_never_reconciles_removals(tmp_path: Path, monkeypatch) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    for index in range(3):
+        (source_root / f"{index}.txt").write_text(
+            f"Distinct searchable source content number {index}.", encoding="utf-8"
+        )
+    database = tmp_path / "library.sqlite"
+    add_source(database, source_id="source", label="Source", root_path=source_root)
+
+    initial = ingest.ingest_sources(database, max_files=2)["source"]
+    assert initial["scan_complete"] is False
+    (source_root / "0.txt").unlink()
+
+    def failing_walk(_root, *, onerror):
+        yield str(source_root), [], ["2.txt"]
+        onerror(OSError("source disconnected during reconciliation"))
+
+    monkeypatch.setattr(ingest.os, "walk", failing_walk)
+    try:
+        ingest.ingest_sources(database, max_files=2)
+    except OSError as error:
+        assert "disconnected" in str(error)
+    else:
+        raise AssertionError("failed traversal must abort the bounded ingestion pass")
+
+    with sqlite3.connect(database) as conn:
+        status = conn.execute("SELECT status FROM files WHERE source_id='source' AND rel_path='0.txt'").fetchone()[0]
+        runs = conn.execute("SELECT COUNT(*) FROM ingest_runs").fetchone()[0]
+    assert status == "present"
+    assert runs == 1

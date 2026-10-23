@@ -154,7 +154,7 @@ def ingest_directory(
 
 
 def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: list[str]) -> Iterator[Path]:
-    for current, directories, filenames in os.walk(source_root):
+    for current, directories, filenames in os.walk(source_root, onerror=_raise_walk_error):
         directories.sort()
         for filename in sorted(filenames):
             path = Path(current) / filename
@@ -164,6 +164,10 @@ def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: 
                 and matches_source_globs(path.relative_to(source_root).as_posix(), include_globs, exclude_globs)
             ):
                 yield path
+
+
+def _raise_walk_error(error: OSError) -> None:
+    raise error
 
 
 def _should_skip(conn: sqlite3.Connection, source_id: str, rel: str, mtime: float, size: int) -> bool:
