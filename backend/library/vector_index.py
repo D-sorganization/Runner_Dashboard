@@ -70,7 +70,7 @@ def vector_passage_ids(db_path: Path, query_vec: list[float], *, k: int = 32) ->
     with closing(_connect_vec(db_path)) as conn:
         ensure_vector_schema(conn, dim=len(query_vec))
         rows = conn.execute(
-            "SELECT passage_id, distance FROM passage_vec WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
+            "SELECT passage_id, distance FROM passage_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
             (sqlite_vec.serialize_float32(query_vec), k),
         ).fetchall()
     return [int(r[0]) for r in rows]

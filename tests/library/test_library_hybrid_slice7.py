@@ -5,7 +5,6 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
-
 from library.db import LibraryStore, init_library_db
 from library.embeddings import deterministic_embedding_for_text
 from library.rrf import reciprocal_rank_fusion
@@ -42,6 +41,17 @@ def test_reciprocal_rank_fusion_prefers_overlap() -> None:
     fused = reciprocal_rank_fusion([10, 20, 30], [30, 10, 40], k=60)
     assert 30 in fused[:2]
     assert 10 in fused[:2]
+
+
+@pytest.mark.parametrize("k", [1, 2, 5])
+def test_real_vector_query_orders_and_bounds_neighbors(tmp_path: Path, k: int) -> None:
+    db = tmp_path / "neighbors.sqlite"
+    ids = _seed_passages(db, ["nearest", "middle", "farthest"])
+    vectors = {pid: [float(rank), 0.0] for rank, pid in enumerate(ids)}
+    with closing(LibraryStore(db).connect()) as conn:
+        backfill_passage_embeddings(conn, embed_passage=lambda pid, text: vectors[pid], dim=2)
+        conn.commit()
+    assert vector_passage_ids(db, [0.1, 0.0], k=k) == ids[:k]
 
 
 def test_hybrid_beats_bm25_on_labelled_queries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
