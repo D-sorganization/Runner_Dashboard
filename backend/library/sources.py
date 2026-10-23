@@ -11,33 +11,48 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from library.db import init_library_db, library_data_dir, library_source_dir
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _DRIVE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,128}$")
-_DRIVE_URL_PATTERNS = (
-    re.compile(r"drive\.google\.com/drive/(?:u/\d+/)?folders/([A-Za-z0-9_-]{10,128})"),
-    re.compile(r"drive\.google\.com/open\?id=([A-Za-z0-9_-]{10,128})"),
-    re.compile(r"^gdrive://([A-Za-z0-9_-]{10,128})$"),
-)
 BACKEND_TYPES = ("google_drive_connector", "google_drive_local", "local_folder")
 _DEFAULT_PRIORITIES = {"google_drive_connector": 1, "google_drive_local": 2, "local_folder": 3}
 
 
 def extract_drive_folder_id(raw: str) -> tuple[str, str]:
     """Extract and validate a canonical Google Drive folder ID and URL (DbC)."""
-    text = (raw or "").strip()
+    if not isinstance(raw, str):
+        raise ValueError("valid Google Drive folder ID or folder URL is required")
+    text = raw.strip()
     if not text:
         raise ValueError("valid Google Drive folder ID or folder URL is required")
-    for pattern in _DRIVE_URL_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            fid = match.group(1)
-            return fid, f"https://drive.google.com/drive/folders/{fid}"
-    if "/" not in text and "\\" not in text and ":" not in text and _DRIVE_ID_RE.fullmatch(text):
-        return text, f"https://drive.google.com/drive/folders/{text}"
-    raise ValueError("valid Google Drive folder ID or folder URL is required")
+    if text.startswith("gdrive://"):
+        candidate = text.removeprefix("gdrive://")
+    elif "://" in text:
+        parsed = urlsplit(text)
+        if parsed.scheme != "https" or parsed.hostname != "drive.google.com" or parsed.username or parsed.password:
+            raise ValueError("Drive folder URL must use https://drive.google.com")
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("Drive folder URL has an unsupported port") from exc
+        if port not in (None, 443):
+            raise ValueError("Drive folder URL has an unsupported port")
+        query_ids = parse_qs(parsed.query).get("id", [])
+        if query_ids and parsed.path in {"", "/", "/open", "/uc", "/drive/folders", "/drive/u/0/folders"}:
+            candidate = query_ids[0] if len(query_ids) == 1 else ""
+        else:
+            match = re.fullmatch(r"/drive/(?:u/\d+/)?folders/([^/]+)", parsed.path)
+            candidate = match.group(1) if match else ""
+            if query_ids and (len(query_ids) != 1 or query_ids[0] != candidate):
+                candidate = ""
+    else:
+        candidate = text
+    if not _DRIVE_ID_RE.fullmatch(candidate):
+        raise ValueError("valid Google Drive folder ID or folder URL is required")
+    return candidate, f"https://drive.google.com/drive/folders/{candidate}"
 
 
 def _globs(value: Any) -> str:
@@ -95,15 +110,25 @@ def add_source(
     if isinstance(prio, bool) or not isinstance(prio, int) or not (1 <= prio <= 99):
         raise ValueError("priority must be an integer between 1 and 99")
     includes, excludes, repos_json = _globs(include_globs), _globs(exclude_globs), _globs(repos)
-    db = init_library_db(db_path)
-    raw_drive = (drive_folder_id or drive_folder_url or "").strip()
+    folder = None
+    if drive_folder_id and drive_folder_url:
+        id_value = extract_drive_folder_id(drive_folder_id)[0]
+        url_value = extract_drive_folder_id(drive_folder_url)[0]
+        if id_value != url_value:
+            raise ValueError("Drive folder ID and URL must identify the same folder")
+        folder = extract_drive_folder_id(drive_folder_id)
+    elif drive_folder_id or drive_folder_url:
+        folder = extract_drive_folder_id(drive_folder_id or drive_folder_url)
     if backend_type == "google_drive_connector":
-        fid, furl = extract_drive_folder_id(raw_drive or str(root_path or ""))
+        if folder is None:
+            folder = extract_drive_folder_id(root_path if isinstance(root_path, str) else "")
+        fid, furl = folder
         root_str = f"gdrive://{fid}"
     else:
         root = _validated_root(root_path)
         root_str = str(root)
-        fid, furl = extract_drive_folder_id(raw_drive) if raw_drive else ("", "")
+        fid, furl = folder or ("", "")
+    db = init_library_db(db_path)
     with closing(sqlite3.connect(db)) as conn:
         if backend_type != "google_drive_connector":
             overlap = conn.execute("SELECT id,root_path FROM library_sources WHERE status='active'").fetchall()
@@ -160,7 +185,7 @@ def source_availability(root_path: str | Path, *, backend_type: str = "local_fol
     raw = str(root_path)
     if backend_type == "google_drive_connector" or raw.startswith("gdrive://"):
         fid = drive_folder_id or raw.removeprefix("gdrive://")
-        return "available" if bool(_DRIVE_ID_RE.fullmatch(fid)) else "unavailable"
+        return "configured" if bool(_DRIVE_ID_RE.fullmatch(fid)) else "unavailable"
     root = Path(root_path)
     try:
         if root.is_symlink() or not root.is_dir() or not os.access(root, os.R_OK | os.X_OK):
@@ -197,6 +222,34 @@ def list_sources(db_path: Path) -> list[dict[str, Any]]:
     return items
 
 
+def verify_sources_health(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Return read-only health and effective sharing for registered sources."""
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM library_sources WHERE status='active' ORDER BY id").fetchall()
+    shared_by_drive_id = {
+        str(row["drive_folder_id"]): all(
+            bool(other["shared"]) for other in rows if other["drive_folder_id"] == row["drive_folder_id"]
+        )
+        for row in rows
+        if row["drive_folder_id"]
+    }
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        backend = str(row["backend_type"])
+        folder_id = str(row["drive_folder_id"] or "")
+        connector = backend == "google_drive_connector"
+        result: dict[str, Any] = {
+            "id": row["id"],
+            "backend_type": backend,
+            "availability": source_availability(row["root_path"], backend_type=backend, drive_folder_id=folder_id),
+        }
+        if connector:
+            result["connector_ready"] = bool(_DRIVE_ID_RE.fullmatch(folder_id))
+            result["effective_shared"] = bool(row["shared"]) and shared_by_drive_id.get(folder_id, False)
+        results.append(result)
+    return results
+
+
 def list_shared_drive_sources(db_path: Path, *, repo: str | None = None) -> list[dict[str, Any]]:
     """Return active, shared Google Drive connector sources ordered preferentially."""
     target = (repo or "").strip().lower()
@@ -204,7 +257,7 @@ def list_shared_drive_sources(db_path: Path, *, repo: str | None = None) -> list
     for src in list_sources(db_path):
         if src.get("status") != "active" or src.get("backend_type") != "google_drive_connector":
             continue
-        if not src.get("shared") or src.get("availability") != "available" or not src.get("drive_folder_id"):
+        if not src.get("shared") or src.get("availability") != "configured" or not src.get("drive_folder_id"):
             continue
         repos = [r.lower() for r in src.get("repos", [])]
         if target and repos and target not in repos:

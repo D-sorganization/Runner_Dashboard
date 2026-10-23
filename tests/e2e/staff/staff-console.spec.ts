@@ -434,6 +434,20 @@ test.describe("approved dashboard navigation", () => {
     await expect(replayPage).toHaveURL(/\/projects(?:\?|$)/);
     await replayContext.close();
 
+    const restoredContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const restoredPage = await restoredContext.newPage();
+    await restoredPage.route("**/api/**", (route) =>
+      route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+    );
+    await restoredPage.goto("/projects");
+    await restoredPage.getByRole("button", { name: "Ask Barb" }).click();
+    const restoredDrawer = restoredPage.getByTestId("barb-sidebar");
+    await expect(restoredDrawer).toBeVisible();
+    await expect(restoredDrawer).toContainText("open Context");
+    await expect(restoredDrawer).toContainText("Action Executed");
+    await expect(restoredPage).toHaveURL(/\/projects(?:\?|$)/);
+    await restoredContext.close();
+
     if (!(await desktopDrawer.isVisible())) await page.getByRole("button", { name: "Ask Barb" }).click();
     const mobileProposalId = await proposeFromSidebar(requesterDrawer, "navigate");
     await page.setViewportSize({ width: 390, height: 844 });

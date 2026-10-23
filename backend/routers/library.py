@@ -6,6 +6,7 @@ import hmac
 import os
 import re
 import sqlite3
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -38,7 +39,14 @@ from library.search import (
     library_stats,
     search_passages,
 )
-from library.sources import add_source, list_sources, remove_source, seed_default_source, update_source
+from library.sources import (
+    add_source,
+    list_sources,
+    remove_source,
+    seed_default_source,
+    update_source,
+    verify_sources_health,
+)
 from library.submissions import create_submission, list_submissions
 from library.verify import verify_content
 from routers.library_fetch import fetch_page_locator
@@ -139,6 +147,15 @@ async def library_sources_route(
         "current_node": HOSTNAME,
         "nodes": [{"name": k, "url": v} for k, v in sorted(FLEET_NODES.items())],
     }
+
+
+@router.get("/sources/verify")
+def library_sources_verify_route(
+    _principal: Principal = Depends(require_scope("fleet.read")),  # noqa: B008
+) -> dict[str, Any]:
+    """Report registered source health without changing sources or indexed works."""
+    with closing(sqlite3.connect(_db())) as conn:
+        return {"sources": verify_sources_health(conn)}
 
 
 @router.post("/sources")
