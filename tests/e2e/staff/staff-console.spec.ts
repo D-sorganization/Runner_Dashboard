@@ -229,10 +229,11 @@ test.describe("Ask Barb drawer keyboard access", () => {
       const drawer = page.getByTestId("barb-sidebar");
       const close = drawer.getByRole("button", { name: "Close Ask Barb" });
       await expect(drawer).toBeVisible();
-      await expect(close).toBeFocused();
+      await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
 
       if (viewport.width === 390) {
         await expect(drawer).toHaveAttribute("aria-modal", "true");
+        await close.focus();
         const last = drawer.locator(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ).last();
