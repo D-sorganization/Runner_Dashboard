@@ -261,7 +261,7 @@ describe("Composer Component", () => {
       status: 200,
       json: async () => ({
         id: 42,
-        sha256: "abc123def456",
+        sha256: "sha256-stub-digest",
         sensitivity: "public_reference",
       }),
     } as Response);
@@ -300,7 +300,7 @@ describe("Composer Component", () => {
               expect.objectContaining({
                 filename: "architecture-notes.md",
                 sensitivity: "public_reference",
-                sha256: "abc123def456",
+                sha256: "sha256-stub-digest",
                 intake_id: 42,
               }),
             ],

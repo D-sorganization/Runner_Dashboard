@@ -61,7 +61,11 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   latestTextRef.current = text;
 
   useEffect(() => {
-    if (autoFocus && !disabled && !isPanel) textareaRef.current?.focus();
+    if (!autoFocus || disabled || isPanel) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement) {
+      textareaRef.current?.focus();
+    }
   }, [autoFocus, disabled, isPanel]);
 
   // Restore draft when threadId changes without wiping in-flight typing from "new"

@@ -67,9 +67,14 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
         if (wasInert) element.setAttribute("inert", "");
         else element.removeAttribute("inert");
       });
-      if (restoreFocusRef.current?.isConnected) {
-        restoreFocusRef.current.focus();
-      }
+      const fallbackToggle = document.querySelector<HTMLElement>('[aria-controls="barb-sidebar"]');
+      const restoreEl =
+        restoreFocusRef.current?.isConnected &&
+        restoreFocusRef.current !== document.body &&
+        !sidebarRef.current?.contains(restoreFocusRef.current)
+          ? restoreFocusRef.current
+          : fallbackToggle;
+      restoreEl?.focus();
       restoreFocusRef.current = null;
     };
   }, [open, mobile]);
@@ -200,7 +205,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
           selectedRole="barb"
           onSendMessage={sc.sendMessage}
           placeholder="Message Barb..."
-          focusOnThreadChange
+          focusOnThreadChange={open}
           isPanel={false}
           prefilledText={composerPrefill}
         />
