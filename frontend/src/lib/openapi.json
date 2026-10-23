@@ -2737,6 +2737,67 @@
         "title": "LeaseResponse",
         "type": "object"
       },
+      "LibraryIntakeCreateRequest": {
+        "properties": {
+          "content_base64": {
+            "minLength": 0,
+            "title": "Content Base64",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "default": "application/octet-stream",
+            "maxLength": 160,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "sensitivity": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "confidential_work",
+            "title": "Sensitivity"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          }
+        },
+        "required": ["filename", "content_base64"],
+        "title": "LibraryIntakeCreateRequest",
+        "type": "object"
+      },
       "LibraryRunReference": {
         "additionalProperties": false,
         "properties": {
@@ -3179,7 +3240,6 @@
           "moderator_model": {
             "anyOf": [
               {
-                "maxLength": 80,
                 "type": "string"
               },
               {
@@ -3210,6 +3270,19 @@
             "default": true,
             "title": "Preload Codebase",
             "type": "boolean"
+          },
+          "quorum": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quorum"
           },
           "repos": {
             "anyOf": [
@@ -3264,7 +3337,6 @@
           "model": {
             "anyOf": [
               {
-                "maxLength": 80,
                 "type": "string"
               },
               {
@@ -20501,6 +20573,154 @@
         ],
         "summary": "Library Fetch",
         "tags": ["library"]
+      }
+    },
+    "/api/v1/library/intake": {
+      "get": {
+        "operationId": "library_intake_list_route_api_v1_library_intake_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sensitivity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sensitivity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Intake List Route Api V1 Library Intake Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library Intake List Route",
+        "tags": ["library", "library"]
+      },
+      "post": {
+        "operationId": "library_intake_stage_route_api_v1_library_intake_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryIntakeCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Intake Stage Route Api V1 Library Intake Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library Intake Stage Route",
+        "tags": ["library", "library"]
+      }
+    },
+    "/api/v1/library/intake/{intake_id}/promote": {
+      "post": {
+        "operationId": "library_intake_promote_route_api_v1_library_intake__intake_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intake_id",
+            "required": true,
+            "schema": {
+              "title": "Intake Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Intake Promote Route Api V1 Library Intake  Intake Id  Promote Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library Intake Promote Route",
+        "tags": ["library", "library"]
       }
     },
     "/api/v1/library/search": {
