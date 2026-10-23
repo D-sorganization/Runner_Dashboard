@@ -20,7 +20,11 @@ def flow(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, dict[str, Any], M
     monkeypatch.setenv("DASHBOARD_OWNER_GITHUB_ID", "12345")
     owner = Principal(id="owner", type="human", name="Owner", github_username="owner")
     monkeypatch.setattr(auth.identity_manager, "principals", {owner.id: owner})
-    monkeypatch.setattr(auth, "_production_oauth_config", lambda: SimpleNamespace(github_org="D-sorganization"))
+    monkeypatch.setattr(
+        auth,
+        "_oauth_config_for_request",
+        lambda _: SimpleNamespace(github_org="D-sorganization", public_origin="https://ops.example.invalid"),
+    )
     monkeypatch.setattr(auth, "_require_production_oauth", lambda _: None)
     monkeypatch.setattr(auth, "check_auth_rate_limit", lambda _: None)
     user: dict[str, Any] = {"login": "owner", "id": 12345}
@@ -39,7 +43,9 @@ def flow(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, dict[str, Any], M
 
     @app.get("/test-start")
     async def start(request: Request) -> dict[str, bool]:
-        request.session.update(oauth_state="valid-state", oauth_state_ts=time.time())
+        request.session.update(
+            oauth_state="valid-state", oauth_state_ts=time.time(), oauth_origin="https://ops.example.invalid"
+        )
         return {"ready": True}
 
     @app.get("/test-session")
@@ -91,6 +97,15 @@ def test_owner_session_records_immutable_id(flow: tuple) -> None:
     register.assert_called_once()
     session = client.get("/test-session").json()
     assert session["github_user_id"] == "12345" and session["principal_id"] == "owner"
+
+
+def test_public_host_without_edge_marker_still_checks_owner(flow: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, user, persist, register = flow
+    monkeypatch.setenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN", "https://ops.example.invalid")
+    user["id"] = 999
+    assert client.get("/api/auth/callback?code=valid-code&state=valid-state").status_code == 403
+    persist.assert_not_called()
+    register.assert_not_called()
 
 
 def test_external_bot_principal_cannot_gain_a_browser_session(flow: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
