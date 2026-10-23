@@ -44,6 +44,7 @@ except ImportError:
     _sd_notify = None
 
 import httpx
+from browser_sessions import BrowserSessionMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,7 +60,6 @@ from pydantic import BaseModel, Field
 from routers import admin as admin_router
 from routers import auth as auth_router
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from tailnet_identity import build_asgi_app
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -790,8 +790,8 @@ from routers import proposals as _proposals_router  # noqa: E402
 
 app.include_router(_proposals_router.router)
 
-# Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
-# that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and
+# Issue #924 — structural auth perimeter. Registered BEFORE the session selector so
+# that, in Starlette's outer→inner stack, session handling wraps this gate and
 # request.session is populated by the time the perimeter resolves a principal.
 # Every non-exempt /api/* route is now authenticated by default: a handler that
 # forgets its own auth dependency can no longer ship an unauthenticated hole.
@@ -801,7 +801,7 @@ app.add_middleware(DrainAdmissionMiddleware, is_draining=lambda: _drain_mode)
 app.add_middleware(BaseHTTPMiddleware, dispatch=auth_perimeter_check)
 
 app.add_middleware(
-    SessionMiddleware,
+    BrowserSessionMiddleware,
     secret_key=dashboard_config.SESSION_SECRET,
     session_cookie="dashboard_session",
     # Align with GitHub App refresh-token lifetime (~6 months); cookie is renewed
