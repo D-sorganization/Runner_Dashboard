@@ -1,9 +1,4 @@
-"""Node-local SQLite store for staff runs and their streamed events.
-
-Design (ADR 0003 "laptop-runnable"): one file under the dashboard config dir,
-WAL mode, a single process-wide connection guarded by a lock. The hub merges
-per-node stores over HTTP; nothing here is shared across machines.
-"""
+"""Node-local SQLite store for staff runs and their streamed events (ADR 0003)."""
 
 from __future__ import annotations
 
