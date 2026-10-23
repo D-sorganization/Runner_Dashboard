@@ -30,7 +30,7 @@ class CloudflareAccessValidator:
         *,
         issuer: str | None,
         audience: str | None,
-        enabled: bool = True,
+        enabled: bool = False,
         http_client: httpx.Client | None = None,
         timeout_seconds: float = 3.0,
         cache_ttl_seconds: float = 300.0,
@@ -48,7 +48,7 @@ class CloudflareAccessValidator:
         self._cache_lock = threading.Lock()
 
     def validate(self, token: str) -> Mapping[str, Any]:
-        """Return verified human claims or fail closed with a generic error."""
+        """Return claims; blocking callers in an ASGI loop must use asyncio.to_thread."""
         if not self._configuration_is_valid():
             raise CloudflareAccessValidationError("Cloudflare Access JWT validation is unavailable")
         if not isinstance(token, str) or not token or len(token) > _MAX_TOKEN_LENGTH:

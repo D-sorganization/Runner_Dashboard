@@ -53,6 +53,7 @@ def validator_for(signing_pair, *, response_keys=None, responses=None, **kwargs)
         return httpx.Response(200, json=payload, request=request)
 
     client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
+    kwargs.setdefault("enabled", True)
     validator = CloudflareAccessValidator(issuer=ISSUER, audience=AUDIENCE, http_client=client, **kwargs)
     return validator, private_key, calls
 
@@ -225,3 +226,20 @@ def test_out_of_range_timeout_or_cache_fails_without_network(signing_pair) -> No
         with pytest.raises(CloudflareAccessValidationError):
             validator.validate(make_token(private_key))
         assert calls == []
+
+
+def test_validator_is_disabled_by_default_without_network(signing_pair) -> None:
+    private_key, public_jwk = signing_pair
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"keys": [public_jwk]}, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    validator = CloudflareAccessValidator(issuer=ISSUER, audience=AUDIENCE, http_client=client)
+
+    with pytest.raises(CloudflareAccessValidationError):
+        validator.validate(make_token(private_key))
+
+    assert calls == []
