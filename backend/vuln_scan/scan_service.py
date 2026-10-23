@@ -27,11 +27,12 @@ from dashboard_config import ORG
 from fastapi import HTTPException
 from security import safe_subprocess_env
 from vuln_scan import launch, schedule, service
-from vuln_scan.executor import Probes, ScanExecutor, ScanRequest, codeload_fetch
+from vuln_scan.executor import Probes, ScanExecutor, ScanRequest
 from vuln_scan.findings import default_db_path, get_findings_store
 from vuln_scan.operator_config import ScanHost, load_operator_config
 from vuln_scan.sandbox import ExecResult, subprocess_runner
 from vuln_scan.scans import ScanLog, get_scan_log
+from vuln_scan.source import codeload_fetch
 
 log = logging.getLogger("dashboard.vuln_scan.scan_service")
 

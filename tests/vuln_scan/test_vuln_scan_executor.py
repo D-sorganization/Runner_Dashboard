@@ -12,12 +12,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from vuln_scan import executor as executor_mod
-from vuln_scan.executor import Probes, ScanAborted, ScanExecutor, ScanRequest, extract_tarball
+from vuln_scan import source as source_mod
+from vuln_scan import watch as watch_mod
+from vuln_scan.agent_io import apply_verdicts
+from vuln_scan.executor import Probes, ScanExecutor, ScanRequest
 from vuln_scan.findings import FindingsStore, validate_finding
 from vuln_scan.operator_config import parse_operator_config
 from vuln_scan.sandbox import ExecResult
 from vuln_scan.scans import ScanLog
+from vuln_scan.source import extract_tarball
+from vuln_scan.watch import ScanAborted
 
 SHA = "0bb24108aa" * 4
 DIGEST = "sha256:" + "ab" * 32
@@ -394,7 +398,7 @@ def test_extract_tarball_rejects_traversal(tmp_path: Path) -> None:
 
 
 def test_extract_tarball_caps_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(executor_mod, "MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr(source_mod, "MAX_SOURCE_FILES", 1)
     with pytest.raises(ScanAborted):
         extract_tarball(_tarball({"T/a": b"1", "T/b": b"2"}), tmp_path)
 
@@ -441,14 +445,14 @@ def test_operator_triage_wins_over_a_late_verdict(tmp_path: Path) -> None:
     ex.store.triage(fid, "false_positive", actor="op", note="test fixture")
     out = tmp_path / "verdicts.jsonl"
     out.write_text(json.dumps({"finding_id": fid, "verdict": "reproduced", "evidence": "x"}), encoding="utf-8")
-    ex._apply_verdicts(out, {fid}, "claude-sonnet-5-5")
+    apply_verdicts(ex.store, out, {fid}, "claude-sonnet-5-5")
     assert ex.store.get(fid)["state"] == "false_positive"
 
 
 def test_missing_verdict_is_inconclusive_never_false_positive(tmp_path: Path) -> None:
     ex = _executor(tmp_path, FakePopen([], []), FakeDocker())
     fid, _ = ex.store.record("Tools", validate_finding(FINDING), scan_sha=SHA)
-    ex._apply_verdicts(tmp_path / "absent.jsonl", {fid}, "claude-sonnet-5-5")
+    apply_verdicts(ex.store, tmp_path / "absent.jsonl", {fid}, "claude-sonnet-5-5")
     assert ex.store.get(fid)["state"] == "inconclusive"
 
 
@@ -517,7 +521,7 @@ def test_leftovers_from_a_dead_process_are_swept_first(tmp_path: Path) -> None:
 
 
 def test_an_oversized_agent_event_aborts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(executor_mod, "MAX_LINE_CHARS", 1000)
+    monkeypatch.setattr(watch_mod, "MAX_LINE_CHARS", 1000)
     huge = json.dumps(_tool("mcp__scan_sandbox__sandbox_list")) + " " * 5000
     popen = FakePopen([INIT], [])
     original = popen.__call__
@@ -533,7 +537,7 @@ def test_an_oversized_agent_event_aborts(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_long_build_output_lines_are_dropped_not_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(executor_mod, "MAX_LINE_CHARS", 1000)
+    monkeypatch.setattr(watch_mod, "MAX_LINE_CHARS", 1000)
     popen = FakePopen([INIT, RESULT], [])
     original = popen.__call__
 
