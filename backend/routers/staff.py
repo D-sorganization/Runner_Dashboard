@@ -240,17 +240,36 @@ async def list_runs(
 async def get_run(
     run_id: str,
     events: int = Query(default=200, ge=0, le=MAX_LIMIT),
+    local: bool = Query(default=False, description="Do not search peer nodes for this run."),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     store = get_runner().store
     rec = store.get_run(run_id)
     if rec is None:
-        from staff.remote_runs import find_remote_run, proxy_remote_run  # noqa: PLC0415
+        if not (local or staff_fleet.is_fleet_peer(_peer)):
+            from staff.remote_runs import (
+                RemoteRunLookupUnavailable,
+                RemoteRunNotFound,
+                find_remote_run,
+                proxy_remote_run,
+            )  # noqa: PLC0415
 
-        remote = await find_remote_run(run_id)
-        if remote is not None:
-            peer_name, peer_url = remote
-            return await proxy_remote_run(run_id, events, peer_name, peer_url, caller_id=getattr(_peer, "id", ""))
+            try:
+                remote = await find_remote_run(run_id)
+            except RemoteRunLookupUnavailable as exc:
+                raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
+            if remote is not None:
+                peer_name, peer_url = remote
+                try:
+                    return await proxy_remote_run(
+                        run_id,
+                        events,
+                        peer_name,
+                        peer_url,
+                        caller_id=getattr(_peer, "id", ""),
+                    )
+                except RemoteRunNotFound as exc:
+                    raise HTTPException(status_code=404, detail="run not found") from exc
         raise HTTPException(status_code=404, detail="run not found")
     evs = store.events_after(run_id, 0, limit=MAX_LIMIT)
     attempts = [a.to_dict() for a in store.get_attempts(run_id)]
@@ -262,34 +281,67 @@ async def get_run(
     }
 
 
+@router.get(
+    "/local-runs/{run_id}",
+    response_model=StaffRunDetailResponse,
+    response_model_exclude_none=True,
+    include_in_schema=False,
+)
+async def get_local_run(
+    run_id: str,
+    events: int = Query(default=200, ge=0, le=MAX_LIMIT),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Return this node's run detail without any peer lookup.
+
+    The distinct path is intentional: older nodes treat ``local=1`` as an
+    ordinary query parameter and may recursively search their peers.
+    """
+    try:
+        return await get_run(run_id=run_id, events=events, local=True, _peer=_peer)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "local_run_not_found", "run_id": run_id},
+            ) from exc
+        raise
+
+
 @router.get("/runs/{run_id}/stream")
 async def stream_run(
     run_id: str,
     after: int = Query(default=0, ge=0),
+    local: bool = Query(default=False, description="Do not search peer nodes for this run."),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> StreamingResponse:
     """SSE feed of run events. Ends with an ``end`` event when the run finishes."""
     store = get_runner().store
     if store.get_run(run_id) is None:
-        from staff.remote_runs import (
-            find_remote_run,
-            stream_remote_run,
-        )  # noqa: PLC0415
+        if not (local or staff_fleet.is_fleet_peer(_peer)):
+            from staff.remote_runs import (
+                RemoteRunLookupUnavailable,
+                find_remote_run,
+                stream_remote_run,
+            )  # noqa: PLC0415
 
-        remote = await find_remote_run(run_id)
-        if remote is not None:
-            peer_name, peer_url = remote
-            return StreamingResponse(
-                stream_remote_run(
-                    run_id,
-                    after,
-                    peer_name,
-                    peer_url,
-                    caller_id=getattr(_peer, "id", ""),
-                ),
-                media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-            )
+            try:
+                remote = await find_remote_run(run_id)
+            except RemoteRunLookupUnavailable as exc:
+                raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
+            if remote is not None:
+                peer_name, peer_url = remote
+                return StreamingResponse(
+                    stream_remote_run(
+                        run_id,
+                        after,
+                        peer_name,
+                        peer_url,
+                        caller_id=getattr(_peer, "id", ""),
+                    ),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
         raise HTTPException(status_code=404, detail="run not found")
 
     async def _gen():  # type: ignore[no-untyped-def]
@@ -323,6 +375,24 @@ async def stream_run(
     )
 
 
+@router.get("/local-runs/{run_id}/stream", include_in_schema=False)
+async def stream_local_run(
+    run_id: str,
+    after: int = Query(default=0, ge=0),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> StreamingResponse:
+    """Stream only a run stored on this node; never federate the lookup."""
+    try:
+        return await stream_run(run_id=run_id, after=after, local=True, _peer=_peer)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "local_run_not_found", "run_id": run_id},
+            ) from exc
+        raise
+
+
 class GithubCredentialResponse(BaseModel):
     token: str
     expires_at: float
@@ -354,18 +424,38 @@ async def refresh_github_credential(
     response_model=StaffCancelResponse,
     response_model_exclude_none=True,
 )
-async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("staff.cancel"))) -> dict[str, Any]:
+async def cancel_run(
+    run_id: str,
+    local: bool = Query(default=False, description="Do not search peer nodes for this run."),
+    caller: Principal = Depends(require_scope("staff.cancel")),
+) -> dict[str, Any]:
     runner = get_runner()
     if runner.store.get_run(run_id) is None:
-        from staff.remote_runs import (
-            find_remote_run,
-            proxy_remote_cancel,
-        )  # noqa: PLC0415
+        if not (local or staff_fleet.is_fleet_peer(caller)):
+            from staff.remote_runs import (
+                RemoteRunLookupUnavailable,
+                RemoteRunNotFound,
+                find_remote_run,
+                proxy_remote_cancel,
+            )  # noqa: PLC0415
 
-        remote = await find_remote_run(run_id)
-        if remote is not None:
-            peer_name, peer_url = remote
-            return await proxy_remote_cancel(run_id, peer_name, peer_url, caller_id=getattr(caller, "id", ""))
+            try:
+                remote = await find_remote_run(run_id)
+            except RemoteRunLookupUnavailable as exc:
+                raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
+            if remote is not None:
+                peer_name, peer_url = remote
+                try:
+                    return await proxy_remote_cancel(
+                        run_id,
+                        peer_name,
+                        peer_url,
+                        caller_id=getattr(caller, "id", ""),
+                    )
+                except RemoteRunNotFound as exc:
+                    raise HTTPException(status_code=404, detail="run not found") from exc
+                except RemoteRunLookupUnavailable as exc:
+                    raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
         raise HTTPException(status_code=404, detail="run not found")
     ok = runner.cancel(run_id)
     caller_str = format_caller(caller)
@@ -382,6 +472,28 @@ async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("sta
     log.info("staff: cancel %s by %s → %s", run_id, caller_str, ok)
     rec = runner.store.get_run(run_id)
     return {"cancelled": ok, "run": rec.to_dict() if rec else None}
+
+
+@router.post(
+    "/local-runs/{run_id}/cancel",
+    response_model=StaffCancelResponse,
+    response_model_exclude_none=True,
+    include_in_schema=False,
+)
+async def cancel_local_run(
+    run_id: str,
+    caller: Principal = Depends(require_scope("staff.cancel")),
+) -> dict[str, Any]:
+    """Cancel only a run stored on this node; never federate the lookup."""
+    try:
+        return await cancel_run(run_id=run_id, local=True, caller=caller)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "local_run_not_found", "run_id": run_id},
+            ) from exc
+        raise
 
 
 @router.post(

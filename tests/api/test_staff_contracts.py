@@ -40,7 +40,7 @@ def _get_all_routes(obj: Any) -> list[APIRoute]:
 
 def test_staff_routes_have_response_models() -> None:
     """Every staff route (except SSE streaming) must have a response_model configured."""
-    exempt = {"stream_run"}
+    exempt = {"stream_run", "stream_local_run"}
     staff_routes = [r for r in _get_all_routes(app) if r.path.startswith("/api/staff")]
     assert len(staff_routes) >= 10, f"Expected at least 10 staff routes, found {len(staff_routes)}"
 
