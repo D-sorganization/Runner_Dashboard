@@ -71,6 +71,16 @@ async function occurrences(page: Page, needle: string): Promise<number> {
 }
 
 test.describe("chat", () => {
+  test("chat-first home shows the composer and can reveal staff choices", async ({ page }) => {
+    await page.goto("/staff");
+    await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+
+    const chooseStaff = page.getByRole("button", { name: "Choose staff" });
+    await expect(chooseStaff).toBeVisible();
+    await chooseStaff.click();
+    await expect(page.getByRole("button", { name: /^E2E Analyst, Status:/ })).toBeVisible();
+  });
+
   test("a direct reply is shown exactly once", async ({ page }) => {
     const text = `hello ${nonce()}`;
     await openThread(page, "E2E Analyst");

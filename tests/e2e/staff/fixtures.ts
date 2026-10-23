@@ -39,10 +39,15 @@ const THREAD_DETAIL = /\/api\/v1\/staff\/threads\/[^/]+$/;
 export async function openThread(page: Page, roleTitle: string): Promise<void> {
   await page.goto("/staff");
   const title = roleTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const roleButton = page.getByRole("button", { name: new RegExp(`^${title}, Status:`) });
+  if (!(await roleButton.isVisible())) {
+    await page.getByRole("button", { name: "Choose staff" }).click();
+  }
+  await expect(roleButton).toBeVisible();
   const history = page.waitForResponse(
     (r) => r.request().method() === "GET" && THREAD_DETAIL.test(new URL(r.url()).pathname),
   );
-  await page.getByRole("button", { name: new RegExp(`^${title}, Status:`) }).click();
+  await roleButton.click();
   await history;
   await expect(page.getByRole("textbox", { name: "Staff conversation input" })).toBeVisible();
 }
