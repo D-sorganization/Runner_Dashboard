@@ -42,6 +42,7 @@ def test_supplement_contexts_are_subset_of_policy() -> None:
     supplement_contexts = set(apply.required_contexts_from_supplement(supplement))
     assert supplement_contexts <= policy_contexts
     assert supplement_contexts == {
+        "frontend-required",
         "TypeScript typecheck (tsc)",
         "detect-secrets (baseline diff)",
     }

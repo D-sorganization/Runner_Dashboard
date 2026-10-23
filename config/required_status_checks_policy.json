@@ -3,6 +3,12 @@
   "branch": "main",
   "required_contexts": [
     {
+      "context": "frontend-required",
+      "source_workflow": "Frontend Tests",
+      "job_id": "frontend-required",
+      "reason": "Fail-closed aggregate for frontend scope, typecheck, Vitest, performance and applicable E2E checks. PR #2287 merged despite failed Vitest because the Python quality-gate did not cover this workflow. Apply the supplement only after this job is available on main."
+    },
+    {
       "context": "quality-gate",
       "source_workflow": "CI Standard",
       "job_id": "quality-gate",
