@@ -87,7 +87,7 @@ claude mcp add fleet --scope user \
   -- python3 /path/Runner_Dashboard/clients/fleet/fleet_mcp.py
 ```
 
-See [Claude Connection Guide](claude.md) for full Claude Desktop / Cowork configuration.
+See [Claude Connection Guide](claude.md) for full Claude Desktop (`claude_desktop_config.json`) and Cowork configuration.
 
 ## Codex CLI
 
@@ -123,7 +123,29 @@ See [Codex CLI Guide](codex.md) for complete options and workflow.
 ```
 
 On Windows, use `python` (or the full path to `python.exe`) instead of `python3` in all
-three configurations.
+configurations.
+
+## Antigravity (agy)
+
+`mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "fleet": {
+      "command": "python",
+      "args": ["/path/Runner_Dashboard/clients/fleet/fleet_mcp.py"],
+      "env": {
+        "FLEET_API_URL": "http://deskcomputer:8321",
+        "FLEET_API_TOKEN": "svc_...",
+        "FLEET_AGENT": "agy"
+      }
+    }
+  }
+}
+```
+
+Each agent connects with its own least-privilege `svc_` principal token (scoped to `memory.read` for on-request queries via `fleet_query`; lesson writes are limited to creating `proposed` entries enforced server-side).
 
 ## Grok Bot (Local Exec)
 
@@ -184,6 +206,11 @@ The fleet MCP server provides the tools below (generated from `COMMANDS` in `cli
 | `staff_approval_decide`              | `fleetctl approval-decide`              | Decide (approve or deny) an action proposal (requires staff.approve scope).                                                                                                                       | `proposal_id`, `decision`                                                                                 |
 | `submit_proposal`                    | `fleetctl submit-proposal`              | Submit a proposal to the Board (stored in Repository_Management labelled board:proposal).                                                                                                         | `title`, `target_repos`, `problem`, `evidence`, `options_considered`, `lean`, `estimated_cost`, `urgency` |
 | `list_proposals`                     | `fleetctl list-proposals`               | List board proposals with decision labels, meeting consensus links, and outcome badges.                                                                                                           | -                                                                                                         |
+| `fleet_query`                        | `fleetctl query`                        | Consolidated fleet on-request context query tool across context, library, knowledge, and memory.                                                                                                  | `source`                                                                                                  |
+| -                                    | `fleetctl query-context`                | Query fleet context pack: pin, accepted lessons, holds and directives (offline-safe).                                                                                                             | -                                                                                                         |
+| -                                    | `fleetctl query-library`                | Search Alexandria library works and passages with bounded snippet caps.                                                                                                                           | -                                                                                                         |
+| -                                    | `fleetctl query-knowledge`              | Search repo knowledge packs with bounded snippets.                                                                                                                                                | -                                                                                                         |
+| -                                    | `fleetctl query-memory`                 | Query shared fleet memory entries with bounded snippets.                                                                                                                                          | -                                                                                                         |
 
 <!-- END GENERATED: fleet-tools -->
 <!-- prettier-ignore-end -->

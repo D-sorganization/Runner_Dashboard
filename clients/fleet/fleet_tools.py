@@ -587,6 +587,82 @@ COMMANDS: tuple[Command, ...] = (
         },
         tool="list_proposals",
     ),
+    # ---------------------------------------------------------------- unified query (#2223)
+    Command(
+        "query",
+        "fleet_query",
+        "Consolidated fleet on-request context query tool across context, library, knowledge, and memory.",
+        {
+            "source": {
+                "type": "string",
+                "enum": ["context", "library", "knowledge", "memory"],
+                "description": "Target context source.",
+            },
+            "op": {
+                "type": "string",
+                "enum": ["search", "get", "request"],
+                "description": "Operation: search, get, or request (request sends context query to librarian).",
+            },
+            "query": {"type": "string", "description": "Search term, question, or request details."},
+            "repo": REPO,
+            "topic": {"type": "string", "description": "Optional topic filter for library queries."},
+            "k": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max results to return (capped at 5)."},
+            "offset": {"type": "integer", "minimum": 0, "description": "Pagination offset."},
+            "full": {"type": "boolean", "description": "Include snippet text (capped at 400 chars per snippet)."},
+        },
+        required=("source",),
+        tool="fleet_query",
+    ),
+    Command(
+        "query-context",
+        "query_context",
+        "Query fleet context pack: pin, accepted lessons, holds and directives (offline-safe).",
+        {
+            "repo": REPO,
+            "op": {"type": "string", "enum": ["search", "get", "request"]},
+            "query": {"type": "string", "description": "Search query or librarian request."},
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
+    Command(
+        "query-library",
+        "query_library",
+        "Search Alexandria library works and passages with bounded snippet caps.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "repo": REPO,
+            "topic": {"type": "string", "description": "Topic filter."},
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
+    Command(
+        "query-knowledge",
+        "query_knowledge",
+        "Search repo knowledge packs with bounded snippets.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "repo": REPO,
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
+    Command(
+        "query-memory",
+        "query_memory",
+        "Query shared fleet memory entries with bounded snippets.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "repo": REPO,
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
 )
 
 BY_CLI: dict[str, Command] = {c.cli: c for c in COMMANDS}
