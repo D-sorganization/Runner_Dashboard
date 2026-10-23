@@ -24,6 +24,22 @@ import {
 import "./composer.css";
 import { MicGlyph } from "../decompIcons";
 
+function sensitivityLabel(sensitivity: IntakeSensitivity): string {
+  switch (sensitivity) {
+    case "public_reference": return "Library reference";
+    case "confidential_work": return "Confidential work";
+    case "vault_sensitive": return "Vault sensitive";
+  }
+}
+
+function attachmentStatusLabel(status: ComposerAttachment["status"]): string {
+  switch (status) {
+    case "pending": return "Uploading…";
+    case "attached": return "Ready";
+    case "rejected": return "Needs attention";
+  }
+}
+
 interface ComposerComponentProps extends BaseComposerProps {
   prefilledText?: string;
 }
@@ -375,10 +391,14 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           <div className="staff-composer__attachments" aria-label="Staged attachments">
             {attachments.map((att) => (
               <span key={att.id} className={`staff-composer__chip staff-composer__chip--${att.status}`} data-testid={`composer-attachment-${att.filename}`}>
-                <span>{att.filename}</span>
-                <span className="staff-composer__chip-badge">{att.sensitivity}</span><span className="staff-composer__chip-status" role="status" aria-live="polite">{att.status === "pending" ? "Uploading…" : att.status}</span>
-                {att.error && <span className="staff-composer__chip-error" role="status">{att.error}</span>}
-                <button type="button" className="staff-composer__chip-remove" aria-label={`Remove ${att.filename}`} onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}>×</button>
+                <span className="staff-composer__chip-filename">{att.filename}</span>
+                <button type="button" className="staff-composer__chip-remove" aria-label={`Remove ${att.filename}`} onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}>Remove</button>
+                <span className="staff-composer__chip-meta">
+                  <span className="staff-composer__chip-badge">{sensitivityLabel(att.sensitivity)}</span>
+                </span>
+                <span className={`staff-composer__chip-status${att.error ? " staff-composer__chip-status--error" : ""}`} role="status" aria-live="polite">
+                  {attachmentStatusLabel(att.status)}{att.error ? `: ${att.error}` : ""}
+                </span>
               </span>
             ))}
           </div>

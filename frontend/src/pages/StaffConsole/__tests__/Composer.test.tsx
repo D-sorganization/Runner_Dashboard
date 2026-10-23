@@ -282,7 +282,7 @@ describe("Composer Component", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("composer-attachment-architecture-notes.md")).toBeInTheDocument();
-      expect(screen.getByText("attached")).toBeInTheDocument();
+      expect(screen.getByText("Ready")).toBeInTheDocument();
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -397,7 +397,13 @@ describe("Composer Component", () => {
 
     const attachment = await screen.findByTestId("composer-attachment-offline.md");
     expect(attachment).toHaveClass("staff-composer__chip--rejected");
-    expect(attachment).toHaveTextContent("Upload failed (503)");
+    expect(attachment).toHaveTextContent("Confidential work");
+    expect(attachment).toHaveTextContent("Needs attention");
+    expect(within(attachment).getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(attachment).toHaveTextContent("Upload failed (503). The service may be temporarily unavailable; remove and reattach the file to retry.");
+    expect(attachment).not.toHaveTextContent("confidential_work");
+    expect(attachment).not.toHaveTextContent("rejected");
+    expect(within(attachment).getByRole("button", { name: /remove offline.md/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
     expect(onSend).not.toHaveBeenCalled();
     fetchMock.mockRestore();
