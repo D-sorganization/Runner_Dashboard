@@ -24,6 +24,17 @@ NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
         "compare",  # Maxwell Contract Drift
         "reconcile",  # Armed PR cap reconcile
         "refresh",  # Agent Fleet Dashboard
+        # Bot-maintenance jobs triggered by issues/schedule events attach their check-runs to
+        # the current main HEAD but say nothing about code quality; a queued or cancelled one
+        # must not starve auto-deploy (see tests/deploy/test_ci_gate_non_blocking.py).
+        "verify-closure",  # Verify Issue Closure (issues: closed)
+        "reap",  # Agent Lease Reaper / Queued Job Reaper (schedule)
+        "sweep",  # Agent panel review sweep (schedule)
+        "on-demand-label",  # Agent panel review (issues: labeled)
+        "upgrade",  # Lockfile Upgrade (schedule)
+        "route",  # Taxonomy rollout (issues: labeled)
+        "preview",  # Taxonomy rollout dry-run
+        "apply",  # Taxonomy rollout apply
     }
 )
 

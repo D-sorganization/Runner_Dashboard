@@ -27,9 +27,13 @@ on:
 permissions:
   contents: read
 
+# Main-push / merge-group runs are never cancelled by a newer merge: a cancelled
+# required check leaves that commit permanently non-green, so node auto-deploy and
+# main-ci-auto-release would never find a releasable commit. Only superseded
+# pull_request runs are cancelled. Contract: tests/test_main_push_concurrency.py
 concurrency:
-  group: ci-auto-deploy-regression-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-auto-deploy-regression-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   auto-deploy-regression:
