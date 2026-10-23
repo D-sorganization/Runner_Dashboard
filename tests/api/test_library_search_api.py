@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from identity import Principal, require_scope
 from library.ingest import ingest_directory
 from routers import library as library_routes
+
 from tests.library.conftest import make_text_pdf
 
 READER = Principal(id="r", type="user", name="Reader", roles=["viewer"], scopes=["fleet.read"])
@@ -31,7 +32,10 @@ def _app(tmp_path: Path, monkeypatch) -> FastAPI:
 
 def test_library_search(tmp_path: Path, monkeypatch) -> None:
     client = TestClient(_app(tmp_path, monkeypatch))
-    resp = client.get("/api/v1/library/search", params={"q": "hip joint torque golf", "budget": 1500}, headers=_XHR)
+    # Operator-local search can read the default private ingest source.
+    resp = client.get(
+        "/api/v1/library/search", params={"q": "hip joint torque golf", "budget": 1500, "scope": "local"}, headers=_XHR
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["tokens_used"] <= 1500 and body["passages"][0]["file_path"]
