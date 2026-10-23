@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import unquote
 
 from library.citation_claims import claim_is_supported
-from library.codebase_refs import verify_codebase_citations
+from library.codebase_refs import REFERENCE_TOKEN, verify_codebase_citations
 
 _CITATION = re.compile(
     r"\[ref:(?P<node>[A-Za-z0-9][A-Za-z0-9.-]{0,63}):(?P<source>[a-z0-9][a-z0-9-]{0,62}):"
@@ -105,6 +105,11 @@ def verify_content(
         for match in _LEGACY.finditer(content)
     )
     citations.extend(verify_codebase_citations(db_path, content, run_id))
+    citations.extend(
+        {"citation": match[0][:500], "verified": False, "status": "invalid_citation"}
+        for match in REFERENCE_TOKEN.finditer(content)
+        if ":codebase:" not in match[0] and _CITATION.fullmatch(match[0]) is None
+    )
     links: list[dict[str, Any]] = []
     for match in _LINK.finditer(content):
         url = match.group("url").strip()
