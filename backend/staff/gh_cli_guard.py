@@ -216,9 +216,9 @@ def check_and_prepare_issue_close(
             False,
             list(argv),
             (
-                f"ERROR [staff-gh-close-guard]: Cannot close issue #{issue_num} without verified implementation evidence.\n"
+                f"ERROR [staff-gh-close-guard]: Cannot close #{issue_num} without verified evidence.\n"
                 f"Verify-Issue-Closure.yml will automatically reopen issues closed without proof.\n"
-                f"Provide a merged PR citing `Closes #{issue_num}` (or `--comment` citing PR #<num>) or an exempt label.\n"
+                f"Provide a merged PR citing `Closes #{issue_num}`, `--comment` citing PR #<num>, or an exempt label.\n"
             ),
         )
 
