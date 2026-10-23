@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import closing
 from datetime import UTC, datetime
 from io import BytesIO
@@ -29,7 +29,15 @@ _MAX_FILE_BYTES = 10 * 1024 * 1024
 _INGEST_SUFFIXES = {".pdf", ".epub", ".md", ".markdown", ".txt"}
 
 
-def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_id: str = "default") -> dict[str, int]:
+def ingest_directory(
+    source_root: Path,
+    *,
+    db_path: Path | None = None,
+    source_id: str = "default",
+    max_files: int | None = None,
+) -> dict[str, int | bool]:
+    if max_files is not None and (isinstance(max_files, bool) or not isinstance(max_files, int) or max_files <= 0):
+        raise ValueError("max_files must be a positive integer")
     source_root = source_root.resolve()
     if not source_root.is_dir():
         raise ValueError(f"source is not a directory: {source_root}")
@@ -48,16 +56,17 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_i
             "INSERT INTO ingest_runs (started_at, source_root) VALUES (?, ?)",
             (started, source_root.as_posix()),
         ).lastrowid
-        paths = sorted(
-            (
-                p
-                for p in source_root.rglob("*")
-                if p.is_file()
-                and p.suffix.lower() in _INGEST_SUFFIXES
-                and matches_source_globs(p.relative_to(source_root).as_posix(), include_globs, exclude_globs)
-            ),
-            key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()),
-        )
+        if max_files is None:
+            paths = sorted(
+                _eligible_paths(source_root, include_globs, exclude_globs),
+                key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()),
+            )
+        else:
+            paths = []
+            for path in _eligible_paths(source_root, include_globs, exclude_globs):
+                paths.append(path)
+                if len(paths) == max_files:
+                    break
         for path in paths:
             stats["files_seen"] += 1
             rel = path.relative_to(source_root).as_posix()
@@ -92,11 +101,15 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_i
                     stats["files_rejected"] += 1
                     continue
             stats["files_indexed"] += 1
-        stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
-        _retire_orphan_works(conn)
+        if max_files is None:
+            stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
+            _retire_orphan_works(conn)
+        notes = (
+            None if max_files is None else f"bounded incomplete scan (max_files={max_files}); removals not reconciled"
+        )
         conn.execute(
             "UPDATE ingest_runs SET finished_at=?, files_seen=?, files_indexed=?, files_skipped=?,"
-            " files_rejected=?, files_removed=? WHERE id=?",
+            " files_rejected=?, files_removed=?, notes=? WHERE id=?",
             (
                 datetime.now(UTC).isoformat(),
                 stats["files_seen"],
@@ -104,11 +117,25 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_i
                 stats["files_skipped"],
                 stats["files_rejected"],
                 stats["files_removed"],
+                notes,
                 run_id,
             ),
         )
         conn.commit()
-    return stats
+    return {**stats, "scan_complete": max_files is None}
+
+
+def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: list[str]) -> Iterator[Path]:
+    for current, directories, filenames in os.walk(source_root):
+        directories.sort()
+        for filename in sorted(filenames):
+            path = Path(current) / filename
+            if (
+                path.is_file()
+                and path.suffix.lower() in _INGEST_SUFFIXES
+                and matches_source_globs(path.relative_to(source_root).as_posix(), include_globs, exclude_globs)
+            ):
+                yield path
 
 
 def _should_skip(conn: sqlite3.Connection, source_id: str, rel: str, mtime: float, size: int) -> bool:
@@ -398,7 +425,8 @@ def _page_text(reader: PdfReader, page_index: int) -> str:
 
 def _extract_epub(raw: bytes) -> tuple[str | None, str | None, list[tuple[str, str]]]:
     import zipfile
-    from xml.etree import ElementTree
+
+    from defusedxml import ElementTree
 
     ns = {"opf": "http://www.idpf.org/2007/opf", "dc": "http://purl.org/dc/elements/1.1/"}
     with zipfile.ZipFile(BytesIO(raw)) as zf:
