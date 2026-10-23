@@ -591,11 +591,11 @@ COMMANDS: tuple[Command, ...] = (
     Command(
         "query",
         "fleet_query",
-        "Consolidated fleet on-request context query tool across context, library, knowledge, and memory.",
+        "Consolidated fleet on-request context query tool across context, codebase, library, knowledge, and memory.",
         {
             "source": {
                 "type": "string",
-                "enum": ["context", "library", "knowledge", "memory"],
+                "enum": ["context", "codebase", "library", "knowledge", "memory"],
                 "description": "Target context source.",
             },
             "op": {
@@ -654,6 +654,17 @@ COMMANDS: tuple[Command, ...] = (
         {
             "query": {"type": "string", "description": "Search query."},
             "repo": REPO,
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
+    Command(
+        "query-codebase",
+        "query_codebase",
+        "Search the Cartographer codebase map with committed-line citations and bounded snippets.",
+        {
+            "query": {"type": "string", "description": "Search query."},
             "k": {"type": "integer", "minimum": 1, "maximum": 5},
             "offset": {"type": "integer", "minimum": 0},
             "full": {"type": "boolean"},

@@ -727,10 +727,10 @@ class FleetClient:
     ) -> dict[str, Any]:
         """Unified fleet context query tool (#2223).
 
-        Exposes on-request context across sources ('context', 'library', 'knowledge', 'memory').
-        Ceilings enforced: top-k <= 5, library snippets <= 400 UTF-8 bytes, citations included.
+        Exposes bounded on-request context across context, codebase, library, knowledge, and memory.
+        Ceilings enforced: top-k <= 5, codebase/library snippets <= 400 UTF-8 bytes, citations included.
         """
-        valid_sources = ("context", "library", "knowledge", "memory")
+        valid_sources = ("context", "codebase", "library", "knowledge", "memory")
         _check(source in valid_sources, f"source must be one of {valid_sources}")
         valid_ops = ("search", "get", "request", "fetch")
         _check(op in valid_ops, f"op must be one of {valid_ops}")
@@ -913,6 +913,49 @@ class FleetClient:
                 "has_more": len(items) > (offset + effective_k),
             }
 
+        elif source == "codebase":
+            if op != "search":
+                raise FleetArgumentError("codebase only supports search")
+            if not query or not query.strip():
+                raise FleetArgumentError("query is required for codebase search")
+            if repo is not None:
+                raise FleetArgumentError("repo filtering is not supported for codebase search")
+            params = {"q": _text(query, "query", 512), "k": min(100, effective_k + offset)}
+            data = self.request("GET", "/api/v1/staff/knowledge/cartographer/search", params=params)
+            items = data.get("passages", []) if isinstance(data, dict) else []
+            if not isinstance(items, list):
+                items = []
+            paged_items = items[offset : offset + effective_k]
+            results = []
+            for it in paged_items:
+                if not isinstance(it, dict):
+                    continue
+                citation = it.get("citation")
+                results.append(
+                    {
+                        "id": citation or f"{it.get('repo', '')}:{it.get('anchor', '')}",
+                        "title": it.get("title") or "Codebase passage",
+                        "snippet": _library_snippet(it.get("text")),
+                        "ref": citation,
+                        "citation": citation,
+                        "repo": it.get("repo"),
+                        "source": it.get("source"),
+                        "anchor": it.get("anchor"),
+                        "commit": it.get("commit"),
+                        "content_hash": it.get("content_hash"),
+                        "status": it.get("status"),
+                        "authority": it.get("authority"),
+                        "score": it.get("score"),
+                    }
+                )
+            return {
+                "status": "ok",
+                "source": "codebase",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+                "stale": data.get("stale") if isinstance(data, dict) else None,
+            }
+
         elif source == "memory":
             params = {"tag": repo, "limit": effective_k + offset}
             data = self.request("GET", "/api/v1/memory", params={k: v for k, v in params.items() if v})
@@ -967,6 +1010,11 @@ class FleetClient:
         self, query: str | None = None, repo: str | None = None, k: int = 5, offset: int = 0, full: bool = False
     ) -> dict[str, Any]:
         return self.fleet_query(source="knowledge", op="search", query=query, repo=repo, k=k, offset=offset, full=full)
+
+    def query_codebase(
+        self, query: str | None = None, k: int = 5, offset: int = 0, full: bool = False
+    ) -> dict[str, Any]:
+        return self.fleet_query(source="codebase", op="search", query=query, k=k, offset=offset, full=full)
 
     def query_memory(
         self, query: str | None = None, repo: str | None = None, k: int = 5, offset: int = 0, full: bool = False

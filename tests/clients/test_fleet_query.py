@@ -15,7 +15,7 @@ def test_fleet_query_mcp_tool_registration() -> None:
     assert cmd.tool == "fleet_query"
     schema = cmd.input_schema()
     props = schema["properties"]
-    assert set(props["source"]["enum"]) == {"context", "library", "knowledge", "memory"}
+    assert set(props["source"]["enum"]) == {"context", "codebase", "library", "knowledge", "memory"}
     assert "fetch" in props["op"]["enum"]
     assert "cite" in props
     assert "run_id" in props
@@ -150,6 +150,7 @@ def test_fleetctl_granular_subcommands_exist() -> None:
     assert "query-library" in fleet_tools.BY_CLI
     assert "query-knowledge" in fleet_tools.BY_CLI
     assert "query-memory" in fleet_tools.BY_CLI
+    assert "query-codebase" in fleet_tools.BY_CLI
 
 
 def test_library_search_maps_passages_and_propagates_run_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -216,3 +217,55 @@ def test_library_fetch_requires_cite_and_search_run_id_is_validated(monkeypatch:
         client.fleet_query(source="library", op="fetch")
     with pytest.raises(FleetArgumentError):
         client.fleet_query(source="library", query="bounded", run_id="not a run id")
+
+
+def test_fleet_query_codebase_maps_committed_citations_and_caps_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    citation = "[ref:DeskComputer:codebase:Runner_Dashboard@12345678:backend/staff/foo.py#L2-L8]"
+    passage = {
+        "repo": "Runner_Dashboard",
+        "source": "backend",
+        "anchor": "module",
+        "title": "Staff service",
+        "text": "\u754c" * 4000,
+        "commit": "1234567890abcdef1234567890abcdef12345678",
+        "content_hash": "abcdef0123456789",
+        "status": "active",
+        "authority": "authoritative",
+        "score": 0.91,
+        "citation": citation,
+    }
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def mock_request(method: str, path: str, **kwargs: Any) -> Any:
+        calls.append((method, path, kwargs))
+        return {"passages": [passage], "count": 1, "stale": False}
+
+    monkeypatch.setattr(client, "request", mock_request)
+    result = client.fleet_query(source="codebase", query="staff services", k=1)
+
+    assert calls == [
+        ("GET", "/api/v1/staff/knowledge/cartographer/search", {"params": {"q": "staff services", "k": 1}})
+    ]
+    assert result["source"] == "codebase" and result["stale"] is False
+    item = result["results"][0]
+    assert item["citation"] == citation and item["ref"] == citation
+    assert item["commit"] == passage["commit"] and item["content_hash"] == passage["content_hash"]
+    assert item["repo"] == passage["repo"] and item["anchor"] == passage["anchor"]
+    assert len(item["snippet"].encode("utf-8")) <= 400
+    assert item["snippet"].encode("utf-8").decode("utf-8") == item["snippet"]
+
+
+def test_fleet_query_codebase_rejects_run_id_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    calls: list[str] = []
+    monkeypatch.setattr(client, "request", lambda *args, **kwargs: calls.append("called"))
+    with pytest.raises(FleetArgumentError, match="run_id"):
+        client.fleet_query(source="codebase", query="context", run_id="run_123")
+    assert calls == []
+
+
+def test_fleetctl_codebase_query_command_registered() -> None:
+    command = fleet_tools.BY_CLI["query-codebase"]
+    assert command.tool is None
+    assert command.method == "query_codebase"
