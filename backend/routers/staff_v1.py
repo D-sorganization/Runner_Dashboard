@@ -24,6 +24,7 @@ from routers.staff import (
     MAX_LIMIT,
     RunBody,
 )
+from routers.staff_concerns import router as staff_concerns_router
 from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_projects import router as staff_projects_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
@@ -67,6 +68,7 @@ router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
 router.include_router(staff_knowledge_router)
 router.include_router(staff_skills_router)
 router.include_router(staff_projects_router)
+router.include_router(staff_concerns_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:

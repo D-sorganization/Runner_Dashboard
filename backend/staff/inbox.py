@@ -222,6 +222,34 @@ def _collect_escalations(w_store: WorkItemStore) -> list[InboxItem]:
     return items
 
 
+def _collect_agent_concerns(c_store: ConversationStore) -> list[InboxItem]:
+    """Collect open agent concerns posted by staff runs or CLI sessions (#2237)."""
+    from staff.concerns import list_concerns
+
+    return [
+        InboxItem(
+            id=f"concern_{c.id}",
+            source="agent_concern",
+            title=f"Concern: {c.summary}",
+            summary=f"[{c.severity.upper()}] {c.summary} ({c.repo})",
+            severity=c.severity,
+            created_at=c.created_at,
+            link=f"/staff?concern={c.id}",
+            metadata={
+                "concern_id": c.id,
+                "kind": c.kind,
+                "repo": c.repo,
+                "issue": c.issue,
+                "pr": c.pr,
+                "author": c.author_principal,
+                "count": c.count,
+                "untrusted": True,
+            },
+        )
+        for c in list_concerns(c_store, status="open", limit=50)
+    ]
+
+
 def github_inbox_sources_enabled() -> bool:
     """False when ``STAFF_INBOX_GITHUB_SOURCES=0`` disables the GitHub-backed
     inbox sources (project decisions, board proposals). Used by the hermetic
@@ -356,6 +384,7 @@ async def collect_inbox(
         "project_decision_repos": 0,
         "board_proposals": 0,
         "auth_sign_ins": 0,
+        "agent_concerns": 0,
     }
 
     # 1. Approvals
@@ -426,6 +455,16 @@ async def collect_inbox(
     except Exception as exc:
         log.warning("Inbox failed collecting auth_sign_ins: %s", exc)
         sources["auth_sign_ins"] = SourceStatus(status="unavailable", count=0, error=str(exc))
+
+    # 7. Agent concerns (#2237)
+    try:
+        ci = _collect_agent_concerns(c_store)
+        all_items.extend(ci)
+        counts["agent_concerns"] = len(ci)
+        sources["agent_concern"] = SourceStatus(status="ok", count=len(ci))
+    except Exception as exc:
+        log.warning("Inbox failed collecting agent_concern: %s", exc)
+        sources["agent_concern"] = SourceStatus(status="unavailable", count=0, error=str(exc))
 
     counts["total"] = len(all_items)
 
