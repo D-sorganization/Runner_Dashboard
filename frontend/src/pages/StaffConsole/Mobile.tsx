@@ -97,6 +97,11 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [showContext, setShowContext] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState("");
+  const [prefillSeq, setPrefillSeq] = useState(0);
+  const applyComposerPrefill = (nextText: string) => {
+    setComposerPrefill(nextText);
+    setPrefillSeq((n) => n + 1);
+  };
   const revealThreadAfterHomeSend = useMobileHomeSendNavigation({
     activeThread,
     isHomeView: () => viewRef.current === "home",
@@ -152,7 +157,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     async (roleName: string, prefill = "") => {
       const thread = await sc.openRole(roleName);
       if (!thread) return;
-      setComposerPrefill(prefill);
+      applyComposerPrefill(prefill);
       setView("thread");
       onOpenThread?.(thread.id);
 
@@ -295,6 +300,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               placeholder={`Message ${currentRoleObj.title || "staff"}…`}
               isPanel={isPanelThread(activeThread)}
               prefilledText={composerPrefill}
+              prefillSeq={prefillSeq}
             />
           </div>
 
@@ -324,7 +330,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             </section>
             <div className="staff-mobile__project-starters" aria-label="Project starters">
               {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
-                <button key={project} type="button" className="staff-mobile__project-starter" aria-label={`Start ${project}`} onClick={() => setComposerPrefill(prompt)}>
+                <button key={project} type="button" className="staff-mobile__project-starter" aria-label={`Start ${project}`} onClick={() => applyComposerPrefill(prompt)}>
                   <span>Start {project}</span><span>Prepare a test-first triage</span>
                 </button>
               ))}
@@ -332,7 +338,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </main>
           <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
             <GroupCostConfirm guard={sc.costGuard} />
-            <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} />
+            <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} prefillSeq={prefillSeq} />
           </div>
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Choose staff</button>

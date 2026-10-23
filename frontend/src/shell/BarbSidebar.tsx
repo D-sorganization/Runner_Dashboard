@@ -38,6 +38,11 @@ export interface BarbSidebarProps {
 export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbSidebarProps): React.ReactElement {
   const sc = useStaffConsole({ initialRole: "barb", restoreInitialRoleThread: true });
   const [composerPrefill, setComposerPrefill] = useState("");
+  const [prefillSeq, setPrefillSeq] = useState(0);
+  const applyComposerPrefill = (nextText: string) => {
+    setComposerPrefill(nextText);
+    setPrefillSeq((n) => n + 1);
+  };
   const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -186,7 +191,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
                   type="button"
                   className="barb-sidebar__project"
                   aria-label={`Triage ${project.repo}`}
-                  onClick={() => setComposerPrefill(project.prompt)}
+                  onClick={() => applyComposerPrefill(project.prompt)}
                 >
                   <span className="barb-sidebar__project-name">{project.repo}</span>
                   <span className="barb-sidebar__project-summary">{project.summary}</span>
@@ -206,6 +211,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
           focusOnThreadChange
           isPanel={false}
           prefilledText={composerPrefill}
+          prefillSeq={prefillSeq}
         />
       </div>
     </aside>
