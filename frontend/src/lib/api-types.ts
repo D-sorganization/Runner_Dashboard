@@ -5725,6 +5725,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Library Intake List Route */
+        get: operations["library_intake_list_route_api_v1_library_intake_get"];
+        put?: never;
+        /** Library Intake Stage Route */
+        post: operations["library_intake_stage_route_api_v1_library_intake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/intake/{intake_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Library Intake Promote Route */
+        post: operations["library_intake_promote_route_api_v1_library_intake__intake_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/search": {
         parameters: {
             query?: never;
@@ -9332,6 +9367,27 @@ export interface components {
             reason: string;
             /** Ttl Seconds */
             ttl_seconds: number;
+        };
+        /** LibraryIntakeCreateRequest */
+        LibraryIntakeCreateRequest: {
+            /** Content Base64 */
+            content_base64: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Mime Type
+             * @default application/octet-stream
+             */
+            mime_type: string;
+            /**
+             * Sensitivity
+             * @default confidential_work
+             */
+            sensitivity: string | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Thread Id */
+            thread_id?: string | null;
         };
         /** LibraryRunReference */
         LibraryRunReference: {
@@ -20191,6 +20247,108 @@ export interface operations {
             };
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_intake_list_route_api_v1_library_intake_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                sensitivity?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_intake_stage_route_api_v1_library_intake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryIntakeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_intake_promote_route_api_v1_library_intake__intake_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                intake_id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
