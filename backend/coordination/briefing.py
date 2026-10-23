@@ -17,6 +17,7 @@ from typing import Any
 from coordination import board
 from coordination.service import now_iso
 from coordination.staff_view import staff_runs
+from staff.friction_store import open_counts
 from staff.scheduler import get_scheduler
 from staff.standards_registry import load_fleet_standards
 
@@ -40,6 +41,8 @@ ENDPOINTS = {
     "claims_release": "POST /api/coordination/claims/release",
     "priorities": "GET /api/priorities",
     "staff": "GET /api/staff/summary",
+    "friction": "GET|POST /api/v1/fleet/friction",
+    "owner_questions": "GET|POST /api/v1/fleet/owner-questions",
 }
 
 
@@ -98,5 +101,6 @@ async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
         "standards_version": standards.version,
         "rules": [standards.body],
         "endpoints": ENDPOINTS,
+        "fleet_open": open_counts(),
         "warnings": [*w_priorities, *w_holds, *board_warnings, *w_runs, *standards_warnings],
     }

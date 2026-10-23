@@ -333,6 +333,8 @@ class StaffSummaryResponse(BaseModel):
     standards_pin: str | None = Field(default=None, description="Resolved fleet standards pin (issue #2220)")
     standards_source: str | None = Field(default=None, description="Path or <builtin> where standards were resolved")
     standards_version: str | None = Field(default=None, description="Resolved fleet standards semver")
+    friction_open: int = Field(default=0, description="Friction ledger rows not yet closed")
+    owner_questions_open: int = Field(default=0, description="Owner questions awaiting an answer")
 
     model_config = ConfigDict(extra="allow")
 
