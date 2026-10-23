@@ -38,6 +38,85 @@ def _make_app_with_csrf() -> FastAPI:
     return app
 
 
+def test_auth_perimeter_rejects_bearer_credentials_on_cloudflare_ingress(monkeypatch, caplog) -> None:
+    """Machine credentials stay on the local/tailnet plane (#2252)."""
+    import identity
+    from identity import Principal
+
+    monkeypatch.setattr(
+        identity,
+        "resolve_perimeter_principal",
+        lambda _request: Principal(id="agent-test", type="bot", name="Agent", roles=["admin"]),
+    )
+    app = FastAPI()
+    app.middleware("http")(mw.auth_perimeter_check)
+
+    @app.get("/api/v1/staff/threads")
+    async def protected():
+        return {"ok": True}
+
+    response = TestClient(app, raise_server_exceptions=False).get(
+        "/api/v1/staff/threads",
+        headers={"Authorization": "Bearer never-log-this", "CF-Ray": "test-ray"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "Request not permitted"}
+    assert "never-log-this" not in caplog.text
+    assert "blocked bearer credential on external ingress" in caplog.text
+
+
+def test_auth_perimeter_rejects_bearer_credentials_with_external_origin(monkeypatch) -> None:
+    """An external browser Origin marks ingress even if edge headers are absent."""
+    import identity
+    from identity import Principal
+
+    monkeypatch.setattr(
+        identity,
+        "resolve_perimeter_principal",
+        lambda _request: Principal(id="agent-test", type="bot", name="Agent", roles=["admin"]),
+    )
+    app = FastAPI()
+    app.middleware("http")(mw.auth_perimeter_check)
+
+    @app.get("/api/v1/staff/threads")
+    async def protected():
+        return {"ok": True}
+
+    response = TestClient(app, raise_server_exceptions=False).get(
+        "/api/v1/staff/threads",
+        headers={"Authorization": "Bearer test", "Origin": "https://ops.d-sorganization.org"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "Request not permitted"}
+
+
+def test_auth_perimeter_allows_bearer_credentials_with_local_origin(monkeypatch) -> None:
+    """Local and tailnet machine clients retain the existing bearer path."""
+    import identity
+    from identity import Principal
+
+    monkeypatch.setattr(
+        identity,
+        "resolve_perimeter_principal",
+        lambda _request: Principal(id="agent-test", type="bot", name="Agent", roles=["admin"]),
+    )
+    app = FastAPI()
+    app.middleware("http")(mw.auth_perimeter_check)
+
+    @app.get("/api/v1/staff/threads")
+    async def protected():
+        return {"ok": True}
+
+    response = TestClient(app, raise_server_exceptions=False).get(
+        "/api/v1/staff/threads",
+        headers={"Authorization": "Bearer test", "Origin": "http://localhost:8321"},
+    )
+
+    assert response.status_code == 200
+
+
 def test_csrf_blocks_post_without_header() -> None:
     """POST to /api/* without X-Requested-With must return 403."""
     app = _make_app_with_csrf()

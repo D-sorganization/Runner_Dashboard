@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -336,6 +337,27 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
     if not _requires_perimeter_auth(request):
         return await call_next(request)
 
+    # A Cloudflare Tunnel must not turn the machine-token plane into a public
+    # API. Edge headers are useful only as a deny signal: spoofing them can
+    # reject one's own request, but can never grant access. Cloudflare replaces
+    # its ray/access headers on ingress; the browser Origin check also catches
+    # the configured external UI origin when those headers are absent.
+    authorization = request.headers.get("authorization", "")
+    if _is_external_ingress(request) and authorization.partition(" ")[0].casefold() == "bearer":
+        client_host = request.client.host if request.client else "unknown"
+        log.warning(
+            "blocked bearer credential on external ingress",
+            extra={
+                "request_id": getattr(request.state, "request_id", None),
+                "source_ip": client_host,
+                "cf_ray": request.headers.get("cf-ray"),
+                "path": request.url.path,
+                "method": request.method,
+                "reason": "machine_credentials_not_allowed_on_external_ingress",
+            },
+        )
+        return JSONResponse({"error": "Request not permitted"}, status_code=403)
+
     # Defer to the route dependency when a test/explicit override is installed.
     app = request.scope.get("app")
     overrides = getattr(app, "dependency_overrides", {}) if app is not None else {}
@@ -360,6 +382,23 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
 
     request.state.perimeter_principal = principal
     return await call_next(request)
+
+
+def _is_external_ingress(request: Request) -> bool:
+    """Recognize edge-marked ingress without trusting it to grant identity."""
+    if any(
+        request.headers.get(header)
+        for header in ("cf-ray", "cf-connecting-ip", "cf-access-jwt-assertion", "cf-visitor")
+    ):
+        return True
+    origin = request.headers.get("origin")
+    if not origin:
+        return False
+    try:
+        host = (urlsplit(origin).hostname or "").casefold()
+    except ValueError:
+        return True
+    return host not in {"localhost", "127.0.0.1", "::1"}
 
 
 async def csrf_check(request: Request, call_next: Any) -> Any:
