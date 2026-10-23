@@ -18,7 +18,7 @@ export function FleetSummaryBar({
   const f = summary.features;
   return (
     <section
-      className="section"
+      className="section projects-page__summary"
       data-testid="fleet-summary"
       aria-label="Fleet summary"
       style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13 }}
