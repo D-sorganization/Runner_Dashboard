@@ -8351,9 +8351,15 @@
             "title": "Effort"
           },
           "execution_mode": {
-            "default": "local",
-            "title": "Execution Mode",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
           },
           "force": {
             "anyOf": [

@@ -12410,11 +12410,8 @@ export interface components {
             dry_run: boolean;
             /** Effort */
             effort?: string | null;
-            /**
-             * Execution Mode
-             * @default local
-             */
-            execution_mode: string;
+            /** Execution Mode */
+            execution_mode?: string | null;
             /** Force */
             force?: boolean | null;
             /**
