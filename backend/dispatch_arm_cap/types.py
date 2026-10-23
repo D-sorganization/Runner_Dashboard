@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -13,6 +15,35 @@ Lifecycle = Literal["awaiting_checks", "queued", "building", "evicted", "unarmed
 CONFLICT_DISARMED_LABEL = "conflict:disarmed"
 DEFAULT_POLICY_PATH = Path("config/dispatch_limits.json")
 DEFAULT_STORE_PATH = Path.home() / "actions-runners" / "dashboard" / "dispatch_arm_cap.sqlite3"
+
+
+def fallback_temp_store_path() -> Path:
+    """Fallback writable state path in temp directory for sandboxed runs (#2254)."""
+    tmp_base = os.environ.get("TMPDIR") or tempfile.gettempdir()
+    return Path(tmp_base) / "runner-dashboard" / "dispatch_arm_cap.sqlite3"
+
+
+def resolve_store_path(preferred_path: Path | None = None) -> Path:
+    """Resolve a writable path for dispatch_arm_cap.sqlite3 (#2254).
+
+    Priority:
+    1. preferred_path if given
+    2. RUNNER_DASHBOARD_STATE_DIR env var if set
+    3. DEFAULT_STORE_PATH (~/actions-runners/dashboard/dispatch_arm_cap.sqlite3)
+    """
+    if preferred_path is not None:
+        return preferred_path
+
+    env_dir = os.environ.get("RUNNER_DASHBOARD_STATE_DIR", "").strip()
+    if env_dir:
+        return Path(env_dir) / "dispatch_arm_cap.sqlite3"
+
+    import sys
+
+    arm_cap_mod = sys.modules.get("dispatch_arm_cap")
+    if arm_cap_mod is not None and hasattr(arm_cap_mod, "DEFAULT_STORE_PATH"):
+        return arm_cap_mod.DEFAULT_STORE_PATH
+    return DEFAULT_STORE_PATH
 
 
 @dataclass(frozen=True)

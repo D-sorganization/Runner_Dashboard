@@ -217,17 +217,13 @@ def test_automerge_guard_refuses_when_cap_enforced(
         lambda *a, **k: automerge_guard.ArmResult(True, automerge_guard.HoldVerdict(False), "armed"),
     )
     monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **k: True)
-    code = automerge_guard.main(
-        ["o/r", "7", "--arm", "--repo-root", str(tmp_path), "--arm-tier", "agent"]
-    )
+    code = automerge_guard.main(["o/r", "7", "--arm", "--repo-root", str(tmp_path), "--arm-tier", "agent"])
     assert code == automerge_guard.EXIT_ARM_CAP_REFUSED
     assert "cap" in capsys.readouterr().out.lower()
 
 
 @pytest.mark.unit
-def test_automerge_guard_confirms_reservation_on_success(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_automerge_guard_confirms_reservation_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     policy = _policy(tmp_path, max_healthy_armed=5, shadow_mode=False)
     store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")
     monkeypatch.setattr(arm_cap, "load_policy", lambda _root=None, policy_path=None: policy)
@@ -241,7 +237,63 @@ def test_automerge_guard_confirms_reservation_on_success(
     monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **k: True)
     assert automerge_guard.main(["o/r", "7", "--arm", "--repo-root", str(tmp_path)]) == 0
     with store._connect() as conn:  # noqa: SLF001
-        row = conn.execute(
-            "SELECT status FROM arm_reservations WHERE repo = 'o/r' AND pr = 7"
-        ).fetchone()
+        row = conn.execute("SELECT status FROM arm_reservations WHERE repo = 'o/r' AND pr = 7").fetchone()
     assert row and row["status"] == "confirmed"
+
+
+@pytest.mark.unit
+def test_resolve_store_path_prefers_env_and_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    custom_dir = tmp_path / "custom_state"
+    monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(custom_dir))
+    resolved = arm_cap.resolve_store_path()
+    assert resolved == custom_dir / "dispatch_arm_cap.sqlite3"
+
+    monkeypatch.delenv("RUNNER_DASHBOARD_STATE_DIR", raising=False)
+    assert arm_cap.resolve_store_path() == arm_cap.DEFAULT_STORE_PATH
+
+
+@pytest.mark.unit
+def test_arm_cap_store_falls_back_when_preferred_path_unwritable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fallback_dir = tmp_path / "temp_fallback"
+    fallback_path = fallback_dir / "runner-dashboard" / "dispatch_arm_cap.sqlite3"
+    monkeypatch.setattr(arm_cap.store, "fallback_temp_store_path", lambda: fallback_path)
+
+    # Simulated read-only path (e.g. /nonexistent_sandbox_root/read_only/cap.sqlite3)
+    read_only_path = (
+        Path("/proc/invalid_sandbox_path/cap.sqlite3")
+        if Path("/proc").exists()
+        else Path("Z:/invalid_drive/cap.sqlite3")
+    )
+    store = arm_cap.ArmCapStore(read_only_path)
+    assert store._path == fallback_path
+    assert fallback_path.exists()
+
+
+@pytest.mark.unit
+def test_automerge_guard_falls_back_cleanly_on_readonly_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    policy = _policy(tmp_path, max_healthy_armed=5, shadow_mode=False)
+    fallback_dir = tmp_path / "temp_fallback"
+    fallback_path = fallback_dir / "runner-dashboard" / "dispatch_arm_cap.sqlite3"
+
+    monkeypatch.setattr(arm_cap, "load_policy", lambda _root=None, policy_path=None: policy)
+    monkeypatch.setattr(arm_cap, "fallback_temp_store_path", lambda: fallback_path)
+    monkeypatch.setattr(arm_cap.store, "fallback_temp_store_path", lambda: fallback_path)
+    monkeypatch.setattr(
+        arm_cap,
+        "DEFAULT_STORE_PATH",
+        Path("/proc/invalid_sandbox_path/cap.sqlite3")
+        if Path("/proc").exists()
+        else Path("Z:/invalid_drive/cap.sqlite3"),
+    )
+    monkeypatch.setattr(automerge_guard, "_import_arm_cap_module", lambda: arm_cap)
+    monkeypatch.setattr(
+        automerge_guard,
+        "arm_auto_merge",
+        lambda *a, **k: automerge_guard.ArmResult(True, automerge_guard.HoldVerdict(False), "armed"),
+    )
+    monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **k: True)
+
+    assert automerge_guard.main(["o/r", "7", "--arm", "--repo-root", str(tmp_path)]) == 0
+    assert fallback_path.exists()
