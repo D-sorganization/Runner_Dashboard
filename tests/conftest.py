@@ -69,6 +69,20 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
+def _isolated_provider_cooldown_file(tmp_path, monkeypatch):
+    """Keep durable staff provider cooldowns out of the real config dir."""
+    monkeypatch.setenv("STAFF_PROVIDER_COOLDOWNS_FILE", str(tmp_path / "provider_cooldowns.json"))
+    try:
+        from staff import provider_cooldown
+    except ImportError:  # backend not importable in some lanes
+        yield
+        return
+    provider_cooldown.reload_provider_cooldowns()
+    yield
+    provider_cooldown.reload_provider_cooldowns()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_provider_cli(monkeypatch):
     """Provider CLIs are never launched by tests; provider fixtures use fakes."""
     real_popen = subprocess.Popen
@@ -252,8 +266,8 @@ def staff_cli_installed(monkeypatch):
     rather than host installation use this opt-in fixture so CI does not depend on
     which agent CLIs happen to be on its PATH.
     """
-    from staff.adapters import ProviderAdapter  # noqa: PLC0415
     from staff import cli_version
+    from staff.adapters import ProviderAdapter  # noqa: PLC0415
 
     installed_providers: set[str] = set()
 
