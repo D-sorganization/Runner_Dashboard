@@ -387,6 +387,9 @@ async def csrf_check(request: Request, call_next: Any) -> Any:
 async def add_security_headers(request: Request, call_next: Any) -> Any:
     """Inject standard security headers on every response (issue #7, #18)."""
     response = await call_next(request)
+    if response.headers.get("content-type", "").partition(";")[0].strip().casefold() == "text/event-stream":
+        response.headers["X-Accel-Buffering"] = "no"
+        response.headers["Cache-Control"] = "no-cache, no-transform"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
