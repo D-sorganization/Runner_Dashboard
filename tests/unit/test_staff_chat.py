@@ -37,7 +37,8 @@ from staff.thread_bus import get_thread_bus, reset_thread_bus
 
 
 @pytest.fixture
-def conv_store(tmp_path: Path) -> ConversationStore:
+def conv_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConversationStore:
+    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
     reset_conversation_store()
     reset_thread_bus()
     db_file = tmp_path / "test_chat_conv.sqlite3"

@@ -60,6 +60,16 @@ _VALID_ROLE_DICT: dict[str, Any] = {
 
 
 @pytest.mark.unit
+def test_indexed_code_search_is_supported_but_unknown_tools_still_fail() -> None:
+    from staff.validator import validate_role_data
+
+    role = {**_VALID_ROLE_DICT, "chat": {"tools": ["search_code"]}}
+    assert not validate_role_data(role)
+    role["chat"] = {"tools": ["invented_search_tool"]}
+    assert any("unsupported tool" in error for error in validate_role_data(role))
+
+
+@pytest.mark.unit
 def test_parse_role_loads_full_schema_and_chat_fields() -> None:
     spec = roles_mod.parse_role(_VALID_ROLE_DICT, source_path="/path/cartographer.yml")
     assert spec.name == "cartographer"
