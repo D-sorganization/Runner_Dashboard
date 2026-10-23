@@ -134,6 +134,14 @@ CREATE TABLE IF NOT EXISTS barb_epoch_fence (
 );
 """
 
+# Per-conversation CLI turn fence (#2253). Existing threads begin at epoch zero.
+_MIGRATION_8_SQL = "ALTER TABLE threads ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0;"
+_MIGRATION_9_SQL = """
+ALTER TABLE action_proposals ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX IF NOT EXISTS action_proposals_epoch_key_idx
+    ON action_proposals(thread_id, epoch, id);
+"""
+
 CORE_MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "conversations_core_tables", _MIGRATION_1_SQL),
     (2, "threads_meta_column", _MIGRATION_2_SQL),
@@ -142,6 +150,8 @@ CORE_MIGRATIONS: list[tuple[int, str, str]] = [
     (5, "run_card_versions", _MIGRATION_5_SQL),
     (6, "barb_receipts", _MIGRATION_6_SQL),
     (7, "barb_epoch_fence", _MIGRATION_7_SQL),
+    (8, "thread_turn_epoch", _MIGRATION_8_SQL),
+    (9, "proposal_turn_epoch", _MIGRATION_9_SQL),
 ]
 
 

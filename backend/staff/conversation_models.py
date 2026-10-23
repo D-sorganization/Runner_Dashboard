@@ -79,6 +79,7 @@ class ThreadRecord:
     meta: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
+    epoch: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +94,7 @@ class ThreadRecord:
             "meta": dict(self.meta),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "epoch": self.epoch,
         }
 
     @classmethod
@@ -116,6 +118,7 @@ class ThreadRecord:
             meta=dict(meta),
             created_at=str(d["created_at"]),
             updated_at=str(d["updated_at"]),
+            epoch=int(d.get("epoch", 0)),
         )
 
 
@@ -199,6 +202,7 @@ class ActionProposalRecord:
     created_at: str = field(default_factory=_now)
     decide_by: str | None = None
     default_if_silent: str = ""
+    epoch: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -215,6 +219,7 @@ class ActionProposalRecord:
             "created_at": self.created_at,
             "decide_by": self.decide_by,
             "default_if_silent": self.default_if_silent,
+            "epoch": self.epoch,
         }
 
     @classmethod
@@ -236,6 +241,7 @@ class ActionProposalRecord:
             created_at=str(d["created_at"]),
             decide_by=d.get("decide_by") or None,
             default_if_silent=str(d.get("default_if_silent") or ""),
+            epoch=int(d.get("epoch", 0)),
         )
 
 

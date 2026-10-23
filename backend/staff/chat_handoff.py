@@ -61,6 +61,7 @@ async def post_reply_handoff(
         return None
 
     s = store or get_conversation_store()
+    s.advance_thread_epoch(thread_id, "seat_handoff")
     request = s.get_message(user_message_id)
     decision = RoutingDecision(
         chosen_role=to_role, confidence=1.0, reason=handoff_reason(reply), mode=REPLY_HANDOFF_MODE
