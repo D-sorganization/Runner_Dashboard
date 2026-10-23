@@ -604,10 +604,13 @@ test.describe("persistent Barb conversation selection", () => {
     })).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
-    const askBarb = page.getByRole("button", { name: "Ask Barb" });
-    await expect(askBarb).toBeVisible();
-    await askBarb.click();
+    const askBarb = page.getByTestId("mobile-ask-barb");
     const mobileSidebar = page.getByTestId("barb-sidebar");
+    await expect(askBarb).toBeVisible();
+    if (await mobileSidebar.isVisible()) {
+      await mobileSidebar.getByRole("button", { name: "Close Ask Barb" }).click();
+    }
+    await askBarb.click();
     await expect(mobileSidebar).toBeVisible();
     await expect(mobileSidebar.getByRole("region", {
       name: "Conversation thread with Conversation with Barb",
