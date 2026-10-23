@@ -70,6 +70,7 @@ const LazyStaffMobile = React.lazy(
   () => import("../pages/StaffConsole/Mobile"),
 );
 const LazyProjectsPage = React.lazy(() => import("../pages/ProjectsPage"));
+const LazySecurityPage = React.lazy(() => import("../pages/Security/SecurityPage"));
 const LazyFleetCommandPage = React.lazy(
   () => import("../pages/FleetCommand/FleetCommandPage"),
 );
@@ -145,6 +146,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LazyRemediationPage />;
     case "runner-audit":
       return <RunnerAuditPage />;
+    case "security":
+      return <LazySecurityPage />;
     case "settings":
       return <SettingsPage />;
     case "staff":
