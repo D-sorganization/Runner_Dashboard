@@ -133,6 +133,7 @@ def test_auth_sign_ins_count_is_providers_not_items(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(inbox, "_collect_approvals", lambda s: [])
     monkeypatch.setattr(inbox, "_collect_needs_input", lambda *a: [])
     monkeypatch.setattr(inbox, "_collect_escalations", lambda s: [])
+    monkeypatch.setattr(inbox, "_collect_agent_concerns", lambda *a: [])
 
     aggregate = asyncio.run(collect_inbox(c_store=None, r_store=None, w_store=None))
 

@@ -98,6 +98,7 @@ def test_inbox_sorting_order(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(inbox, "_collect_approvals", lambda s: [i for i in items if i.source == "approval"])
     monkeypatch.setattr(inbox, "_collect_needs_input", lambda *a: [i for i in items if i.source == "needs_input"])
     monkeypatch.setattr(inbox, "_collect_escalations", lambda s: [i for i in items if i.source == "escalation"])
+    monkeypatch.setattr(inbox, "_collect_agent_concerns", lambda *a: [])
 
     aggregate = asyncio.run(collect_inbox(c_store=None, r_store=None, w_store=None))
 
