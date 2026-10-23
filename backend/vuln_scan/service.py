@@ -131,6 +131,27 @@ async def contracts_overview(repos: list[str] | None = None) -> dict[str, Any]:
     }
 
 
+async def coverage_overview() -> dict[str, Any]:
+    """Which repositories are enrolled, enabled, scanned and due (#2574)."""
+    from datetime import UTC, datetime
+
+    from vuln_scan.findings import default_db_path
+    from vuln_scan.scans import get_scan_log
+    from vuln_scan.schedule import coverage_rows, coverage_summary
+
+    config = load_operator_config()
+    repos = tracked_repos(config)
+    reports = await _gather(repos, contract_status)
+    contracts = dict(zip(repos, reports, strict=True))
+    latest = get_scan_log(default_db_path()).latest_by_repo()
+    rows = coverage_rows(config, repos, contracts, latest, datetime.now(UTC))
+    return {
+        "coverage": rows,
+        "summary": coverage_summary(rows),
+        "schedule": config.schedule.to_dict(),
+    }
+
+
 async def posture_overview(*, include_alerts: bool = True) -> dict[str, Any]:
     """Per-repository posture: contract, operator settings, findings and alerts."""
     config = load_operator_config()

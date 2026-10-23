@@ -5259,6 +5259,24 @@
         "title": "RunBody",
         "type": "object"
       },
+      "ScanRequestBody": {
+        "properties": {
+          "dry_run": {
+            "default": true,
+            "description": "evaluate admission only (default)",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "repo": {
+            "maxLength": 100,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo"],
+        "title": "ScanRequestBody",
+        "type": "object"
+      },
       "ScheduleToggleBody": {
         "properties": {
           "enabled": {
@@ -22343,6 +22361,89 @@
         "tags": ["security"]
       }
     },
+    "/api/v1/security/coverage": {
+      "get": {
+        "operationId": "get_coverage_api_v1_security_coverage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Coverage Api V1 Security Coverage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Coverage",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/export/sarif": {
+      "get": {
+        "description": "Open findings as SARIF 2.1.0; off unless the operator config sets ``sarif_export``.",
+        "operationId": "export_sarif_api_v1_security_export_sarif_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Export Sarif",
+        "tags": ["security"]
+      }
+    },
     "/api/v1/security/findings": {
       "get": {
         "operationId": "list_findings_api_v1_security_findings_get",
@@ -22494,6 +22595,57 @@
         "tags": ["security"]
       }
     },
+    "/api/v1/security/findings/{finding_id}/advisory": {
+      "post": {
+        "description": "Draft a GitHub security advisory (private fork) for one confirmed high/critical finding.",
+        "operationId": "create_advisory_api_v1_security_findings__finding_id__advisory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Advisory Api V1 Security Findings  Finding Id  Advisory Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Advisory",
+        "tags": ["security"]
+      }
+    },
     "/api/v1/security/findings/{finding_id}/triage": {
       "post": {
         "operationId": "triage_finding_api_v1_security_findings__finding_id__triage_post",
@@ -22604,6 +22756,206 @@
           }
         ],
         "summary": "Get Posture",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/scans": {
+      "get": {
+        "operationId": "list_scans_api_v1_security_scans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Scans Api V1 Security Scans Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Scans",
+        "tags": ["security"]
+      },
+      "post": {
+        "operationId": "request_scan_api_v1_security_scans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Request Scan Api V1 Security Scans Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Request Scan",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/scans/{scan_id}": {
+      "get": {
+        "operationId": "get_scan_api_v1_security_scans__scan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Scan Api V1 Security Scans  Scan Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Scan",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/scans/{scan_id}/cancel": {
+      "post": {
+        "operationId": "cancel_scan_api_v1_security_scans__scan_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Scan Api V1 Security Scans  Scan Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Cancel Scan",
         "tags": ["security"]
       }
     },

@@ -2799,6 +2799,13 @@ async def _startup() -> None:
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
 
+    # Security-scan scheduler (#2574). Every tick checks MACHINE_ROLE == "hub" and
+    # schedule.enabled in config/security_scan.json, so nodes and a disabled
+    # schedule never start a scan.
+    from vuln_scan.scan_service import start_schedule_loop  # noqa: PLC0415
+
+    start_schedule_loop()
+
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236

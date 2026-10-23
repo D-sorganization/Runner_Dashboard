@@ -165,3 +165,52 @@ def test_triage_flow_is_scoped_validated_and_audited(env: Any, monkeypatch: pyte
     assert admin.get("/api/v1/security/findings", params={"severity": "urgent"}).status_code == 422
     assert admin.get("/api/v1/security/findings/not-an-id").status_code == 404
     assert admin.post(f"/api/v1/security/findings/{'0' * 32}/triage", json={"state": "confirmed"}).status_code == 404
+
+
+def test_advisory_route_is_scoped_gated_and_single(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    import gh_utils
+
+    calls: list[tuple[str, str, Any]] = []
+
+    async def fake_write(endpoint: str, method: str = "POST", json_body: Any = None) -> dict[str, Any]:
+        calls.append((endpoint, method, json_body))
+        ghsa = "GHSA-2xq9-c4vm-wh7p"
+        return {"ghsa_id": ghsa, "html_url": f"https://github.com/{ORG}/Alpha/security/advisories/{ghsa}"}
+
+    monkeypatch.setattr(gh_utils, "gh_api_write", fake_write)
+    store = findings_mod.get_findings_store()
+    fid, _ = store.record("Alpha", validate_finding(FINDING), scan_sha="abcdef1")
+    url = f"/api/v1/security/findings/{fid}/advisory"
+    assert _client(monkeypatch, ["viewer"]).post(url).status_code == 403
+    admin = _client(monkeypatch, ["admin"])
+    assert admin.post(url).status_code == 422  # still new: not confirmed
+    store.triage(fid, "confirmed", actor="verifier:claude-sonnet-5-5")
+    ok = admin.post(url)
+    assert ok.status_code == 200 and ok.json()["advisory"]["ghsa_id"] == "GHSA-2xq9-c4vm-wh7p"
+    assert admin.post(url).status_code == 409
+    assert len(calls) == 1 and calls[0][2]["start_private_fork"] is True
+    detail = admin.get(f"/api/v1/security/findings/{fid}").json()
+    assert detail["advisory"]["actor"] == "tester"
+    assert detail["finding"]["patch_protected_paths"] == []
+
+
+def test_sarif_export_is_opt_in(env: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    findings_mod.get_findings_store().record("Alpha", validate_finding(FINDING), scan_sha="abcdef1")
+    admin = _client(monkeypatch, ["admin"])
+    assert admin.get("/api/v1/security/export/sarif").status_code == 404
+    cfg = tmp_path / "security_scan.json"
+    cfg.write_text(json.dumps({"repos": {"Alpha": {"enabled": True}}, "sarif_export": True}), encoding="utf-8")
+    response = admin.get("/api/v1/security/export/sarif", params={"repo": "Alpha"})
+    assert response.status_code == 200 and response.headers["content-type"].startswith("application/sarif+json")
+    assert response.json()["runs"][0]["results"][0]["ruleId"] == "CWE-611"
+    assert _client(monkeypatch, ["viewer"]).get("/api/v1/security/export/sarif").status_code == 403
+
+
+def test_coverage_route_joins_contracts_settings_and_scans(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _client(monkeypatch, ["viewer"]).get("/api/v1/security/coverage").status_code == 403
+    body = _client(monkeypatch, ["admin"]).get("/api/v1/security/coverage").json()
+    by_repo = {r["repo"]: r for r in body["coverage"]}
+    assert by_repo["Alpha"]["contract_valid"] and by_repo["Alpha"]["enabled"] and by_repo["Alpha"]["due"]
+    assert by_repo["Gamma"]["contract_error"] == "GitHub HTTP 502"
+    assert body["summary"]["due"] == 1
+    assert body["schedule"] == {"enabled": False, "check_minutes": 30, "retry_hours": 20}
