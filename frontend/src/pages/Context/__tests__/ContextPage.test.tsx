@@ -5,8 +5,8 @@ import { ContextPage, type ContextPackInfo, type ContextLesson, type ContextRunR
 
 const samplePack: ContextPackInfo = {
   version: "1.1.0",
-  digest: "bcc29c1fe01f2345",
-  pin: "fleet-standards@1.1.0#bcc29c1fe01f",
+  digest: "mock-digest-bcc29c1",
+  pin: "fleet-standards@1.1.0#mock-digest-bcc29c1",
   source_path: "staff/standards/FLEET.md",
   is_fallback: false,
 };
@@ -24,7 +24,7 @@ const sampleRuns: ContextRunRecord[] = [
     id: "run-201", role: "fleet-swe", repo: "Runner_Dashboard", status: "succeeded", created_at: "2026-10-22T21:00:00Z",
     standards_version: "1.1.0", standards_tokens: 720, lessons_tokens: 240, input_tokens: 4500, output_tokens: 800, cost_usd: 0.045,
     context_stamp: JSON.stringify({
-      pack_version: "1.1.0", content_digest: "bcc29c1fe01f2345", requested_pack: "fleet-standards@1.1.0", resolved_pack: "fleet-standards@1.1.0#bcc29c1fe01f",
+      pack_version: "1.1.0", content_digest: "mock-digest-bcc29c1", requested_pack: "fleet-standards@1.1.0", resolved_pack: "fleet-standards@1.1.0#mock-digest-bcc29c1",
       fallback_status: "ok", token_estimates: { tier0_standards: 720, tier1_skills: 350, tier1_lessons: 240, total_injected: 1310 },
       lesson_ids: ["mem_02"], lessons_skipped: [{ id: "mem_01", reason: "conflict" }],
     }),
@@ -33,7 +33,7 @@ const sampleRuns: ContextRunRecord[] = [
     id: "run-202-bloat", role: "researcher", repo: "Repository_Management", status: "failed", created_at: "2026-10-22T20:30:00Z",
     standards_version: "1.0.0", standards_tokens: 1550, lessons_tokens: 700, input_tokens: 8200, output_tokens: 1200, cost_usd: 0.092,
     context_stamp: JSON.stringify({
-      pack_version: "1.0.0", content_digest: "aaa111bbb222", requested_pack: "fleet-standards@1.0.0", resolved_pack: "fleet-standards@1.0.0#aaa111",
+      pack_version: "1.0.0", content_digest: "mock-digest-aaa111", requested_pack: "fleet-standards@1.0.0", resolved_pack: "fleet-standards@1.0.0#mock-digest-aaa111",
       fallback_status: "ok", token_estimates: { tier0_standards: 1550, tier1_skills: 200, tier1_lessons: 700, total_injected: 2450 },
       lesson_ids: [], lessons_skipped: [{ id: "mem_20", reason: "budget" }],
     }),
@@ -43,9 +43,9 @@ const sampleRuns: ContextRunRecord[] = [
 describe("ContextPage", () => {
   it("renders current pack pin, digest, and normal/fallback indicators", () => {
     render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
-    expect(screen.getByText("fleet-standards@1.1.0#bcc29c1fe01f")).toBeInTheDocument();
+    expect(screen.getByText("fleet-standards@1.1.0#mock-digest-bcc29c1")).toBeInTheDocument();
     expect(screen.getAllByText("1.1.0").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("bcc29c1fe01f2345")).toBeInTheDocument();
+    expect(screen.getByText("mock-digest-bcc29c1")).toBeInTheDocument();
     expect(screen.getByText("staff/standards/FLEET.md")).toBeInTheDocument();
     expect(screen.getByText(/2,200 token hard cap/i)).toBeInTheDocument();
   });
