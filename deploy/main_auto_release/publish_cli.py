@@ -115,14 +115,62 @@ def _load_compare(path: Path, expected_base: str, expected_head: str | None = No
     head = payload.get("head_commit")
     merge_base = payload.get("merge_base_commit")
     status = payload.get("status")
-    if not isinstance(base, dict) or not isinstance(head, dict) or not isinstance(merge_base, dict):
+    if not isinstance(base, dict) or not isinstance(merge_base, dict):
         return None
     base_sha = normalize_commit_sha(str(base.get("sha", "")))
-    head_sha = normalize_commit_sha(str(head.get("sha", "")))
     merge_base_sha = normalize_commit_sha(str(merge_base.get("sha", "")))
     expected_base_sha = normalize_commit_sha(expected_base)
     expected_head_sha = normalize_commit_sha(expected_head) if expected_head is not None else None
     if not isinstance(status, str):
+        return None
+    explicit_head_sha: str | None = None
+    if isinstance(head, dict):
+        explicit_head_sha = normalize_commit_sha(str(head.get("sha", "")))
+        if explicit_head_sha is None:
+            return None
+    elif head is not None:
+        return None
+    commits = payload.get("commits")
+    total_commits = payload.get("total_commits")
+    if (
+        not isinstance(commits, list)
+        or not isinstance(total_commits, int)
+        or isinstance(total_commits, bool)
+        or total_commits < 0
+        or len(commits) > 250
+    ):
+        return None
+
+    if status == "identical":
+        if total_commits != 0 or commits or base_sha != merge_base_sha:
+            return None
+        inferred_head_sha = base_sha
+    elif status == "behind":
+        if total_commits != 0 or commits:
+            return None
+        inferred_head_sha = merge_base_sha
+        if expected_head_sha is not None and inferred_head_sha != expected_head_sha:
+            return None
+    elif status in {"ahead", "diverged"}:
+        commit_shas = [
+            normalize_commit_sha(str(item.get("sha", ""))) if isinstance(item, dict) else None for item in commits
+        ]
+        if (
+            total_commits == 0
+            or len(commit_shas) != min(total_commits, 250)
+            or not commit_shas
+            or any(sha is None for sha in commit_shas)
+        ):
+            return None
+        # The request does not paginate compare responses. GitHub documents
+        # that its last returned commit remains the comparison's latest even
+        # when the response is capped at 250 commits.
+        inferred_head_sha = commit_shas[-1]
+    else:
+        return None
+
+    head_sha = explicit_head_sha or inferred_head_sha
+    if head_sha != inferred_head_sha:
         return None
     if (
         base_sha is None

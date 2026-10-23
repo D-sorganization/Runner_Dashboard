@@ -15,6 +15,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy"))
+from main_auto_release.publish_cli import _load_compare  # noqa: E402
 from main_auto_release.publish_cli import main as publish_cli_main  # noqa: E402
 
 SHA = "a474ee662a55f9437677116a4d269f74946a8d10"  # pragma: allowlist secret
@@ -222,11 +223,14 @@ def _run_publisher(
 
 
 def _compare_payload(*, base: str, head: str, merge_base: str, status: str = "ahead") -> dict[str, object]:
+    commits = [{"sha": head}] if status in {"ahead", "diverged"} else []
     return {
         "status": status,
         "base_commit": {"sha": base},
         "head_commit": {"sha": head},
         "merge_base_commit": {"sha": merge_base},
+        "total_commits": len(commits),
+        "commits": commits,
     }
 
 
@@ -275,6 +279,199 @@ def test_verify_main_ancestor_uses_authoritative_github_compare_result(tmp_path:
     )
 
     assert publish_cli_main(["verify-main-ancestor", "--sha", SHA, "--compare-json", str(compare_path)]) == 0
+
+
+def test_verify_main_ancestor_accepts_identical_compare_without_head_commit(tmp_path: Path) -> None:
+    compare_path = tmp_path / "identical-compare.json"
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": "identical",
+                "base_commit": {"sha": SHA},
+                "head_commit": None,
+                "merge_base_commit": {"sha": SHA},
+                "total_commits": 0,
+                "commits": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert publish_cli_main(["verify-main-ancestor", "--sha", SHA, "--compare-json", str(compare_path)]) == 0
+    assert _load_compare(compare_path, SHA, SHA) == ("identical", SHA, SHA, SHA)
+
+
+def test_verify_main_ancestor_binds_documented_compare_head_to_last_commit(tmp_path: Path) -> None:
+    head_sha = "b" * 40
+    compare_path = tmp_path / "ahead-compare.json"
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": "ahead",
+                "base_commit": {"sha": SHA},
+                "merge_base_commit": {"sha": SHA},
+                "total_commits": 2,
+                "commits": [{"sha": "c" * 40}, {"sha": head_sha}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert publish_cli_main(["verify-main-ancestor", "--sha", SHA, "--compare-json", str(compare_path)]) == 0
+
+
+@pytest.mark.parametrize(
+    ("base_sha", "merge_base_sha", "status"),
+    [
+        ("b" * 40, SHA, "identical"),
+        (SHA, "b" * 40, "identical"),
+        (SHA, SHA, "ahead"),
+        (SHA, SHA, "diverged"),
+    ],
+)
+def test_identical_compare_without_head_commit_requires_consistent_proof(
+    tmp_path: Path, base_sha: str, merge_base_sha: str, status: str
+) -> None:
+    compare_path = tmp_path / "contradictory-identical-compare.json"
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": status,
+                "base_commit": {"sha": base_sha},
+                "head_commit": None,
+                "merge_base_commit": {"sha": merge_base_sha},
+                "total_commits": 0,
+                "commits": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert publish_cli_main(["verify-main-ancestor", "--sha", SHA, "--compare-json", str(compare_path)]) == 3
+
+
+def test_release_order_accepts_behind_compare_without_head_when_merge_base_binds_release(tmp_path: Path) -> None:
+    released_sha = "d" * 40
+    compare_path = tmp_path / "behind-compare-without-head.json"
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": "behind",
+                "base_commit": {"sha": SHA},
+                "head_commit": None,
+                "merge_base_commit": {"sha": released_sha},
+                "total_commits": 0,
+                "commits": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        publish_cli_main(
+            ["verify-release-order", "--sha", SHA, "--released-sha", released_sha, "--compare-json", str(compare_path)]
+        )
+        == 0
+    )
+
+
+def test_release_order_rejects_missing_head_when_merge_base_does_not_bind_release(tmp_path: Path) -> None:
+    released_sha = "d" * 40
+    compare_path = tmp_path / "unbound-behind-compare.json"
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": "behind",
+                "base_commit": {"sha": SHA},
+                "head_commit": None,
+                "merge_base_commit": {"sha": "c" * 40},
+                "total_commits": 0,
+                "commits": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        publish_cli_main(
+            ["verify-release-order", "--sha", SHA, "--released-sha", released_sha, "--compare-json", str(compare_path)]
+        )
+        == 3
+    )
+
+
+def test_release_order_rejects_explicit_head_that_disagrees_with_requested_release(tmp_path: Path) -> None:
+    released_sha = "d" * 40
+    compare_path = tmp_path / "mismatched-release-head.json"
+    compare_path.write_text(
+        json.dumps(_compare_payload(base=SHA, head="c" * 40, merge_base=released_sha, status="behind")),
+        encoding="utf-8",
+    )
+
+    assert (
+        publish_cli_main(
+            ["verify-release-order", "--sha", SHA, "--released-sha", released_sha, "--compare-json", str(compare_path)]
+        )
+        == 3
+    )
+
+
+def test_compare_rejects_commit_list_longer_than_reported_total(tmp_path: Path) -> None:
+    compare_path = tmp_path / "inconsistent-commit-count.json"
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": "ahead",
+                "base_commit": {"sha": SHA},
+                "merge_base_commit": {"sha": SHA},
+                "total_commits": 1,
+                "commits": [{"sha": "b" * 40}, {"sha": "c" * 40}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert publish_cli_main(["verify-main-ancestor", "--sha", SHA, "--compare-json", str(compare_path)]) == 3
+
+
+@pytest.mark.parametrize(("total_commits", "returned_count"), [(2, 1), (260, 1)])
+def test_compare_rejects_incomplete_unpaged_commit_window(
+    tmp_path: Path, total_commits: int, returned_count: int
+) -> None:
+    compare_path = tmp_path / "incomplete-compare.json"
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": "ahead",
+                "base_commit": {"sha": SHA},
+                "merge_base_commit": {"sha": SHA},
+                "total_commits": total_commits,
+                "commits": [{"sha": f"{index + 1:040x}"} for index in range(returned_count)],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _load_compare(compare_path, SHA) is None
+
+
+def test_compare_accepts_complete_250_commit_window_when_total_is_larger(tmp_path: Path) -> None:
+    compare_path = tmp_path / "capped-compare.json"
+    commits = [{"sha": f"{index + 1:040x}"} for index in range(250)]
+    compare_path.write_text(
+        json.dumps(
+            {
+                "status": "ahead",
+                "base_commit": {"sha": SHA},
+                "merge_base_commit": {"sha": SHA},
+                "total_commits": 260,
+                "commits": commits,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _load_compare(compare_path, SHA) == ("ahead", SHA, commits[-1]["sha"], SHA)
 
 
 def test_verify_main_ancestor_rejects_diverged_current_main(tmp_path: Path) -> None:
