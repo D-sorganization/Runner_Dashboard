@@ -593,7 +593,10 @@ Roles may **tighten** the order with `retry.failover_chain` (each step must stay
 Before launch, the runner and scheduler skip providers that are **cooling down** on this
 node after `provider_capacity`, `quota_exhausted`, or `rate_limited` failures.
 `GET /api/staff/summary` exposes `providers_cooldown` per machine so Barb can see
-when Codex or Claude will be healthy again. With `machine: auto`, placement prefers an
+when Codex or Claude will be healthy again. Cooldowns are durable: they persist to `staff_provider_cooldowns.json` in the dashboard
+config dir (`STAFF_PROVIDER_COOLDOWNS_FILE` overrides) with wall-clock UTC expiry, written
+atomically, so a hub restart does not forget a rate-limited provider. Expired entries are
+pruned on load and read; a missing or corrupt file loads as empty (logged). With `machine: auto`, placement prefers an
 online peer that still has a healthy chain provider.
 
 When the whole chain is exhausted, the run moves to attention state
