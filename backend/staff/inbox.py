@@ -325,6 +325,13 @@ async def _collect_board_proposals() -> list[InboxItem]:
     return items
 
 
+def _collect_agent_concerns(c_store: ConversationStore) -> list[InboxItem]:
+    """Collect open agent concerns from the conversation store (#2237)."""
+    from staff.concerns import collect_agent_concerns
+
+    return collect_agent_concerns(c_store)
+
+
 def _parse_created_at_epoch(iso_str: str) -> float:
     """Parse ISO timestamp to seconds since epoch for sorting (newest first)."""
     try:
@@ -431,9 +438,7 @@ async def collect_inbox(
     # 7. Agent concerns (#2237)
     if c_store is not None:
         try:
-            from staff.concerns import collect_agent_concerns
-
-            concern_items = collect_agent_concerns(c_store)
+            concern_items = _collect_agent_concerns(c_store)
             all_items.extend(concern_items)
             counts["agent_concerns"] = len(concern_items)
             sources["agent_concerns"] = SourceStatus(status="ok", count=len(concern_items))
