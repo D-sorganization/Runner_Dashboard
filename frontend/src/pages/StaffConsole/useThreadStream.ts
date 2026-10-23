@@ -193,9 +193,16 @@ export function useThreadStream({
           }
 
           try {
-            const incoming = messageFromFrame(JSON.parse(ev.data));
+            const frame: unknown = JSON.parse(ev.data);
+            const isLivePublish =
+              frame !== null &&
+              typeof frame === "object" &&
+              "message" in frame &&
+              Boolean((frame as { message?: unknown }).message) &&
+              typeof (frame as { message?: unknown }).message === "object";
+            const incoming = messageFromFrame(frame);
             if (!incoming) return;
-            dispatchDashboardNavigation(incoming);
+            if (isLivePublish) dispatchDashboardNavigation(incoming);
             if (incoming.seq && incoming.seq > lastEventIdRef.current) {
               lastEventIdRef.current = incoming.seq;
             }
