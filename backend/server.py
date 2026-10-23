@@ -814,6 +814,10 @@ from routers import proposals as _proposals_router  # noqa: E402
 app.include_router(_proposals_router.router)
 app.include_router(_intake_proposals_router.router)
 
+from routers import security_scan as _security_scan_router  # noqa: E402
+
+app.include_router(_security_scan_router.router)  # fleet security scanner (epic #2566)
+
 # Issue #924 — structural auth perimeter. Registered BEFORE the session selector so
 # that, in Starlette's outer→inner stack, session handling wraps this gate and
 # request.session is populated by the time the perimeter resolves a principal.
