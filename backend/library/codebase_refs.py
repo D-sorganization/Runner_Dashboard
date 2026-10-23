@@ -91,7 +91,7 @@ def _context(knowledge_dir: Path | None = None, *, allow_ambient: bool = True) -
         knowledge_dir = get_knowledge_dir()
     path = Path(knowledge_dir) / "cartographer.sqlite"
     pack = KnowledgePack.open(path)
-    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+    with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as conn:
         manifest = manifest_from_dict(
             json.loads(conn.execute("SELECT value FROM meta WHERE key='manifest'").fetchone()[0])
         )

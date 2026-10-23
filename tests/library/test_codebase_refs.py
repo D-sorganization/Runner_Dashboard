@@ -182,3 +182,21 @@ def test_corrupt_pack_is_unavailable_without_crashing(evidence: tuple) -> None:
     (get_knowledge_dir() / "cartographer.sqlite").write_bytes(b"not a SQLite database")
     result = verify_content(db, cite)
     assert not result["verified"] and result["citations"][0]["status"] == "codebase_unavailable"
+
+
+def test_explicit_knowledge_directory_encodes_uri_special_characters(
+    evidence: tuple, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    db, cite, _, root = evidence
+    selected = tmp_path / "knowledge#?selected"
+    build_cartographer_pack({"Repo": root}, selected / "cartographer.sqlite")
+    monkeypatch.setenv("STAFF_KNOWLEDGE_DIR", str(tmp_path / "ambient-must-not-be-used"))
+
+    result = verify_content(
+        db,
+        f'"Rotational power" {cite}',
+        knowledge_dir=selected,
+        allow_ambient_knowledge=False,
+    )
+
+    assert result["verified"] is True
