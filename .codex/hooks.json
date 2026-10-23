@@ -1,16 +1,6 @@
 {
-  "description": "Fleet agent-check hooks (Codex CLI pin 0.139.0).",
+  "description": "Fleet quality hooks are installed in the protected global profile.",
   "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash -lc 'root=\"$(git rev-parse --show-toplevel)\"; exec python3 \"$root/scripts/agent-check-hook-bridge.py\" codex-stop'\"",
-            "timeout": 120
-          }
-        ]
-      }
-    ]
+    "Stop": []
   }
 }

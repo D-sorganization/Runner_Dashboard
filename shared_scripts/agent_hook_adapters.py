@@ -1,4 +1,4 @@
-"""Generate provider hook adapters that call ``scripts/agent-check``."""
+"""Generate project adapters while delegating quality hooks to protected globals."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from src.contracts import require
 BRIDGE_REL = "scripts/agent-check-hook-bridge.py"
 AGENT_BUS_BRIDGE_REL = "scripts/agent-bus-hook-bridge.py"
 CURSOR_HOOK_VERSION = 1
-CODEX_CLI_PIN = "0.139.0"
 ANTIGRAVITY_HOOK_GROUP = "fleet-agent-check"
 SUPPORTED_TARGETS = frozenset({"cursor", "claude", "codex", "antigravity", "gemini", "pre-push"})
 
@@ -52,6 +51,43 @@ def bridge_command_git_root(mode: str) -> str:
     return f'bash -lc \'root="$(git rev-parse --show-toplevel)"; exec python3 "$root/{BRIDGE_REL}" {mode}\'"'
 
 
+def retire_project_quality_hooks(existing: dict[str, Any]) -> dict[str, Any]:
+    """Remove only exact generated quality commands; preserve unrelated callbacks.
+
+    Provider project/global hooks merge. Quality enforcement must execute from
+    the administrator-owned global runtime rather than writable checkout code.
+    Agent-bus callbacks and Git pre-push validation remain separate.
+    """
+    modes = (
+        "cursor-stop",
+        "claude-stop",
+        "codex-stop",
+        "antigravity-post-tool",
+        "antigravity-stop",
+        "gemini-after-tool",
+        "gemini-after-agent",
+    )
+    retired = {command for mode in modes for command in (bridge_command(mode), bridge_command_git_root(mode))}
+    removed = object()
+
+    def clean(value: Any) -> Any:
+        if isinstance(value, list):
+            items = [clean(item) for item in value]
+            return [item for item in items if item is not removed]
+        if isinstance(value, dict):
+            if isinstance(value.get("command"), str) and value["command"] in retired:
+                return removed
+            result = {key: clean(item) for key, item in value.items()}
+            # Drop event wrappers emptied by removal, retaining unrelated fields
+            # on all non-wrapper settings objects.
+            if isinstance(value.get("hooks"), list) and value["hooks"] and result["hooks"] == []:
+                return removed
+            return result
+        return value
+
+    return cast(dict[str, Any], clean(existing))
+
+
 def _agent_bus_hook(mode: str, timeout_seconds: int) -> dict[str, Any]:
     return {
         "type": "command",
@@ -60,49 +96,23 @@ def _agent_bus_hook(mode: str, timeout_seconds: int) -> dict[str, Any]:
     }
 
 
-def generate_cursor_hooks(_root: Path, *, timeout_seconds: int) -> dict[str, Any]:
-    return {
-        "version": CURSOR_HOOK_VERSION,
-        "hooks": {
-            "sessionStart": [_agent_bus_hook("session-start", timeout_seconds)],
-            "stop": [{**_command_hook("cursor-stop", timeout_seconds), "failClosed": True}],
-        },
-    }
-
-
-def _command_hook(mode: str, timeout_seconds: int) -> dict[str, Any]:
-    return {
-        "type": "command",
-        "command": bridge_command(mode),
-        "timeout": timeout_seconds,
-    }
-
-
-def fleet_claude_stop_hook(timeout_seconds: int) -> list[dict[str, Any]]:
-    return [{"hooks": [_command_hook("claude-stop", timeout_seconds)]}]
+def generate_cursor_hooks(root: Path, *, timeout_seconds: int) -> dict[str, Any]:
+    doc = retire_project_quality_hooks(_read_json_object(root / ".cursor/hooks.json"))
+    doc.setdefault("version", CURSOR_HOOK_VERSION)
+    hooks = doc.setdefault("hooks", {})
+    hooks.setdefault("stop", [])
+    starts = hooks.setdefault("sessionStart", [])
+    bus = _agent_bus_hook("session-start", timeout_seconds)
+    if not any(isinstance(item, dict) and item.get("command") == bus["command"] for item in starts):
+        starts.append(bus)
+    return doc
 
 
 def merge_claude_settings(existing: dict[str, Any], *, timeout_seconds: int) -> dict[str, Any]:
     require(isinstance(existing, dict), "settings must be an object")
-    merged = dict(existing)
-    hooks = dict(merged.get("hooks") or {})
-    stop_entries = list(hooks.get("Stop") or [])
-    fleet_cmd = bridge_command("claude-stop")
-    if not _claude_has_command(stop_entries, fleet_cmd):
-        stop_entries.extend(fleet_claude_stop_hook(timeout_seconds))
-    hooks["Stop"] = stop_entries
-    merged["hooks"] = hooks
+    merged = retire_project_quality_hooks(existing)
+    merged.setdefault("hooks", {}).setdefault("Stop", [])
     return merged
-
-
-def _claude_has_command(stop_entries: list[Any], command: str) -> bool:
-    for entry in stop_entries:
-        if not isinstance(entry, dict):
-            continue
-        for hook in entry.get("hooks") or []:
-            if isinstance(hook, dict) and hook.get("command") == command:
-                return True
-    return False
 
 
 def validate_cursor_hooks(doc: Any) -> None:
@@ -112,62 +122,35 @@ def validate_cursor_hooks(doc: Any) -> None:
     require(isinstance(hooks, dict), "cursor hooks.hooks must be an object")
     stop = hooks.get("stop")
     require(isinstance(stop, list), "cursor hooks.stop must be a list")
-    require(bool(stop), "cursor hooks.stop required")
+
     for item in stop:
         require(isinstance(item, dict), "cursor stop entry must be an object")
         require(item.get("type") in {None, "command"}, "cursor stop must be command type")
         require(isinstance(item.get("command"), str) and item["command"], "command required")
 
 
-def _command_hook_git_root(mode: str, timeout_seconds: int) -> dict[str, Any]:
-    return {
-        "type": "command",
-        "command": bridge_command_git_root(mode),
-        "timeout": timeout_seconds,
-    }
+def generate_codex_hooks(root: Path, *, timeout_seconds: int) -> dict[str, Any]:
+    doc = retire_project_quality_hooks(_read_json_object(root / ".codex/hooks.json"))
+    if doc.get("description", "").startswith("Fleet agent-check hooks (Codex CLI pin "):
+        doc["description"] = "Fleet quality hooks are installed in the protected global profile."
+    doc.setdefault("hooks", {}).setdefault("Stop", [])
+    return doc
 
 
-def generate_codex_hooks(_root: Path, *, timeout_seconds: int) -> dict[str, Any]:
-    return {
-        "description": f"Fleet agent-check hooks (Codex CLI pin {CODEX_CLI_PIN}).",
-        "hooks": {"Stop": [{"hooks": [_command_hook_git_root("codex-stop", timeout_seconds)]}]},
-    }
-
-
-def generate_antigravity_hooks(_root: Path, *, timeout_seconds: int) -> dict[str, Any]:
-    return {
-        ANTIGRAVITY_HOOK_GROUP: {
-            "PostToolUse": [
-                {
-                    "matcher": "*",
-                    "hooks": [_command_hook_git_root("antigravity-post-tool", timeout_seconds)],
-                }
-            ],
-            "Stop": [_command_hook_git_root("antigravity-stop", timeout_seconds)],
-        }
-    }
+def generate_antigravity_hooks(root: Path, *, timeout_seconds: int) -> dict[str, Any]:
+    doc = retire_project_quality_hooks(_read_json_object(root / ".agents/hooks.json"))
+    group = doc.setdefault(ANTIGRAVITY_HOOK_GROUP, {})
+    group.setdefault("PostToolUse", [])
+    group.setdefault("Stop", [])
+    return doc
 
 
 def merge_gemini_settings(existing: dict[str, Any], *, timeout_seconds: int) -> dict[str, Any]:
     require(isinstance(existing, dict), "gemini settings must be an object")
-    merged = dict(existing)
-    hooks = dict(merged.get("hooks") or {})
-    hooks["AfterTool"] = [
-        {
-            "matcher": "*",
-            "hooks": [
-                _command_hook_git_root("gemini-after-tool", timeout_seconds),
-            ],
-        }
-    ]
-    hooks["AfterAgent"] = [
-        {
-            "hooks": [
-                _command_hook_git_root("gemini-after-agent", timeout_seconds),
-            ],
-        }
-    ]
-    merged["hooks"] = hooks
+    merged = retire_project_quality_hooks(existing)
+    hooks = merged.setdefault("hooks", {})
+    hooks.setdefault("AfterTool", [])
+    hooks.setdefault("AfterAgent", [])
     return merged
 
 
@@ -185,29 +168,15 @@ def validate_codex_hooks(doc: Any) -> None:
     require(isinstance(doc, dict), "codex hooks must be an object")
     hooks = doc.get("hooks")
     require(isinstance(hooks, dict), "codex hooks.hooks required")
-    stop = hooks.get("Stop")
-    require(isinstance(stop, list), "codex hooks.Stop must be a list")
-    require(bool(stop), "codex hooks.Stop required")
-    entry = stop[0]
-    require(isinstance(entry, dict), "codex Stop entry must be an object")
-    inner = entry.get("hooks")
-    require(isinstance(inner, list), "codex Stop.hooks must be a list")
-    require(bool(inner), "codex Stop.hooks required")
+    require(isinstance(hooks.get("Stop"), list), "codex hooks.Stop must be a list")
 
 
 def validate_antigravity_hooks(doc: Any) -> None:
     require(isinstance(doc, dict), "antigravity hooks must be an object")
     group = doc.get(ANTIGRAVITY_HOOK_GROUP)
     require(isinstance(group, dict), "antigravity hook group required")
-    require(isinstance(group.get("PostToolUse"), list), "PostToolUse required")
-    stop = group.get("Stop")
-    require(isinstance(stop, list) and bool(stop), "Stop required")
-    handler = stop[0]
-    require(isinstance(handler, dict), "Stop handler must be an object")
-    require(
-        isinstance(handler.get("command"), str) and handler["command"],
-        "Stop command required",
-    )
+    require(isinstance(group.get("PostToolUse"), list), "PostToolUse must be a list")
+    require(isinstance(group.get("Stop"), list), "Stop must be a list")
 
 
 def validate_gemini_settings(doc: Any) -> None:
@@ -215,9 +184,9 @@ def validate_gemini_settings(doc: Any) -> None:
     hooks = doc.get("hooks")
     require(isinstance(hooks, dict), "gemini hooks required")
     after_tool = hooks.get("AfterTool")
-    require(isinstance(after_tool, list) and bool(after_tool), "AfterTool required")
+    require(isinstance(after_tool, list), "AfterTool required")
     after_agent = hooks.get("AfterAgent")
-    require(isinstance(after_agent, list) and bool(after_agent), "AfterAgent required")
+    require(isinstance(after_agent, list), "AfterAgent required")
 
 
 def validate_claude_settings(doc: Any) -> None:
