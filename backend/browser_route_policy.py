@@ -65,6 +65,7 @@ _OWNER_GET_PATTERNS = tuple(
         r"/api/v1/staff/runs/" + _ID + r"\Z",
         r"/api/v1/staff/runs/" + _ID + r"/(?:stream|references)\Z",
         r"/api/v1/staff/work-items/" + _ID + r"\Z",
+        r"/api/v1/staff/groups/" + _ID + r"/cost-estimate\Z",
     )
 )
 _THREAD_POSTS = tuple(
