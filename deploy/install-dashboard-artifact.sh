@@ -119,7 +119,7 @@ fetch_artifact() {
 validate_artifact_layout() {
     local stage_dir="$1"
     for required in VERSION deployment.json FILES.txt backend frontend deploy local_apps.json refresh-token.sh \
-        requirements.lock.txt backend/wheels wsl-mirrored-port-helper.sh; do
+        requirements.lock.txt backend/wheels wsl-mirrored-port-helper.sh deploy/collect-crash-diagnostics.sh; do
         [[ -e "${stage_dir}/${required}" ]] || fail "Artifact is missing required path: ${required}"
     done
     python3 - "$stage_dir/deployment.json" <<'PY'
@@ -258,6 +258,8 @@ rsync -a --delete \
     --exclude='*.jsonl' \
     --exclude='/backend/data/' \
     "${stage_dir}/" "${DEPLOY_DIR}/"
+
+install -m 0755 "${stage_dir}/deploy/collect-crash-diagnostics.sh" "${DEPLOY_DIR}/collect-crash-diagnostics.sh"
 
 apply_deployment_metadata "${stage_dir}" "${ARTIFACT_SOURCE}"
 chmod +x "${DEPLOY_DIR}/refresh-token.sh"
