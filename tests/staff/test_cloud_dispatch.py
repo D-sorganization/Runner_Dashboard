@@ -20,10 +20,10 @@ from staff.cloud_dispatch import (
 def test_scrub_api_key_env_removes_subscription_bypass_keys() -> None:
     env = {
         "PATH": "/usr/bin",
-        "ANTHROPIC_API_KEY": "sk-secret",
-        "OPENAI_API_KEY": "sk-openai",
-        "GEMINI_API_KEY": "g",
-        "GOOGLE_API_KEY": "g2",
+        "ANTHROPIC_API_KEY": "sk-secret",  # pragma: allowlist secret
+        "OPENAI_API_KEY": "sk-openai",  # pragma: allowlist secret
+        "GEMINI_API_KEY": "g",  # pragma: allowlist secret
+        "GOOGLE_API_KEY": "g2",  # pragma: allowlist secret
         "HOME": "/home/x",
     }
     cleaned = scrub_api_key_env(env)
@@ -73,7 +73,7 @@ def test_unsupported_provider_raises() -> None:
 
 
 def test_parse_remote_session_url_claude() -> None:
-    line = 'Session ready: https://claude.ai/chat/abc-123  (use claude --teleport)'
+    line = "Session ready: https://claude.ai/chat/abc-123  (use claude --teleport)"
     assert parse_remote_session_url("claude", line) == "https://claude.ai/chat/abc-123"
 
 
@@ -101,4 +101,3 @@ def test_run_body_accepts_execution_mode_cloud() -> None:
 
     body = RunBody(prompt="x", provider="claude", execution_mode="cloud")
     assert body.execution_mode == "cloud"
-

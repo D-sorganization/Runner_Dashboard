@@ -116,8 +116,6 @@ def build_cloud_dispatch(
     pid = normalize_provider(provider)
     if pid not in _CLOUD_CLI | _CLOUD_WORKFLOW:
         raise ValueError(f"provider '{provider}' does not support cloud execution")
-    if not supports_cloud_execution(pid):
-        raise ValueError(f"provider '{provider}' does not support cloud execution on this host")
     text = _truncate(prompt)
     if pid == "claude":
         return CloudDispatch(argv=["claude", "--remote", text])

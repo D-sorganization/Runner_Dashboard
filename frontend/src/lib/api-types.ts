@@ -6590,6 +6590,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/cloud-capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cloud Capabilities V1
+         * @description Which staff providers support ``execution_mode: cloud`` on this node (#2627).
+         */
+        get: operations["cloud_capabilities_v1_api_v1_staff_cloud_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/context/agents-sync": {
         parameters: {
             query?: never;
@@ -10673,6 +10693,12 @@ export interface components {
              */
             dry_run: boolean;
             /**
+             * Execution Mode
+             * @default local
+             * @enum {string}
+             */
+            execution_mode: "local" | "cloud";
+            /**
              * Ignore Budget
              * @default false
              */
@@ -11701,6 +11727,11 @@ export interface components {
              * @default
              */
             error: string;
+            /**
+             * Execution Mode
+             * @default local
+             */
+            execution_mode: string;
             /** Exit Code */
             exit_code?: number | null;
             /**
@@ -11778,6 +11809,11 @@ export interface components {
              * @default
              */
             remediation: string;
+            /**
+             * Remote Session Url
+             * @default
+             */
+            remote_session_url: string;
             /**
              * Repo
              * @default
@@ -12374,6 +12410,11 @@ export interface components {
             dry_run: boolean;
             /** Effort */
             effort?: string | null;
+            /**
+             * Execution Mode
+             * @default local
+             */
+            execution_mode: string;
             /** Force */
             force?: boolean | null;
             /**
@@ -22436,6 +22477,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cloud_capabilities_v1_api_v1_staff_cloud_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
