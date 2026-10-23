@@ -234,13 +234,16 @@ test.describe("Ask Barb drawer keyboard access", () => {
       if (viewport.width === 390) {
         await expect(drawer).toHaveAttribute("aria-modal", "true");
         await close.focus();
-        const last = drawer.locator(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ).last();
+        const focusable = drawer
+          .locator('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+          .filter({ visible: true });
+        const first = focusable.first();
+        const last = focusable.last();
+        await first.focus();
         await page.keyboard.press("Shift+Tab");
         await expect(last).toBeFocused();
         await page.keyboard.press("Tab");
-        await expect(close).toBeFocused();
+        await expect(first).toBeFocused();
       }
 
       await page.keyboard.press("Escape");
