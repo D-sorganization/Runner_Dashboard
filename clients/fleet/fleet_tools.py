@@ -600,10 +600,11 @@ COMMANDS: tuple[Command, ...] = (
             },
             "op": {
                 "type": "string",
-                "enum": ["search", "get", "request"],
-                "description": "Operation: search, get, or request (request sends context query to librarian).",
+                "enum": ["search", "get", "request", "fetch"],
+                "description": "Operation: search, get, fetch a cited library passage, or request librarian context.",
             },
             "query": {"type": "string", "description": "Search term, question, or request details."},
+            "cite": {"type": "string", "description": "Canonical [ref:...] or lib://... reference for library fetch."},
             "repo": REPO,
             "topic": {"type": "string", "description": "Optional topic filter for library queries."},
             "k": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max results to return (capped at 5)."},

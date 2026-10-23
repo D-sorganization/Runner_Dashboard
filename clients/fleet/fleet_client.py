@@ -715,6 +715,7 @@ class FleetClient:
         k: int = 5,
         offset: int = 0,
         full: bool = False,
+        cite: str | None = None,
     ) -> dict[str, Any]:
         """Unified fleet context query tool (#2223).
 
@@ -723,7 +724,7 @@ class FleetClient:
         """
         valid_sources = ("context", "library", "knowledge", "memory")
         _check(source in valid_sources, f"source must be one of {valid_sources}")
-        valid_ops = ("search", "get", "request")
+        valid_ops = ("search", "get", "request", "fetch")
         _check(op in valid_ops, f"op must be one of {valid_ops}")
         effective_k = min(max(1, int(k)), 5)
         offset = max(0, int(offset))
@@ -800,25 +801,60 @@ class FleetClient:
             return res
 
         elif source == "library":
-            params: dict[str, Any] = {"k": effective_k + offset}
+            if op == "fetch":
+                if not cite or not cite.strip():
+                    raise FleetArgumentError("cite is required for library fetch")
+                data = self.request("GET", "/api/v1/library/fetch", params={"cite": _text(cite, "cite", 512)})
+                return {
+                    "status": "ok",
+                    "source": "library",
+                    "results": [
+                        {
+                            "id": data.get("cite_key", cite),
+                            "title": data.get("citation", "Library passage"),
+                            "text": str(data.get("text", "")).encode("utf-8")[:2000].decode("utf-8", errors="ignore"),
+                            "snippet": str(data.get("text", ""))[:400],
+                            "citation": data.get("citation"),
+                            "cite_key": data.get("cite_key"),
+                            "cite_uri": data.get("cite_uri"),
+                            "file_sha256": data.get("file_sha256"),
+                            "ref": data.get("cite_key", cite),
+                        }
+                    ],
+                }
+            params: dict[str, Any] = {"k": min(100, effective_k + offset)}
             if query:
                 params["q"] = query
+            else:
+                raise FleetArgumentError("query is required for library search")
             if repo:
                 params["repo"] = repo
             if topic:
                 params["topic"] = topic
             data = self.request("GET", "/api/v1/library/search", params=params)
-            items = data.get("items", []) if isinstance(data, dict) else []
+            items = data.get("passages", []) if isinstance(data, dict) else []
             paged_items = items[offset : offset + effective_k]
             results = []
             for it in paged_items:
-                raw_text = it.get("snippet") or it.get("text") or it.get("body") or it.get("summary") or ""
+                library_text = str(it.get("text") or "")
+                cite_key = it.get("cite_key")
+                title = " ".join(str(it.get(k)) for k in ("author", "title", "year") if it.get(k)) or "Library passage"
                 results.append(
                     {
-                        "id": it.get("id", ""),
-                        "title": it.get("title", "Library item"),
-                        "snippet": str(raw_text)[:400],
-                        "ref": it.get("url") or it.get("ref") or f"/api/v1/library/works/{it.get('id', '')}",
+                        "id": cite_key
+                        or f"{it.get('source_id', '')}:w{it.get('work_id', '')}:p{it.get('passage_id', '')}",
+                        "title": title,
+                        "snippet": library_text[:400],
+                        "ref": cite_key or it.get("ref"),
+                        "citation": it.get("citation"),
+                        "cite_key": cite_key,
+                        "cite_uri": it.get("cite_uri"),
+                        "file_sha256": it.get("file_sha256"),
+                        "source_id": it.get("source_id"),
+                        "work_id": it.get("work_id"),
+                        "passage_id": it.get("passage_id"),
+                        "page_start": it.get("page_start"),
+                        "page_end": it.get("page_end"),
                     }
                 )
             return {
@@ -839,12 +875,12 @@ class FleetClient:
             paged_items = items[offset : offset + effective_k]
             results = []
             for it in paged_items:
-                raw_text = it.get("snippet") or it.get("text") or it.get("body") or ""
+                knowledge_text = it.get("snippet") or it.get("text") or it.get("body") or ""
                 results.append(
                     {
                         "id": it.get("id", ""),
                         "title": it.get("title", f"Knowledge: {pack_id}"),
-                        "snippet": str(raw_text)[:400],
+                        "snippet": str(knowledge_text)[:400],
                         "ref": it.get("ref") or f"/api/v1/staff/knowledge/{pack_id}",
                     }
                 )
@@ -862,8 +898,8 @@ class FleetClient:
             paged_items = items[offset : offset + effective_k]
             results = []
             for it in paged_items:
-                raw_text = it.get("body") if isinstance(it, dict) else ""
-                snippet = json.dumps(raw_text) if isinstance(raw_text, dict) else str(raw_text)
+                memory_body = it.get("body") if isinstance(it, dict) else ""
+                snippet = json.dumps(memory_body) if isinstance(memory_body, dict) else str(memory_body)
                 results.append(
                     {
                         "id": it.get("id", ""),

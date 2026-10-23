@@ -6,7 +6,7 @@ from typing import Any
 
 import fleet_tools
 import pytest
-from fleet_client import FleetAPIError, FleetClient
+from fleet_client import FleetAPIError, FleetArgumentError, FleetClient
 
 
 def test_fleet_query_mcp_tool_registration() -> None:
@@ -18,6 +18,8 @@ def test_fleet_query_mcp_tool_registration() -> None:
     assert set(props["source"]["enum"]) == {"context", "library", "knowledge", "memory"}
     assert "op" in props
     assert props["k"]["maximum"] == 5
+    assert "fetch" in props["op"]["enum"]
+    assert "cite" in props
     assert schema["required"] == ["source"]
     # Verify legacy individual tools are NOT registered as MCP tools
     assert "fleet_context" not in fleet_tools.BY_TOOL
@@ -45,6 +47,63 @@ def test_fleet_query_compact_snippets_and_result_caps(monkeypatch: pytest.Monkey
     for item in res["results"]:
         assert len(item["snippet"]) <= 400
         assert "ref" in item or "url" in item
+
+
+def test_library_search_uses_pool_passages_and_preserves_citations(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    passage = {
+        "passage_id": 7,
+        "work_id": 1,
+        "author": "Ada",
+        "title": "Example",
+        "year": 2024,
+        "text": "A bounded passage",
+        "citation": "Ada (2024), Example, p. 4",
+        "cite_key": "[ref:node:shared:w1:p7#sha256=12345678:p.4-4]",
+        "cite_uri": "lib://shared/w1/p7@12345678#p4-4",
+        "file_sha256": "12345678" + "0" * 56,
+        "ref": {"node": "node", "source_id": "shared", "work_id": 1, "passage_id": 7, "page_start": 4, "page_end": 4},
+    }
+    calls = []
+
+    def mock_request(method: str, path: str, **kwargs: Any) -> Any:
+        calls.append((method, path, kwargs))
+        return {"passages": [passage], "tokens_used": 3}
+
+    monkeypatch.setattr(client, "request", mock_request)
+    result = client.fleet_query(source="library", query="bounded")
+    item = result["results"][0]
+    assert calls[0][1] == "/api/v1/library/search"
+    assert item["cite_key"] == passage["cite_key"]
+    assert item["cite_uri"] == passage["cite_uri"]
+    assert item["citation"] == passage["citation"]
+
+
+def test_library_fetch_returns_bounded_passage_and_requires_citation(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    cite = "[ref:node:shared:w1:p7#sha256=12345678:p.4-4]"
+    text = "Passage text " * 500
+    calls = []
+
+    def mock_request(method: str, path: str, **kwargs: Any) -> Any:
+        calls.append((method, path, kwargs))
+        return {
+            "text": text,
+            "citation": "Ada (2024), Example, p. 4",
+            "cite_key": cite,
+            "cite_uri": "lib://shared/w1/p7@12345678#p4-4",
+            "file_sha256": "12345678" + "0" * 56,
+        }
+
+    monkeypatch.setattr(client, "request", mock_request)
+    result = client.fleet_query(source="library", op="fetch", cite=cite)
+    item = result["results"][0]
+    assert calls[0][1] == "/api/v1/library/fetch"
+    assert calls[0][2]["params"] == {"cite": cite}
+    assert len(item["text"].encode("utf-8")) <= 2000 and text.startswith(item["text"])
+    assert item["cite_key"] == cite
+    with pytest.raises(FleetArgumentError):
+        client.fleet_query(source="library", op="fetch")
 
 
 def test_fleet_query_context_offline_hub_explicit_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:

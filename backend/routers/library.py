@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +29,9 @@ from library.pool import _hit_to_dict, federated_search, get_pooled_catalog
 from library.search import (
     DEFAULT_BUDGET,
     MAX_BUDGET,
+    AmbiguousPassageError,
     SearchOptions,
+    fetch_passage,
     get_work,
     library_stats,
     search_passages,
@@ -225,6 +229,150 @@ def library_work(
         return get_work(_db(), work_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+_CITE_KEY = re.compile(
+    r"^\[ref:(?P<node>[^:\]]+):(?P<source>[a-z0-9][a-z0-9-]{0,62}):w(?P<work>[1-9][0-9]*):"
+    r"p(?P<passage>[1-9][0-9]*)#sha256=(?P<sha>[0-9a-fA-F]{8}):p\.(?P<start>[1-9][0-9]*)-(?P<end>[1-9][0-9]*)\]$"
+)
+_CITE_URI = re.compile(
+    r"^lib://(?P<source>[a-z0-9][a-z0-9-]{0,62})/w(?P<work>[1-9][0-9]*)/"
+    r"p(?P<passage>[1-9][0-9]*)@(?P<sha>[0-9a-fA-F]{8})#p(?P<start>[1-9][0-9]*)-(?P<end>[1-9][0-9]*)$"
+)
+
+
+def _parse_cite(cite: str) -> dict[str, Any]:
+    match = _CITE_KEY.fullmatch(cite) or _CITE_URI.fullmatch(cite)
+    if match is None:
+        raise HTTPException(status_code=422, detail="cite must be a canonical library reference")
+    values = match.groupdict()
+    return {
+        "node": values.get("node"),
+        "source_id": values["source"],
+        "work_id": int(values["work"]),
+        "passage_id": int(values["passage"]),
+        "sha_prefix": values["sha"].lower(),
+        "page_start": int(values["start"]),
+        "page_end": int(values["end"]),
+    }
+
+
+def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
+    from dashboard_config import HOSTNAME
+
+    try:
+        hit = fetch_passage(_db(), **{k: v for k, v in cite.items() if k != "node"}, shared_only=shared_only)
+    except AmbiguousPassageError as exc:
+        raise HTTPException(status_code=409, detail="citation digest is ambiguous") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="citation not found") from exc
+    hit = replace(hit, node=HOSTNAME or "local")
+    return {
+        "citation": hit.citation,
+        "cite_key": hit.cite_key,
+        "cite_uri": hit.cite_uri,
+        "file_sha256": hit.file_sha256,
+        "work_sha256": hit.work_sha256,
+        "source_id": hit.source_id,
+        "node": hit.node,
+        "work_id": hit.work_id,
+        "passage_id": hit.passage_id,
+        "page_start": hit.page_start,
+        "page_end": hit.page_end,
+        "text": hit.text,
+        "token_estimate": hit.token_estimate,
+    }
+
+
+@router.get("/fetch")
+async def library_fetch(
+    cite: str = Query(..., min_length=1, max_length=512),
+    scope: str = Query("federated", pattern="^(local|federated)$"),
+    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+) -> dict[str, Any]:
+    """Fetch one bounded, digest-verified passage through trusted fleet nodes."""
+    import httpx
+    from dashboard_config import FLEET_NODES, HOSTNAME
+    from library.pool import validate_node_url
+
+    ref = _parse_cite(cite)
+    local_name = HOSTNAME or "local"
+    local_missing: HTTPException | None = None
+    if scope == "local" or ref["node"] in (None, local_name, "local"):
+        try:
+            return _fetch_local(ref, shared_only=_principal.id == "fleet-peer")
+        except HTTPException as exc:
+            if scope == "local" or ref["node"] is not None:
+                raise
+            local_missing = exc
+    targets = [(ref["node"], FLEET_NODES.get(ref["node"]))] if ref["node"] else sorted(FLEET_NODES.items())
+    targets = [(name, url) for name, url in targets if url and name != local_name]
+    token = os.environ.get("HUB_FLEET_TOKEN", "")
+    hits: list[dict[str, Any]] = []
+    if token and targets:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0)) as client:
+            for node, url in targets:
+                if not url:
+                    continue
+                try:
+                    target = validate_node_url(url, FLEET_NODES)
+                    response = await client.get(
+                        f"{target}/api/v1/library/fetch",
+                        params={"cite": cite, "scope": "local"},
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    if response.status_code == 200:
+                        payload = response.json()
+                        if not isinstance(payload, dict):
+                            continue
+                        try:
+                            returned = _parse_cite(str(payload.get("cite_key", "")))
+                        except HTTPException:
+                            continue
+                        sha = str(payload.get("file_sha256", "")).lower()
+                        work_sha = str(payload.get("work_sha256", "")).lower()
+                        if (
+                            payload.get("source_id") != ref["source_id"]
+                            or int(payload.get("work_id", 0)) != ref["work_id"]
+                            or int(payload.get("passage_id", 0)) != ref["passage_id"]
+                            or int(payload.get("page_start", 0)) != ref["page_start"]
+                            or int(payload.get("page_end", 0)) != ref["page_end"]
+                            or not re.fullmatch(r"[0-9a-f]{64}", sha)
+                            or not re.fullmatch(r"[0-9a-f]{64}", work_sha)
+                            or not sha.startswith(ref["sha_prefix"])
+                            or returned["source_id"] != ref["source_id"]
+                            or returned["work_id"] != ref["work_id"]
+                            or returned["passage_id"] != ref["passage_id"]
+                            or returned["page_start"] != ref["page_start"]
+                            or returned["page_end"] != ref["page_end"]
+                            or returned["sha_prefix"] != ref["sha_prefix"]
+                        ):
+                            continue
+                        payload["text"] = (
+                            str(payload.get("text", "")).encode("utf-8")[:2000].decode("utf-8", errors="ignore")
+                        )
+                        payload["node"] = node
+                        hits.append(payload)
+                except (httpx.HTTPError, ValueError):
+                    continue
+    if not hits:
+        if local_missing is not None:
+            raise local_missing
+        raise HTTPException(status_code=404, detail="citation not found on registered nodes")
+    identities = {
+        (
+            str(hit.get("file_sha256", "")).lower(),
+            int(hit.get("page_start", 0)),
+            int(hit.get("page_end", 0)),
+            str(hit.get("text", "")),
+        )
+        for hit in hits
+    }
+    if len(identities) != 1:
+        raise HTTPException(status_code=409, detail="citation is ambiguous across registered nodes")
+    return hits[0]
 
 
 @router.get("/search")
