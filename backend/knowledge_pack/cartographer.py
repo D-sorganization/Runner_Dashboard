@@ -157,6 +157,11 @@ def _format_reference(passage: Passage, root: Path) -> str | None:
     )
 
 
+def format_codebase_reference(passage: Passage, root: Path) -> str | None:
+    """Return a canonical reference only for an excerpt proven against committed lines."""
+    return _format_reference(passage, root)
+
+
 def _is_map(passage: Passage) -> bool:
     return passage.source == "docs/codemap.md" or passage.source.startswith("docs/architecture/")
 

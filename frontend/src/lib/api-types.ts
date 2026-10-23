@@ -6242,7 +6242,7 @@ export interface paths {
         };
         /**
          * Search Knowledge V1
-         * @description Search knowledge pack by BM25 query (Issue #1479).
+         * @description Search knowledge packs. Cartographer returns committed-line citations and <=400 UTF-8 byte snippets.
          */
         get: operations["search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get"];
         put?: never;
@@ -10112,6 +10112,8 @@ export interface components {
             passages?: components["schemas"]["StaffKnowledgePassage"][];
             /** Query */
             query: string;
+            /** Stale */
+            stale?: boolean | null;
         } & {
             [key: string]: unknown;
         };
