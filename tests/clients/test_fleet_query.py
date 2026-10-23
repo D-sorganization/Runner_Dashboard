@@ -6,7 +6,7 @@ from typing import Any
 
 import fleet_tools
 import pytest
-from fleet_client import FleetAPIError, FleetClient
+from fleet_client import FleetAPIError, FleetArgumentError, FleetClient
 
 
 def test_fleet_query_mcp_tool_registration() -> None:
@@ -16,6 +16,9 @@ def test_fleet_query_mcp_tool_registration() -> None:
     schema = cmd.input_schema()
     props = schema["properties"]
     assert set(props["source"]["enum"]) == {"context", "library", "knowledge", "memory"}
+    assert "fetch" in props["op"]["enum"]
+    assert "cite" in props
+    assert "run_id" in props
     assert "op" in props
     assert props["k"]["maximum"] == 5
     assert schema["required"] == ["source"]
@@ -35,7 +38,7 @@ def test_fleet_query_compact_snippets_and_result_caps(monkeypatch: pytest.Monkey
     ]
 
     def mock_request(method: str, path: str, **kwargs: Any) -> Any:
-        return {"items": fake_items, "total": 12}
+        return {"passages": fake_items, "total": 12}
 
     monkeypatch.setattr(client, "request", mock_request)
 
@@ -147,3 +150,69 @@ def test_fleetctl_granular_subcommands_exist() -> None:
     assert "query-library" in fleet_tools.BY_CLI
     assert "query-knowledge" in fleet_tools.BY_CLI
     assert "query-memory" in fleet_tools.BY_CLI
+
+
+def test_library_search_maps_passages_and_propagates_run_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    passage = {
+        "passage_id": 7,
+        "work_id": 1,
+        "text": "界" * 4000,
+        "citation": "Ada (2024), Example, p. 4",
+        "cite_key": "[ref:node:shared:w1:p7#sha256=12345678:p.4-4]",
+        "cite_uri": "lib://shared/w1/p7@12345678#p4-4",
+        "file_sha256": "12345678" + "0" * 56,
+        "work_sha256": "abcdef12" + "0" * 56,
+        "source_id": "shared",
+        "page_start": 4,
+        "page_end": 4,
+    }
+    calls = []
+
+    def mock_request(method: str, path: str, **kwargs: Any) -> Any:
+        calls.append((method, path, kwargs))
+        return {"passages": [passage], "tokens_used": 3}
+
+    monkeypatch.setattr(client, "request", mock_request)
+    item = client.fleet_query(source="library", query="bounded", run_id="run_123")["results"][0]
+    assert calls[0][1] == "/api/v1/library/search"
+    assert calls[0][2]["headers"] == {"X-Staff-Run-ID": "run_123"}
+    assert item["citation"] == passage["citation"] and item["cite_key"] == passage["cite_key"]
+    assert item["cite_uri"] == passage["cite_uri"] and item["file_sha256"] == passage["file_sha256"]
+    assert item["work_sha256"] == passage["work_sha256"] and item["source_id"] == "shared"
+    assert item["ref"] == passage["cite_key"] and len(item["snippet"].encode("utf-8")) <= 400
+    assert item["snippet"].encode("utf-8").decode("utf-8") == item["snippet"]
+
+
+def test_library_fetch_maps_citation_and_caps_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    cite = "[ref:node:shared:w1:p7#sha256=12345678:p.4-4]"
+    passage = {
+        "citation": "Ada (2024), Example, p. 4",
+        "cite_key": cite,
+        "cite_uri": "lib://shared/w1/p7@12345678#p4-4",
+        "file_sha256": "12345678" + "0" * 56,
+        "work_sha256": "abcdef12" + "0" * 56,
+        "text": "界" * 4000,
+    }
+    calls = []
+
+    def mock_request(method: str, path: str, **kwargs: Any) -> Any:
+        calls.append((method, path, kwargs))
+        return passage
+
+    monkeypatch.setattr(client, "request", mock_request)
+    item = client.fleet_query(source="library", op="fetch", cite=cite)["results"][0]
+    assert calls[0][1] == "/api/v1/library/fetch" and calls[0][2]["params"] == {"cite": cite}
+    assert item["citation"] == passage["citation"] and item["cite_key"] == cite
+    assert item["cite_uri"] == passage["cite_uri"] and item["file_sha256"] == passage["file_sha256"]
+    assert len(item["snippet"].encode("utf-8")) <= 400
+
+
+def test_library_fetch_requires_cite_and_search_run_id_is_validated(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    monkeypatch.setattr(client, "request", lambda *args, **kwargs: pytest.fail("unexpected request"))
+    with pytest.raises(FleetArgumentError, match="cite is required"):
+        client.fleet_query(source="library", op="fetch")
+    with pytest.raises(FleetArgumentError):
+        client.fleet_query(source="library", query="bounded", run_id="not a run id")

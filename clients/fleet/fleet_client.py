@@ -72,6 +72,13 @@ __all__ = [
 ]
 
 _CONTEXT_QUERY_CACHE: dict[tuple[str, str, str, str], tuple[float, dict[str, Any]]] = {}
+_LIBRARY_SNIPPET_MAX_BYTES = 400
+
+
+def _library_snippet(value: Any) -> str:
+    """Cap library snippet bodies by UTF-8 bytes; citations are separate."""
+    return str(value or "").encode("utf-8")[:_LIBRARY_SNIPPET_MAX_BYTES].decode("utf-8", errors="ignore")
+
 
 DEFAULT_URL = "http://127.0.0.1:8321"
 DEFAULT_TIMEOUT = 30.0
@@ -715,16 +722,23 @@ class FleetClient:
         k: int = 5,
         offset: int = 0,
         full: bool = False,
+        cite: str | None = None,
+        run_id: str | None = None,
     ) -> dict[str, Any]:
         """Unified fleet context query tool (#2223).
 
         Exposes on-request context across sources ('context', 'library', 'knowledge', 'memory').
-        Ceilings enforced: top-k <= 5, snippet length <= 400 chars, citations included.
+        Ceilings enforced: top-k <= 5, library snippets <= 400 UTF-8 bytes, citations included.
         """
         valid_sources = ("context", "library", "knowledge", "memory")
         _check(source in valid_sources, f"source must be one of {valid_sources}")
-        valid_ops = ("search", "get", "request")
+        valid_ops = ("search", "get", "request", "fetch")
         _check(op in valid_ops, f"op must be one of {valid_ops}")
+        _check(op != "fetch" or source == "library", "fetch is only supported for library")
+        _check(cite is None or (source == "library" and op == "fetch"), "cite is only supported for library fetch")
+        _check(
+            run_id is None or (source == "library" and op == "search"), "run_id is only supported for library search"
+        )
         effective_k = min(max(1, int(k)), 5)
         offset = max(0, int(offset))
 
@@ -800,25 +814,69 @@ class FleetClient:
             return res
 
         elif source == "library":
-            params: dict[str, Any] = {"k": effective_k + offset}
-            if query:
-                params["q"] = query
+            if op == "fetch":
+                if cite is None:
+                    raise FleetArgumentError("cite is required for library fetch")
+                citation = _text(cite, "cite", 512)
+                data = self.request("GET", "/api/v1/library/fetch", params={"cite": citation})
+                if not isinstance(data, dict):
+                    data = {}
+                result = {
+                    "id": data.get("cite_key", citation),
+                    "title": data.get("citation", "Library passage"),
+                    "snippet": _library_snippet(data.get("text")),
+                    "ref": data.get("cite_key", citation),
+                    "citation": data.get("citation"),
+                    "cite_key": data.get("cite_key", citation),
+                    "cite_uri": data.get("cite_uri"),
+                    "file_sha256": data.get("file_sha256"),
+                    "work_sha256": data.get("work_sha256"),
+                    "node": data.get("node"),
+                    "source_id": data.get("source_id"),
+                    "work_id": data.get("work_id"),
+                    "passage_id": data.get("passage_id"),
+                    "page_start": data.get("page_start"),
+                    "page_end": data.get("page_end"),
+                }
+                return {"status": "ok", "source": "library", "results": [result], "has_more": False}
+
+            if not query or not query.strip():
+                raise FleetArgumentError("query is required for library search")
+            params: dict[str, Any] = {"k": min(100, effective_k + offset), "q": query}
             if repo:
                 params["repo"] = repo
             if topic:
                 params["topic"] = topic
-            data = self.request("GET", "/api/v1/library/search", params=params)
-            items = data.get("items", []) if isinstance(data, dict) else []
+            headers = {"X-Staff-Run-ID": _match(PATTERNS.ident, run_id, "run_id")} if run_id is not None else None
+            data = self.request("GET", "/api/v1/library/search", params=params, headers=headers)
+            items = data.get("passages", []) if isinstance(data, dict) else []
+            if not isinstance(items, list):
+                items = []
             paged_items = items[offset : offset + effective_k]
             results = []
             for it in paged_items:
-                raw_text = it.get("snippet") or it.get("text") or it.get("body") or it.get("summary") or ""
+                if not isinstance(it, dict):
+                    continue
+                cite_key = it.get("cite_key")
+                title = " ".join(str(it.get(k)) for k in ("author", "title", "year") if it.get(k))
                 results.append(
                     {
-                        "id": it.get("id", ""),
-                        "title": it.get("title", "Library item"),
-                        "snippet": str(raw_text)[:400],
-                        "ref": it.get("url") or it.get("ref") or f"/api/v1/library/works/{it.get('id', '')}",
+                        "id": cite_key
+                        or f"{it.get('source_id', '')}:w{it.get('work_id', '')}:p{it.get('passage_id', '')}",
+                        "title": title or "Library passage",
+                        "snippet": _library_snippet(it.get("text")),
+                        "ref": cite_key or it.get("ref"),
+                        "citation": it.get("citation"),
+                        "cite_key": cite_key,
+                        "cite_uri": it.get("cite_uri"),
+                        "file_sha256": it.get("file_sha256"),
+                        "work_sha256": it.get("work_sha256"),
+                        "node": it.get("node"),
+                        "source_id": it.get("source_id"),
+                        "work_id": it.get("work_id"),
+                        "passage_id": it.get("passage_id"),
+                        "page_start": it.get("page_start"),
+                        "page_end": it.get("page_end"),
                     }
                 )
             return {
