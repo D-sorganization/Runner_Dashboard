@@ -16,7 +16,7 @@ import fs from "fs";
 import path from "path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 // Thread resolution hits the backend (#1446); keep it hermetic.
 const threadApi = vi.hoisted(() => ({
@@ -25,6 +25,7 @@ const threadApi = vi.hoisted(() => ({
   fetchRoster: vi.fn(),
   fetchRuns: vi.fn(),
   getActionProposal: vi.fn(),
+  postThreadMessage: vi.fn(),
 }));
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
@@ -192,6 +193,62 @@ describe("StaffConsoleMobile (SC-D8)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Choose staff" }));
     expect(screen.getByTestId("staff-mobile-roster")).toBeInTheDocument();
+  });
+
+  it("opens Barb's conversation after a successful send from the chat-first home", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    threadApi.postThreadMessage.mockResolvedValue({ id: "sent-mobile-home" });
+    render(<StaffConsoleMobile initialView="home" roles={MOCK_ROLES} />);
+
+    await user.type(screen.getByRole("textbox", { name: /staff conversation input/i }), "Check the queue");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
+
+    await waitFor(() => expect(screen.getByTestId("staff-mobile-thread")).toBeInTheDocument());
+    expect(screen.queryByTestId("staff-mobile-home")).not.toBeInTheDocument();
+    expect(threadApi.postThreadMessage).toHaveBeenCalledWith(
+      MOCK_BARB_THREAD.id,
+      expect.objectContaining({ body: "Check the queue" }),
+      expect.any(String),
+    );
+    expect(window.history.pushState).toHaveBeenCalledWith(
+      null,
+      "",
+      expect.stringMatching(/thread=thread-barb-auto/),
+    );
+  });
+
+  it("does not reopen the thread when the user leaves home before a send completes", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    let resolvePost!: (message: { id: string }) => void;
+    threadApi.postThreadMessage.mockReturnValue(new Promise((resolve) => { resolvePost = resolve; }));
+    render(<StaffConsoleMobile initialView="home" roles={MOCK_ROLES} />);
+
+    await user.type(screen.getByRole("textbox", { name: /staff conversation input/i }), "Check the queue");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
+    await user.click(screen.getByRole("button", { name: "Choose staff" }));
+    expect(screen.getByTestId("staff-mobile-roster")).toBeInTheDocument();
+
+    await act(async () => { resolvePost({ id: "sent-after-navigation" }); });
+
+    expect(screen.getByTestId("staff-mobile-roster")).toBeInTheDocument();
+    expect(screen.queryByTestId("staff-mobile-thread")).not.toBeInTheDocument();
+  });
+
+  it("keeps the mobile home and draft when the first send fails", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    threadApi.postThreadMessage.mockRejectedValue(new Error("network unavailable"));
+    render(<StaffConsoleMobile initialView="home" roles={MOCK_ROLES} />);
+
+    const input = screen.getByRole("textbox", { name: /staff conversation input/i });
+    await user.type(input, "Try again");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
+
+    await waitFor(() => expect(screen.getByTestId("staff-mobile-home")).toBeInTheDocument());
+    expect(screen.queryByTestId("staff-mobile-thread")).not.toBeInTheDocument();
+    expect(input).toHaveValue("Try again");
   });
 
   it("offers project starters in the mobile roster and only pre-fills the Barb composer", async () => {

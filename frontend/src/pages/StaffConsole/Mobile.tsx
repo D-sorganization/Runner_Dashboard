@@ -24,6 +24,7 @@ import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
+import { pushThreadUrl, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
 import "./mobile.css";
 
 export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
@@ -53,7 +54,6 @@ function parseUrlParams(): { threadId: string | null; roleName: string | null; t
   };
 }
 
-
 export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   roles: initialRoles,
   initialView = "roster",
@@ -76,8 +76,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     onApproveProposal,
     onDenyProposal,
   });
-  const { roles, selectedRole, activeThread, currentRole: currentRoleObj } = sc;
+  const { roles, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
   const [view, setView] = useState<MobileView>(initialView);
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   // SC-D9: move keyboard focus with the full-screen view change. The thread
   // heading takes focus (not the composer, which would pop the soft
@@ -95,6 +97,12 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [showContext, setShowContext] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState("");
+  const revealThreadAfterHomeSend = useMobileHomeSendNavigation({
+    activeThread,
+    isHomeView: () => viewRef.current === "home",
+    onOpenThread,
+    setThreadView: () => setView("thread"),
+  });
 
   // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
   // push link and is real; a ?role= link resolves to the role's backend thread.
@@ -148,10 +156,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
       setView("thread");
       onOpenThread?.(thread.id);
 
-      if (typeof window !== "undefined") {
-        const nextUrl = `?role=${encodeURIComponent(roleName)}&thread=${encodeURIComponent(thread.id)}`;
-        window.history.pushState(null, "", nextUrl);
-      }
+      pushThreadUrl(roleName, thread.id);
     },
     [sc, onOpenThread],
   );
@@ -165,7 +170,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     }
   }, []);
 
-  const handleSendMessage = sc.sendMessage;
+  const handleSendMessage = useCallback(async (payload: SendMessagePayload) => {
+    const result = await sendMessage(payload);
+    if (result.ok !== false && viewRef.current === "home" && !onSendMessage) {
+      revealThreadAfterHomeSend();
+    }
+    return result;
+  }, [onSendMessage, revealThreadAfterHomeSend, sendMessage]);
   const handleApproveProposal = sc.approveProposal;
   const handleDenyProposal = sc.denyProposal;
 

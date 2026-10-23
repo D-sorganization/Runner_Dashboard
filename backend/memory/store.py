@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from memory.contract import MAX_STORE_BYTES
+from memory.expiry import expiry_is_future
 from memory.models import MemoryEntry
 from staff.store import _now  # noqa: PLC2701
 
@@ -70,6 +71,7 @@ class AssistantMemoryStore:
         self._lock = threading.Lock()
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
+        self._db.create_function("memory_expiry_is_future", 2, expiry_is_future, deterministic=True)
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=30000")
         self._db.execute(
@@ -277,7 +279,7 @@ class AssistantMemoryStore:
         if not include_barb_only:
             clauses.append("(visibility IS NULL OR visibility != 'barb-only')")
         if active_only:
-            clauses.append("(expires_at IS NULL OR expires_at >= ?)")
+            clauses.append("memory_expiry_is_future(expires_at, ?)")
             params.append(_now())
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = f"SELECT * FROM memory_entries {where} ORDER BY created_at DESC LIMIT ?"  # noqa: S608
