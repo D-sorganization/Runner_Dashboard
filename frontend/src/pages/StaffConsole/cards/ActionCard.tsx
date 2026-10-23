@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { ActionProposalData, ActionRiskLevel, ProposalApproveHandler, ProposalDenyHandler } from "./cardTypes";
 import "./cards.css";
 import { RefreshGlyph, SearchGlyph } from "../../decompIcons";
@@ -57,6 +57,10 @@ export const ActionCard: React.FC<ActionCardProps> = ({
     : null;
   const reasonId = `staff-action-card-reason-${proposal.id}`;
   const locked = hasSubmitted || authorityDenied || previewPending;
+
+  useEffect(() => {
+    if (proposal.status === "failed") setHasSubmitted(false);
+  }, [proposal.status]);
 
   const reenableIfRefused = (outcome: void | Promise<boolean | void>) => {
     void Promise.resolve(outcome).then((ok) => {
@@ -180,6 +184,22 @@ export const ActionCard: React.FC<ActionCardProps> = ({
       )}
 
       {/* Decision or Expiry Notice */}
+      {proposal.status === "failed" && (
+        <div
+          role="status"
+          style={{
+            fontSize: 12,
+            color: "var(--accent-red, #f85149)",
+            background: "var(--badge-danger-bg)",
+            border: "1px solid var(--accent-red, #f85149)",
+            padding: "6px 10px",
+            borderRadius: 6,
+            marginBottom: 8,
+          }}
+        >
+          Action failed. You can review the failure below and retry approval.
+        </div>
+      )}
       {isExpired && (
         <div
           style={{
