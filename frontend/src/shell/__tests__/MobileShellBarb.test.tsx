@@ -51,6 +51,22 @@ describe("MobileShell Barb access", () => {
     expect(await screen.findByRole("dialog", { name: "Ask Barb" })).toBe(panel);
   });
 
+  it("keeps composer focus when the shell rerenders while Barb is open", async () => {
+    const onTabChange = vi.fn();
+    const { rerender } = render(
+      <MobileShell currentTab="projects" onTabChange={onTabChange}><div>Projects</div></MobileShell>,
+    );
+    fireEvent.click(screen.getByTestId("mobile-ask-barb"));
+    await screen.findByRole("dialog", { name: "Ask Barb" });
+    const composer = screen.getByRole("textbox", { name: /staff conversation input/i });
+    composer.focus();
+
+    rerender(
+      <MobileShell currentTab="projects" onTabChange={onTabChange}><div>Updated projects</div></MobileShell>,
+    );
+
+    expect(composer).toHaveFocus();
+  });
   it("closes the mobile modal after a registered assistant navigation result", async () => {
     render(
       <MobileShell currentTab="projects" onTabChange={vi.fn()}><div>Projects</div></MobileShell>,
