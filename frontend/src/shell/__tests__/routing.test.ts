@@ -24,6 +24,15 @@ import {
 } from "../routing";
 import { NAV_ITEMS, navItemById } from "../navRegistry";
 
+describe("Context navigation copy", () => {
+  it("describes live AGENTS sync and Tier-1 version observability", () => {
+    const description = navItemById("context")?.tooltip ?? "";
+    expect(description).toMatch(/AGENTS\.md sync/i);
+    expect(description).toMatch(/Tier-1/i);
+    expect(description).not.toMatch(/not currently available/i);
+  });
+});
+
 describe("routing — pathnameToTabId", () => {
   it("maps the root path to the default tab (staff)", () => {
     expect(pathnameToTabId("/")).toBe(DEFAULT_TAB_ID);

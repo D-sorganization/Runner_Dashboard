@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { legacyFetch } from "../../lib/api";
 import { AgentsSyncPanel } from "./AgentsSyncPanel";
+import "./ContextPage.css";
 
 export interface ContextPackInfo {
   version: string;
@@ -130,7 +131,7 @@ export function ContextPage({
       const pin = typeof summary.standards_pin === "string" ? summary.standards_pin : "unknown";
       setPack({
         version: typeof summary.standards_version === "string" ? summary.standards_version : "unknown",
-        digest: pin.split("#")[1] || "unknown",
+        digest: pin.split(/[#+]/)[1] || "unknown",
         pin,
         source_path: typeof summary.standards_source === "string" ? summary.standards_source : "<builtin>",
         is_fallback: Boolean(summary.standards_fallback),
@@ -192,7 +193,7 @@ export function ContextPage({
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 font-sans text-neutral-100">
+    <div className="context-page p-6 max-w-7xl mx-auto space-y-8 font-sans text-neutral-100">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Fleet Context & Shared Memory</h1>
         <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, current Tier-1 skill registry, live managed AGENTS.md synchronization, latest per-repo run versions, lesson review queue, and per-run context estimates.</p>

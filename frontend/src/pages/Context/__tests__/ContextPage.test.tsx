@@ -154,6 +154,27 @@ describe("ContextPage", () => {
     expect(row).toHaveTextContent("Partial");
   });
 
+  it("extracts Tier-0 digest from a plus-delimited standards pin", async () => {
+    legacyFetchMock.mockImplementation((url: string = "") => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => url.includes("summary")
+        ? { standards_version: "1.1.0", standards_pin: "fleet-standards@1.1.0+646df67582c6" }
+        : url.includes("skills")
+          ? { skills: sampleSkills }
+          : url.includes("agents-sync")
+            ? { source: "Repository_Management/AGENTS.md", source_ref: "main", status: "current", reason: null, checked_at: "2026-10-23T00:00:00Z", source_digest: "abc", source_blocks: {}, repositories: [] }
+            : url.includes("runs") ? { runs: [] } : { entries: [] },
+    }));
+    render(<ContextPage />);
+    expect(await screen.findByText("646df67582c6")).toBeInTheDocument();
+  });
+
+  it("marks the page for its scoped responsive layout", () => {
+    const { container } = render(<ContextPage pack={samplePack} lessons={[]} runs={[]} />);
+    expect(container.querySelector(".context-page")).toBeInTheDocument();
+  });
+
   it("handles empty and error states gracefully", () => {
     const { rerender } = render(<ContextPage pack={samplePack} lessons={[]} runs={[]} />);
     expect(screen.getByText(/no lessons in review queue/i)).toBeInTheDocument();
