@@ -11,7 +11,6 @@ export const STORAGE_KEYS = {
   ISSUES_FILTER_PICKABLE: { key: 'issues:filter_pickable', version: 1 },
   REMEDIATION_SUBTAB: { key: 'remediation-subtab', version: 1 },
   WORKFLOWS_MOBILE_FILTERS: { key: 'workflowsMobileFilters', version: 1, session: true },
-  MAXWELL_CHAT_HISTORY: { key: 'maxwellMobileChatHistory', version: 1, session: true },
   ASST_OPEN: { key: 'ASST_LS.open', version: 1 },
   ASST_POSITION: { key: 'ASST_LS.position', version: 1 },
   ASST_WIDTH: { key: 'ASST_LS.width', version: 1 },
@@ -164,10 +163,7 @@ export const storage = {
    * Clear all chat history related storage.
    */
   clearChatHistory(): void {
-    const chatKeys = [
-      STORAGE_KEYS.MAXWELL_CHAT_HISTORY,
-      STORAGE_KEYS.ASST_TRANSCRIPT,
-    ];
+    const chatKeys = [STORAGE_KEYS.ASST_TRANSCRIPT];
     chatKeys.forEach((keyDef) => {
       this.removeItem(keyDef);
     });

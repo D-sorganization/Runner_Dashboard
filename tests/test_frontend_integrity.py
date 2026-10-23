@@ -76,7 +76,6 @@ _REQUIRED_FUNCTIONS = [
     "function CredentialsTab",
     "function CodeRequestsTab",
     "function FeatureRequestsTab",
-    "function MaxwellTab",
     "function FleetOrchestrationTab",
     "function DashboardHelp",
 ]
@@ -332,12 +331,13 @@ def test_mobile_remediation_three_tap_slice_markers_present() -> None:
     assert "Preview safety plan" in content
 
 
-def test_maxwell_mobile_chat_moved_to_staff_console() -> None:
-    # SC-G6 (#1338): Maxwell chat lives in the Staff Console; the phone page
-    # is a status/tasks/controls view with a link, not its own chat.
+def test_maxwell_dashboard_tab_retired() -> None:
+    """SC-G6 (#1338): Maxwell nav/page modules are removed; chat is Staff-only."""
+    nav_data = (_SRC_DIR / "shell" / "navRegistryData.ts").read_text(encoding="utf-8")
     content = _read_index()
-    assert "<MaxwellChat" not in content
-    assert "Chat with Maxwell in the Staff Console" in content
+    assert 'id: "maxwell"' not in nav_data
+    assert "export function MaxwellPage" not in content
+    assert "export function MaxwellMobile" not in content
 
 
 def test_mobile_read_mostly_reports_assessments_feature_requests_markers_present() -> None:

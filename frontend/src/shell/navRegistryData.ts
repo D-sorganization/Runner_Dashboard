@@ -2,7 +2,7 @@
  * navRegistryData.ts — Nav items and groups definition (SC-D2 / issue #1309).
  *
  * Defines the 4-area information architecture:
- *   - Staff (Staff Console, Fleet Command, Maxwell)
+ *   - Staff (Staff Console, Fleet Command, Library, Agent Bus)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
  *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights)
  *   - Settings (one Settings page: Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools)
@@ -20,7 +20,6 @@ import {
   QueueIcon,
   WrenchIcon,
   ActivityIcon,
-  BotIcon,
   ChartIcon,
   InboxIcon,
   SettingsIcon,
@@ -106,18 +105,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     mobilePrimary: false,
     mobileDrawer: true,
   },
-  {
-    id: "maxwell",
-    label: "Maxwell",
-    group: "staff",
-    Icon: BotIcon,
-    tooltip: "Maxwell autonomous AI control plane: status and tasks.",
-    tabId: "maxwell",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: true,
-  },
-
   // ── Work ─────────────────────────────────────────────────────────────────
   {
     id: "queue",

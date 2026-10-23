@@ -61,14 +61,6 @@ vi.mock("../../pages/Machines", () => ({
   MachinesPage: () => <div data-testid="native-machines">Machines</div>,
 }));
 
-vi.mock("../../pages/MaxwellPage", () => ({
-  MaxwellPage: () => <div data-testid="native-maxwell">Maxwell</div>,
-}));
-
-vi.mock("../../pages/Maxwell", () => ({
-  MaxwellMobile: () => <div data-testid="mobile-maxwell">Mobile Maxwell</div>,
-}));
-
 vi.mock("../../pages/OverviewPage", () => ({
   default: () => <div data-testid="native-overview">Overview</div>,
 }));
@@ -180,7 +172,7 @@ vi.mock("../DesktopShell", () => ({
   }) => (
     <div>
       <span data-testid="active-tab">{props.activeTabId}</span>
-      <button onClick={() => props.onSelect("maxwell")}>go-maxwell</button>
+      <button onClick={() => props.onSelect("queue")}>go-queue</button>
       {props.children}
     </div>
   ),
@@ -254,13 +246,17 @@ describe("RoutedShell — URL is the source of truth", () => {
     const user = userEvent.setup();
     renderAt("/");
     await screen.findByTestId("active-tab");
-    await user.click(screen.getByText("go-maxwell"));
-    expect(await screen.findByTestId("pathname")).toHaveTextContent(
-      "/staff/maxwell",
+    await user.click(screen.getByText("go-queue"));
+    expect(await screen.findByTestId("pathname")).toHaveTextContent("/work");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
+  });
+
+  it("redirects retired /staff/maxwell bookmarks to the Staff Console (#1338)", async () => {
+    renderAt("/staff/maxwell", { withToaster: true });
+    await waitFor(() =>
+      expect(screen.getByTestId("pathname")).toHaveTextContent("/"),
     );
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "maxwell",
-    );
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("staff");
   });
 
   it.each([
@@ -269,7 +265,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["operations", "native-operations"],
     ["insights", "native-analysis"],
     ["code-requests", "native-code-requests"],
-    ["maxwell", "native-maxwell"],
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
     ["settings", "native-settings"],
@@ -367,7 +362,6 @@ describe("RoutedShell — URL is the source of truth", () => {
   it.each([
     ["/fleet", "mobile-overview"],
     ["/t/queue", "mobile-queue"],
-    ["/t/maxwell", "native-maxwell"],
     ["/t/remediation", "mobile-remediation"],
     ["/t/reports", "mobile-reports"],
     ["/fleet/insights", "mobile-reports"],
@@ -416,13 +410,11 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(alert.textContent).toContain("Workflows");
     expect(alert.textContent).toContain("Boom in WorkflowsPage");
 
-    // Click navigation button in shell chrome to navigate to maxwell
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "go-maxwell" }));
+    await user.click(screen.getByRole("button", { name: "go-queue" }));
 
-    // Navigation recovers without a reload
-    expect(screen.getByTestId("pathname")).toHaveTextContent("/staff/maxwell");
-    expect(await screen.findByTestId("native-maxwell")).toBeInTheDocument();
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+    expect(await screen.findByTestId("native-queue")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     workflowsPageShouldThrow = false;
     errorSpy.mockRestore();
