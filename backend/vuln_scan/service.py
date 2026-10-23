@@ -72,8 +72,9 @@ async def contract_status(
         files: dict[str, int | None] = {}
         if text is not None:
             first = check_contract(org=ORG, repo=repo, project_yaml=text, files={})
-            for path in {first.dockerfile, first.threat_model} - {None}:
-                files[path] = await _path_size(repo, path, fetch)
+            for path in {first.dockerfile, first.threat_model}:
+                if path is not None:
+                    files[path] = await _path_size(repo, path, fetch)
         report = check_contract(
             org=ORG, repo=repo, project_yaml=text, files=files
         ).to_dict()

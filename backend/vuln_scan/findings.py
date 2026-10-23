@@ -18,6 +18,7 @@ marked ``fixed`` reopens as ``new`` (a regression).
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import os
 import re
@@ -315,7 +316,7 @@ class FindingsStore:
             )
         return self.get(finding_id) or {}
 
-    def audit(self, finding_id: str) -> list[dict[str, Any]]:
+    def audit(self, finding_id: str) -> builtins.list[dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(
                 "SELECT from_state, to_state, actor, note, ts FROM vs_triage_audit "

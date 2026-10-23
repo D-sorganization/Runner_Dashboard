@@ -1,4 +1,4 @@
-# Vendored security-scan contract validator
+# Vendored Security-Scan Contract Validator
 
 `contract.py` is a byte-identical copy of Repository_Management
 `shared_scripts/oss_scanner_contract.py` (source of truth, RM#2386; epic
