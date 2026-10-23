@@ -216,3 +216,32 @@ async def test_fleet_status_keeps_explicit_local_response_plain(client) -> None:
     assert resp.status_code == 200
     assert "X-Dashboard-Degraded" not in resp.headers
     assert "_degraded" not in resp.json()
+
+
+@pytest.mark.asyncio
+async def test_fleet_status_exclude_pools_skips_hub_proxy_and_remote_nodes(client) -> None:
+    p_port, p_host, p1, p2, _, p_reg, _, p_circuit = _patch_topology()
+    with (
+        p_port,
+        p_host,
+        p1,
+        p2,
+        p_reg,
+        p_circuit,
+        patch("routers.fleet.FLEET_NODES", {"RemoteNode": "http://10.0.0.9:8321"}),
+        patch("routers.fleet.should_proxy_fleet_to_hub", return_value=True),
+        patch("routers.fleet.proxy_to_hub", new_callable=AsyncMock) as mock_proxy,
+        patch("httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        resp = await client.get("/api/fleet/status?exclude_pools=true")
+
+    assert resp.status_code == 200
+    mock_proxy.assert_not_called()
+    assert mock_client.get.call_count == 0
+    assert "ControlTower-NVMe" in resp.json()

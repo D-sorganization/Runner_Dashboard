@@ -30,6 +30,9 @@ from staff.worktree_hygiene import (
 from staff.worktree_hygiene import (
     prune_worktree_branch,
 )
+from staff.worktree_hygiene import (
+    sweep_stale_worktrees as sweep_stale_worktrees,
+)
 
 if TYPE_CHECKING:
     from staff.dispatch_bundle import DispatchBundle
