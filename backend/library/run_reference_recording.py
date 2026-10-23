@@ -28,6 +28,9 @@ def requested_run_id(
     from staff.tokens import active_run_id_for_principal
 
     active_run_id = active_run_id_for_principal(principal.id)
+    run_binding_roles = {role for role in principal.roles if role.startswith("staff-run:")}
+    if run_binding_roles and (active_run_id is None or run_binding_roles != {f"staff-run:{active_run_id}"}):
+        raise HTTPException(status_code=403, detail="run token binding is no longer active")
     if active_run_id is not None:
         if run_id is not None and run_id != active_run_id:
             raise HTTPException(status_code=403, detail="run token is bound to another run")

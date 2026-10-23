@@ -134,6 +134,34 @@ def test_derived_run_identity_still_checks_the_stored_role(api: TestClient, run_
     assert references_for_run(library_routes._db(), "run-agent") == []
 
 
+@pytest.mark.parametrize("route", ["search", "verify"])
+def test_revocation_after_authentication_fails_closed_for_ledger_routes(
+    api: TestClient, run_identity: SimpleNamespace, route: str
+) -> None:
+    def authenticate_then_revoke() -> identity.Principal:
+        principal = run_identity.manager.verify_token(run_identity.token)
+        assert principal is not None
+        tokens.revoke_run_token("run-agent")
+        return principal
+
+    api.app.dependency_overrides[library_routes.require_library_peer] = authenticate_then_revoke
+    headers = {"Authorization": "Bearer " + run_identity.token}
+    if route == "search":
+        response = api.get(
+            "/api/v1/library/search",
+            params={"q": "Evidence", "scope": "local"},
+            headers=headers,
+        )
+    else:
+        response = api.post(
+            "/api/v1/library/verify",
+            headers=headers,
+            json={"content": "Evidence for the retrieval ledger. " + CITATION},
+        )
+    assert response.status_code == 403
+    assert references_for_run(library_routes._db(), "run-agent") == []
+
+
 def test_active_run_token_cannot_select_another_run_it_requested(
     api: TestClient, run_identity: SimpleNamespace
 ) -> None:
