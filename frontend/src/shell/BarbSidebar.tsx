@@ -46,7 +46,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
 
   useEffect(() => {
     if (!open) return;
-    if (mobile && document.activeElement instanceof HTMLElement) {
+    if (document.activeElement instanceof HTMLElement) {
       restoreFocusRef.current = document.activeElement;
     }
     closeButtonRef.current?.focus();
@@ -70,7 +70,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
         if (wasInert) element.setAttribute("inert", "");
         else element.removeAttribute("inert");
       });
-      if (mobile && restoreFocusRef.current?.isConnected) {
+      if (restoreFocusRef.current?.isConnected) {
         restoreFocusRef.current.focus();
       }
       restoreFocusRef.current = null;
