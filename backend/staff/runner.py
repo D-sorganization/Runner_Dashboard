@@ -20,6 +20,7 @@ from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import usage as usage_mod
+from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.execution_result import classify_execution_result
 from staff.plan import RunPlan, RunRequest
@@ -298,9 +299,11 @@ class StaffRunner:
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
         )
-        argv = adapter.build_command(
-            prompt, str(workdir), plan.model, **read_only_kwargs(role), **self._launch_paths(adapter, workdir)
-        )
+        launch_paths = self._launch_paths(adapter, workdir)
+        if plan.provider == "antigravity":
+            gitdir = Path(launch_paths.get("gitdir", str(workdir)))
+            antigravity_permissions(read_only=role.code_read_only, workdir=workdir, gitdir=gitdir)
+        argv = adapter.build_command(prompt, str(workdir), plan.model, **read_only_kwargs(role), **launch_paths)
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
@@ -441,10 +444,7 @@ class StaffRunner:
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 updated_rec = verification.apply_deliverable_failure(
-                    store,
-                    updated_rec,
-                    verdict,
-                    opens_pr=self.opens_pr(rec.role),
+                    store, updated_rec, verdict, opens_pr=self.opens_pr(rec.role)
                 )
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
@@ -452,20 +452,11 @@ class StaffRunner:
                     from staff.failover_dispatch import run_completion_summary
 
                     summary = run_completion_summary(
-                        store,
-                        updated_rec,
-                        result_line,
-                        provider=plan.provider,
-                        model=plan.model,
+                        store, updated_rec, result_line, provider=plan.provider, model=plan.model
                     )
                 else:
                     summary = (updated_rec.outcome or result_summary(result_line)) or ""
-                handle_run_status_change(
-                    updated_rec,
-                    status=status,
-                    question=q,
-                    summary=summary,
-                )
+                handle_run_status_change(updated_rec, status=status, question=q, summary=summary)
         finally:
             revoke_run_token(rec.id)
 
