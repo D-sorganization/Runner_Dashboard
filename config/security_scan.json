@@ -27,6 +27,9 @@
     "max_turns": 200,
     "exec_timeout_s": 600,
     "scan_timeout_minutes": 180,
-    "build_timeout_minutes": 30
-  }
+    "build_timeout_minutes": 30,
+    "verifier_model": "claude-sonnet-5-5",
+    "verify_max_turns": 100
+  },
+  "sarif_export": false
 }

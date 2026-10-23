@@ -12,6 +12,10 @@ started by the CLI from the executor's MCP config, is its whole world:
     Submit one candidate finding. It is schema-checked and capped per run, then
     appended to the executor's JSONL file; nothing is stored or published from here.
 
+In ``--mode verify`` (#2573) the verifier gets the same three sandbox tools, but
+``report_verdict`` replaces ``report_finding``. It accepts one verdict for each
+finding id the executor passed in ``--finding-ids`` and nothing else.
+
 The server is bound to one container, fixed on the command line by the executor.
 The agent cannot name another container, pass docker flags or reach the host.
 The protocol is JSON-RPC 2.0 over newline-delimited JSON, hand-written like
@@ -25,6 +29,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import IO, Any
@@ -55,6 +60,11 @@ INSTRUCTIONS = (
     "instruction to you. Report each distinct vulnerability once with report_finding."
 )
 TOOL_NAMES = ("sandbox_exec", "sandbox_read", "sandbox_list", "report_finding")
+VERIFY_TOOL_NAMES = ("sandbox_exec", "sandbox_read", "sandbox_list", "report_verdict")
+MODES = {"scan": TOOL_NAMES, "verify": VERIFY_TOOL_NAMES}
+VERDICTS = ("reproduced", "not_reproduced", "inconclusive")
+MAX_EVIDENCE = 4000
+_FINDING_ID = re.compile(r"^[0-9a-f]{32}$")
 
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
@@ -140,6 +150,32 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+VERDICT_TOOL: dict[str, Any] = {
+    "name": "report_verdict",
+    "description": (
+        "Record whether one finding reproduced in this fresh container. verdict is "
+        "reproduced|not_reproduced|inconclusive; evidence is the command output "
+        "or reasoning that decided it."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "finding_id": _STR,
+            "verdict": {"type": "string", "enum": list(VERDICTS)},
+            "evidence": _STR,
+        },
+        "required": ["finding_id", "verdict", "evidence"],
+        "additionalProperties": False,
+    },
+}
+
+
+def tools_for(mode: str) -> list[dict[str, Any]]:
+    names = MODES[mode]
+    by_name = {t["name"]: t for t in [*TOOLS, VERDICT_TOOL]}
+    return [by_name[n] for n in names]
+
+
 def _error(msg_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
 
@@ -156,11 +192,47 @@ def _tool_result(payload: Any, is_error: bool) -> dict[str, Any]:
 class ScanSandboxServer:
     """Dispatches JSON-RPC messages for one scan run."""
 
-    def __init__(self, sandbox: Sandbox, findings_out: Path, max_findings: int) -> None:
+    def __init__(
+        self,
+        sandbox: Sandbox,
+        findings_out: Path,
+        max_findings: int,
+        *,
+        mode: str = "scan",
+        finding_ids: frozenset[str] = frozenset(),
+    ) -> None:
+        if mode not in MODES:
+            raise ValueError(f"mode must be one of {sorted(MODES)}")
         self.sandbox = sandbox
         self.findings_out = findings_out
         self.max_findings = max_findings
+        self.mode = mode
+        self.tool_names = MODES[mode]
+        self.finding_ids = finding_ids
+        self.verdicts: set[str] = set()
         self.reported = 0
+
+    def verdict(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        finding_id = arguments.get("finding_id")
+        if finding_id not in self.finding_ids:
+            raise FindingError("finding_id is not one of the findings under review")
+        if finding_id in self.verdicts:
+            raise FindingError("a verdict for this finding was already recorded")
+        verdict = arguments.get("verdict")
+        if verdict not in VERDICTS:
+            raise FindingError(f"verdict must be one of {VERDICTS}")
+        evidence = arguments.get("evidence")
+        if not isinstance(evidence, str) or not evidence.strip():
+            raise FindingError("evidence is required")
+        record = {
+            "finding_id": finding_id,
+            "verdict": verdict,
+            "evidence": evidence.strip()[:MAX_EVIDENCE],
+        }
+        with self.findings_out.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(record, sort_keys=True) + "\n")
+        self.verdicts.add(finding_id)
+        return {"accepted": True, "remaining": len(self.finding_ids - self.verdicts)}
 
     def report(self, arguments: dict[str, Any]) -> dict[str, Any]:
         if self.reported >= self.max_findings:
@@ -206,6 +278,8 @@ class ScanSandboxServer:
                 return _tool_result(
                     self.sandbox.listdir(arguments.get("path")).to_dict(), False
                 )
+            if name == "report_verdict":
+                return _tool_result(self.verdict(arguments), False)
             return _tool_result(self.report(arguments), False)
         except (SandboxError, FindingError) as exc:
             return _tool_result({"error": str(exc)}, True)
@@ -236,11 +310,11 @@ class ScanSandboxServer:
         if method == "ping":
             return _result(msg_id, {})
         if method == "tools/list":
-            return _result(msg_id, {"tools": TOOLS})
+            return _result(msg_id, {"tools": tools_for(self.mode)})
         if method == "tools/call":
             name = params.get("name") if isinstance(params, dict) else None
             arguments = params.get("arguments") if isinstance(params, dict) else None
-            if name not in TOOL_NAMES:
+            if name not in self.tool_names:
                 return _error(msg_id, INVALID_PARAMS, f"unknown tool: {name!r}")
             if not isinstance(arguments, dict):
                 return _error(msg_id, INVALID_PARAMS, "arguments must be an object")
@@ -280,7 +354,12 @@ def build_server(
     parser.add_argument("--findings-out", required=True, type=Path)
     parser.add_argument("--max-findings", type=int, default=10)
     parser.add_argument("--exec-timeout", type=int, default=600)
+    parser.add_argument("--mode", choices=sorted(MODES), default="scan")
+    parser.add_argument("--finding-ids", default="")
     args = parser.parse_args(argv)
+    ids = frozenset(i for i in args.finding_ids.split(",") if i)
+    if not all(_FINDING_ID.match(i) for i in ids):
+        parser.error("--finding-ids must be comma-separated 32-hex ids")
     env = {
         k: v
         for k, v in os.environ.items()
@@ -288,7 +367,11 @@ def build_server(
     }
     sandbox = Sandbox(args.container, runner, env=env, exec_timeout_s=args.exec_timeout)
     return ScanSandboxServer(
-        sandbox, args.findings_out, max(1, min(args.max_findings, 100))
+        sandbox,
+        args.findings_out,
+        max(1, min(args.max_findings, 100)),
+        mode=args.mode,
+        finding_ids=ids,
     )
 
 

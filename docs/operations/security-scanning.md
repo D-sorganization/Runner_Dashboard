@@ -20,6 +20,42 @@ Repository_Management. The dashboard runs the scan in two phases:
 Findings land in the private findings store as `new`. They are never filed
 publicly, and no patch is applied. An operator triages them on the Security page.
 
+## Verification, Advisories and SARIF
+
+- **Verification.** After a scan, a second Claude model
+  (`executor.verifier_model`, default `claude-sonnet-5-5`, which must differ
+  from `executor.model`) re-tests each new finding. It runs in a fresh container
+  from the same image, through the same MCP-only profile, and its
+  `report_verdict` tool replaces `report_finding`.
+  - A reproduced finding becomes `confirmed`.
+  - Every other outcome becomes `inconclusive`: not reproduced, inconclusive, or
+    no verdict at all.
+  - The verifier never marks anything a false positive; only an operator does.
+  - Each change is in the finding's audit trail with actor
+    `verifier:<model>`.
+  - An operator's triage always wins over a later verdict.
+  - Set `verifier_model` to `null` to turn verification off.
+- **Draft advisory.** `POST /api/v1/security/findings/{id}/advisory` creates a
+  **draft** GitHub security advisory with a temporary private fork, where the fix
+  is developed out of public view.
+  - It needs scope `security.advisory` and a `confirmed` `high` or `critical`
+    finding.
+  - It creates one draft per finding.
+  - The dashboard's GitHub identity needs the
+    _Repository security advisories: write_ permission (App) or admin on the
+    repository.
+  - Nothing creates advisories automatically.
+- **Protected patches.** Any finding whose candidate patch touches `.github/` or
+  `.oss-scanner/` reports those paths in `patch_protected_paths`. Such a patch is
+  never included in an advisory and never handed to automation: CI and scanner
+  configuration changes are written by a person.
+- **SARIF.** `GET /api/v1/security/export/sarif` is off unless the operator
+  config sets `"sarif_export": true`.
+  - It includes open findings only, plus their title, root cause and location.
+  - Reproduction steps and patches are never exported.
+  - Upload the file to code scanning only for repositories where every reader
+    may see the findings.
+
 ## Safety Rules
 
 These are enforced in code (`backend/vuln_scan/admission.py`), not by
@@ -79,11 +115,12 @@ network probes from inside phase A.
 
 ## Scopes
 
-| Action                        | Scope             |
-| ----------------------------- | ----------------- |
-| Read posture, findings, scans | `security.read`   |
-| Triage a finding              | `security.triage` |
-| Plan, start or cancel a scan  | `security.scan`   |
+| Action                        | Scope               |
+| ----------------------------- | ------------------- |
+| Read posture, findings, scans | `security.read`     |
+| Triage a finding              | `security.triage`   |
+| Plan, start or cancel a scan  | `security.scan`     |
+| Draft a GitHub advisory       | `security.advisory` |
 
 Until the identity presets grant these scopes, only admin principals (`*`)
 hold them.

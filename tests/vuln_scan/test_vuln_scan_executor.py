@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from vuln_scan import executor as executor_mod
 from vuln_scan.executor import Probes, ScanAborted, ScanExecutor, ScanRequest, extract_tarball
-from vuln_scan.findings import FindingsStore
+from vuln_scan.findings import FindingsStore, validate_finding
 from vuln_scan.operator_config import parse_operator_config
 from vuln_scan.sandbox import ExecResult
 from vuln_scan.scans import ScanLog
@@ -32,6 +32,15 @@ INIT = {
         "mcp__scan_sandbox__sandbox_read",
     ],
     "mcp_servers": [{"name": "scan_sandbox", "status": "connected"}],
+}
+VERIFY_INIT = {
+    **INIT,
+    "tools": [
+        "mcp__scan_sandbox__report_verdict",
+        "mcp__scan_sandbox__sandbox_exec",
+        "mcp__scan_sandbox__sandbox_list",
+        "mcp__scan_sandbox__sandbox_read",
+    ],
 }
 FINDING = {
     "title": "Path traversal",
@@ -104,10 +113,19 @@ class FakeProc:
 class FakePopen:
     """docker build prints progress; claude writes findings and streams events."""
 
-    def __init__(self, events: list[dict[str, Any]], findings: list[dict[str, Any]], hang: bool = False) -> None:
+    def __init__(
+        self,
+        events: list[dict[str, Any]],
+        findings: list[dict[str, Any]],
+        hang: bool = False,
+        verify_events: list[dict[str, Any]] | None = None,
+        verdicts: tuple[str, ...] = ("reproduced",),
+    ) -> None:
         self.events = events
         self.findings = findings
         self.hang = hang
+        self.verify_events = verify_events
+        self.verdicts = verdicts
         self.argvs: list[list[str]] = []
         self.envs: list[dict[str, str]] = []
         self.procs: list[FakeProc] = []
@@ -121,8 +139,15 @@ class FakePopen:
             cfg = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text(encoding="utf-8"))
             args = cfg["mcpServers"]["scan_sandbox"]["args"]
             out = Path(args[args.index("--findings-out") + 1])
-            out.write_text("".join(json.dumps(f) + "\n" for f in self.findings), encoding="utf-8")
-            proc = FakeProc([json.dumps(e) + "\n" for e in self.events], hang=self.hang)
+            events, records = self.events, self.findings
+            if args[args.index("--mode") + 1] == "verify":
+                ids = sorted(args[args.index("--finding-ids") + 1].split(","))
+                events = self.verify_events or [VERIFY_INIT, RESULT]
+                verdicts = [*self.verdicts, *["not_reproduced"] * len(ids)]
+                pairs = zip(ids, verdicts, strict=False)
+                records = [{"finding_id": i, "verdict": v, "evidence": "ran it"} for i, v in pairs]
+            out.write_text("".join(json.dumps(f) + "\n" for f in records), encoding="utf-8")
+            proc = FakeProc([json.dumps(e) + "\n" for e in events], hang=self.hang)
         self.procs.append(proc)
         return proc
 
@@ -199,7 +224,8 @@ def test_happy_path_records_findings_and_cleans_up(tmp_path: Path) -> None:
     docker = FakeDocker()
     findings = [FINDING, {**FINDING, "symbol": "b"}, {**FINDING, "symbol": "c"}, {"title": "bad"}]
     popen = FakePopen([INIT, _tool("mcp__scan_sandbox__sandbox_exec"), RESULT], findings)
-    ex = _executor(tmp_path, popen, docker)
+    no_verify = {"cli_version": "2.1.263", "verifier_model": None}
+    ex = _executor(tmp_path, popen, docker, config=_config(executor=no_verify))
     row = _run(ex)
     assert row["state"] == "succeeded", row["error"]
     assert row["findings_new"] == 2 and row["findings_seen"] == 3  # cap 2; one invalid dropped
@@ -321,3 +347,63 @@ def test_extract_tarball_caps_size(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(executor_mod, "MAX_SOURCE_FILES", 1)
     with pytest.raises(ScanAborted):
         extract_tarball(_tarball({"T/a": b"1", "T/b": b"2"}), tmp_path)
+
+
+# ── verifier (#2573) ────────────────────────────────────────────────────
+
+
+def test_verifier_confirms_reproduced_and_marks_the_rest_inconclusive(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    findings = [FINDING, {**FINDING, "symbol": "b"}]
+    popen = FakePopen([INIT, RESULT], findings, verdicts=("reproduced", "not_reproduced"))
+    ex = _executor(tmp_path, popen, docker)
+    row = _run(ex)
+    assert row["state"] == "succeeded", row["error"]
+    assert row["cost_usd"] == 2.5  # scan + verify
+    stored = ex.store.list(repo="Tools")
+    assert sorted(f["state"] for f in stored) == ["confirmed", "inconclusive"]
+    for f in stored:
+        assert ex.store.audit(f["id"])[-1]["actor"] == "verifier:claude-sonnet-5-5"
+    verify_argv = popen.argvs[-1]
+    assert verify_argv[verify_argv.index("--model") + 1] == "claude-sonnet-5-5"
+    allowed = verify_argv[verify_argv.index("--allowedTools") + 1]
+    assert "report_verdict" in allowed and "report_finding" not in allowed
+    runs = [c for c in docker.calls if c[1:3] == ["run", "--detach"]]
+    names = [c[c.index("--name") + 1] for c in runs]
+    assert len(names) == 2 and names[1] == names[0] + "-v"  # fresh container, same image
+    removed = [c[3] for c in docker.calls if c[1:3] == ["rm", "-f"]]
+    assert set(removed) == set(names) and docker.verbs()[-1] == "rmi -f"
+
+
+def test_verifier_with_the_scan_tool_set_aborts_and_findings_stay_new(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    popen = FakePopen([INIT, RESULT], [FINDING], verify_events=[INIT, RESULT])
+    ex = _executor(tmp_path, popen, docker)
+    row = _run(ex)
+    assert row["state"] == "aborted" and "launch refused" in row["error"]
+    assert [f["state"] for f in ex.store.list(repo="Tools")] == ["new"]
+    assert _work_dirs(tmp_path) == []
+
+
+def test_operator_triage_wins_over_a_late_verdict(tmp_path: Path) -> None:
+    ex = _executor(tmp_path, FakePopen([], []), FakeDocker())
+    fid, _ = ex.store.record("Tools", validate_finding(FINDING), scan_sha=SHA)
+    ex.store.triage(fid, "false_positive", actor="op", note="test fixture")
+    out = tmp_path / "verdicts.jsonl"
+    out.write_text(json.dumps({"finding_id": fid, "verdict": "reproduced", "evidence": "x"}), encoding="utf-8")
+    ex._apply_verdicts(out, {fid}, "claude-sonnet-5-5")
+    assert ex.store.get(fid)["state"] == "false_positive"
+
+
+def test_missing_verdict_is_inconclusive_never_false_positive(tmp_path: Path) -> None:
+    ex = _executor(tmp_path, FakePopen([], []), FakeDocker())
+    fid, _ = ex.store.record("Tools", validate_finding(FINDING), scan_sha=SHA)
+    ex._apply_verdicts(tmp_path / "absent.jsonl", {fid}, "claude-sonnet-5-5")
+    assert ex.store.get(fid)["state"] == "inconclusive"
+
+
+def test_verifier_must_be_a_different_model() -> None:
+    same = {"cli_version": "2.1.263", "model": "claude-opus-5-5", "verifier_model": "claude-opus-5-5"}
+    config = _config(executor=same)
+    assert config.executor.verifier_model is None
+    assert any("must differ" in e for e in config.errors)
