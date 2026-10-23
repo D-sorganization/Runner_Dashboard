@@ -25,8 +25,10 @@ from identity import (
     require_scope,
 )
 from library.browse import browse_directory
+from library.citations import _cap_fetch_text, _parse_cite
 from library.db import init_library_db, library_db_path
 from library.pool import _hit_to_dict, federated_search, get_pooled_catalog, refresh_catalog
+from library.run_reference_recording import record_run_references, requested_run_id
 from library.search import (
     DEFAULT_BUDGET,
     MAX_BUDGET,
@@ -55,48 +57,6 @@ def _db() -> Path:
     init_library_db(path)
     seed_default_source(path)
     return path
-
-
-def _requested_run_id(request: Request, principal: Principal) -> str | None:
-    """Validate an optional caller run identity before doing retrieval work."""
-    run_id = request.headers.get("X-Staff-Run-ID") or os.environ.get("STAFF_RUN_ID")
-    if run_id is None:
-        return None
-    from library.retrieval_ledger import authorize_run_owner
-    from staff.store import get_run_store
-
-    try:
-        authorize_run_owner(get_run_store(), run_id=run_id, principal_id=principal.id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="invalid run id") from exc
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail="run not found") from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail="run belongs to another principal") from exc
-    return run_id
-
-
-def _record_run_references(run_id: str | None, passages: list[dict[str, Any]]) -> None:
-    if run_id is None or not passages:
-        return
-    from library.retrieval_ledger import record_retrievals
-
-    references = [
-        {
-            "node": passage.get("node"),
-            "source_id": passage.get("source_id"),
-            "work_id": passage.get("work_id"),
-            "passage_id": passage.get("passage_id"),
-            "file_sha256": passage.get("file_sha256"),
-            "page_start": passage.get("page_start"),
-            "page_end": passage.get("page_end"),
-        }
-        for passage in passages
-    ]
-    try:
-        record_retrievals(_db(), run_id=run_id, references=references)
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail="retrieval identity could not be recorded") from exc
 
 
 def require_library_peer(
@@ -287,39 +247,6 @@ def library_work(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-_CITE_KEY = re.compile(
-    r"^\[ref:(?P<node>[^:\]]+):(?P<source>[a-z0-9][a-z0-9-]{0,62}):w(?P<work>[1-9][0-9]*):"
-    r"p(?P<passage>[1-9][0-9]*)#sha256=(?P<sha>[0-9a-fA-F]{8}):p\.(?P<start>[1-9][0-9]*)-(?P<end>[1-9][0-9]*)\]$"
-)
-_CITE_URI = re.compile(
-    r"^lib://(?P<source>[a-z0-9][a-z0-9-]{0,62})/w(?P<work>[1-9][0-9]*)/"
-    r"p(?P<passage>[1-9][0-9]*)@(?P<sha>[0-9a-fA-F]{8})#p(?P<start>[1-9][0-9]*)-(?P<end>[1-9][0-9]*)$"
-)
-
-
-def _parse_cite(cite: str) -> dict[str, Any]:
-    match = _CITE_KEY.fullmatch(cite) or _CITE_URI.fullmatch(cite)
-    if match is None:
-        raise HTTPException(status_code=422, detail="cite must be a canonical library reference")
-    values = match.groupdict()
-    return {
-        "node": values.get("node"),
-        "source_id": values["source"],
-        "work_id": int(values["work"]),
-        "passage_id": int(values["passage"]),
-        "sha_prefix": values["sha"].lower(),
-        "page_start": int(values["start"]),
-        "page_end": int(values["end"]),
-    }
-
-
-MAX_FETCH_TEXT_BYTES = 400  # Snippet cap; canonical citation is separate.
-
-
-def _cap_fetch_text(value: Any) -> str:
-    return str(value or "").encode("utf-8")[:MAX_FETCH_TEXT_BYTES].decode("utf-8", errors="ignore")
-
-
 def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
     from dashboard_config import HOSTNAME
 
@@ -361,14 +288,14 @@ async def library_fetch(
     from dashboard_config import FLEET_NODES, HOSTNAME
     from library.pool import validate_node_url
 
-    run_id = _requested_run_id(request, _principal)
+    run_id = requested_run_id(request, _principal)
     ref = _parse_cite(cite)
     local_name = HOSTNAME or "local"
     local_missing: HTTPException | None = None
     if scope == "local" or ref["node"] in (None, local_name, "local"):
         try:
             payload = _fetch_local(ref, shared_only=_principal.id == "fleet-peer")
-            _record_run_references(run_id, [payload])
+            record_run_references(run_id, [payload], _db())
             return payload
         except HTTPException as exc:
             if scope == "local" or ref["node"] is not None:
@@ -437,7 +364,7 @@ async def library_fetch(
     }
     if len(identities) != 1:
         raise HTTPException(status_code=409, detail="citation is ambiguous across registered nodes")
-    _record_run_references(run_id, [hits[0]])
+    record_run_references(run_id, [hits[0]], _db())
     return hits[0]
 
 
@@ -454,7 +381,7 @@ async def library_search(
 ) -> dict[str, Any]:
     from dashboard_config import HOSTNAME
 
-    run_id = _requested_run_id(request, _principal)
+    run_id = requested_run_id(request, _principal)
     scope = request.query_params.get("scope", "federated")
     shared = request.query_params.get("shared") in ("1", "true", "True")
     tokens_budget = budget if budget is not None else budget_tokens or DEFAULT_BUDGET
@@ -474,7 +401,7 @@ async def library_search(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         passages = [_hit_to_dict(h, HOSTNAME or "local") for h in hits]
-        _record_run_references(run_id, passages)
+        record_run_references(run_id, passages, _db())
         return {
             "query": q,
             "topic": topic,
@@ -489,7 +416,7 @@ async def library_search(
         res = await federated_search(q, k=k, budget_tokens=tokens_budget, topic=topic, repo=repo, db_path=_db())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    _record_run_references(run_id, res.passages)
+    record_run_references(run_id, res.passages, _db())
     return {
         "query": res.query,
         "topic": res.topic,
