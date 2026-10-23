@@ -338,12 +338,14 @@ class RunStore:
         return [_run_from_row(r) for r in rows]
 
     def runs_awaiting_verification(self, *, machine: str, since: str, limit: int) -> list[RunRecord]:
-        """Finished runs of ``machine`` that ended at/after ``since`` and are unchecked or unverified (#1516)."""
+        """Finished runs of ``machine`` since ``since`` that are unchecked, unverified or CI-failed (#1516)."""
         marks = ", ".join("?" for _ in ACTIVE_STATUSES)
         with self._lock:
             rows = self._conn.execute(
                 f"SELECT * FROM runs WHERE machine = ? AND ended_at >= ? AND status NOT IN ({marks}) "  # noqa: S608
-                "AND verification IN ('', 'unverified') ORDER BY ended_at LIMIT ?",
+                "AND (verification IN ('', 'unverified') "
+                "OR (verification = 'failed' AND verification_detail LIKE '%head CI is%')) "
+                "ORDER BY ended_at LIMIT ?",
                 (machine, since, *ACTIVE_STATUSES, int(limit)),
             ).fetchall()
         return [_run_from_row(r) for r in rows]
@@ -432,6 +434,15 @@ class RunStore:
                     (text.strip()[:300], run_id),
                 )
         return seq
+
+    def last_result_line(self, run_id: str) -> str:
+        """The newest event text containing ``STAFF_RESULT:`` for the run ('' when none)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT text FROM events WHERE run_id = ? AND text LIKE '%STAFF_RESULT:%' ORDER BY seq DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+        return str(row[0]) if row else ""
 
     def events_after(self, run_id: str, after_seq: int = 0, limit: int = 500) -> list[dict[str, Any]]:
         with self._lock:
