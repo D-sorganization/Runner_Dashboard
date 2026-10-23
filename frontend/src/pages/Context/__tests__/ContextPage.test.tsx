@@ -1,6 +1,9 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+const { legacyFetchMock } = vi.hoisted(() => ({ legacyFetchMock: vi.fn() }));
+vi.mock("../../../lib/api", () => ({ legacyFetch: legacyFetchMock }));
+
 import { ContextPage, type ContextPackInfo, type ContextLesson, type ContextRunRecord } from "../ContextPage";
 
 const samplePack: ContextPackInfo = {
@@ -25,7 +28,7 @@ const sampleRuns: ContextRunRecord[] = [
     standards_version: "1.1.0", standards_tokens: 720, lessons_tokens: 240, input_tokens: 4500, output_tokens: 800, cost_usd: 0.045,
     context_stamp: JSON.stringify({
       pack_version: "1.1.0", content_digest: "mock-digest-bcc29c1", requested_pack: "fleet-standards@1.1.0", resolved_pack: "fleet-standards@1.1.0#mock-digest-bcc29c1",
-      fallback_status: "ok", token_estimates: { tier0_standards: 720, tier1_skills: 350, tier1_lessons: 240, total_injected: 1310 },
+      fallback_status: "ok", token_estimates: { tier0_standards: 720, tier1_skills: 350, tier1_lessons: 240, total_injected: 3733 },
       lesson_ids: ["mem_02"], lessons_skipped: [{ id: "mem_01", reason: "conflict" }],
     }),
   },
@@ -56,10 +59,11 @@ describe("ContextPage", () => {
     expect(screen.getByText(/builtin fallback warning/i)).toBeInTheDocument();
   });
 
-  it("renders per-repo AGENTS.md version lag table correctly", () => {
+  it("labels standards-pack comparison honestly and discloses missing AGENTS sync data", () => {
     render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
-    expect(screen.getByTestId("repo-status-Runner_Dashboard")).toHaveTextContent(/up to date/i);
-    expect(screen.getByTestId("repo-status-Repository_Management")).toHaveTextContent(/lagging/i);
+    expect(screen.getByText(/AGENTS.md sync versions are not exposed/i)).toBeInTheDocument();
+    expect(screen.getByTestId("repo-status-Runner_Dashboard")).toHaveTextContent(/matches current Tier-0/i);
+    expect(screen.getByTestId("repo-status-Repository_Management")).toHaveTextContent(/different Tier-0 version/i);
   });
 
   it("renders lesson queue with provenance, expiration, quarantine, and NEVER shows barb-only entries", () => {
@@ -77,13 +81,33 @@ describe("ContextPage", () => {
     expect(screen.getByText(/expired/i)).toBeInTheDocument();
   });
 
-  it("renders per-run context size breakdown, flags over-cap runs, and honest cost estimates", () => {
+  it("keeps full-prompt estimates out of the context cap and reports partial coverage", () => {
     render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
-    expect(screen.getByTestId("run-cap-run-201")).toHaveTextContent(/ok/i);
+    expect(screen.getByTestId("run-cap-run-201")).toHaveTextContent(/partial/i);
+    expect(screen.getByText(/1310 known tokens/i)).toBeInTheDocument();
+    expect(screen.getByText(/Full prompt: 3733 \(estimate\)/i)).toBeInTheDocument();
     expect(screen.getByText(/mem_01 \(conflict\)/i)).toBeInTheDocument();
     expect(screen.getByTestId("run-cap-run-202-bloat")).toHaveTextContent(/over-cap/i);
     expect(screen.getByText(/mem_20 \(budget\)/i)).toBeInTheDocument();
     expect(screen.getAllByText(/\(estimate\)/i).length).toBeGreaterThan(0);
+  });
+
+  it("reports failed lesson telemetry as unavailable instead of an empty queue", async () => {
+    legacyFetchMock.mockImplementation((url: string) => Promise.resolve(
+      url.includes("memory")
+        ? { ok: false, status: 403, json: async () => ({ detail: "Forbidden" }) }
+        : { ok: true, status: 200, json: async () => url.includes("summary")
+          ? { standards_version: "1.1.0", standards_pin: "fleet-standards@1.1.0#digest" }
+          : { runs: [] } },
+    ));
+
+    render(<ContextPage />);
+    expect(await screen.findByText(/lesson review data unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no lessons in review queue/i)).not.toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: /retry lesson data/i });
+    expect(retry).toBeInTheDocument();
+    fireEvent.click(retry);
+    await waitFor(() => expect(legacyFetchMock.mock.calls.filter(([url]) => String(url).includes("memory"))).toHaveLength(2));
   });
 
   it("handles empty and error states gracefully", () => {

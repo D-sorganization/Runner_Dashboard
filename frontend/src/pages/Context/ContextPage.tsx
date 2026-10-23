@@ -47,6 +47,11 @@ export interface ContextPageProps {
 }
 
 const TOTAL_BUDGET_CAP = 2200;
+type RequestState = "loading" | "available" | "unavailable";
+
+function requestState<T>(value: T | undefined): RequestState {
+  return value === undefined ? "loading" : value === null ? "unavailable" : "available";
+}
 
 export function ContextPage({
   pack: propPack,
@@ -58,40 +63,60 @@ export function ContextPage({
   const [pack, setPack] = useState<ContextPackInfo | null>(propPack ?? null);
   const [lessons, setLessons] = useState<ContextLesson[]>(propLessons ?? []);
   const [runs, setRuns] = useState<ContextRunRecord[]>(propRuns ?? []);
-  const [, setLoading] = useState<boolean>(false);
+  const [packState, setPackState] = useState<RequestState>(requestState(propPack));
+  const [lessonsState, setLessonsState] = useState<RequestState>(requestState(propLessons));
+  const [runsState, setRunsState] = useState<RequestState>(requestState(propRuns));
+  const [lessonsError, setLessonsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(propError);
 
-  useEffect(() => { if (propPack !== undefined) setPack(propPack); }, [propPack]);
-  useEffect(() => { if (propLessons !== undefined) setLessons(propLessons); }, [propLessons]);
-  useEffect(() => { if (propRuns !== undefined) setRuns(propRuns); }, [propRuns]);
+  useEffect(() => { if (propPack !== undefined) { setPack(propPack); setPackState(requestState(propPack)); } }, [propPack]);
+  useEffect(() => { if (propLessons !== undefined) { setLessons(propLessons); setLessonsState(requestState(propLessons)); } }, [propLessons]);
+  useEffect(() => { if (propRuns !== undefined) { setRuns(propRuns); setRunsState(requestState(propRuns)); } }, [propRuns]);
   useEffect(() => { if (propError !== undefined) setError(propError); }, [propError]);
 
   const fetchData = async () => {
     if (propPack !== undefined && propLessons !== undefined && propRuns !== undefined) return;
-    setLoading(true);
     setError(null);
-    try {
-      const [sumRes, memRes, runsRes] = await Promise.all([
-        legacyFetch("/api/staff/summary").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        legacyFetch("/api/v1/memory?type=lesson").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        legacyFetch("/api/staff/runs?limit=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      ]);
-      if (sumRes) {
-        setPack({
-          version: (sumRes.standards_version as string) || "unknown",
-          digest: ((sumRes.standards_pin as string) || "").split("#")[1] || "unknown",
-          pin: (sumRes.standards_pin as string) || "unknown",
-          source_path: (sumRes.standards_source as string) || "<builtin>",
-          is_fallback: Boolean(sumRes.standards_fallback),
-        });
-      }
-      if (memRes?.entries) setLessons(memRes.entries as ContextLesson[]);
-      if (runsRes?.runs) setRuns(runsRes.runs as ContextRunRecord[]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to load context data";
-      setError(msg);
-    } finally {
-      setLoading(false);
+    setLessonsError(null);
+    setPackState("loading");
+    setLessonsState("loading");
+    setRunsState("loading");
+    const loadJson = async (url: string): Promise<unknown> => {
+      const response = await legacyFetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    };
+    const [summaryResult, lessonsResult, runsResult] = await Promise.allSettled([
+      loadJson("/api/staff/summary"),
+      loadJson("/api/v1/memory?type=lesson"),
+      loadJson("/api/staff/runs?limit=50"),
+    ]);
+    if (summaryResult.status === "fulfilled" && typeof summaryResult.value === "object" && summaryResult.value !== null && "standards_version" in summaryResult.value) {
+      const summary = summaryResult.value as Record<string, unknown>;
+      const pin = typeof summary.standards_pin === "string" ? summary.standards_pin : "unknown";
+      setPack({
+        version: typeof summary.standards_version === "string" ? summary.standards_version : "unknown",
+        digest: pin.split("#")[1] || "unknown",
+        pin,
+        source_path: typeof summary.standards_source === "string" ? summary.standards_source : "<builtin>",
+        is_fallback: Boolean(summary.standards_fallback),
+      });
+      setPackState("available");
+    } else {
+      setPackState("unavailable");
+    }
+    if (lessonsResult.status === "fulfilled" && typeof lessonsResult.value === "object" && lessonsResult.value !== null && "entries" in lessonsResult.value && Array.isArray(lessonsResult.value.entries)) {
+      setLessons(lessonsResult.value.entries as ContextLesson[]);
+      setLessonsState("available");
+    } else {
+      setLessonsState("unavailable");
+      setLessonsError(lessonsResult.status === "rejected" ? String(lessonsResult.reason) : "The service returned an invalid lesson response.");
+    }
+    if (runsResult.status === "fulfilled" && typeof runsResult.value === "object" && runsResult.value !== null && "runs" in runsResult.value && Array.isArray(runsResult.value.runs)) {
+      setRuns(runsResult.value.runs as ContextRunRecord[]);
+      setRunsState("available");
+    } else {
+      setRunsState("unavailable");
     }
   };
 
@@ -114,7 +139,7 @@ export function ContextPage({
   const repoLag = repos.map((repo) => {
     const latest = runs.filter((r) => r.repo === repo)[0];
     const latestVer = latest?.standards_version || "unknown";
-    return { repo, latestVer, isUpToDate: pack ? latestVer === pack.version : false, lastRunAt: latest?.created_at };
+    return { repo, latestVer, isUpToDate: pack ? latestVer === pack.version : false, canCompare: Boolean(pack), lastRunAt: latest?.created_at };
   });
 
   if (error) {
@@ -132,10 +157,10 @@ export function ContextPage({
     <div className="p-6 max-w-7xl mx-auto space-y-8 font-sans text-neutral-100">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Fleet Context & Shared Memory</h1>
-        <p className="text-sm text-neutral-400 mt-1">Librarian-stewarded standards pack pin, per-repo AGENTS.md version lag, lesson review queue, and per-run context size.</p>
+        <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, latest per-repo run versions, lesson review queue, and per-run context estimates. AGENTS.md synchronization and Tier-1 pack pins are not reported by the current API.</p>
       </div>
 
-      {pack && (
+      {pack ? (
         <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -154,12 +179,19 @@ export function ContextPage({
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Content Digest</span><span className="font-mono text-xs text-neutral-300 break-all">{pack.digest}</span></div>
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Source Location</span><span className="font-mono text-xs text-neutral-300 break-all">{pack.source_path}</span></div>
           </div>
+          <p className="text-xs text-neutral-400">Tier-1 pack versions are not reported by the current API.</p>
+        </section>
+      ) : (
+        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 text-sm text-neutral-300" role="status">
+          {packState === "loading" ? "Loading Tier-0 pack data…" : "Tier-0 pack data is unavailable."}
+          {packState === "unavailable" && <button onClick={onRefresh || fetchData} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry pack data</button>}
         </section>
       )}
 
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-4">
-        <h2 className="text-lg font-semibold">Repository AGENTS.md Version Lag</h2>
-        {repoLag.length === 0 ? <p className="text-sm text-neutral-400">No active repositories detected.</p> : (
+        <h2 className="text-lg font-semibold">Standards Pack Version at Latest Recorded Run</h2>
+        <p className="text-xs text-neutral-400">AGENTS.md sync versions are not exposed by the current API; this table compares run records with the current Tier-0 pack only.</p>
+        {runsState === "loading" ? <p className="text-sm text-neutral-400">Loading run version data…</p> : runsState === "unavailable" ? <div className="text-sm text-amber-300" role="status">Run version data is unavailable.<button onClick={onRefresh || fetchData} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry run data</button></div> : repoLag.length === 0 ? <p className="text-sm text-neutral-400">No active repositories detected.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
               <thead><tr className="border-b border-neutral-800 text-neutral-400 text-xs uppercase"><th className="py-2.5 px-3">Repository</th><th className="py-2.5 px-3">Last Run Pack</th><th className="py-2.5 px-3">Status</th><th className="py-2.5 px-3">Last Run Date</th></tr></thead>
@@ -169,7 +201,7 @@ export function ContextPage({
                     <td className="py-2.5 px-3 font-medium text-neutral-200">{r.repo}</td>
                     <td className="py-2.5 px-3 font-mono text-xs text-neutral-300">{r.latestVer}</td>
                     <td className="py-2.5 px-3" data-testid={`repo-status-${r.repo}`}>
-                      {r.isUpToDate ? <span className="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Up to date</span> : <span className="px-2 py-0.5 text-xs rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">Lagging</span>}
+                      {!r.canCompare ? <span className="px-2 py-0.5 text-xs rounded bg-neutral-800 text-neutral-400">Cannot compare</span> : r.isUpToDate ? <span className="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Matches current Tier-0</span> : <span className="px-2 py-0.5 text-xs rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">Different Tier-0 version</span>}
                     </td>
                     <td className="py-2.5 px-3 text-xs text-neutral-400">{r.lastRunAt || "—"}</td>
                   </tr>
@@ -183,14 +215,14 @@ export function ContextPage({
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="text-lg font-semibold">Lesson Review Queue</h2><p className="text-xs text-neutral-400">Read-only for human operators. Promoted and retired lessons cease prompt injection.</p></div>
-          <div className="flex items-center gap-2 text-xs">
+          {lessonsState === "available" && <div className="flex items-center gap-2 text-xs">
             <span data-testid="count-proposed" className="bg-neutral-800 px-2 py-1 rounded">Proposed: <b>{counts.proposed}</b></span>
             <span data-testid="count-accepted" className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-1 rounded">Accepted: <b>{counts.accepted}</b></span>
             <span data-testid="count-quarantined" className="bg-amber-950 text-amber-300 border border-amber-800 px-2 py-1 rounded">Quarantined: <b>{counts.quarantined}</b></span>
             <span data-testid="count-retired" className="bg-neutral-800 text-neutral-400 px-2 py-1 rounded">Retired: <b>{counts.retired}</b></span>
-          </div>
+          </div>}
         </div>
-        {publicLessons.length === 0 ? <p className="text-sm text-neutral-400 py-3">No lessons in review queue.</p> : (
+        {lessonsState === "loading" ? <p className="text-sm text-neutral-400 py-3">Loading lesson review data…</p> : lessonsState === "unavailable" ? <div className="text-sm text-amber-300 py-3" role="status">Lesson review data unavailable{lessonsError ? ` (${lessonsError})` : ""}.<button onClick={onRefresh || fetchData} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs" aria-label="Retry lesson data">Retry</button></div> : publicLessons.length === 0 ? <p className="text-sm text-neutral-400 py-3">No lessons in review queue.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
               <thead><tr className="border-b border-neutral-800 text-neutral-400 text-xs uppercase"><th className="py-2.5 px-3">Status</th><th className="py-2.5 px-3">Lesson Summary</th><th className="py-2.5 px-3">Repo</th><th className="py-2.5 px-3">Provenance (Author / Run)</th><th className="py-2.5 px-3">Expires</th></tr></thead>
@@ -220,8 +252,8 @@ export function ContextPage({
       </section>
 
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-4">
-        <div><h2 className="text-lg font-semibold">Per-Run Context Size & Bloat Monitor</h2><p className="text-xs text-neutral-400">Total injected context stamped per run vs 2,200 token cap. Estimates labeled (estimate).</p></div>
-        {runs.length === 0 ? <p className="text-sm text-neutral-400 py-3">No recent runs recorded.</p> : (
+        <div><h2 className="text-lg font-semibold">Per-Run Context Size & Bloat Monitor</h2><p className="text-xs text-neutral-400">Known Tier-0/Tier-1 component subtotal; library tokens are not yet recorded. Full-prompt estimates are separate and are not compared with the context cap.</p></div>
+        {runsState === "loading" ? <p className="text-sm text-neutral-400 py-3">Loading run context data…</p> : runsState === "unavailable" ? <div className="text-sm text-amber-300" role="status">Run context data is unavailable.<button onClick={onRefresh || fetchData} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry run data</button></div> : runs.length === 0 ? <p className="text-sm text-neutral-400 py-3">No recent runs recorded.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
               <thead><tr className="border-b border-neutral-800 text-neutral-400 text-xs uppercase"><th className="py-2.5 px-3">Run ID / Role</th><th className="py-2.5 px-3">Tokens (T0 / Skills / Lessons)</th><th className="py-2.5 px-3">Total Injected</th><th className="py-2.5 px-3">Cap Status</th><th className="py-2.5 px-3">Lesson Audit (Selected / Skipped)</th><th className="py-2.5 px-3">Usage & Cost Proxies</th></tr></thead>
@@ -239,7 +271,8 @@ export function ContextPage({
                   const t0 = tokenEstimates?.tier0_standards ?? (r.standards_tokens || 0);
                   const t1Skills = tokenEstimates?.tier1_skills ?? 0;
                   const t1Lessons = tokenEstimates?.tier1_lessons ?? (r.lessons_tokens || 0);
-                  const total = tokenEstimates?.total_injected ?? (t0 + t1Skills + t1Lessons);
+                  const total = t0 + t1Skills + t1Lessons;
+                  const fullPromptEstimate = tokenEstimates?.full_prompt ?? (stamp?.context_accounting_version === 2 ? undefined : tokenEstimates?.total_injected);
                   const isOverCap = total > TOTAL_BUDGET_CAP;
                   const selectedIds: string[] = Array.isArray(stamp?.lesson_ids) ? (stamp.lesson_ids as string[]) : [];
                   const skippedItems: Array<{ id: string; reason: string }> = Array.isArray(stamp?.lessons_skipped)
@@ -250,9 +283,9 @@ export function ContextPage({
                     <tr key={r.id} className="hover:bg-neutral-800/30">
                       <td className="py-2.5 px-3"><div className="font-mono text-xs font-semibold text-neutral-200">{r.id}</div><div className="text-xs text-neutral-400">{r.role} ({r.repo})</div></td>
                       <td className="py-2.5 px-3 font-mono text-xs text-neutral-300">{t0} / {t1Skills} / {t1Lessons}</td>
-                      <td className="py-2.5 px-3 font-mono text-xs text-neutral-200 font-medium">{total} tokens</td>
+                      <td className="py-2.5 px-3 font-mono text-xs text-neutral-200 font-medium"><div>{total} known tokens</div>{fullPromptEstimate !== undefined && <div className="mt-1 text-neutral-500">Full prompt: {fullPromptEstimate} (estimate)</div>}</td>
                       <td className="py-2.5 px-3" data-testid={`run-cap-${r.id}`}>
-                        {isOverCap ? <span className="px-2 py-0.5 text-xs rounded bg-red-900/40 text-red-300 border border-red-700/60 font-medium">Over-Cap</span> : <span className="px-2 py-0.5 text-xs rounded bg-emerald-950 text-emerald-400 border border-emerald-800">OK</span>}
+                        {isOverCap ? <span className="px-2 py-0.5 text-xs rounded bg-red-900/40 text-red-300 border border-red-700/60 font-medium">Over-Cap</span> : <span className="px-2 py-0.5 text-xs rounded bg-amber-950 text-amber-300 border border-amber-800">Partial</span>}
                       </td>
                       <td className="py-2.5 px-3 text-xs">
                         <div className="text-neutral-300">{selectedIds.length > 0 ? selectedIds.join(", ") : <span className="text-neutral-500">None</span>}</div>
