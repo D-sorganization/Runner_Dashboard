@@ -256,7 +256,7 @@ export function ContextPage({
         {runsState === "loading" ? <p className="text-sm text-neutral-400 py-3">Loading run context data…</p> : runsState === "unavailable" ? <div className="text-sm text-amber-300" role="status">Run context data is unavailable.<button onClick={onRefresh || fetchData} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry run data</button></div> : runs.length === 0 ? <p className="text-sm text-neutral-400 py-3">No recent runs recorded.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
-              <thead><tr className="border-b border-neutral-800 text-neutral-400 text-xs uppercase"><th className="py-2.5 px-3">Run ID / Role</th><th className="py-2.5 px-3">Tokens (T0 / Skills / Lessons)</th><th className="py-2.5 px-3">Total Injected</th><th className="py-2.5 px-3">Cap Status</th><th className="py-2.5 px-3">Lesson Audit (Selected / Skipped)</th><th className="py-2.5 px-3">Usage & Cost Proxies</th></tr></thead>
+              <thead><tr className="border-b border-neutral-800 text-neutral-400 text-xs uppercase"><th className="py-2.5 px-3">Run ID / Role</th><th className="py-2.5 px-3">Tokens (T0 / Skills / Lessons)</th><th className="py-2.5 px-3">Known Context Subtotal</th><th className="py-2.5 px-3">Cap Status</th><th className="py-2.5 px-3">Lesson Audit (Selected / Skipped)</th><th className="py-2.5 px-3">Usage & Cost Proxies</th></tr></thead>
               <tbody className="divide-y divide-neutral-800/50">
                 {runs.map((r) => {
                   let stamp: Record<string, unknown> | null = null;

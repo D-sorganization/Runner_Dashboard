@@ -111,7 +111,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Context",
     group: "staff",
     Icon: BrainIcon,
-    tooltip: "Fleet context standards pack pin, lesson review queue, AGENTS.md version lag, and per-run context size.",
+    tooltip: "Fleet standards pin, lesson queue, and run context estimates. AGENTS.md sync and Tier-1 versions are not currently available.",
     tabId: "context",
     frequent: false,
     mobilePrimary: false,
