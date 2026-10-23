@@ -57,7 +57,7 @@ def test_pre_disk_secret_classification_quarantines_and_blocks_promotion(
 ) -> None:
     client, db_path = intake_client
     headers = {"Authorization": "Bearer test-intake-token"}
-    canary_secret = "sk-proj-CANARY9876543210SECRETKEYVALUE"
+    canary_secret = "sk-proj-CANARY9876543210SECRETKEYVALUE"  # pragma: allowlist secret
     res = client.post(
         "/api/v1/library/intake",
         headers=headers,
