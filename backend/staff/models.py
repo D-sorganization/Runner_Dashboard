@@ -187,6 +187,7 @@ class StaffRunDetailResponse(BaseModel):
     run: StaffRunRecord
     events: list[StaffRunEvent]
     attempts: list[StaffRunRecord] = Field(default_factory=list)
+    logs_ref: str | None = Field(default=None, description="Direct URL to filter diagnostic logs for this run")
 
     model_config = ConfigDict(extra="allow")
 

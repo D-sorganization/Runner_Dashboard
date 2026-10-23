@@ -33,6 +33,7 @@ from starlette.responses import Response
 
 request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 principal_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("principal_id", default="-")
+run_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("run_id", default="-")
 
 
 def _new_request_id() -> str:
@@ -84,6 +85,7 @@ class RequestIdLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_ctx.get()  # type: ignore[attr-defined]
         record.principal_id = principal_id_ctx.get()  # type: ignore[attr-defined]
+        record.run_id = run_id_ctx.get()  # type: ignore[attr-defined]
         return True
 
 
@@ -107,6 +109,7 @@ class _JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
             "request_id": getattr(record, "request_id", "-"),
             "principal_id": getattr(record, "principal_id", "-"),
+            "run_id": getattr(record, "run_id", "-"),
             "path": getattr(record, "pathname", ""),
         }
         if record.exc_info:
@@ -155,3 +158,8 @@ def configure_json_logging() -> None:
 def current_request_id() -> str:
     """Return the active request ID, or ``"-"`` outside a request context."""
     return request_id_ctx.get()
+
+
+def current_run_id() -> str:
+    """Return the active staff run ID, or ``"-"`` outside a staff run context."""
+    return run_id_ctx.get()
