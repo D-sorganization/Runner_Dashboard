@@ -46,6 +46,7 @@ def test_policy_file_lists_the_intended_contexts() -> None:
     contexts = {entry["context"] for entry in policy["required_contexts"]}
     assert contexts == {
         "quality-gate",
+        "frontend-required",
         "tests",
         "guard",
         "TypeScript typecheck (tsc)",
@@ -70,6 +71,7 @@ def test_live_snapshot_reproduces_the_known_issue_1119_gap() -> None:
     assert sorted(missing) == sorted(
         [
             "detect-secrets (baseline diff)",
+            "frontend-required",
             "guard",
             "TypeScript typecheck (tsc)",
         ]

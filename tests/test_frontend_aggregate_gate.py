@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.deploy.bash_host import require_bash
+
 ROOT = Path(__file__).resolve().parents[1]
 JOBS = ("typecheck", "vitest", "perf-budget", "playwright-e2e", "staff-console-e2e")
 
@@ -33,7 +35,7 @@ def _run_gate(*, frontend: bool, staff: bool, failure: tuple[str, str] | None = 
     if failure:
         needs[failure[0]]["result"] = failure[1]
     return subprocess.run(
-        ["bash", "-c", gate["steps"][0]["run"]],
+        [require_bash(), "-c", gate["steps"][0]["run"]],
         env={**os.environ, "NEEDS_JSON": json.dumps(needs)},
         capture_output=True,
         check=False,
