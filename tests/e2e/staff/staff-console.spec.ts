@@ -168,7 +168,11 @@ test.describe("send failures keep the draft", () => {
     await openThread(page, "E2E Analyst");
     await send(page, text);
 
-    await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
+    const sendAlert = page.getByRole("alert").filter({ hasText: /Failed to send message/ });
+      await expect(sendAlert).toBeVisible();
+      await expect(sendAlert).toHaveCount(1);
+      await expect(page.getByTestId(SEND_ERROR)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: COMPOSER })).toHaveValue(text);
     expect(await occurrences(page, reply(text))).toBe(0);
   });
@@ -181,7 +185,11 @@ test.describe("send failures keep the draft", () => {
       await openThread(page, "E2E Analyst");
       await send(page, text);
 
-      await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
+      const sendAlert = page.getByRole("alert").filter({ hasText: /Failed to send message/ });
+      await expect(sendAlert).toBeVisible();
+      await expect(sendAlert).toHaveCount(1);
+      await expect(page.getByTestId(SEND_ERROR)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
       await expect(page.getByRole("textbox", { name: COMPOSER })).toHaveValue(text);
     });
   });
