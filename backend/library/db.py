@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
 CREATE TABLE IF NOT EXISTS ingest_rejections (
     id INTEGER PRIMARY KEY, source_root TEXT NOT NULL, rel_path TEXT NOT NULL,
     reason TEXT NOT NULL, seen_at TEXT NOT NULL, UNIQUE(source_root, rel_path));
+CREATE TABLE IF NOT EXISTS library_intake (
+    id INTEGER PRIMARY KEY, sha256 TEXT NOT NULL, filename TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL, mime_type TEXT NOT NULL,
+    sensitivity TEXT NOT NULL DEFAULT 'confidential_work',
+    status TEXT NOT NULL DEFAULT 'staged', thread_id TEXT, uploaded_by TEXT,
+    storage_path TEXT, work_id INTEGER REFERENCES works(id),
+    created_at TEXT NOT NULL, promoted_at TEXT, promoted_by TEXT);
 """
 
 

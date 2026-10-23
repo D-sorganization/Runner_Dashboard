@@ -7,7 +7,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVoiceInput } from "../../hooks/useVoiceInput";
-import type { ComposerProps as BaseComposerProps, SlashCommand } from "./threadTypes";
+import type { ComposerAttachment, ComposerProps as BaseComposerProps, IntakeSensitivity, SlashCommand } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
 import { ComposerAutocompletes } from "./ComposerAutocompletes";
 import {
@@ -19,6 +19,7 @@ import {
   getMentionQuery,
   getSlashCommandQuery,
   saveDraft,
+  uploadIntakeFile,
 } from "./composerUtils";
 import "./composer.css";
 import { MicGlyph } from "../decompIcons";
@@ -36,6 +37,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   placeholder,
   className = "",
   focusOnThreadChange = false,
+  autoFocus = false,
   isPanel = false,
   prefilledText,
 }) => {
@@ -44,18 +46,36 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [sensitivity, setSensitivity] = useState<IntakeSensitivity>("confidential_work");
   const [activeMenu, setActiveMenu] = useState<"mention" | "slash" | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeMenuRef = useRef(activeMenu);
   activeMenuRef.current = activeMenu;
+  const prevThreadIdRef = useRef(threadId);
+  const latestTextRef = useRef(text);
+  latestTextRef.current = text;
 
-  // Restore draft when threadId changes
+  useEffect(() => {
+    if (!autoFocus || disabled || isPanel) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement) {
+      textareaRef.current?.focus();
+    }
+  }, [autoFocus, disabled, isPanel]);
+
+  // Restore draft when threadId changes without wiping in-flight typing from "new"
   useEffect(() => {
     const saved = getDraft(threadId);
-    setText(saved);
+    const keepNew = prevThreadIdRef.current === "new" && threadId !== "new" && !saved && latestTextRef.current.trim().length > 0;
+    const nextText = keepNew ? latestTextRef.current : saved;
+    if (keepNew) { saveDraft(threadId, nextText); clearDraft("new"); }
+    prevThreadIdRef.current = threadId;
+    setText(nextText);
     setSendState("idle");
     setErrorMessage(null);
     setIdempotencyKey(null);
@@ -173,9 +193,20 @@ export const Composer: React.FC<ComposerComponentProps> = ({
     }
   };
 
+  const attachedItems = useMemo(() => attachments.filter((a) => a.status === "attached"), [attachments]);
+  const stageFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    for (const f of Array.from(files)) {
+      const item = await uploadIntakeFile(f, sensitivity, threadId);
+      setAttachments((prev) => [...prev, item]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    textareaRef.current?.focus();
+  };
+
   const executeSend = async (retryKey?: string) => {
     const trimmed = text.trim();
-    if (!trimmed || sendState === "sending" || disabled || isPanel) return;
+    if ((!trimmed && !attachedItems.length) || sendState === "sending" || disabled || isPanel) return;
 
     const key = retryKey || idempotencyKey || generateIdempotencyKey(threadId);
     setIdempotencyKey(key);
@@ -184,9 +215,13 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
     try {
       const result = await onSendMessage({
-        body: trimmed,
+        body: trimmed || `Attached ${attachedItems.map((a) => a.filename).join(", ")}`,
         idempotencyKey: key,
         role: selectedRole,
+        ...(attachedItems.length ? { meta: { attachments: attachedItems.map((a) => ({
+          filename: a.filename, size_bytes: a.sizeBytes, mime_type: a.mimeType,
+          sensitivity: a.sensitivity, sha256: a.sha256, intake_id: a.intakeId,
+        })) } } : {}),
       });
       if (result && result.ok === false) {
         throw new Error(typeof result.error === "string" ? result.error : "Failed to send message");
@@ -194,6 +229,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
       clearDraft(threadId);
       setText("");
+      setAttachments([]);
       setIdempotencyKey(null);
       setSendState("sent");
       setTimeout(() => setSendState("idle"), 1000);
@@ -270,7 +306,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   // Auto-grow rows from 1 to 10
   const lineCount = (text.match(/\n/g) || []).length + 1;
   const rows = Math.min(10, Math.max(1, lineCount));
-  const isSendDisabled = disabled || isPanel || sendState === "sending" || !text.trim();
+  const isSendDisabled = disabled || isPanel || sendState === "sending" || (!text.trim() && !attachedItems.length);
 
   return (
     <div className={`staff-composer ${className}`} role="region" aria-label="Message composer">
@@ -284,82 +320,44 @@ export const Composer: React.FC<ComposerComponentProps> = ({
         onSelectCommand={handleSelectCommand}
       />
 
-      {/* Send Error & Retry Banner */}
       {errorMessage && (
-        <div
-          role="alert"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            background: "var(--badge-danger-bg)",
-            border: "1px solid var(--accent-red)",
-            borderRadius: 6,
-            padding: "6px 12px",
-            marginBottom: 8,
-            fontSize: 12,
-            color: "var(--accent-red)",
-          }}
-        >
+        <div role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--badge-danger-bg)", border: "1px solid var(--accent-red)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--accent-red)" }}>
           <span>Failed to send message: {errorMessage}</span>
-          <button
-            type="button"
-            onClick={() => executeSend(idempotencyKey || undefined)}
-            style={{
-              background: "var(--accent-red)",
-              color: "var(--text-on-accent)",
-              border: "none",
-              borderRadius: 4,
-              padding: "2px 10px",
-              cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            Retry
-          </button>
+          <button type="button" onClick={() => executeSend(idempotencyKey || undefined)} style={{ background: "var(--accent-red)", color: "var(--text-on-accent)", border: "none", borderRadius: 4, padding: "2px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Retry</button>
         </div>
       )}
-
-      {/* Voice Error Banner */}
       {voiceError && (
-        <div
-          role="alert"
-          style={{
-            background: "var(--badge-danger-bg)",
-            border: "1px solid var(--accent-red)",
-            borderRadius: 6,
-            padding: "4px 8px",
-            marginBottom: 6,
-            fontSize: 11,
-            color: "var(--accent-red)",
-          }}
-        >
+        <div role="alert" style={{ background: "var(--badge-danger-bg)", border: "1px solid var(--accent-red)", borderRadius: 6, padding: "4px 8px", marginBottom: 6, fontSize: 11, color: "var(--accent-red)" }}>
           Voice error: {voiceError}
         </div>
       )}
-
-      {/* Panel Read-Only Notice */}
       {isPanel && (
-        <div
-          role="status"
-          className="composer-panel-notice"
-          style={{
-            background: "var(--badge-info-bg)",
-            border: "1px solid var(--accent-blue)",
-            borderRadius: 6,
-            padding: "6px 12px",
-            marginBottom: 8,
-            fontSize: 12,
-            color: "var(--text-secondary)",
-          }}
-        >
+        <div role="status" className="composer-panel-notice" style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}>
           {panelDisabledMessage}
         </div>
       )}
 
       {/* Claude-grade Rounded Bordered Box */}
-      <div className="staff-composer__box">
+      <div
+        className="staff-composer__box"
+        data-testid="composer-box"
+        onClick={(e) => {
+          if (!disabled && !isPanel && !(e.target as HTMLElement | null)?.closest("button, input, select, label, a")) {
+            textareaRef.current?.focus();
+          }
+        }}
+      >
+        {attachments.length > 0 && (
+          <div className="staff-composer__attachments" aria-label="Staged attachments">
+            {attachments.map((att) => (
+              <span key={att.id} className={`staff-composer__chip staff-composer__chip--${att.status}`} data-testid={`composer-attachment-${att.filename}`}>
+                <span>{att.filename}</span>
+                <span className="staff-composer__chip-badge">{att.sensitivity}</span><span className="staff-composer__chip-status">{att.status}</span>
+                <button type="button" className="staff-composer__chip-remove" aria-label={`Remove ${att.filename}`} onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           value={text}
@@ -381,6 +379,15 @@ export const Composer: React.FC<ComposerComponentProps> = ({
         />
 
         <div className="staff-composer__footer">
+          <div className="staff-composer__footer-left">
+            <input ref={fileInputRef} type="file" multiple tabIndex={-1} className="staff-composer__file-input" data-testid="composer-file-input" aria-label="Upload files to conversation" onChange={(e) => void stageFiles(e.target.files)} disabled={disabled || isPanel || sendState === "sending"} />
+            <select aria-label="Attachment sensitivity" data-testid="composer-sensitivity-select" className="staff-composer__sensitivity" value={sensitivity} onChange={(e) => setSensitivity(e.target.value as IntakeSensitivity)} disabled={disabled || isPanel || sendState === "sending"}>
+              <option value="confidential_work">Confidential work</option>
+              <option value="public_reference">Library reference</option>
+              <option value="vault_sensitive">Vault sensitive</option>
+            </select>
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={disabled || isPanel || sendState === "sending"} title="Add files or context" aria-label="Add files or context" data-testid="composer-attach-btn" className="staff-composer__attach-btn">+</button>
+          </div>
           {/* Voice Input Button */}
           <button
             type="button"

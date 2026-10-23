@@ -281,7 +281,7 @@ export function CodeRequestsTab({
                   <>
                     <option value="codex">Codex</option>
                     <option value="claude">Claude</option>
-                    <option value="jules_api">Jules</option>
+                    <option value="antigravity">Antigravity</option>
                   </>
                 )}
               </select>

@@ -86,6 +86,20 @@ export interface SendMessagePayload {
   meta?: Record<string, unknown>;
 }
 
+export type IntakeSensitivity = "public_reference" | "confidential_work" | "vault_sensitive";
+
+export interface ComposerAttachment {
+  id: string;
+  filename: string;
+  sizeBytes: number;
+  mimeType: string;
+  sensitivity: IntakeSensitivity;
+  status: "pending" | "attached" | "rejected";
+  sha256?: string;
+  intakeId?: number;
+  error?: string;
+}
+
 export interface ComposerProps {
   threadId: string;
   roles?: import("./types").StaffRoleItem[];
@@ -96,6 +110,8 @@ export interface ComposerProps {
   className?: string;
   /** Focus the textarea when the user switches to another thread (SC-D9). */
   focusOnThreadChange?: boolean;
+  /** Focus the textarea immediately on initial mount. */
+  autoFocus?: boolean;
   /** True when thread is an expert panel (read-only, SC-D/Issue #1635). */
   isPanel?: boolean;
 }

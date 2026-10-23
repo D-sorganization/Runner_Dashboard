@@ -59,6 +59,13 @@ describe("BarbSidebar", () => {
     );
   });
 
+  it("auto-focuses the composer textarea immediately when opened on desktop", () => {
+    render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const composer = screen.getByRole("textbox", { name: /staff conversation input/i });
+    expect(composer).toHaveFocus();
+  });
+  });
+
   it("restores Barb history without sending a message when the sidebar opens", () => {
     window.history.replaceState({}, "", "/");
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);

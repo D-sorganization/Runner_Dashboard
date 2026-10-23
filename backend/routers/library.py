@@ -487,3 +487,8 @@ def library_verify_citation_route(
     if not result["citations"]:
         raise HTTPException(status_code=422, detail="cite must contain a canonical library citation")
     return result
+
+
+from routers.library_intake import intake_router  # noqa: E402
+
+router.include_router(intake_router)
