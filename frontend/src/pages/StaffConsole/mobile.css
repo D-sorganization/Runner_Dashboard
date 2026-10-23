@@ -665,3 +665,92 @@
     transition: none !important;
   }
 }
+
+@media (max-width: 180px) {
+  .staff-mobile__header-right .staff-mobile__details-btn:first-child { flex: 0 0 44px; min-width: 44px; font-size: 0; }
+  .staff-mobile__header-right .staff-mobile__details-btn:first-child::before { content: "+"; font-size: 16px; }
+}
+
+
+.staff-mobile__project-starters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 12px 12px;
+}
+
+.staff-mobile__project-starter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #30363d);
+  border-radius: 8px;
+  background: var(--bg-secondary, #161b22);
+  color: var(--text-primary, #c9d1d9);
+  text-align: left;
+  cursor: pointer;
+}
+
+.staff-mobile__project-starter span + span {
+  color: var(--text-secondary, #8b949e);
+  font-size: 11px;
+}
+
+.staff-mobile__project-starter:focus-visible {
+  outline: 2px solid var(--accent-blue, #58a6ff);
+  outline-offset: 2px;
+}
+
+@media (max-width: 360px) {
+  .staff-mobile__project-starters { grid-template-columns: minmax(0, 1fr); }
+}
+
+.staff-mobile__home-content {
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 16px;
+}
+
+.staff-mobile__home-intro {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.staff-mobile__home-eyebrow {
+  color: var(--accent-blue, #58a6ff);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.staff-mobile__home-intro h2 {
+  margin: 10px 0 8px;
+  color: var(--text-primary, #f0f6fc);
+  font-size: clamp(22px, 6vw, 30px);
+  line-height: 1.2;
+}
+
+.staff-mobile__home-intro p {
+  margin: 0;
+  color: var(--text-secondary, #8b949e);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.staff-mobile__home-content .staff-mobile__project-starters {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+@media (max-width: 200px) {
+  .staff-mobile__home-content { gap: 8px; padding: 8px 6px; }
+  .staff-mobile__home-intro p { display: none; }
+  .staff-mobile__home-intro h2 { font-size: 18px; }
+}

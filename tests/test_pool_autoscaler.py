@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import time
 from pathlib import Path
@@ -81,6 +82,13 @@ def test_get_scheduled_pool_desired_with_schedule(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(ra, "RUNNER_SCHEDULE_CONFIG", str(sched_file))
     monkeypatch.setattr(ra, "NVME_MIN_ONLINE", 1)
     monkeypatch.setattr(ra, "NVME_MAX_ONLINE", 15)
+
+    class FixedDateTime(dt.datetime):
+        @classmethod
+        def now(cls, tz: dt.tzinfo | None = None) -> FixedDateTime:
+            return cls(2026, 10, 22, 12, 0, tzinfo=tz)
+
+    monkeypatch.setattr(dt, "datetime", FixedDateTime)
 
     # 1. Root level override
     config_data = {"enabled": True, "timezone": "UTC", "nvme_default_count": 6, "schedules": []}

@@ -84,9 +84,19 @@ def test_antigravity_adapter_build_command_with_valid_model() -> None:
     assert "--add-dir" in argv
     assert argv[argv.index("--add-dir") + 1] == "/tmp/repo"
     assert "--mode" in argv
-    assert argv[argv.index("--mode") + 1] == "plan"
+    assert argv[argv.index("--mode") + 1] == "auto"
     assert "--model" in argv
     assert argv[argv.index("--model") + 1] == "gemini-3.8-flash-high"
+
+
+@pytest.mark.unit
+def test_antigravity_session_uses_conversation_flag_for_run_and_chat() -> None:
+    adapter = adapters_mod.ADAPTERS["antigravity"]
+    run = adapter.build_command("continue", "/tmp/repo", session_id="session-1")
+    chat = adapter.chat_argv("continue", "/tmp/repo", session_id="session-1")
+    assert run[run.index("--conversation") + 1] == "session-1"
+    assert chat[chat.index("--conversation") + 1] == "session-1"
+    assert "--resume" not in run and "--resume" not in chat
 
 
 @pytest.mark.unit
@@ -158,7 +168,7 @@ def test_antigravity_quota_exhaustion_classified_as_rate_limited_or_capacity() -
         exit_code=1,
     )
     assert failure.retryable is True
-    assert failure.failure_class in ("rate_limited", "provider_capacity")
+    assert failure.failure_class in ("rate_limited", "provider_capacity", "quota_exhausted")
 
     failure_capacity = classify_run_failure(
         provider="antigravity",
@@ -177,7 +187,11 @@ def test_probe_antigravity_cli_installed_and_authenticated() -> None:
     with (
         patch("routers.credentials.shutil.which", return_value="/usr/local/bin/agy"),
         patch("routers.credentials._find_binary", return_value="/usr/local/bin/agy"),
-        patch("routers.credentials._cli_login_file_present", return_value=True),
+        patch("routers.credentials._antigravity_login_present", return_value=True),
+        patch(
+            "staff.cli_oauth_session.antigravity_oauth_session_alive",
+            return_value=(True, "OAuth session active"),
+        ),
         patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         probe = _probe_antigravity_cli()
@@ -223,7 +237,11 @@ def test_probe_antigravity_cli_quota_exhausted() -> None:
     with (
         patch("routers.credentials.shutil.which", return_value="/usr/local/bin/agy"),
         patch("routers.credentials._find_binary", return_value="/usr/local/bin/agy"),
-        patch("routers.credentials._cli_login_file_present", return_value=True),
+        patch("routers.credentials._antigravity_login_present", return_value=True),
+        patch(
+            "staff.cli_oauth_session.antigravity_oauth_session_alive",
+            return_value=(True, "OAuth session active"),
+        ),
         patch(
             "staff.quota.headroom",
             return_value=(False, "antigravity: plan limit reached"),
@@ -245,7 +263,11 @@ def test_provider_probe_availability_includes_antigravity() -> None:
             return_value="/usr/local/bin/agy",
         ),
         patch("routers.credentials._find_binary", return_value="/usr/local/bin/agy"),
-        patch("routers.credentials._cli_login_file_present", return_value=True),
+        patch("routers.credentials._antigravity_login_present", return_value=True),
+        patch(
+            "staff.cli_oauth_session.antigravity_oauth_session_alive",
+            return_value=(True, "OAuth session active"),
+        ),
         patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         res = probe_provider_availability()

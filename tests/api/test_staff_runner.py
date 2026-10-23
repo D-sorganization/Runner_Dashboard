@@ -292,8 +292,6 @@ def test_parse_line_json_text_and_usage() -> None:
     assert ev["usage"] == {"input_tokens": 5, "output_tokens": 7, "cost_usd": 0.5}
     assert claude.parse_line("not json") == {"kind": "text", "text": "not json"}
     assert claude.parse_line("{broken") == {"kind": "text", "text": "{broken"}
-    maxwell = adapters_mod.ADAPTERS["maxwell"]
-    assert maxwell.parse_line('{"type": "x"}')["kind"] == "text"  # plain-text provider never parses
 
 
 @pytest.mark.unit
@@ -456,7 +454,9 @@ def client(staff: runner_mod.StaffRunner) -> Iterator[TestClient]:
 
 
 @pytest.mark.unit
-def test_roster_lists_roles_and_providers(client: TestClient) -> None:
+def test_roster_lists_roles_and_providers(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    # This role/adapter contract test must not probe a developer's installed CLIs.
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
     body = client.get("/api/staff/roster").json()
     assert body["machine"] == "TestNode"
     names = {r["name"] for r in body["roles"]}
@@ -641,6 +641,9 @@ def test_finished_run_is_verified_and_only_enforce_changes_its_status(
     class NoPr:
         def find(self, repo: str, branch: str) -> None:
             lookups.append((repo, branch))
+
+        def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
+            return 1  # branch has commits but no PR — verification should still fail
 
     monkeypatch.setenv(verification.MODE_ENV, mode)
     monkeypatch.setattr(verification, "GhCliPrProbe", NoPr)

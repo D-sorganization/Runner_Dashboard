@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-10-22",
+  "repo": "D-sorganization/Runner_Dashboard",
+  "ref": "main",
+  "check_run_names": [
+    "TypeScript typecheck (tsc)",
+    "detect-secrets (baseline diff)",
+    "quality-gate"
+  ],
+  "source": "gh api repos/D-sorganization/Runner_Dashboard/commits/main/check-runs"
+}

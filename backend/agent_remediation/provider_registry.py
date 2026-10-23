@@ -116,12 +116,22 @@ _GEMINI_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
 # Grok Build CLI needs a SuperGrok plan the fleet does not hold.
 _CURSOR_AGENT_MODELS = (
     "auto",
+    "composer-2.5",
     "gpt-5",
     "claude-sonnet-4",
     "grok-code-fast-1",
     "grok-4",
+    "grok-4.7-high",
+    "grok-4.7-high-fast",
+    "grok-4.7-medium",
+    "grok-4.7-medium-fast",
+    "grok-4.7-low",
+    "grok-4.7-low-fast",
+    "grok-4.7-xhigh",
+    "grok-4.7-xhigh-fast",
 )
 _ANTIGRAVITY_MODELS = (
+    "gemini-3.8-flash",
     "gemini-3.8-flash-high",
     "gemini-4-argon-high",
     "gemini-4-argon-medium",
@@ -305,7 +315,7 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         models=_ANTIGRAVITY_MODELS,
         availability_probe=("agy",),
         credential_id="antigravity",
-        setup_hint="Install Antigravity CLI (agy) on the node",
+        setup_hint="Install Antigravity CLI (agy), then sign in with your Google account (subscription; no API key)",
         editable=True,
         notes=(
             "Uses `agy --print --output-format stream-json` for headless branch-local "
@@ -333,24 +343,6 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
             "reached through the Cursor subscription; the Grok Build CLI is not used because "
             "it requires SuperGrok."
         ),
-    ),
-    ProviderEntry(
-        dashboard_id="maxwell",
-        conductor_id="maxwell-daemon",
-        label="Maxwell Daemon",
-        execution_mode="remote_session",
-        dispatch_mode="dashboard_local",
-        auth_mode="local",
-        resource="local",
-        capabilities=("code_edit", "code_review", "doc"),
-        cost_per_task=0.0,
-        max_concurrency=1,
-        credential_id="maxwell",
-        setup_hint="Optional: run Maxwell_Daemon on this host; the dashboard proxies it over HTTP",
-        editable=False,
-        remote=True,
-        experimental=True,
-        notes="optional; daemon has been dormant since 2026-06",
     ),
 )
 

@@ -51,6 +51,7 @@ def rm_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _client(monkeypatch: pytest.MonkeyPatch, peer: tuple[str, int], loopback_auth: str) -> Iterator[TestClient]:
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", loopback_auth)
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_OPERATOR_WRITES", loopback_auth)
     from server import app  # noqa: PLC0415
 
     yield TestClient(app, raise_server_exceptions=False, client=peer)

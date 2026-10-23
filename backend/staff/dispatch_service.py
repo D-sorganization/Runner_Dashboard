@@ -50,6 +50,9 @@ class DispatchCommand:
     requested_by: str
     provider: str | None = None
     model: str | None = None
+    # Internal routing hint used by trusted callers such as CI-fix; never exposed as
+    # an unauthenticated provider-selection surface.
+    model_tier: str = ""
     repo: str = ""
     issue: int | None = None
     pr: int | None = None
@@ -76,6 +79,12 @@ class DispatchCommand:
     skip_premise_check: bool = False
     # Fix an existing PR: the worktree starts from this branch instead of origin/main (#1881).
     head_ref: str = ""
+    # Skill-matching hint for unattended dispatch (#2157); empty means infer from role/repo.
+    task_type: str = ""
+    standards_extra: str = ""
+    requested_skill: str | None = None
+    # Force duplicate run/PR: bypasses pre-dispatch open-PR and active-run guards (#2254).
+    force_duplicate: bool = False
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -94,6 +103,10 @@ class DispatchCommand:
             body.pop("skip_premise_check")
         if not body["head_ref"]:
             body.pop("head_ref")
+        if not body["model_tier"]:
+            body.pop("model_tier")
+        if not body.get("force_duplicate"):
+            body.pop("force_duplicate", None)
         return body
 
     def run_id(self) -> str:
@@ -116,13 +129,26 @@ def refusal_message(exc: HTTPException) -> str:
     return str(detail)
 
 
-async def _resolve_target(runner: StaffRunner, machine: str, provider: str) -> str:
+async def _resolve_target(
+    runner: StaffRunner,
+    machine: str,
+    provider: str,
+    *,
+    role: Any = None,
+) -> str:
     """Machine targeting (#1197): ``local`` / this host → local; ``auto`` → least loaded
     online node with the provider installed; a peer name → that peer; unknown → 422."""
     peers = staff_fleet.peer_nodes()
     if machine.strip().lower() == "auto":
         board_view = await staff_fleet.aggregate_board(staff_fleet.local_board(runner), peers)
-        chosen = staff_fleet.choose_machine(board_view, provider, runner.machine)
+        if role is not None:
+            from staff.failover_dispatch import pick_machine_for_chain
+            from staff.provider_failover_config import resolve_failover_chain
+
+            chain = resolve_failover_chain(role, requested_provider=provider)
+            chosen = pick_machine_for_chain(board_view, chain, runner.machine)
+        else:
+            chosen = staff_fleet.choose_machine(board_view, provider, runner.machine)
         return "local" if chosen == runner.machine else chosen
     resolved = staff_fleet.resolve_machine(machine, runner.machine, peers)
     if resolved is None:
@@ -165,6 +191,11 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     outage starts nothing. Any refusal is an ``HTTPException`` raised before a run row
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
+    if not cmd.dry_run and not cmd.force_duplicate and cmd.issue and cmd.repo:
+        from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
+
+        await check_duplicate_pr_or_run(cmd.repo, cmd.issue, current_run_id=cmd.run_id())
+
     if not cmd.dry_run and not cmd.skip_premise_check and (cmd.issue or cmd.prompt):
         from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
         from dispatch_routing import dispatch_queue_manager, extract_declared_paths, resolve_model_routing
@@ -203,6 +234,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
 
     runner = get_runner()
     spec = runner.roles().get(cmd.role)
+    resolved_target: str | None = None
     decision = None
     if spec is not None and cmd.repo and consolidation.threshold(spec) is not None:
         decision = await asyncio.to_thread(consolidation.decide, spec, cmd.repo)  # #1213: gh + capacity I/O
@@ -226,10 +258,34 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 },
             )
 
+    # Resolve remote and auto targets after origin-side admission policies but before
+    # local planning: only the selected runtime can authoritatively plan its providers.
+    if spec is not None and cmd.machine.strip().lower() != "local":
+        from staff.provider_failover_config import resolve_failover_chain
+
+        configured_chain = resolve_failover_chain(spec)
+        target_provider = cmd.provider or (configured_chain[0].provider if configured_chain else "")
+        resolved_target = await _resolve_target(runner, cmd.machine, target_provider, role=spec)
+        if resolved_target != "local":
+            if cmd.model_tier:
+                raise HTTPException(
+                    status_code=422,
+                    detail="internal model_tier is supported only for local dispatch",
+                )
+            check_rate_limit("dispatches", caller)
+            obo_hdr = staff_fleet.sign_on_behalf_of(
+                cmd.requested_by,
+                cmd.surface,
+                cmd.thread_id,
+                origin_node=cmd.origin_node or runner.machine,
+            )
+            return await _forward(resolved_target, cmd, obo_hdr)
+
     req = RunRequest(
         role=cmd.role,
         provider=cmd.provider,
         model=cmd.model,
+        model_tier=cmd.model_tier,
         repo=cmd.repo,
         issue=cmd.issue,
         pr=cmd.pr,
@@ -243,13 +299,21 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
         pr_lifecycle=cmd.pr_lifecycle,
         head_ref=cmd.head_ref,
+        task_type=cmd.task_type,
+        standards_extra=cmd.standards_extra,
+        requested_skill=cmd.requested_skill,
     )
     try:
         plan = runner.plan(req)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
+
+    auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
+    if auth_refusal is not None:
+        raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
     check_rate_limit("dispatches", caller)
-    target = await _resolve_target(runner, cmd.machine, plan.provider)
+    target = resolved_target or await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
     if target != "local":
         obo_hdr = staff_fleet.sign_on_behalf_of(
             cmd.requested_by,
@@ -274,6 +338,11 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                     "model": plan.model,
                     "machine": runner.machine,
                     "dry_run": True,
+                    **(
+                        {"provider_auth_failover": list(plan.provider_auth_skipped)}
+                        if plan.provider_auth_skipped
+                        else {}
+                    ),
                 },
                 fail_closed=False,
             )
@@ -314,6 +383,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 "machine": runner.machine,
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
+                **({"provider_auth_failover": list(plan.provider_auth_skipped)} if plan.provider_auth_skipped else {}),
             },
             fail_closed=True,
         )
@@ -323,6 +393,18 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
         ) from exc
     rec, plan, created = runner.admit(req, run_id=run_id)
+    auth_skipped = getattr(plan, "provider_auth_skipped", None)
+    if created and auth_skipped:
+        from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
+
+        for row in auth_skipped:
+            append_chain_attempt(
+                runner.store,
+                rec.id,
+                provider=str(row.get("provider") or ""),
+                model=None,
+                outcome=str(row.get("outcome") or "auth_expired"),
+            )
     if created:
         try:
             runner.launch(rec, plan)

@@ -38,6 +38,16 @@ DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME_IMPORT_CHECK='import fastapi, httpx, psutil, uvicorn, yaml'
 
+runtime_import_check() {
+    local python="$1"
+    local backend_dir="$2"
+    local import_check="${RUNTIME_IMPORT_CHECK}"
+    if [[ -f "${backend_dir}/library/ingest.py" ]]; then
+        import_check+=", library.ingest"
+    fi
+    PYTHONPATH="${backend_dir}" "${python}" -c "${import_check}"
+}
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -177,7 +187,7 @@ build_runtime_venv() {
         --find-links="${source_dir}/backend/wheels" \
         -r "${source_dir}/requirements.lock.txt" || return 1
     "${venv_dir}/bin/python" -m pip check || return 1
-    "${venv_dir}/bin/python" -c "${RUNTIME_IMPORT_CHECK}" || return 1
+    runtime_import_check "${venv_dir}/bin/python" "${source_dir}/backend" || return 1
 }
 
 fetch_artifact "${ARTIFACT_SOURCE}"
@@ -242,6 +252,11 @@ rsync -a --delete \
     --exclude='*_history.json' \
     --exclude='*.db' \
     --exclude='*.db-*' \
+    --exclude='*.sqlite3' \
+    --exclude='*.sqlite3-*' \
+    --exclude='*.ndjson' \
+    --exclude='*.jsonl' \
+    --exclude='/backend/data/' \
     "${stage_dir}/" "${DEPLOY_DIR}/"
 
 apply_deployment_metadata "${stage_dir}" "${ARTIFACT_SOURCE}"
@@ -255,7 +270,7 @@ find "${DEPLOY_DIR}/backend" -maxdepth 2 -type f \
     -exec chmod 0644 {} + 2>/dev/null || true
 chmod 644 "${DEPLOY_DIR}/deployment.json"
 
-"${DEPLOY_DIR}/.venv/bin/python" -c "${RUNTIME_IMPORT_CHECK}"
+runtime_import_check "${DEPLOY_DIR}/.venv/bin/python" "${DEPLOY_DIR}/backend"
 VENV_SWAP_ACTIVE=0
 rm -rf "${previous_venv}"
 

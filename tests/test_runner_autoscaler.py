@@ -18,6 +18,28 @@ from unittest.mock import MagicMock, patch
 import pytest
 import runner_autoscaler as ra
 
+
+def test_main_identity_failure_exits_before_lock_or_poll(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ra, "AUTOSCALER_EXPECTED_WSL_DISTRO", "Ubuntu-22.04")
+    monkeypatch.setattr(ra, "psutil", object())
+    lock = MagicMock()
+    poll = MagicMock()
+    monkeypatch.setattr(ra, "_acquire_lock", lock)
+    monkeypatch.setattr(ra, "_run_poll_loop", poll)
+    with (
+        patch("autoscaler_identity.verify_installation_identity", side_effect=ValueError("bad receipt")),
+        patch("autoscaler_systemd.subprocess.run") as systemctl,
+        patch("runner_state_cleanup.cleanup_runner_state") as cleanup,
+    ):
+        with pytest.raises(SystemExit) as exc:
+            ra.main()
+    assert exc.value.code == 2
+    lock.assert_not_called()
+    poll.assert_not_called()
+    systemctl.assert_not_called()
+    cleanup.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Helpers / env management
 # ---------------------------------------------------------------------------
@@ -116,12 +138,15 @@ def test_list_runner_units_timeout() -> None:
 
 
 def test_stop_unit_happy() -> None:
-    with patch(
-        "subprocess.run",
-        side_effect=[
-            _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
-            _make_completed_process("", returncode=0),
-        ],
+    with (
+        patch(
+            "subprocess.run",
+            side_effect=[
+                _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
+                _make_completed_process("", returncode=0),
+            ],
+        ),
+        patch("runner_state_cleanup.cleanup_runner_state"),
     ):
         result = ra._stop_unit("actions.runner.my-org.runner1.service")
     assert result is True
@@ -130,12 +155,15 @@ def test_stop_unit_happy() -> None:
 def test_stop_unit_sudo_failure() -> None:
     """The sudo-failure path: returncode != 0 returns False, does not raise."""
     cp = _make_completed_process("sudo: permission denied", returncode=1)
-    with patch(
-        "subprocess.run",
-        side_effect=[
-            _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
-            cp,
-        ],
+    with (
+        patch(
+            "subprocess.run",
+            side_effect=[
+                _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
+                cp,
+            ],
+        ),
+        patch("runner_state_cleanup.cleanup_runner_state"),
     ):
         result = ra._stop_unit("actions.runner.my-org.runner1.service")
     assert result is False
@@ -181,8 +209,9 @@ def test_start_unit_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_leased_runners_no_file() -> None:
-    with patch.object(Path, "exists", return_value=False):
+def test_leased_runners_no_file(tmp_path: Path) -> None:
+    missing_leases = tmp_path / "missing-leases.yml"
+    with patch("autoscaler_sampling._leases_path", return_value=missing_leases):
         assert ra._leased_runners() == set()
 
 
@@ -662,12 +691,15 @@ def test_default_pool_overloaded_when_any_metric_breaches(overrides: dict) -> No
 def test_stop_unit_logs_scheduled_surplus_reason(caplog: pytest.LogCaptureFixture) -> None:
     """A scheduled-surplus trim must NOT be logged as 'host overloaded' — that
     mislabel made an idle-host schedule trim look like a resource emergency."""
-    with patch(
-        "subprocess.run",
-        side_effect=[
-            _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
-            _make_completed_process("", returncode=0),
-        ],
+    with (
+        patch(
+            "subprocess.run",
+            side_effect=[
+                _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
+                _make_completed_process("", returncode=0),
+            ],
+        ),
+        patch("runner_state_cleanup.cleanup_runner_state"),
     ):
         with caplog.at_level("WARNING"):
             result = ra._stop_unit(

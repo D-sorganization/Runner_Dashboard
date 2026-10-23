@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 from pathlib import Path
 from typing import TextIO
 
@@ -84,6 +85,22 @@ RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
     )
 )
 RUNNER_BASE_DIR = os.path.expanduser(os.environ.get("RUNNER_BASE_DIR", "~/actions-runners"))
+
+
+def _expected_wsl_distro_from_env() -> str:
+    """Read the distro that must own this process and its local resources."""
+    raw = os.environ.get("AUTOSCALER_EXPECTED_WSL_DISTRO", "")
+    if not raw:
+        return ""
+    value = raw
+    if value != value.strip() or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value):
+        raise ValueError("AUTOSCALER_EXPECTED_WSL_DISTRO must be a WSL distro name")
+    return value
+
+
+# Empty keeps the historical behavior: operate on the current systemd manager.
+# A nonempty value requires a root-owned installation attestation for this distro.
+AUTOSCALER_EXPECTED_WSL_DISTRO = _expected_wsl_distro_from_env()
 
 # NVMe Pool Config
 NVME_PATTERN = os.environ.get("AUTOSCALER_NVME_PATTERN", "nvme")

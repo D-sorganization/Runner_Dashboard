@@ -1,11 +1,16 @@
 # ruff: noqa: B008
+import os
 import secrets
 import time
+from dataclasses import replace
 from typing import Any
 
 import httpx
 import session_management as sm
-from fastapi import APIRouter, Depends, HTTPException, Request
+from browser_csrf import issue_browser_csrf
+from browser_origin import browser_origin, external_browser_request
+from external_ingress import validated_browser_owner_id
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from identity import (
     Principal,
@@ -19,10 +24,25 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+
+class BrowserCsrfRequest(BaseModel):
+    thread_id: str
+
+
+@router.post("/browser-csrf")
+async def browser_csrf_token(
+    body: BrowserCsrfRequest, request: Request, response: Response, principal: Principal = Depends(require_principal)
+) -> dict[str, str]:
+    """Issue a session/thread proof for a same-origin browser mutation."""
+    token = issue_browser_csrf(request, principal, body.thread_id)
+    response.headers["Cache-Control"] = "no-store"
+    return {"token": token}
+
+
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
 _OAUTH_BLOCKED_HINT_BASE = (
-    "Ask an administrator to configure the dedicated GitHub OAuth app for the "
-    "MagicDNS HTTPS callback; development login is not a production fallback."
+    "Ask an administrator to configure the fleet GitHub App user-to-server OAuth "
+    "client (MagicDNS HTTPS callback); development login is not a production fallback."
 )
 
 
@@ -61,6 +81,20 @@ def _production_oauth_config() -> OAuthConfig:
     return OAuthConfig.from_env()
 
 
+def _oauth_config_for_request(request: Request) -> OAuthConfig:
+    """Select callbacks from explicit configuration, never forwarded host values."""
+    config = _production_oauth_config()
+    if not external_browser_request(request):
+        return config
+    origin = browser_origin()
+    if origin is None:
+        _clear_oauth_state(request)
+        raise HTTPException(status_code=503, detail="Request not permitted")
+    # Preserve the existing explicit OAuth allowlist and all credential/TLS
+    # readiness checks. A browser origin alone does not authorize a callback.
+    return replace(config, public_origin=origin, callback_url=f"{origin}/api/auth/callback")
+
+
 def _require_production_oauth(config: OAuthConfig) -> None:
     """Translate the pure configuration contract into a redacted HTTP error."""
     try:
@@ -79,17 +113,39 @@ def _require_production_oauth(config: OAuthConfig) -> None:
 def _clear_oauth_state(request: Request) -> None:
     request.session.pop("oauth_state", None)
     request.session.pop("oauth_state_ts", None)
+    request.session.pop("oauth_origin", None)
 
 
 @router.get("/github")
 async def github_login(request: Request):
     """Start GitHub OAuth flow."""
-    config = _production_oauth_config()
+    config = _oauth_config_for_request(request)
+    if (
+        not config.diagnostic()["ready"]
+        and os.getenv("DASHBOARD_DEV_LOGIN") != "1"
+        and not external_browser_request(request)
+    ):
+        from identity import _is_loopback_request, _loopback_auth_enabled
+        from tailnet_identity import tailnet_principal
+
+        t_prin = tailnet_principal(request)
+        if t_prin is not None:
+            request.session.clear()
+            return RedirectResponse(url="/")
+        loopback_fallback = os.getenv("DASHBOARD_LOOPBACK_SESSION_FALLBACK", "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if loopback_fallback and _loopback_auth_enabled() and _is_loopback_request(request):
+            request.session.clear()
+            return RedirectResponse(url="/")
     _require_production_oauth(config)
 
     state = secrets.token_urlsafe(16)
     request.session["oauth_state"] = state
     request.session["oauth_state_ts"] = time.time()
+    request.session["oauth_origin"] = config.public_origin
     return RedirectResponse(url=config.authorization_url(state))
 
 
@@ -97,14 +153,18 @@ async def github_login(request: Request):
 async def github_callback(request: Request, code: str, state: str):
     """Handle GitHub OAuth callback."""
     check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
-    config = _production_oauth_config()
     try:
+        config = _oauth_config_for_request(request)
         _require_production_oauth(config)
     except HTTPException:
         _clear_oauth_state(request)
         raise
     saved_state = request.session.get("oauth_state")
     if not saved_state or not secrets.compare_digest(state, saved_state):
+        _clear_oauth_state(request)
+        raise HTTPException(status_code=400, detail="Invalid state")
+    saved_origin = request.session.get("oauth_origin")
+    if (saved_origin is not None or external_browser_request(request)) and saved_origin != config.public_origin:
         _clear_oauth_state(request)
         raise HTTPException(status_code=400, detail="Invalid state")
     state_ts = float(request.session.get("oauth_state_ts") or 0)
@@ -114,23 +174,17 @@ async def github_callback(request: Request, code: str, state: str):
     # Invalidate the state after single use to prevent replay attacks (#354).
     _clear_oauth_state(request)
 
-    try:
-        async with httpx.AsyncClient() as client:
-            # Exchange code for token
-            token_resp = await client.post(
-                "https://github.com/login/oauth/access_token",
-                data=config.token_exchange_data(code),
-                headers={"Accept": "application/json"},
-            )
-            try:
-                token_data = token_resp.json()
-            except ValueError as exc:
-                raise HTTPException(status_code=502, detail="Malformed GitHub OAuth token response") from exc
-            access_token = token_data.get("access_token")
-            if not access_token:
-                raise HTTPException(status_code=400, detail="Failed to get access token")
+    from github_app_user_oauth import (  # noqa: PLC0415
+        UserOAuthRevokedError,
+        UserOAuthTransientError,
+        apply_authorization_tokens,
+        exchange_authorization_code,
+    )
 
-            # Get user info
+    try:
+        token_data = exchange_authorization_code(code, config)
+        access_token = str(token_data["access_token"])
+        async with httpx.AsyncClient() as client:
             user_resp = await client.get(
                 "https://api.github.com/user",
                 headers={
@@ -141,7 +195,6 @@ async def github_callback(request: Request, code: str, state: str):
             user_data = user_resp.json()
             github_login = user_data.get("login")
 
-            # Verify membership in the exact production organization (#354).
             org_resp = await client.get(
                 f"https://api.github.com/orgs/{config.github_org}/members/{github_login}",
                 headers={
@@ -154,9 +207,13 @@ async def github_callback(request: Request, code: str, state: str):
                     status_code=403,
                     detail=f"You must be a member of the {config.github_org} GitHub organisation to log in.",
                 )
+    except UserOAuthTransientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except UserOAuthRevokedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
         raise
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, RuntimeError) as exc:
         raise HTTPException(status_code=502, detail="GitHub OAuth request failed") from exc
 
     # Find principal by github username
@@ -166,11 +223,22 @@ async def github_callback(request: Request, code: str, state: str):
             matched_principal = p
             break
 
+    github_user_id = validated_browser_owner_id(
+        request, user_data.get("id"), matched_principal.type if matched_principal else None
+    )
     if not matched_principal:
         # Deny access if not in principals.yml
         raise HTTPException(status_code=403, detail="User not authorized")
 
+    apply_authorization_tokens(
+        matched_principal.id,
+        github_login=str(github_login),
+        token_response=token_data,
+    )
+
     request.session["principal_id"] = matched_principal.id
+    if github_user_id is not None:
+        request.session["github_user_id"] = github_user_id
     request.session["session_id"] = sm.register_session(
         matched_principal.id,
         user_agent=request.headers.get("user-agent"),
@@ -225,8 +293,12 @@ async def dev_login(request: Request):
 @router.post("/logout")
 async def logout(request: Request):
     """Logout current user."""
+    from github_app_user_oauth import delete_credentials  # noqa: PLC0415
+
     principal_id = request.session.get("principal_id")
     session_id = request.session.get("session_id")
+    if principal_id:
+        delete_credentials(str(principal_id))
     request.session.clear()
     if principal_id:
         if session_id:
@@ -244,13 +316,28 @@ async def get_me(principal: Principal = Depends(require_principal)):  # noqa: B0
 
 
 @router.post("/refresh")
-async def refresh_session(principal: Principal = Depends(require_principal)):  # noqa: B008
+async def refresh_session(
+    request: Request,
+    principal: Principal = Depends(require_principal),  # noqa: B008
+):
     """Confirm the current session is still valid (issue #1735).
 
-    Reuses the same principal resolution as ``GET /me``; a valid session
-    simply gets acknowledged, letting the frontend keep the session alive
-    without re-fetching the full principal payload.
+    Reuses the same principal resolution as ``GET /me``; also refreshes the
+    GitHub App user access token when it is near expiry (#2075).
     """
+    from github_app_user_oauth import (  # noqa: PLC0415
+        UserOAuthRevokedError,
+        UserOAuthTransientError,
+        ensure_fresh_access_token,
+    )
+
+    try:
+        ensure_fresh_access_token(principal.id)
+    except UserOAuthTransientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except UserOAuthRevokedError as exc:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
     return {"ok": True, "principal": principal.id}
 
 

@@ -49,13 +49,15 @@ def test_artifact_contract_requires_offline_runtime_and_service_helper():
     """Artifact installs must be independently runnable, not source-tree dependent."""
     package_content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
     install_content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+    metadata_content = (DEPLOY_DIR / "artifact_metadata.py").read_text(encoding="utf-8")
 
     assert 'cp "${SCRIPT_DIR}/requirements.lock.txt"' in package_content
     assert "pip wheel" in package_content
     assert 'cp "${SCRIPT_DIR}/deploy/wsl-mirrored-port-helper.sh"' in package_content
     assert "backend/wheels" in install_content
     assert "wsl-mirrored-port-helper.sh" in install_content
-    assert "runner-dashboard-artifact-v2" in package_content
+    assert "artifact_metadata.py" in package_content
+    assert '"artifact_schema": "runner-dashboard-artifact-v2"' in metadata_content
 
 
 def test_offline_dependency_install_fails_closed():
@@ -75,10 +77,10 @@ def test_runtime_selector_rejects_python_with_broken_pip():
 
 
 def test_artifact_pins_wheelhouse_python_minor():
-    package_content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
+    metadata_content = (DEPLOY_DIR / "artifact_metadata.py").read_text(encoding="utf-8")
     install_content = INSTALL_SCRIPT.read_text(encoding="utf-8")
 
-    assert '"python_minor": python_minor' in package_content
+    assert '"python_minor": python_minor' in metadata_content
     assert '["compatibility"]["python_minor"]' in install_content
     assert 'select_dashboard_python "${ARTIFACT_PYTHON_MINOR}"' in install_content
 
@@ -90,6 +92,11 @@ def test_artifact_install_preserves_mutable_runtime_state():
     assert "--exclude='*.db'" in content
     assert "--exclude='*.db-*'" in content
     assert "--exclude='*_history.json'" in content
+    assert "--exclude='*.sqlite3'" in content
+    assert "--exclude='*.sqlite3-*'" in content
+    assert "--exclude='*.ndjson'" in content
+    assert "--exclude='*.jsonl'" in content
+    assert "--exclude='/backend/data/'" in content
     assert 'rm -rf "${DEPLOY_DIR}"' not in content
 
 
@@ -178,6 +185,12 @@ def test_package_script_content_deterministic_sorting():
     assert "sort >" in content, "FILES.txt must be sorted deterministically"
     assert "deployment.json" in content
     assert "sha256sum" in content
+
+
+def test_packager_rebinds_final_metadata_to_prebuild_checkout_sha():
+    content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
+    assert "--validate-source-only" in content
+    assert '--sha "${GIT_SHA}" --output "${STAGE_DIR}/deployment.json"' in content
 
 
 def test_package_script_ships_statusline_quota_script():

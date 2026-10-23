@@ -3,6 +3,8 @@
 # See Repository_Management/docs/FLEET_TESTING_STANDARDS.md.
 # ---------------------------------------------------------------------------
 import os  # noqa: E402
+import shlex  # noqa: E402
+import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -42,6 +44,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import sys  # noqa: E402
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
+_skills_dispatch = REPO_ROOT / "tests" / "fixtures" / "skills_dispatch"
+if _skills_dispatch.is_dir():
+    os.environ.setdefault("STAFF_SKILLS_DIR", str(_skills_dispatch))
 backend_dir = str(REPO_ROOT / "backend")
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
@@ -61,6 +66,34 @@ if deploy_tests_dir not in sys.path:
     sys.path.insert(0, deploy_tests_dir)
 
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_real_provider_cli(monkeypatch):
+    """Provider CLIs are never launched by tests; provider fixtures use fakes."""
+    real_popen = subprocess.Popen
+    provider_names = {"codex", "claude", "agy", "antigravity"}
+
+    def guarded_popen(args, *positional, **kwargs):
+        command = args if isinstance(args, (list, tuple)) else shlex.split(os.fspath(args))
+        if kwargs.get("shell"):
+            shell_command = next(
+                (command[index + 1] for index, token in enumerate(command[:-1]) if token == "-c"),
+                None,
+            )
+            if shell_command is not None:
+                command = shlex.split(os.fspath(shell_command))
+        executable_index = 1 if command and os.path.basename(os.fspath(command[0])).lower() == "env" else 0
+        executable = (
+            os.path.basename(os.fspath(command[executable_index])).lower().removesuffix(".exe")
+            if len(command) > executable_index
+            else ""
+        )
+        if executable in provider_names:
+            raise AssertionError(f"Tests must not execute a real provider CLI: {executable}")
+        return real_popen(args, *positional, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", guarded_popen)
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +245,32 @@ def admin_principal():
 
 
 @pytest.fixture
+def staff_cli_installed(monkeypatch):
+    """Mark only named provider CLIs as present for provider-selection tests.
+
+    Dispatch planning checks the real executable path. Tests that exercise policy
+    rather than host installation use this opt-in fixture so CI does not depend on
+    which agent CLIs happen to be on its PATH.
+    """
+    from staff.adapters import ProviderAdapter  # noqa: PLC0415
+    from staff import cli_version
+
+    installed_providers: set[str] = set()
+
+    def _installed(adapter):  # noqa: ANN001
+        return adapter.provider_id in installed_providers
+
+    monkeypatch.setattr(ProviderAdapter, "installed", _installed)
+    monkeypatch.setattr(cli_version, "is_outdated", lambda *a, **kw: False)
+    monkeypatch.setattr(cli_version, "installed_version", lambda *a, **kw: "2.0.0")
+
+    def _mark_installed(*providers: str) -> None:
+        installed_providers.update(providers)
+
+    return _mark_installed
+
+
+@pytest.fixture
 def operator_principal():
     """Pre-built operator Principal for opt-in use in tests."""
     return _make_principal("test-operator", "operator")
@@ -344,6 +403,36 @@ def _cleanup_stores_session_teardown():
 def _staff_verification_off(monkeypatch):
     """Finished test runs never ask GitHub for their PR (#1516); verification tests opt in."""
     monkeypatch.setenv("STAFF_VERIFY_MODE", "off")
+
+
+@pytest.fixture(autouse=True)
+def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
+    """Stub OAuth preflight unless a module exercises the real probe (#2170)."""
+    path = str(request.node.fspath or "")
+    if (
+        "test_staff_cli_oauth_session" in path
+        or "test_staff_dispatch_provider_auth" in path
+        or "test_staff_provider_auth_failover" in path
+        or "test_architecture_map_contract" in path
+    ):
+        return
+
+    def alive(*_args, **_kwargs):
+        return True, ""
+
+    for target in (
+        "staff.cli_oauth_session.provider_oauth_session_alive",
+        "staff.provider_dispatch_preflight.provider_oauth_session_alive",
+        "staff.provider_auth_preflight.provider_oauth_session_alive",
+    ):
+        monkeypatch.setattr(target, alive)
+    try:
+        from staff.provider_auth_preflight import _cache  # noqa: PLC0415
+
+        _cache.clear()
+        _cache.update({"checked_at": None, "providers": {}, "machine": ""})
+    except Exception:
+        pass
 
 
 def _staff_run_test_path(path: str) -> bool:

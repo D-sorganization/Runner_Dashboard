@@ -1,13 +1,9 @@
-"""Chat turn execution engine for staff conversational replies (SC-B4, Issue #1307).
+"""Read-only staff chat turns (SC-B4, #1307) with Barb pool reservation (SC-C6).
 
-Provides fast, read-only conversational replies with:
-- Dedicated concurrency pool separating chat turns from work runs, with Barb reservation (SC-C6).
-- Per-provider session resume with fallback to history replay within a token budget.
-- Execution in an isolated scratch directory without worktrees, git push, or RM leases.
-- Real-time token streaming to ThreadEventBus for low-latency SSE delivery.
-- Turn latency metrics: time to first token (TTFT) and total turn duration.
-- Reply contract parsing with action proposal extraction and persistence.
-- Classified failure diagnosis with user remediation hints and retry support.
+Uses provider sessions or bounded history replay in isolated scratch directories,
+streaming replies through ThreadEventBus with latency metrics and reply contracts.
+Adds scoped shared-memory reference context when configured. Failures include
+classified diagnoses, remediation hints and retry support.
 """
 
 from __future__ import annotations
@@ -17,7 +13,6 @@ import logging
 import os
 import subprocess
 import time
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from staff.adapters import (
@@ -33,6 +28,7 @@ from staff.availability import (
     record_successful_turn,
     resolve_provider_chain,
 )
+from staff.chat_context_budget import cap_chat_context
 from staff.chat_failures import (
     chat_read_only_tools,
     choose_preferred_chat_failure,
@@ -40,7 +36,8 @@ from staff.chat_failures import (
     record_chat_failure_if_pending,
 )
 from staff.chat_fleet_context import build_fleet_context_block
-from staff.chat_handoff import post_reply_handoff
+from staff.chat_handoff import post_reply_handoff as post_reply_handoff
+from staff.chat_handoff import run_chat_turn_in_background
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
     build_pending_proposals_block,
@@ -48,7 +45,8 @@ from staff.chat_history import (
     format_history_replay,
 )
 from staff.chat_issue_context import build_issue_context_block
-from staff.chat_knowledge import build_knowledge_turn_block
+from staff.chat_knowledge import build_knowledge_turn_block as build_knowledge_turn_block
+from staff.chat_memory_summary import extract_summary, finish_summary, summary_instruction
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
     DEFAULT_CHAT_ACQUIRE_TIMEOUT,
@@ -56,7 +54,9 @@ from staff.chat_pool import (
     ChatConcurrencyPool,
     get_chat_pool,
 )
+from staff.chat_result import ChatTurnResult
 from staff.chat_scratch import thread_scratch_dir
+from staff.chat_shared_memory import build_shared_memory_context_block
 from staff.chat_streaming import (
     LiveProcessReader,
     spawn_cli_process,
@@ -69,6 +69,7 @@ from staff.owner_requests import request_approves, run_for_requester
 from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
 from staff.roles import RoleSpec, load_roles
+from staff.standards_registry import load_fleet_standards
 from staff.thread_bus import get_thread_bus
 from staff.turn_prompt import compose_turn_prompt, context_section
 
@@ -90,24 +91,6 @@ __all__ = [
     "get_chat_pool",
     "run_chat_turn_in_background",
 ]
-
-
-@dataclass
-class ChatTurnResult:
-    """Outcome of a conversational chat turn."""
-
-    ok: bool
-    reply: str = ""
-    session_id: str | None = None
-    handoff: str | None = None
-    question: str | None = None
-    actions: list[ProposedAction] = field(default_factory=list)
-    failure_class: str | None = None
-    retryable: bool = False
-    remediation: str = ""
-    error: str | None = None
-    metrics: dict[str, Any] = field(default_factory=dict)
-    replayed_history: bool = False
 
 
 class ChatTurnRunner:
@@ -161,12 +144,22 @@ class ChatTurnRunner:
 
         user_msg = self.conv_store.get_message(user_message_id)
         raw_prompt = user_msg.body_md if user_msg else ""
-        knowledge_block = build_knowledge_turn_block(role, raw_prompt)
-        fleet_block = await build_fleet_context_block(role, raw_prompt=raw_prompt)
-        issue_block = await build_issue_context_block(role, raw_prompt)
-        pending_block = build_pending_proposals_block(self.conv_store, thread_id)
-        context_blocks = (fleet_block, issue_block, knowledge_block, pending_block)
+        digest = str(thread.meta.get("handoff_digest") or "").strip()
+        st = load_fleet_standards()
+        context_blocks = cap_chat_context(
+            (
+                f"## Fleet standards Tier 0 ({st.pin})\n\n{st.body}",
+                await asyncio.to_thread(build_knowledge_turn_block, role, raw_prompt),
+                f"## Handoff digest\n\n{digest[:2400]}" if digest else None,
+                await build_fleet_context_block(role, raw_prompt=raw_prompt),
+                await build_issue_context_block(role, raw_prompt),
+                await build_shared_memory_context_block(role_name, requester),
+                build_pending_proposals_block(self.conv_store, thread_id),
+                summary_instruction(role_name, requester),
+            )
+        )
         prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
+        turn_epoch = thread.epoch
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:
@@ -197,6 +190,8 @@ class ChatTurnRunner:
             best_failed: tuple[str, ChatTurnResult] | None = None
 
             for candidate in chain:
+                if fallback_steps:
+                    turn_epoch = self.conv_store.advance_thread_epoch(thread_id, "seat_failover")
                 if not is_provider_healthy(candidate):
                     log.info("Provider %s is unhealthy/disabled; skipping", candidate)
                     fallback_steps += 1
@@ -216,6 +211,7 @@ class ChatTurnRunner:
                         session_id=existing_session,
                         is_resume=True,
                         requester=requester,
+                        turn_epoch=turn_epoch,
                     )
                     if result.ok:
                         record_successful_turn(
@@ -225,6 +221,15 @@ class ChatTurnRunner:
                             candidate,
                             fallback_steps,
                             result,
+                        )
+                        await finish_summary(
+                            self.conv_store,
+                            role_name,
+                            requester,
+                            thread_id,
+                            user_message_id,
+                            placeholder_id,
+                            result.memory_digest,
                         )
                         return result
                     log.info(
@@ -251,6 +256,7 @@ class ChatTurnRunner:
                     is_resume=False,
                     replayed_history=was_fallback,
                     requester=requester,
+                    turn_epoch=turn_epoch,
                 )
                 if result.ok:
                     record_successful_turn(
@@ -260,6 +266,15 @@ class ChatTurnRunner:
                         candidate,
                         fallback_steps,
                         result,
+                    )
+                    await finish_summary(
+                        self.conv_store,
+                        role_name,
+                        requester,
+                        thread_id,
+                        user_message_id,
+                        placeholder_id,
+                        result.memory_digest,
                     )
                     return result
 
@@ -312,6 +327,7 @@ class ChatTurnRunner:
         is_resume: bool,
         replayed_history: bool = False,
         requester: Principal | None = None,
+        turn_epoch: int = 0,
     ) -> ChatTurnResult:
         scratch_dir = thread_scratch_dir(thread_id)
         bus = get_thread_bus()
@@ -359,6 +375,9 @@ class ChatTurnRunner:
             bus=bus,
             thread_id=thread_id,
             placeholder_id=placeholder_id,
+            hide_memory_summary=bool(summary_instruction(role.name if role else "", requester)),
+            epoch=turn_epoch,
+            is_current_epoch=lambda: self.conv_store.is_current_thread_epoch(thread_id, turn_epoch),
         )
         stdout_text = stream_out.stdout_lines
         stderr_text = stream_out.stderr_lines
@@ -389,7 +408,10 @@ class ChatTurnRunner:
             )
 
         # Parse structured reply contract
-        parsed = parse_reply(stream_out.reply_text or raw_combined, role=role)
+        reply_text, memory_digest = stream_out.reply_text or raw_combined, None
+        if summary_instruction(role.name if role else "", requester):
+            reply_text, memory_digest = extract_summary(reply_text)
+        parsed = parse_reply(reply_text, role=role)
 
         metrics = {
             "time_to_first_token_seconds": round(ttft, 3),
@@ -402,21 +424,28 @@ class ChatTurnRunner:
             "metrics": metrics,
             "session_id": captured_session_id,
             "warnings": parsed.warnings,
+            "epoch": turn_epoch,
+            **({"replayed_history": True} if replayed_history else {}),
+            **({"handoff": parsed.handoff} if parsed.handoff else {}),
+            **({"question": parsed.question} if parsed.question else {}),
         }
-        if replayed_history:
-            msg_meta["replayed_history"] = True
-        if parsed.handoff:
-            msg_meta["handoff"] = parsed.handoff
-        if parsed.question:
-            msg_meta["question"] = parsed.question
 
-        self.conv_store.update_message(
+        completed = self.conv_store.update_message(
             placeholder_id,
+            turn_epoch=turn_epoch,
             kind="text",
             delivery="complete",
             body_md=parsed.reply,
             meta=msg_meta,
         )
+        if completed is None:
+            log.warning("Dropped completion from stale CLI turn for thread %s (epoch %d)", thread_id, turn_epoch)
+            return ChatTurnResult(
+                ok=False,
+                failure_class="stale_turn_epoch",
+                retryable=True,
+                remediation="This response was superseded by a seat handoff; retry the message.",
+            )
 
         # Each proposed action becomes an ActionCard message after the reply (#1547)
         created_proposals: list[ProposedAction] = []
@@ -430,6 +459,7 @@ class ChatTurnRunner:
                     action=action.action,
                     params=action.params,
                     reason=action.reason,
+                    epoch=turn_epoch,
                 )
                 created_proposals.append(action)
             except Exception as exc:  # noqa: BLE001
@@ -439,14 +469,16 @@ class ChatTurnRunner:
                 await run_for_requester(self.conv_store, bus, prop.id, requester)
 
         # Persist provider session id on thread metadata
-        if captured_session_id:
+        if captured_session_id and (th := self.conv_store.get_thread(thread_id)):
+            cur_sessions = {**th.meta.get("provider_sessions", {}), adapter.provider_id: captured_session_id}
+            self.conv_store.update_thread(thread_id, meta={**th.meta, "provider_sessions": cur_sessions})
+
+        if memory_digest:
             th = self.conv_store.get_thread(thread_id)
-            if th:
-                cur_sessions = dict(th.meta.get("provider_sessions", {}))
-                cur_sessions[adapter.provider_id] = captured_session_id
-                th_meta = dict(th.meta)
-                th_meta["provider_sessions"] = cur_sessions
-                self.conv_store.update_thread(thread_id, meta=th_meta)
+            if th and self.conv_store.is_current_thread_epoch(thread_id, turn_epoch):
+                self.conv_store.update_thread(
+                    thread_id, meta={**th.meta, "handoff_digest": memory_digest["summary"][:1000]}
+                )
 
         # Publish completed message on bus
         completed_msg = self.conv_store.get_message(placeholder_id)
@@ -461,40 +493,5 @@ class ChatTurnRunner:
             question=parsed.question,
             actions=created_proposals,
             metrics=metrics,
-        )
-
-
-async def run_chat_turn_in_background(
-    thread_id: str,
-    user_message_id: str,
-    placeholder_id: str,
-    role_name: str,
-    caller_id: str,
-    requester: Principal | None = None,
-) -> None:
-    """Async background task invoked by POST /threads/{id}/messages to execute reply."""
-    try:
-        runner = ChatTurnRunner()
-        result = await runner.execute_turn(
-            thread_id=thread_id,
-            user_message_id=user_message_id,
-            placeholder_id=placeholder_id,
-            role_name=role_name,
-            requester=requester,
-        )
-        if result.ok and result.handoff:
-            await post_reply_handoff(
-                thread_id=thread_id,
-                user_message_id=user_message_id,
-                from_role=role_name,
-                to_role=result.handoff,
-                reply=result.reply,
-                caller_id=caller_id,
-            )
-    except Exception as exc:  # noqa: BLE001
-        log.error(
-            "Unhandled error during chat turn for thread %s: %s",
-            thread_id,
-            exc,
-            exc_info=True,
+            memory_digest=memory_digest,
         )

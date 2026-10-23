@@ -43,14 +43,21 @@ def test_agy_result_response_carries_staff_result_and_usage() -> None:
 
 
 @pytest.mark.unit
-def test_agy_unattended_argv_includes_plan_mode_and_model() -> None:
+def test_agy_unattended_argv_includes_auto_mode_and_model() -> None:
     agy = adapters_mod.ADAPTERS["antigravity"]
     assert agy.unattended is True
     argv = agy.build_command("do it", "/tmp/wt", model="gemini-3.8-flash-high")
     assert argv[0] == "agy"
-    assert "--mode" in argv and argv[argv.index("--mode") + 1] == "plan"
+    assert "--mode" in argv and argv[argv.index("--mode") + 1] == "auto"
     assert "--model" in argv and argv[argv.index("--model") + 1] == "gemini-3.8-flash-high"
     assert "--dangerously-skip-permissions" not in argv
+
+
+@pytest.mark.unit
+def test_agy_session_argv_uses_conversation() -> None:
+    argv = adapters_mod.ADAPTERS["antigravity"].build_command("continue", "/tmp/wt", session_id="abc")
+    assert argv[argv.index("--conversation") + 1] == "abc"
+    assert "--resume" not in argv
 
 
 @pytest.mark.unit

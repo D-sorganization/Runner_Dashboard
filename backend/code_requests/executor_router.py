@@ -58,7 +58,7 @@ DEFAULT_PROVIDERS_BY_TIER: dict[ExecutorTier, list[str]] = {
         "jules_cli",
         "cline",
     ],
-    ExecutorTier.STRONG: ["antigravity", "claude_code_cli", "maxwell"],
+    ExecutorTier.STRONG: ["antigravity", "claude_code_cli"],
 }
 
 ESTIMATED_COST_PER_DISPATCH: dict[str, float] = {
@@ -69,7 +69,6 @@ ESTIMATED_COST_PER_DISPATCH: dict[str, float] = {
     "cline": 0.08,
     "claude_code_cli": 0.20,
     "antigravity": 0.25,
-    "maxwell": 0.30,
 }
 
 

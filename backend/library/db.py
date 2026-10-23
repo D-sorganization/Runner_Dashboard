@@ -1,0 +1,120 @@
+"""SQLite schema and paths for Alexandria."""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+import threading
+from contextlib import closing
+from pathlib import Path
+
+_DEFAULT_DATA = Path.home() / ".local" / "share" / "runner-dashboard" / "library"
+_INITIALIZED_DATABASES: set[tuple[str, int, int]] = set()
+_INIT_LOCK = threading.RLock()
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS works (
+    id INTEGER PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, author TEXT, title TEXT, year INTEGER,
+    doi TEXT, isbn TEXT, format TEXT NOT NULL, topics TEXT, provenance TEXT,
+    status TEXT NOT NULL DEFAULT 'active', needs_ocr INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS files (
+    id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id),
+    source_id TEXT NOT NULL DEFAULT 'default', rel_path TEXT NOT NULL,
+    drive_id TEXT, drive_link TEXT, mtime REAL NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'present', UNIQUE(source_id, rel_path));
+CREATE TABLE IF NOT EXISTS library_sources (
+    id TEXT PRIMARY KEY, label TEXT NOT NULL, root_path TEXT NOT NULL UNIQUE, shared INTEGER NOT NULL DEFAULT 0,
+    include_globs TEXT NOT NULL DEFAULT '[]', exclude_globs TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL,
+    created_by TEXT, last_ingest_at TEXT, last_ingest_path TEXT, status TEXT NOT NULL DEFAULT 'active');
+CREATE TABLE IF NOT EXISTS passages (
+    id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id), page_start INTEGER NOT NULL,
+    page_end INTEGER NOT NULL, section TEXT, text TEXT NOT NULL, token_estimate INTEGER NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS passages_fts USING fts5(title, text, content='', tokenize='porter unicode61');
+CREATE TABLE IF NOT EXISTS submissions (
+    id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS ingest_runs (
+    id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, source_root TEXT NOT NULL,
+    files_seen INTEGER NOT NULL DEFAULT 0, files_indexed INTEGER NOT NULL DEFAULT 0,
+    files_skipped INTEGER NOT NULL DEFAULT 0, files_rejected INTEGER NOT NULL DEFAULT 0,
+    files_removed INTEGER NOT NULL DEFAULT 0, notes TEXT);
+CREATE TABLE IF NOT EXISTS ingest_rejections (
+    id INTEGER PRIMARY KEY, source_root TEXT NOT NULL, rel_path TEXT NOT NULL,
+    reason TEXT NOT NULL, seen_at TEXT NOT NULL, UNIQUE(source_root, rel_path));
+"""
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
+    if "source_root" not in cols:
+        conn.execute("ALTER TABLE files ADD COLUMN source_root TEXT NOT NULL DEFAULT ''")
+        cols.add("source_root")
+    if "source_id" not in cols or "rel_path" in {row[1] for row in conn.execute("PRAGMA index_list(files)") if row[2]}:
+        # SQLite cannot drop the legacy UNIQUE(rel_path) constraint. Rebuild the
+        # small index table while preserving row ids and all source metadata.
+        conn.execute("ALTER TABLE files RENAME TO files_legacy")
+        conn.execute("""CREATE TABLE files (
+            id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id),
+            source_id TEXT NOT NULL DEFAULT 'default', rel_path TEXT NOT NULL,
+            drive_id TEXT, drive_link TEXT, mtime REAL NOT NULL, size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'present',
+            source_root TEXT NOT NULL DEFAULT '', UNIQUE(source_id, rel_path))""")
+        legacy_cols = {row[1] for row in conn.execute("PRAGMA table_info(files_legacy)")}
+        source = "source_id" if "source_id" in legacy_cols else "'default'"
+        conn.execute(
+            "INSERT INTO files(id,work_id,source_id,rel_path,drive_id,drive_link,mtime,size,sha256,status,source_root) "
+            f"SELECT id,work_id,{source},rel_path,drive_id,drive_link,mtime,size,sha256,status,source_root "
+            "FROM files_legacy"
+        )
+        conn.execute("DROP TABLE files_legacy")
+    source_cols = {row[1] for row in conn.execute("PRAGMA table_info(library_sources)")}
+    if "last_ingest_path" not in source_cols:
+        conn.execute("ALTER TABLE library_sources ADD COLUMN last_ingest_path TEXT")
+    run_cols = {row[1] for row in conn.execute("PRAGMA table_info(ingest_runs)")}
+    for name in ("files_skipped", "files_rejected", "files_removed"):
+        if name not in run_cols:
+            conn.execute(f"ALTER TABLE ingest_runs ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
+
+
+def library_data_dir() -> Path:
+    raw = os.environ.get("LIBRARY_DATA_DIR", "").strip()
+    return Path(raw) if raw else _DEFAULT_DATA
+
+
+def library_db_path() -> Path:
+    return library_data_dir() / "library.sqlite"
+
+
+def library_source_dir() -> Path | None:
+    raw = os.environ.get("LIBRARY_SOURCE_DIR", "").strip()
+    return Path(raw) if raw else None
+
+
+def init_library_db(path: Path | None = None) -> Path:
+    db = Path(path) if path is not None else library_db_path()
+    db.parent.mkdir(parents=True, exist_ok=True)
+    with _INIT_LOCK:
+        resolved = db.resolve()
+        try:
+            stat = resolved.stat()
+            identity = (str(resolved), stat.st_dev, stat.st_ino)
+        except FileNotFoundError:
+            identity = None
+        if identity not in _INITIALIZED_DATABASES:
+            with closing(sqlite3.connect(db)) as conn:
+                conn.execute("PRAGMA foreign_keys = OFF")
+                conn.executescript(_SCHEMA)
+                _migrate(conn)
+                conn.commit()
+            stat = resolved.stat()
+            _INITIALIZED_DATABASES.add((str(resolved), stat.st_dev, stat.st_ino))
+    return db
+
+
+class LibraryStore:
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+
+    def connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn

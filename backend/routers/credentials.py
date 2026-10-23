@@ -1,8 +1,7 @@
 """Credentials probe router.
 
-Exposes read-only probe endpoint (GET /api/credentials) and a key-management
-endpoint (POST /api/credentials/set-key) that lets the dashboard write API keys
-to the server-side env files without exposing the values back to the browser.
+Exposes read-only probe endpoints for subscription CLI login state on the
+dashboard node. Pay-per-use API keys are not accepted or written from the UI.
 
 Only accessible from localhost.
 """
@@ -22,8 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import yaml
-from cache_utils import cache_delete, cache_get, cache_set
+from cache_utils import cache_get, cache_set
 from dashboard_config import CacheTtl
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -113,21 +111,6 @@ log = logging.getLogger("dashboard.credentials")
 # env-file paths
 _MAXWELL_ENV = Path.home() / ".config" / "maxwell-daemon" / "env"
 _DASHBOARD_ENV = Path.home() / ".config" / "runner-dashboard" / "env"
-
-# Allowed provider -> env var name mapping. Only these can be set via the API.
-_PROVIDER_KEY_MAP: dict[str, str] = {
-    "claude": "ANTHROPIC_API_KEY",
-    "claude_code_cli": "ANTHROPIC_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "codex": "OPENAI_API_KEY",
-    "codex_cli": "OPENAI_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "gemini": "GOOGLE_API_KEY",
-    "gemini_cli": "GOOGLE_API_KEY",
-    "jules": "JULES_API_KEY",
-    "jules_api": "JULES_API_KEY",
-    "linear": "LINEAR_API_KEY",
-}
 
 
 def _env_present(key: str) -> bool:
@@ -259,87 +242,6 @@ def _require_local_request(request: Request) -> None:
         raise HTTPException(status_code=403, detail="This endpoint is only accessible locally")
 
 
-def _write_env_var(env_file: Path, key: str, value: str) -> None:
-    """Upsert KEY=value in an env file. Creates the file (and parents) if needed."""
-    env_file.parent.mkdir(parents=True, exist_ok=True)
-    text = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
-    existing_lines = text.splitlines(keepends=True)
-    pattern = re.compile(r"^" + re.escape(key) + r"=.*$", re.MULTILINE)
-    filtered = [ln for ln in existing_lines if not pattern.match(ln)]
-    if filtered and not filtered[-1].endswith("\n"):
-        filtered[-1] += "\n"
-    filtered.append(f"{key}={value}\n")
-    env_file.write_text("".join(filtered), encoding="utf-8")
-
-
-def _clear_env_var(env_file: Path, key: str) -> None:
-    """Remove all KEY= lines from an env file."""
-    if not env_file.exists():
-        return
-    pattern = re.compile(r"^" + re.escape(key) + r"=.*\n?", re.MULTILINE)
-    text = env_file.read_text(encoding="utf-8")
-    env_file.write_text(pattern.sub("", text), encoding="utf-8")
-
-
-# Maps env var name -> Maxwell YAML backend path -> api_key field to update
-_MAXWELL_YAML = Path.home() / ".config" / "maxwell-daemon" / "maxwell-daemon.yaml"
-
-# env_var -> list of backend names in maxwell YAML whose api_key should be updated
-_MAXWELL_BACKEND_KEY_MAP: dict[str, list[str]] = {
-    "ANTHROPIC_API_KEY": ["claude", "claude-code-cli"],
-    "OPENAI_API_KEY": ["openai", "codex-cli"],
-    "GOOGLE_API_KEY": ["gemini"],
-}
-
-
-def _patch_maxwell_yaml_api_key(env_var: str, value: str) -> None:
-    """Update api_key in maxwell-daemon.yaml backends that use the given env var."""
-    if not _MAXWELL_YAML.exists():
-        return
-    backends = _MAXWELL_BACKEND_KEY_MAP.get(env_var, [])
-    if not backends:
-        return
-    try:
-        with open(_MAXWELL_YAML) as f:
-            cfg = yaml.safe_load(f)
-        if not isinstance(cfg, dict) or "backends" not in cfg:
-            return
-        changed = False
-        for backend_name in backends:
-            if backend_name in cfg["backends"] and isinstance(cfg["backends"][backend_name], dict):
-                cfg["backends"][backend_name]["api_key"] = value
-                changed = True
-        if changed:
-            with open(_MAXWELL_YAML, "w") as f:
-                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-            log.info("Patched maxwell YAML api_key for backends %s", backends)
-    except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as exc:
-        log.warning("Could not patch maxwell YAML api_key for env_var=%s: %s", env_var, type(exc).__name__)
-    except Exception as exc:
-        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
-            raise
-        log.warning("Unexpected failure patching maxwell YAML api_key for env_var=%s: %s", env_var, type(exc).__name__)
-
-
-def _clear_maxwell_yaml_api_key(env_var: str) -> None:
-    """Reset api_key to empty string in maxwell YAML backends that used this env var."""
-    _patch_maxwell_yaml_api_key(env_var, "")
-
-
-# Pydantic models
-
-
-class SetKeyRequest(BaseModel):
-    provider: str = Field(..., description="Provider id, e.g. 'claude', 'gemini', 'codex'")
-    key: str = Field(..., min_length=1, description="The API key value (never logged)")
-    restart_maxwell: bool = Field(default=True, description="Restart maxwell-daemon after saving")
-
-
-class ClearKeyRequest(BaseModel):
-    provider: str = Field(..., description="Provider id whose key should be removed")
-    restart_maxwell: bool = Field(default=True)
-
-
 async def _probe_github_cli() -> dict[str, Any]:
     """Probe GitHub CLI presence and auth status."""
     gh_binary = shutil.which("gh")
@@ -398,7 +300,7 @@ def _probe_jules_cli() -> dict[str, Any]:
 
 def _probe_jules_api() -> dict[str, Any]:
     """Probe Jules API key presence."""
-    jules_api_key = _env_present("JULES_API_KEY") or _env_present("GOOGLE_API_KEY")
+    jules_api_key = _env_present("JULES_API_KEY")
     return {
         "id": "jules_api",
         "label": "Jules API",
@@ -408,31 +310,22 @@ def _probe_jules_api() -> dict[str, Any]:
         "reachable": jules_api_key,
         "usable": jules_api_key,
         "status": "ready" if jules_api_key else "missing_key",
-        "detail": ("API key present" if jules_api_key else "JULES_API_KEY or GOOGLE_API_KEY not set"),
+        "detail": ("API key present" if jules_api_key else "JULES_API_KEY not set"),
         "config_source": (_env_source("JULES_API_KEY") if jules_api_key else "unavailable"),
         "docs_url": "https://jules.google/docs/api/",
-        "setup_hint": "Set JULES_API_KEY environment variable",
-        "key_provider": "jules",
+        "setup_hint": "Set JULES_API_KEY in ~/.config/runner-dashboard/env",
     }
 
 
 def _probe_codex_cli() -> dict[str, Any]:
-    """Probe OpenAI Codex CLI presence and authentication.
-
-    Authentication is satisfied either by ``OPENAI_API_KEY`` or by a
-    ``codex login`` subscription session (``auth.json`` under ``$CODEX_HOME``,
-    default ``~/.codex``).
-    """
+    """Probe OpenAI Codex CLI presence and ChatGPT subscription login."""
     codex_binary = _find_binary("codex")
-    openai_key = _env_present("OPENAI_API_KEY")
     codex_login = _cli_login_file_present("CODEX_HOME", ".codex", "auth.json")
-    authenticated = openai_key or codex_login
-    if openai_key:
-        auth_detail = "Ready (OPENAI_API_KEY)"
-    elif codex_login:
+    authenticated = codex_login
+    if codex_login:
         auth_detail = "Ready (codex login)"
     else:
-        auth_detail = "not signed in: run `codex login` or set OPENAI_API_KEY"
+        auth_detail = "not signed in: run `codex login`"
     return {
         "id": "codex_cli",
         "label": "Codex CLI",
@@ -442,37 +335,37 @@ def _probe_codex_cli() -> dict[str, Any]:
         "reachable": codex_binary is not None and authenticated,
         "usable": codex_binary is not None and authenticated,
         "binary_found": codex_binary is not None,
-        "key_status": "set" if openai_key else "missing",
+        "key_status": "oauth" if codex_login else "missing",
         "status": (
             "ready" if (codex_binary and authenticated) else ("missing_key" if codex_binary else "not_installed")
         ),
         "detail": (auth_detail if codex_binary else "codex not on PATH or npm-global"),
-        "config_source": (
-            _env_source("OPENAI_API_KEY") if openai_key else ("system" if codex_binary else "unavailable")
-        ),
+        "config_source": "system" if codex_binary else "unavailable",
         "docs_url": "https://github.com/openai/codex",
-        "setup_hint": "npm install -g @openai/codex then set OPENAI_API_KEY",
-        "key_provider": "codex",
+        "setup_hint": "npm install -g @openai/codex, then `codex login` (ChatGPT subscription)",
     }
 
 
-def _probe_claude_code_cli() -> dict[str, Any]:
-    """Probe Anthropic Claude Code CLI presence and authentication.
+def _claude_login_file_present() -> bool:
+    from staff.cli_oauth_session import resolve_claude_config_dir  # noqa: PLC0415
 
-    Authentication is satisfied either by ``ANTHROPIC_API_KEY`` or by a
-    ``claude login`` subscription session (``.credentials.json`` under
-    ``$CLAUDE_CONFIG_DIR``, default ``~/.claude``).
-    """
+    return (resolve_claude_config_dir() / ".credentials.json").is_file()
+
+
+def _probe_claude_code_cli() -> dict[str, Any]:
+    """Probe Anthropic Claude Code CLI presence and subscription OAuth login."""
+    from staff.cli_oauth_session import claude_oauth_session_alive  # noqa: PLC0415
+
     claude_binary = shutil.which("claude")
-    anthropic_key = _env_present_anywhere("ANTHROPIC_API_KEY")
-    claude_login = _cli_login_file_present("CLAUDE_CONFIG_DIR", ".claude", ".credentials.json")
-    authenticated = anthropic_key or claude_login
-    if anthropic_key:
-        auth_detail = "Ready (ANTHROPIC_API_KEY)"
-    elif claude_login:
+    claude_login = _claude_login_file_present()
+    oauth_alive, oauth_detail = claude_oauth_session_alive(claude_binary)
+    authenticated = bool(claude_login and oauth_alive)
+    if claude_login and oauth_alive:
         auth_detail = "Ready (claude login)"
+    elif claude_login:
+        auth_detail = oauth_detail or "OAuth session expired; run `claude auth login`"
     else:
-        auth_detail = "not signed in: run `claude login` or set ANTHROPIC_API_KEY"
+        auth_detail = "not signed in: run `claude login`"
     return {
         "id": "claude_code_cli",
         "label": "Claude Code CLI",
@@ -482,17 +375,14 @@ def _probe_claude_code_cli() -> dict[str, Any]:
         "reachable": claude_binary is not None and authenticated,
         "usable": claude_binary is not None and authenticated,
         "binary_found": claude_binary is not None,
-        "key_status": "set" if anthropic_key else "missing",
+        "key_status": "oauth" if authenticated else "missing",
         "status": (
             "ready" if (claude_binary and authenticated) else ("missing_key" if claude_binary else "not_installed")
         ),
         "detail": (auth_detail if claude_binary else "claude not found on PATH"),
-        "config_source": (
-            _env_source("ANTHROPIC_API_KEY") if anthropic_key else ("system" if claude_binary else "unavailable")
-        ),
+        "config_source": "system" if claude_binary else "unavailable",
         "docs_url": "https://docs.anthropic.com/claude-code",
-        "setup_hint": "npm install -g @anthropic-ai/claude-code then set ANTHROPIC_API_KEY",
-        "key_provider": "claude",
+        "setup_hint": "npm install -g @anthropic-ai/claude-code, then `claude login`",
     }
 
 
@@ -570,34 +460,28 @@ def _gemini_oauth_present() -> bool:
 
 
 def _probe_gemini_cli() -> dict[str, Any]:
-    """Probe Gemini CLI presence and sign-in (Google OAuth or ``GOOGLE_API_KEY``)."""
+    """Probe Gemini CLI presence and Google OAuth sign-in (no API-key billing)."""
     gemini_binary = shutil.which("gemini")
     oauth = _gemini_oauth_present()
-    google_key = _env_present("GOOGLE_API_KEY") or oauth
     return {
         "id": "gemini_cli",
         "label": "Gemini CLI",
         "icon": "google",
         "installed": gemini_binary is not None,
-        "authenticated": google_key,
-        "reachable": gemini_binary is not None and google_key,
-        "usable": gemini_binary is not None and google_key,
+        "authenticated": oauth,
+        "reachable": gemini_binary is not None and oauth,
+        "usable": gemini_binary is not None and oauth,
         "binary_found": gemini_binary is not None,
-        "key_status": "oauth" if oauth else ("set" if google_key else "missing"),
-        "status": (
-            "ready" if (gemini_binary and google_key) else ("missing_key" if gemini_binary else "not_installed")
-        ),
+        "key_status": "oauth" if oauth else "missing",
+        "status": ("ready" if (gemini_binary and oauth) else ("missing_key" if gemini_binary else "not_installed")),
         "detail": (
             "Ready"
-            if (gemini_binary and google_key)
+            if (gemini_binary and oauth)
             else ("not signed in: run `gemini` once" if gemini_binary else "gemini not found on PATH")
         ),
-        "config_source": (
-            _env_source("GOOGLE_API_KEY") if google_key else ("system" if gemini_binary else "unavailable")
-        ),
-        "docs_url": "https://aistudio.google.com/apikey",
+        "config_source": "system" if gemini_binary else "unavailable",
+        "docs_url": "https://github.com/google-gemini/gemini-cli",
         "setup_hint": "npm install -g @google/gemini-cli, then run `gemini` once to sign in with Google",
-        "key_provider": "gemini",
     }
 
 
@@ -641,17 +525,22 @@ def _antigravity_quota_status() -> tuple[bool, str]:
 
 def _probe_antigravity_cli() -> dict[str, Any]:
     """Probe Antigravity (agy) CLI presence, authentication, and quota."""
+    from staff.cli_oauth_session import antigravity_oauth_session_alive  # noqa: PLC0415
+
     agy_binary = _find_binary("agy")
     installed = agy_binary is not None
     login_present = _antigravity_login_present()
-    api_key = _env_present("ANTIGRAVITY_API_KEY") or _env_present("GOOGLE_API_KEY")
-    authenticated = bool(login_present or api_key)
+    oauth_alive, oauth_detail = antigravity_oauth_session_alive(agy_binary)
+    authenticated = bool(login_present and oauth_alive)
     quota_available, quota_detail = _antigravity_quota_status()
 
     if not installed:
         status, detail = "not_installed", "agy not found on PATH"
     elif not authenticated:
-        status, detail = "missing_key", "not signed in: run `agy` or `agy auth login`"
+        if login_present and not oauth_alive:
+            status, detail = "missing_key", oauth_detail or "OAuth session expired; run `agy auth login`"
+        else:
+            status, detail = "missing_key", "not signed in: run `agy` or `agy auth login`"
     elif not quota_available:
         status, detail = "quota_exhausted", quota_detail or "antigravity quota exhausted"
     else:
@@ -668,13 +557,12 @@ def _probe_antigravity_cli() -> dict[str, Any]:
         "reachable": usable,
         "usable": usable,
         "binary_found": installed,
-        "key_status": "oauth" if login_present else ("set" if api_key else "missing"),
+        "key_status": "oauth" if login_present else "missing",
         "status": status,
         "detail": detail,
         "config_source": "system" if authenticated else "unavailable",
         "docs_url": "https://github.com/google/antigravity",
-        "setup_hint": "Install Antigravity CLI (agy), then run `agy auth login`",
-        "key_provider": "antigravity",
+        "setup_hint": "Install Antigravity CLI (agy), then sign in with your Google account (`agy`)",
     }
 
 
@@ -706,10 +594,7 @@ async def _probe_linear_workspaces() -> list[dict[str, Any]]:
                     "detail": " | ".join(detail_parts),
                     "config_source": workspace.get("auth_kind") or "api_key",
                     "docs_url": "https://linear.app/settings/api",
-                    "setup_hint": (
-                        "Get a personal API key from Linear -> Settings -> API. Personal API keys begin with lin_api_."
-                    ),
-                    "key_provider": "linear",
+                    "setup_hint": ("Set LINEAR_API_KEY in ~/.config/runner-dashboard/env (Linear personal API key)."),
                     "workspace_id": workspace_id,
                 }
             )
@@ -860,102 +745,6 @@ async def get_ollama_models(request: Request) -> dict[str, Any]:
     except (OSError, subprocess.SubprocessError, TimeoutError, ValueError, KeyError) as exc:
         log.warning("Failed to list ollama models: %s", type(exc).__name__)
         raise HTTPException(status_code=500, detail=f"Failed to list models: {type(exc).__name__}") from exc
-
-
-async def _restart_maxwell_daemon() -> dict[str, Any]:
-    """Attempt restarting maxwell-daemon via systemctl without raising."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "sudo",
-            "systemctl",
-            "restart",
-            "maxwell-daemon",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
-        return {
-            "attempted": True,
-            "success": proc.returncode == 0,
-            "detail": (stdout + stderr).decode(errors="replace").strip()[:200],
-        }
-    except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
-        log.warning("Failed to restart maxwell-daemon: %s", type(exc).__name__)
-        return {"attempted": True, "success": False, "detail": type(exc).__name__}
-
-
-# Key management endpoints
-
-
-@router.post("/credentials/set-key")
-async def set_credential_key(body: SetKeyRequest, request: Request) -> dict[str, Any]:
-    """Write an API key to the server-side env files. Never returns the key value.
-
-    Writes to ~/.config/maxwell-daemon/env and ~/.config/runner-dashboard/env,
-    updates the current process environment, patches maxwell-daemon.yaml api_key,
-    then optionally restarts maxwell-daemon.
-    """
-    _require_local_request(request)
-
-    provider = body.provider.lower().strip()
-    if provider not in _PROVIDER_KEY_MAP:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Unknown provider '{provider}'. Allowed: {sorted(_PROVIDER_KEY_MAP)}",
-        )
-
-    env_var = _PROVIDER_KEY_MAP[provider]
-    value = body.key.strip()
-    if not value:
-        raise HTTPException(status_code=422, detail="Key must not be empty")
-
-    try:
-        _write_env_var(_MAXWELL_ENV, env_var, value)
-        _write_env_var(_DASHBOARD_ENV, env_var, value)
-    except (OSError, UnicodeEncodeError) as exc:
-        log.warning("Failed to write env var %s: %s", env_var, type(exc).__name__)
-        raise HTTPException(status_code=500, detail=f"Failed to write key: {type(exc).__name__}") from exc
-
-    os.environ[env_var] = value
-    log.info("Set %s for provider=%s (length=%d)", env_var, provider, len(value))
-
-    _patch_maxwell_yaml_api_key(env_var, value)
-    cache_delete("credentials_probe")
-
-    restart_result = await _restart_maxwell_daemon() if body.restart_maxwell else {}
-    return {
-        "ok": True,
-        "env_var": env_var,
-        "provider": provider,
-        "maxwell_restart": restart_result,
-    }
-
-
-@router.post("/credentials/clear-key")
-async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict[str, Any]:
-    """Remove an API key from the server-side env files and maxwell YAML."""
-    _require_local_request(request)
-
-    provider = body.provider.lower().strip()
-    if provider not in _PROVIDER_KEY_MAP:
-        raise HTTPException(status_code=422, detail=f"Unknown provider '{provider}'")
-
-    env_var = _PROVIDER_KEY_MAP[provider]
-
-    try:
-        _clear_env_var(_MAXWELL_ENV, env_var)
-        _clear_env_var(_DASHBOARD_ENV, env_var)
-    except (OSError, UnicodeEncodeError) as exc:
-        log.warning("Failed to clear env var %s: %s", env_var, type(exc).__name__)
-        raise HTTPException(status_code=500, detail=f"Failed to clear key: {type(exc).__name__}") from exc
-
-    os.environ.pop(env_var, None)
-    _clear_maxwell_yaml_api_key(env_var)
-    cache_delete("credentials_probe")
-    log.info("Cleared %s for provider=%s", env_var, provider)
-
-    restart_result = await _restart_maxwell_daemon() if body.restart_maxwell else {}
-    return {"ok": True, "env_var": env_var, "provider": provider, "maxwell_restart": restart_result}
 
 
 class LaunchAuthRequest(BaseModel):

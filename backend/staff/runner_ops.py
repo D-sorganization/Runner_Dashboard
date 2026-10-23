@@ -6,6 +6,7 @@ Contains provider selection, launch arguments resolution, and subprocess output 
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
@@ -17,6 +18,7 @@ from typing import Any, TypedDict
 import provider_switch
 from staff import cli_version, workspace
 from staff import quota as quota_mod
+from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ProviderAdapter
 from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
@@ -329,6 +331,12 @@ def execute_retry_nudge(
     try:
         launch_paths = resolve_launch_paths(adapter, workdir)
         ro_kwargs: ReadOnlyKwargs = read_only_kwargs(role) if role is not None else {}
+        if adapter.provider_id == "antigravity":
+            antigravity_permissions(
+                read_only=bool(ro_kwargs.get("read_only")),
+                workdir=workdir,
+                gitdir=Path(launch_paths.get("gitdir", str(workdir))),
+            )
         nudge_argv = adapter.build_command(
             RESULT_NUDGE_PROMPT,
             str(workdir),
@@ -421,8 +429,17 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         on_behalf_of=req.on_behalf_of,
         branch=plan.branch,
         strategy_mode=plan.strategy_mode,
+        model_tier=getattr(plan, "model_tier", "") or "",
         max_attempts=max_attempts,
         thread_id=req.thread_id,
         work_item_id=req.work_item_id,
         origin_node=getattr(req, "origin_node", "") or "",
+        skill_pin=getattr(plan, "skill_pin", "") or "",
+        standards_version=getattr(plan, "standards_version", "") or "",
+        standards_tokens=getattr(plan, "standards_tokens", 0) or 0,
+        context_stamp=getattr(plan, "context_stamp", "{}") or "{}",
+        library_work_ids=json.dumps(list(getattr(plan, "library_work_ids", ()) or ())),
+        injected_lesson_ids=json.dumps(list(getattr(plan, "injected_lesson_ids", ()) or ())),
+        skipped_lesson_ids=json.dumps(dict(getattr(plan, "skipped_lesson_ids", {}) or {})),
+        lessons_tokens=int(getattr(plan, "lessons_tokens", 0) or 0),
     )

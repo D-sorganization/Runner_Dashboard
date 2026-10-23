@@ -35,30 +35,6 @@
         "title": "AcceptanceCheck",
         "type": "object"
       },
-      "AckBody": {
-        "additionalProperties": false,
-        "description": "``ack``: confirm receipt (not agreement) of a message.",
-        "properties": {
-          "message_id": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Message Id",
-            "type": "string"
-          },
-          "repo": {
-            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
-            "title": "Repo",
-            "type": "string"
-          },
-          "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Session",
-            "type": "string"
-          }
-        },
-        "required": ["session", "repo", "message_id"],
-        "title": "AckBody",
-        "type": "object"
-      },
       "ActionExecuteResponse": {
         "description": "Result of executing an action.",
         "properties": {
@@ -222,6 +198,384 @@
         },
         "required": ["entries", "total"],
         "title": "AuditHistoryResponse",
+        "type": "object"
+      },
+      "BarbHandoffTransitionRequest": {
+        "properties": {
+          "action": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "artifact_uri": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Artifact Uri",
+            "type": "string"
+          },
+          "desktop_app": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Desktop App",
+            "type": "string"
+          },
+          "expected_epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Epoch"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "resume_notes": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Resume Notes",
+            "type": "string"
+          },
+          "task_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": ["task_id", "action", "actor"],
+        "title": "BarbHandoffTransitionRequest",
+        "type": "object"
+      },
+      "BarbLeaseCheckoutRequest": {
+        "properties": {
+          "holder": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Holder",
+            "type": "string"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "persona": {
+            "default": "rd-barb",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Summary",
+            "type": "string"
+          },
+          "takeover": {
+            "default": false,
+            "title": "Takeover",
+            "type": "boolean"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["holder"],
+        "title": "BarbLeaseCheckoutRequest",
+        "type": "object"
+      },
+      "BarbLeaseReleaseRequest": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Items",
+            "type": "array"
+          },
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "holder": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Holder",
+            "type": "string"
+          },
+          "in_progress_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "In Progress Items",
+            "type": "array"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "scope": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "turnover_summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Turnover Summary",
+            "type": "string"
+          }
+        },
+        "required": ["scope", "holder"],
+        "title": "BarbLeaseReleaseRequest",
+        "type": "object"
+      },
+      "BarbSurfaceClassifyRequest": {
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title"],
+        "title": "BarbSurfaceClassifyRequest",
+        "type": "object"
+      },
+      "BarbTaskUpsertRequest": {
+        "properties": {
+          "assigned_holder": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Assigned Holder",
+            "type": "string"
+          },
+          "assigned_persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Assigned Persona",
+            "type": "string"
+          },
+          "desktop_app": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Desktop App",
+            "type": "string"
+          },
+          "desktop_reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Desktop Reason",
+            "type": "string"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "priority": {
+            "default": "normal",
+            "maxLength": 32,
+            "title": "Priority",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Repo",
+            "type": "string"
+          },
+          "requires_desktop": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Desktop"
+          },
+          "scope": {
+            "default": "barb:dispatch-coordinator",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "default": "queued",
+            "maxLength": 32,
+            "title": "Status",
+            "type": "string"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface"
+          },
+          "target_ref": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Target Ref",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title"],
+        "title": "BarbTaskUpsertRequest",
+        "type": "object"
+      },
+      "BarbTurnoverCreateRequest": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Items",
+            "type": "array"
+          },
+          "holder": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Holder",
+            "type": "string"
+          },
+          "in_progress_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "In Progress Items",
+            "type": "array"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "persona": {
+            "default": "rd-barb",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": ["holder", "summary"],
+        "title": "BarbTurnoverCreateRequest",
         "type": "object"
       },
       "BoardRoute": {
@@ -438,6 +792,17 @@
           }
         },
         "title": "Body_get_prs_api_prs_get",
+        "type": "object"
+      },
+      "BrowserCsrfRequest": {
+        "properties": {
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["thread_id"],
+        "title": "BrowserCsrfRequest",
         "type": "object"
       },
       "BudgetSummary": {
@@ -847,21 +1212,27 @@
         "title": "ClaimReleaseBody",
         "type": "object"
       },
-      "ClearKeyRequest": {
+      "ClaimTrackBody": {
+        "additionalProperties": false,
         "properties": {
-          "provider": {
-            "description": "Provider id whose key should be removed",
-            "title": "Provider",
+          "issue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Issue",
+            "type": "integer"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
             "type": "string"
           },
-          "restart_maxwell": {
-            "default": true,
-            "title": "Restart Maxwell",
-            "type": "boolean"
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
           }
         },
-        "required": ["provider"],
-        "title": "ClearKeyRequest",
+        "required": ["session", "repo", "issue"],
+        "title": "ClaimTrackBody",
         "type": "object"
       },
       "ClientErrorPayload": {
@@ -923,6 +1294,61 @@
         },
         "required": ["page", "message"],
         "title": "ClientErrorPayload",
+        "type": "object"
+      },
+      "CodebaseRunReference": {
+        "additionalProperties": false,
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "kind": {
+            "const": "codebase",
+            "title": "Kind",
+            "type": "string"
+          },
+          "line_end": {
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "node",
+          "repo",
+          "commit_sha",
+          "relative_path",
+          "line_start",
+          "line_end",
+          "content_hash",
+          "citation"
+        ],
+        "title": "CodebaseRunReference",
         "type": "object"
       },
       "CreateActionProposalRequest": {
@@ -1650,6 +2076,61 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HandoffBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Body",
+            "type": "object"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "work_kind": {
+            "enum": ["issue", "pr"],
+            "title": "Work Kind",
+            "type": "string"
+          },
+          "work_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Work Number",
+            "type": "integer"
+          }
+        },
+        "required": ["session", "repo", "work_kind", "work_number", "body"],
+        "title": "HandoffBody",
+        "type": "object"
+      },
+      "HeartbeatBody": {
+        "additionalProperties": false,
+        "properties": {
+          "lease_seconds": {
+            "default": 300,
+            "maximum": 28800.0,
+            "minimum": 30.0,
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session"],
+        "title": "HeartbeatBody",
+        "type": "object"
+      },
       "HelpChatRequest": {
         "additionalProperties": false,
         "description": "Request body for POST /api/help/chat.",
@@ -1864,6 +2345,61 @@
         "title": "LeaseResponse",
         "type": "object"
       },
+      "LibraryRunReference": {
+        "additionalProperties": false,
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "file_sha256": {
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "const": "library",
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "page_end": {
+            "title": "Page End",
+            "type": "integer"
+          },
+          "page_start": {
+            "title": "Page Start",
+            "type": "integer"
+          },
+          "passage_id": {
+            "title": "Passage Id",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "work_id": {
+            "title": "Work Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "node",
+          "source_id",
+          "work_id",
+          "passage_id",
+          "file_sha256",
+          "page_start",
+          "page_end",
+          "citation"
+        ],
+        "title": "LibraryRunReference",
+        "type": "object"
+      },
       "MaxwellChatBody": {
         "description": "Request body for POST /api/maxwell/chat.\n\n``repo``/``repo_root`` (issue #838) scope a codebase Q&A session to a single\nrepository. Both are optional so the existing fleet-status chat keeps working\nunchanged; when supplied they are forwarded to Maxwell-Daemon, which jails its\nagentic tools (read_file/grep_files/glob_files/run_bash) to that root. The\ndaemon-side capability is tracked in Maxwell_Daemon#948; until it ships the\ndaemon may answer 501 Not Implemented, which this proxy degrades gracefully.",
         "properties": {
@@ -1908,6 +2444,242 @@
         },
         "required": ["message"],
         "title": "MaxwellChatBody",
+        "type": "object"
+      },
+      "MemoryAppendRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "entry_type": {
+            "enum": [
+              "session_digest",
+              "decision",
+              "task",
+              "transcript",
+              "lesson"
+            ],
+            "title": "Entry Type",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "source_product": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Source Product",
+            "type": "string"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": ["entry_type", "source_product", "body"],
+        "title": "MemoryAppendRequest",
+        "type": "object"
+      },
+      "MemoryAppendResponse": {
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/MemoryEntry"
+          }
+        },
+        "required": ["entry"],
+        "title": "MemoryAppendResponse",
+        "type": "object"
+      },
+      "MemoryEntry": {
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "author_principal": {
+            "title": "Author Principal",
+            "type": "string"
+          },
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "entry_type": {
+            "enum": [
+              "session_digest",
+              "decision",
+              "task",
+              "transcript",
+              "lesson"
+            ],
+            "title": "Entry Type",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "review_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Status"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "source_product": {
+            "title": "Source Product",
+            "type": "string"
+          },
+          "source_run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Run"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "required": [
+          "id",
+          "entry_type",
+          "author_principal",
+          "source_product",
+          "body",
+          "created_at"
+        ],
+        "title": "MemoryEntry",
+        "type": "object"
+      },
+      "MemoryListResponse": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": ["entries"],
+        "title": "MemoryListResponse",
         "type": "object"
       },
       "MessageBody": {
@@ -2028,6 +2800,40 @@
             "default": "claude",
             "title": "Moderator Provider",
             "type": "string"
+          },
+          "pack_id": {
+            "anyOf": [
+              {
+                "const": "cartographer",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "cartographer",
+            "title": "Pack Id"
+          },
+          "preload_codebase": {
+            "default": true,
+            "title": "Preload Codebase",
+            "type": "boolean"
+          },
+          "repos": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repos"
           },
           "rounds": {
             "default": 3,
@@ -2388,6 +3194,60 @@
         },
         "required": ["session", "repo", "issue", "branch"],
         "title": "PresenceBody",
+        "type": "object"
+      },
+      "ProjectCreateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "definition_of_done": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Definition Of Done",
+            "type": "string"
+          },
+          "goal": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          },
+          "repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title", "goal"],
+        "title": "ProjectCreateBody",
+        "type": "object"
+      },
+      "ProjectListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "projects": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": ["count", "projects"],
+        "title": "ProjectListResponse",
         "type": "object"
       },
       "ProposalComment": {
@@ -2938,6 +3798,43 @@
           }
         },
         "title": "RegisterBeginRequest",
+        "type": "object"
+      },
+      "RegisterBody": {
+        "additionalProperties": false,
+        "properties": {
+          "lease_seconds": {
+            "default": 300,
+            "maximum": 28800.0,
+            "minimum": 30.0,
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
+          "node": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Node",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "role": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "title": "Role",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "role", "provider", "node"],
+        "title": "RegisterBody",
         "type": "object"
       },
       "RegisterCompleteRequest": {
@@ -3589,6 +4486,25 @@
             "title": "Repo",
             "type": "string"
           },
+          "skill": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit skill package name; must exist in the registry or dispatch is rejected.",
+            "title": "Skill"
+          },
+          "standards_extra": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Standards Extra",
+            "type": "string"
+          },
           "surface": {
             "anyOf": [
               {
@@ -3600,6 +4516,12 @@
               }
             ],
             "title": "Surface"
+          },
+          "task_type": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Task Type",
+            "type": "string"
           },
           "thread_id": {
             "anyOf": [
@@ -3638,6 +4560,165 @@
         },
         "required": ["enabled"],
         "title": "ScheduleToggleBody",
+        "type": "object"
+      },
+      "SendBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "to": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "To",
+            "type": "string"
+          },
+          "type": {
+            "enum": ["request", "status", "handoff", "blocked"],
+            "title": "Type",
+            "type": "string"
+          },
+          "work_kind": {
+            "anyOf": [
+              {
+                "enum": ["issue", "pr"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Kind"
+          },
+          "work_number": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Number"
+          }
+        },
+        "required": [
+          "session",
+          "to",
+          "type",
+          "repo",
+          "body",
+          "idempotency_key"
+        ],
+        "title": "SendBody",
+        "type": "object"
+      },
+      "SessionDigestAppendRequest": {
+        "additionalProperties": false,
+        "description": "Small, transcript-free payload for one conversation turn's shared digest.",
+        "properties": {
+          "conversation_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "decisions": {
+            "items": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Decisions",
+            "type": "array"
+          },
+          "open_items": {
+            "items": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Open Items",
+            "type": "array"
+          },
+          "reported_origin_principal": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Origin Principal"
+          },
+          "source_product": {
+            "enum": ["codex", "dashboard"],
+            "title": "Source Product",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "user_message_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$",
+            "title": "User Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_product",
+          "conversation_id",
+          "user_message_id",
+          "summary"
+        ],
+        "title": "SessionDigestAppendRequest",
+        "type": "object"
+      },
+      "SessionDigestAppendResponse": {
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/MemoryEntry"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": ["entry", "replayed"],
+        "title": "SessionDigestAppendResponse",
         "type": "object"
       },
       "SessionTelemetryPayload": {
@@ -3769,30 +4850,6 @@
         "title": "SessionTelemetryPayload",
         "type": "object"
       },
-      "SetKeyRequest": {
-        "properties": {
-          "key": {
-            "description": "The API key value (never logged)",
-            "minLength": 1,
-            "title": "Key",
-            "type": "string"
-          },
-          "provider": {
-            "description": "Provider id, e.g. 'claude', 'gemini', 'codex'",
-            "title": "Provider",
-            "type": "string"
-          },
-          "restart_maxwell": {
-            "default": true,
-            "description": "Restart maxwell-daemon after saving",
-            "title": "Restart Maxwell",
-            "type": "boolean"
-          }
-        },
-        "required": ["provider", "key"],
-        "title": "SetKeyRequest",
-        "type": "object"
-      },
       "StaffAuditListResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/audit.",
@@ -3910,6 +4967,48 @@
         },
         "required": ["id", "ts", "principal", "surface", "action", "target"],
         "title": "StaffAuditRecordResponse",
+        "type": "object"
+      },
+      "StaffBeanCounterResponse": {
+        "additionalProperties": true,
+        "description": "Bean-Counter token economy & waste ledger response.",
+        "properties": {
+          "bean_counter_ledger": {
+            "additionalProperties": true,
+            "title": "Bean Counter Ledger",
+            "type": "object"
+          },
+          "leaderboard": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Leaderboard",
+            "type": "array"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "routing_recommendations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Routing Recommendations",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "total_runs_analyzed": {
+            "title": "Total Runs Analyzed",
+            "type": "integer"
+          }
+        },
+        "required": ["machine", "since", "total_runs_analyzed"],
+        "title": "StaffBeanCounterResponse",
         "type": "object"
       },
       "StaffBoardResponse": {
@@ -4377,6 +5476,28 @@
           "query": {
             "title": "Query",
             "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale"
           }
         },
         "required": ["pack_id", "query", "count"],
@@ -4672,6 +5793,66 @@
         },
         "required": ["generated_at"],
         "title": "StaffQuotaResponse",
+        "type": "object"
+      },
+      "StaffReportCardsResponse": {
+        "additionalProperties": true,
+        "description": "Zero-LLM-cost Agent Report Cards & Empirical Routing Leaderboard response.",
+        "properties": {
+          "bean_counter_ledger": {
+            "additionalProperties": true,
+            "title": "Bean Counter Ledger",
+            "type": "object"
+          },
+          "leaderboard": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Leaderboard",
+            "type": "array"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "methodology": {
+            "additionalProperties": true,
+            "title": "Methodology",
+            "type": "object"
+          },
+          "prs_truncated": {
+            "default": false,
+            "title": "Prs Truncated",
+            "type": "boolean"
+          },
+          "role_tier_breakdown": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Role Tier Breakdown",
+            "type": "array"
+          },
+          "routing_recommendations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Routing Recommendations",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "total_runs_analyzed": {
+            "title": "Total Runs Analyzed",
+            "type": "integer"
+          }
+        },
+        "required": ["machine", "since", "total_runs_analyzed"],
+        "title": "StaffReportCardsResponse",
         "type": "object"
       },
       "StaffRoleBudget": {
@@ -5115,6 +6296,18 @@
             "title": "Events",
             "type": "array"
           },
+          "logs_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Direct URL to filter diagnostic logs for this run",
+            "title": "Logs Ref"
+          },
           "run": {
             "$ref": "#/components/schemas/StaffRunRecord"
           }
@@ -5479,6 +6672,39 @@
         "title": "StaffRunRecord",
         "type": "object"
       },
+      "StaffRunReferencesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "references": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "codebase": "#/components/schemas/CodebaseRunReference",
+                  "library": "#/components/schemas/LibraryRunReference"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/LibraryRunReference"
+                },
+                {
+                  "$ref": "#/components/schemas/CodebaseRunReference"
+                }
+              ]
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": ["run_id", "references"],
+        "title": "StaffRunReferencesResponse",
+        "type": "object"
+      },
       "StaffRunsResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/runs.",
@@ -5555,6 +6781,179 @@
         "title": "StaffScheduleToggleResponse",
         "type": "object"
       },
+      "StaffSkillAttachment": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": ["path", "kind", "content", "content_hash"],
+        "title": "StaffSkillAttachment",
+        "type": "object"
+      },
+      "StaffSkillDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/StaffSkillAttachment"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pin": {
+            "title": "Pin",
+            "type": "string"
+          },
+          "repos": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Repos",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "source_path": {
+            "default": "",
+            "title": "Source Path",
+            "type": "string"
+          },
+          "task_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Task Types",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "when_to_use": {
+            "default": "",
+            "title": "When To Use",
+            "type": "string"
+          }
+        },
+        "required": ["name", "version", "content_hash", "pin", "body"],
+        "title": "StaffSkillDetailResponse",
+        "type": "object"
+      },
+      "StaffSkillListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/StaffSkillSummary"
+            },
+            "title": "Skills",
+            "type": "array"
+          }
+        },
+        "required": ["count", "skills"],
+        "title": "StaffSkillListResponse",
+        "type": "object"
+      },
+      "StaffSkillSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pin": {
+            "title": "Pin",
+            "type": "string"
+          },
+          "repos": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Repos",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "source_path": {
+            "default": "",
+            "title": "Source Path",
+            "type": "string"
+          },
+          "task_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Task Types",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "when_to_use": {
+            "default": "",
+            "title": "When To Use",
+            "type": "string"
+          }
+        },
+        "required": ["name", "version", "content_hash", "pin"],
+        "title": "StaffSkillSummary",
+        "type": "object"
+      },
       "StaffSummaryResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/summary (issue #1289).",
@@ -5614,9 +7013,27 @@
             "title": "Machines Online",
             "type": "array"
           },
+          "operator_auth": {
+            "additionalProperties": true,
+            "description": "Redacted GitHub App user OAuth expiry for hub operators (#2075)",
+            "title": "Operator Auth",
+            "type": "object"
+          },
           "providers": {
             "additionalProperties": true,
             "title": "Providers",
+            "type": "object"
+          },
+          "providers_cooldown": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "description": "Per-machine provider cooldown rows after capacity/quota/rate-limit (#2047)",
+            "title": "Providers Cooldown",
             "type": "object"
           },
           "recent_24h": {
@@ -5641,6 +7058,42 @@
             "description": "Per-provider spend in USD plus a 'total' key (issue #1289)",
             "title": "Spend Today Usd",
             "type": "object"
+          },
+          "standards_pin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved fleet standards pin (issue #2220)",
+            "title": "Standards Pin"
+          },
+          "standards_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Path or <builtin> where standards were resolved",
+            "title": "Standards Source"
+          },
+          "standards_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved fleet standards semver",
+            "title": "Standards Version"
           }
         },
         "required": ["generated_at", "hub"],
@@ -6202,6 +7655,49 @@
         },
         "title": "WorkSummary",
         "type": "object"
+      },
+      "agent_bus__models__AckBody": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "message_id"],
+        "title": "AckBody",
+        "type": "object"
+      },
+      "coordination__models__AckBody": {
+        "additionalProperties": false,
+        "description": "``ack``: confirm receipt (not agreement) of a message.",
+        "properties": {
+          "message_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "message_id"],
+        "title": "AckBody",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -6496,6 +7992,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Agent Profiles",
@@ -6621,6 +8120,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Agent Profile",
@@ -6943,6 +8445,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Workflow Machine Analysis",
@@ -7226,6 +8731,58 @@
         "tags": ["orchestration", "orchestration", "fleet"]
       }
     },
+    "/api/auth/browser-csrf": {
+      "post": {
+        "description": "Issue a session/thread proof for a same-origin browser mutation.",
+        "operationId": "browser_csrf_token_api_auth_browser_csrf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserCsrfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Browser Csrf Token Api Auth Browser Csrf Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Browser Csrf Token",
+        "tags": ["auth"]
+      }
+    },
     "/api/auth/callback": {
       "get": {
         "description": "Handle GitHub OAuth callback.",
@@ -7408,7 +8965,7 @@
     },
     "/api/auth/refresh": {
       "post": {
-        "description": "Confirm the current session is still valid (issue #1735).\n\nReuses the same principal resolution as ``GET /me``; a valid session\nsimply gets acknowledged, letting the frontend keep the session alive\nwithout re-fetching the full principal payload.",
+        "description": "Confirm the current session is still valid (issue #1735).\n\nReuses the same principal resolution as ``GET /me``; also refreshes the\nGitHub App user access token when it is near expiry (#2075).",
         "operationId": "refresh_session_api_auth_refresh_post",
         "responses": {
           "200": {
@@ -8034,6 +9591,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Ci Metrics",
@@ -8150,6 +9710,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Code Requests",
@@ -8306,6 +9869,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Code Request",
@@ -9280,6 +10846,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Briefing",
@@ -9338,6 +10907,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Claim",
@@ -9487,6 +11059,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Inbox",
@@ -9546,7 +11121,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AckBody"
+                "$ref": "#/components/schemas/coordination__models__AckBody"
               }
             }
           },
@@ -9726,6 +11301,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Sessions",
@@ -9751,48 +11329,6 @@
           }
         },
         "summary": "Get Credentials",
-        "tags": ["credentials"]
-      }
-    },
-    "/api/credentials/clear-key": {
-      "post": {
-        "description": "Remove an API key from the server-side env files and maxwell YAML.",
-        "operationId": "clear_credential_key_api_credentials_clear_key_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClearKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Clear Credential Key Api Credentials Clear Key Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Clear Credential Key",
         "tags": ["credentials"]
       }
     },
@@ -9835,48 +11371,6 @@
           }
         },
         "summary": "Launch Auth",
-        "tags": ["credentials"]
-      }
-    },
-    "/api/credentials/set-key": {
-      "post": {
-        "description": "Write an API key to the server-side env files. Never returns the key value.\n\nWrites to ~/.config/maxwell-daemon/env and ~/.config/runner-dashboard/env,\nupdates the current process environment, patches maxwell-daemon.yaml api_key,\nthen optionally restarts maxwell-daemon.",
-        "operationId": "set_credential_key_api_credentials_set_key_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Set Credential Key Api Credentials Set Key Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Credential Key",
         "tags": ["credentials"]
       }
     },
@@ -9989,6 +11483,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Deployment State",
@@ -10578,6 +12075,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Hardware",
@@ -10605,6 +12105,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Identity",
@@ -10662,6 +12165,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Nodes",
@@ -10842,6 +12348,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Post Fleet Run Token",
@@ -10937,6 +12446,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Status",
@@ -12191,6 +13703,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue",
@@ -12306,6 +13821,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Priorities",
@@ -12332,6 +13850,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Directives Route",
@@ -12403,6 +13924,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Meetings",
@@ -12453,6 +13977,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Meeting",
@@ -12480,6 +14007,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Projects",
@@ -12507,6 +14037,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Priorities",
@@ -12534,6 +14067,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Untracked",
@@ -12582,6 +14118,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Project",
@@ -12655,6 +14194,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List board proposals",
@@ -12747,6 +14289,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get proposal detail and Secretary comments",
@@ -13134,6 +14679,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue",
@@ -13212,6 +14760,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue Merge Settings",
@@ -13489,6 +15040,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Stale Queue Runs",
@@ -13516,6 +15070,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Queue Status",
@@ -13885,6 +15442,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Repos",
@@ -13956,6 +15516,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runners",
@@ -13983,6 +15546,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runners Diagnostics Summary",
@@ -14010,6 +15576,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Fleet Capacity",
@@ -14088,6 +15657,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runner Group",
@@ -14253,6 +15825,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Matlab Runner Health",
@@ -14600,6 +16175,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Runs",
@@ -14649,6 +16227,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Enriched Runs",
@@ -14703,6 +16284,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Repo Runs",
@@ -14878,6 +16462,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Scheduled Workflows",
@@ -15132,6 +16719,97 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/bean-counter": {
+      "get": {
+        "description": "Zero-LLM-cost Bean-Counter token economy & waste ledger.",
+        "operationId": "get_staff_bean_counter_api_staff_bean_counter_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffBeanCounterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Staff Bean Counter",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/board": {
       "get": {
         "description": "Status monitor. With peers configured this is the fleet-wide view (#1195).",
@@ -15232,6 +16910,36 @@
         ],
         "summary": "Trigger Briefing",
         "tags": ["staff-inbox"]
+      }
+    },
+    "/api/staff/github-app/preflight": {
+      "get": {
+        "description": "Compare staff role GitHub App permission needs to the live installation grant (#2038).",
+        "operationId": "github_app_preflight_api_staff_github_app_preflight_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Github App Preflight Api Staff Github App Preflight Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Github App Preflight",
+        "tags": ["staff"]
       }
     },
     "/api/staff/holds": {
@@ -15337,6 +17045,107 @@
         "tags": ["staff-inbox"]
       }
     },
+    "/api/staff/leaderboard": {
+      "get": {
+        "description": "Empirical model/provider routing leaderboard and task-complexity suitability matrix.",
+        "operationId": "get_staff_leaderboard_api_staff_leaderboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Staff Leaderboard",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/providers": {
       "get": {
         "description": "Provider availability, chat-only/unattended capabilities, and CLI versions (#1697).",
@@ -15367,7 +17176,7 @@
     },
     "/api/staff/quota": {
       "get": {
-        "description": "Billing kind and current plan windows for every staff provider on this node.\n\nReads local files only (the quota store and Codex session logs); never runs a\nCLI, so asking costs no quota. ``quota`` is null until a source has been seen.",
+        "description": "Billing kind and current plan windows for every staff provider on this node.",
         "operationId": "get_quota_api_staff_quota_get",
         "responses": {
           "200": {
@@ -15390,6 +17199,107 @@
           }
         ],
         "summary": "Get Quota",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/report-cards": {
+      "get": {
+        "description": "Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard.",
+        "operationId": "get_staff_report_cards_api_staff_report_cards_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Staff Report Cards",
         "tags": ["staff"]
       }
     },
@@ -15682,6 +17592,18 @@
               "title": "Run Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Do not search peer nodes for this run.",
+            "in": "query",
+            "name": "local",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Do not search peer nodes for this run.",
+              "title": "Local",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -15790,6 +17712,18 @@
               "minimum": 0,
               "title": "After",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Do not search peer nodes for this run.",
+            "in": "query",
+            "name": "local",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Do not search peer nodes for this run.",
+              "title": "Local",
+              "type": "boolean"
             }
           }
         ],
@@ -15998,7 +17932,7 @@
     },
     "/api/staff/usage/export": {
       "post": {
-        "description": "Append today's per-provider totals to RM ``data/credit_usage.json``.\n\n503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)\nwith ``scripts/append_credit_usage.py`` is available on this node.",
+        "description": "Append today's per-provider totals to RM ``data/credit_usage.json``.",
         "operationId": "export_usage_api_staff_usage_export_post",
         "responses": {
           "200": {
@@ -16129,6 +18063,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Stats",
@@ -16190,6 +18127,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Workflow Stats Summary",
@@ -16315,6 +18255,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Workflow Stats Timeseries",
@@ -16438,6 +18381,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Usage Monitoring",
@@ -16709,6 +18655,1823 @@
         "tags": ["usage-metrics"]
       }
     },
+    "/api/v1/agent/backlog": {
+      "get": {
+        "operationId": "get_backlog_api_v1_agent_backlog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Backlog Api V1 Agent Backlog Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Backlog",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/claims": {
+      "post": {
+        "operationId": "post_track_claim_api_v1_agent_claims_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTrackBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Track Claim Api V1 Agent Claims Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Track Claim",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/handoff": {
+      "put": {
+        "operationId": "put_handoff_api_v1_agent_handoff_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Handoff Api V1 Agent Handoff Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Handoff",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/heartbeat": {
+      "post": {
+        "operationId": "post_heartbeat_api_v1_agent_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Heartbeat Api V1 Agent Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Heartbeat",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/inbox": {
+      "get": {
+        "operationId": "get_inbox_api_v1_agent_inbox_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Session",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since_cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Inbox Api V1 Agent Inbox Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Inbox",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/messages": {
+      "post": {
+        "operationId": "post_message_api_v1_agent_messages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Message Api V1 Agent Messages Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Message",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/messages/ack": {
+      "post": {
+        "operationId": "post_ack_api_v1_agent_messages_ack_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agent_bus__models__AckBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Ack Api V1 Agent Messages Ack Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Ack",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/overview": {
+      "get": {
+        "operationId": "get_overview_api_v1_agent_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inbox_limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Inbox Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activity_limit",
+            "required": false,
+            "schema": {
+              "default": 40,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Activity Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Overview Api V1 Agent Overview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Overview",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/agent/register": {
+      "post": {
+        "operationId": "post_register_api_v1_agent_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Register Api V1 Agent Register Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Register",
+        "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/diagnostics/logs": {
+      "get": {
+        "description": "Retrieve ring-buffer log entries with redacting and response caps.",
+        "operationId": "get_diagnostics_logs_api_v1_diagnostics_logs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Diagnostics Logs Api V1 Diagnostics Logs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Diagnostics Logs",
+        "tags": ["diagnostics"]
+      }
+    },
+    "/api/v1/library/browse": {
+      "get": {
+        "operationId": "library_browse_route_api_v1_library_browse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Browse Route Api V1 Library Browse Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Browse Route",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/fetch": {
+      "get": {
+        "description": "Fetch one bounded, digest-verified passage through trusted fleet nodes.",
+        "operationId": "library_fetch_api_v1_library_fetch_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cite",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cite"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "federated",
+              "pattern": "^(local|federated)$",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Fetch Api V1 Library Fetch Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Fetch",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/search": {
+      "get": {
+        "operationId": "library_search_api_v1_library_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "k",
+            "required": false,
+            "schema": {
+              "default": 32,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "K",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "budget",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget"
+            }
+          },
+          {
+            "in": "query",
+            "name": "budget_tokens",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Tokens"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Search Api V1 Library Search Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Search",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/sources": {
+      "get": {
+        "operationId": "library_sources_route_api_v1_library_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Sources Route Api V1 Library Sources Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Sources Route",
+        "tags": ["library"]
+      },
+      "post": {
+        "operationId": "library_add_source_api_v1_library_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Add Source Api V1 Library Sources Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Add Source",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/sources/{source_id}": {
+      "delete": {
+        "operationId": "library_remove_source_api_v1_library_sources__source_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Library Remove Source Api V1 Library Sources  Source Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Remove Source",
+        "tags": ["library"]
+      },
+      "patch": {
+        "operationId": "library_update_source_api_v1_library_sources__source_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Update Source Api V1 Library Sources  Source Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Update Source",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/stats": {
+      "get": {
+        "operationId": "library_stats_route_api_v1_library_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Stats Route Api V1 Library Stats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Stats Route",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/submissions": {
+      "get": {
+        "operationId": "library_list_submissions_api_v1_library_submissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library List Submissions Api V1 Library Submissions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library List Submissions",
+        "tags": ["library"]
+      },
+      "post": {
+        "operationId": "library_create_submission_api_v1_library_submissions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Create Submission Api V1 Library Submissions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Create Submission",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/verify": {
+      "get": {
+        "operationId": "library_verify_citation_route_api_v1_library_verify_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cite",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Cite",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Verify Citation Route Api V1 Library Verify Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Verify Citation Route",
+        "tags": ["library"]
+      },
+      "post": {
+        "operationId": "library_verify_route_api_v1_library_verify_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Verify Route Api V1 Library Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Verify Route",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/library/works/{work_id}": {
+      "get": {
+        "operationId": "library_work_api_v1_library_works__work_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_id",
+            "required": true,
+            "schema": {
+              "title": "Work Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Work Api V1 Library Works  Work Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Work",
+        "tags": ["library"]
+      }
+    },
+    "/api/v1/memory": {
+      "get": {
+        "operationId": "get_memory_entries_api_v1_memory_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "author",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Author"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Memory Entries",
+        "tags": ["assistant-memory"]
+      },
+      "post": {
+        "operationId": "post_memory_entry_api_v1_memory_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryAppendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAppendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Memory Entry",
+        "tags": ["assistant-memory"]
+      }
+    },
+    "/api/v1/memory/context-pack": {
+      "get": {
+        "operationId": "get_context_pack_api_v1_memory_context_pack_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Context Pack Api V1 Memory Context Pack Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Context Pack",
+        "tags": ["assistant-memory"]
+      }
+    },
+    "/api/v1/memory/session-digest": {
+      "post": {
+        "operationId": "post_session_digest_api_v1_memory_session_digest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionDigestAppendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDigestAppendResponse"
+                }
+              }
+            },
+            "description": "Idempotent replay"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDigestAppendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Session Digest",
+        "tags": ["assistant-memory"]
+      }
+    },
+    "/api/v1/metrics/pull": {
+      "get": {
+        "description": "Drill-down for one PR and its stored check runs.",
+        "operationId": "metrics_pull_api_v1_metrics_pull_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo_full",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 3,
+              "title": "Repo Full",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Metrics Pull Api V1 Metrics Pull Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Metrics Pull",
+        "tags": ["delivery-metrics"]
+      }
+    },
+    "/api/v1/metrics/summary": {
+      "get": {
+        "description": "Window summary with PR drill-down (trends, not rankings).",
+        "operationId": "metrics_summary_api_v1_metrics_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo_full",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo Full"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Metrics Summary Api V1 Metrics Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Metrics Summary",
+        "tags": ["delivery-metrics"]
+      }
+    },
+    "/api/v1/metrics/trends": {
+      "get": {
+        "description": "Weekly trend buckets only.",
+        "operationId": "metrics_trends_api_v1_metrics_trends_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo_full",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo Full"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Metrics Trends Api V1 Metrics Trends Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Metrics Trends",
+        "tags": ["delivery-metrics"]
+      }
+    },
+    "/api/v1/metrics/weekly-summary": {
+      "get": {
+        "description": "Markdown-friendly weekly JSON for staff consumers (#2123).",
+        "operationId": "metrics_weekly_summary_api_v1_metrics_weekly_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Metrics Weekly Summary Api V1 Metrics Weekly Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Metrics Weekly Summary",
+        "tags": ["delivery-metrics"]
+      }
+    },
     "/api/v1/staff/actions": {
       "get": {
         "description": "List all allowlisted staff actions, schemas, risk classes, and required scopes.",
@@ -16889,6 +20652,406 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/barb/classify-surface": {
+      "post": {
+        "operationId": "post_barb_classify_surface_api_v1_staff_barb_classify_surface_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbSurfaceClassifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Classify Surface Api V1 Staff Barb Classify Surface Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Classify whether a task belongs on Desktop App vs. Headless CLI",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/continuity": {
+      "get": {
+        "operationId": "get_barb_continuity_api_v1_staff_barb_continuity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "turnover_limit",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Turnover Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Barb Continuity Api V1 Staff Barb Continuity Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Multi-Barb scoped leases, turnover log, compliance & task inventory",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/handoff": {
+      "post": {
+        "operationId": "post_barb_handoff_api_v1_staff_barb_handoff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbHandoffTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Handoff Api V1 Staff Barb Handoff Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Transition CLI <-> Desktop handoff state with monotonic fencing epoch",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/inventory": {
+      "get": {
+        "operationId": "get_barb_inventory_api_v1_staff_barb_inventory_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Surface"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Barb Inventory Api V1 Staff Barb Inventory Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List active Barb task inventory and desktop handoff queue",
+        "tags": ["staff-barb"]
+      },
+      "post": {
+        "operationId": "post_barb_inventory_api_v1_staff_barb_inventory_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbTaskUpsertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Inventory Api V1 Staff Barb Inventory Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create or update a task in the Barb inventory",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/leases/checkout": {
+      "post": {
+        "operationId": "post_barb_lease_checkout_api_v1_staff_barb_leases_checkout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseCheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Checkout Api V1 Staff Barb Leases Checkout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Check out a scoped Barb sub-role lease",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/leases/release": {
+      "post": {
+        "operationId": "post_barb_lease_release_api_v1_staff_barb_leases_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseReleaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Release Api V1 Staff Barb Leases Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release a scoped Barb lease with turnover compliance check",
+        "tags": ["staff-barb"]
+      }
+    },
     "/api/v1/staff/barb/status": {
       "get": {
         "description": "Role (unset/authority/replica), epoch, outbox depth and whether delivery is degraded.",
@@ -16917,6 +21080,214 @@
         ],
         "summary": "Barb authority role, epoch and outbox depth",
         "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/turnover": {
+      "get": {
+        "operationId": "get_barb_turnover_api_v1_staff_barb_turnover_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Barb Turnover Api V1 Staff Barb Turnover Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Barb shift turnover log entries",
+        "tags": ["staff-barb"]
+      },
+      "post": {
+        "operationId": "post_barb_turnover_api_v1_staff_barb_turnover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbTurnoverCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Turnover Api V1 Staff Barb Turnover Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Record a shift turnover log entry",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/bean-counter": {
+      "get": {
+        "description": "Zero-LLM-cost Bean-Counter token economy & waste ledger.",
+        "operationId": "get_bean_counter_api_v1_staff_bean_counter_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffBeanCounterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Bean Counter",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/board": {
@@ -17018,6 +21389,36 @@
         ],
         "summary": "Trigger Briefing",
         "tags": ["staff-inbox-v1"]
+      }
+    },
+    "/api/v1/staff/context/agents-sync": {
+      "get": {
+        "description": "Compare published managed AGENTS blocks with the Repository_Management source.",
+        "operationId": "context_agents_sync_v1_api_v1_staff_context_agents_sync_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Context Agents Sync V1 Api V1 Staff Context Agents Sync Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Context Agents Sync V1",
+        "tags": ["staff-v1"]
       }
     },
     "/api/v1/staff/followup/digest": {
@@ -17492,7 +21893,7 @@
     },
     "/api/v1/staff/knowledge/{pack_id}/search": {
       "get": {
-        "description": "Search knowledge pack by BM25 query (Issue #1479).",
+        "description": "Search knowledge packs; optional run_id records emitted Cartographer citations for that run owner.",
         "operationId": "search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get",
         "parameters": [
           {
@@ -17541,6 +21942,24 @@
               "title": "Include Superseded",
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
           }
         ],
         "responses": {
@@ -17575,6 +21994,107 @@
         ],
         "summary": "Search Knowledge V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/leaderboard": {
+      "get": {
+        "description": "Empirical model/provider routing leaderboard and task-complexity suitability matrix.",
+        "operationId": "get_leaderboard_api_v1_staff_leaderboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Leaderboard",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/maintenance/detect-stalled": {
@@ -17831,6 +22351,180 @@
         ],
         "summary": "Expert panel state",
         "tags": ["staff-panels"]
+      }
+    },
+    "/api/v1/staff/projects": {
+      "get": {
+        "operationId": "list_projects_v1_api_v1_staff_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Projects V1",
+        "tags": ["staff-v1", "staff-projects"]
+      },
+      "post": {
+        "operationId": "create_project_v1_api_v1_staff_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Project V1 Api V1 Staff Projects Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Project V1",
+        "tags": ["staff-v1", "staff-projects"]
+      }
+    },
+    "/api/v1/staff/projects/{project_id}": {
+      "get": {
+        "operationId": "get_project_v1_api_v1_staff_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project V1 Api V1 Staff Projects  Project Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Project V1",
+        "tags": ["staff-v1", "staff-projects"]
+      }
+    },
+    "/api/v1/staff/projects/{project_id}/decompose": {
+      "post": {
+        "operationId": "decompose_project_v1_api_v1_staff_projects__project_id__decompose_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Decompose Project V1 Api V1 Staff Projects  Project Id  Decompose Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Decompose Project V1",
+        "tags": ["staff-v1", "staff-projects"]
       }
     },
     "/api/v1/staff/proposals": {
@@ -18207,6 +22901,107 @@
         ],
         "summary": "Providers V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/report-cards": {
+      "get": {
+        "description": "Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard.",
+        "operationId": "get_report_cards_api_v1_staff_report_cards_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Report Cards",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/requests": {
@@ -18959,6 +23754,55 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/runs/{run_id}/references": {
+      "get": {
+        "description": "Return text-free reference identities for a run owned by the caller.",
+        "operationId": "run_references_v1_api_v1_staff_runs__run_id__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffRunReferencesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Run References V1",
+        "tags": ["staff-v1", "staff-run-references"]
+      }
+    },
     "/api/v1/staff/runs/{run_id}/stream": {
       "get": {
         "operationId": "stream_run_v1_api_v1_staff_runs__run_id__stream_get",
@@ -19041,6 +23885,157 @@
         ],
         "summary": "Get Schedule V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/skills": {
+      "get": {
+        "operationId": "list_skills_v1_api_v1_staff_skills_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffSkillListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Skills V1",
+        "tags": ["staff-v1", "staff-skills"]
+      }
+    },
+    "/api/v1/staff/skills/{name}": {
+      "get": {
+        "operationId": "get_skill_v1_api_v1_staff_skills__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffSkillDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Skill V1",
+        "tags": ["staff-v1", "staff-skills"]
       }
     },
     "/api/v1/staff/summary": {
@@ -19708,6 +24703,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Relay Thread Run Card",

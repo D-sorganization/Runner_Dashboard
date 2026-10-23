@@ -500,7 +500,27 @@ async def get_diagnostics_summary() -> dict:
             "active_worker_count": 0,
         }
 
+    # Context health diagnostics (#2238)
+    try:
+        from context_health import check_all_context_health
+
+        summary["context"] = check_all_context_health()
+    except Exception as exc:
+        summary["context"] = {"error": str(exc)}
+
     return summary
+
+
+@router.get(
+    "/api/v1/diagnostics/context-health",
+    dependencies=[Depends(require_scope("staff.read"))],
+    include_in_schema=False,
+)
+async def get_context_health() -> dict[str, Any]:
+    """Context health checks for library pool, memory lessons, and context pack (#2238)."""
+    from context_health import check_all_context_health
+
+    return check_all_context_health()
 
 
 @router.get("/api/diagnostics/artifact")

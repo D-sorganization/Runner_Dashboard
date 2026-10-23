@@ -138,7 +138,8 @@ def test_compose_prompt_code_read_only() -> None:
 
 
 @pytest.mark.unit
-def test_staff_runner_plan_code_read_only(tmp_path: Path) -> None:
+def test_staff_runner_plan_code_read_only(tmp_path: Path, staff_cli_installed) -> None:
+    staff_cli_installed("claude")
     role = RoleSpec(
         name="barb",
         title="Barb",
@@ -158,7 +159,8 @@ def test_staff_runner_plan_code_read_only(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_staff_runner_resolve_provider_read_only(tmp_path: Path) -> None:
+def test_staff_runner_resolve_provider_read_only(tmp_path: Path, staff_cli_installed) -> None:
+    staff_cli_installed("claude")
     role = RoleSpec(
         name="barb",
         title="Barb",

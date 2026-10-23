@@ -175,7 +175,7 @@ def test_manifest_shortcuts_have_required_urls() -> None:
     urls = {s.get("url") for s in m.get("shortcuts", [])}
     assert "/dispatch" in urls, "shortcuts must include /dispatch (Quick Dispatch)"
     assert "/queue" in urls, "shortcuts must include /queue (Queue Health)"
-    assert "/maxwell" in urls, "shortcuts must include /maxwell (Maxwell Chat)"
+    assert "/" in urls, "shortcuts must include / (Staff Console)"
 
 
 # ---------------------------------------------------------------------------

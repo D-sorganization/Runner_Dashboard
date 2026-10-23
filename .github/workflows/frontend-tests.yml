@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  merge_group:
 
 permissions:
   contents: read
@@ -15,6 +16,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  frontend-required:
+    name: frontend-required
+    needs: [frontend-scope, typecheck, vitest, perf-budget, playwright-e2e, staff-console-e2e]
+    if: always()
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 5
+    steps:
+      - name: Require all applicable frontend checks
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          scope = needs["frontend-scope"]
+          outputs = scope.get("outputs", {})
+          flags = [outputs.get(key) for key in ("run_frontend_tests", "run_staff_e2e")]
+          if scope["result"] != "success" or any(flag not in ("true", "false") for flag in flags):
+              sys.exit("Frontend scope failed or did not report explicit scope decisions")
+          frontend, staff = (flag == "true" for flag in flags)
+          required = {
+              "typecheck": True,
+              "vitest": frontend,
+              "perf-budget": frontend,
+              "playwright-e2e": frontend,
+              "staff-console-e2e": staff,
+          }
+          failed = []
+          for job, applicable in required.items():
+              result = needs[job]["result"]
+              allowed = {"success"} if applicable else {"success", "skipped"}
+              if result not in allowed:
+                  failed.append(f"{job}={result}")
+          if failed:
+              sys.exit("Frontend checks did not succeed: " + ", ".join(failed))
+          print("All applicable frontend checks succeeded")
+          PY
+
   frontend-scope:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
@@ -34,9 +76,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "run_frontend_tests=true" >> "$GITHUB_OUTPUT"
-            echo "run_staff_e2e=true" >> "$GITHUB_OUTPUT"
-            echo "run_api_contract=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "run_frontend_tests=true"
+              echo "run_staff_e2e=true"
+              echo "run_api_contract=true"
+            } >> "$GITHUB_OUTPUT"
             echo "Non-PR event: full frontend validation required."
             exit 0
           fi
@@ -96,26 +140,35 @@ jobs:
   typecheck:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
-    # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
-    if: >-
-      (needs.frontend-scope.outputs.run_api_contract == 'true')
+    # Required on main: never skip the job — gate heavy steps so the context
+    # always reports (docs-only PRs and merge_group included).
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
+      - name: Note when TypeScript validation is out of scope
+        if: needs.frontend-scope.outputs.run_api_contract != 'true'
+        run: |
+          echo "Change set does not touch the API contract / TypeScript surface; heavy steps skipped."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: npm ci
 
       - name: Install backend dependencies for API contract generation
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: |
           python -m venv "$RUNNER_TEMP/api-contract-venv"
           source "$RUNNER_TEMP/api-contract-venv/bin/activate"
@@ -131,9 +184,11 @@ jobs:
           fi
 
       - name: Verify generated API contract types
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: npm run generate-api:check
 
       - name: Typecheck (tsc, no emit)
+        if: needs.frontend-scope.outputs.run_api_contract == 'true'
         run: npm run typecheck
 
   vitest:
@@ -186,7 +241,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 
@@ -228,7 +283,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Set up Python for backend
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 
@@ -312,7 +367,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 

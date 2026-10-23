@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS
+from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -172,13 +172,17 @@ class ProviderAdapter:
                 assert not any(tool in allowed_entries for tool in CLAUDE_WRITE_TOOLS), (  # noqa: S101
                     "allowed tools must not contain write tools in read-only mode"
                 )
+            if self.provider_id == "antigravity" and "--mode" in out:
+                out[out.index("--mode") + 1] = "plan"
         if session_id:
-            if self.provider_id in ("codex", "ollama") and prompt in out:
-                p_idx = out.index(prompt)
-                out.insert(p_idx, "--session")
-                out.insert(p_idx + 1, session_id)
-            elif self.provider_id in ("codex", "ollama"):
-                out.extend(["--session", session_id])
+            if self.provider_id in ("codex", "ollama"):
+                resumed: list[str] = [self.executable, "exec", "resume", "--skip-git-repo-check", "--json"]
+                if model:
+                    resumed.extend(["-m", model])
+                resumed.extend([session_id, prompt])
+                out = resumed
+            elif self.provider_id == "antigravity":
+                out.extend(["--conversation", session_id])
             else:
                 out.extend(["--resume", session_id])
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
@@ -244,7 +248,7 @@ class ProviderAdapter:
             ]
             cmd += read_only
             if session_id:
-                cmd += ["--resume", session_id]
+                cmd += ["--conversation", session_id]
         elif self.provider_id == "cursor-agent":
             cmd = [
                 self.executable,
@@ -366,8 +370,10 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "stream-json",
             "--add-dir",
             "{workdir}",
+            "--add-dir",
+            "{gitdir}",
             "--mode",
-            "plan",
+            "auto",
             "--model",
             "{model}",
         ),
@@ -375,7 +381,10 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         models=_ANTIGRAVITY_MODELS,
         json_lines=True,
         unattended=True,
-        notes="Unattended ``--mode plan`` (#1586); WSL ``agy`` on PATH (often WinGet symlink); ``agy auth login``.",
+        notes=(
+            "Unattended ``--mode auto`` with explicit shell permissions (#2243); native Linux ``agy`` on WSL PATH; "
+            "run ``agy`` for Google OAuth sign-in."
+        ),
     ),
     "gemini": ProviderAdapter(
         provider_id="gemini",
@@ -416,6 +425,8 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "--model",
             "{model}",
         ),
+        default_model="grok-4.7-high",
+        models=_CURSOR_AGENT_MODELS,
         json_lines=True,
         notes=(
             "Cursor subscription; Grok models (grok-4.7-*, cursor-grok-4.6-*) are reached here, no separate xAI plan. "
@@ -453,13 +464,6 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         env_builder=ollama_env.claude_ollama_env,
         lease_as="local",  # RM has no per-harness id for local models
         notes="Claude Code against Ollama's Anthropic-compatible API; never touches the Claude seat's credentials.",
-    ),
-    "maxwell": ProviderAdapter(
-        provider_id="maxwell",
-        label="Maxwell Daemon",
-        executable="maxwell",
-        argv=("-p", "{prompt}"),
-        notes="Maxwell-Daemon participant and provider for local desktop agent workflows.",
     ),
 }
 

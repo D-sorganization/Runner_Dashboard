@@ -1,4 +1,4 @@
-"""Staff Hub usage ledger API (epic #1192, issue #1200).
+"""Staff Hub usage ledger, report cards, leaderboard & bean-counter API (/api/staff).
 
 Routes (under ``/api/staff``; the ``/api/staff/`` alt-auth prefix applies):
   GET  /usage           Cost/token/wall-time totals grouped by provider, role or day,
@@ -6,10 +6,10 @@ Routes (under ``/api/staff``; the ``/api/staff/`` alt-auth prefix applies):
   GET  /usage/pricing   The price table this node uses to estimate cost.
   POST /usage/export    Append today's per-provider totals to Repository_Management
                         ``data/credit_usage.json`` (subprocess to the RM script).
-  GET  /quota           Live subscription windows per provider (#1587): Claude from its
-                        stream ``rate_limit_event`` / status line, Codex from its session logs.
-
-Kept out of ``routers/staff.py`` so it lands alongside #1195/#1196 without conflicts.
+  GET  /quota           Live subscription windows per provider (#1587).
+  GET  /report-cards    Zero-LLM-cost Agent Report Cards & Empirical Routing Leaderboard.
+  GET  /leaderboard     Alias for /report-cards leaderboard view.
+  GET  /bean-counter    Zero-LLM-cost Bean-Counter token economy & waste ledger.
 """
 
 # ruff: noqa: B008
@@ -21,6 +21,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, require_scope
+from routers.staff_outcomes import compute_report_cards_payload
 from staff import quota, usage
 from staff.adapters import ADAPTERS
 from staff.models import (
@@ -29,6 +30,7 @@ from staff.models import (
     StaffUsageExportResponse,
     StaffUsageResponse,
 )
+from staff.models_insights import StaffBeanCounterResponse, StaffReportCardsResponse
 from staff.pricing import price_table_rows
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
@@ -56,11 +58,7 @@ async def get_usage(
 async def get_quota(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    """Billing kind and current plan windows for every staff provider on this node.
-
-    Reads local files only (the quota store and Codex session logs); never runs a
-    CLI, so asking costs no quota. ``quota`` is null until a source has been seen.
-    """
+    """Billing kind and current plan windows for every staff provider on this node."""
     return quota.report(ADAPTERS, datetime.now(UTC))
 
 
@@ -83,11 +81,7 @@ async def get_pricing(
 async def export_usage(
     caller: Principal = Depends(require_scope("staff.admin")),
 ) -> dict[str, Any]:
-    """Append today's per-provider totals to RM ``data/credit_usage.json``.
-
-    503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)
-    with ``scripts/append_credit_usage.py`` is available on this node.
-    """
+    """Append today's per-provider totals to RM ``data/credit_usage.json``."""
     try:
         result = usage.export_to_rm(get_runner().store)
     except FileNotFoundError as exc:
@@ -99,3 +93,61 @@ async def export_usage(
         "ok" if result["ok"] else "partial failure",
     )
     return result
+
+
+@router.get("/report-cards", response_model=StaffReportCardsResponse)
+async def get_staff_report_cards(
+    since: str | None = Query(default=None, max_length=40),
+    role: str | None = Query(default=None, max_length=64),
+    provider: str | None = Query(default=None, max_length=32),
+    include_pr_facts: bool = Query(default=False),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard."""
+    return await compute_report_cards_payload(
+        since=since,
+        role=role,
+        provider=provider,
+        include_pr_facts=include_pr_facts,
+    )
+
+
+@router.get("/leaderboard", response_model=StaffReportCardsResponse)
+async def get_staff_leaderboard(
+    since: str | None = Query(default=None, max_length=40),
+    role: str | None = Query(default=None, max_length=64),
+    provider: str | None = Query(default=None, max_length=32),
+    include_pr_facts: bool = Query(default=False),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Empirical model/provider routing leaderboard and task-complexity suitability matrix."""
+    return await compute_report_cards_payload(
+        since=since,
+        role=role,
+        provider=provider,
+        include_pr_facts=include_pr_facts,
+    )
+
+
+@router.get("/bean-counter", response_model=StaffBeanCounterResponse)
+async def get_staff_bean_counter(
+    since: str | None = Query(default=None, max_length=40),
+    role: str | None = Query(default=None, max_length=64),
+    provider: str | None = Query(default=None, max_length=32),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Zero-LLM-cost Bean-Counter token economy & waste ledger."""
+    payload = await compute_report_cards_payload(
+        since=since,
+        role=role,
+        provider=provider,
+        include_pr_facts=False,
+    )
+    return {
+        "machine": payload["machine"],
+        "since": payload["since"],
+        "total_runs_analyzed": payload["total_runs_analyzed"],
+        "bean_counter_ledger": payload["bean_counter_ledger"],
+        "routing_recommendations": payload["routing_recommendations"],
+        "leaderboard": payload["leaderboard"],
+    }

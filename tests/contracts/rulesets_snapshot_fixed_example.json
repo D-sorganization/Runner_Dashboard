@@ -64,5 +64,24 @@
         }
       }
     ]
+  },
+  {
+    "name": "Required status checks supplement (Runner_Dashboard)",
+    "target": "branch",
+    "enforcement": "active",
+    "rules": [
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": false,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            { "context": "TypeScript typecheck (tsc)" },
+            { "context": "frontend-required" },
+            { "context": "detect-secrets (baseline diff)" }
+          ]
+        }
+      }
+    ]
   }
 ]

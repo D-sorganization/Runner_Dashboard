@@ -29,6 +29,7 @@ from typing import Any
 from fleet_validators import (
     BROADCAST,
     LIMITS,
+    MEMORY_ENTRY_TYPES,
     PATTERNS,
     PROPOSAL_DECISIONS,
     PROPOSAL_ESTIMATED_EFFORTS,
@@ -52,6 +53,8 @@ from fleet_validators import (
     short_host,
 )
 
+MAX_VERIFICATION_CHARACTERS = 1_000_000
+
 __all__ = [
     "BROADCAST",
     "CLIENT_ENVELOPE_VERSION",
@@ -69,6 +72,15 @@ __all__ = [
     "default_session",
     "run_doctor",
 ]
+
+_CONTEXT_QUERY_CACHE: dict[tuple[str, str, str, str], tuple[float, dict[str, Any]]] = {}
+_LIBRARY_SNIPPET_MAX_BYTES = 400
+
+
+def _library_snippet(value: Any) -> str:
+    """Cap library snippet bodies by UTF-8 bytes; citations are separate."""
+    return str(value or "").encode("utf-8")[:_LIBRARY_SNIPPET_MAX_BYTES].decode("utf-8", errors="ignore")
+
 
 DEFAULT_URL = "http://127.0.0.1:8321"
 DEFAULT_TIMEOUT = 30.0
@@ -299,6 +311,47 @@ class FleetClient:
             "POST", f"/api/v1/staff/threads/{tid}/messages", body={"body": text, "kind": "text"}, headers=headers
         )
 
+    def staff_skills_list(
+        self,
+        role: str | None = None,
+        repo: str | None = None,
+        task_type: str | None = None,
+    ) -> Any:
+        params = {
+            "role": _opt(PATTERNS.ident, role, "role"),
+            "repo": _opt_text(repo, "repo", 128),
+            "task_type": _opt_text(task_type, "task_type", 64),
+        }
+        return self.request("GET", "/api/v1/staff/skills", params=_compact(params))
+
+    def staff_skill_get(self, name: str, version: str | None = None) -> Any:
+        skill = _match(PATTERNS.ident, name, "name")
+        params = {"version": _opt_text(version, "version", 32)} if version else {}
+        return self.request("GET", f"/api/v1/staff/skills/{urllib.parse.quote(skill, safe='')}", params=params)
+
+    def staff_project_create(
+        self,
+        title: str,
+        goal: str,
+        *,
+        definition_of_done: str = "",
+        repos: list[str] | None = None,
+    ) -> Any:
+        body = {
+            "title": _text(title, "title", 200),
+            "goal": _text(goal, "goal", 4000),
+            "definition_of_done": _opt_text(definition_of_done, "definition_of_done", 4000) or "",
+            "repos": repos or [],
+        }
+        return self.request("POST", "/api/v1/staff/projects", body=body)
+
+    def staff_projects_list(self) -> Any:
+        return self.request("GET", "/api/v1/staff/projects")
+
+    def staff_project_decompose(self, project_id: str) -> Any:
+        pid = _match(PATTERNS.ident, project_id, "project_id")
+        return self.request("POST", f"/api/v1/staff/projects/{urllib.parse.quote(pid, safe='')}/decompose", body={})
+
     def staff_thread_read(self, thread_id: str, since_seq: int = 0, limit: int = 100) -> Any:
         tid = _match(PATTERNS.ident, thread_id, "thread_id")
         params = {
@@ -369,6 +422,97 @@ class FleetClient:
         if decision == "approved":
             body["params_hash"] = _opt(PATTERNS.sha256_hex, params_hash, "params_hash") or self._previewed_hash(pid)
         return self.request("POST", f"/api/v1/staff/proposals/{pid}/decide", body=body)
+
+    # ------------------------------------------------------------------ shared memory
+
+    def memory_context_pack(self) -> Any:
+        """Read the shared memory context pack for the authenticated principal."""
+        return self.request("GET", "/api/v1/memory/context-pack")
+
+    def memory_list(
+        self,
+        since: str | None = None,
+        entry_type: str | None = None,
+        tag: str | None = None,
+        author: str | None = None,
+        limit: int = 100,
+    ) -> Any:
+        """List shared memory entries with optional contract filters."""
+        kind = _opt_text(entry_type, "entry_type", 32)
+        if kind is not None:
+            _check(kind in MEMORY_ENTRY_TYPES, "invalid entry_type")
+        _check(
+            isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 500,
+            "limit must be between 1 and 500",
+        )
+        params = {
+            "since": _opt_text(since, "since", 64),
+            "type": kind,
+            "tag": _opt_text(tag, "tag", 64),
+            "author": _opt_text(author, "author", 128),
+            "limit": limit,
+        }
+        return self.request("GET", "/api/v1/memory", params=params)
+
+    def memory_append(
+        self,
+        entry_type: str,
+        source_product: str,
+        body: dict[str, Any],
+        tags: list[str] | None = None,
+        expires_at: str | None = None,
+        supersedes_id: str | None = None,
+    ) -> Any:
+        """Append one memory entry. Writes are never automatically replayed."""
+        kind = _text(entry_type, "entry_type", 32)
+        _check(kind in MEMORY_ENTRY_TYPES, "invalid entry_type")
+        source = _text(source_product, "source_product", 64)
+        _check(isinstance(body, dict), "body must be an object")
+        tag_values = [] if tags is None else tags
+        _check(isinstance(tag_values, list) and len(tag_values) <= 32, "tags must be an array with at most 32 items")
+        normalized_tags = [_text(value, "tag", 64) for value in tag_values]
+        payload: dict[str, Any] = {
+            "entry_type": kind,
+            "source_product": source,
+            "tags": normalized_tags,
+            "body": body,
+        }
+        if expires_at is not None:
+            payload["expires_at"] = _text(expires_at, "expires_at", 64)
+        if supersedes_id is not None:
+            payload["supersedes_id"] = _text(supersedes_id, "supersedes_id", 128)
+        return self.request("POST", "/api/v1/memory", body=payload)
+
+    def memory_append_session_digest(
+        self,
+        source_product: str,
+        conversation_id: str,
+        user_message_id: str,
+        summary: str,
+        decisions: list[str] | None = None,
+        open_items: list[str] | None = None,
+        reported_origin_principal: str | None = None,
+    ) -> Any:
+        """Append one bounded conversation digest; server-side turn keys make retry safe."""
+        _check(source_product in ("codex", "dashboard"), "source_product must be codex or dashboard")
+        conversation = _match(PATTERNS.memory_id, conversation_id, "conversation_id")
+        message_id = _match(PATTERNS.memory_id, user_message_id, "user_message_id")
+        digest = _text(summary, "summary", 1000)
+        decision_values = [] if decisions is None else decisions
+        open_values = [] if open_items is None else open_items
+        _check(isinstance(decision_values, list) and len(decision_values) <= 3, "decisions must have at most 3 items")
+        _check(isinstance(open_values, list) and len(open_values) <= 3, "open_items must have at most 3 items")
+        payload: dict[str, Any] = {
+            "source_product": source_product,
+            "conversation_id": conversation,
+            "user_message_id": message_id,
+            "summary": digest,
+            "decisions": [_text(value, "decision", 120) for value in decision_values],
+            "open_items": [_text(value, "open_item", 120) for value in open_values],
+        }
+        if reported_origin_principal is not None:
+            payload["reported_origin_principal"] = _text(reported_origin_principal, "reported_origin_principal", 128)
+        return self.request("POST", "/api/v1/memory/session-digest", body=payload)
 
     def _previewed_hash(self, pid: str) -> str:
         preview = self.request("GET", f"/api/v1/staff/proposals/{pid}")
@@ -477,6 +621,485 @@ class FleetClient:
     def briefing(self, repo: str | None = None, agent: str | None = None) -> Any:
         params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "agent": self._agent(agent)}
         return self.request("GET", "/api/coordination/briefing", params=params)
+
+    # ------------------------------------------------------------------ agent bus (#2155)
+
+    def agent_register(
+        self,
+        *,
+        session: str,
+        role: str,
+        provider: str,
+        node: str,
+        lease_seconds: int = 300,
+    ) -> Any:
+        _check(30 <= lease_seconds <= 8 * 3600, "lease_seconds must be between 30 and 28800")
+        body = {
+            "session": self._session(session),
+            "role": _match(PATTERNS.agent, role, "role"),
+            "provider": _text(provider, "provider", 64),
+            "node": _text(node, "node", 128),
+            "lease_seconds": lease_seconds,
+        }
+        return self.request("POST", "/api/v1/agent/register", body=body)
+
+    def agent_heartbeat(self, *, session: str | None = None, lease_seconds: int = 300) -> Any:
+        _check(30 <= lease_seconds <= 8 * 3600, "lease_seconds must be between 30 and 28800")
+        body = {"session": self._session(session), "lease_seconds": lease_seconds}
+        return self.request("POST", "/api/v1/agent/heartbeat", body=body)
+
+    def agent_inbox(self, *, session: str | None = None, since_cursor: int = 0, limit: int = 50) -> Any:
+        params = {
+            "session": self._session(session),
+            "since_cursor": _non_negative_int(since_cursor, "since_cursor"),
+            "limit": _positive_int(limit, "limit"),
+        }
+        return self.request("GET", "/api/v1/agent/inbox", params=params)
+
+    def agent_bus_send(
+        self,
+        *,
+        to: str,
+        repo: str,
+        work_kind: str,
+        work_number: int,
+        body: str,
+        msg_type: str = "status",
+        session: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        _check(work_kind in ("issue", "pr"), "work_kind must be issue or pr")
+        key = idempotency_key or f"{self._session(session)}-lib-{uuid.uuid4().hex[:12]}"
+        payload = {
+            "session": self._session(session),
+            "to": _text(to, "to", 128),
+            "type": msg_type,
+            "repo": _match(PATTERNS.repo, repo, "repo"),
+            "work_kind": work_kind,
+            "work_number": _positive_int(work_number, "work_number"),
+            "body": _text(body, "body", 4000),
+            "idempotency_key": key,
+        }
+        return self.request("POST", "/api/v1/agent/messages", body=payload)
+
+    def library_search(
+        self,
+        query: str,
+        *,
+        repo: str | None = None,
+        topic: str | None = None,
+        budget: int | None = None,
+        k: int | None = None,
+        scope: str | None = None,
+    ) -> Any:
+        q = _text(query, "query", 512)
+        params: dict[str, Any] = {"q": q}
+        if repo:
+            params["repo"] = _match(PATTERNS.repo, repo, "repo")
+        if topic:
+            params["topic"] = _text(topic, "topic", 128)
+        if budget is not None:
+            params["budget"] = _positive_int(budget, "budget")
+        if k is not None:
+            params["k"] = _positive_int(k, "k")
+        if scope is not None:
+            _check(scope in ("local", "federated"), "scope must be local or federated")
+            params["scope"] = scope
+        return self.request("GET", "/api/v1/library/search", params=_compact(params))
+
+    def library_work(self, work_id: int) -> Any:
+        wid = _positive_int(work_id, "work_id")
+        return self.request("GET", f"/api/v1/library/works/{wid}")
+
+    def library_fetch_page(
+        self,
+        source_id: str,
+        work_id: int,
+        page: int,
+        *,
+        scope: str = "local",
+        node: str | None = None,
+        run_id: str | None = None,
+    ) -> Any:
+        """Resolve one source/work/page locator without broadening its scope."""
+        source = _match(PATTERNS.source_id, source_id, "source_id")
+        wid = _positive_int(work_id, "work_id")
+        page_number = _positive_int(page, "page")
+        _check(scope in ("local", "federated"), "scope must be local or federated")
+        params: dict[str, Any] = {
+            "source_id": source,
+            "work_id": wid,
+            "page": page_number,
+            "scope": scope,
+        }
+        if node is not None:
+            params["node"] = _text(node, "node", 128, form="line")
+        effective_run_id = run_id or os.environ.get("STAFF_RUN_ID")
+        headers = (
+            {"X-Staff-Run-ID": _match(PATTERNS.ident, effective_run_id, "run_id")}
+            if effective_run_id is not None
+            else None
+        )
+        return self.request("GET", "/api/v1/library/fetch", params=params, headers=headers)
+
+    def library_submit(self, payload: dict[str, Any]) -> Any:
+        if not isinstance(payload, dict):
+            raise FleetArgumentError("payload must be an object")
+        return self.request("POST", "/api/v1/library/submissions", body=payload)
+
+    # ------------------------------------------------------------------ unified query (#2223)
+
+    def fleet_query(
+        self,
+        source: str,
+        op: str = "search",
+        query: str | None = None,
+        repo: str | None = None,
+        topic: str | None = None,
+        k: int = 5,
+        offset: int = 0,
+        full: bool = False,
+        cite: str | None = None,
+        run_id: str | None = None,
+        scope: str | None = None,
+    ) -> dict[str, Any]:
+        """Unified fleet context query tool (#2223).
+
+        Exposes on-request context across sources ('context', 'library', 'knowledge', 'memory', 'codebase').
+        Ceilings enforced: top-k <= 5, library snippets <= 400 UTF-8 bytes, citations included.
+        """
+        valid_sources = ("context", "library", "knowledge", "memory", "codebase")
+        _check(source in valid_sources, f"source must be one of {valid_sources}")
+        valid_ops = ("search", "get", "request", "fetch", "sources")
+        _check(op in valid_ops, f"op must be one of {valid_ops}")
+        _check(op != "sources" or source == "library", "sources is only supported for library")
+        _check(op != "fetch" or source == "library", "fetch is only supported for library")
+        _check(cite is None or (source == "library" and op == "fetch"), "cite is only supported for library fetch")
+        _check(
+            run_id is None
+            or (source == "library" and op in ("search", "fetch"))
+            or (source == "codebase" and op == "search"),
+            "run_id is only supported for library search/fetch or codebase search",
+        )
+        _check(source != "codebase" or op == "search", "codebase only supports search")
+        _check(
+            scope is None or (source == "library" and op == "search"),
+            "scope is only supported for library search",
+        )
+        _check(scope is None or scope in ("local", "federated"), "scope must be local or federated")
+        effective_run_id = run_id
+        if effective_run_id is None and source == "library" and op in ("search", "fetch"):
+            effective_run_id = os.environ.get("STAFF_RUN_ID")
+        effective_k = min(max(1, int(k)), 5)
+        offset = max(0, int(offset))
+
+        if source == "context":
+            if op == "request":
+                if not query or not query.strip():
+                    raise FleetArgumentError("query is required for context request op")
+                msg = f"Context request for repo '{repo or 'fleet'}': {query.strip()}"
+                return {
+                    "status": "requested",
+                    "recipient": "librarian",
+                    "detail": self.send_message(repo=repo or "fleet", to="librarian", text=msg),
+                }
+
+            cache_key = (getattr(self, "token", "") or "", repo or "", query or "", op)
+            now = time.time()
+            cached = _CONTEXT_QUERY_CACHE.get(cache_key)
+            if cached and (now - cached[0] < 30.0):
+                return cached[1]
+
+            try:
+                pack = self.request("GET", "/api/v1/memory/context-pack")
+            except Exception:
+                return {
+                    "status": "unavailable",
+                    "holds": "unavailable",
+                    "directives": "unavailable",
+                    "lessons": "unavailable",
+                    "results": [],
+                }
+
+            directives = [d for d in pack.get("directives", []) if not d.get("barb_only") and not d.get("is_barb_only")]
+            holds = pack.get("holds", [])
+            digests = pack.get("session_digests", [])
+            tasks = pack.get("open_tasks", [])
+
+            results: list[dict[str, Any]] = []
+            for d in digests:
+                body = d.get("body", {}) if isinstance(d, dict) else {}
+                summary = str(body.get("summary", ""))[:400]
+                results.append(
+                    {
+                        "id": d.get("id", ""),
+                        "type": "digest",
+                        "title": f"Session Digest: {d.get('id', '')}",
+                        "snippet": summary,
+                        "ref": f"/api/v1/memory/{d.get('id', '')}",
+                    }
+                )
+            for t in tasks:
+                body = t.get("body", {}) if isinstance(t, dict) else {}
+                title = str(body.get("title", body.get("name", "Task")))
+                results.append(
+                    {
+                        "id": t.get("id", ""),
+                        "type": "task",
+                        "title": title,
+                        "snippet": str(body.get("description", ""))[:400],
+                        "ref": f"/api/v1/memory/{t.get('id', '')}",
+                    }
+                )
+
+            paged = results[offset : offset + effective_k]
+            res = {
+                "status": "ok",
+                "source": "context",
+                "holds": holds,
+                "directives": directives,
+                "results": paged,
+                "has_more": len(results) > (offset + effective_k),
+            }
+            _CONTEXT_QUERY_CACHE[cache_key] = (now, res)
+            return res
+
+        elif source == "library":
+            if op == "sources":
+                catalog = self.request("GET", "/api/v1/library/sources")
+                return {**catalog, "status": "ok", "source": "library"}
+
+            if op == "fetch":
+                if cite is None:
+                    raise FleetArgumentError("cite is required for library fetch")
+                citation = _text(cite, "cite", 512)
+                headers = (
+                    {"X-Staff-Run-ID": _match(PATTERNS.ident, effective_run_id, "run_id")}
+                    if effective_run_id is not None
+                    else None
+                )
+                data = self.request("GET", "/api/v1/library/fetch", params={"cite": citation}, headers=headers)
+                if not isinstance(data, dict):
+                    data = {}
+                result = {
+                    "id": data.get("cite_key", citation),
+                    "title": data.get("citation", "Library passage"),
+                    "snippet": _library_snippet(data.get("text")),
+                    "ref": data.get("cite_key", citation),
+                    "citation": data.get("citation"),
+                    "cite_key": data.get("cite_key", citation),
+                    "cite_uri": data.get("cite_uri"),
+                    "file_sha256": data.get("file_sha256"),
+                    "work_sha256": data.get("work_sha256"),
+                    "node": data.get("node"),
+                    "source_id": data.get("source_id"),
+                    "work_id": data.get("work_id"),
+                    "passage_id": data.get("passage_id"),
+                    "page_start": data.get("page_start"),
+                    "page_end": data.get("page_end"),
+                }
+                return {"status": "ok", "source": "library", "results": [result], "has_more": False}
+
+            if not query or not query.strip():
+                raise FleetArgumentError("query is required for library search")
+            params: dict[str, Any] = {"k": min(100, effective_k + offset), "q": query}
+            if repo:
+                params["repo"] = repo
+            if topic:
+                params["topic"] = topic
+            if scope is not None:
+                params["scope"] = scope
+            headers = (
+                {"X-Staff-Run-ID": _match(PATTERNS.ident, effective_run_id, "run_id")}
+                if effective_run_id is not None
+                else None
+            )
+            data = self.request("GET", "/api/v1/library/search", params=params, headers=headers)
+            items = data.get("passages", []) if isinstance(data, dict) else []
+            if not isinstance(items, list):
+                items = []
+            paged_items = items[offset : offset + effective_k]
+            results = []
+            for it in paged_items:
+                if not isinstance(it, dict):
+                    continue
+                cite_key = it.get("cite_key")
+                title = " ".join(str(it.get(k)) for k in ("author", "title", "year") if it.get(k))
+                results.append(
+                    {
+                        "id": cite_key
+                        or f"{it.get('source_id', '')}:w{it.get('work_id', '')}:p{it.get('passage_id', '')}",
+                        "title": title or "Library passage",
+                        "snippet": _library_snippet(it.get("text")),
+                        "ref": cite_key or it.get("ref"),
+                        "citation": it.get("citation"),
+                        "cite_key": cite_key,
+                        "cite_uri": it.get("cite_uri"),
+                        "file_sha256": it.get("file_sha256"),
+                        "work_sha256": it.get("work_sha256"),
+                        "node": it.get("node"),
+                        "source_id": it.get("source_id"),
+                        "work_id": it.get("work_id"),
+                        "passage_id": it.get("passage_id"),
+                        "page_start": it.get("page_start"),
+                        "page_end": it.get("page_end"),
+                    }
+                )
+            return {
+                "status": "ok",
+                "source": "library",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        elif source == "codebase":
+            if not query or not query.strip():
+                raise FleetArgumentError("query is required for codebase search")
+            params = {"q": query, "k": min(100, effective_k + offset)}
+            identity = run_id if run_id is not None else os.environ.get("STAFF_RUN_ID")
+            if identity is not None:
+                _check(len(identity) <= 120, "run_id must be at most 120 characters")
+                params["run_id"] = _match(PATTERNS.ident, identity, "run_id")
+            data = self.request("GET", "/api/v1/staff/knowledge/cartographer/search", params=params)
+            items = data.get("passages", []) if isinstance(data, dict) else []
+            if not isinstance(items, list):
+                items = []
+            page = items[offset : offset + effective_k]
+            results = [
+                {
+                    "id": item["citation"],
+                    "title": item.get("title") or item.get("source") or "Codebase passage",
+                    "snippet": _library_snippet(item.get("text")),
+                    "ref": item.get("citation"),
+                    "citation": item.get("citation"),
+                    "repo": item.get("repo"),
+                    "source": item.get("source"),
+                    "commit": item.get("commit"),
+                    "content_hash": item.get("content_hash"),
+                    **{key: item.get(key) for key in ("anchor", "status", "authority", "authority_rank", "score")},
+                }
+                for item in page
+                if isinstance(item, dict) and item.get("citation")
+            ]
+            return {
+                "status": "ok",
+                "source": "codebase",
+                "stale": bool(data.get("stale", True)) if isinstance(data, dict) else True,
+                **({"run_id": data.get("run_id")} if isinstance(data, dict) and "run_id" in data else {}),
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        elif source == "knowledge":
+            params = {"q": query or "", "limit": effective_k + offset}
+            pack_id = repo or "fleet"
+            try:
+                data = self.request("GET", f"/api/v1/staff/knowledge/{pack_id}/search", params=params)
+                items = data.get("results", data.get("items", [])) if isinstance(data, dict) else []
+            except Exception:
+                items = []
+            paged_items = items[offset : offset + effective_k]
+            results = []
+            for it in paged_items:
+                raw_text = it.get("snippet") or it.get("text") or it.get("body") or ""
+                results.append(
+                    {
+                        "id": it.get("id", ""),
+                        "title": it.get("title", f"Knowledge: {pack_id}"),
+                        "snippet": str(raw_text)[:400],
+                        "ref": it.get("ref") or f"/api/v1/staff/knowledge/{pack_id}",
+                    }
+                )
+            return {
+                "status": "ok",
+                "source": "knowledge",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        elif source == "memory":
+            params = {"tag": repo, "limit": effective_k + offset}
+            data = self.request("GET", "/api/v1/memory", params={k: v for k, v in params.items() if v})
+            items = data.get("entries", data.get("items", [])) if isinstance(data, dict) else []
+            paged_items = items[offset : offset + effective_k]
+            results = []
+            for it in paged_items:
+                raw_text = it.get("body") if isinstance(it, dict) else ""
+                snippet = json.dumps(raw_text) if isinstance(raw_text, dict) else str(raw_text)
+                results.append(
+                    {
+                        "id": it.get("id", ""),
+                        "title": it.get("entry_type", "Memory item"),
+                        "snippet": snippet[:400],
+                        "ref": f"/api/v1/memory/{it.get('id', '')}",
+                    }
+                )
+            return {
+                "status": "ok",
+                "source": "memory",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        return {"status": "error", "message": f"unhandled source {source}"}
+
+    def query_context(
+        self,
+        repo: str | None = None,
+        op: str = "search",
+        query: str | None = None,
+        k: int = 5,
+        offset: int = 0,
+        full: bool = False,
+    ) -> dict[str, Any]:
+        return self.fleet_query(source="context", op=op, query=query, repo=repo, k=k, offset=offset, full=full)
+
+    def query_library(
+        self,
+        query: str | None = None,
+        repo: str | None = None,
+        topic: str | None = None,
+        k: int = 5,
+        offset: int = 0,
+        full: bool = False,
+    ) -> dict[str, Any]:
+        return self.fleet_query(
+            source="library", op="search", query=query, repo=repo, topic=topic, k=k, offset=offset, full=full
+        )
+
+    def library_sources(self) -> dict[str, Any]:
+        """Read local and pooled source availability using the caller's existing permissions."""
+        return self.fleet_query(source="library", op="sources")
+
+    def library_verify(self, content: str, run_id: str | None = None) -> dict[str, Any]:
+        """Verify bounded document content through the existing owner-checked API."""
+        _check(isinstance(content, str), "content must be text")
+        _check(len(content) <= MAX_VERIFICATION_CHARACTERS, "verification content exceeds character limit")
+        body = {"content": content}
+        identity = run_id if run_id is not None else os.environ.get("STAFF_RUN_ID")
+        if identity is not None:
+            _check(isinstance(identity, str) and len(identity) <= 120, "invalid run_id")
+            body["run_id"] = _match(PATTERNS.run_id, identity, "run_id")
+        result = self.request("POST", "/api/v1/library/verify", body=body)
+        if not isinstance(result, dict) or not isinstance(result.get("verified"), bool):
+            raise FleetAPIError(502, {"detail": "invalid verification response"})
+        return result
+
+    def query_codebase(
+        self, query: str | None = None, k: int = 5, offset: int = 0, run_id: str | None = None
+    ) -> dict[str, Any]:
+        """Search indexed committed code, optionally recording evidence for an owned run."""
+        return self.fleet_query(source="codebase", query=query, k=k, offset=offset, run_id=run_id)
+
+    def query_knowledge(
+        self, query: str | None = None, repo: str | None = None, k: int = 5, offset: int = 0, full: bool = False
+    ) -> dict[str, Any]:
+        return self.fleet_query(source="knowledge", op="search", query=query, repo=repo, k=k, offset=offset, full=full)
+
+    def query_memory(
+        self, query: str | None = None, repo: str | None = None, k: int = 5, offset: int = 0, full: bool = False
+    ) -> dict[str, Any]:
+        return self.fleet_query(source="memory", op="search", query=query, repo=repo, k=k, offset=offset, full=full)
 
     # ------------------------------------------------------------------ priorities
 

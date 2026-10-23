@@ -42,6 +42,7 @@ log = logging.getLogger("dashboard.ci_fix_service")
 
 # Route provider ids (``agent_remediation`` naming) → staff adapter ids.
 ROUTE_TO_STAFF_PROVIDER = {"claude_code_cli": "claude", "codex_cli": "codex", "antigravity": "antigravity"}
+CI_FIX_MODEL_TIER = {"cheap": "routine", "cli": "standard", "strong": "complex"}
 CI_FIX_ROLE = "ad-hoc"
 WEBHOOK_PRINCIPAL = Principal(
     id="ci-fix-webhook",
@@ -190,16 +191,17 @@ async def _route_and_launch(
             prompt = f"{prompt}\n{_queue_note(req.repo, req.pr_number)}\n"
     prompt = f"{_pr_head_note(req.branch)}\n{prompt}"
     provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
-    if not available_providers().get(provider, False):
+    installed = available_providers()
+    if not any(installed.get(candidate, False) for candidate in ROUTE_TO_STAFF_PROVIDER.values()):
         raise CIFixLaunchUnavailableError(
-            f"CI-fix route {route.tier}/{route.model} needs provider '{provider}', which is not installed on this "
-            "node; install it or dispatch from a node that has it"
+            "No CI-fix provider is installed on this node; install one or dispatch from a node that has one"
         )
     cmd = DispatchCommand(
         role=CI_FIX_ROLE,
         requested_by=f"ci-fix:{caller.id}",
         provider=provider,
         model=route.model,
+        model_tier=CI_FIX_MODEL_TIER[route.tier],
         repo=req.repo,
         pr=req.pr_number,
         prompt=prompt,
@@ -209,15 +211,18 @@ async def _route_and_launch(
         head_ref=req.branch,
     )
     launched = await launcher(cmd, caller)
-    staff_run_id = str((launched.get("run") or {}).get("id") or "")
+    run = launched.get("run") or {}
+    staff_run_id = str(run.get("id") or "")
+    launched_provider = str(run.get("provider") or provider)
+    launched_model = str(run.get("model") or route.model)
     record_ci_fix_audit(
         repo=req.repo,
         pr_number=req.pr_number,
         workflow_name=workflow_name,
         run_id=req.run_id,
         failure_type=failure_type,
-        provider=route.provider,
-        model=route.model,
+        provider=launched_provider,
+        model=launched_model,
         attempt_number=attempt,
         cost_budget=route.cost_budget,
         staff_run_id=staff_run_id,
@@ -237,6 +242,8 @@ async def _route_and_launch(
         "repo": req.repo,
         "pr_number": req.pr_number,
         "route": route.to_dict(),
+        "launched_provider": launched_provider,
+        "launched_model": launched_model,
         "prompt": prompt,
         "session_id": session_id,
         "failing_tests": failing_tests,

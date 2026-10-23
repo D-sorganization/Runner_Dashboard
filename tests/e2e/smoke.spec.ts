@@ -88,21 +88,14 @@ test("Queue tab renders without crashing", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Maxwell tab — degrades gracefully when daemon is offline
+// Retired Maxwell routes land on Staff Console (#1338)
 // ---------------------------------------------------------------------------
 
-test("Maxwell tab shows content or graceful offline state", async ({
+test("retired /maxwell shortcut redirects to Staff Console", async ({
   page,
 }) => {
-  await page.goto("/");
-  const maxwellButton = page
-    .getByRole("button", { name: /maxwell/i })
-    .or(page.getByRole("tab", { name: /maxwell/i }));
-  if (await maxwellButton.first().isVisible()) {
-    await maxwellButton.first().click();
-    await page.waitForTimeout(500);
-  }
-  // Must not show a blank page; either the Maxwell UI or an error/retry state.
+  await page.goto("/maxwell");
+  await page.waitForURL(/\/?(\?.*)?$/);
   await expect(page.locator("body")).not.toBeEmpty();
 });
 

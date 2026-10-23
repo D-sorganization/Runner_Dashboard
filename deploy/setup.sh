@@ -390,6 +390,23 @@ if [[ ! -f "${TEMPLATE_FILE}" ]]; then
     fail "Template not found at ${TEMPLATE_FILE}"
 fi
 
+# Static parity markers for the service template rendered below. Keep this list
+# in sync with deploy/runner-dashboard.service so tests catch installer drift.
+# ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py
+# RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# RestrictNamespaces=user mnt net ipc uts pid
+# CapabilityBoundingSet=
+# SystemCallFilter=@system-service
+# SystemCallFilter=@mount landlock_create_ruleset landlock_add_rule landlock_restrict_self seccomp
+# LockPersonality=true
+# MemoryDenyWriteExecute=true
+# ProtectHostname=true
+# ProtectClock=true
+# ProtectProc=invisible
+# MemoryMax=2G
+# CPUQuota=200%
+# TasksMax=512
+# WatchdogSec=120
 mkdir -p "${HOME}/.config/runner-dashboard" "${HOME}/.local/share/runner-dashboard" "${RUNNER_BASE_DIR}" "${DEPLOY_DIR}"
 
 if ! resolve_systemd_dashboard_scope "${FORCE_USER_SERVICE}" "${FORCE_SYSTEM_SERVICE}"; then

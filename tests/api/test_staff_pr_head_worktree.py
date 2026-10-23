@@ -77,7 +77,8 @@ def test_add_worktree_from_start_ref_fetches_and_branches_from_it(
     assert git_calls[-1] == ("worktree", "add", "-b", "staff/x", str(tmp_path / "w"), "origin/feat/x")
 
 
-def test_plan_carries_head_ref_and_rejects_unsafe_refs() -> None:
+def test_plan_carries_head_ref_and_rejects_unsafe_refs(staff_cli_installed) -> None:
+    staff_cli_installed("claude")
     runner = StaffRunner(store=_Store())  # type: ignore[arg-type]
     plan = runner.plan(RunRequest(role="ad-hoc", provider="claude", repo="Runner_Dashboard", pr=42, head_ref="feat/x"))
     assert plan.head_ref == "feat/x"

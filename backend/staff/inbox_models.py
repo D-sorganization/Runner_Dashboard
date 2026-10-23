@@ -17,6 +17,7 @@ InboxSource = Literal[
     "project_decision",
     "board_proposal",
     "auth_sign_in",
+    "agent_concern",
 ]
 
 

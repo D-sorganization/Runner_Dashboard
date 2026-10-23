@@ -25,9 +25,8 @@ from dashboard_config import HttpTimeout  # noqa: E402
 
 def test_node_probe_timeout_caps_connect() -> None:
     timeout = fleet._node_probe_timeout()
-    assert timeout.connect == HttpTimeout.NODE_CONNECT_S
-    assert timeout.read == HttpTimeout.PROXY_NODE_SYSTEM_S
-    # Dead hosts fail fast on connect; slow-but-alive hosts keep the read budget.
+    assert timeout.connect == HttpTimeout.FLEET_NODE_PROBE_CONNECT_S
+    assert timeout.read == HttpTimeout.FLEET_NODE_PROBE_READ_S
     assert timeout.connect < timeout.read
 
 
@@ -45,7 +44,10 @@ async def test_fetch_peer_pool_classifies_unreachable_as_offline(monkeypatch: py
 
     monkeypatch.setattr(fleet.httpx, "AsyncClient", lambda *_a, **_k: _Boom())
 
-    result = await fleet._fetch_peer_pool({"name": "DeskComputer", "url": "http://dead:8321"})
+    result = await fleet._fetch_peer_pool(
+        {"name": "DeskComputer", "url": "http://dead:8321"},
+        local_dashboard_urls=frozenset(),
+    )
 
     assert result["DeskComputer"]["status"] == "offline"
 

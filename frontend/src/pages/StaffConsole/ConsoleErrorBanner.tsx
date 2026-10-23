@@ -21,7 +21,9 @@ export interface ConsoleErrorBannerProps {
 }
 
 export function ConsoleErrorBanner({ error, onDismiss }: ConsoleErrorBannerProps) {
-  if (!error) return null;
+  // Composer renders the actionable retry alert for send failures.
+  // Repeating the same failure here creates two competing alerts.
+  if (!error || error.kind === "send") return null;
   const isLong = error.message.length > 140 || error.message.includes("\n") || error.message.startsWith("{");
 
   return (

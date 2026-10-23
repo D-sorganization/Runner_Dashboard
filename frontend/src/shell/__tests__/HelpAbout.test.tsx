@@ -41,8 +41,8 @@ describe("HelpAbout", () => {
     fireEvent.click(trigger);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(
-      screen.getByRole("tablist", { name: /help and about sections/i }),
-    ).toHaveClass("help-about__tabs");
+      screen.getByRole("region", { name: /first things to check/i }),
+    ).toBeInTheDocument();
   });
 
   it("fetches and shows the dashboard version when opened", async () => {
@@ -80,6 +80,7 @@ describe("HelpAbout", () => {
       screen.getByRole("region", { name: /keyboard shortcuts/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/command palette/i)).toBeInTheDocument();
+    expect(screen.getByText(/staff console/i)).toBeInTheDocument();
   });
 
   it("opens when the '?' key is pressed outside a text field", async () => {
@@ -89,34 +90,12 @@ describe("HelpAbout", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("exposes an 'Ask the codebase' tab that mounts the codebase assistant (#838)", async () => {
+  it("does not surface a separate codebase chat tab (#1338)", async () => {
     render(<HelpAbout onNavigate={vi.fn()} fetchImpl={versionFetch()} />);
     fireEvent.click(screen.getByRole("button", { name: /help and about/i }));
     await screen.findByRole("dialog");
-    const chatTab = screen.getByRole("tab", { name: /ask the codebase/i });
-    fireEvent.click(chatTab);
-    expect(chatTab).toHaveClass("help-about__tab--active");
     expect(
-      screen.getByRole("region", { name: /codebase assistant/i }),
-    ).toBeInTheDocument();
-    // The codebase quick-chips are present once the assistant is mounted.
-    expect(
-      screen.getByRole("button", { name: /what does \/api\/queue do\?/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("routes codebase Q&A to Cartographer and Librarian in Staff Console (#1330)", async () => {
-    const onNavigate = vi.fn();
-    render(<HelpAbout onNavigate={onNavigate} fetchImpl={versionFetch()} />);
-    fireEvent.click(screen.getByRole("button", { name: /help and about/i }));
-    await screen.findByRole("dialog");
-    fireEvent.click(screen.getByRole("tab", { name: /ask the codebase/i }));
-
-    const cartographerBtn = screen.getByRole("button", {
-      name: /ask cartographer/i,
-    });
-    expect(cartographerBtn).toBeInTheDocument();
-    fireEvent.click(cartographerBtn);
-    expect(onNavigate).toHaveBeenCalledWith("staff");
+      screen.queryByRole("tab", { name: /ask the codebase/i }),
+    ).not.toBeInTheDocument();
   });
 });

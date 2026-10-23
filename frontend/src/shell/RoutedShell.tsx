@@ -43,7 +43,6 @@ import { ShellDensityControl } from "./ShellDensityControl";
 import { ShellThemeControl } from "./ShellThemeControl";
 import { QueueMobile } from "../pages/Queue";
 import { QueueTab } from "../pages/Queue";
-import { MaxwellMobile } from "../pages/Maxwell";
 import { ReportsMobile } from "../pages/Reports";
 import { FleetMobile } from "../pages/Fleet";
 import {
@@ -54,7 +53,6 @@ import { AnalysisTab } from "../pages/Analysis";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
 import { MachinesPage } from "../pages/Machines";
-import { MaxwellPage } from "../pages/MaxwellPage";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
 import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { WorkflowsPage } from "../pages/WorkflowsPage";
@@ -75,6 +73,9 @@ const LazyProjectsPage = React.lazy(() => import("../pages/ProjectsPage"));
 const LazyFleetCommandPage = React.lazy(
   () => import("../pages/FleetCommand/FleetCommandPage"),
 );
+const LazyAgentBusPage = React.lazy(() => import("../pages/AgentBus/AgentBusPage"));
+const LazyLibraryPage = React.lazy(() => import("../pages/Library/LibraryPage"));
+const LazyContextPage = React.lazy(() => import("../pages/Context/ContextPage"));
 const LazyOperationsPage = React.lazy(
   () => import("../pages/Operations/OperationsPage"),
 );
@@ -128,10 +129,14 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <CodeRequestsPage />;
     case "fleet-command":
       return <LazyFleetCommandPage />;
+    case "agent-bus":
+      return <LazyAgentBusPage />;
+    case "library":
+      return <LazyLibraryPage />;
+    case "context":
+      return <LazyContextPage />;
     case "machines":
       return <MachinesPage />;
-    case "maxwell":
-      return <MaxwellPage />;
     case "projects":
       return <LazyProjectsPage />;
     case "queue":
@@ -211,6 +216,16 @@ export function RoutedShell({
     [navigate],
   );
 
+  React.useEffect(() => {
+    const onAssistantNavigate = (event: Event) => {
+      const tabId = (event as CustomEvent<{ tabId?: unknown }>).detail?.tabId;
+      // The shell is the navigation authority; ignore paths, URLs, and retired ids.
+      if (typeof tabId === "string" && navItemById(tabId)) onSelectTab(tabId);
+    };
+    window.addEventListener("runner-dashboard:navigate", onAssistantNavigate);
+    return () => window.removeEventListener("runner-dashboard:navigate", onAssistantNavigate);
+  }, [onSelectTab]);
+
   // Anonymous local page usage telemetry (issue #1302 / SC-G1)
   React.useEffect(() => {
     if (!activeTab || isNotFound) return;
@@ -266,6 +281,7 @@ export function AppShell({
   // Reactive dashboard-session state (#842): the topbar Login/Logout label
   // derives from this hook, so it updates on focus / visibility / logout.
   const { loggedIn, refresh: refreshSession } = useSession();
+  const { showToast } = useToast();
 
   // Per-tab intro header dismissal (#822).
   const [dismissedIntros, setDismissedIntros] = React.useState<
@@ -294,7 +310,6 @@ export function AppShell({
     const mobileTabContent = {
       overview: <FleetMobile />,
       queue: <QueueMobile />,
-      maxwell: <MaxwellMobile />,
       remediation: (
         <RemediationMobile
           inFlightDispatches={mobileRemediationDispatches}
@@ -307,7 +322,7 @@ export function AppShell({
       insights: <ReportsMobile />,
       staff: (
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
-          <LazyStaffMobile />
+          <LazyStaffMobile initialView="home" />
         </React.Suspense>
       ),
       "fleet-command": (
@@ -389,7 +404,9 @@ export function AppShell({
     <DesktopShell
       activeTabId={activeTab}
       onSelect={onSelectTab}
-      actions={buildShellActions(loggedIn, refreshSession)}
+      actions={buildShellActions(loggedIn, refreshSession, () => {
+        showToast("Could not sign out. Please try again.", { variant: "error" });
+      })}
       helpAbout={<HelpAbout onNavigate={onSelectTab} />}
       intro={introNode}
       headerExtra={

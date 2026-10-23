@@ -923,11 +923,31 @@ table, .tabular {
   margin-left: auto;
 }
 
+/* Wrapped utility actions need room to grow without escaping the fixed desktop header. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .desktop-shell__topbar {
+    height: auto;
+    min-height: 52px;
+    flex: 0 0 auto;
+  }
+}
+
 .desktop-shell__main {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: auto;
+}
+
+/* The Staff hub's intro and app-height console share the shell's remaining height. */
+.desktop-shell__main--staff {
+  display: flex;
+  flex-direction: column;
+}
+
+.desktop-shell__main--staff > .staff {
+  flex: 1;
+  height: auto;
 }
 
 .shell-action {
@@ -4844,6 +4864,26 @@ th.sortable.active .sort-indicator {
 .mobile-shell__header {
   position: relative;
   z-index: 300;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+}
+
+.mobile-shell__ask-barb {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.mobile-shell__ask-barb:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
 }
 
 .skip-link {

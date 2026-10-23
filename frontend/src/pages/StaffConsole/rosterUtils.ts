@@ -148,6 +148,8 @@ export function categorizeRole(role: StaffRoleItem): RosterGroupKey {
     name.includes("maintenance") ||
     name.includes("night-watch") ||
     name.includes("night_watch") ||
+    name.includes("test-hygiene") ||
+    name.includes("test_hygiene") ||
     name.includes("remediator") ||
     name.includes("sanitation") ||
     name.includes("usage")

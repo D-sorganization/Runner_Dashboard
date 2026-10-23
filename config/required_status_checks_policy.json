@@ -3,6 +3,12 @@
   "branch": "main",
   "required_contexts": [
     {
+      "context": "frontend-required",
+      "source_workflow": "Frontend Tests",
+      "job_id": "frontend-required",
+      "reason": "Fail-closed aggregate for frontend scope, typecheck, Vitest, performance and applicable E2E checks. PR #2287 merged despite failed Vitest because the Python quality-gate did not cover this workflow. Apply the supplement only after this job is available on main."
+    },
+    {
       "context": "quality-gate",
       "source_workflow": "CI Standard",
       "job_id": "quality-gate",
@@ -19,6 +25,18 @@
       "source_workflow": "Anti-Phantom Merge Guard",
       "job_id": "guard",
       "reason": "PR #1118 (docs-only) merged while this check was still QUEUED. The 'guard' context is not present in either the classic branch-protection required_status_checks.contexts list or the 'Repository_Protections' ruleset's required_status_checks parameters, so GitHub never waited for it. This is the primary gap closed by issue #1119: add 'guard' to the required-status-checks list (classic protection and/or the ruleset) for the main branch."
+    },
+    {
+      "context": "TypeScript typecheck (tsc)",
+      "source_workflow": "Frontend Tests",
+      "job_id": "typecheck",
+      "reason": "Frontend type safety gate. The job must always report this context (heavy steps gated per-step) so docs-only PRs and merge_group runs never leave the check Expected. Applied on main via config/repository_rulesets/required-status-checks-supplement.json."
+    },
+    {
+      "context": "detect-secrets (baseline diff)",
+      "source_workflow": "CI Secrets",
+      "job_id": "detect-secrets",
+      "reason": "Baseline diff secret scan. Must run on fork PRs (ubuntu-latest) and on merge_group so required protection never waits for a missing context. Applied on main via config/repository_rulesets/required-status-checks-supplement.json."
     }
   ],
   "require_branches_up_to_date": false,

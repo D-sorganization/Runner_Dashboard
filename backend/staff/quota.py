@@ -46,7 +46,6 @@ BILLING: dict[str, str] = {
     "cursor-agent": "subscription",
     "ollama": "local",
     "claude-ollama": "local",
-    "maxwell": "local",
 }
 # Provider → the plan account whose windows gate it, for providers whose quota is
 # readable. ``ollama`` runs Codex with ``--oss`` on local models, not the ChatGPT

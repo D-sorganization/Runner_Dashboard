@@ -59,21 +59,11 @@ else
     VERSION=$(grep -vE '^\s*(#|$)' "${SCRIPT_DIR}/VERSION" | head -n1 | tr -d '[:space:]')
 fi
 
-# Resolve commit SHA
-if [[ -n "${SHA_OVERRIDE}" ]]; then
-    GIT_SHA="${SHA_OVERRIDE}"
-elif [[ -n "${GITHUB_SHA:-}" ]]; then
-    GIT_SHA="${GITHUB_SHA}"
-elif command -v git >/dev/null 2>&1 && git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    GIT_SHA=$(git -C "${SCRIPT_DIR}" rev-parse HEAD 2>/dev/null || echo "unknown")
-else
-    GIT_SHA="unknown"
-fi
-
-GIT_BRANCH="main"
-if command -v git >/dev/null 2>&1 && git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    GIT_BRANCH=$(git -C "${SCRIPT_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-fi
+# Validate source identity before dependency installation/build work. The helper
+# treats GITHUB_ACTIONS as an unverified context hint, never as attestation.
+SOURCE_CHECK_ARGS=(--repo-root "${SCRIPT_DIR}" --validate-source-only --print-sha)
+[[ -z "${SHA_OVERRIDE}" ]] || SOURCE_CHECK_ARGS+=(--sha "${SHA_OVERRIDE}")
+GIT_SHA=$(python3 "${SCRIPT_DIR}/deploy/artifact_metadata.py" "${SOURCE_CHECK_ARGS[@]}")
 
 echo "==> Packaging Runner Dashboard ${VERSION} (${GIT_SHA})"
 
@@ -177,37 +167,12 @@ fi
 mkdir -p "${STAGE_DIR}/scripts"
 cp "${SCRIPT_DIR}/scripts/claude_statusline_quota.py" "${STAGE_DIR}/scripts/claude_statusline_quota.py"
 
-# 6. Generate deployment.json
-BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")
-python3 - "${STAGE_DIR}/deployment.json" "${VERSION}" "${GIT_SHA}" "${GIT_BRANCH}" "${BUILD_TIMESTAMP}" "${PYTHON_MINOR}" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-out_path = Path(sys.argv[1])
-version = sys.argv[2]
-git_sha = sys.argv[3]
-git_branch = sys.argv[4]
-build_timestamp = sys.argv[5]
-python_minor = sys.argv[6]
-
-metadata = {
-    "app": "runner-dashboard",
-    "version": version,
-    "git_sha": git_sha,
-    "git_branch": git_branch,
-    "git_dirty": False,
-    "build_timestamp": build_timestamp,
-    "source": "github-actions-artifact-build",
-    "compatibility": {
-        "artifact_schema": "runner-dashboard-artifact-v2",
-        "python_requires": ">=3.11,<3.14",
-        "python_minor": python_minor,
-        "service_name": "runner-dashboard.service"
-    }
-}
-out_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-PY
+# 6. Generate deployment.json from a second identity check after the build.
+METADATA_ARGS=(
+    --repo-root "${SCRIPT_DIR}" --version "${VERSION}" --python-minor "${PYTHON_MINOR}"
+    --sha "${GIT_SHA}" --output "${STAGE_DIR}/deployment.json"
+)
+python3 "${SCRIPT_DIR}/deploy/artifact_metadata.py" "${METADATA_ARGS[@]}"
 chmod 644 "${STAGE_DIR}/deployment.json"
 
 # 7. Generate FILES.txt inventory

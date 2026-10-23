@@ -16,6 +16,11 @@ import { Tooltip } from "../primitives/Tooltip";
 import { Dropdown } from "../primitives/Dropdown";
 import { CommandPalette, type Command } from "../primitives/CommandPalette";
 import { NAV_ITEMS, NAV_GROUPS } from "./navRegistry";
+import { ChatGlyph } from "../pages/decompIcons";
+
+const LazyBarbSidebar = React.lazy(() =>
+  import("./BarbSidebar").then(({ BarbSidebar }) => ({ default: BarbSidebar })),
+);
 
 export interface ShellAction {
   /** Stable identifier. */
@@ -216,6 +221,13 @@ export function DesktopShell({
 }: DesktopShellProps): React.ReactElement {
   assertActions(actions);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [barbMounted, setBarbMounted] = useState(false);
+  const [barbOpen, setBarbOpen] = useState(false);
+
+  const openBarb = () => {
+    setBarbMounted(true);
+    setBarbOpen(true);
+  };
 
   const activeItem = NAV_ITEMS.find(
     (it) => it.tabId === activeTabId || it.id === activeTabId,
@@ -270,6 +282,20 @@ export function DesktopShell({
           <div className="desktop-shell__actions">
             {headerExtra}
             {helpAbout}
+            <Tooltip content={barbOpen ? "Close Barb assistant" : "Open Barb assistant"} placement="bottom">
+              <button
+                type="button"
+                className={`shell-action shell-action--has-icon${barbOpen ? " shell-action--active" : ""}`}
+                aria-label="Ask Barb"
+                aria-controls="barb-sidebar"
+                aria-expanded={barbOpen}
+                data-testid="ask-barb-toggle"
+                onClick={() => (barbOpen ? setBarbOpen(false) : openBarb())}
+              >
+                <ChatGlyph size={15} />
+                <span className="shell-action__label">Ask Barb</span>
+              </button>
+            </Tooltip>
             {actions.map((a) => (
               <ActionButton key={a.id} action={a} />
             ))}
@@ -279,7 +305,7 @@ export function DesktopShell({
           id="main-content"
           role="main"
           tabIndex={-1}
-          className="desktop-shell__main"
+          className={`desktop-shell__main${activeTabId === "staff" ? " desktop-shell__main--staff" : ""}`}
         >
           {intro}
           {children}
@@ -290,6 +316,15 @@ export function DesktopShell({
         isOpen={paletteOpen}
         onOpenChange={setPaletteOpen}
       />
+      {barbMounted ? (
+        <React.Suspense fallback={null}>
+          <LazyBarbSidebar
+            open={barbOpen}
+            onClose={() => setBarbOpen(false)}
+            onNavigate={onSelect}
+          />
+        </React.Suspense>
+      ) : null}
     </div>
   );
 }

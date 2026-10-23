@@ -18,7 +18,6 @@ from staff.adapters import (
     PERMISSION_BYPASS_FLAGS,
     UNATTENDED_SHELL_ALLOW,
     UNATTENDED_SHELL_DENY,
-    UnattendedUnsupportedError,
     claude_unattended_tools,
     gemini_policy_toml,
 )
@@ -147,20 +146,51 @@ def test_gemini_policy_allows_the_shared_list_and_denies_above_it() -> None:
 
 
 @pytest.mark.unit
-def test_antigravity_unattended_uses_plan_mode() -> None:
+def test_antigravity_unattended_uses_auto_and_read_only_uses_plan_mode() -> None:
     agy = ADAPTERS["antigravity"]
     assert agy.unattended is True
-    argv = agy.build_command("do it", "/tmp/wt", model="gemini-3.8-flash-high")
-    assert argv[argv.index("--mode") + 1] == "plan"
+    argv = agy.build_command("do it", "/tmp/wt", model="gemini-3.8-flash-high", gitdir="/repo/.git")
+    assert argv[argv.index("--mode") + 1] == "auto"
+    add_dirs = [argv[i + 1] for i, item in enumerate(argv[:-1]) if item == "--add-dir"]
+    assert add_dirs == ["/tmp/wt", "/repo/.git"]
+    read_only = agy.build_command("inspect", "/tmp/wt", read_only=True)
+    assert read_only[read_only.index("--mode") + 1] == "plan"
     chat = agy.chat_argv("hi", "/tmp/wt")
     assert chat[chat.index("--mode") + 1] == "plan"
 
 
 @pytest.mark.unit
+def test_antigravity_permissions_merge_settings_and_git_exclude(tmp_path, monkeypatch) -> None:
+    import json
+
+    from staff.adapter_policies import antigravity_permissions
+
+    home = tmp_path / "agy-home"
+    monkeypatch.setenv("ANTIGRAVITY_HOME", str(home))
+    workdir = tmp_path / "worktree"
+    gitdir = tmp_path / "repo" / ".git"
+    (home).mkdir(parents=True)
+    workdir.mkdir(parents=True)
+    (home / "settings.json").write_text(json.dumps({"theme": "dark", "permissions": {"allow": ["custom"]}}))
+    allow, deny = antigravity_permissions()
+    assert any(rule.startswith("command(git*") for rule in allow)
+    assert any(rule.startswith("command(sudo*") for rule in deny)
+    read_only_allow, read_only_deny = antigravity_permissions(read_only=True, workdir=workdir, gitdir=gitdir)
+    assert "command(gh pr view*)" in read_only_allow
+    assert "command(git push*)" in read_only_deny
+    antigravity_permissions(read_only=True, workdir=workdir, gitdir=gitdir)
+    for path in (home / "settings.json", workdir / ".gemini" / "settings.json"):
+        settings = json.loads(path.read_text())
+        assert settings["permissions"]["allow"] and settings["permissions"]["deny"]
+    assert json.loads((home / "settings.json").read_text())["theme"] == "dark"
+    assert "custom" in json.loads((home / "settings.json").read_text())["permissions"]["allow"]
+    exclude_lines = (gitdir / "info" / "exclude").read_text().splitlines()
+    assert exclude_lines.count(".gemini/") == 1
+
+
+@pytest.mark.unit
 def test_every_chat_argv_stays_free_of_bypass_flags() -> None:
     for pid, adapter in ADAPTERS.items():
-        if pid == "maxwell":
-            continue
         argv = adapter.chat_argv("hi", "/tmp/wt")
         assert not PERMISSION_BYPASS_FLAGS & set(argv), pid
 
@@ -185,15 +215,21 @@ def test_retry_fallback_skips_chat_only_providers() -> None:
 
 
 @pytest.mark.unit
-def test_runner_picks_first_unattended_provider(tmp_path) -> None:
+def test_runner_picks_first_provider_in_configured_chain(tmp_path, staff_cli_installed) -> None:
+    staff_cli_installed("codex", "antigravity")
     from staff.plan import RunRequest
     from staff.roles import RoleSpec
     from staff.runner import StaffRunner
     from staff.store import RunStore
 
-    role = RoleSpec(name="r", title="R", providers=("antigravity", "codex"), surface="dashboard")
+    role = RoleSpec(
+        name="r",
+        title="R",
+        providers=("antigravity", "codex"),
+        surface="dashboard",
+    )
     runner = StaffRunner(store=RunStore(tmp_path / "s.db"), roles_loader=lambda: {"r": role})
-    assert runner.plan(RunRequest(role="r", prompt="go")).provider == "antigravity"
+    assert runner.plan(RunRequest(role="r", prompt="go")).provider == "codex"
     assert runner.plan(RunRequest(role="r", provider="antigravity", prompt="go")).provider == "antigravity"
 
 

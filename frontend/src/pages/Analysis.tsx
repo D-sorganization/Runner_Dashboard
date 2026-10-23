@@ -23,6 +23,7 @@ import { legacyFetch } from "../lib/api";
 import { isAnalysisTabKey } from "../lib/analysisTabs";
 import { HistoryTab } from "./History";
 import { ChartGlyph } from "./decompIcons";
+import { DeliveryMetricsPanel } from "./DeliveryMetrics/DeliveryMetricsPanel";
 
 // ── Shared helper ────────────────────────────────────────────────────────────
 
@@ -905,6 +906,7 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
     h(SubTabs, {
       tabs: [
         { key: "outcomes", label: "Outcomes" },
+        { key: "delivery", label: "Delivery" },
         { key: "stats", label: "Durations" },
         { key: "history", label: "History", badge: (p.runs || []).length || null },
         { key: "reports", label: "Reports", badge: reports.length || null },
@@ -915,10 +917,12 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
     }),
     subTab === "outcomes"
       ? h(AnalysisOutcomesTab, null)
-      : subTab === "stats"
-        ? h(StatsTab, null)
-        : subTab === "history"
-          ? h(HistoryTab, { runs: p.runs, runners: p.runners })
-          : h(ReportsTab, { reports, loading: reportsLoading }),
+      : subTab === "delivery"
+        ? h(DeliveryMetricsPanel, null)
+        : subTab === "stats"
+          ? h(StatsTab, null)
+          : subTab === "history"
+            ? h(HistoryTab, { runs: p.runs, runners: p.runners })
+            : h(ReportsTab, { reports, loading: reportsLoading }),
   );
 }

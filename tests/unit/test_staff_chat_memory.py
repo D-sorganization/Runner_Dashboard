@@ -29,7 +29,8 @@ CODEWORD = "PERIWINKLE-42"
 
 
 @pytest.fixture
-def conv_store(tmp_path: Path) -> ConversationStore:
+def conv_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConversationStore:
+    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
     reset_conversation_store()
     reset_thread_bus()
     return get_conversation_store(tmp_path / "test_chat_memory.sqlite3")

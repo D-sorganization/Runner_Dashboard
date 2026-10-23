@@ -29,15 +29,20 @@
         "agent-panel-review.yml",
         "Agent-Redundant-PR-Closer.yml",
         "anti-phantom-merge.yml",
+        "apply-required-checks-supplement.yml",
         "architecture-map-contract.yml",
         "ci-secrets.yml",
         "ci-spec-check.yml",
+        "ci-auto-deploy-regression.yml",
         "collate-changes.yml",
         "conflict-disarm.yml",
+        "arm-cap-reconcile.yml",
         "dependabot-auto-merge.yml",
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
         "lint-workflow-files.yml",
+        "pr-cap.yml",
+        "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",
         "Verify-Issue-Closure.yml",
         "verify-tag.yml"
@@ -58,7 +63,8 @@
         "ci-standard.yml",
         "frontend-tests.yml",
         "lockfile-upgrade.yml",
-        "release.yml"
+        "release.yml",
+        "main-ci-auto-release.yml"
       ]
     }
   }

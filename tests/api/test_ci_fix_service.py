@@ -431,7 +431,57 @@ def test_dispatch_endpoint_launches_and_attaches_run(
     assert data["status"] == "dispatched"
     assert data["staff_run_id"] == "run-fake1"
     assert launcher.commands[0].provider == "codex"
+    assert launcher.commands[0].model_tier == "routine"
     assert locks.get_lock_info("Runner_Dashboard", 303)["run_id"] == "run-fake1"
+
+
+def test_dispatch_falls_back_when_routed_provider_is_missing_and_reports_actual_run(
+    operator_client: TestClient,
+    locks: CIFixLockManager,
+    audit_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ci_fix_service,
+        "available_providers",
+        lambda: {"claude": True, "codex": False, "antigravity": False},
+    )
+    commands = []
+
+    async def launch(cmd: Any, caller: Principal) -> dict[str, Any]:
+        commands.append(cmd)
+        # The common staff dispatcher may choose an alternate during planning.
+        return {
+            "dry_run": False,
+            "run": {
+                "id": "run-fallback",
+                "status": "queued",
+                "provider": "claude",
+                "model": "sonnet",
+            },
+        }
+
+    monkeypatch.setattr(ci_fix_service, "dispatch_staff_run", launch)
+    resp = operator_client.post(
+        "/api/remediation/ci-fix/dispatch",
+        json={
+            "repo": "Runner_Dashboard",
+            "pr_number": 308,
+            "branch": "feat/x",
+            "workflow_name": "Lint",
+            "log_tail": "ruff failed",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert commands[0].provider == "codex"
+    assert commands[0].model_tier == "routine"
+    assert data["launched_provider"] == "claude"
+    assert data["launched_model"] == "sonnet"
+    audit = json.loads(audit_file.read_text())[0]
+    assert audit["provider"] == "claude"
+    assert audit["model"] == "sonnet"
 
 
 def test_dispatch_endpoint_501_when_provider_missing(
@@ -455,7 +505,7 @@ def test_dispatch_endpoint_501_when_provider_missing(
         },
     )
     assert resp.status_code == 501
-    assert "codex" in resp.json()["detail"]
+    assert "No CI-fix provider is installed" in resp.json()["detail"]
     assert launcher.commands == []
     assert not locks.is_locked("Runner_Dashboard", 304)  # a failed launch releases the lock
     assert not audit_file.exists()
@@ -487,6 +537,12 @@ def test_dispatch_escalates_after_three_recorded_attempts(
         locks.release("Runner_Dashboard", 305)
     # The third consecutive identical failure escalates; a new failure starts a fresh streak.
     assert tiers == ["cli", "cli", "strong", "cli"]
+    assert [command.model_tier for command in launcher.commands] == [
+        "standard",
+        "standard",
+        "complex",
+        "standard",
+    ]
 
 
 def test_dispatch_launches_on_the_pr_head_and_pushes_to_it(

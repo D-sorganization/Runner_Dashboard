@@ -12,7 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from fleet_client import LIMITS, FleetArgumentError, FleetClient
+from fleet_client import LIMITS, MAX_VERIFICATION_CHARACTERS, FleetArgumentError, FleetClient
+from fleet_validators import MEMORY_ENTRY_TYPES
 
 REPO = {"type": "string", "description": "Repository name, e.g. Runner_Dashboard (owner/ prefix optional)."}
 BARE_REPO = {"type": "string", "description": "Bare repository name, e.g. Runner_Dashboard."}
@@ -65,6 +66,77 @@ class Command:
 
 
 COMMANDS: tuple[Command, ...] = (
+    # ---------------------------------------------------------------- shared memory
+    Command(
+        "memory-context-pack",
+        "memory_context_pack",
+        "Read the shared memory context pack for this authenticated principal.",
+        tool="fleet_memory_context_pack",
+    ),
+    Command(
+        "memory-list",
+        "memory_list",
+        "List shared memory entries with optional filters (requires memory.read scope).",
+        {
+            "since": {"type": "string", "maxLength": 64, "description": "Return entries at or after this timestamp."},
+            "entry_type": {"type": "string", "enum": list(MEMORY_ENTRY_TYPES)},
+            "tag": {"type": "string", "maxLength": 64},
+            "author": {"type": "string", "maxLength": 128},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+        },
+        tool="fleet_memory_list",
+    ),
+    Command(
+        "memory-append",
+        "memory_append",
+        "Append a shared memory entry (requires memory.write scope).",
+        {
+            "entry_type": {"type": "string", "enum": list(MEMORY_ENTRY_TYPES)},
+            "source_product": {"type": "string", "minLength": 1, "maxLength": 64},
+            "body": {"type": "object", "description": "Structured memory entry content."},
+            "tags": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 32},
+            "expires_at": {"type": "string", "maxLength": 64, "description": "Optional expiration timestamp."},
+            "supersedes_id": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "Optional ID of the entry this replaces.",
+            },
+        },
+        required=("entry_type", "source_product", "body"),
+        tool="fleet_memory_append",
+    ),
+    Command(
+        "memory-append-session-digest",
+        "memory_append_session_digest",
+        "Append a short, transcript-free summary for one Codex or Dashboard conversation turn "
+        "(requires memory.shared.summarize; retries of the same turn are idempotent).",
+        {
+            "source_product": {"type": "string", "enum": ["codex", "dashboard"]},
+            "conversation_id": {
+                "type": "string",
+                "pattern": r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$",
+                "maxLength": 200,
+            },
+            "user_message_id": {
+                "type": "string",
+                "pattern": r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$",
+                "maxLength": 200,
+            },
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "decisions": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1, "maxLength": 120},
+                "maxItems": 3,
+            },
+            "open_items": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1, "maxLength": 120},
+                "maxItems": 3,
+            },
+        },
+        required=("source_product", "conversation_id", "user_message_id", "summary"),
+        tool="fleet_memory_append_session_digest",
+    ),
     # ---------------------------------------------------------------- coordination
     Command(
         "briefing",
@@ -514,6 +586,147 @@ COMMANDS: tuple[Command, ...] = (
             "repo": REPO,
         },
         tool="list_proposals",
+    ),
+    # ---------------------------------------------------------------- unified query (#2223)
+    Command(
+        "query",
+        "fleet_query",
+        "Consolidated fleet on-request context query tool across context, library, knowledge, memory, and codebase.",
+        {
+            "source": {
+                "type": "string",
+                "enum": ["context", "library", "knowledge", "memory", "codebase"],
+                "description": "Target context source.",
+            },
+            "op": {
+                "type": "string",
+                "enum": ["search", "get", "request", "fetch", "sources"],
+                "description": "Search, get, fetch a cited library passage, list library sources, or request context.",
+            },
+            "query": {"type": "string", "description": "Search term, question, or request details."},
+            "cite": {"type": "string", "description": "Canonical citation for a library fetch."},
+            "run_id": {
+                **RUN_ID,
+                "description": (
+                    "Associate library search/fetch or codebase search with this staff run for retrieval recording."
+                ),
+            },
+            "repo": REPO,
+            "topic": {"type": "string", "description": "Optional topic filter for library queries."},
+            "scope": {
+                "type": "string",
+                "enum": ["local", "federated"],
+                "description": "Optional library search scope; omitted preserves federated shared-only defaults.",
+            },
+            "k": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max results to return (capped at 5)."},
+            "offset": {"type": "integer", "minimum": 0, "description": "Pagination offset."},
+            "full": {
+                "type": "boolean",
+                "description": "Include snippet text (library bodies capped at 400 UTF-8 bytes).",
+            },
+        },
+        required=("source",),
+        tool="fleet_query",
+    ),
+    Command(
+        "query-context",
+        "query_context",
+        "Query fleet context pack: pin, accepted lessons, holds and directives (offline-safe).",
+        {
+            "repo": REPO,
+            "op": {"type": "string", "enum": ["search", "get", "request"]},
+            "query": {"type": "string", "description": "Search query or librarian request."},
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
+    Command(
+        "query-library",
+        "query_library",
+        "Search Alexandria library works and passages with bounded snippet caps.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "repo": REPO,
+            "topic": {"type": "string", "description": "Topic filter."},
+            "scope": {
+                "type": "string",
+                "enum": ["local", "federated"],
+                "description": "Optional library search scope; omitted preserves federated shared-only defaults.",
+            },
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
+    Command(
+        "library-sources",
+        "library_sources",
+        "Read local and pooled library sources, including peer availability (no mutations).",
+    ),
+    Command(
+        "library-fetch-page",
+        "library_fetch_page",
+        "Fetch one library passage by source id, work id, and page.",
+        {
+            "source_id": {
+                "type": "string",
+                "pattern": r"^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "Registered library source id.",
+            },
+            "work_id": {"type": "integer", "minimum": 1, "description": "Library work id."},
+            "page": {"type": "integer", "minimum": 1, "description": "One-based page number."},
+            "scope": {"type": "string", "enum": ["local", "federated"]},
+            "node": {"type": "string", "maxLength": 128, "description": "Optional registered fleet node."},
+            "run_id": RUN_ID,
+        },
+        required=("source_id", "work_id", "page"),
+    ),
+    Command(
+        "library-verify",
+        "library_verify",
+        "Verify document citations and links without changing source content.",
+        {
+            "content": {"type": "string", "maxLength": MAX_VERIFICATION_CHARACTERS},
+            "run_id": RUN_ID,
+        },
+        required=("content",),
+    ),
+    Command(
+        "query-codebase",
+        "query_codebase",
+        "Search indexed committed code with bounded snippets and citation provenance.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "run_id": {**RUN_ID, "description": "Owned staff run; defaults to STAFF_RUN_ID when set."},
+        },
+        required=("query",),
+    ),
+    Command(
+        "query-knowledge",
+        "query_knowledge",
+        "Search repo knowledge packs with bounded snippets.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "repo": REPO,
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
+    ),
+    Command(
+        "query-memory",
+        "query_memory",
+        "Query shared fleet memory entries with bounded snippets.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "repo": REPO,
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "full": {"type": "boolean"},
+        },
     ),
 )
 

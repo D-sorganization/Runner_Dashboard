@@ -76,7 +76,6 @@ _REQUIRED_FUNCTIONS = [
     "function CredentialsTab",
     "function CodeRequestsTab",
     "function FeatureRequestsTab",
-    "function MaxwellTab",
     "function FleetOrchestrationTab",
     "function DashboardHelp",
 ]
@@ -283,11 +282,11 @@ def test_issues_source_filter_persists_and_fetches_source_param() -> None:
     assert "/api/linear/workspaces" in content
 
 
-def test_credentials_tab_supports_setting_linear_api_key() -> None:
-    content = _read_index()
-    assert "probe.key_provider && onSetKey" in content
-    assert "/api/credentials/set-key" in content
-    assert "Set API key" in content
+def test_credentials_tab_is_probe_only_without_set_key_flow() -> None:
+    credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
+    assert 'legacyFetch("/api/credentials"' in credentials_page
+    assert "/api/credentials/set-key" not in credentials_page
+    assert "Set API key" not in credentials_page
 
 
 def test_mobile_credentials_tab_is_locked_and_webauthn_gated() -> None:
@@ -301,13 +300,14 @@ def test_mobile_credentials_tab_is_locked_and_webauthn_gated() -> None:
     assert "Credentials re-locked when the tab lost focus." in content
 
 
-def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> None:
-    content = _read_index()
-    assert "mobile-credentials-sheet" in content
-    assert "Confirm sensitive operation" in content
-    assert "Continue only if you intend to change credential state." in content
-    assert "setMobileConfirmProbe(probe)" in content
-    assert "onSetKey(probe)" in content
+def test_mobile_credentials_are_probe_only_without_key_mutation_sheet() -> None:
+    credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
+    action_sheet = (_FRONTEND_DIR / "src" / "pages" / "Credentials" / "CredentialActionSheet.tsx").read_text(
+        encoding="utf-8",
+    )
+    assert "mobile-credentials-sheet" not in credentials_page
+    assert "onSetKey" not in credentials_page
+    assert "/api/credentials/set-key" not in action_sheet
 
 
 def test_credentials_api_is_excluded_from_frontend_cache_contract() -> None:
@@ -331,12 +331,13 @@ def test_mobile_remediation_three_tap_slice_markers_present() -> None:
     assert "Preview safety plan" in content
 
 
-def test_maxwell_mobile_chat_moved_to_staff_console() -> None:
-    # SC-G6 (#1338): Maxwell chat lives in the Staff Console; the phone page
-    # is a status/tasks/controls view with a link, not its own chat.
+def test_maxwell_dashboard_tab_retired() -> None:
+    """SC-G6 (#1338): Maxwell nav/page modules are removed; chat is Staff-only."""
+    nav_data = (_SRC_DIR / "shell" / "navRegistryData.ts").read_text(encoding="utf-8")
     content = _read_index()
-    assert "<MaxwellChat" not in content
-    assert "Chat with Maxwell in the Staff Console" in content
+    assert 'id: "maxwell"' not in nav_data
+    assert "export function MaxwellPage" not in content
+    assert "export function MaxwellMobile" not in content
 
 
 def test_mobile_read_mostly_reports_assessments_feature_requests_markers_present() -> None:
@@ -404,7 +405,6 @@ def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
         "Queue health summary",
         "Stale queued runs",
         "Mobile remediation dispatch",
-        "Confirm mobile credential change",
         "Feature request history",
     ]:
         assert f'"aria-label": "{label}"' in content or f'aria-label="{label}"' in content
@@ -678,7 +678,7 @@ def test_assessments_tab_is_retired_into_projects() -> None:
 
 
 def test_credentials_settings_section_bypasses_legacy_app() -> None:
-    """Credentials is a Settings section that owns probe/set-key data outside legacy/App.tsx (#949, #1338)."""
+    """Credentials is a Settings section that owns probe data outside legacy/App.tsx (#949, #1338)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
         encoding="utf-8",
     )
@@ -692,7 +692,7 @@ def test_credentials_settings_section_bypasses_legacy_app() -> None:
     assert "<CredentialsPage />" in settings_page
     assert "<CredentialsMobile />" in settings_page
     assert 'legacyFetch("/api/credentials"' in credentials_page
-    assert 'legacyFetch("/api/credentials/set-key"' in credentials_page
+    assert 'legacyFetch("/api/credentials/set-key"' not in credentials_page
     assert "export function CredentialsPage" in credentials_page
 
 
@@ -788,7 +788,6 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
     for marker in [
         "overview: <FleetMobile />",
         "queue: <QueueMobile />",
-        "maxwell: <MaxwellMobile />",
         "remediation: (",
         "<RemediationMobile",
         "reports: <ReportsMobile />",

@@ -1,0 +1,12 @@
+{
+  "fetched_from": "repos/D-sorganization/Runner_Dashboard/commits/4ece23d/check-runs",
+  "check_runs": [
+    {"conclusion": "success", "name": "Build and scan image", "status": "completed"},
+    {"conclusion": "success", "name": "TypeScript typecheck (tsc)", "status": "completed"},
+    {"conclusion": "success", "name": "quality-gate", "status": "completed"},
+    {"conclusion": "success", "name": "tests (3.11)", "status": "completed"},
+    {"conclusion": "skipped", "name": "guard", "status": "completed"},
+    {"conclusion": "success", "name": "detect-secrets (baseline diff)", "status": "completed"},
+    {"conclusion": "success", "name": "Auto-deploy live regression", "status": "completed"}
+  ]
+}

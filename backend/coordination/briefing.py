@@ -18,7 +18,7 @@ from coordination import board
 from coordination.service import now_iso
 from coordination.staff_view import staff_runs
 from staff.scheduler import get_scheduler
-from staff.workspace import FLEET_RULES
+from staff.standards_registry import load_fleet_standards
 
 log = logging.getLogger("dashboard.coordination")
 
@@ -76,6 +76,10 @@ async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
     holds, w_holds = await asyncio.to_thread(_holds)
     board_view = await asyncio.to_thread(board.read_sessions, repo)
     runs, w_runs = await staff_runs(repo)
+    standards = load_fleet_standards()
+    standards_warnings: list[str] = []
+    if standards.source_path == "<builtin>":
+        standards_warnings.append(f"Fleet standards resolved to <builtin> fallback ({standards.pin})")
     board_warnings = list(board_view.get("warnings", []))
     if not board_view["available"]:
         board_warnings.append(f"board unavailable: {board_view.get('reason', '')}")
@@ -89,7 +93,10 @@ async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
         "board_available": board_view["available"],
         "staff_runs": runs,
         "claims_hint": CLAIMS_HINT,
-        "rules": [FLEET_RULES],
+        "standards_pin": standards.pin,
+        "standards_source": standards.source_path,
+        "standards_version": standards.version,
+        "rules": [standards.body],
         "endpoints": ENDPOINTS,
-        "warnings": [*w_priorities, *w_holds, *board_warnings, *w_runs],
+        "warnings": [*w_priorities, *w_holds, *board_warnings, *w_runs, *standards_warnings],
     }

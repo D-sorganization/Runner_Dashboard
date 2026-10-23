@@ -10,7 +10,7 @@ Grok Bot, a staff run or a human — what the fleet should work on.
 | -------------- | ------------------------------------------------------------------------------------------ | --------------------- |
 | Board meetings | RM `docs/board-meetings/<YYYY-MM-DD>/{packet,consensus,instructions,pathway-log-entry}.md` | Repository_Management |
 | Portfolios     | RM `config/fleet_manifest.yaml` → `portfolios.<name>`                                      | Repository_Management |
-| Directives     | `staff_directives.json` in the dashboard config dir (`STAFF_DIRECTIVES_FILE` overrides)    | this dashboard        |
+| Directives     | RM `staff/directives.yml` (reconciled into `staff_directives.json`; `STAFF_DIRECTIVES_FILE` overrides path) | Repository_Management + dashboard |
 
 The RM checkout is found exactly like the Staff Hub finds it
 (`staff.workspace.rm_root()`: `STAFF_RM_ROOT`, else `Repository_Management`
@@ -83,11 +83,15 @@ Deferred item: `{item, project, reason, reassess}`. Borda row:
   `HUB_FLEET_TOKEN` is set, `Authorization: Bearer <HUB_FLEET_TOKEN>`.
 - PUT: `coordination.auth.require_priorities_writer` — a principal whose roles grant
   `priorities.write` (`operator` preset, `admin` via `*`; `bot`, `viewer` and other
-  principals get 403), or a loopback caller when `DASHBOARD_LOOPBACK_AUTH=1`.
-  Directives steer every staff prompt, so agent bot tokens (which hold
+  principals get 403). Production operator sessions come from GitHub OAuth
+  (`docs/runbooks/oglaptop-production-oauth.md`). Loopback callers are accepted only
+  when `DASHBOARD_LOOPBACK_AUTH=1` **and** the dev-only operator-write flag is set
+  (issue #2068). Directives steer every staff prompt, so agent bot tokens (which hold
   `coordination.write`) cannot set them (#1243). The shared fleet token alone is
   not accepted for writes. Every write needs `X-Requested-With: XMLHttpRequest`
   (bearer callers too).
+- RM sync: `staff/directives.yml` is reconciled by `staff.rm_sync` (see
+  `docs/staff-directives-as-code.md`).
 - The exact path `/api/priorities` and the prefix `/api/priorities/` are exempt
   from the structural perimeter (`_ALT_AUTH_EXEMPT_EXACT` /
   `_ALT_AUTH_EXEMPT_PREFIXES`) so fleet-token readers are not stopped by it; the

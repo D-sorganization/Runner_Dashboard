@@ -44,6 +44,9 @@ except ImportError:
     _sd_notify = None
 
 import httpx
+from browser_ingress_guard import BrowserIngressMiddleware
+from browser_sessions import BrowserSessionMiddleware
+from cloudflare_access import CloudflareAccessValidator
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,7 +62,6 @@ from pydantic import BaseModel, Field
 from routers import admin as admin_router
 from routers import auth as auth_router
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from tailnet_identity import build_asgi_app
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -106,6 +108,7 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
     _inspect_wslconfig,
     _probe_detail,
 )
+from diagnostics_logs import attach_log_ring_buffer, validate_log_level  # noqa: E402
 from drain_admission import DrainAdmissionMiddleware  # noqa: E402
 from error_models import (  # noqa: E402
     from_http_exception,
@@ -145,14 +148,17 @@ from routers import code_requests as _code_requests_router  # noqa: E402
 from routers import code_requests_board as _code_requests_board_router  # noqa: E402
 from routers import code_requests_executor as _code_requests_executor_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
+from routers import delivery_metrics as _delivery_metrics_router  # noqa: E402  # issue #2121
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
+from routers import diagnostics_logs as _diagnostics_logs_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import label_guidance as _label_guidance_router  # noqa: E402  # issue #757
+from routers import library as _library_router  # noqa: E402  # issue #2165
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_sync as _linear_sync_router  # noqa: E402  # issue #236
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
@@ -194,8 +200,9 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
+_log_level = validate_log_level(os.environ.get("LOG_LEVEL", "INFO"))
 logging.basicConfig(
-    level=logging.INFO,
+    level=_log_level,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -203,6 +210,7 @@ log = logging.getLogger("dashboard")
 # Configure JSON logging and request_id filter (issue #331).
 # Must come after basicConfig so handlers are already attached.
 configure_json_logging()
+attach_log_ring_buffer()
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_LLM_MODEL = os.environ.get("DASHBOARD_LLM_MODEL", "claude-haiku-4-5-20251001")
@@ -661,6 +669,16 @@ async def _systemd_watchdog_loop() -> None:
 
 
 # ── Bounded domain routers ────────────────────────────────────────────────────
+
+# External browser ingress is opt-in. A valid explicit HTTPS origin, Access
+# issuer/audience, and the runtime kill switch are all required for admission.
+_BROWSER_ACCESS_VALIDATOR = CloudflareAccessValidator(
+    issuer=os.environ.get("DASHBOARD_CLOUDFLARE_ACCESS_ISSUER"),
+    audience=os.environ.get("DASHBOARD_CLOUDFLARE_ACCESS_AUDIENCE"),
+    enabled=True,
+)
+app.state.browser_access_validator = _BROWSER_ACCESS_VALIDATOR
+
 app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
@@ -714,10 +732,12 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 # Fleet Staff Hub (epic #1192): named AI staff roles run as local CLI subprocesses.
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_barb as _staff_barb_router  # noqa: E402
+from routers import staff_concerns as _staff_concerns_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
 from routers import staff_inbox as _staff_inbox_router  # noqa: E402
+from routers import staff_local_runs as _staff_local_runs_router  # noqa: E402
 from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
 from routers import staff_panels as _staff_panels_router  # noqa: E402
 from routers import staff_proposals as _staff_proposals_router  # noqa: E402
@@ -743,15 +763,29 @@ app.include_router(_staff_requests_router.router, prefix="/api/v1/staff")  # Wor
 app.include_router(_staff_inbox_router.router)  # Inbox and briefings (issue #1328)
 app.include_router(_staff_inbox_router.v1_router)
 app.include_router(_staff_router.router)
+app.include_router(_staff_local_runs_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
+app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
+app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
+app.include_router(_library_router.router)  # Alexandria library (#2165)
+
+app.include_router(_diagnostics_logs_router.router, prefix="/api/v1/diagnostics")
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402
 
 app.include_router(_coordination_router.router)
+
+from routers import agent_bus as _agent_bus_router  # noqa: E402
+
+app.include_router(_agent_bus_router.router)
+
+from routers import memory_v1 as _memory_v1_router  # noqa: E402
+
+app.include_router(_memory_v1_router.router)
 
 # Projects tab (issue #1199): per-repo charter, status and steward runs.
 from routers import projects as _projects_router  # noqa: E402
@@ -768,8 +802,8 @@ from routers import proposals as _proposals_router  # noqa: E402
 
 app.include_router(_proposals_router.router)
 
-# Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
-# that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and
+# Issue #924 — structural auth perimeter. Registered BEFORE the session selector so
+# that, in Starlette's outer→inner stack, session handling wraps this gate and
 # request.session is populated by the time the perimeter resolves a principal.
 # Every non-exempt /api/* route is now authenticated by default: a handler that
 # forgets its own auth dependency can no longer ship an unauthenticated hole.
@@ -777,12 +811,15 @@ app.include_router(_proposals_router.router)
 # in Starlette's middleware stack.
 app.add_middleware(DrainAdmissionMiddleware, is_draining=lambda: _drain_mode)
 app.add_middleware(BaseHTTPMiddleware, dispatch=auth_perimeter_check)
+app.add_middleware(BrowserIngressMiddleware, enabled=True)
 
 app.add_middleware(
-    SessionMiddleware,
+    BrowserSessionMiddleware,
     secret_key=dashboard_config.SESSION_SECRET,
     session_cookie="dashboard_session",
-    max_age=86400 * 7,  # 7 days
+    # Align with GitHub App refresh-token lifetime (~6 months); cookie is renewed
+    # on each response while the server-side refresh token remains valid (#2075).
+    max_age=int(os.environ.get("DASHBOARD_SESSION_MAX_AGE_SECONDS", str(86400 * 180))),
     same_site="strict",
     # Issue #930: Secure cookies are dropped by browsers on http:// origins, so
     # forcing https_only broke session auth on the documented HTTP-over-tailnet
@@ -811,7 +848,13 @@ async def _max_body_size(request, call_next):
 
 @app.middleware("http")
 async def _csrf_check(request, call_next):
-    return await csrf_check(request, call_next)
+    response = await csrf_check(request, call_next)
+    if response.status_code == 403:
+        from browser_origin import external_browser_request
+
+        if external_browser_request(request):
+            return JSONResponse({"error": "Request not permitted"}, status_code=403)
+    return response
 
 
 @app.middleware("http")
@@ -2693,11 +2736,25 @@ async def _startup() -> None:
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())
 
+    from agent_bus.reaper import reaper_loop as _agent_bus_reaper_loop  # noqa: PLC0415
+
+    asyncio.create_task(_agent_bus_reaper_loop())
+
     # Weekly agent usage report (#1865); no-op unless USAGE_REPORT_WEEKLY_ENABLED.
     from session_telemetry import get_session_telemetry_store  # noqa: PLC0415
     from usage_report import start_weekly_usage_report_loop  # noqa: PLC0415
 
     start_weekly_usage_report_loop(get_session_telemetry_store())
+
+    from delivery_metrics.adapters.github import GhClientDeliveryCollector  # noqa: PLC0415
+    from delivery_metrics.config import delivery_metrics_repos  # noqa: PLC0415
+    from delivery_metrics.sync import start_delivery_metrics_sync_loop  # noqa: PLC0415
+
+    start_delivery_metrics_sync_loop(GhClientDeliveryCollector, delivery_metrics_repos())
+
+    from library.ingest import start_library_ingest_loop  # noqa: PLC0415
+
+    start_library_ingest_loop()
 
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
@@ -2715,6 +2772,17 @@ async def _startup() -> None:
     from staff.chat_fleet_context import warm_fleet_context_snapshots
 
     asyncio.create_task(warm_fleet_context_snapshots())
+
+    from github_app_auth import github_app_auth_configured  # noqa: PLC0415
+    from staff.github_app_preflight import periodic_github_app_preflight_loop  # noqa: PLC0415
+    from staff.runner import get_runner  # noqa: PLC0415
+
+    if github_app_auth_configured():
+        asyncio.create_task(periodic_github_app_preflight_loop(lambda: get_runner().roles()))
+
+    from staff.provider_auth_preflight import periodic_provider_auth_evening_loop  # noqa: PLC0415
+
+    asyncio.create_task(periodic_provider_auth_evening_loop(lambda: get_runner().machine))
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
@@ -2781,6 +2849,7 @@ async def _startup() -> None:
 async def _shutdown() -> None:
     """Close pooled HTTP clients on shutdown (issue #364)."""
     await shutdown_http_clients()
+    _BROWSER_ACCESS_VALIDATOR.close()
     log.info("Closed pooled HTTP clients")
 
 

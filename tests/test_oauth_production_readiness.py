@@ -1,9 +1,10 @@
-"""Production OAuth readiness contracts for the OGLaptop Tailscale origin.
+"""Production OAuth readiness contracts for the fleet hub Tailscale origin.
 
-Issue #1141 requires browser authentication to fail closed until an
-administrator has installed a dedicated GitHub OAuth credential and the exact
-MagicDNS callback.  These tests intentionally exercise only redacted
-configuration and route behaviour; secret values must never enter diagnostics.
+Issue #1141 / #2075 require browser authentication to fail closed until an
+administrator has installed GitHub App user OAuth credentials and a MagicDNS
+callback on a registry hub origin.  These tests intentionally exercise only
+redacted configuration and route behaviour; secret values must never enter
+diagnostics.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-_ORIGIN = "https://oglaptop.tail2bbcc7.ts.net"
+_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
 _CALLBACK = f"{_ORIGIN}/api/auth/callback"
 _CLIENT_ID = "Ov23liProductionClient"
 _CLIENT_SECRET = "s" * 40  # pragma: allowlist secret
@@ -54,7 +55,12 @@ def test_exact_production_configuration_is_ready_and_redacted() -> None:
     config = OAuthConfig.from_env(_production_env())
     diagnostic = config.diagnostic()
 
-    assert diagnostic == {"ready": True, "status": "ready", "reason": "configured"}
+    assert diagnostic == {
+        "ready": True,
+        "status": "ready",
+        "reason": "configured",
+        "flow": "github_app_user_to_server",
+    }
     serialized = repr(diagnostic)
     assert _CLIENT_ID not in serialized
     assert _CLIENT_SECRET not in serialized
@@ -137,7 +143,7 @@ def test_health_diagnostic_contract_contains_no_credential_fields() -> None:
 
     diagnostic = OAuthConfig.from_env(_production_env()).diagnostic()
 
-    assert set(diagnostic) == {"ready", "status", "reason"}
+    assert set(diagnostic) == {"ready", "status", "reason", "flow"}
     assert not any("client" in key or "secret" in key or "token" in key for key in diagnostic)
 
 
@@ -149,3 +155,24 @@ def test_token_exchange_is_bound_to_the_exact_callback() -> None:
     assert data["redirect_uri"] == _CALLBACK
     assert data["client_id"] == _CLIENT_ID
     assert data["client_secret"] == _CLIENT_SECRET
+
+
+def test_github_login_redirects_home_and_clears_stale_session_when_loopback_fallback_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from routers.auth import github_login
+
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("DASHBOARD_DEV_LOGIN", raising=False)
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_SESSION_FALLBACK", "1")
+
+    req = _request()
+    req.session["principal_id"] = "gh:99999"
+    req.session["user"] = "stale-user"
+
+    response = asyncio.run(github_login(req))
+    assert response.status_code in (302, 307)
+    assert response.headers["location"] == "/"
+    assert "principal_id" not in req.session

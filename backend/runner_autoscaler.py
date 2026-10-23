@@ -54,6 +54,7 @@ from autoscaler_busy import (
 )
 from autoscaler_config import (
     ACTION_COOLDOWN_SECONDS,
+    AUTOSCALER_EXPECTED_WSL_DISTRO,
     COOLDOWN_SECS,
     CPU_HIGH,
     CPU_LOW,
@@ -967,6 +968,15 @@ def main() -> None:
     if psutil is None:
         log.error("psutil not installed; cannot run autoscaler")
         raise SystemExit(2)
+
+    if AUTOSCALER_EXPECTED_WSL_DISTRO:
+        from autoscaler_identity import verify_installation_identity
+
+        try:
+            verify_installation_identity(AUTOSCALER_EXPECTED_WSL_DISTRO)
+        except (OSError, ValueError, TypeError) as exc:
+            log.error("autoscaler installation identity check failed: %s", exc)
+            raise SystemExit(2) from exc
 
     _acquire_lock()
 

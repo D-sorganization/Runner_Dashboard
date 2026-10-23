@@ -197,6 +197,27 @@ describe("Composer Component", () => {
     });
   });
 
+  it("uses a new idempotency key when editing a failed draft before retry", async () => {
+    const onSend = vi.fn()
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce({ ok: true });
+    render(<Composer threadId="thread-edited-retry" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+    fireEvent.change(textarea, { target: { value: "Original request" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
+    const originalKey = onSend.mock.calls[0][0].idempotencyKey;
+    fireEvent.change(textarea, { target: { value: "Edited request" } });
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+    expect(onSend.mock.calls[1][0]).toEqual(expect.objectContaining({
+      body: "Edited request",
+      idempotencyKey: expect.not.stringMatching(originalKey),
+    }));
+  });
   it("treats a resolved { ok: false } as a failed send and keeps the draft", async () => {
     const onSend = vi.fn().mockResolvedValue({ ok: false, error: "Message not sent: the Board cost was not confirmed." });
     render(<Composer threadId="thread-ok-false" roles={MOCK_ROLES} onSendMessage={onSend} />);

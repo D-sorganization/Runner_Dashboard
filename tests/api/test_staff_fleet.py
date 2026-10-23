@@ -236,7 +236,11 @@ def test_dispatch_auto_picks_idle_peer_and_falls_back_locally(
         return 200, {"dry_run": True, "plan": {}, "machine": "OGLaptop"}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
-    resp = client.post("/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "auto", "dry_run": True}, headers=_XHR)
+    resp = client.post(
+        "/api/staff/ad-hoc/run",
+        json={"prompt": "hi", "provider": "claude", "machine": "auto", "dry_run": True},
+        headers=_XHR,
+    )
     assert resp.status_code == 200 and resp.json()["forwarded_to"] == "OGLaptop"
     assert calls == ["http://og:8321/api/staff/ad-hoc/run"]
 
@@ -245,7 +249,11 @@ def test_dispatch_auto_picks_idle_peer_and_falls_back_locally(
         raise ConnectionError("down")
 
     monkeypatch.setattr(fleet_mod, "get_json", dead_get)
-    resp = client.post("/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "auto", "dry_run": True}, headers=_XHR)
+    resp = client.post(
+        "/api/staff/ad-hoc/run",
+        json={"prompt": "hi", "provider": "claude", "machine": "auto", "dry_run": True},
+        headers=_XHR,
+    )
     assert resp.status_code == 200 and resp.json()["machine"] == "Desk" and "forwarded_to" not in resp.json()
 
 

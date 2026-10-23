@@ -66,9 +66,47 @@ function openMaintenance() {
 }
 
 describe("StaffConsoleDesktop", () => {
+  it("puts chat first while keeping staff selection and context available on demand", async () => {
+    render(<StaffConsoleDesktop roles={ROLES} chatFirst />);
+    expect(screen.getByRole("heading", { level: 2, name: "Ask Barb" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "What would you like to get done?" })).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("staff-roster-sidebar"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("complementary", { name: "Role context" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /staff conversation input/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Choose staff" }));
+    expect(screen.getByTestId("staff-roster-sidebar")).toBeInTheDocument();
+    openMaintenance();
+    expect(await screen.findByText("All hosts healthy.")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("staff-roster-sidebar"),
+    ).not.toBeInTheDocument();
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+  });
+
+  it("offers project-specific Barb starters that prefill without sending", () => {
+    render(<StaffConsoleDesktop roles={ROLES} chatFirst />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start UpstreamDrift" }));
+    const textarea = screen.getByRole("textbox", { name: /staff conversation input/i });
+    expect(textarea.value).toContain("Triage UpstreamDrift");
+    expect(textarea.value).toContain("wait for my approval before dispatch");
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start AffineDrift" }));
+    expect(textarea.value).toContain("Triage AffineDrift");
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+  });
+
   it("renders the roster, an empty conversation pane and the context pane", () => {
     render(<StaffConsoleDesktop roles={ROLES} />);
 
+    expect(screen.getByRole("heading", { level: 2, name: "Staff Console" })).toBeInTheDocument();
     expect(screen.getByTestId("staff-roster-sidebar")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Staff conversation" })).toHaveTextContent(
       /pick a role or ask barb/i,
@@ -144,7 +182,10 @@ describe("StaffConsoleDesktop", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-    expect(await screen.findByTestId("staff-console-error-send")).toHaveTextContent("500 Internal Server Error");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to send message: 500 Internal Server Error");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /staff conversation input/i })).toHaveValue("hello");
   });
 
   it("holds a Board message over the cost threshold until the user confirms (SC-D7, #1342)", async () => {

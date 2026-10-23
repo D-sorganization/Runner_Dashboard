@@ -6,8 +6,11 @@ that are executing on other machines across the fleet without returning 404.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
@@ -17,12 +20,94 @@ from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.staff.remote_runs")
 
-# Cache to avoid fanout on repeated queries for the same run_id: {run_id: (peer_name, peer_url)}
-_RUN_PEER_CACHE: dict[str, tuple[str, str]] = {}
+# Positive cache entries expire quickly and are size-bounded so completed or
+# moved runs cannot pin stale peer locations for the process lifetime.
+_RUN_PEER_CACHE: OrderedDict[str, tuple[str, str, float]] = OrderedDict()
+_RUN_PEER_CACHE_LIMIT = 512
+_RUN_PEER_CACHE_TTL_SECONDS = 30.0
+_LOOKUP_TIMEOUT_SECONDS = 2.5
+_LOOKUP_CONCURRENCY = 8
+_LOOKUP_SEMAPHORE = asyncio.Semaphore(_LOOKUP_CONCURRENCY)
+_STREAM_ERROR_BODY_MAX_BYTES = 4096
+_STREAM_ERROR_BODY_TIMEOUT_SECONDS = 2.5
+
+
+class RemoteRunLookupUnavailable(Exception):
+    """Peer lookup could not finish reliably within its bounded budget."""
+
+
+class RemoteRunNotFound(Exception):
+    """A cached remote owner no longer has the run."""
+
+
+def _cached_peer(run_id: str) -> tuple[str, str] | None:
+    entry = _RUN_PEER_CACHE.get(run_id)
+    if entry is None:
+        return None
+    name, url, expires_at = entry
+    if expires_at <= time.monotonic():
+        _RUN_PEER_CACHE.pop(run_id, None)
+        return None
+    _RUN_PEER_CACHE.move_to_end(run_id)
+    return name, url
+
+
+def _remember_peer(run_id: str, peer_name: str, peer_url: str) -> None:
+    _RUN_PEER_CACHE[run_id] = (peer_name, peer_url, time.monotonic() + _RUN_PEER_CACHE_TTL_SECONDS)
+    _RUN_PEER_CACHE.move_to_end(run_id)
+    while len(_RUN_PEER_CACHE) > _RUN_PEER_CACHE_LIMIT:
+        _RUN_PEER_CACHE.popitem(last=False)
+
+
+def _forget_peer(run_id: str) -> None:
+    _RUN_PEER_CACHE.pop(run_id, None)
 
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _has_local_run_detail(data: Any, run_id: str) -> bool:
+    if not isinstance(data, dict):
+        return False
+    run = data.get("run")
+    return (
+        isinstance(run, dict)
+        and run.get("id") == run_id
+        and isinstance(data.get("events"), list)
+        and isinstance(data.get("attempts"), list)
+    )
+
+
+def _is_confirmed_local_miss(response: httpx.Response, run_id: str) -> bool:
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return detail == {"code": "local_run_not_found", "run_id": run_id}
+
+
+async def _read_bounded_stream_error_body(response: httpx.Response) -> bytes | None:
+    """Read a small error response under one deadline; never constrain live SSE."""
+    deadline = asyncio.get_running_loop().time() + _STREAM_ERROR_BODY_TIMEOUT_SECONDS
+    iterator = response.aiter_bytes(chunk_size=1024).__aiter__()
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        while True:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return None
+            chunk = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+            total += len(chunk)
+            if total > _STREAM_ERROR_BODY_MAX_BYTES:
+                return None
+            chunks.append(chunk)
+    except StopAsyncIteration:
+        return b"".join(chunks)
+    except TimeoutError:
+        return None
 
 
 async def find_remote_run(
@@ -33,25 +118,69 @@ async def find_remote_run(
 
     Returns (peer_name, peer_url) or None if not found on any peer.
     """
-    if run_id in _RUN_PEER_CACHE:
-        cached_peer, cached_url = _RUN_PEER_CACHE[run_id]
-        return cached_peer, cached_url
+    cached_peer = _cached_peer(run_id)
+    if cached_peer is not None:
+        return cached_peer
 
     nodes = peers if peers is not None else staff_fleet.peer_nodes()
     if not nodes:
         return None
 
     headers = staff_fleet.fleet_headers()
-    for name, url in nodes.items():
-        try:
-            data = await staff_fleet.get_json(f"{url}/api/staff/runs/{run_id}?events=0", headers)
-            if data and data.get("run", {}).get("id") == run_id:
-                _RUN_PEER_CACHE[run_id] = (name, url)
-                return name, url
-        except Exception:  # noqa: BLE001
-            continue
 
-    return None
+    async def _lookup(name: str, url: str) -> tuple[str, str] | None:
+        acquired = False
+        try:
+            await asyncio.wait_for(_LOOKUP_SEMAPHORE.acquire(), timeout=_LOOKUP_TIMEOUT_SECONDS)
+            acquired = True
+            data = await asyncio.wait_for(
+                staff_fleet.get_json(f"{url}/api/staff/local-runs/{run_id}?events=0", headers),
+                timeout=_LOOKUP_TIMEOUT_SECONDS,
+            )
+            if _has_local_run_detail(data, run_id):
+                return name, url
+            raise RemoteRunLookupUnavailable(f"peer {name} returned an invalid local-run response")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                if _is_confirmed_local_miss(exc.response, run_id):
+                    return None
+                raise RemoteRunLookupUnavailable(
+                    f"peer {name} does not support the safe local-run lookup contract; upgrade required"
+                ) from exc
+            raise RemoteRunLookupUnavailable(f"peer {name} returned HTTP {exc.response.status_code}") from exc
+        except (TimeoutError, httpx.TimeoutException) as exc:
+            raise RemoteRunLookupUnavailable(f"peer {name} lookup timed out") from exc
+        except Exception as exc:  # noqa: BLE001
+            raise RemoteRunLookupUnavailable(f"peer {name} lookup failed") from exc
+        finally:
+            if acquired:
+                _LOOKUP_SEMAPHORE.release()
+
+    tasks = [asyncio.create_task(_lookup(name, url)) for name, url in nodes.items()]
+    if not tasks:
+        return None
+    try:
+        done, pending = await asyncio.wait(tasks, timeout=_LOOKUP_TIMEOUT_SECONDS)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+        failures = [task.exception() for task in done if not task.cancelled() and task.exception() is not None]
+        matches = [task.result() for task in done if not task.cancelled() and task.exception() is None]
+        for match in matches:
+            if match is not None:
+                _remember_peer(run_id, *match)
+                return match
+        if pending or failures:
+            raise RemoteRunLookupUnavailable("peer run lookup did not complete within its bounded budget")
+        return None
+    finally:
+        unfinished = [task for task in tasks if not task.done()]
+        for task in unfinished:
+            task.cancel()
+        if unfinished:
+            await asyncio.gather(*unfinished, return_exceptions=True)
 
 
 async def proxy_remote_run(
@@ -68,10 +197,38 @@ async def proxy_remote_run(
 
     try:
         data = await staff_fleet.get_json(
-            f"{peer_url}/api/staff/runs/{run_id}?events={events}",
+            f"{peer_url}/api/staff/local-runs/{run_id}?events={events}",
             headers,
         )
+        if not _has_local_run_detail(data, run_id):
+            raise ValueError("peer returned an invalid local-run detail response")
         return data
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            if _is_confirmed_local_miss(exc.response, run_id):
+                _forget_peer(run_id)
+                raise RemoteRunNotFound(f"run {run_id} no longer exists on cached peer {peer_name}") from exc
+            reason = "peer does not support the safe local-run endpoint; upgrade required"
+        else:
+            reason = f"peer returned HTTP {exc.response.status_code}"
+        log.warning(
+            "staff.remote_runs: peer %s unavailable for run %s: %s",
+            peer_name,
+            run_id,
+            reason,
+        )
+        return {
+            "run": {
+                "id": run_id,
+                "machine": peer_name,
+                "status": "node_unreachable",
+                "error": f"Node {peer_name}: {reason}",
+                "failure_class": "node_offline",
+            },
+            "events": [],
+            "attempts": [],
+            "unreachable_since": _now_iso(),
+        }
     except Exception as exc:  # noqa: BLE001
         log.warning("staff.remote_runs: peer %s unreachable for run %s: %s", peer_name, run_id, exc)
         return {
@@ -101,15 +258,34 @@ async def stream_remote_run(
     if caller_id:
         headers["X-Staff-On-Behalf-Of"] = staff_fleet.sign_on_behalf_of(caller_id, surface="api")
 
-    url = f"{peer_url}/api/staff/runs/{run_id}/stream?after={after}"
+    url = f"{peer_url}/api/staff/local-runs/{run_id}/stream?after={after}"
     timeout = httpx.Timeout(connect=5.0, read=None, write=5.0, pool=None)
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("GET", url, headers=headers) as resp:
                 if resp.status_code >= 400:
-                    err_payload = json.dumps({"run_id": run_id, "machine": peer_name, "status_code": resp.status_code})
-                    yield f"event: error\ndata: {err_payload}\n\n"
+                    confirmed_missing = False
+                    if resp.status_code == 404:
+                        error_body = await _read_bounded_stream_error_body(resp)
+                        if error_body is not None:
+                            error_response = httpx.Response(status_code=resp.status_code, content=error_body)
+                            confirmed_missing = _is_confirmed_local_miss(error_response, run_id)
+                    if confirmed_missing:
+                        _forget_peer(run_id)
+                    err_payload = json.dumps(
+                        {
+                            "run_id": run_id,
+                            "machine": peer_name,
+                            "status_code": resp.status_code,
+                            "error": (
+                                "run no longer exists on the peer"
+                                if confirmed_missing
+                                else "peer local-run endpoint unavailable; upgrade may be required"
+                            ),
+                        }
+                    )
+                    yield f"event: {'error' if confirmed_missing else 'node_unreachable'}\ndata: {err_payload}\n\n"
                     return
                 async for line in resp.aiter_lines():
                     yield f"{line}\n"
@@ -138,8 +314,17 @@ async def proxy_remote_cancel(
         headers["X-Staff-On-Behalf-Of"] = staff_fleet.sign_on_behalf_of(caller_id, surface="api")
 
     status, data = await staff_fleet.post_json(
-        f"{peer_url}/api/staff/runs/{run_id}/cancel",
+        f"{peer_url}/api/staff/local-runs/{run_id}/cancel",
         {},
         headers,
     )
+    if status == 404:
+        if _is_confirmed_local_miss(httpx.Response(status_code=status, json=data), run_id):
+            _forget_peer(run_id)
+            raise RemoteRunNotFound(f"run {run_id} no longer exists on cached peer {peer_name}")
+        raise RemoteRunLookupUnavailable(
+            f"peer {peer_name} does not support the safe local-run endpoint; upgrade required"
+        )
+    if status >= 400:
+        raise RemoteRunLookupUnavailable(f"peer {peer_name} returned HTTP {status} for local-run cancel")
     return data

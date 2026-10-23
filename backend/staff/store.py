@@ -18,16 +18,7 @@ from typing import Any
 from staff.redaction import redact_sensitive_content, redact_value
 from staff.run_schema import _ADDED_COLUMNS
 
-RUN_STATUSES = (
-    "queued",
-    "preparing",
-    "running",
-    "succeeded",
-    "failed",
-    "cancelled",
-    "blocked",
-    "needs_input",
-)
+RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked", "needs_input")
 ACTIVE_STATUSES = ("queued", "preparing", "running")
 
 
@@ -94,24 +85,36 @@ class RunRecord:
     fallback_provider: str = ""
     thread_id: str = ""
     work_item_id: str = ""
-    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | not_applicable.
+    # Post-run verification (#1516): "" (not checked) | unverified | verified | failed | no_change | not_applicable.
     verification: str = ""
     verification_detail: str = ""
     pr_number: int | None = None
-    # Typed completion evidence (#1808): "" | pr_open | pr_merged | deployed (see staff.completion).
-    artifact: str = ""
+    artifact: str = ""  # pr_open | pr_merged | deployed (#1808)
     origin_node: str = ""
+    provider_chain: str = ""  # JSON list of {provider, model, outcome} attempts (#2047)
+    model_tier: str = ""
+    skill_pin: str = ""
+    standards_version: str = ""
+    standards_tokens: int = 0
+    context_stamp: str = "{}"
+    library_work_ids: str = "[]"
+    injected_lesson_ids: str = "[]"
+    skipped_lesson_ids: str = "{}"
+    lessons_tokens: int = 0
 
     def __post_init__(self) -> None:
-        self.retryable = bool(self.retryable)
-        self.attempt = int(self.attempt)
-        self.max_attempts = int(self.max_attempts)
+        self.retryable, self.attempt, self.max_attempts = (
+            bool(self.retryable),
+            int(self.attempt),
+            int(self.max_attempts),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
         d["retryable"] = bool(self.retryable)
         d["attempt"] = int(self.attempt)
         d["max_attempts"] = int(self.max_attempts)
+        d["skill"] = None if not self.skill_pin else {"pin": self.skill_pin}
         return d
 
 
@@ -175,18 +178,14 @@ def _redacted(column: str, value: Any) -> Any:
 
 
 USAGE_GROUPS = ("provider", "role", "day")
-_USAGE_GROUP_SQL = {
-    "provider": "provider",
-    "role": "role",
-    "day": "substr(created_at, 1, 10)",
-}
+_USAGE_GROUP_SQL = {"provider": "provider", "role": "role", "day": "substr(created_at, 1, 10)"}
 
 
 class RunStore:
     """Thread-safe SQLite-backed run + event store."""
 
     def __init__(self, path: Path | None = None) -> None:
-        self.path = path or default_db_path()
+        self.path = (path or default_db_path()).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
@@ -474,7 +473,7 @@ def first_touch_lock(path: Path) -> threading.RLock:
 def get_store(path: Path | None = None) -> RunStore:
     """Process-wide store (path resolved lazily so tests can point it at tmp)."""
     global _store  # noqa: PLW0603
-    target_path = path or default_db_path()
+    target_path = (path or default_db_path()).expanduser().resolve()
     with _store_lock:
         if _store is None or _store.path != target_path:
             _store = RunStore(target_path)

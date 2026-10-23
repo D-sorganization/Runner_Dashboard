@@ -25,7 +25,10 @@ from routers.staff import (
     RunBody,
 )
 from routers.staff_knowledge import router as staff_knowledge_router
+from routers.staff_projects import router as staff_projects_router
+from routers.staff_references import router as staff_references_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
+from routers.staff_skills import router as staff_skills_router
 from staff import fleet as staff_fleet
 from staff import summary_view, usage
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
@@ -63,6 +66,9 @@ from staff.store import USAGE_GROUPS
 log = logging.getLogger("dashboard.staff.v1")
 router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
 router.include_router(staff_knowledge_router)
+router.include_router(staff_skills_router)
+router.include_router(staff_projects_router)
+router.include_router(staff_references_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:
@@ -225,6 +231,27 @@ async def board_v1(
     return await staff_fleet.aggregate_board(mine, peers)
 
 
+@router.get("/context/agents-sync")
+async def context_agents_sync_v1(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Compare published managed AGENTS blocks with the Repository_Management source."""
+    from cache_utils import cache_get, cache_set
+    from projects.service import configured_repos, fetch_repo_file
+    from staff.agents_sync import build_agents_sync_report
+
+    cached = cache_get("context:agents-sync", 600)
+    if cached is not None:
+        return cached
+
+    async def fetch_file(repo: str, path: str) -> str | None:
+        return await fetch_repo_file(repo, path)
+
+    report = await build_agents_sync_report(fetch_file, configured_repos())
+    cache_set("context:agents-sync", report)
+    return report
+
+
 @router.get("/summary", response_model=StaffSummaryResponse, response_model_exclude_none=True)
 async def summary_v1(
     _peer: Principal = Depends(require_scope("staff.read")),
@@ -285,7 +312,7 @@ async def get_run_v1(
     from routers.staff import get_run as staff_get_run
 
     try:
-        return await staff_get_run(run_id=run_id, events=200, _peer=_peer)
+        return await staff_get_run(run_id=run_id, events=200, local=False, _peer=_peer)
     except HTTPException as exc:
         if exc.status_code != 404:
             raise
@@ -308,7 +335,7 @@ async def stream_run_v1(
 ) -> StreamingResponse:
     from routers.staff import stream_run
 
-    return await stream_run(run_id=run_id, after=after, _peer=_peer)
+    return await stream_run(run_id=run_id, after=after, local=False, _peer=_peer)
 
 
 # ── Mutating Operations (Idempotent) ──────────────────────────────────────────
@@ -350,7 +377,7 @@ async def cancel_run_v1(
     async def _execute() -> Any:
         from routers.staff import cancel_run as staff_cancel_run
 
-        return await staff_cancel_run(run_id=run_id, caller=_peer)
+        return await staff_cancel_run(run_id=run_id, local=False, caller=_peer)
 
     return await _handle_idempotent_post(idempotency_key, endpoint, caller, {}, _execute, takeover_safe=True)
 

@@ -148,6 +148,183 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "staff_work_items",
         "staff_approvals_list",
         "staff_approval_decide",
+        "fleet_memory_context_pack",
+        "fleet_memory_list",
+        "fleet_memory_append",
+        "fleet_memory_append_session_digest",
         "submit_proposal",
         "list_proposals",
+        "fleet_query",
     }
+
+
+def test_memory_commands(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, _ = _run(capsys, fake_api, "memory-context-pack")
+    assert code == 0
+    assert (fake_api.last.method, fake_api.last.path) == ("GET", "/api/v1/memory/context-pack")
+
+    code, _ = _run(
+        capsys, fake_api, "memory-list", "--entry-type", "task", "--tag", "Runner_Dashboard", "--limit", "25"
+    )
+    assert code == 0
+    assert (fake_api.last.method, fake_api.last.path, fake_api.last.query) == (
+        "GET",
+        "/api/v1/memory",
+        {"type": "task", "tag": "Runner_Dashboard", "limit": "25"},
+    )
+
+    code, _ = _run(
+        capsys,
+        fake_api,
+        "memory-append",
+        "--entry-type",
+        "session_digest",
+        "--source-product",
+        "grokbot",
+        "--body",
+        '{"summary":"checkpoint"}',
+    )
+    assert code == 0
+    assert (fake_api.last.method, fake_api.last.path, fake_api.last.body) == (
+        "POST",
+        "/api/v1/memory",
+        {
+            "entry_type": "session_digest",
+            "source_product": "grokbot",
+            "tags": [],
+            "body": {"summary": "checkpoint"},
+        },
+    )
+
+
+def test_library_fetch_accepts_source_work_and_page_locator(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    fake_api.respond(
+        "GET",
+        "/api/v1/library/fetch",
+        200,
+        {
+            "node": "DeskComputer",
+            "source_id": "desk-x9-library",
+            "work_id": 3,
+            "page": 7,
+            "citation": "Verified citation",
+            "cite_key": "[ref:DeskComputer:shared:w3:p4#sha256=12345678:p.6-8]",
+            "file_sha256": "1" * 64,
+            "work_sha256": "2" * 64,
+            "text": "Cited passage",
+        },
+    )
+
+    code, out = _run(
+        capsys,
+        fake_api,
+        "library",
+        "fetch",
+        "desk-x9-library",
+        "3",
+        "--page",
+        "7",
+        "--run-id",
+        "run-abc123",
+    )
+
+    assert code == 0
+    assert out["cite_key"].startswith("[ref:DeskComputer:shared:")
+    assert (fake_api.last.method, fake_api.last.path, fake_api.last.query) == (
+        "GET",
+        "/api/v1/library/fetch",
+        {
+            "source_id": "desk-x9-library",
+            "work_id": "3",
+            "page": "7",
+            "scope": "local",
+        },
+    )
+    assert fake_api.last.headers["x-staff-run-id"] == "run-abc123"
+
+
+def test_library_fetch_locator_requires_page_before_network(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, out = _run(capsys, fake_api, "library", "fetch", "desk-x9-library", "3")
+
+    assert code == 2
+    assert "page" in out["message"]
+    assert fake_api.requests == []
+
+
+def test_library_fetch_keeps_canonical_citation_mode(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    citation = "[ref:DeskComputer:shared:w3:p4#sha256=12345678:p.6-8]"
+    fake_api.respond(
+        "GET",
+        "/api/v1/library/fetch",
+        200,
+        {"cite_key": citation, "citation": "Verified citation", "text": "Cited passage"},
+    )
+
+    code, out = _run(capsys, fake_api, "library", "fetch", citation)
+
+    assert code == 0
+    assert out["results"][0]["cite_key"] == citation
+    assert fake_api.last.query == {"cite": citation}
+
+
+def test_library_fetch_rejects_invalid_source_id_before_network(
+    capsys: pytest.CaptureFixture[str], fake_api: Any
+) -> None:
+    code, out = _run(capsys, fake_api, "library", "fetch", "../private", "3", "--page", "7")
+
+    assert code == 2
+    assert "source_id" in out["message"]
+    assert fake_api.requests == []
+
+
+def test_library_fetch_locator_accepts_explicit_node(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, _ = _run(
+        capsys,
+        fake_api,
+        "library",
+        "fetch",
+        "desk-x9-library",
+        "3",
+        "--page",
+        "7",
+        "--node",
+        "OGLaptop",
+    )
+
+    assert code == 0
+    assert fake_api.last.query == {
+        "source_id": "desk-x9-library",
+        "work_id": "3",
+        "page": "7",
+        "scope": "local",
+        "node": "OGLaptop",
+    }
+
+
+def test_library_search_scope_is_explicit_and_defaults_unchanged(
+    capsys: pytest.CaptureFixture[str], fake_api: Any
+) -> None:
+    code, _ = _run(capsys, fake_api, "library", "search", "private topic", "--scope", "local")
+
+    assert code == 0
+    assert fake_api.last.path == "/api/v1/library/search"
+    assert fake_api.last.query["scope"] == "local"
+
+    code, _ = _run(capsys, fake_api, "library", "search", "shared topic")
+
+    assert code == 0
+    assert "scope" not in fake_api.last.query
+
+
+def test_unified_library_search_scope_rejected_for_other_sources(
+    capsys: pytest.CaptureFixture[str], fake_api: Any
+) -> None:
+    code, _ = _run(capsys, fake_api, "query", "--source", "library", "--query", "private topic", "--scope", "local")
+
+    assert code == 0
+    assert fake_api.last.query["scope"] == "local"
+
+    code, out = _run(capsys, fake_api, "query", "--source", "knowledge", "--query", "topic", "--scope", "local")
+
+    assert code == 2
+    assert "only supported for library search" in out["message"]

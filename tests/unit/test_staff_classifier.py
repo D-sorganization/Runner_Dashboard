@@ -20,6 +20,8 @@ def test_allowed_failure_classes_complete() -> None:
         "config",
         "provider_capacity",
         "provider_error",
+        "providers_exhausted",
+        "quota_exhausted",
         "rate_limited",
         "needs_input",
         "timeout",
@@ -27,11 +29,47 @@ def test_allowed_failure_classes_complete() -> None:
         "lease_blocked",
         "orphaned",
         "workspace_error",
+        "environment_error",
         "unkillable",
         "unknown",
         "no_result",
     }
     assert ALLOWED_FAILURE_CLASSES == expected
+
+
+CODEX_BWRAP_TRANSCRIPT = (
+    "shell execution fails before running any command: the sandbox reports "
+    "`bwrap: No permissions to create new namespace`\n"
+    "STAFF_RESULT: ok\n"
+)
+
+
+def test_codex_bwrap_namespace_failure_is_environment_error() -> None:
+    diag = classify_run_failure("codex", 0, output_text=CODEX_BWRAP_TRANSCRIPT)
+    assert diag.failure_class == "environment_error"
+    assert diag.retryable is False
+    assert "unprivileged_userns_clone" in diag.remediation
+    assert "config.toml" in diag.remediation
+
+
+def test_classify_execution_result_fails_success_with_bwrap_in_transcript(tmp_path) -> None:
+    from staff.execution_result import classify_execution_result
+
+    transcript = tmp_path / "t.log"
+    transcript.write_text(CODEX_BWRAP_TRANSCRIPT, encoding="utf-8")
+    status, failure_class, retryable, remediation, error = classify_execution_result(
+        cancelled=False,
+        rc=0,
+        result_line="STAFF_RESULT: ok",
+        provider="codex",
+        transcript_path=transcript,
+        machine="DeskComputer",
+    )
+    assert status == "failed"
+    assert failure_class == "environment_error"
+    assert not retryable
+    assert "wsl.conf" in remediation.lower()
+    assert error
 
 
 @pytest.mark.parametrize(
@@ -149,10 +187,7 @@ def test_table_driven_classifier_patterns(
 
 def test_classify_codex_unsupported_chatgpt_model_as_config() -> None:
     """Unsupported Codex ChatGPT-account models are config failures, not unknown (#2022)."""
-    text = (
-        "Error code: 400 - The 'gpt-5.5' model is not supported when using "
-        "Codex with a ChatGPT account"
-    )
+    text = "Error code: 400 - The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account"
     classification = classify_run_failure(
         provider="codex",
         exit_code=1,
@@ -161,7 +196,10 @@ def test_classify_codex_unsupported_chatgpt_model_as_config() -> None:
     )
     assert classification.failure_class == "config"
     assert classification.retryable is False
-    assert "gpt-6-luna" in classification.remediation.lower() or "config/staff_provider_defaults" in classification.remediation
+    assert (
+        "gpt-6-luna" in classification.remediation.lower()
+        or "config/staff_provider_defaults" in classification.remediation
+    )
 
 
 def test_classify_watchdog_timeout() -> None:

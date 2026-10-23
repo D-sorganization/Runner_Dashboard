@@ -326,7 +326,6 @@ class TestLegacyEndpointStillWorks:
 _V2_ID_PAIRS = {
     "antigravity": "antigravity-cli",
     "cursor_agent": "cursor-agent",
-    "maxwell": "maxwell-daemon",
 }
 
 
@@ -354,7 +353,9 @@ class TestRegistryV2Providers:
         assert entry.availability_probe == ("agy",)
         assert set(entry.capabilities) == {"code_edit", "ci_fix", "test_fix", "refactor", "doc"}
         assert entry.max_concurrency == 1
-        assert entry.setup_hint == "Install Antigravity CLI (agy) on the node"
+        assert entry.setup_hint == (
+            "Install Antigravity CLI (agy), then sign in with your Google account (subscription; no API key)"
+        )
 
     def test_cursor_agent_exposes_a_grok_model(self) -> None:
         from agent_remediation import by_dashboard_id  # noqa: PLC0415
@@ -366,17 +367,6 @@ class TestRegistryV2Providers:
         assert entry.auth_mode == "local"
         assert any("grok" in m for m in entry.models), entry.models
         assert "SuperGrok" in entry.notes
-
-    def test_maxwell_is_optional_remote_session(self) -> None:
-        from agent_remediation import by_dashboard_id  # noqa: PLC0415
-
-        entry = by_dashboard_id()["maxwell"]
-        assert entry.execution_mode == "remote_session"
-        assert entry.dispatch_mode == "dashboard_local"
-        assert entry.auth_mode == "local"
-        assert entry.editable is False
-        assert entry.experimental is True
-        assert "dormant since 2026-06" in entry.notes
 
     def test_every_provider_carries_enabled_flag(self, client: TestClient) -> None:
         for prov in _registry(client)["providers"]:
@@ -416,7 +406,7 @@ class TestNodeAvailabilityProbe:
 
         monkeypatch.setattr(shutil, "which", _fake_which(set()))
         result = probe_provider_availability(credential_probes={})
-        assert "maxwell" not in result  # no availability_probe -> not a node-probe target
+        assert "maxwell" not in result
         for dashboard_id in ("antigravity", "cursor_agent", "claude_code_cli", "codex_cli", "jules_cli"):
             assert dashboard_id in result
             assert set(result[dashboard_id]) == {"installed", "authenticated", "detail"}

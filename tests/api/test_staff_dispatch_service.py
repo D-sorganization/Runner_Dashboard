@@ -8,10 +8,14 @@ the proposal routes do (in an anyio worker thread) and reuse the /run fixtures.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import anyio.to_thread
+import ci_fix_dispatch
+import ci_fix_service
 import pytest
+from ci_fix_locks import CIFixLockManager
 from fastapi import HTTPException
 from identity import Principal
 from staff import dispatch_service
@@ -19,10 +23,11 @@ from staff import fleet as fleet_mod
 from staff import runner as runner_mod
 from staff.action_executors import execute_staff_dispatch
 from staff.actions import ActionContext, ActionResult
+from staff.adapters import ProviderAdapter
 from staff.audit import get_audit_store, reset_audit_store
 from staff.rate_limit import reset_rate_limiter
 
-from tests.api.test_staff_fleet import peers, staff  # noqa: F401  (shared /run fixtures)
+from tests.api.test_staff_fleet import peers, staff  # noqa: F401,F811  (shared /run fixtures)
 
 APPROVER = Principal(
     id="operator-user",
@@ -46,6 +51,10 @@ def _ctx(**overrides: Any) -> ActionContext:
     return ActionContext(**{"thread_id": "th_1", "proposal_id": "prop_1", "caller": APPROVER, **overrides})
 
 
+async def _async_value(value: Any) -> Any:
+    return value
+
+
 async def _execute(params: dict[str, Any], ctx: ActionContext | None = None) -> ActionResult:
     """Run the executor as the proposal routes do: sync code in an anyio worker thread."""
     return await anyio.to_thread.run_sync(execute_staff_dispatch, params, ctx or _ctx())
@@ -58,28 +67,128 @@ async def test_approved_dispatch_to_a_peer_is_forwarded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: dict[str, Any] = {}
+    staff._adapters = {
+        **staff._adapters,
+        "codex": replace(staff._adapters["codex"], executable="rd-test-codex-not-installed"),
+    }
 
     async def fake_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         seen.update({"url": url, "body": body, "headers": headers})
         return 200, {"dry_run": False, "run": {"id": "run_peer", "role": "ad-hoc", "status": "queued"}}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
-    res = await _execute({"role": "ad-hoc", "prompt": "hi", "machine": "oglaptop"})
+    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "oglaptop"})
 
     assert res.success, res.error
     assert res.run_id == "run_peer"
     assert res.result["forwarded_to"] == "OGLaptop"
     assert seen["url"] == "http://og:8321/api/staff/ad-hoc/run"
     assert seen["body"]["machine"] == "local"
+    assert seen["body"]["provider"] == "codex"
+    assert "model_tier" not in seen["body"]
     assert "X-Staff-On-Behalf-Of" in seen["headers"]
     assert staff.store.list_runs(limit=5) == []  # nothing ran locally
 
 
 @pytest.mark.unit
+async def test_auto_dispatch_routes_to_peer_before_local_provider_plan(
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    peers: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An auto target with the primary installed must win even when the source lacks it."""
+    seen: dict[str, Any] = {}
+    staff._adapters = {
+        **staff._adapters,
+        "codex": replace(staff._adapters["codex"], executable="rd-test-codex-not-installed"),
+    }
+
+    async def fake_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
+        seen.update({"url": url, "body": body, "headers": headers})
+        return 200, {"dry_run": False, "run": {"id": "run_peer_auto", "role": "ad-hoc", "status": "queued"}}
+
+    board = {
+        "machines": {
+            "Desk": {
+                "status": "online",
+                "providers": {"codex": False, "claude": False, "antigravity": False},
+                "running": [],
+                "queued": [],
+            },
+            "OGLaptop": {
+                "status": "online",
+                "providers": {"codex": True, "claude": True, "antigravity": True},
+                "running": [],
+                "queued": [],
+            },
+        }
+    }
+    monkeypatch.setattr(fleet_mod, "post_json", fake_post)
+    monkeypatch.setattr(fleet_mod, "aggregate_board", lambda *args: _async_value(board))
+
+    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "auto"})
+
+    assert res.success, res.error
+    assert res.result["forwarded_to"] == "OGLaptop"
+    assert seen["body"]["provider"] == "codex"
+    assert seen["body"]["machine"] == "local"
+    assert staff.store.list_runs(limit=5) == []
+
+
+@pytest.mark.unit
+async def test_auto_dispatch_keeps_local_target_after_provider_fallback(
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staff._adapters = {
+        **staff._adapters,
+        "codex": replace(staff._adapters["codex"], executable="rd-test-codex-not-installed"),
+    }
+    selected: list[str] = []
+
+    async def choose_local(runner: runner_mod.StaffRunner, machine: str, provider: str, *, role: Any = None) -> str:
+        selected.append(provider)
+        return "local"
+
+    monkeypatch.setattr(dispatch_service, "_resolve_target", choose_local)
+    monkeypatch.setattr(fleet_mod, "post_json", lambda *args, **kwargs: pytest.fail("unexpected peer dispatch"))
+
+    result = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "auto"})
+
+    assert result.success, result.error
+    assert selected == ["codex"]
+    assert staff.store.get_run(result.run_id or "") is not None
+
+
+@pytest.mark.unit
+async def test_remote_dispatch_refuses_internal_tier_until_peer_contract_supports_it(
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    peers: dict[str, str],  # noqa: F811
+) -> None:
+    cmd = dispatch_service.DispatchCommand(
+        role="ad-hoc",
+        requested_by="operator-user",
+        provider="codex",
+        model_tier="routine",
+        prompt="hi",
+        machine="OGLaptop",
+    )
+    with pytest.raises(HTTPException, match="internal model_tier") as exc_info:
+        await dispatch_service.dispatch_staff_run(cmd, APPROVER)
+    assert exc_info.value.status_code == 422
+    assert staff.store.list_runs(limit=5) == []
+
+
+@pytest.mark.unit
 async def test_approved_local_dispatch_is_audited_with_thread_provenance(
     staff: runner_mod.StaffRunner,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    res = await _execute({"role": "ad-hoc", "prompt": "hi"})
+    # Exercise the local dispatch path with the fixture's temporary fake CLI,
+    # regardless of which provider executables happen to be installed on host.
+    fake_provider = replace(staff._adapters["claude"], provider_id="codex", label="Fake Codex")
+    monkeypatch.setitem(staff._adapters, "codex", fake_provider)
+    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi"})
 
     assert res.success, res.error
     rec = staff.store.get_run(res.run_id or "")
@@ -88,6 +197,75 @@ async def test_approved_local_dispatch_is_audited_with_thread_provenance(
     assert len(entries) == 1
     assert entries[0].run_id == res.run_id
     assert entries[0].surface == "thread" and entries[0].thread_id == "th_1"
+
+
+@pytest.mark.unit
+async def test_ci_fix_uses_generic_chain_when_routed_primary_is_not_installed(
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """CI-fix keeps its route tier while the shared dispatcher selects an installed alternate."""
+    import json
+
+    from ci_fix_service import CIFixDispatchRequest
+    from staff import failover_dispatch
+    from staff.model_tiers import model_for_provider_tier
+    from staff.provider_failover_config import resolve_failover_chain
+
+    fake_codex = ProviderAdapter(
+        provider_id="codex",
+        label="Missing Codex test adapter",
+        executable="rd-test-codex-not-installed",
+        argv=("exec", "{prompt}"),
+        default_model="gpt-6-luna",
+    )
+    staff._adapters = {
+        **staff._adapters,
+        "codex": fake_codex,
+        "antigravity": replace(staff._adapters["antigravity"], executable="rd-test-agy-not-installed"),
+    }
+    monkeypatch.setattr(
+        ci_fix_service,
+        "available_providers",
+        lambda: {"claude": True, "codex": False, "antigravity": False},
+    )
+    monkeypatch.setattr(ci_fix_service, "dispatch_staff_run", dispatch_service.dispatch_staff_run)
+    monkeypatch.setattr(ci_fix_service, "GLOBAL_CI_FIX_LOCK_MGR", CIFixLockManager())
+    monkeypatch.setattr(failover_dispatch, "_provider_auth_blocks", lambda provider, machine: False)
+    monkeypatch.setattr(failover_dispatch, "provider_in_cooldown", lambda provider: False)
+    role = staff.roles()["ad-hoc"]
+    assert "claude" in role.providers
+    assert failover_dispatch._usable_provider(staff._adapters, role, "claude")
+    assert [step.provider for step in resolve_failover_chain(role, requested_provider="codex")] == [
+        "codex",
+        "claude",
+        "antigravity",
+    ]
+    audit_path = tmp_path / "ci-fix-audit.json"
+    monkeypatch.setattr(ci_fix_dispatch, "DEFAULT_AUDIT_PATH", audit_path)
+
+    result = await ci_fix_service.dispatch_ci_fix(
+        CIFixDispatchRequest(
+            repo="Runner_Dashboard",
+            pr_number=912,
+            branch="feat/ci-fallback",
+            workflow_name="Lint",
+            log_tail="ruff failed",
+        ),
+        APPROVER,
+        launcher=dispatch_service.dispatch_staff_run,
+    )
+
+    run = staff.store.get_run(result["staff_run_id"])
+    assert run is not None
+    assert run.provider == "claude"
+    assert run.model == model_for_provider_tier("claude", "routine")
+    assert result["launched_provider"] == run.provider
+    assert result["launched_model"] == run.model
+    audit = json.loads(audit_path.read_text(encoding="utf-8"))[0]
+    assert audit["provider"] == run.provider
+    assert audit["model"] == run.model
 
 
 @pytest.mark.unit

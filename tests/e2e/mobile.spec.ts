@@ -517,6 +517,7 @@ test.describe("Staff Console bottom-nav regression (#1805)", () => {
     await mockStaffApi(page);
     await page.setViewportSize({ width: 320, height: 844 });
     await page.goto("/staff");
+    await page.getByRole("button", { name: "Choose staff" }).click();
     await page.getByTestId("staff-mobile-ask-barb").click();
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
     const composer = page.getByTestId("staff-mobile-composer-container").locator("textarea");

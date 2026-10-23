@@ -2,11 +2,10 @@ name: Collate Change Fragments
 
 # RM-5 (Repository_Management#1894): every pull request adds its own changes/<issue>-<slug>.md
 # instead of editing SPEC.md, DEVELOPMENT_LOG.md and HANDOFF.md, so open PRs
-# never conflict over those files. After a merge to main this workflow folds
-# every fragment present on main into the shared files with
-# `scripts/changes_fragment.py collate`: one SPEC.md change-log row
-# keyed by the PR that added the fragment, the DL-#<issue> entry updated in
-# place, and the fragment deleted.
+# never conflict over those files. This workflow folds every fragment present
+# on main into the shared files with `scripts/changes_fragment.py collate`: one
+# SPEC.md change-log row keyed by the PR that added the fragment, the DL-#<issue>
+# entry updated in place, and the fragment deleted.
 #
 # It never pushes to main (the branch ruleset rejects that): it proposes the
 # result on the reused branch bot/collate-changes and arms auto-merge through
@@ -14,20 +13,23 @@ name: Collate Change Fragments
 #
 # Adapted from Repository_Management .github/workflows/collate-changes.yml
 # (commit 1cfc3466cffd753e22ebd48bc964bff7ed153dfa): RD action pins, scripts/
-# paths for the vendored modules, Python 3.11. Depends on the vendored scripts
-# from the RD change-fragments PR (Repository_Management#1894): merge that first.
+# paths for the vendored modules, Python 3.11.
 #
-# Push-only on purpose: in the merge queue (merge_group) the PR number is not
-# final and nothing must be written, so the workflow does not run there.
-# Every run collates *all* fragments on main, so a cancelled or failed run is
-# caught up by the next one, and cancel-in-progress is safe.
+# Trigger policy (Runner_Dashboard#2119): batch on a twice-daily schedule; do not
+# run on every ``changes/**`` merge (that caused 40+ failures/day on busy merge
+# days). Overlapping runs queue in one concurrency group (cancel-in-progress:
+# false). ``push`` is limited to edits of this workflow so shipping a collation
+# fix can immediately run against every pending fragment on main without waiting
+# for the cron. ``workflow_dispatch`` remains for manual catch-up.
 
 on:
+  schedule:
+    - cron: "0 6,18 * * *"
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "changes/**"
-  workflow_dispatch:
+      - ".github/workflows/collate-changes.yml"
 
 permissions:
   contents: write
@@ -35,7 +37,7 @@ permissions:
 
 concurrency:
   group: collate-changes
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   collate:
@@ -43,7 +45,62 @@ jobs:
     runs-on: d-sorg-fleet
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Skip when no change fragments are pending
+        id: pending-fragments
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          COUNT=0
+          for FRAGMENT in changes/*.md; do
+            case "$(basename "$FRAGMENT")" in [Rr][Ee][Aa][Dd][Mm][Ee].md) continue ;; esac
+            COUNT=$((COUNT + 1))
+          done
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "OUTCOME=no pending change fragments on main" >> "$GITHUB_ENV"
+            {
+              echo "## Collate Change Fragments"
+              echo ""
+              echo "- **Fragments pending:** 0"
+              echo "- **Outcome:** no pending change fragments on main"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+      - name: Preflight Jules app credentials
+        if: steps.pending-fragments.outputs.count != '0'
+        id: credential-preflight
+        env:
+          JULES_APP_CLIENT_ID: ${{ secrets.JULES_APP_ID }}
+          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: | # pragma: allowlist secret
+          missing=0
+          if [ -z "$JULES_APP_CLIENT_ID" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_ID is not configured."
+            missing=1
+          fi
+          if [ -z "$JULES_APP_PRIVATE_KEY" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_PRIVATE_KEY is not configured."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "credentials-present=false" >> "$GITHUB_OUTPUT"
+            echo "OUTCOME=skipped; missing JULES_APP_ID / JULES_APP_PRIVATE_KEY" >> "$GITHUB_ENV"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Configure JULES_APP_ID and JULES_APP_PRIVATE_KEY before manually running this workflow."
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "credentials-present=true" >> "$GITHUB_OUTPUT"
+
       - name: Generate fleet app token
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -54,6 +111,7 @@ jobs:
           permission-pull-requests: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         with:
           token: ${{ steps.app-token.outputs.token }}
           # Full history: each fragment's PR is read from the commit that
@@ -61,11 +119,13 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 
       - name: Collate fragments
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO_SLUG: ${{ github.repository }}
@@ -77,11 +137,10 @@ jobs:
           fi
           shopt -s nullglob
           COLLATED=0
+          SKIPPED=0
           for FRAGMENT in changes/*.md; do
             case "$(basename "$FRAGMENT")" in [Rr][Ee][Aa][Dd][Mm][Ee].md) continue ;; esac
             SHA=$(git log -1 --diff-filter=A --format=%H -- "$FRAGMENT")
-            # The merged PR that introduced the commit; fall back to the
-            # "(#123)" suffix GitHub puts on squash-merge subjects.
             PR=$(gh api "repos/$REPO_SLUG/commits/$SHA/pulls" \
               --jq '[.[] | select(.merged_at != null)][0].number // empty' || true)
             if [ -z "$PR" ]; then
@@ -89,28 +148,38 @@ jobs:
             fi
             if [ -z "$PR" ]; then
               echo "::warning::No merged PR found for $FRAGMENT (added in $SHA); left in place."
+              SKIPPED=$((SKIPPED + 1))
               continue
             fi
-            python scripts/changes_fragment.py collate \
-              --pr "$PR" --sha "$SHA" "$FRAGMENT"
+            set +e
+            COLLATE_OUT=$(python scripts/changes_fragment.py collate \
+              --pr "$PR" --sha "$SHA" "$FRAGMENT" 2>&1)
+            STATUS=$?
+            set -e
+            if [ "$STATUS" -ne 0 ]; then
+              echo "::warning::$COLLATE_OUT"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+            printf '%s\n' "$COLLATE_OUT"
             COLLATED=$((COLLATED + 1))
           done
           echo "COLLATED=$COLLATED" >> "$GITHUB_ENV"
+          echo "SKIPPED_FRAGMENTS=$SKIPPED" >> "$GITHUB_ENV"
 
       - name: Propose collation as a pull request
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: bot/collate-changes
           REPO_SLUG: ${{ github.repository }}
         run: |
           if [ -z "$(git status --porcelain)" ]; then
-            echo "OUTCOME=${OUTCOME:-no fragments to collate}" >> "$GITHUB_ENV"
+            echo "OUTCOME=${OUTCOME:-no fragments collated (all skipped or unchanged)}" >> "$GITHUB_ENV"
             exit 0
           fi
           OWNER="${REPO_SLUG%%/*}"
           PR_NUM=$(gh api "repos/$REPO_SLUG/pulls?state=open&head=$OWNER:$BRANCH" --jq '.[0].number // empty')
-          # A reviewer's hold must survive: a push newer than their disarm
-          # would make the guard treat the hold as superseded and re-arm.
           if [ -n "$PR_NUM" ] && ! python3 scripts/automerge_guard.py "$REPO_SLUG" "$PR_NUM"; then
             echo "::warning::Collation PR #$PR_NUM is held by a reviewer; leaving it untouched."
             echo "OUTCOME=collation PR #$PR_NUM held; not updated" >> "$GITHUB_ENV"
@@ -121,14 +190,8 @@ jobs:
           git checkout -B "$BRANCH"
           git add -A
           git commit -m "chore(changes): collate ${COLLATED} change fragment(s)"
-          # The branch carries only this generated commit, rebuilt from main
-          # each run from every fragment on main, so overwriting it never
-          # discards work.
           git push --force origin "$BRANCH"
           if [ -z "$PR_NUM" ]; then
-            # Every collation deletes the fragments it folded in, and
-            # automerge_guard holds unacknowledged deletions, so the body
-            # must carry the acknowledgement line or the PR never merges.
             PR_BODY="$(printf 'Generated by collate-changes.yml (RM-5, Repository_Management#1894): folds merged changes/ fragments into the SPEC.md change log and the development log, then deletes them. Generated content only.\n\nThe deleted files are the collated change fragments.\nDeletions-Acknowledged: true\n')"
             PR_NUM=$(gh api "repos/$REPO_SLUG/pulls" -X POST \
               -f title="chore(changes): collate merged change fragments" \
@@ -150,5 +213,6 @@ jobs:
             echo "## Collate Change Fragments"
             echo ""
             echo "- **Fragments collated:** ${COLLATED:-0}"
+            echo "- **Fragments skipped:** ${SKIPPED_FRAGMENTS:-0}"
             echo "- **Outcome:** ${OUTCOME:-not reached}"
           } >> "$GITHUB_STEP_SUMMARY"

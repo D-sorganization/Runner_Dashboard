@@ -1,3 +1,6 @@
 {
-  "outputStyle": "Proactive"
+  "outputStyle": "Proactive",
+  "hooks": {
+    "Stop": []
+  }
 }

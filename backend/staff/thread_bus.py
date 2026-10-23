@@ -128,12 +128,17 @@ class ThreadEventBus:
         """:meth:`publish_message` for callers outside the event loop."""
         return self.publish_sync(thread_id, "message", {"message": message_dict}, event_id=message_dict.get("seq"))
 
-    async def publish_token(self, thread_id: str, message_id: str, delta: str) -> int:
+    async def publish_token(self, thread_id: str, message_id: str, delta: str, epoch: int | None = None) -> int:
         """Helper to broadcast a token delta."""
         return await self.publish(
             thread_id,
             "token",
-            {"message_id": message_id, "delta": delta},
+            {
+                "thread_id": thread_id,
+                "message_id": message_id,
+                "delta": delta,
+                **({"epoch": epoch} if epoch is not None else {}),
+            },
         )
 
     async def publish_message(self, thread_id: str, message_dict: dict[str, Any]) -> int:

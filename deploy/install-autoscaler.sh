@@ -2,7 +2,7 @@
 # ==============================================================================
 # install-autoscaler.sh — Deploy the performance-aware runner auto-scaler.
 # ==============================================================================
-# - Copies runner_autoscaler.py into the deployed dashboard backend dir.
+# - Copies runner_autoscaler.py and its identity/config modules into the deployed backend dir.
 # - Installs runner-autoscaler.service as a systemd unit.
 # - Installs a sudoers drop-in granting the runner user the minimum rights to
 #   start/stop actions.runner.* units (and nothing else).
@@ -35,14 +35,63 @@ RUNNER_DROPIN_DIR="${RUNNER_DROPIN_DIR:-/etc/systemd/system/actions.runner@.serv
 # (pip-install on slow hosts, integration test suites, etc.).
 RUNNER_STOP_TIMEOUT="${RUNNER_STOP_TIMEOUT:-600}"
 
+# Opt-in is a same-distro assertion, never a remote systemctl target. Validate
+# the install shell's real identity before any service query or file mutation.
+EXPECTED_WSL_DISTRO="${AUTOSCALER_EXPECTED_WSL_DISTRO:-}"
+if [[ -n "$EXPECTED_WSL_DISTRO" ]]; then
+    if [[ ! "$EXPECTED_WSL_DISTRO" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+        echo "ERROR: AUTOSCALER_EXPECTED_WSL_DISTRO is not a valid WSL distro name." >&2
+        exit 2
+    fi
+    if [[ -z "${WSL_DISTRO_NAME:-}" || "$WSL_DISTRO_NAME" != "$EXPECTED_WSL_DISTRO" ]]; then
+        echo "ERROR: install must run inside the expected WSL distro ($EXPECTED_WSL_DISTRO)." >&2
+        exit 2
+    fi
+    MACHINE_ID="$(cat /etc/machine-id 2>/dev/null || true)"
+    if [[ ! "$MACHINE_ID" =~ ^[0-9a-fA-F]{32}$ ]]; then
+        echo "ERROR: cannot read a valid /etc/machine-id for installation receipt." >&2
+        exit 2
+    fi
+    RECEIPT_DIR=/etc/runner-dashboard
+    RECEIPT_PATH="$RECEIPT_DIR/autoscaler-installation.json"
+    if sudo test -L "$RECEIPT_DIR" || sudo test -L "$RECEIPT_PATH"; then
+        echo "ERROR: installation receipt path contains a symlink." >&2
+        exit 2
+    fi
+fi
+
 echo "==> Installing runner auto-scaler on $(hostname)"
 echo "    Deployed dashboard dir: $DASHBOARD_DIR"
 echo "    Runner user:            $RUNNER_USER"
 echo "    Schedule config:        $SCHEDULE_CONFIG"
 
-# 1. Copy the autoscaler module
+if [[ -n "$EXPECTED_WSL_DISTRO" ]]; then
+    sudo install -d -o root -g root -m 0755 "$RECEIPT_DIR"
+    sudo chown root:root "$RECEIPT_DIR"
+    sudo chmod 0755 "$RECEIPT_DIR"
+    RECEIPT_TMP="$(sudo mktemp "$RECEIPT_DIR/.autoscaler-installation.json.XXXXXX")"
+    cleanup_receipt_tmp() {
+        if [[ -n "${RECEIPT_TMP:-}" ]]; then
+            sudo rm -f -- "$RECEIPT_TMP"
+        fi
+    }
+    trap cleanup_receipt_tmp EXIT
+    printf '{"schema_version":1,"expected_wsl_distro":"%s","machine_id":"%s"}\n' \
+        "$EXPECTED_WSL_DISTRO" "$MACHINE_ID" | sudo tee "$RECEIPT_TMP" > /dev/null
+    sudo chown root:root "$RECEIPT_TMP"
+    sudo chmod 0644 "$RECEIPT_TMP"
+    sudo mv -f "$RECEIPT_TMP" "$RECEIPT_PATH"
+    RECEIPT_TMP=""
+    trap - EXIT
+fi
+
+# 1. Copy the autoscaler entry point and the modules required by this revision.
 install -Dm 0755 "$PROJECT_ROOT/backend/runner_autoscaler.py" \
     "$DASHBOARD_DIR/backend/runner_autoscaler.py"
+install -Dm 0644 "$PROJECT_ROOT/backend/autoscaler_config.py" \
+    "$DASHBOARD_DIR/backend/autoscaler_config.py"
+install -Dm 0644 "$PROJECT_ROOT/backend/autoscaler_identity.py" \
+    "$DASHBOARD_DIR/backend/autoscaler_identity.py"
 
 # 2. Ensure psutil is available for the system python that will run it
 if ! python3 -c "import psutil" 2>/dev/null; then
@@ -142,6 +191,7 @@ fi
 sed -e "s|YOUR_USER|$RUNNER_USER|g" \
     -e "s|/home/YOUR_USER|$HOME|g" \
     -e "s|RUNNER_SCHEDULE_CONFIG=.*|RUNNER_SCHEDULE_CONFIG=${SCHEDULE_CONFIG}|g" \
+    -e "s|Environment=AUTOSCALER_EXPECTED_WSL_DISTRO=.*|Environment=AUTOSCALER_EXPECTED_WSL_DISTRO=${EXPECTED_WSL_DISTRO}|g" \
     "$TEMPLATE_FILE" | sudo tee /etc/systemd/system/runner-autoscaler.service > /dev/null
 sudo systemctl daemon-reload
 sudo systemctl enable runner-autoscaler.service

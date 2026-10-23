@@ -11,13 +11,14 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { act, render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 // --- Mocks: keep the test light and focused on routing -------------------
 
 const breakpointMock = vi.fn(() => "lg");
+const sessionMock = vi.fn(() => ({ loggedIn: false, refresh: vi.fn() }));
 
 
 vi.mock("../../pages/Analysis", () => ({
@@ -61,14 +62,6 @@ vi.mock("../../pages/Machines", () => ({
   MachinesPage: () => <div data-testid="native-machines">Machines</div>,
 }));
 
-vi.mock("../../pages/MaxwellPage", () => ({
-  MaxwellPage: () => <div data-testid="native-maxwell">Maxwell</div>,
-}));
-
-vi.mock("../../pages/Maxwell", () => ({
-  MaxwellMobile: () => <div data-testid="mobile-maxwell">Mobile Maxwell</div>,
-}));
-
 vi.mock("../../pages/OverviewPage", () => ({
   default: () => <div data-testid="native-overview">Overview</div>,
 }));
@@ -86,8 +79,8 @@ vi.mock("../../pages/Staff/StaffPage", () => ({
 }));
 
 vi.mock("../../pages/StaffConsole/Mobile", () => ({
-  default: () => <div data-testid="mobile-staff">Mobile Staff</div>,
-  StaffConsoleMobile: () => <div data-testid="mobile-staff">Mobile Staff</div>,
+  default: (props: { initialView?: string }) => <div data-testid="mobile-staff" data-initial-view={props.initialView}>Mobile Staff</div>,
+  StaffConsoleMobile: (props: { initialView?: string }) => <div data-testid="mobile-staff" data-initial-view={props.initialView}>Mobile Staff</div>,
 }));
 
 vi.mock("../../pages/FleetCommand/FleetCommandPage", () => ({
@@ -158,7 +151,7 @@ vi.mock("../../hooks/useBreakpoint", async (orig) => {
 });
 
 vi.mock("../../hooks/useSession", () => ({
-  useSession: () => ({ loggedIn: false, refresh: vi.fn() }),
+  useSession: () => sessionMock(),
 }));
 
 vi.mock("../../lib/useProviderRegistry", () => ({
@@ -177,10 +170,12 @@ vi.mock("../DesktopShell", () => ({
     activeTabId: string;
     onSelect: (id: string) => void;
     children: React.ReactNode;
+    actions?: Array<{ id: string; label: string; onClick: () => void }>;
   }) => (
     <div>
       <span data-testid="active-tab">{props.activeTabId}</span>
-      <button onClick={() => props.onSelect("maxwell")}>go-maxwell</button>
+      <button onClick={() => props.onSelect("queue")}>go-queue</button>
+      {props.actions?.map(action => <button key={action.id} onClick={action.onClick}>{action.label}</button>)}
       {props.children}
     </div>
   ),
@@ -230,12 +225,28 @@ describe("RoutedShell — URL is the source of truth", () => {
     cleanup();
     localStorage.clear();
     breakpointMock.mockReturnValue("lg");
+    sessionMock.mockReturnValue({ loggedIn: false, refresh: vi.fn() });
   });
 
   it("derives the default tab from the root path", async () => {
     renderAt("/");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent("staff");
     expect(await screen.findByTestId("native-staff")).toBeInTheDocument();
+  });
+
+  it("shows an accessible error when sign-out fails instead of silently refreshing", async () => {
+    const refresh = vi.fn();
+    sessionMock.mockReturnValue({ loggedIn: true, refresh });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
+    try {
+      renderAt("/t/queue", { withToaster: true });
+      await userEvent.setup().click(screen.getByRole("button", { name: "Logout" }));
+      const message = await screen.findByText("Could not sign out. Please try again.");
+      expect(message.closest('[role="alert"]')).not.toBeNull();
+      expect(refresh).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("derives the active tab from the /t/:tabId param", async () => {
@@ -254,13 +265,39 @@ describe("RoutedShell — URL is the source of truth", () => {
     const user = userEvent.setup();
     renderAt("/");
     await screen.findByTestId("active-tab");
-    await user.click(screen.getByText("go-maxwell"));
-    expect(await screen.findByTestId("pathname")).toHaveTextContent(
-      "/staff/maxwell",
+    await user.click(screen.getByText("go-queue"));
+    expect(await screen.findByTestId("pathname")).toHaveTextContent("/work");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
+  });
+
+  it("accepts assistant navigation only for registered tab ids", async () => {
+    renderAt("/");
+    await screen.findByTestId("active-tab");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "queue" } }));
+    });
+    expect(await screen.findByTestId("pathname")).toHaveTextContent("/work");
+    expect(await screen.findByTestId("native-queue")).toBeInTheDocument();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "https://example.com" } }));
+    });
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "/fleet" } }));
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "not-a-real-tab" } }));
+    });
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+  });
+
+  it("redirects retired /staff/maxwell bookmarks to the Staff Console (#1338)", async () => {
+    renderAt("/staff/maxwell", { withToaster: true });
+    await waitFor(() =>
+      expect(screen.getByTestId("pathname")).toHaveTextContent("/"),
     );
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "maxwell",
-    );
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("staff");
   });
 
   it.each([
@@ -269,7 +306,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["operations", "native-operations"],
     ["insights", "native-analysis"],
     ["code-requests", "native-code-requests"],
-    ["maxwell", "native-maxwell"],
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
     ["settings", "native-settings"],
@@ -364,10 +400,16 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(await screen.findByTestId("native-operations")).toBeInTheDocument();
   });
 
+  it("opens the mobile Staff route on its chat-first home", async () => {
+    breakpointMock.mockReturnValue("md");
+    renderAt("/staff");
+
+    expect(await screen.findByTestId("mobile-staff")).toHaveAttribute("data-initial-view", "home");
+  });
+
   it.each([
     ["/fleet", "mobile-overview"],
     ["/t/queue", "mobile-queue"],
-    ["/t/maxwell", "mobile-maxwell"],
     ["/t/remediation", "mobile-remediation"],
     ["/t/reports", "mobile-reports"],
     ["/fleet/insights", "mobile-reports"],
@@ -416,13 +458,11 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(alert.textContent).toContain("Workflows");
     expect(alert.textContent).toContain("Boom in WorkflowsPage");
 
-    // Click navigation button in shell chrome to navigate to maxwell
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "go-maxwell" }));
+    await user.click(screen.getByRole("button", { name: "go-queue" }));
 
-    // Navigation recovers without a reload
-    expect(screen.getByTestId("pathname")).toHaveTextContent("/staff/maxwell");
-    expect(await screen.findByTestId("native-maxwell")).toBeInTheDocument();
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+    expect(await screen.findByTestId("native-queue")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     workflowsPageShouldThrow = false;
     errorSpy.mockRestore();

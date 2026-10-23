@@ -1,37 +1,49 @@
 """Fail-closed production GitHub OAuth configuration.
 
-The browser OAuth credential is distinct from the GitHub App credential used
-for backend API calls.  This module is deliberately pure and reads the process
-environment only when :meth:`OAuthConfig.from_env` is called, so tests and
-operators cannot observe stale import-time configuration.
+Browser sign-in uses the fleet GitHub App's user-to-server OAuth client
+(``GITHUB_CLIENT_ID`` / ``GITHUB_CLIENT_SECRET`` from the App settings, not a
+separate OAuth App). Installation JWT credentials remain hub-only for agents.
+This module is deliberately pure and reads the process environment only when
+:meth:`OAuthConfig.from_env` is called, so tests and operators cannot observe
+stale import-time configuration.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TypedDict
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
-EXPECTED_PUBLIC_ORIGIN = "https://oglaptop.tail2bbcc7.ts.net"
-EXPECTED_CALLBACK_URL = f"{EXPECTED_PUBLIC_ORIGIN}/api/auth/callback"
+from fleet_autoconfig import (
+    hub_public_origins_from_registry,
+    resolve_hub_public_origin_from_registry,
+)
+from machine_registry import load_machine_registry
+
+log = logging.getLogger("dashboard.oauth_config")
+
 EXPECTED_GITHUB_ORG = "D-sorganization"
 OAUTH_SCOPE = "read:user"
+OAUTH_CALLBACK_PATH = "/api/auth/callback"
+OAUTH_ALLOWED_ORIGINS_ENV = "DASHBOARD_OAUTH_ALLOWED_ORIGINS"
 
 _MIN_CLIENT_ID_LENGTH = 8
 _MIN_CLIENT_SECRET_LENGTH = 32
 _MIN_SESSION_SECRET_LENGTH = 32
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
-_DEVELOPMENT_AUTH_FLAGS = ("DASHBOARD_DEV_LOGIN", "DASHBOARD_LOOPBACK_AUTH")
+_DEVELOPMENT_AUTH_FLAGS = ("DASHBOARD_DEV_LOGIN", "DASHBOARD_LOOPBACK_AUTH", "DASHBOARD_LOOPBACK_OPERATOR_WRITES")
 
 
-class OAuthDiagnostic(TypedDict):
+class OAuthDiagnostic(TypedDict, total=False):
     """Redacted readiness payload safe for health responses and logs."""
 
     ready: bool
     status: str
     reason: str
+    flow: str
 
 
 class OAuthConfigurationError(RuntimeError):
@@ -49,6 +61,64 @@ def _credential_is_valid(value: str, minimum_length: int) -> bool:
 
 def _flag_enabled(value: str) -> bool:
     return value.strip().lower() in _TRUE_VALUES
+
+
+def _parse_extra_allowed_origins(value: str) -> frozenset[str]:
+    """Return only well-formed HTTPS origins from the explicit allowlist."""
+    origins: set[str] = set()
+    for item in value.split(","):
+        candidate = item.strip()
+        if not candidate:
+            continue
+        try:
+            parsed = urlsplit(candidate)
+            # Accessing .port validates malformed and out-of-range ports.
+            _ = parsed.port
+        except ValueError:
+            continue
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.netloc.endswith(":")
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() for char in candidate)
+        ):
+            continue
+        origins.add(candidate[:-1] if candidate.endswith("/") else candidate)
+    return frozenset(origins)
+
+
+def allowed_public_origins(
+    environ: Mapping[str, str],
+    *,
+    registry: Mapping[str, object] | None = None,
+) -> frozenset[str]:
+    """Return HTTPS origins permitted for ``DASHBOARD_PUBLIC_ORIGIN``."""
+    if registry is None:
+        try:
+            registry = load_machine_registry()
+        except Exception:
+            log.warning("Could not load machine registry for OAuth origin allowlist", exc_info=True)
+            registry = {"machines": []}
+    origins = set(hub_public_origins_from_registry(registry))
+    origins.update(_parse_extra_allowed_origins(environ.get(OAUTH_ALLOWED_ORIGINS_ENV, "")))
+    return frozenset(origins)
+
+
+def _default_hub_public_origin() -> str:
+    try:
+        return resolve_hub_public_origin_from_registry(load_machine_registry())
+    except Exception:
+        log.warning("Could not resolve default hub OAuth origin from registry", exc_info=True)
+        return ""
+
+
+def _expected_callback_for_origin(public_origin: str) -> str:
+    return f"{public_origin.rstrip('/')}{OAUTH_CALLBACK_PATH}"
 
 
 @dataclass(frozen=True)
@@ -69,21 +139,29 @@ class OAuthConfig:
     tls_enabled: bool
     development_auth_present: bool
     dev_login_enabled: bool
+    _environment: Mapping[str, str] = field(repr=False, compare=False)
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> OAuthConfig:
         """Build a fresh snapshot from an explicit mapping or ``os.environ``."""
         source = os.environ if environ is None else environ
+        public_origin = source.get("DASHBOARD_PUBLIC_ORIGIN", "").strip()
+        callback_url = source.get("GITHUB_OAUTH_CALLBACK_URL", "").strip()
+        if not public_origin:
+            public_origin = _default_hub_public_origin()
+        if not callback_url and public_origin:
+            callback_url = _expected_callback_for_origin(public_origin)
         return cls(
             client_id=source.get("GITHUB_CLIENT_ID", ""),
             client_secret=source.get("GITHUB_CLIENT_SECRET", ""),
             github_org=source.get("GITHUB_ORG", source.get("REQUIRED_GITHUB_ORG", "")),
-            public_origin=source.get("DASHBOARD_PUBLIC_ORIGIN", ""),
-            callback_url=source.get("GITHUB_OAUTH_CALLBACK_URL", ""),
+            public_origin=public_origin,
+            callback_url=callback_url,
             session_secret=source.get("SESSION_SECRET", ""),
             tls_enabled=_flag_enabled(source.get("DASHBOARD_TLS", "")),
             development_auth_present=any(name in source for name in _DEVELOPMENT_AUTH_FLAGS),
             dev_login_enabled=_flag_enabled(source.get("DASHBOARD_DEV_LOGIN", "")),
+            _environment=source,
         )
 
     @property
@@ -100,9 +178,10 @@ class OAuthConfig:
             reasons.append("github_client_secret_invalid")
         if self.github_org != EXPECTED_GITHUB_ORG:
             reasons.append("github_org_mismatch")
-        if self.public_origin != EXPECTED_PUBLIC_ORIGIN:
+        permitted = allowed_public_origins(self._environment)
+        if not self.public_origin or self.public_origin not in permitted:
             reasons.append("public_origin_mismatch")
-        if self.callback_url != EXPECTED_CALLBACK_URL:
+        if self.callback_url != _expected_callback_for_origin(self.public_origin):
             reasons.append("callback_url_mismatch")
         if not _credential_is_valid(self.session_secret, _MIN_SESSION_SECRET_LENGTH):
             reasons.append("session_secret_invalid")
@@ -111,8 +190,18 @@ class OAuthConfig:
         if self.development_auth_present:
             reasons.append("development_auth_must_be_unset")
         if reasons:
-            return {"ready": False, "status": "blocked", "reason": ";".join(reasons)}
-        return {"ready": True, "status": "ready", "reason": "configured"}
+            return {
+                "ready": False,
+                "status": "blocked",
+                "reason": ";".join(reasons),
+                "flow": "github_app_user_to_server",
+            }
+        return {
+            "ready": True,
+            "status": "ready",
+            "reason": "configured",
+            "flow": "github_app_user_to_server",
+        }
 
     def require_ready(self) -> None:
         """Raise a redacted error unless every production invariant holds."""

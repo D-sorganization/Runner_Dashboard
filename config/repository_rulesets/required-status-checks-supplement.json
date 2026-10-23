@@ -1,0 +1,26 @@
+{
+  "ruleset_name": "Required status checks supplement (Runner_Dashboard)",
+  "description": "Repository-level ruleset that adds required status checks the org-wide Repository_Protections ruleset does not carry. Applied via scripts/apply_supplemental_required_checks_ruleset.py and .github/workflows/apply-required-checks-supplement.yml (BRANCH_PROTECTION_TOKEN). Context names must match live GitHub Actions job names exactly.",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "frontend-required" },
+          { "context": "TypeScript typecheck (tsc)" },
+          { "context": "detect-secrets (baseline diff)" }
+        ]
+      }
+    }
+  ]
+}

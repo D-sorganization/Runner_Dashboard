@@ -3869,19 +3869,22 @@ Principals are stored in `config/principals.yml`. The system fails closed: reque
 
 **Loopback bypass (issue #315):** The loopback admin shortcut (granting automatic admin access to 127.0.0.1) is disabled by default. It is only active when `DASHBOARD_LOOPBACK_AUTH=1` is explicitly set in the environment. This must never be set in production deployments — it is intended solely for local single-user development where the dashboard is not reachable beyond 127.0.0.1.
 
-**OGLaptop production OAuth readiness (issue #1141):** Browser/operator OAuth
-is a separate credential from backend GitHub App authentication. Every login
-and callback request constructs a fresh typed configuration snapshot and fails
-closed with HTTP 503 until all of these invariants hold:
+**Fleet hub production OAuth readiness (issues #1141, #2075):** Browser/operator
+OAuth uses the fleet GitHub App user-to-server client (not installation tokens
+for humans). Every login and callback request constructs a fresh typed
+configuration snapshot and fails closed with HTTP 503 until all of these
+invariants hold:
 
 - `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are non-placeholder-like,
   whitespace-free values; `SESSION_SECRET` is explicitly configured with at
   least 32 whitespace-free characters.
 - `GITHUB_ORG` is exactly `D-sorganization`.
-- `DASHBOARD_PUBLIC_ORIGIN` is exactly
-  `https://oglaptop.tail2bbcc7.ts.net`, and
-  `GITHUB_OAUTH_CALLBACK_URL` is exactly that origin plus
-  `/api/auth/callback`.
+- `DASHBOARD_PUBLIC_ORIGIN` is an HTTPS MagicDNS origin for a machine with
+  `role: hub` in `machine_registry.yml`, or listed in
+  `DASHBOARD_OAUTH_ALLOWED_ORIGINS` (comma-separated). When unset, the hub
+  origin defaults from the registry (currently
+  `https://deskcomputer.tail2bbcc7.ts.net`). `GITHUB_OAUTH_CALLBACK_URL` must
+  be exactly that origin plus `/api/auth/callback` (also defaulted when unset).
 - `DASHBOARD_TLS` is enabled so the session cookie carries `Secure`.
 - `DASHBOARD_DEV_LOGIN` and `DASHBOARD_LOOPBACK_AUTH` are entirely unset.
 
@@ -5136,3 +5139,7 @@ pings from the main process.
 
 `_stop_unit()` now accepts a `reason=` keyword argument so a
 scheduled-surplus trim is logged as such rather than "host overloaded".
+
+### Zero-LLM-Cost Agent Report Cards, Empirical Leaderboard, Bean-Counter Ledger & Multi-Barb Continuity
+
+`backend/staff/report_cards.py` computes zero-LLM-cost empirical Agent Report Cards (`first_pass_success_rate`, Wilson 95% CI, `merge_rate`, `rework_rate`, `remediation_followups_per_pr`, `effective_tokens_per_merge`, `leaderboard_score`, `grade`, `routing_recommendations`, and `bean_counter_ledger`) directly from SQLite `runs` and cached PR facts. Exposed at `GET /api/v1/staff/report-cards`, `GET /api/v1/staff/leaderboard`, `GET /api/v1/staff/bean-counter` (and `/api/staff/*` aliases). `backend/staff/barb_continuity.py` and `backend/routers/staff_barb.py` provide multi-Barb scoped sub-role leases (`barb:front-door`, `barb:ci-shepherd`, `barb:pr-queue`, `barb:dispatch-coordinator`, `barb:issue-triage`, `barb:night-watch`), shift turnover compliance checks, active task inventory, and fenced (`fencing_epoch`) CLI <-> Desktop App task routing and handoff (`needs_desktop` -> `desktop_claimed` -> `resume_ready` -> `in_progress`).

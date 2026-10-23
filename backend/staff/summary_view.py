@@ -12,9 +12,26 @@ from typing import Any
 
 from staff import fleet as staff_fleet
 from staff.classifier import format_attention_items
+from staff.github_app_preflight import (
+    attention_items_from_preflight,
+    preflight_cache_snapshot,
+    run_preflight_and_cache,
+)
+from staff.provider_auth_preflight import (
+    aggregate_provider_auth,
+    attention_items_from_provider_auth,
+    provider_auth_cache_snapshot,
+)
 from staff.runner import get_runner
+from staff.standards_registry import load_fleet_standards
 
 __all__ = ["build_staff_summary"]
+
+
+def _operator_auth_health() -> dict[str, Any]:
+    from github_app_user_oauth import aggregate_operator_auth_health  # noqa: PLC0415
+
+    return dict(aggregate_operator_auth_health())
 
 
 async def build_staff_summary() -> dict[str, Any]:
@@ -33,7 +50,23 @@ async def build_staff_summary() -> dict[str, Any]:
     counts: dict[str, int] = {}
     for run in recent:
         counts[run.status] = counts.get(run.status, 0) + 1
-    attention = format_attention_items(recent)
+    roles = runner.roles()
+    preflight = preflight_cache_snapshot()
+    if preflight.get("checked_at") is None:
+        preflight = run_preflight_and_cache(roles)
+    provider_auth = aggregate_provider_auth(board_view)
+    if not provider_auth.get("machines"):
+        local_auth = provider_auth_cache_snapshot()
+        if local_auth.get("checked_at"):
+            provider_auth = {
+                "checked_at": local_auth.get("checked_at"),
+                "machines": {runner.machine: local_auth},
+            }
+    auth_attention: list[dict[str, Any]] = []
+    for _machine, snap in (provider_auth.get("machines") or {}).items():
+        auth_attention.extend(attention_items_from_provider_auth(snap))
+    standards = load_fleet_standards()
+    attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
     keep = (
         "id",
         "role",
@@ -46,7 +79,6 @@ async def build_staff_summary() -> dict[str, Any]:
         "last_line",
     )
     in_flight = [{k: r.get(k) for k in keep} for r in [*board_view["running"], *board_view["queued"]]]
-    roles = runner.roles()
     return {
         "generated_at": board_view["generated_at"],
         "hub": board_view["hub"],
@@ -57,8 +89,15 @@ async def build_staff_summary() -> dict[str, Any]:
         "attention": attention[:20],
         "spend_today_usd": board_view["spend_today_usd"],
         "providers": board_view["providers"],
+        "providers_cooldown": board_view.get("providers_cooldown", {}),
         "holds": staff_fleet.holds_snapshot(),
         "liveness_alerts": board_view.get("liveness_alerts", []),
+        "provider_auth": provider_auth,
+        "standards_pin": standards.pin,
+        "standards_source": standards.source_path,
+        "standards_version": standards.version,
+        "standards_attention": standards.source_path == "<builtin>",
+        "standards_fallback": standards.source_path == "<builtin>",
         "roles": [
             {
                 "name": s.name,
@@ -69,4 +108,5 @@ async def build_staff_summary() -> dict[str, Any]:
             }
             for s in sorted(roles.values(), key=lambda s: s.name)
         ],
+        "operator_auth": _operator_auth_health(),
     }

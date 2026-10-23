@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [],
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "python3 scripts/agent-bus-hook-bridge.py session-start",
+        "timeout": 120
+      }
+    ]
+  }
+}

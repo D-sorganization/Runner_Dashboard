@@ -167,8 +167,8 @@ def test_check_up_to_date_protection_fail_ruleset(
             if r.get("type") == "required_status_checks":
                 r["parameters"]["strict_required_status_checks_policy"] = True
     problems = check_up_to_date_protection(sample_policy, valid_protection, mutated_rulesets)
-    assert len(problems) == 1
-    assert "requires branches to be up to date (strict=true)" in problems[0]
+    assert len(problems) == 2
+    assert all("requires branches to be up to date (strict=true)" in p for p in problems)
 
 
 def test_workflow_has_merge_group_trigger_variants() -> None:

@@ -30,6 +30,7 @@ def remote_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[TestCli
     runner_mod.reset_runner()
     from server import app  # noqa: PLC0415
 
+    monkeypatch.setattr("routers.staff.provider_versions", lambda _adapters: {})
     yield TestClient(app, raise_server_exceptions=False, client=_REMOTE)
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -56,7 +57,8 @@ def test_remote_read_requires_fleet_token_when_configured(remote_client: TestCli
 
 
 @pytest.mark.unit
-def test_fleet_token_can_dry_run_dispatch(remote_client: TestClient) -> None:
+def test_fleet_token_can_dry_run_dispatch(remote_client: TestClient, staff_cli_installed) -> None:
+    staff_cli_installed("claude")
     resp = remote_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "preview only", "provider": "claude", "dry_run": True},

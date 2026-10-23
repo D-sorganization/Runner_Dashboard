@@ -19,6 +19,8 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -151,7 +153,13 @@ def _host_minor() -> str | None:
     return out.stdout.strip() if out.returncode == 0 else None
 
 
-def _make_artifact(root: Path, python_minor: str, wheels: tuple[str, ...] = ()) -> Path:
+def _make_artifact(
+    root: Path,
+    python_minor: str,
+    wheels: tuple[str, ...] = (),
+    *,
+    include_library_ingest: bool = True,
+) -> Path:
     stage = root / "stage"
     for rel, body in {
         "VERSION": "9.9.9\n",
@@ -165,6 +173,10 @@ def _make_artifact(root: Path, python_minor: str, wheels: tuple[str, ...] = ()) 
     }.items():
         (stage / rel).parent.mkdir(parents=True, exist_ok=True)
         (stage / rel).write_text(body, encoding="utf-8")
+    if include_library_ingest:
+        ingest = stage / "backend" / "library" / "ingest.py"
+        ingest.parent.mkdir(parents=True, exist_ok=True)
+        ingest.write_text("from pypdf import PdfReader\n", encoding="utf-8")
     (stage / "backend" / "wheels").mkdir()
     for wheel in wheels:
         (stage / "backend" / "wheels" / wheel).write_bytes(b"")
@@ -215,6 +227,47 @@ def _install(tarball: Path, deploy: Path, env: dict[str, str] | None = None) -> 
     )
 
 
+@pytest.mark.skipif(os.name == "nt" or shutil.which("rsync") is None, reason="rsync requires a POSIX host")
+def test_artifact_rsync_preserves_mutable_state_and_deletes_stale_code(tmp_path: Path) -> None:
+    source = tmp_path / "stage"
+    deploy = tmp_path / "live"
+    (source / "backend").mkdir(parents=True)
+    (source / "VERSION").write_text("new\n", encoding="utf-8")
+    (source / "backend" / "server.py").write_text("# new server\n", encoding="utf-8")
+    (deploy / "backend" / "data").mkdir(parents=True)
+    (deploy / "VERSION").write_text("obsolete-version-longer\n", encoding="utf-8")
+    (deploy / "stale.txt").write_text("remove me\n", encoding="utf-8")
+
+    state_files = {
+        "dispatch_arm_cap.sqlite3": "db",
+        "dispatch_arm_cap.sqlite3-wal": "wal",
+        "dispatch_arm_cap.sqlite3-shm": "shm",
+        "dispatch_audit.ndjson": "audit",
+        "staff_runs.jsonl": "history",
+        "backend/data/usage_metrics.json": "metrics",
+        "backend/data/web-vitals.json": "vitals",
+    }
+    for relative, contents in state_files.items():
+        path = deploy / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents, encoding="utf-8")
+
+    installer = INSTALLER.read_text(encoding="utf-8")
+    excludes = re.findall(r"--exclude='([^']+)'", installer)
+    command = ["rsync", "-a", "--delete"]
+    for pattern in excludes:
+        command.extend(("--exclude", pattern))
+    command.extend((f"{source}/", f"{deploy}/"))
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert (deploy / "VERSION").read_text(encoding="utf-8") == "new\n"
+    assert (deploy / "backend" / "server.py").read_text(encoding="utf-8") == "# new server\n"
+    assert not (deploy / "stale.txt").exists()
+    for relative, contents in state_files.items():
+        assert (deploy / relative).read_text(encoding="utf-8") == contents
+
+
 @needs_host
 def test_installer_rejects_cp311_wheelhouse_in_312_artifact_without_touching_deploy(tmp_path: Path) -> None:
     tarball = _make_artifact(tmp_path, "3.12", (CFFI_311, PURE))
@@ -245,6 +298,84 @@ def test_installer_fails_closed_when_offline_preflight_fails(tmp_path: Path) -> 
     result = _install(tarball, deploy, env={"RUNNER_DASHBOARD_PYTHON": "python3"})
     assert result.returncode != 0
     assert "deploy dir untouched" in result.stdout + result.stderr
+    _assert_untouched(deploy)
+
+
+@needs_host
+def test_installer_accepts_older_artifact_without_library_ingest(tmp_path: Path) -> None:
+    minor = _host_minor()
+    if minor is None:
+        pytest.skip("host python3 is outside the supported 3.11-3.13 range")
+    real_python = _bash("command -v python3").stdout.strip()
+    shim = tmp_path / "python-with-mocked-venv"
+    shim.write_text(
+        f'''#!/usr/bin/env bash
+if [[ "$1" == "-c" ]]; then exec "{real_python}" "$@"; fi
+if [[ "$1" == "-m" && "$2" == "venv" ]]; then
+  mkdir -p "$3/bin"
+  cat > "$3/bin/python" <<'PYTHON_SHIM'
+#!/usr/bin/env bash
+exit 0
+PYTHON_SHIM
+  chmod +x "$3/bin/python"
+  exit 0
+fi
+exec "{real_python}" "$@"
+''',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    tarball = _make_artifact(tmp_path, minor, include_library_ingest=False)
+    deploy = _live_install(tmp_path)
+    os.utime(deploy / "backend" / "server.py", (1, 1))
+
+    result = _install(tarball, deploy, env={"RUNNER_DASHBOARD_PYTHON": as_bash_path(shim)})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Dashboard artifact installed" in result.stdout
+    assert (deploy / "backend" / "server.py").read_text(encoding="utf-8") == "# new server\n"
+    assert not (deploy / "backend" / "library" / "ingest.py").exists()
+
+
+@needs_host
+def test_installer_rejects_missing_library_dependency_before_live_mutation(tmp_path: Path) -> None:
+    minor = _host_minor()
+    if minor is None:
+        pytest.skip("host python3 is outside the supported 3.11-3.13 range")
+    real_python = _bash("command -v python3").stdout.strip()
+    shim = tmp_path / "python-with-mocked-venv"
+    shim.write_text(
+        f'''#!/usr/bin/env bash
+if [[ "$1" == "-c" ]]; then exec "{real_python}" "$@"; fi
+if [[ "$1" == "-m" && "$2" == "venv" ]]; then
+  mkdir -p "$3/bin"
+  cat > "$3/bin/python" <<'PYTHON_SHIM'
+#!/usr/bin/env bash
+if [[ "$1" == "-m" && "$2" == "pip" ]]; then exit 0; fi
+if [[ "$1" == "-c" && "$2" == *"library.ingest"* ]]; then
+  grep -q 'from pypdf import PdfReader' "$PYTHONPATH/library/ingest.py" || exit 0
+  echo "ModuleNotFoundError: No module named 'pypdf'" >&2
+  exit 1
+fi
+exit 0
+PYTHON_SHIM
+  chmod +x "$3/bin/python"
+  exit 0
+fi
+exec "{real_python}" "$@"
+''',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    tarball = _make_artifact(tmp_path, minor)
+    deploy = _live_install(tmp_path)
+
+    result = _install(tarball, deploy, env={"RUNNER_DASHBOARD_PYTHON": as_bash_path(shim)})
+
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    assert "ModuleNotFoundError: No module named 'pypdf'" in output
+    assert "Offline dependency preflight failed; deploy dir untouched" in output
     _assert_untouched(deploy)
 
 

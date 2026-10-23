@@ -33,6 +33,7 @@ class Principal(BaseModel):
     name: str
     roles: list[str] = []
     scopes: list[str] = []
+    assistant_kind: str | None = None  # grokbot | codex | claude | other (config/agent_principals.yml)
     github_username: str | None = None
     email: str | None = None
     quotas: Quota = Field(default_factory=Quota)
@@ -57,6 +58,9 @@ class IdentityManager:
         self._ephemeral_tokens: dict[str, TokenRecord] = {}
         self.load_principals()
         self.load_tokens()
+        from agent_principal_defaults import merge_agent_principal_defaults  # noqa: PLC0415
+
+        merge_agent_principal_defaults(self)
 
     def load_principals(self):
         if not self.principals_path.exists():
@@ -270,6 +274,36 @@ def _loopback_auth_enabled() -> bool:
     return os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1"
 
 
+def _loopback_operator_writes_enabled() -> bool:
+    """Dev-only: allow loopback synthetic principal to mutate holds/directives (#2068)."""
+    return os.environ.get("DASHBOARD_LOOPBACK_OPERATOR_WRITES", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+LOOPBACK_OPERATOR_WRITE_SCOPES = frozenset({"staff.holds.write", "priorities.write"})
+
+
+def _is_loopback_synthetic_principal(principal: Principal) -> bool:
+    return principal.id == "__loopback__" or "loopback" in principal.roles
+
+
+def _reject_unauthenticated_bearer(header_token: str | None) -> None:
+    """Fail closed when a Bearer token was sent but did not authenticate (#2068)."""
+    if not header_token or not header_token.startswith("Bearer "):
+        return
+    raw = header_token[len("Bearer ") :]
+    if identity_manager.verify_token(raw):
+        return
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    if hub_token and hmac.compare_digest(raw, hub_token):
+        return
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
 def _is_loopback_request(request: Request) -> bool:
     if not request.client:
         return False
@@ -318,10 +352,37 @@ def require_principal(
         principal_id = session.get("principal_id")
         session_id = session.get("session_id")
         if principal_id and principal_id in identity_manager.principals:
+            from tailnet_identity import tailnet_principal as _tp_check  # noqa: PLC0415
+
+            can_fallback = _tp_check(request) is not None or (
+                _loopback_auth_enabled()
+                and _is_loopback_request(request)
+                and os.environ.get("DASHBOARD_LOOPBACK_SESSION_FALLBACK", "").strip().lower()
+                in {"1", "true", "yes", "on"}
+            )
             # Reject sessions that have been revoked or FIFO-evicted
             if session_id and not sm.touch_session(session_id):
-                raise HTTPException(status_code=401, detail="Session revoked or expired")
-            prin = identity_manager.principals[principal_id]
+                if can_fallback:
+                    if hasattr(request, "session") and isinstance(request.session, dict):
+                        request.session.clear()
+                else:
+                    raise HTTPException(status_code=401, detail="Session revoked or expired")
+            else:
+                from github_app_user_oauth import (  # noqa: PLC0415
+                    UserOAuthRevokedError,
+                    UserOAuthTransientError,
+                    ensure_fresh_access_token,
+                )
+
+                try:
+                    ensure_fresh_access_token(principal_id)
+                    prin = identity_manager.principals[principal_id]
+                except UserOAuthTransientError as exc:
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+                except UserOAuthRevokedError as exc:
+                    request.session.clear()
+                    if not can_fallback:
+                        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     # 3. Optional phone sign-in over the tailnet via Tailscale identity headers
     # (issue #1755). Only admitted when the raw transport peer is loopback
@@ -373,11 +434,13 @@ def require_principal(
     return prin
 
 
-FLEET_PEER_SCOPES = frozenset({"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain"})
+FLEET_PEER_SCOPES = frozenset(
+    {"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain", "fleet.read"}
+)
 LOOPBACK_SCOPES = frozenset(
     (
         "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write staff.approve "
-        "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain "
+        "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain fleet.read "
         "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write"
     ).split()
 )
@@ -390,9 +453,10 @@ SCOPE_PRESETS = {
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "
-        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin fleet.maintain"
+        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin "
+        "fleet.maintain fleet.read"
     ).split(),
-    "viewer": ["assistant.chat", "staff.read"],
+    "viewer": ["assistant.chat", "staff.read", "fleet.read"],
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
     "bot": (
         "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write proposals.write "
@@ -493,6 +557,8 @@ def require_scope(required_scope: str):
         if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
             if hmac.compare_digest(header_token[7:], hub_token):
                 prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+        if prin is None:
+            _reject_unauthenticated_bearer(header_token)
         if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
             prin = _loopback_principal()
         if prin is None and required_scope == "staff.read" and not hub_token:
@@ -505,6 +571,22 @@ def require_scope(required_scope: str):
 
         if prin is None:
             raise HTTPException(status_code=401, detail="Authentication required")
+        if (
+            _is_loopback_synthetic_principal(prin)
+            and required_scope in LOOPBACK_OPERATOR_WRITE_SCOPES
+            and not _loopback_operator_writes_enabled()
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "Loopback operator writes are disabled in production",
+                    "required_scope": required_scope,
+                    "hint": (
+                        "Use an authenticated operator session or set "
+                        "DASHBOARD_LOOPBACK_OPERATOR_WRITES=1 for local dev only"
+                    ),
+                },
+            )
         if principal_has_scope(prin, required_scope):
             return prin
         raise HTTPException(
@@ -519,9 +601,31 @@ def require_scope(required_scope: str):
     return checker
 
 
+def _principal_may_read_fleet(principal: Principal) -> bool:
+    """True when the principal may pass ``require_fleet_peer`` (read or scoped maintain/control)."""
+    return any(principal_has_scope(principal, scope) for scope in ("fleet.read", "fleet.maintain", "fleet.control"))
+
+
+def _loopback_fleet_reader(
+    request: Request,
+    header_token: str | None,
+    cookie_token: str | None,
+) -> Principal | None:
+    """Resolve the existing dev loopback identity for unauthenticated fleet reads only."""
+    if request.method not in {"GET", "HEAD"}:
+        return None
+    if header_token is not None or cookie_token is not None:
+        return None
+    if not _loopback_auth_enabled() or not _is_loopback_request(request):
+        return None
+    principal = _loopback_principal()
+    return principal if _principal_may_read_fleet(principal) else None
+
+
 def require_fleet_peer(
     request: Request,
     header_token: str | None = Depends(auth_header),
+    cookie_token: str | None = Depends(auth_cookie),
 ) -> str:
     """Authenticate an intra-fleet caller for hub-reachable fleet routes (#922).
 
@@ -529,7 +633,9 @@ def require_fleet_peer(
       - it carries valid operator credentials (a principal resolved from a
         service token or session), OR
       - it presents ``Authorization: Bearer <HUB_FLEET_TOKEN>`` matching the
-        hub's configured ``HUB_FLEET_TOKEN`` (constant-time compare).
+        hub's configured ``HUB_FLEET_TOKEN`` (constant-time compare), OR
+      - it is a credential-free GET/HEAD from a real loopback peer with the
+        existing loopback-auth flag enabled and a fleet-readable principal.
 
     Policy decision (documented in docs/runbooks/hub-credentials.md): when
     ``HUB_FLEET_TOKEN`` is UNSET on this node, fleet reads are tailnet-public —
@@ -541,10 +647,22 @@ def require_fleet_peer(
     """
     hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
 
-    # A valid operator principal is always accepted.
     principal = _resolve_principal_optional(request, header_token)
     if principal is not None:
-        return f"principal:{principal.id}"
+        if _principal_may_read_fleet(principal):
+            return f"principal:{principal.id}"
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Fleet authorization failed",
+                "required_scope": "fleet.read",
+                "principal": principal.id,
+            },
+        )
+
+    loopback_principal = _loopback_fleet_reader(request, header_token, cookie_token)
+    if loopback_principal is not None:
+        return f"principal:{loopback_principal.id}"
 
     # No token configured → fleet reads are tailnet-public (backward compatible).
     if not hub_token:

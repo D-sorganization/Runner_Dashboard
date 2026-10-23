@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from bash_host import require_bash
+from bash_host import as_bash_path, require_bash
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 _POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
@@ -35,9 +35,31 @@ _PR_GROUP_TOKENS = (
 )
 
 _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
-    "conflict-disarm.yml": "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state.",
+    "pr-cap.yml": (
+        "PR-cap caller must await its separately serialized metadata workflow "
+        "without interrupting the one-shot advisory comment."
+    ),
+    "reusable-pr-cap.yml": (
+        "PR-cap metadata reporting and its one-shot comment must finish "
+        "without cancellation during a potentially committed POST."
+    ),
+    "arm-cap-reconcile.yml": (
+        "Armed-PR inventory reconcile must finish SQLite inventory sync before optional disarm dispatch; "
+        "cancel mid-run risks cap drift."
+    ),
+    "collate-changes.yml": (
+        "Batch collation updates one rolling bot PR; cancel mid-run leaves bot/collate-changes inconsistent "
+        "and recreates cancelled main runs from overlap."
+    ),
+    "conflict-disarm.yml": (
+        "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state."
+    ),
     "deploy-qualified-release.yml": "A root transaction must run to commit or rollback; never interrupt it mid-stream.",
     "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",
+    "main-ci-auto-release.yml": (
+        "Single-flight publish on d-sorg-fleet; cancel-in-progress would abort every in-flight release "
+        "on a busy main and starve auto-deploy."
+    ),
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
@@ -336,6 +358,88 @@ def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
         assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
 
 
+@pytest.mark.parametrize(
+    ("dry_run", "agent_filter", "action", "number", "stub_exit", "optional"),
+    [
+        ("false", "", "opened", "", "0", []),
+        ("true", "codex", "closed", "42", "0", ["--dry-run", "--agent-filter", "codex", "--backstop-pr", "42"]),
+        (
+            "false",
+            "agent with spaces *",
+            "closed",
+            "43",
+            "0",
+            ["--agent-filter", "agent with spaces *", "--backstop-pr", "43"],
+        ),
+        ("false", "", "opened", "", "17", []),
+    ],
+)
+def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
+    tmp_path: Path,
+    dry_run: str,
+    agent_filter: str,
+    action: str,
+    number: str,
+    stub_exit: str,
+    optional: list[str],
+) -> None:
+    """Capture argv with a shell function; never execute the real PR closer."""
+    workflow = _load_workflow(_WORKFLOWS_DIR / "Agent-Redundant-PR-Closer.yml")
+    jobs = workflow["jobs"].values()
+    step = next(
+        step for job in jobs for step in job.get("steps", []) if step.get("name") == "Close redundant agent PRs"
+    )
+    arguments = tmp_path / "argv.bin"
+    bash = require_bash()
+    stub = 'python() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+    result = subprocess.run(
+        [bash, "-c", stub + step["run"]],
+        cwd=tmp_path,
+        env=os.environ
+        | {
+            "ARGV_OUTPUT": as_bash_path(arguments),
+            "STUB_EXIT": stub_exit,
+            "REPO_NAME": "Runner_Dashboard",
+            "DRY_RUN_INPUT": dry_run,
+            "AGENT_FILTER": agent_filter,
+            "PR_ACTION": action,
+            "EVENT_PR_NUMBER": number,
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    actual = [value.decode() for value in arguments.read_bytes().split(b"\0")[:-1]]
+    assert actual == ["-m", "scripts.close_redundant_agent_prs", "--repo", "Runner_Dashboard", *optional]
+    assert ("continuing" in result.stdout) == (stub_exit != "0")
+
+
+def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> None:
+    workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
+    step = workflow["jobs"]["frontend-scope"]["steps"][0]
+    output = tmp_path / "github-output"
+    bash = require_bash()
+    # A stub also prevents executing Python if this branch accidentally falls through.
+    script = "python() { return 99; };\n" + step["run"]
+    result = subprocess.run(
+        [bash, "-c", script],
+        cwd=tmp_path,
+        env=os.environ | {"EVENT_NAME": "push", "GITHUB_OUTPUT": as_bash_path(output)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert output.read_text().splitlines() == [
+        "run_frontend_tests=true",
+        "run_staff_e2e=true",
+        "run_api_contract=true",
+    ]
+
+
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
     """Issue #688: reaper manual runs need dry-run, reason filtering, and caps."""
     data = _load_workflow(_WORKFLOWS_DIR / "util-queued-job-reaper.yml")
@@ -382,7 +486,10 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
     for text in (workflow, action):
         assert "backend/" in text
         assert "frontend/src/" in text
-        assert "backend|frontend/src|src|tests|rust_core|api" in text
+    assert "clients/" in workflow
+    assert "^(backend/|clients/|frontend/src/|src/|rust_core/|api/)" in workflow
+    assert "phantom_guard_issue_paths.py" in workflow
+    assert "phantom_guard_issue_paths.py" in action
 
 
 def test_pre_push_mypy_dependencies_are_installable() -> None:
@@ -412,6 +519,21 @@ def test_ci_secrets_keeps_the_full_history_gitleaks_scan() -> None:
     assert "fetch-depth: 0" in text
     assert '/gitleaks" detect' in text
     assert "--no-git" not in text
+
+
+def test_required_typecheck_job_always_reports_context() -> None:
+    """TypeScript typecheck (tsc) is required on main; the job must not be SKIPPED."""
+    workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
+    job = workflow["jobs"]["typecheck"]
+    assert job.get("if") is None, "typecheck must not use a job-level `if` that skips the required context"
+    assert job["name"] == "TypeScript typecheck (tsc)"
+
+
+def test_detect_secrets_runs_on_fork_prs() -> None:
+    text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
+    job_block = text.split("detect-secrets:", 1)[1].split("gitleaks:", 1)[0]
+    assert "head.repo.full_name == github.repository" not in job_block
+    assert "ubuntu-latest" in job_block
 
 
 _REQUIRED_CHECKS_POLICY = Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"

@@ -5,11 +5,11 @@
  *
  * Shows a per-provider credential probe grid: a summary stat row (ready /
  * not-ready / total), a re-probe button, and a card per provider with status
- * badge, detail/setup hints, a "Set API key" action, and docs link. On mobile
+ * badge, detail/setup hints, and docs link. On mobile
  * viewports the tab is gated behind a WebAuthn biometric assertion (lock screen
  * + 60-second auto-relock + a confirm sheet before any key mutation).
  *
- * `CredentialsPage` owns the probe fetch/set-key side effects for the routed
+ * `CredentialsPage` owns the probe fetch side effects for the routed
  * desktop shell. `CredentialsTab` stays presentational so legacy callers and
  * focused tests can keep passing explicit probe payloads.
  */
@@ -44,7 +44,6 @@ export interface CredentialsProps {
   loading?: boolean;
   error?: string;
   onRefresh?: () => void;
-  onSetKey?: (probe: CredentialProbe) => void;
   mobile?: boolean;
 }
 
@@ -106,44 +105,6 @@ export function CredentialsPage(): React.ReactElement {
     return () => controller.abort();
   }, [refresh]);
 
-  const setCredentialKey = useCallback(
-    (probe: CredentialProbe) => {
-      const provider = probe.key_provider;
-      if (!provider) return;
-      const label = probe.label || probe.name || provider;
-      const keyValue = window.prompt("Enter API key for " + label);
-      if (!keyValue) return;
-      legacyFetch("/api/credentials/set-key", {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({
-          provider,
-          key: keyValue,
-          restart_maxwell: false,
-        }),
-      })
-        .then((r) =>
-          r.json().then((payload: unknown) => {
-            if (!r.ok) {
-              const detail =
-                payload && typeof payload === "object"
-                  ? (payload as { detail?: string }).detail
-                  : undefined;
-              throw new Error(detail || "HTTP " + r.status);
-            }
-            return payload;
-          }),
-        )
-        .then(() => {
-          refresh();
-        })
-        .catch((err: unknown) => {
-          setError(err instanceof Error ? err.message : "Failed to save key.");
-        });
-    },
-    [refresh],
-  );
-
   return (
     <CredentialsTab
       probes={data.probes || []}
@@ -151,7 +112,6 @@ export function CredentialsPage(): React.ReactElement {
       loading={loading}
       error={error}
       onRefresh={() => refresh()}
-      onSetKey={setCredentialKey}
     />
   );
 }
@@ -230,7 +190,6 @@ export function CredentialsTab({
   loading,
   error,
   onRefresh,
-  onSetKey,
   mobile,
 }: CredentialsProps): React.ReactElement {
   const probeList = probes || [];
@@ -238,12 +197,9 @@ export function CredentialsTab({
   const [mobileUnlocked, setMobileUnlocked] = useState(false);
   const mobileUnlockedRef = useRef(false);
   const [mobileUnlockStatus, setMobileUnlockStatus] = useState<string | null>(null);
-  const [mobileConfirmProbe, setMobileConfirmProbe] = useState<CredentialProbe | null>(null);
-
   function lockMobileCredentials(message?: string): void {
     mobileUnlockedRef.current = false;
     setMobileUnlocked(false);
-    setMobileConfirmProbe(null);
     if (message) setMobileUnlockStatus(message);
   }
 
@@ -403,21 +359,6 @@ export function CredentialsTab({
               </div>
             ) : null}
             <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              {probe.key_provider && onSetKey ? (
-                <button
-                  className="btn"
-                  style={{ fontSize: 12, padding: "6px 10px" }}
-                  onClick={() => {
-                    if (mobile) {
-                      setMobileConfirmProbe(probe);
-                      return;
-                    }
-                    onSetKey(probe);
-                  }}
-                >
-                  {probe.usable ? "Replace API key" : "Set API key"}
-                </button>
-              ) : null}
               {probe.docs_url ? (
                 <a
                   href={probe.docs_url}
@@ -432,55 +373,6 @@ export function CredentialsTab({
           </div>
         ))}
       </div>
-      {mobile && mobileConfirmProbe ? (
-        <div
-          className="mobile-credentials-sheet"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Confirm mobile credential change"
-          onClick={() => {
-            setMobileConfirmProbe(null);
-          }}
-        >
-          <div
-            className="mobile-credentials-sheet-panel"
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Confirm sensitive operation</div>
-            <div style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.45, marginBottom: 14 }}>
-              {"This will open the server-side key update flow for " +
-                (mobileConfirmProbe.label ||
-                  mobileConfirmProbe.name ||
-                  mobileConfirmProbe.key_provider ||
-                  "this provider") +
-                ". Continue only if you intend to change credential state."}
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
-                className="btn"
-                onClick={() => {
-                  setMobileConfirmProbe(null);
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn"
-                style={{ background: "var(--accent-red)", color: "white" }}
-                onClick={() => {
-                  const probe = mobileConfirmProbe;
-                  setMobileConfirmProbe(null);
-                  if (onSetKey) onSetKey(probe);
-                }}
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

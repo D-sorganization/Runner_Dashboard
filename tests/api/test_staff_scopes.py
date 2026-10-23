@@ -152,7 +152,10 @@ def test_dispatch_rejects_token_missing_staff_dispatch(remote_client: TestClient
 
 
 @pytest.mark.integration
-def test_dispatch_allows_token_with_staff_dispatch(remote_client: TestClient, auth_env: dict[str, str]) -> None:
+def test_dispatch_allows_token_with_staff_dispatch(
+    remote_client: TestClient, auth_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("claude")
     # Bot token has staff.dispatch
     resp = remote_client.post(
         "/api/staff/ad-hoc/run",
@@ -211,8 +214,28 @@ def test_holds_write_allows_token_with_staff_holds_write(remote_client: TestClie
 
 @pytest.mark.integration
 def test_fleet_peer_token_admitted_for_dispatch_and_cancel_and_read(
-    remote_client: TestClient, auth_env: dict[str, str]
+    remote_client: TestClient,
+    auth_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    staff_cli_installed,
 ) -> None:
+    # This endpoint validates the local caller against the machine registry
+    # before minting a run token. Keep that production eligibility check while
+    # giving the test's actual host identity an explicit registered entry.
+    import dashboard_config
+    from staff import fleet_run_token_service
+
+    monkeypatch.setattr(
+        fleet_run_token_service,
+        "load_machine_registry",
+        lambda: {
+            "version": 1,
+            "machines": [{"name": dashboard_config.HOSTNAME, "role": "node"}],
+        },
+    )
+    # This test covers authorization, not installed CLI version discovery.
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
+    staff_cli_installed("claude")
     fleet_auth = {"Authorization": f"Bearer {auth_env['fleet']}"}
 
     # Dispatch: fleet-peer has staff.dispatch
@@ -221,7 +244,7 @@ def test_fleet_peer_token_admitted_for_dispatch_and_cancel_and_read(
         json={"prompt": "fleet dispatch", "provider": "claude", "dry_run": True},
         headers={**_XHR, **fleet_auth},
     )
-    assert d_resp.status_code == 200
+    assert d_resp.status_code == 200, d_resp.json()
 
     # Read: fleet-peer has staff.read
     r_resp = remote_client.get("/api/staff/roster", headers=fleet_auth)
@@ -245,7 +268,10 @@ def test_fleet_peer_token_admitted_for_dispatch_and_cancel_and_read(
 
 
 @pytest.mark.integration
-def test_loopback_auth_scope_enforcement(monkeypatch: pytest.MonkeyPatch, auth_env: dict[str, str]) -> None:
+def test_loopback_auth_scope_enforcement(
+    monkeypatch: pytest.MonkeyPatch, auth_env: dict[str, str], staff_cli_installed
+) -> None:
+    staff_cli_installed("claude")
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
     from server import app
 

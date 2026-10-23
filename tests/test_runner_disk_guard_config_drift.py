@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from types import ModuleType
 
@@ -42,10 +43,11 @@ def test_vendored_schema_matches_upstream() -> None:
     assert vendored.SCHEMA_ID == upstream.SCHEMA_ID
     cfg = vendored.load_runner_disk_guard_config(_REPO_ROOT / "config" / "runner_disk_guard.yaml")
     upstream_cfg = upstream.load_runner_disk_guard_config(_REPO_ROOT / "config" / "runner_disk_guard.yaml")
-    assert cfg.thresholds == upstream_cfg.thresholds
-    assert cfg.drain == upstream_cfg.drain
-    assert cfg.cordon == upstream_cfg.cordon
-    assert cfg.alerts == upstream_cfg.alerts
+    # Independently imported dataclass types intentionally have different identity.
+    assert asdict(cfg.thresholds) == asdict(upstream_cfg.thresholds)
+    assert asdict(cfg.drain) == asdict(upstream_cfg.drain)
+    assert asdict(cfg.cordon) == asdict(upstream_cfg.cordon)
+    assert asdict(cfg.alerts) == asdict(upstream_cfg.alerts)
 
 
 def test_vendored_files_match_upstream_bytes() -> None:

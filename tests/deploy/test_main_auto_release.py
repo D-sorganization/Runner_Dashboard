@@ -1,0 +1,210 @@
+"""Main CI auto-release naming, gate, retention, and artifact matching."""
+
+from __future__ import annotations
+
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "deploy"))
+
+from main_auto_release.gate import (  # noqa: E402
+    commit_passes_main_ci_gate,
+    commit_passes_publisher_ci_gate,
+    publisher_gate_failure_is_terminal,
+    select_green_commit_with_release,
+)
+from main_auto_release.naming import (  # noqa: E402
+    auto_release_tag_for_commit,
+    auto_release_version_for_commit,
+    is_auto_release_tag,
+)
+from main_auto_release.release_index import commit_has_release, re_semver_tag  # noqa: E402
+from main_auto_release.retention import select_releases_to_delete  # noqa: E402
+from node_auto_deploy.artifact import pick_release_assets  # noqa: E402
+
+_GREEN_SHA = "a474ee662a55f9437677116a4d269f74946a8d10"  # pragma: allowlist secret
+_FAIL_SHA = "87fa0117aacefbf7b02ca72d52d207599fedd305"  # pragma: allowlist secret
+_CANCEL_SHA = "3ee37e4a41514213222cb3730d44e189e3b81a15"  # pragma: allowlist secret
+_COMMIT_DATE = "2026-10-22T02:11:34Z"
+
+
+def _minimal_green_runs(sha: str) -> list[dict[str, object]]:
+    return [
+        {"head_sha": sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
+        {"head_sha": sha, "name": "tests (3.11)", "status": "completed", "conclusion": "success"},
+        {"head_sha": sha, "name": "guard", "status": "completed", "conclusion": "skipped"},
+    ]
+
+
+def _minimal_failing_runs(sha: str, *, failing_name: str, failing_conclusion: str) -> list[dict[str, object]]:
+    return [
+        {"head_sha": sha, "name": failing_name, "status": "completed", "conclusion": failing_conclusion},
+        {"head_sha": sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
+    ]
+
+
+def test_publisher_gate_ignores_in_flight_self_check() -> None:
+    sha = "c" * 40
+    runs = _minimal_green_runs(sha) + [
+        {
+            "head_sha": sha,
+            "name": "Publish dashboard release when CI gate is green",
+            "status": "in_progress",
+            "conclusion": None,
+        }
+    ]
+    ok, _ = commit_passes_publisher_ci_gate(runs, sha)
+    assert ok is True
+    ok_head, _ = commit_passes_main_ci_gate(runs, sha)
+    assert ok_head is False
+
+
+def test_deploy_gate_ignores_pending_publisher_and_fleet_hygiene_jobs() -> None:
+    runs = _minimal_green_runs(_GREEN_SHA) + [
+        {
+            "head_sha": _GREEN_SHA,
+            "name": "Publish dashboard release when CI gate is green",
+            "status": "queued",
+            "conclusion": None,
+        },
+        {"head_sha": _GREEN_SHA, "name": "compare", "status": "in_progress", "conclusion": None},
+        {"head_sha": _GREEN_SHA, "name": "reconcile", "status": "queued", "conclusion": None},
+        {"head_sha": _GREEN_SHA, "name": "refresh", "status": "in_progress", "conclusion": None},
+    ]
+    ok, _ = commit_passes_publisher_ci_gate(runs, _GREEN_SHA)
+    assert ok is True
+
+
+def test_vitest_failure_blocks_release() -> None:
+    runs = _minimal_failing_runs(_FAIL_SHA, failing_name="Vitest + Coverage", failing_conclusion="failure")
+    ok, detail = commit_passes_main_ci_gate(runs, _FAIL_SHA)
+    assert ok is False
+    assert "Vitest" in detail
+
+
+def test_cancelled_docker_blocks_release() -> None:
+    runs = _minimal_failing_runs(
+        _CANCEL_SHA,
+        failing_name="Build and scan image",
+        failing_conclusion="cancelled",
+    )
+    ok, detail = commit_passes_main_ci_gate(runs, _CANCEL_SHA)
+    assert ok is False
+    assert "Build and scan image" in detail
+
+
+def test_terminal_publisher_failure_cannot_be_repaired_by_a_later_run() -> None:
+    runs = _minimal_failing_runs(_FAIL_SHA, failing_name="quality-gate", failing_conclusion="failure")
+    runs.append({"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "in_progress", "conclusion": None})
+
+    assert publisher_gate_failure_is_terminal(runs, _FAIL_SHA) is True
+
+
+def test_cancelled_or_pending_runs_remain_retryable() -> None:
+    cancelled = _minimal_failing_runs(
+        _CANCEL_SHA,
+        failing_name="quality-gate",
+        failing_conclusion="cancelled",
+    )
+    pending = [{"head_sha": _CANCEL_SHA, "name": "quality-gate", "status": "in_progress", "conclusion": None}]
+
+    assert publisher_gate_failure_is_terminal(cancelled, _CANCEL_SHA) is True
+    assert publisher_gate_failure_is_terminal(pending, _CANCEL_SHA) is False
+
+
+def test_documented_pending_check_statuses_are_retryable() -> None:
+    for status in ("queued", "in_progress", "requested", "waiting", "pending"):
+        runs = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": status, "conclusion": None}]
+        assert publisher_gate_failure_is_terminal(runs, _FAIL_SHA) is False
+
+
+def test_current_sha_with_only_cancelled_blocking_runs_is_terminal() -> None:
+    runs = [
+        {"head_sha": _CANCEL_SHA, "name": name, "status": "completed", "conclusion": "cancelled"}
+        for name in ("quality-gate", "tests (3.11)", "container-build")
+    ]
+
+    assert commit_passes_publisher_ci_gate(runs, _CANCEL_SHA)[0] is False
+    assert publisher_gate_failure_is_terminal(runs, _CANCEL_SHA) is True
+
+
+def test_malformed_publisher_check_run_is_terminal_fail_closed() -> None:
+    runs = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "completed"}, "bad-record"]
+
+    assert publisher_gate_failure_is_terminal(runs, _FAIL_SHA) is True
+
+    unknown_status = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "unknown"}]
+    assert publisher_gate_failure_is_terminal(unknown_status, _FAIL_SHA) is True
+
+
+def test_auto_release_tag_is_deterministic() -> None:
+    tag = auto_release_tag_for_commit(_GREEN_SHA, _COMMIT_DATE)
+    assert tag == "v2026.10.22-a474ee6"
+    assert is_auto_release_tag(tag)
+    assert auto_release_version_for_commit(_GREEN_SHA, _COMMIT_DATE) == "2026.10.22-a474ee6"
+
+
+def test_governed_v4100_semver_tag_still_recognized() -> None:
+    sha = "a" * 40
+    assert re_semver_tag("v4.10.0")
+    releases = [{"draft": False, "tag_name": "v4.10.0", "target_commitish": sha, "assets": []}]
+    assert commit_has_release(releases, sha)
+
+
+def test_pick_release_assets_supports_auto_version_string() -> None:
+    releases = [
+        {
+            "draft": False,
+            "target_commitish": _GREEN_SHA,
+            "assets": [
+                {"name": "dashboard-2026.10.22-a474ee6.tar.gz", "url": "https://example/tar"},
+                {"name": "dashboard-2026.10.22-a474ee6.tar.gz.sha256", "url": "https://example/sum"},
+            ],
+        }
+    ]
+    picked = pick_release_assets(releases, _GREEN_SHA)
+    assert picked is not None
+    assert picked["version"] == "2026.10.22-a474ee6"
+
+
+def test_select_green_commit_with_release_skips_head_without_release() -> None:
+    head = _minimal_green_runs(_GREEN_SHA)
+    older_sha = "b" * 40
+    older = [
+        {"head_sha": older_sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
+        {"head_sha": older_sha, "name": "tests (3.11)", "status": "completed", "conclusion": "success"},
+    ]
+    releases = [
+        {
+            "draft": False,
+            "tag_name": "v2026.10.21-bbbbbbb",
+            "target_commitish": older_sha,
+            "assets": [
+                {"name": "dashboard-2026.10.21-bbbbbbb.tar.gz", "url": "u"},
+                {"name": "dashboard-2026.10.21-bbbbbbb.tar.gz.sha256", "url": "u"},
+            ],
+        }
+    ]
+
+    def fetch(sha: str) -> list[dict[str, object]]:
+        return head if sha == _GREEN_SHA else older
+
+    chosen, _ = select_green_commit_with_release([_GREEN_SHA, older_sha], fetch, releases)
+    assert chosen == older_sha
+
+
+def test_retention_never_deletes_protected_shas() -> None:
+    rows = [
+        {
+            "draft": False,
+            "tag_name": f"v2026.10.{i:02d}-abc1234",
+            "target_commitish": f"{i:040x}",
+            "published_at": datetime(2026, 10, 1, tzinfo=UTC).isoformat(),
+        }
+        for i in range(35)
+    ]
+    protected = {rows[30]["target_commitish"], rows[31]["target_commitish"]}
+    doomed = select_releases_to_delete(rows, keep_count=30, protected_shas=protected)
+    assert protected.isdisjoint({r["target_commitish"] for r in doomed})

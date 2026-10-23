@@ -19,9 +19,14 @@ import React, { useState, ReactNode, useCallback, useEffect, useRef } from 'reac
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { FloatingActionButton } from '../primitives/FloatingActionButton'
 import { AskSheet } from './AskSheet'
+
+const LazyBarbSidebar = React.lazy(() =>
+  import('./BarbSidebar').then(({ BarbSidebar }) => ({ default: BarbSidebar })),
+)
 import {
   mobilePrimaryItems,
   mobileDrawerItems,
+  navItemById,
   type NavItem,
 } from './navRegistry'
 
@@ -81,10 +86,28 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [askOpen, setAskOpen] = useState(false)
+  const [barbMounted, setBarbMounted] = useState(false)
+  const [barbOpen, setBarbOpen] = useState(false)
   const [drawerAnnouncement, setDrawerAnnouncement] = useState('')
 
   const openAsk = useCallback(() => setAskOpen(true), [])
   const closeAsk = useCallback(() => setAskOpen(false), [])
+  const handleBarbNavigate = useCallback((tabId: TabId) => {
+    onTabChange(tabId)
+    setBarbOpen(false)
+  }, [onTabChange])
+
+  // Approved assistant navigation changes the route outside this shell's callbacks.
+  // Dismiss the mobile modal only for registered routes so the destination is usable.
+  useEffect(() => {
+    if (!isMobile || !barbOpen) return
+    const handleAssistantNavigation = (event: Event) => {
+      const tabId = (event as CustomEvent<{ tabId?: unknown }>).detail?.tabId
+      if (typeof tabId === 'string' && navItemById(tabId)) setBarbOpen(false)
+    }
+    window.addEventListener('runner-dashboard:navigate', handleAssistantNavigation)
+    return () => window.removeEventListener('runner-dashboard:navigate', handleAssistantNavigation)
+  }, [barbOpen, isMobile])
 
   // Close ask sheet on Escape
   useEffect(() => {
@@ -171,6 +194,20 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         <a className="skip-link" href="#main-content">
           Skip to main content
         </a>
+        <button
+          type="button"
+          className="mobile-shell__ask-barb"
+          aria-label="Ask Barb"
+          aria-controls="barb-sidebar"
+          aria-expanded={barbOpen}
+          data-testid="mobile-ask-barb"
+          onClick={() => {
+            setBarbMounted(true)
+            setBarbOpen((open) => !open)
+          }}
+        >
+          Ask Barb
+        </button>
       </header>
       {/* Main content area — native mobile component takes precedence when provided */}
       <main id="main-content" className="mobile-shell__content" role="main" tabIndex={-1}>
@@ -226,6 +263,16 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         onClose={closeAsk}
         onOpenStaffConsole={() => onTabChange('staff')}
       />
+      {barbMounted ? (
+        <React.Suspense fallback={null}>
+          <LazyBarbSidebar
+            open={barbOpen}
+            mobile
+            onClose={() => setBarbOpen(false)}
+            onNavigate={handleBarbNavigate}
+          />
+        </React.Suspense>
+      ) : null}
 
       {/* Drawer for additional tabs */}
       {drawerOpen && (

@@ -8,6 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
+from external_ingress import deny_external_ingress_bearer
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -188,6 +189,7 @@ _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/credentials/",
     "/api/staff/",
     "/api/coordination/",
+    "/api/v1/agent/",
     "/api/priorities/",
     "/api/proposals/",
 )
@@ -335,6 +337,10 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
     if not _requires_perimeter_auth(request):
         return await call_next(request)
 
+    ingress_denial = deny_external_ingress_bearer(request, log)
+    if ingress_denial is not None:
+        return ingress_denial
+
     # Defer to the route dependency when a test/explicit override is installed.
     app = request.scope.get("app")
     overrides = getattr(app, "dependency_overrides", {}) if app is not None else {}
@@ -358,6 +364,11 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
         )
 
     request.state.perimeter_principal = principal
+    from browser_csrf import browser_csrf_denial
+
+    denial = browser_csrf_denial(request, principal)
+    if denial is not None:
+        return denial
     return await call_next(request)
 
 
@@ -381,6 +392,9 @@ async def csrf_check(request: Request, call_next: Any) -> Any:
 async def add_security_headers(request: Request, call_next: Any) -> Any:
     """Inject standard security headers on every response (issue #7, #18)."""
     response = await call_next(request)
+    if response.headers.get("content-type", "").partition(";")[0].strip().casefold() == "text/event-stream":
+        response.headers["X-Accel-Buffering"] = "no"
+        response.headers["Cache-Control"] = "no-cache, no-transform"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

@@ -10,12 +10,16 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from staff.roles import role_validation_errors
+from staff.rm_directives import DirectivesReconcileError, reconcile_directives_for_rm_root
+from staff.rm_mail_policy import refresh_mail_policy_cache
+from staff.rm_reconcile import HoldReconcileError, format_hold_reconcile_diff, reconcile_holds_for_roles_dir
+from staff.roles import role_validation_errors, roles_dir
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.rm_sync")
@@ -108,6 +112,7 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     previous = _read(path)
     now = time.time()
     if previous.get("root") == str(root) and 0 <= now - previous.get("checked_at", 0) < INTERVAL_SECONDS:
+        _reconcile_holds_after_refresh(root, previous)
         return previous
     state: dict[str, Any] = {
         "root": str(root),
@@ -152,6 +157,7 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
         state["commit_time"] = int(_git(root, "show", "-s", "--format=%ct", "HEAD"))
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
+    _reconcile_holds_after_refresh(root, state)
     _write(path, state)
     log.info(
         "RM source refresh: %s (%s)",
@@ -161,13 +167,76 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     return state
 
 
+def _reconcile_holds_after_refresh(root: Path, state: dict[str, Any]) -> None:
+    """Best-effort hold and directive reconcile from RM YAML; never raises to the timer."""
+    commit = state.get("commit")
+    if not commit:
+        return
+    default_roles = root / "staff" / "roles"
+    roles_path = default_roles if default_roles.is_dir() else roles_dir()
+    dry = os.environ.get("STAFF_RM_RECONCILE_DRY_RUN", "").strip() in {"1", "true", "yes"}
+    try:
+        hold_diff = reconcile_holds_for_roles_dir(roles_path, str(commit), dry_run=dry)
+    except HoldReconcileError as exc:
+        state["hold_reconcile"] = {"status": "error", "reason": str(exc)}
+        log.error("RM hold reconcile failed (fail closed): %s", exc)
+        return
+    if hold_diff is not None:
+        state["hold_reconcile"] = {"status": "ok", "changed": hold_diff.changed, **hold_diff.to_dict()}
+        if hold_diff.changed:
+            log.info("RM hold reconcile commit=%s %s", commit, format_hold_reconcile_diff(hold_diff))
+    try:
+        directive_diff = reconcile_directives_for_rm_root(root, str(commit), dry_run=dry)
+    except DirectivesReconcileError as exc:
+        state["directive_reconcile"] = {"status": "error", "reason": str(exc)}
+        log.error("RM directive reconcile failed (fail closed): %s", exc)
+        return
+    state["directive_reconcile"] = {"status": "ok", "changed": directive_diff.changed, **directive_diff.to_dict()}
+    if directive_diff.changed:
+        log.info("RM directive reconcile commit=%s %s", commit, json.dumps(directive_diff.to_dict(), sort_keys=True))
+    mail_snap = refresh_mail_policy_cache(root, str(commit))
+    if mail_snap is None:
+        state["mail_policy"] = {"status": "error", "reason": "invalid mail_policy.yml"}
+    else:
+        state["mail_policy"] = {
+            "status": "ok",
+            "intake_enabled": mail_snap.policy.intake_enabled,
+            "allowed_senders": len(mail_snap.policy.allowed_senders),
+        }
+
+
 def main() -> None:
+    import argparse
+
     logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser(description="Fast-forward STAFF_RM_ROOT and reconcile holds from role YAML.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print hold reconcile diff without writing staff_holds.json",
+    )
+    args = parser.parse_args()
+    if args.dry_run:
+        os.environ["STAFF_RM_RECONCILE_DRY_RUN"] = "1"
     configured = os.environ.get("STAFF_RM_ROOT")
     if not configured:
         log.warning("STAFF_RM_ROOT is unset; RM refresh skipped")
         return
-    refresh(Path(configured))
+    root = Path(configured)
+    state = refresh(root)
+    if args.dry_run and state.get("hold_reconcile"):
+        sys.stdout.write(format_hold_reconcile_diff_from_state(state) + "\n")
+
+
+def format_hold_reconcile_diff_from_state(state: dict[str, Any]) -> str:
+    """Extract reconcile diff fields written by ``_reconcile_holds_after_refresh``."""
+    keys = ("added", "deactivated", "updated", "unchanged")
+    payload: dict[str, Any] = {}
+    if "hold_reconcile" in state:
+        payload["holds"] = {k: state["hold_reconcile"].get(k, []) for k in keys}
+    if "directive_reconcile" in state:
+        payload["directives"] = {k: state["directive_reconcile"].get(k, []) for k in keys}
+    return json.dumps(payload, indent=2, sort_keys=True)
 
 
 if __name__ == "__main__":

@@ -71,6 +71,34 @@ async function occurrences(page: Page, needle: string): Promise<number> {
 }
 
 test.describe("chat", () => {
+  test("chat-first home shows the composer and can reveal staff choices", async ({ page }) => {
+    await page.goto("/staff");
+    await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+
+    const chooseStaff = page.getByRole("button", { name: "Choose staff" });
+    await expect(chooseStaff).toBeVisible();
+    await chooseStaff.click();
+    await expect(page.getByRole("button", { name: /^E2E Analyst, Status:/ })).toBeVisible();
+  });
+
+  test("sending from the mobile chat-first home reveals Barb's conversation", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/staff");
+    await expect(page.getByTestId("staff-mobile-home")).toBeVisible();
+
+    const text = `mobile home ${nonce()}`;
+    await send(page, text);
+
+    await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
+    await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    await expect(page).toHaveURL(/\/staff\?role=barb&thread=[^&]+/);
+
+    await page.reload();
+    await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
+    await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
+  });
+
   test("a direct reply is shown exactly once", async ({ page }) => {
     const text = `hello ${nonce()}`;
     await openThread(page, "E2E Analyst");
@@ -158,7 +186,11 @@ test.describe("send failures keep the draft", () => {
     await openThread(page, "E2E Analyst");
     await send(page, text);
 
-    await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
+    const sendAlert = page.getByRole("alert").filter({ hasText: /Failed to send message/ });
+      await expect(sendAlert).toBeVisible();
+      await expect(sendAlert).toHaveCount(1);
+      await expect(page.getByTestId(SEND_ERROR)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: COMPOSER })).toHaveValue(text);
     expect(await occurrences(page, reply(text))).toBe(0);
   });
@@ -171,9 +203,53 @@ test.describe("send failures keep the draft", () => {
       await openThread(page, "E2E Analyst");
       await send(page, text);
 
-      await expect(page.getByTestId(SEND_ERROR)).toBeVisible();
+      const sendAlert = page.getByRole("alert").filter({ hasText: /Failed to send message/ });
+      await expect(sendAlert).toBeVisible();
+      await expect(sendAlert).toHaveCount(1);
+      await expect(page.getByTestId(SEND_ERROR)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
       await expect(page.getByRole("textbox", { name: COMPOSER })).toHaveValue(text);
     });
+  });
+});
+
+test.describe("Ask Barb drawer keyboard access", () => {
+  test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }) => {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 960, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/staff");
+      const trigger = page.getByRole("button", { name: "Ask Barb" });
+      await trigger.focus();
+      await page.keyboard.press("Enter");
+
+      const drawer = page.getByTestId("barb-sidebar");
+      const close = drawer.getByRole("button", { name: "Close Ask Barb" });
+      await expect(drawer).toBeVisible();
+      await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+
+      if (viewport.width === 390) {
+        await expect(drawer).toHaveAttribute("aria-modal", "true");
+        await close.focus();
+        const focusable = drawer
+          .locator('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+          .filter({ visible: true });
+        const first = focusable.first();
+        const last = focusable.last();
+        await first.focus();
+        await page.keyboard.press("Shift+Tab");
+        await expect(last).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(first).toBeFocused();
+      }
+
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveAttribute("aria-hidden", "true");
+      await expect(trigger).toBeFocused();
+    }
   });
 });
 

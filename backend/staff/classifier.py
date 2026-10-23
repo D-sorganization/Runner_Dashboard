@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from staff.adapter_failure import adapter_failure_classification
 from staff.adapters import _extract_text
 
 if TYPE_CHECKING:
@@ -27,6 +27,8 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "config",
         "provider_capacity",
         "provider_error",
+        "providers_exhausted",
+        "quota_exhausted",
         "rate_limited",
         "needs_input",
         "timeout",
@@ -34,17 +36,24 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "lease_blocked",
         "orphaned",
         "workspace_error",
+        "environment_error",
         "unkillable",
         "unknown",
         "no_result",
     }
 )
 
+ENVIRONMENT_ERROR_PATTERNS = (
+    "bwrap: no permissions to create new namespace",
+    "shell execution fails before running any command",
+    "sandbox mode is enabled but not available",
+)
+
 LOGIN_COMMANDS: dict[str, str] = {
     "claude": "CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login",
     "codex": "codex login --device-auth",
     "cursor-agent": "cursor-agent login",
-    "antigravity": "agy auth login",
+    "antigravity": "agy",
     "gemini": "gemini login",
     "ollama": "systemctl --user start ollama",
     "claude-ollama": "systemctl --user start ollama",
@@ -88,6 +97,22 @@ def _login_command(provider: str) -> str:
 
 def _upgrade_command(provider: str) -> str:
     return UPGRADE_COMMANDS.get(provider, f"upgrade the {provider} CLI")
+
+
+def environment_error_remediation(provider: str, node: str) -> str:
+    """Actionable fix for sandbox / namespace failures on the worker node."""
+    if provider == "codex":
+        return (
+            f"Codex bubblewrap sandbox cannot create Linux user namespaces on {node}. "
+            "On WSL2 add `[boot]` `sysctl.kernel.unprivileged_userns_clone=1` to `/etc/wsl.conf` and "
+            "restart WSL (`wsl --shutdown`). Staff runs invoke `codex exec --sandbox workspace-write`; "
+            "a top-level `sandbox` key in `~/.codex/config.toml` is ignored by `codex exec`—use CLI flags "
+            "or the `[features]` section documented for your installed Codex version."
+        )
+    return (
+        f"Provider {provider} could not start its command sandbox on {node}; inspect bubblewrap/WSL "
+        "user-namespace settings on the worker."
+    )
 
 
 def classify_cli_below_floor(provider: str, found: str, required: str) -> FailureClassification:
@@ -178,8 +203,19 @@ def classify_run_failure(
             error="orphaned across restart",
         )
 
-    # 2. Check for needs_input: exit 0 without STAFF_RESULT and ending in a question
     combined = f"{error_message}\n{output_text}".strip()
+    lower = combined.lower()
+
+    if any(pat in lower for pat in ENVIRONMENT_ERROR_PATTERNS):
+        detail = _extract_last_line_text(output_text) or error_message or "sandbox/environment failure"
+        return FailureClassification(
+            failure_class="environment_error",
+            retryable=False,
+            remediation=environment_error_remediation(provider, node),
+            error=detail,
+        )
+
+    # 2. Check for needs_input: exit 0 without STAFF_RESULT and ending in a question
     if exit_code == 0 and not result_line:
         last_line = _extract_last_line_text(output_text)
         if last_line.endswith("?"):
@@ -198,7 +234,15 @@ def classify_run_failure(
             error=NO_RESULT_ERROR,
         )
 
-    lower = combined.lower()
+    adapter_row = adapter_failure_classification(provider, combined)
+    if adapter_row is not None:
+        fc, retryable, remediation, error = adapter_row
+        return FailureClassification(
+            failure_class=fc,
+            retryable=retryable,
+            remediation=remediation,
+            error=error,
+        )
 
     # 3. CLI Missing
     cli_missing_patterns = (
@@ -303,12 +347,8 @@ def classify_run_failure(
         "rate_limit_exceeded",
         "too many requests",
         "overloaded_error",
-        "overloaded",
-        "exceeded your current quota",
         "resource_exhausted",
         "quota exceeded",
-        "quota exhausted",
-        "out of quota",
     )
     if "disk quota" not in lower and any(pat in lower for pat in rate_patterns):
         return FailureClassification(
@@ -437,48 +477,3 @@ def format_attention_items(runs: list[RunRecord]) -> list[dict[str, Any]]:
         )
 
     return items
-
-
-def classify_execution_result(
-    *,
-    cancelled: bool,
-    rc: int,
-    result_line: str,
-    provider: str,
-    transcript_path: Path | None,
-    watchdog_failure_class: str = "",
-    watchdog_error: str = "",
-    machine: str = "",
-    has_thread: bool = False,
-) -> tuple[str, str, bool, str, str]:
-    """Determine (status, failure_class, retryable, remediation, error) for a finished run."""
-    if cancelled:
-        return "cancelled", "", False, "", ""
-    if rc == 0 and result_line:
-        return "succeeded", "", False, "", ""
-
-    output_text = ""
-    if transcript_path and transcript_path.exists():
-        try:
-            output_text = transcript_path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
-
-    diag = classify_run_failure(
-        provider=provider,
-        exit_code=rc,
-        output_text=output_text,
-        error_message=watchdog_error,
-        watchdog_failure_class=watchdog_failure_class,
-        watchdog_error=watchdog_error,
-        result_line=result_line,
-        machine=machine,
-    )
-    err = diag.error or (watchdog_error if watchdog_failure_class else "")
-    if rc == 0 and not result_line and not err:
-        err = "An unattended agent that stops to ask a question exits 0 without finishing."
-    if diag.failure_class == "needs_input":
-        status = "needs_input" if has_thread else "failed"
-    else:
-        status = "failed"
-    return status, diag.failure_class, diag.retryable, diag.remediation, err

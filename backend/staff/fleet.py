@@ -142,6 +142,7 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
     queued: list[dict[str, Any]] = []
     spend: dict[str, float] = {}
     providers: dict[str, dict[str, bool]] = {}
+    providers_cooldown: dict[str, list[dict[str, Any]]] = {}
     liveness_alerts: list[dict[str, Any]] = []
     for name, board in machines.items():
         if board.get("status") != "online":
@@ -153,6 +154,7 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
             if provider != "total":
                 spend[provider] = round(spend.get(provider, 0.0) + float(usd), 6)
         providers[name] = dict(board.get("providers") or {})
+        providers_cooldown[name] = list(board.get("providers_cooldown") or [])
     spend["total"] = round(sum(v for k, v in spend.items() if k != "total"), 6)
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -166,6 +168,7 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
         "recent": [],
         "spend_today_usd": spend,
         "providers": providers,
+        "providers_cooldown": providers_cooldown,
         "liveness_alerts": liveness_alerts,
     }
 
@@ -318,6 +321,15 @@ def local_board(runner: Any) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         avail_stats = {}
 
+    from staff.provider_auth_preflight import provider_auth_cache_snapshot  # noqa: PLC0415
+    from staff.provider_cooldown import cooldown_snapshot  # noqa: PLC0415
+
+    provider_auth = provider_auth_cache_snapshot()
+    if provider_auth.get("checked_at") is None:
+        from staff.provider_auth_preflight import run_preflight_and_cache  # noqa: PLC0415
+
+        provider_auth = run_preflight_and_cache(runner.machine)
+
     return {
         "machine": runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
@@ -326,10 +338,12 @@ def local_board(runner: Any) -> dict[str, Any]:
         "recent": [r.to_dict() for r in recent if r.status not in ACTIVE_STATUSES],
         "spend_today_usd": store.spend_since(today_iso()),
         "providers": available_providers(),
+        "providers_cooldown": cooldown_snapshot(),
         "chat_only_providers": chat_only_providers(),
         "availability": avail_stats,
         "liveness": liveness,
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
+        "provider_auth": provider_auth,
     }
 
 

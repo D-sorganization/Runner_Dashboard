@@ -7,6 +7,7 @@ from staff.reply_contract import (
     ALL_KNOWN_ACTIONS,
     FLEET_ACTIONS,
     STANDARD_ACTION_REQUIREMENTS,
+    is_action_allowed_for_role,
     parse_reply,
 )
 from staff.roles import RoleSpec, parse_role
@@ -361,6 +362,18 @@ def test_contract_action_table_has_params_column() -> None:
 
 
 @pytest.mark.unit
+def test_barb_can_propose_registered_dashboard_navigation() -> None:
+    from staff.reply_contract import generate_chat_contract_text
+
+    barb = RoleSpec(name="barb", title="Barb")
+    assert is_action_allowed_for_role("dashboard.navigate", barb)
+
+    contract = generate_chat_contract_text()
+    row = next(line for line in contract.splitlines() if line.startswith("| `dashboard.navigate`"))
+    assert "| low | `staff.chat` | tab_id: string |" in row
+
+
+@pytest.mark.unit
 def test_compose_prompt_chat_turn_vs_batch(sample_role: RoleSpec) -> None:
     from staff.workspace import compose_prompt
 
@@ -375,7 +388,7 @@ def test_compose_prompt_chat_turn_vs_batch(sample_role: RoleSpec) -> None:
     )
     assert "running unattended" in batch_prompt
     assert "STAFF_RESULT:" in batch_prompt
-    assert "Fleet rules:" in batch_prompt
+    assert "Fleet standards" in batch_prompt or "Fleet rules" in batch_prompt
 
     # Chat turn prompt includes chat contract and does not instruct worktree/STAFF_RESULT
     chat_prompt = compose_prompt(

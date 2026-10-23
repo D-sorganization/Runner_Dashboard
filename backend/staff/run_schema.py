@@ -28,4 +28,14 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("origin_node", "TEXT NOT NULL DEFAULT ''"),
     # Per-run monotonic run-card version counter for Barb authority dedupe (#1800, BR-06).
     ("card_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("provider_chain", "TEXT NOT NULL DEFAULT ''"),
+    ("model_tier", "TEXT NOT NULL DEFAULT ''"),
+    ("skill_pin", "TEXT NOT NULL DEFAULT ''"),
+    ("standards_version", "TEXT NOT NULL DEFAULT ''"),
+    ("standards_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("context_stamp", "TEXT NOT NULL DEFAULT '{}'"),
+    ("library_work_ids", "TEXT NOT NULL DEFAULT '[]'"),
+    ("injected_lesson_ids", "TEXT NOT NULL DEFAULT '[]'"),
+    ("skipped_lesson_ids", "TEXT NOT NULL DEFAULT '{}'"),
+    ("lessons_tokens", "INTEGER NOT NULL DEFAULT 0"),
 )

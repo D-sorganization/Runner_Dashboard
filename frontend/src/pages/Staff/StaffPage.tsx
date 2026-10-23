@@ -33,7 +33,13 @@ import "./StaffPage.css";
 
 import type { WorkRequest } from "./staffApi";
 
-export type StaffSection = "console" | "roster" | "runs" | "outcomes" | "assign" | "holds";
+export type StaffSection =
+  | "console"
+  | "roster"
+  | "runs"
+  | "outcomes"
+  | "assign"
+  | "holds";
 
 const SECTION_TABS: { key: StaffSection; label: string }[] = [
   { key: "console", label: "Console" },
@@ -93,7 +99,13 @@ function sectionFromUrl(): StaffSection | null {
   if (typeof window === "undefined") return null;
   const p = new URLSearchParams(window.location.search);
   const s = p.get("section");
-  if (s === "assign" || s === "roster" || s === "runs" || s === "console" || s === "holds") {
+  if (
+    s === "assign" ||
+    s === "roster" ||
+    s === "runs" ||
+    s === "console" ||
+    s === "holds"
+  ) {
     return s;
   }
   if (p.get("kind") || p.get("run_id") || p.get("prompt")) {
@@ -111,9 +123,13 @@ export function StaffPage() {
     refetch: refetchRoster,
   } = useStaffRoster();
   const rosterError = rosterErr ? errorMessage(rosterErr) : null;
-  const [initialPrefill] = useState<Partial<WorkRequest> | null>(prefillFromUrl);
+  const [initialPrefill] = useState<Partial<WorkRequest> | null>(
+    prefillFromUrl,
+  );
   const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
-  const [selectedThread, setSelectedThread] = useState<string | null>(threadFromUrl);
+  const [selectedThread, setSelectedThread] = useState<string | null>(
+    threadFromUrl,
+  );
   const [section, setSection] = useState<StaffSection>(
     () => sectionFromUrl() || (selectedRun ? "runs" : "console"),
   );
@@ -162,10 +178,15 @@ export function StaffPage() {
         ariaLabel="Staff sections"
         className="staff__tabs"
       />
-      <InboxPanel onOpenRun={openRun} onOpenThread={openThread} />
-      <Board onOpenRun={openRun} />
+      <details className="staff__activity" open={section !== "console"}>
+        <summary>Activity and approvals</summary>
+        <InboxPanel onOpenRun={openRun} onOpenThread={openThread} />
+        <Board onOpenRun={openRun} />
+      </details>
       <div className="staff__content">
-        {section === "console" ? <StaffConsoleDesktop initialThreadId={selectedThread} /> : null}
+        {section === "console" ? (
+          <StaffConsoleDesktop initialThreadId={selectedThread} chatFirst />
+        ) : null}
         {section === "roster" ? (
           <Roster
             roster={roster}
@@ -179,7 +200,11 @@ export function StaffPage() {
           <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />
         ) : null}
         {section === "runs" && !selectedRun ? (
-          <RunLog roles={roleNames} onOpenRun={openRun} refreshKey={runsRefresh} />
+          <RunLog
+            roles={roleNames}
+            onOpenRun={openRun}
+            refreshKey={runsRefresh}
+          />
         ) : null}
         {section === "outcomes" ? <OutcomesTable /> : null}
         {section === "assign" ? (

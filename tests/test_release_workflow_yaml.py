@@ -13,8 +13,11 @@ Validates `.github/workflows/release.yml` and `.github/workflows/verify-tag.yml`
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -165,14 +168,37 @@ def test_release_workflow_defines_dry_run_input() -> None:
     assert inputs["recover_existing_tag"].get("default") is False
 
 
+def _release_tarball_step() -> dict:
+    steps = _load_workflow(RELEASE_WORKFLOW)["jobs"]["release"]["steps"]
+    return next(step for step in steps if step.get("name") == "Build release tarball")
+
+
+def test_release_workflow_passes_actionlint_when_available() -> None:
+    actionlint = shutil.which("actionlint")
+    if actionlint is None:
+        pytest.skip("actionlint is not installed")
+
+    result = subprocess.run(
+        [actionlint, str(RELEASE_WORKFLOW.relative_to(ROOT))],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_release_uses_canonical_schema_v2_packager() -> None:
-    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-    assert "bash deploy/package-dashboard-artifact.sh \\" in text
-    assert '--output-dir "$OUTPUT_DIR" \\' in text
-    assert '--version "$VERSION" \\' in text
-    assert '--sha "$GITHUB_SHA"' in text
-    assert "bash deploy/write-deployment-metadata.sh" not in text
-    assert 'tar czf "$TMP_ARTIFACT"' not in text
+    step = _release_tarball_step()
+    assert "bash deploy/package-dashboard-artifact.sh \\" in step["run"]
+    assert '--output-dir "$OUTPUT_DIR" \\' in step["run"]
+    assert '--version "$VERSION" \\' in step["run"]
+    assert step["env"]["SOURCE_SHA"] == "${{ steps.source.outputs.sha }}"
+    assert '--sha "$SOURCE_SHA"' in step["run"]
+    assert '--sha "$GITHUB_SHA"' not in step["run"]
+    assert "bash deploy/write-deployment-metadata.sh" not in step["run"]
+    assert 'tar czf "$TMP_ARTIFACT"' not in step["run"]
 
 
 def test_release_publication_does_not_depend_on_checkout_discovery() -> None:

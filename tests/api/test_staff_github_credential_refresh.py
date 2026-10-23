@@ -41,7 +41,8 @@ def test_build_staff_run_env_uses_credential_helper_not_static_git_token() -> No
     assert env.get("GIT_CONFIG_KEY_0") == "credential.https://github.com.helper"
     assert env["STAFF_GITHUB_CREDENTIAL_URL"].endswith("/api/staff/runs/run-refresh-01/github-credential")
     assert env["STAFF_REAL_GH_PATH"] == "/usr/bin/gh"
-    assert env["PATH"].split(os.pathsep)[0].endswith("/staff/wrappers")
+    wrapper_path = env["PATH"].split(os.pathsep)[0].replace("\\", "/").rstrip("/")
+    assert wrapper_path.endswith("/staff/wrappers")
 
 
 def test_runner_does_not_cap_four_hour_wall_clock(tmp_path: Any) -> None:

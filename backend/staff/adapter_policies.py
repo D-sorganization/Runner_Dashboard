@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 # ── Read-only chat turns (#1484) ────────────────────────────────────────────
@@ -182,7 +183,79 @@ READ_ONLY_RUN_SHELL_DENY: tuple[str, ...] = UNATTENDED_SHELL_DENY + (
     "gh api",
 )
 _CLAUDE_READ_ONLY_RUN_TOOLS = ("Read", "Grep", "Glob", "TodoWrite", "WebFetch", "WebSearch")
-READ_ONLY_RUN_PROVIDERS: frozenset[str] = frozenset({"claude"})
+READ_ONLY_RUN_PROVIDERS: frozenset[str] = frozenset({"claude", "antigravity"})
+
+
+def antigravity_permissions(
+    read_only: bool = False,
+    *,
+    workdir: Path | None = None,
+    gitdir: Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Render agy shell command permissions and optionally merge them into settings.
+
+    Existing settings and permission entries are retained. When ``workdir`` is
+    provided, both the configured agy home and worktree settings are prepared;
+    ``gitdir`` additionally excludes the generated ``.gemini`` directory.
+    """
+    allow_commands = READ_ONLY_RUN_SHELL_ALLOW if read_only else UNATTENDED_SHELL_ALLOW
+    deny_commands = READ_ONLY_RUN_SHELL_DENY if read_only else UNATTENDED_SHELL_DENY
+    allow = list(
+        dict.fromkeys(
+            rule
+            for prefix in allow_commands
+            for rule in (f"command({prefix}*)", f"command({prefix})", f"command({prefix} *)")
+        )
+    )
+    deny = list(
+        dict.fromkeys(
+            rule
+            for prefix in deny_commands
+            for rule in (f"command({prefix}*)", f"command({prefix})", f"command({prefix} *)")
+        )
+    )
+
+    if workdir is not None:
+        from staff.cli_oauth_session import resolve_antigravity_home
+
+        agy_home = resolve_antigravity_home()
+        for settings_path in (
+            agy_home / "settings.json",
+            agy_home / "antigravity-cli" / "settings.json",
+            workdir / ".gemini" / "settings.json",
+        ):
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                settings = {}
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"cannot read Antigravity settings {settings_path}: {exc}") from exc
+            if not isinstance(settings, dict):
+                raise ValueError(f"Antigravity settings must be a JSON object: {settings_path}")
+            permissions = settings.setdefault("permissions", {})
+            if not isinstance(permissions, dict):
+                raise ValueError(f"Antigravity permissions must be a JSON object: {settings_path}")
+            for key, rules in (("allow", allow), ("deny", deny)):
+                current = permissions.setdefault(key, [])
+                if not isinstance(current, list) or not all(isinstance(item, str) for item in current):
+                    raise ValueError(f"Antigravity permissions.{key} must be a string list: {settings_path}")
+                permissions[key] = list(dict.fromkeys([*current, *rules]))
+            trusted = settings.setdefault("trustedWorkspaces", [])
+            if isinstance(trusted, list):
+                for p_str in (str(workdir), str(workdir.parent)):
+                    if p_str not in trusted:
+                        trusted.append(p_str)
+            settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+        if gitdir is not None:
+            exclude = gitdir / "info" / "exclude"
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+            if ".gemini/" not in existing.splitlines():
+                separator = "" if not existing or existing.endswith("\n") else "\n"
+                exclude.write_text(existing + separator + ".gemini/\n", encoding="utf-8")
+    return allow, deny
 
 
 def claude_read_only_run_tools() -> tuple[str, str]:

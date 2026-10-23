@@ -23,9 +23,11 @@ import { isPanelThread } from "./panelTurn";
 import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
+import { PROJECT_WORKFLOWS } from "./projectWorkflows";
+import { pushThreadUrl, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
 import "./mobile.css";
 
-export type MobileView = "roster" | "thread" | "inbox" | "runs";
+export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
 
 export interface StaffConsoleMobileProps {
   roles?: StaffRoleItem[];
@@ -52,7 +54,6 @@ function parseUrlParams(): { threadId: string | null; roleName: string | null; t
   };
 }
 
-
 export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   roles: initialRoles,
   initialView = "roster",
@@ -75,8 +76,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     onApproveProposal,
     onDenyProposal,
   });
-  const { roles, selectedRole, activeThread, currentRole: currentRoleObj } = sc;
+  const { roles, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
   const [view, setView] = useState<MobileView>(initialView);
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   // SC-D9: move keyboard focus with the full-screen view change. The thread
   // heading takes focus (not the composer, which would pop the soft
@@ -93,6 +96,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   }, [view]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showContext, setShowContext] = useState(false);
+  const [composerPrefill, setComposerPrefill] = useState("");
+  const revealThreadAfterHomeSend = useMobileHomeSendNavigation({
+    activeThread,
+    isHomeView: () => viewRef.current === "home",
+    onOpenThread,
+    setThreadView: () => setView("thread"),
+  });
 
   // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
   // push link and is real; a ?role= link resolves to the role's backend thread.
@@ -139,16 +149,14 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
 
   // Open a specific role conversation on its backend thread.
   const handleSelectRole = useCallback(
-    async (roleName: string) => {
+    async (roleName: string, prefill = "") => {
       const thread = await sc.openRole(roleName);
       if (!thread) return;
+      setComposerPrefill(prefill);
       setView("thread");
       onOpenThread?.(thread.id);
 
-      if (typeof window !== "undefined") {
-        const nextUrl = `?role=${encodeURIComponent(roleName)}&thread=${encodeURIComponent(thread.id)}`;
-        window.history.pushState(null, "", nextUrl);
-      }
+      pushThreadUrl(roleName, thread.id);
     },
     [sc, onOpenThread],
   );
@@ -162,7 +170,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     }
   }, []);
 
-  const handleSendMessage = sc.sendMessage;
+  const handleSendMessage = useCallback(async (payload: SendMessagePayload) => {
+    const result = await sendMessage(payload);
+    if (result.ok !== false && viewRef.current === "home" && !onSendMessage) {
+      revealThreadAfterHomeSend();
+    }
+    return result;
+  }, [onSendMessage, revealThreadAfterHomeSend, sendMessage]);
   const handleApproveProposal = sc.approveProposal;
   const handleDenyProposal = sc.denyProposal;
 
@@ -223,6 +237,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 type="button"
                 className="staff-mobile__details-btn"
                 data-testid="staff-mobile-new-conversation-btn"
+                aria-label="New conversation"
                 onClick={() => void sc.newConversation()}
               >
                 New conversation
@@ -279,6 +294,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               onSendMessage={handleSendMessage}
               placeholder={`Message ${currentRoleObj.title || "staff"}…`}
               isPanel={isPanelThread(activeThread)}
+              prefilledText={composerPrefill}
             />
           </div>
 
@@ -292,8 +308,42 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
         </div>
       )}
 
+      {/* ── Chat-first home ────────────────────────────────────────────────── */}
+      {view === "home" && (
+        <div className="staff-mobile__view-container" data-testid="staff-mobile-home" role="region" aria-label="Ask Barb">
+          <header className="staff-mobile__header">
+            <h1 className="staff-mobile__title">Ask Barb</h1>
+            <button type="button" className="staff-mobile__details-btn" onClick={() => setView("roster")}>Choose staff</button>
+          </header>
+          <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
+          <main className="staff-mobile__main-content staff-mobile__home-content">
+            <section className="staff-mobile__home-intro" aria-labelledby="staff-mobile-home-title">
+              <span className="staff-mobile__home-eyebrow">Your fleet, one conversation away</span>
+              <h2 id="staff-mobile-home-title">What would you like to work on?</h2>
+              <p>Ask Barb to help, or start with a project workflow. Nothing runs until you send.</p>
+            </section>
+            <div className="staff-mobile__project-starters" aria-label="Project starters">
+              {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
+                <button key={project} type="button" className="staff-mobile__project-starter" aria-label={`Start ${project}`} onClick={() => setComposerPrefill(prompt)}>
+                  <span>Start {project}</span><span>Prepare a test-first triage</span>
+                </button>
+              ))}
+            </div>
+          </main>
+          <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
+            <GroupCostConfirm guard={sc.costGuard} />
+            <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} />
+          </div>
+          <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Choose staff</button>
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-inbox" onClick={() => setView("inbox")}>Inbox</button>
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-runs" onClick={() => setView("runs")}>Runs</button>
+          </nav>
+        </div>
+      )}
+
       {/* ── Roster, Inbox & Runs Views ────────────────────────────────────── */}
-      {view !== "thread" && (
+      {view !== "thread" && view !== "home" && (
         <div
           className="staff-mobile__view-container"
           data-testid="staff-mobile-roster"
@@ -349,6 +399,15 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                       Ask anything — Barb routes to the right specialist
                     </div>
                   </div>
+                </div>
+
+                <div className="staff-mobile__project-starters" aria-label="Project starters">
+                  {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
+                    <button key={project} type="button" className="staff-mobile__project-starter" aria-label={`Start ${project}`} onClick={() => void handleSelectRole("barb", prompt)}>
+                      <span>Start {project}</span>
+                      <span>Prepare a test-first triage</span>
+                    </button>
+                  ))}
                 </div>
 
                 <div className="staff-mobile__roles-list">

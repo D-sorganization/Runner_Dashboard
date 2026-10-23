@@ -6,10 +6,11 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from staff import consolidation
+from staff.model_tiers import validate_role_tier
 
 _SAFE_BRANCH = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
@@ -21,6 +22,8 @@ class RunRequest:
     role: str
     provider: str | None = None
     model: str | None = None
+    # Internal dispatch intent; not a public HTTP request field.
+    model_tier: str | None = None
     repo: str = ""
     issue: int | None = None
     pr: int | None = None
@@ -36,10 +39,19 @@ class RunRequest:
     pr_lifecycle: str = "arm_and_exit"
     # Existing branch the worktree starts from instead of origin/main (RD-1 CI fixes, #1881).
     head_ref: str = ""
+    task_type: str = ""
+    standards_extra: str = ""
+    # When set, must exist in the skills registry (#2157); omit to use role/repo matching + fallback.
+    requested_skill: str | None = None
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
             raise ValueError("head_ref must be a safe branch name of the target repo")
+        tier_errors = validate_role_tier(self.model_tier)
+        if tier_errors:
+            raise ValueError(f"model_tier {tier_errors[0]}")
+        if self.model_tier is not None and self.model_tier.strip():
+            object.__setattr__(self, "model_tier", self.model_tier.strip().lower())
 
     @property
     def target_kind(self) -> str:
@@ -72,6 +84,16 @@ class RunPlan:
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
     head_ref: str = ""
+    model_tier: str = ""
+    skill_pin: str = ""
+    standards_version: str = ""
+    standards_tokens: int = 0
+    context_stamp: str = "{}"
+    library_work_ids: tuple[int, ...] = ()
+    provider_auth_skipped: tuple[dict[str, str], ...] = ()
+    injected_lesson_ids: tuple[str, ...] = ()
+    skipped_lesson_ids: dict[str, str] = field(default_factory=dict)
+    lessons_tokens: int = 0
 
     @property
     def strategy_mode(self) -> str:
@@ -90,6 +112,7 @@ class RunPlan:
             "role": self.role,
             "provider": self.provider,
             "model": self.model,
+            "model_tier": self.model_tier,
             "repo": self.repo,
             "target_kind": self.target_kind,
             "target_ref": self.target_ref,
@@ -103,4 +126,10 @@ class RunPlan:
             "pr_lifecycle": self.pr_lifecycle,
             "head_ref": self.head_ref,
             "consolidation": dict(self.consolidation) if self.consolidation else None,
+            "skill_pin": self.skill_pin,
+            "skill": None if not self.skill_pin else {"pin": self.skill_pin},
+            "provider_auth_skipped": [dict(row) for row in self.provider_auth_skipped],
+            "injected_lesson_ids": list(self.injected_lesson_ids),
+            "skipped_lesson_ids": dict(self.skipped_lesson_ids),
+            "lessons_tokens": self.lessons_tokens,
         }

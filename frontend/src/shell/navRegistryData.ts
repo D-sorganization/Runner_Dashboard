@@ -2,7 +2,7 @@
  * navRegistryData.ts — Nav items and groups definition (SC-D2 / issue #1309).
  *
  * Defines the 4-area information architecture:
- *   - Staff (Staff Console, Fleet Command, Maxwell)
+ *   - Staff (Staff Console, Fleet Command, Library, Agent Bus)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
  *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights)
  *   - Settings (one Settings page: Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools)
@@ -20,7 +20,6 @@ import {
   QueueIcon,
   WrenchIcon,
   ActivityIcon,
-  BotIcon,
   ChartIcon,
   InboxIcon,
   SettingsIcon,
@@ -28,6 +27,9 @@ import {
   FlagIcon,
   BriefcaseIcon,
   CompassIcon,
+  RepoIcon,
+  UsersIcon,
+  BrainIcon,
 } from "./navIcons";
 
 export type NavGroupId = "staff" | "work" | "fleet" | "settings";
@@ -83,17 +85,38 @@ export const NAV_ITEMS: readonly NavItem[] = [
     mobileDrawer: true,
   },
   {
-    id: "maxwell",
-    label: "Maxwell",
+    id: "agent-bus",
+    label: "Agent bus",
     group: "staff",
-    Icon: BotIcon,
-    tooltip: "Maxwell autonomous AI control plane: status and tasks.",
-    tabId: "maxwell",
+    Icon: UsersIcon,
+    tooltip: "Live agent sessions, inboxes, work-item threads, and coordination backlog.",
+    tabId: "agent-bus",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,
   },
-
+  {
+    id: "library",
+    label: "Library",
+    group: "staff",
+    Icon: RepoIcon,
+    tooltip: "Alexandria library search, ingest status, and submission review queue.",
+    tabId: "library",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "context",
+    label: "Context",
+    group: "staff",
+    Icon: BrainIcon,
+    tooltip: "Fleet standards pin, Tier-1 skill versions, managed AGENTS.md sync, lesson review, and run context estimates.",
+    tabId: "context",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
   // ── Work ─────────────────────────────────────────────────────────────────
   {
     id: "queue",

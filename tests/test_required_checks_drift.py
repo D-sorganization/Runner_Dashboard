@@ -41,10 +41,17 @@ def _load(name: str):
     return drift._load_json(_CONTRACTS / name)
 
 
-def test_policy_file_lists_the_three_intended_contexts() -> None:
+def test_policy_file_lists_the_intended_contexts() -> None:
     policy = drift._load_json(_POLICY)
     contexts = {entry["context"] for entry in policy["required_contexts"]}
-    assert contexts == {"quality-gate", "tests", "guard"}
+    assert contexts == {
+        "quality-gate",
+        "frontend-required",
+        "tests",
+        "guard",
+        "TypeScript typecheck (tsc)",
+        "detect-secrets (baseline diff)",
+    }
 
 
 def test_live_snapshot_reproduces_the_known_issue_1119_gap() -> None:
@@ -61,7 +68,14 @@ def test_live_snapshot_reproduces_the_known_issue_1119_gap() -> None:
 
     missing = drift.required_context_drift(policy, protection, rulesets)
 
-    assert missing == ["guard"]
+    assert sorted(missing) == sorted(
+        [
+            "detect-secrets (baseline diff)",
+            "frontend-required",
+            "guard",
+            "TypeScript typecheck (tsc)",
+        ]
+    )
 
 
 def test_fixed_example_ruleset_has_no_drift() -> None:

@@ -1,0 +1,6 @@
+{
+  "description": "Fleet quality hooks are installed in the protected global profile.",
+  "hooks": {
+    "Stop": []
+  }
+}

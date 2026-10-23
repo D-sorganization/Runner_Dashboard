@@ -1,0 +1,48 @@
+# Repo-managed defaults for fleet assistant / agent bot principals (merged at dashboard startup).
+#
+# The live identity store remains under ~/.config/runner-dashboard/ (or
+# $DASHBOARD_IDENTITY_DIR): principals.yml, tokens.yml, and optional
+# agent-tokens/*.token files. On load, each entry below is merged into a
+# matching principal (by id). Missing principals are created when a token file
+# exists: agent-tokens/<id>.token (e.g. agent-grok.token).
+#
+# assistant_profile: merged into every agents[] row (per-agent keys override).
+# kind: grokbot | codex | claude | other — stored on the principal as assistant_kind.
+#
+# Mint a bearer without printing it in logs (run on the hub or a machine with admin session):
+#   TOKEN=$(curl -s -X POST "$FLEET_API_URL/api/admin/principals/<id>/token" \
+#     -H "Authorization: Bearer $ADMIN_TOKEN" \
+#     -H "X-Requested-With: XMLHttpRequest" \
+#     -H "Content-Type: application/json" \
+#     -d '{"name":"agent-tokens/<id>.token"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+#   install -m 600 /dev/stdin ~/.config/runner-dashboard/agent-tokens/<id>.token <<<"$TOKEN"
+# Then restart runner-dashboard so defaults and token files are ingested.
+#
+assistant_profile:
+  roles:
+    - bot
+
+agents:
+  - id: agent-grok
+    kind: grokbot
+    name: Barb (Grok fleet secretary)
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+  - id: agent-codex-hands
+    kind: codex
+    name: Codex hands (computer control)
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+  - id: agent-codex
+    kind: codex
+    name: Codex CLI agent
+  - id: agent-claude
+    kind: claude
+    name: Claude agent
+  - id: agent-gemini
+    kind: other
+    name: Gemini agent
