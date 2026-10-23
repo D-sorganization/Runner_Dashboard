@@ -156,6 +156,12 @@ def library_add_source(
             include_globs=body.get("include_globs"),
             exclude_globs=body.get("exclude_globs"),
             created_by=principal.id,
+            backend_type=body.get("backend_type", "local_folder"),
+            drive_folder_id=body.get("drive_folder_id", ""),
+            drive_folder_url=body.get("drive_folder_url", ""),
+            preferential=body.get("preferential"),
+            priority=body.get("priority"),
+            repos=body.get("repos"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

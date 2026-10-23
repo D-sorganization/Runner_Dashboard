@@ -27,3 +27,26 @@ def test_attach_library_references(tmp_path: Path, monkeypatch) -> None:
     ingest_directory(root, db_path=db)
     block, ids = attach_library_references(db, repo="UpstreamDrift", query="hip joint torque golf")
     assert ids and "Library references" in block and "Smith" in block
+
+
+def test_attach_library_references_surfaces_preferential_google_drive_sources(tmp_path: Path) -> None:
+    from library.sources import add_source
+
+    db = tmp_path / "library.sqlite"
+    add_source(
+        db,
+        source_id="agent-drive",
+        label="Agent Spec Folder",
+        backend_type="google_drive_connector",
+        drive_folder_id="1AgentSharedFolderId999999",
+        shared=True,
+        repos=["UpstreamDrift"],
+    )
+    block, ids = attach_library_references(db, repo="UpstreamDrift", query="hip joint torque")
+    assert ids == ()
+    assert "Agent Spec Folder" in block
+    assert "parentId='1AgentSharedFolderId999999'" in block
+    assert "preferential · priority 1" in block
+
+    other_block, _ = attach_library_references(db, repo="UnrelatedRepo", query="hip joint torque")
+    assert other_block == ""
