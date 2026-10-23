@@ -113,25 +113,23 @@ def _no_real_provider_cli(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _hermetic_provider_cli_discovery(monkeypatch):
-    """Keep host-installed provider CLIs out of the roster version probe (#2501).
+    """Keep host-installed provider CLIs out of staff discovery (#2501).
 
-    ``cli_version`` resolves executables with ``shutil.which``; on a host with a
-    real ``claude`` on PATH the probe path runs. Tests opt a CLI in through
-    ``staff_cli_installed``. Only ``cli_version``'s view of ``shutil`` is replaced,
-    so unrelated ``shutil.which`` callers are unaffected.
+    ``cli_version`` and ``ProviderAdapter.installed`` resolve executables with
+    the shared ``shutil.which``; on a host with a real ``claude`` on PATH the
+    probe path runs. Provider CLI names resolve to ``None`` unless a test pins
+    ``shutil.which`` itself (or uses ``staff_cli_installed``); every other
+    command resolves normally.
     """
-    import types  # noqa: PLC0415
-
-    from staff import cli_version  # noqa: PLC0415
-
+    real_which = shutil.which
     provider_cli_names = {"codex", "claude", "agy", "antigravity"}
 
     def which(cmd, *args, **kwargs):
         if os.path.basename(os.fspath(cmd)).lower().removesuffix(".exe") in provider_cli_names:
             return None
-        return shutil.which(cmd, *args, **kwargs)
+        return real_which(cmd, *args, **kwargs)
 
-    monkeypatch.setattr(cli_version, "shutil", types.SimpleNamespace(which=which))
+    monkeypatch.setattr(shutil, "which", which)
 
 
 # ---------------------------------------------------------------------------
