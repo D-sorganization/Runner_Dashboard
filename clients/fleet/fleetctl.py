@@ -94,6 +94,7 @@ def _add_library_operations(parser: argparse.ArgumentParser) -> None:
     verify.set_defaults(command="library-verify", content=None)
     verify.add_argument("--file", dest="verification_file", required=True, type=Path)
     _add_argument(verify, "run_id", BY_CLI["library-verify"].properties["run_id"], positional=False)
+    _add_argument(verify, "repo", BY_CLI["library-verify"].properties["repo"], positional=False)
 
 
 def build_parser() -> argparse.ArgumentParser:

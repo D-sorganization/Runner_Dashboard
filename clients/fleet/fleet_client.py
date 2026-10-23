@@ -1071,7 +1071,7 @@ class FleetClient:
         """Read local and pooled source availability using the caller's existing permissions."""
         return self.fleet_query(source="library", op="sources")
 
-    def library_verify(self, content: str, run_id: str | None = None) -> dict[str, Any]:
+    def library_verify(self, content: str, run_id: str | None = None, repo: str | None = None) -> dict[str, Any]:
         """Verify bounded document content through the existing owner-checked API."""
         _check(isinstance(content, str), "content must be text")
         _check(len(content) <= MAX_VERIFICATION_CHARACTERS, "verification content exceeds character limit")
@@ -1080,6 +1080,9 @@ class FleetClient:
         if identity is not None:
             _check(isinstance(identity, str) and len(identity) <= 120, "invalid run_id")
             body["run_id"] = _match(PATTERNS.run_id, identity, "run_id")
+        repository = _opt(PATTERNS.repo, repo, "repo")
+        if repository is not None:
+            body["repo"] = repository
         result = self.request("POST", "/api/v1/library/verify", body=body)
         if not isinstance(result, dict) or not isinstance(result.get("verified"), bool):
             raise FleetAPIError(502, {"detail": "invalid verification response"})

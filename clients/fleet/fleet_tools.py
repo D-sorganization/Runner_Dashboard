@@ -689,6 +689,7 @@ COMMANDS: tuple[Command, ...] = (
         {
             "content": {"type": "string", "maxLength": MAX_VERIFICATION_CHARACTERS},
             "run_id": RUN_ID,
+            "repo": REPO,
         },
         required=("content",),
     ),
