@@ -81,3 +81,28 @@ def test_startup_ingest_runs_off_event_loop_and_passes_background_bound(tmp_path
                 pass
 
     asyncio.run(check_loop())
+
+
+def test_bounded_source_batches_advance_until_the_entire_source_is_indexed(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    batch_size = 250
+    file_count = batch_size * 2 + 1
+    expected_names: set[str] = set()
+    for index in range(file_count):
+        name = f"Author - {index:04}.txt" if index % 2 == 0 else f"{index:04}.txt"
+        expected_names.add(name)
+        (source_root / name).write_text(f"Distinct searchable source content number {index}.", encoding="utf-8")
+    database = tmp_path / "library.sqlite"
+    add_source(database, source_id="source", label="Source", root_path=source_root)
+
+    for _ in range(3):
+        ingest.ingest_sources(database, max_files=batch_size)
+
+    with sqlite3.connect(database) as conn:
+        indexed = {
+            row[0] for row in conn.execute("SELECT rel_path FROM files WHERE source_id='source' AND status='present'")
+        }
+    assert indexed == expected_names

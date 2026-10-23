@@ -36,7 +36,8 @@ def ingest_directory(
     db_path: Path | None = None,
     source_id: str = "default",
     max_files: int | None = None,
-) -> dict[str, int | bool]:
+    start_after: str | None = None,
+) -> dict[str, int | bool | str | None]:
     if max_files is not None and (isinstance(max_files, bool) or not isinstance(max_files, int) or max_files <= 0):
         raise ValueError("max_files must be a positive integer")
     source_root = source_root.resolve()
@@ -50,15 +51,34 @@ def ingest_directory(
     except LookupError:
         include_globs, exclude_globs = [], []
     paths: list[Path] = []
-    for path in _eligible_paths(source_root, include_globs, exclude_globs):
-        paths.append(path)
-        if max_files is not None and len(paths) == max_files:
-            break
-    # If the limit was reached, treat the pass as incomplete conservatively:
-    # a limited traversal must never infer that unseen files were removed.
-    scan_complete = max_files is None or len(paths) < max_files
     if max_files is None:
+        paths = list(_eligible_paths(source_root, include_globs, exclude_globs))
         paths.sort(key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()))
+    elif start_after:
+        found_cursor = False
+        for path in _eligible_paths(source_root, include_globs, exclude_globs):
+            if not found_cursor:
+                found_cursor = path.relative_to(source_root).as_posix() == start_after
+                continue
+            paths.append(path)
+            if len(paths) == max_files:
+                break
+        if not found_cursor or not paths:
+            paths = []
+            for path in _eligible_paths(source_root, include_globs, exclude_globs):
+                paths.append(path)
+                if len(paths) == max_files:
+                    break
+    else:
+        for path in _eligible_paths(source_root, include_globs, exclude_globs):
+            paths.append(path)
+            if len(paths) == max_files:
+                break
+    # A bounded pass never has enough evidence to reconcile removals.
+    scan_complete = max_files is None
+    next_cursor = paths[-1].relative_to(source_root).as_posix() if paths else start_after
+    if scan_complete:
+        next_cursor = None
     started = datetime.now(UTC).isoformat()
     stats = {"files_seen": 0, "files_indexed": 0, "files_skipped": 0, "files_rejected": 0, "files_removed": 0}
     seen_paths: set[str] = set()
@@ -120,7 +140,7 @@ def ingest_directory(
             ),
         )
         conn.commit()
-    return {**stats, "scan_complete": scan_complete}
+    return {**stats, "scan_complete": scan_complete, "next_cursor": next_cursor}
 
 
 def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: list[str]) -> Iterator[Path]:
@@ -458,22 +478,26 @@ def _extract_epub(raw: bytes) -> tuple[str | None, str | None, list[tuple[str, s
         return _dc("creator"), _dc("title"), chapters
 
 
-def ingest_sources(db_path: Path | None = None, *, max_files: int | None = None) -> dict[str, dict[str, int | bool]]:
+def ingest_sources(
+    db_path: Path | None = None, *, max_files: int | None = None
+) -> dict[str, dict[str, int | bool | str | None]]:
     db = init_library_db(db_path)
     seed_default_source(db)
-    results: dict[str, dict[str, int | bool]] = {}
+    results: dict[str, dict[str, int | bool | str | None]] = {}
     with closing(LibraryStore(db).connect()) as conn:
-        sources = conn.execute("SELECT id, root_path FROM library_sources WHERE status='active' ORDER BY id").fetchall()
-    for source_id, root_path in sources:
+        sources = conn.execute(
+            "SELECT id, root_path, last_ingest_path FROM library_sources WHERE status='active' ORDER BY id"
+        ).fetchall()
+    for source_id, root_path, last_ingest_path in sources:
         p = Path(root_path)
         if not p.is_dir():
             continue
-        stats = ingest_directory(p, db_path=db, source_id=source_id, max_files=max_files)
+        stats = ingest_directory(p, db_path=db, source_id=source_id, max_files=max_files, start_after=last_ingest_path)
         results[source_id] = stats
         with closing(LibraryStore(db).connect()) as conn:
             conn.execute(
-                "UPDATE library_sources SET last_ingest_at=? WHERE id=?",
-                (datetime.now(UTC).isoformat(), source_id),
+                "UPDATE library_sources SET last_ingest_at=?, last_ingest_path=? WHERE id=?",
+                (datetime.now(UTC).isoformat(), stats["next_cursor"], source_id),
             )
             conn.commit()
     return results
