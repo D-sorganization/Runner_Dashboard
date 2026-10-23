@@ -155,7 +155,6 @@ export function ContextPage({
 
   useEffect(() => {
     if (propSkills === undefined) void fetchSkills();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propSkills]);
 
   useEffect(() => {
