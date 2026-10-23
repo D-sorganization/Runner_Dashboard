@@ -240,7 +240,7 @@ async def list_runs(
 async def get_run(
     run_id: str,
     events: int = Query(default=200, ge=0, le=MAX_LIMIT),
-    local: bool = Query(default=False),
+    local: bool = Query(default=False, include_in_schema=False),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     store = get_runner().store
