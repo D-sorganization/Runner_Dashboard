@@ -298,7 +298,7 @@ def staff_cli_installed(monkeypatch):
 
     monkeypatch.setattr(ProviderAdapter, "installed", _installed)
     monkeypatch.setattr(cli_version, "is_outdated", lambda *a, **kw: False)
-    monkeypatch.setattr(cli_version, "installed_version", lambda *a, **kw: (99, 0, 0))
+    monkeypatch.setattr(cli_version, "installed_version", lambda *a, **kw: (2, 0, 0))
 
     def _mark_installed(*providers: str) -> None:
         installed_providers.update(providers)
