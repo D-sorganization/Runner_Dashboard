@@ -42,6 +42,7 @@ from library.search import (
 from library.sources import add_source, list_sources, remove_source, seed_default_source, update_source
 from library.submissions import create_submission, list_submissions
 from library.verify import verify_content
+from routers.library_fetch import fetch_page_locator
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
 _db_override: Path | None = None
@@ -279,7 +280,10 @@ def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
 @router.get("/fetch")
 async def library_fetch(
     request: Request,
-    cite: str = Query(..., min_length=1, max_length=512),
+    cite: str | None = Query(None, min_length=1, max_length=512),
+    source_id: str | None = Query(None, pattern=r"^[a-z0-9][a-z0-9-]{0,62}$"),
+    work_id: int | None = Query(None, gt=0),
+    page: int | None = Query(None, gt=0),
     scope: str = Query("federated", pattern="^(local|federated)$"),
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
@@ -288,9 +292,22 @@ async def library_fetch(
     from dashboard_config import FLEET_NODES, HOSTNAME
     from library.pool import validate_node_url
 
+    if cite is None:
+        return fetch_page_locator(
+            request,
+            _principal,
+            _db(),
+            source_id=source_id,
+            work_id=work_id,
+            page=page,
+            scope=scope,
+            local_node=HOSTNAME or "local",
+        )
+    if source_id is not None or work_id is not None or page is not None:
+        raise HTTPException(status_code=422, detail="use either cite or source_id/work_id/page")
     run_id = requested_run_id(request, _principal)
-    ref = _parse_cite(cite)
     local_name = HOSTNAME or "local"
+    ref = _parse_cite(cite)
     local_missing: HTTPException | None = None
     if scope == "local" or ref["node"] in (None, local_name, "local"):
         try:
