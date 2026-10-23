@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 import sys
 import time
 import types
@@ -134,7 +135,7 @@ async def test_spoke_failure_logs_safe_probe_context(
     spoke: tuple[AsyncMock, AsyncMock], caplog: pytest.LogCaptureFixture
 ) -> None:
     direct, upstream = spoke
-    secret = "token=do-not-log"
+    secret = secrets.token_urlsafe(32)
     upstream.side_effect = HTTPException(status_code=503, detail=secret)
     body = await health.health_check(request())
     assert body["github_api"] == "unreachable"

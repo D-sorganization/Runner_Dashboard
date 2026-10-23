@@ -5581,6 +5581,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fleet/friction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Friction */
+        get: operations["list_friction_api_v1_fleet_friction_get"];
+        put?: never;
+        /** Create Friction */
+        post: operations["create_friction_api_v1_fleet_friction_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/friction/{friction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Friction */
+        patch: operations["update_friction_api_v1_fleet_friction__friction_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/fleet/friction/{friction_id}/recurrence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Friction Recurrence
+         * @description Detectors call this when a closed or open friction recurs: increments the count, stamps last_seen_at.
+         */
+        post: operations["friction_recurrence_api_v1_fleet_friction__friction_id__recurrence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/owner-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Owner Questions */
+        get: operations["list_owner_questions_api_v1_fleet_owner_questions_get"];
+        put?: never;
+        /** Ask Owner Question */
+        post: operations["ask_owner_question_api_v1_fleet_owner_questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/owner-questions/{question_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Owner Question */
+        post: operations["answer_owner_question_api_v1_fleet_owner_questions__question_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/owner-questions/{question_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Owner Question */
+        post: operations["withdraw_owner_question_api_v1_fleet_owner_questions__question_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/browse": {
         parameters: {
             query?: never;
@@ -5867,6 +5974,58 @@ export interface paths {
         get: operations["metrics_weekly_summary_api_v1_metrics_weekly_summary_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Intake Proposals */
+        get: operations["list_intake_proposals_api_v1_proposals_get"];
+        put?: never;
+        /** Create Intake Proposal */
+        post: operations["create_intake_proposal_api_v1_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Intake Proposal */
+        get: operations["get_intake_proposal_api_v1_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{proposal_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Intake Proposal */
+        post: operations["decide_intake_proposal_api_v1_proposals__proposal_id__decide_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8463,6 +8622,33 @@ export interface components {
             thread_id: string;
         };
         /**
+         * CreateIntakeProposalRequest
+         * @description Manual/testing create; production path is email-intake principal only.
+         */
+        CreateIntakeProposalRequest: {
+            /** Body Plain */
+            body_plain: string;
+            /** Dispatch */
+            dispatch?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Message Id
+             * @default
+             */
+            message_id: string;
+            /**
+             * Sender
+             * @default
+             */
+            sender: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+        };
+        /**
          * CreateProposalRequest
          * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
          */
@@ -8531,6 +8717,31 @@ export interface components {
             thread_id?: string | null;
             /** Title */
             title: string;
+        };
+        /** DecideIntakeProposalRequest */
+        DecideIntakeProposalRequest: {
+            /**
+             * Decision
+             * @description approved or rejected
+             */
+            decision: string;
+            /**
+             * Execute Dispatch
+             * @description When approving, call staff dispatch (never automatic from intake).
+             * @default false
+             */
+            execute_dispatch: boolean;
+            /**
+             * Owner Approval Ref
+             * @description Required when agent-grok approves; names Dieter's explicit approval.
+             * @default
+             */
+            owner_approval_ref: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** DecideProposalRequest */
         DecideProposalRequest: {
@@ -8742,6 +8953,119 @@ export interface components {
             expires_at: number;
             /** Token */
             token: string;
+        };
+        /** FrictionCreate */
+        FrictionCreate: {
+            /**
+             * Detector
+             * @default
+             */
+            detector: string;
+            /**
+             * Detector Ref
+             * @default
+             */
+            detector_ref: string;
+            /**
+             * Fix
+             * @default
+             */
+            fix: string;
+            /**
+             * Fix Ref
+             * @default
+             */
+            fix_ref: string;
+            /** Repo */
+            repo?: string | null;
+            /** Seen */
+            seen: string;
+            /**
+             * Status
+             * @default open
+             * @enum {string}
+             */
+            status: "open" | "in_progress" | "waiting" | "closed";
+            /** Title */
+            title: string;
+        };
+        /** FrictionItem */
+        FrictionItem: {
+            /** Created At */
+            created_at: string;
+            /**
+             * Created By
+             * @default
+             */
+            created_by: string;
+            /**
+             * Detector
+             * @default
+             */
+            detector: string;
+            /**
+             * Detector Ref
+             * @default
+             */
+            detector_ref: string;
+            /**
+             * Fix
+             * @default
+             */
+            fix: string;
+            /**
+             * Fix Ref
+             * @default
+             */
+            fix_ref: string;
+            /** Id */
+            id: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /**
+             * Recurrence Count
+             * @default 0
+             */
+            recurrence_count: number;
+            /** Repo */
+            repo?: string | null;
+            /** Seen */
+            seen: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "in_progress" | "waiting" | "closed";
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** FrictionList */
+        FrictionList: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["FrictionItem"][];
+        };
+        /** FrictionUpdate */
+        FrictionUpdate: {
+            /** Detector */
+            detector?: string | null;
+            /** Detector Ref */
+            detector_ref?: string | null;
+            /** Fix */
+            fix?: string | null;
+            /** Fix Ref */
+            fix_ref?: string | null;
+            /** Repo */
+            repo?: string | null;
+            /** Seen */
+            seen?: string | null;
+            /** Status */
+            status?: ("open" | "in_progress" | "waiting" | "closed") | null;
+            /** Title */
+            title?: string | null;
         };
         /** GithubCredentialResponse */
         GithubCredentialResponse: {
@@ -9517,6 +9841,64 @@ export interface components {
              * @default agent.completed
              */
             topic: string;
+        };
+        /** QuestionAnswer */
+        QuestionAnswer: {
+            /** Answer */
+            answer: string;
+        };
+        /** QuestionCreate */
+        QuestionCreate: {
+            /** Issue */
+            issue?: number | null;
+            /** Options */
+            options?: string[];
+            /** Question */
+            question: string;
+            /** Recommended */
+            recommended?: string | null;
+            /** Repo */
+            repo?: string | null;
+        };
+        /** QuestionItem */
+        QuestionItem: {
+            /** Answer */
+            answer?: string | null;
+            /** Answered At */
+            answered_at?: string | null;
+            /** Answered By */
+            answered_by?: string | null;
+            /** Asked At */
+            asked_at: string;
+            /**
+             * Asked By
+             * @default
+             */
+            asked_by: string;
+            /** Id */
+            id: string;
+            /** Issue */
+            issue?: number | null;
+            /** Options */
+            options?: string[];
+            /** Question */
+            question: string;
+            /** Recommended */
+            recommended?: string | null;
+            /** Repo */
+            repo?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "answered" | "withdrawn";
+        };
+        /** QuestionList */
+        QuestionList: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["QuestionItem"][];
         };
         /**
          * QueueActionRequest
@@ -11185,6 +11567,12 @@ export interface components {
              */
             exclusions_active: number;
             /**
+             * Friction Open
+             * @description Friction ledger rows not yet closed
+             * @default 0
+             */
+            friction_open: number;
+            /**
              * Generated At
              * @description ISO-8601 UTC timestamp
              */
@@ -11215,6 +11603,12 @@ export interface components {
             operator_auth?: {
                 [key: string]: unknown;
             };
+            /**
+             * Owner Questions Open
+             * @description Owner questions awaiting an answer
+             * @default 0
+             */
+            owner_questions_open: number;
             /** Providers */
             providers?: {
                 [key: string]: unknown;
@@ -19362,6 +19756,269 @@ export interface operations {
             };
         };
     };
+    list_friction_api_v1_fleet_friction_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "in_progress" | "waiting" | "closed") | null;
+                repo?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FrictionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_friction_api_v1_fleet_friction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FrictionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FrictionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_friction_api_v1_fleet_friction__friction_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                friction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FrictionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FrictionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    friction_recurrence_api_v1_fleet_friction__friction_id__recurrence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                friction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FrictionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_owner_questions_api_v1_fleet_owner_questions_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "answered" | "withdrawn") | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_owner_question_api_v1_fleet_owner_questions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_owner_question_api_v1_fleet_owner_questions__question_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_owner_question_api_v1_fleet_owner_questions__question_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     library_browse_route_api_v1_library_browse_get: {
         parameters: {
             query?: {
@@ -20029,6 +20686,145 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_intake_proposals_api_v1_proposals_get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_intake_proposal_api_v1_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIntakeProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_intake_proposal_api_v1_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_intake_proposal_api_v1_proposals__proposal_id__decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideIntakeProposalRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

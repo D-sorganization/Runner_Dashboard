@@ -189,6 +189,62 @@ def test_source_list_cli_reports_unavailable_without_network_or_cleanup(
     assert (disconnected / item.name).read_text(encoding="utf-8") == "still on the disconnected source"
 
 
+def test_google_drive_connector_and_multi_backend_priority_ordering(tmp_path: Path) -> None:
+    from library.sources import extract_drive_folder_id, list_shared_drive_sources, update_source
+
+    db = tmp_path / "library.sqlite"
+    local_dir = tmp_path / "local_docs"
+    drive_local_dir = tmp_path / "drive_desktop"
+    local_dir.mkdir()
+    drive_local_dir.mkdir()
+
+    fid, url = extract_drive_folder_id(
+        "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345?usp=sharing"
+    )
+    assert fid == "1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    assert url == "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+
+    with pytest.raises(ValueError, match="valid Google Drive folder ID"):
+        extract_drive_folder_id("not-a-drive-url/bad")
+
+    add_source(
+        db, source_id="local-docs", label="Local Docs", root_path=local_dir, backend_type="local_folder", shared=True
+    )
+    add_source(
+        db,
+        source_id="gdrive-desktop",
+        label="Drive Desktop Mirror",
+        root_path=drive_local_dir,
+        backend_type="google_drive_local",
+        shared=True,
+    )
+    conn_src = add_source(
+        db,
+        source_id="gdrive-agent",
+        label="Agent Shared Drive",
+        backend_type="google_drive_connector",
+        drive_folder_url="https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+        shared=True,
+        repos=["Runner_Dashboard"],
+    )
+    assert conn_src["drive_folder_id"] == fid
+    assert conn_src["root_path"] == f"gdrive://{fid}"
+    assert conn_src["preferential"] is True
+    assert conn_src["priority"] == 1
+    assert conn_src["availability"] == "configured"
+
+    ordered = [s["id"] for s in list_sources(db)]
+    assert ordered == ["gdrive-agent", "gdrive-desktop", "local-docs"]
+    assert [s["id"] for s in list_shared_drive_sources(db, repo="Runner_Dashboard")] == ["gdrive-agent"]
+    assert list_shared_drive_sources(db, repo="OtherRepo") == []
+
+    # Duplicate-ID restrictive toggle rule: if local mirror of same Drive folder is unshared, connector is restricted
+    update_source(db, "gdrive-desktop", drive_folder_id=fid, shared=False)
+    assert list_shared_drive_sources(db, repo="Runner_Dashboard") == []
+    update_source(db, "gdrive-desktop", shared=True)
+    assert [s["id"] for s in list_shared_drive_sources(db, repo="Runner_Dashboard")] == ["gdrive-agent"]
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -200,13 +256,17 @@ def test_source_list_cli_reports_unavailable_without_network_or_cleanup(
     ],
 )
 def test_extract_drive_folder_id_accepts_google_folder_references(value: str, expected: str) -> None:
-    assert extract_drive_folder_id(value) == expected
+    assert extract_drive_folder_id(value) == (expected, f"https://drive.google.com/drive/folders/{expected}")
 
 
 @pytest.mark.parametrize(
     "value",
     [
         "https://example.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
+        "https://evil.example/drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
+        "https://drive.google.com.evil.example/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
+        "https://user@drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
+        "https://drive.google.com:444/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
         "../folder",
         "https://drive.google.com/drive/folders/bad.id",
     ],

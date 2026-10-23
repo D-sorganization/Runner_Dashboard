@@ -1,4 +1,4 @@
-"""Per-node, read-only source registry for Alexandria."""
+"""Per-node and multi-backend source registry for Alexandria (#2521)."""
 
 from __future__ import annotations
 
@@ -16,23 +16,29 @@ from urllib.parse import parse_qs, urlsplit
 from library.db import init_library_db, library_data_dir, library_source_dir
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_DRIVE_ID = re.compile(r"^[A-Za-z0-9_-]{10,200}$")
-_SOURCE_BACKENDS = {"google_drive_connector", "google_drive_local", "local_folder"}
-_SOURCE_PRIORITIES = {"google_drive_connector": 1, "google_drive_local": 2, "local_folder": 3}
+_DRIVE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,128}$")
+BACKEND_TYPES = ("google_drive_connector", "google_drive_local", "local_folder")
+_DEFAULT_PRIORITIES = {"google_drive_connector": 1, "google_drive_local": 2, "local_folder": 3}
 
 
-def extract_drive_folder_id(value: str) -> str:
-    """Extract a Drive folder ID from a supported URL or raw folder ID."""
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("Drive folder reference is required")
-    value = value.strip()
-    if value.startswith("gdrive://"):
-        value = value.removeprefix("gdrive://")
-    if "://" in value:
-        parsed = urlsplit(value)
+def extract_drive_folder_id(raw: str) -> tuple[str, str]:
+    """Extract and validate a canonical Google Drive folder ID and URL (DbC)."""
+    if not isinstance(raw, str):
+        raise ValueError("valid Google Drive folder ID or folder URL is required")
+    text = raw.strip()
+    if not text:
+        raise ValueError("valid Google Drive folder ID or folder URL is required")
+    if text.startswith("gdrive://"):
+        candidate = text.removeprefix("gdrive://")
+    elif "://" in text:
+        parsed = urlsplit(text)
         if parsed.scheme != "https" or parsed.hostname != "drive.google.com" or parsed.username or parsed.password:
             raise ValueError("Drive folder URL must use https://drive.google.com")
-        if parsed.port not in (None, 443):
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("Drive folder URL has an unsupported port") from exc
+        if port not in (None, 443):
             raise ValueError("Drive folder URL has an unsupported port")
         query_ids = parse_qs(parsed.query).get("id", [])
         if query_ids and parsed.path in {"", "/", "/open", "/uc", "/drive/folders", "/drive/u/0/folders"}:
@@ -40,30 +46,25 @@ def extract_drive_folder_id(value: str) -> str:
         else:
             match = re.fullmatch(r"/drive/(?:u/\d+/)?folders/([^/]+)", parsed.path)
             candidate = match.group(1) if match else ""
+            if query_ids and (len(query_ids) != 1 or query_ids[0] != candidate):
+                candidate = ""
     else:
-        candidate = value
-    if not _DRIVE_ID.fullmatch(candidate):
-        raise ValueError("Drive folder reference is invalid")
-    return candidate
-
-
-def _repository_tags(value: Any) -> str:
-    if not isinstance(value, list) or any(not isinstance(tag, str) or not tag.strip() for tag in value):
-        raise ValueError("repos must be a list of non-empty strings")
-    tags = list(dict.fromkeys(tag.strip() for tag in value))
-    return json.dumps(tags)
+        candidate = text
+    if not _DRIVE_ID_RE.fullmatch(candidate):
+        raise ValueError("valid Google Drive folder ID or folder URL is required")
+    return candidate, f"https://drive.google.com/drive/folders/{candidate}"
 
 
 def _globs(value: Any) -> str:
     if value is None:
         return "[]"
-    if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
-        raise ValueError("globs must be a list of non-empty strings")
-    return json.dumps(value)
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError("globs/repos must be a list of non-empty strings")
+    return json.dumps([item.strip() for item in value])
 
 
 def _validated_root(root_path: str | Path, *, data_dir: Path | None = None) -> Path:
-    if not isinstance(root_path, (str, Path)):
+    if not isinstance(root_path, (str, Path)) or not str(root_path).strip():
         raise ValueError("root_path must be a filesystem path")
     root = Path(root_path)
     if not root.is_absolute():
@@ -82,17 +83,17 @@ def add_source(
     *,
     source_id: str,
     label: str,
-    root_path: str | Path | None = None,
-    backend_type: str = "local_folder",
-    drive_folder_id: str | None = None,
-    drive_folder_url: str | None = None,
+    root_path: str | Path = "",
     shared: bool = False,
-    preferential: bool = False,
-    priority: int | None = None,
-    repos: Any = None,
     include_globs: Any = None,
     exclude_globs: Any = None,
     created_by: str | None = None,
+    backend_type: str = "local_folder",
+    drive_folder_id: str = "",
+    drive_folder_url: str = "",
+    preferential: bool | None = None,
+    priority: int | None = None,
+    repos: Any = None,
 ) -> dict[str, Any]:
     if not isinstance(source_id, str) or not _SLUG.fullmatch(source_id):
         raise ValueError("source id must be a lowercase slug")
@@ -100,60 +101,63 @@ def add_source(
         raise ValueError("label is required")
     if not isinstance(shared, bool):
         raise ValueError("shared must be boolean")
-    if not isinstance(backend_type, str) or backend_type not in _SOURCE_BACKENDS:
-        raise ValueError("unsupported source backend_type")
-    if not isinstance(preferential, bool):
+    if backend_type not in BACKEND_TYPES:
+        raise ValueError(f"backend_type must be one of {BACKEND_TYPES}")
+    pref = (backend_type == "google_drive_connector") if preferential is None else preferential
+    if not isinstance(pref, bool):
         raise ValueError("preferential must be boolean")
-    if priority is None:
-        priority = _SOURCE_PRIORITIES[backend_type]
-    if isinstance(priority, bool) or not isinstance(priority, int) or priority < 1:
-        raise ValueError("priority must be a positive integer")
-    tags = _repository_tags([] if repos is None else repos)
-    folder_from_id = extract_drive_folder_id(drive_folder_id) if drive_folder_id else None
-    folder_from_url = extract_drive_folder_id(drive_folder_url) if drive_folder_url else None
-    if folder_from_id and folder_from_url and folder_from_id != folder_from_url:
-        raise ValueError("Drive folder ID and URL must identify the same folder")
-    folder_id = folder_from_id or folder_from_url
-    folder_url = f"https://drive.google.com/drive/folders/{folder_id}" if folder_id else None
-    root: Path | str
-    overlap_root: Path | None = None
+    prio = _DEFAULT_PRIORITIES[backend_type] if priority is None else priority
+    if isinstance(prio, bool) or not isinstance(prio, int) or not (1 <= prio <= 99):
+        raise ValueError("priority must be an integer between 1 and 99")
+    includes, excludes, repos_json = _globs(include_globs), _globs(exclude_globs), _globs(repos)
+    folder = None
+    if drive_folder_id and drive_folder_url:
+        id_value = extract_drive_folder_id(drive_folder_id)[0]
+        url_value = extract_drive_folder_id(drive_folder_url)[0]
+        if id_value != url_value:
+            raise ValueError("Drive folder ID and URL must identify the same folder")
+        folder = extract_drive_folder_id(drive_folder_id)
+    elif drive_folder_id or drive_folder_url:
+        folder = extract_drive_folder_id(drive_folder_id or drive_folder_url)
     if backend_type == "google_drive_connector":
-        if not folder_id:
-            raise ValueError("google_drive_connector requires a Drive folder ID or URL")
-        synthetic_root = f"gdrive://{folder_id}"
-        if root_path is not None and str(root_path).rstrip("/") != synthetic_root:
-            raise ValueError("connector root_path must match its Drive folder ID")
-        root = synthetic_root
+        if folder is None:
+            folder = extract_drive_folder_id(root_path if isinstance(root_path, str) else "")
+        fid, furl = folder
+        root_str = f"gdrive://{fid}"
     else:
-        if root_path is None:
-            raise ValueError("root_path is required for local sources")
         root = _validated_root(root_path)
-        overlap_root = root
-    if overlap_root is not None:
-        _check_source_root_overlap(db_path, overlap_root)
+        root_str = str(root)
+        fid, furl = folder or ("", "")
     db = init_library_db(db_path)
-    includes, excludes = _globs(include_globs), _globs(exclude_globs)
     with closing(sqlite3.connect(db)) as conn:
+        if backend_type != "google_drive_connector":
+            overlap = conn.execute("SELECT id,root_path FROM library_sources WHERE status='active'").fetchall()
+            for other_id, other_path in overlap:
+                if str(other_path).startswith("gdrive://"):
+                    continue
+                other = Path(other_path).resolve()
+                if root == other or root in other.parents or other in root.parents:
+                    raise ValueError(f"source root overlaps existing source {other_id}")
         conn.execute(
             "INSERT INTO library_sources("
             "id,label,root_path,shared,include_globs,exclude_globs,created_at,created_by,status,"
             "backend_type,drive_folder_id,drive_folder_url,preferential,priority,repos) "
-            "VALUES(?,?,?,?,?,?,?,?, 'active',?,?,?,?,?,?)",
+            "VALUES(?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?)",
             (
                 source_id,
                 label.strip(),
-                str(root),
+                root_str,
                 int(shared),
                 includes,
                 excludes,
                 datetime.now(UTC).isoformat(),
                 created_by,
                 backend_type,
-                folder_id,
-                folder_url,
-                int(preferential),
-                priority,
-                tags,
+                fid,
+                furl,
+                int(pref),
+                prio,
+                repos_json,
             ),
         )
         conn.commit()
@@ -171,29 +175,17 @@ def seed_default_source(db_path: Path | None = None) -> None:
     try:
         add_source(db, source_id="default", label="Default", root_path=root)
     except (OSError, ValueError) as exc:
-        # A legacy configured source remains usable by the ingest loop; invalid
-        # paths are deliberately not registered.
         import logging
 
         logging.getLogger("dashboard.library.sources").warning("could not seed default library source: %s", exc)
 
 
-def _check_source_root_overlap(db_path: Path, root: Path) -> None:
-    db = init_library_db(db_path)
-    with closing(sqlite3.connect(db)) as conn:
-        overlap = conn.execute(
-            "SELECT id,root_path FROM library_sources WHERE status='active' AND backend_type!='google_drive_connector'"
-        ).fetchall()
-    for other_id, other_path in overlap:
-        other = Path(other_path).resolve()
-        if root == other or root in other.parents or other in root.parents:
-            raise ValueError(f"source root overlaps existing source {other_id}")
-
-
-def source_availability(root_path: str | Path, backend_type: str = "local_folder") -> str:
-    """Report read access to a registered root without mutating the registry or source."""
-    if backend_type == "google_drive_connector":
-        return "configured"
+def source_availability(root_path: str | Path, *, backend_type: str = "local_folder", drive_folder_id: str = "") -> str:
+    """Report read access to a registered root or Drive connector without mutating the registry."""
+    raw = str(root_path)
+    if backend_type == "google_drive_connector" or raw.startswith("gdrive://"):
+        fid = drive_folder_id or raw.removeprefix("gdrive://")
+        return "configured" if bool(_DRIVE_ID_RE.fullmatch(fid)) else "unavailable"
     root = Path(root_path)
     try:
         if root.is_symlink() or not root.is_dir() or not os.access(root, os.R_OK | os.X_OK):
@@ -207,18 +199,43 @@ def list_sources(db_path: Path) -> list[dict[str, Any]]:
     db = init_library_db(db_path)
     with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM library_sources ORDER BY id").fetchall()
+        rows = conn.execute("SELECT * FROM library_sources ORDER BY preferential DESC, priority ASC, id ASC").fetchall()
         counts = dict(
             conn.execute("SELECT source_id, COUNT(*) FROM files WHERE status='present' GROUP BY source_id").fetchall()
         )
-    return [
-        {
-            **_row(row),
-            "file_count": counts.get(row["id"], 0),
-            "availability": source_availability(row["root_path"], row["backend_type"]),
-        }
-        for row in rows
-    ]
+    unshared_fids = {
+        str(r["drive_folder_id"])
+        for r in rows
+        if r["drive_folder_id"] and not bool(r["shared"]) and r["status"] == "active"
+    }
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        item = _row(row)
+        fid = item["drive_folder_id"]
+        if fid and fid in unshared_fids:
+            item["shared"] = False
+        item["file_count"] = counts.get(row["id"], 0)
+        item["availability"] = source_availability(
+            row["root_path"], backend_type=item["backend_type"], drive_folder_id=fid
+        )
+        items.append(item)
+    return items
+
+
+def list_shared_drive_sources(db_path: Path, *, repo: str | None = None) -> list[dict[str, Any]]:
+    """Return active, shared Google Drive connector sources ordered preferentially."""
+    target = (repo or "").strip().lower()
+    result: list[dict[str, Any]] = []
+    for src in list_sources(db_path):
+        if src.get("status") != "active" or src.get("backend_type") != "google_drive_connector":
+            continue
+        if not src.get("shared") or src.get("availability") != "configured" or not src.get("drive_folder_id"):
+            continue
+        repos = [r.lower() for r in src.get("repos", [])]
+        if target and repos and target not in repos:
+            continue
+        result.append(src)
+    return result
 
 
 def get_source(db_path: Path, source_id: str) -> dict[str, Any]:
@@ -229,30 +246,40 @@ def get_source(db_path: Path, source_id: str) -> dict[str, Any]:
 
 
 def update_source(db_path: Path, source_id: str, **changes: Any) -> dict[str, Any]:
-    allowed = {"label", "shared", "include_globs", "exclude_globs", "preferential", "priority", "repos"}
+    allowed = {
+        "label",
+        "shared",
+        "include_globs",
+        "exclude_globs",
+        "preferential",
+        "priority",
+        "repos",
+        "drive_folder_id",
+        "drive_folder_url",
+    }
     if not changes or set(changes) - allowed:
-        raise ValueError("only label, shared, globs, preferential, priority, and repos may be updated")
-    get_source(db_path, source_id)
+        raise ValueError("unsupported source update fields")
+    current = get_source(db_path, source_id)
     values: dict[str, Any] = {}
     for key, value in changes.items():
         if key == "label":
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("label is required")
             values[key] = value.strip()
-        elif key == "shared":
+        elif key in ("shared", "preferential"):
             if not isinstance(value, bool):
-                raise ValueError("shared must be boolean")
-            values[key] = int(value)
-        elif key == "preferential":
-            if not isinstance(value, bool):
-                raise ValueError("preferential must be boolean")
+                raise ValueError(f"{key} must be boolean")
             values[key] = int(value)
         elif key == "priority":
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise ValueError("priority must be a positive integer")
+            if isinstance(value, bool) or not isinstance(value, int) or not (1 <= value <= 99):
+                raise ValueError("priority must be an integer between 1 and 99")
             values[key] = value
-        elif key == "repos":
-            values[key] = _repository_tags(value)
+        elif key in ("drive_folder_id", "drive_folder_url"):
+            fid, furl = extract_drive_folder_id(str(value or ""))
+            values["drive_folder_id"] = fid
+            values["drive_folder_url"] = furl
+            if current["backend_type"] == "google_drive_connector":
+                values["root_path"] = f"gdrive://{fid}"
         else:
             values[key] = _globs(value)
     with closing(sqlite3.connect(db_path)) as conn:
@@ -280,10 +307,14 @@ def remove_source(db_path: Path, source_id: str) -> None:
 def _row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
     result["shared"] = bool(result["shared"])
-    result["preferential"] = bool(result["preferential"])
-    result["repos"] = json.loads(result["repos"])
+    result["preferential"] = bool(result.get("preferential", 0))
+    result["priority"] = int(result.get("priority", 3))
+    result["backend_type"] = result.get("backend_type") or "local_folder"
+    result["drive_folder_id"] = result.get("drive_folder_id") or ""
+    result["drive_folder_url"] = result.get("drive_folder_url") or ""
     result["include_globs"] = json.loads(result["include_globs"])
     result["exclude_globs"] = json.loads(result["exclude_globs"])
+    result["repos"] = json.loads(result.get("repos") or "[]")
     return result
 
 
