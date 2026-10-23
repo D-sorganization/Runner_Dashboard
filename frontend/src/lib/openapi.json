@@ -4023,6 +4023,92 @@
         "title": "SendBody",
         "type": "object"
       },
+      "SessionDigestAppendRequest": {
+        "additionalProperties": false,
+        "description": "Small, transcript-free payload for one conversation turn's shared digest.",
+        "properties": {
+          "conversation_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "decisions": {
+            "items": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Decisions",
+            "type": "array"
+          },
+          "open_items": {
+            "items": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Open Items",
+            "type": "array"
+          },
+          "reported_origin_principal": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Origin Principal"
+          },
+          "source_product": {
+            "enum": ["codex", "dashboard"],
+            "title": "Source Product",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "user_message_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$",
+            "title": "User Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_product",
+          "conversation_id",
+          "user_message_id",
+          "summary"
+        ],
+        "title": "SessionDigestAppendRequest",
+        "type": "object"
+      },
+      "SessionDigestAppendResponse": {
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/MemoryEntry"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": ["entry", "replayed"],
+        "title": "SessionDigestAppendResponse",
+        "type": "object"
+      },
       "SessionTelemetryPayload": {
         "description": "Session telemetry payload (issue #1849 / RD-4).",
         "properties": {
@@ -18509,6 +18595,63 @@
           }
         ],
         "summary": "Get Context Pack",
+        "tags": ["assistant-memory"]
+      }
+    },
+    "/api/v1/memory/session-digest": {
+      "post": {
+        "operationId": "post_session_digest_api_v1_memory_session_digest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionDigestAppendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDigestAppendResponse"
+                }
+              }
+            },
+            "description": "Idempotent replay"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDigestAppendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Session Digest",
         "tags": ["assistant-memory"]
       }
     },

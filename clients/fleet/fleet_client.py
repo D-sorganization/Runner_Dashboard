@@ -472,6 +472,37 @@ class FleetClient:
             payload["supersedes_id"] = _text(supersedes_id, "supersedes_id", 128)
         return self.request("POST", "/api/v1/memory", body=payload)
 
+    def memory_append_session_digest(
+        self,
+        source_product: str,
+        conversation_id: str,
+        user_message_id: str,
+        summary: str,
+        decisions: list[str] | None = None,
+        open_items: list[str] | None = None,
+        reported_origin_principal: str | None = None,
+    ) -> Any:
+        """Append one bounded conversation digest; server-side turn keys make retry safe."""
+        _check(source_product in ("codex", "dashboard"), "source_product must be codex or dashboard")
+        conversation = _match(PATTERNS.memory_id, conversation_id, "conversation_id")
+        message_id = _match(PATTERNS.memory_id, user_message_id, "user_message_id")
+        digest = _text(summary, "summary", 1000)
+        decision_values = [] if decisions is None else decisions
+        open_values = [] if open_items is None else open_items
+        _check(isinstance(decision_values, list) and len(decision_values) <= 3, "decisions must have at most 3 items")
+        _check(isinstance(open_values, list) and len(open_values) <= 3, "open_items must have at most 3 items")
+        payload: dict[str, Any] = {
+            "source_product": source_product,
+            "conversation_id": conversation,
+            "user_message_id": message_id,
+            "summary": digest,
+            "decisions": [_text(value, "decision", 120) for value in decision_values],
+            "open_items": [_text(value, "open_item", 120) for value in open_values],
+        }
+        if reported_origin_principal is not None:
+            payload["reported_origin_principal"] = _text(reported_origin_principal, "reported_origin_principal", 128)
+        return self.request("POST", "/api/v1/memory/session-digest", body=payload)
+
     def _previewed_hash(self, pid: str) -> str:
         preview = self.request("GET", f"/api/v1/staff/proposals/{pid}")
         reviewed = preview.get("params_hash") if isinstance(preview, dict) else None

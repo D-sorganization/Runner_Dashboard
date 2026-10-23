@@ -2,15 +2,35 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 ENTRY_TYPES = ("session_digest", "decision", "task", "transcript")
 EntryType = Literal["session_digest", "decision", "task", "transcript"]
 
 MAX_TAGS = 32
 MAX_TAG_LEN = 64
+DigestProduct = Literal["codex", "dashboard"]
+DigestID = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$"),
+]
+DigestText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+
+
+class SessionDigestAppendRequest(BaseModel):
+    """Small, transcript-free payload for one conversation turn's shared digest."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    source_product: DigestProduct
+    conversation_id: DigestID
+    user_message_id: DigestID
+    reported_origin_principal: str | None = Field(default=None, min_length=1, max_length=128)
+    summary: str = Field(min_length=1, max_length=1000)
+    decisions: list[DigestText] = Field(default_factory=list, max_length=3)
+    open_items: list[DigestText] = Field(default_factory=list, max_length=3)
 
 
 class MemoryAppendRequest(BaseModel):
@@ -33,6 +53,11 @@ class MemoryEntry(BaseModel):
     expires_at: str | None = None
     supersedes_id: str | None = None
     superseded_by: str | None = None
+
+
+class SessionDigestAppendResponse(BaseModel):
+    entry: MemoryEntry
+    replayed: bool
 
 
 class MemoryListResponse(BaseModel):

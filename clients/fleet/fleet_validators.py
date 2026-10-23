@@ -21,6 +21,7 @@ class _Patterns:
     bare_repo: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
     branch: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$")
     message_id: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+    memory_id: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$")
     role: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
     ident: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,119}$")
     sha256_hex: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")

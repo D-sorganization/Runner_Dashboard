@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller
 from memory.contract import CONTEXT_DIGEST_LIMIT, CONTEXT_TASK_LIMIT, enforce_entry_size
-from memory.models import MemoryAppendRequest, MemoryContextPack, MemoryEntry
+from memory.models import (
+    MemoryAppendRequest,
+    MemoryContextPack,
+    MemoryEntry,
+    SessionDigestAppendRequest,
+)
 from memory.redact import redact_memory_text
 from memory.store import get_memory_store, new_entry_id
 from priorities.directives import get_directives
@@ -49,6 +56,47 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
     try:
         return store.append(entry)
     except ValueError as exc:
+        if str(exc) == "store_size_cap_exceeded":
+            raise HTTPException(status_code=507, detail="assistant memory store size cap exceeded") from exc
+        raise
+
+
+def append_session_digest(principal: Principal, req: SessionDigestAppendRequest) -> tuple[MemoryEntry, bool]:
+    """Append a bounded digest once per authenticated writer and source turn."""
+    caller = format_caller(principal)
+    canonical = json.dumps(req.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    stable_identity = json.dumps(
+        [caller, req.source_product, req.conversation_id, req.user_message_id],
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    idempotency_key = hashlib.sha256(stable_identity.encode("utf-8")).hexdigest()
+    body = {
+        "conversation_id": req.conversation_id,
+        "user_message_id": req.user_message_id,
+        "reported_origin_principal": (
+            redact_memory_text(req.reported_origin_principal) if req.reported_origin_principal is not None else None
+        ),
+        "summary": redact_memory_text(req.summary),
+        "decisions": [redact_memory_text(item) for item in req.decisions],
+        "open_items": [redact_memory_text(item) for item in req.open_items],
+    }
+    enforce_entry_size(body, "session_digest")
+    entry = MemoryEntry(
+        id=new_entry_id(),
+        entry_type="session_digest",
+        author_principal=caller,
+        source_product=req.source_product,
+        tags=[],
+        body=body,
+        created_at=_now(),
+    )
+    try:
+        return get_memory_store().append_idempotent(entry, idempotency_key=idempotency_key, fingerprint=fingerprint)
+    except ValueError as exc:
+        if str(exc) == "idempotency_key_reused":
+            raise HTTPException(status_code=409, detail="session digest key was reused with different content") from exc
         if str(exc) == "store_size_cap_exceeded":
             raise HTTPException(status_code=507, detail="assistant memory store size cap exceeded") from exc
         raise
