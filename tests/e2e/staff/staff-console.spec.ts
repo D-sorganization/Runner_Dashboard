@@ -90,8 +90,13 @@ test.describe("chat", () => {
     await send(page, text);
 
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
-    await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text)).toBeVisible();
+    await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    await expect(page).toHaveURL(/\/staff\?role=barb&thread=[^&]+/);
+
+    await page.reload();
+    await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
+    await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
   });
 
   test("a direct reply is shown exactly once", async ({ page }) => {
