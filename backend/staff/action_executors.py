@@ -349,11 +349,54 @@ def execute_open_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
     )
 
 
+# Keep in sync with frontend/src/shell/navRegistryData.ts. Values are canonical tab ids,
+# never paths or URLs, so an approved chat action cannot escape the dashboard.
+DASHBOARD_NAV_TABS = frozenset(
+    {
+        "staff",
+        "fleet-command",
+        "agent-bus",
+        "library",
+        "queue",
+        "remediation",
+        "workflows",
+        "code-requests",
+        "projects",
+        "overview",
+        "operations",
+        "insights",
+        "settings",
+    }
+)
+
+
+def execute_dashboard_navigate(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
+    """Return one allowlisted in-app tab instruction for the dashboard shell."""
+    from staff.actions import ActionResult
+
+    tab_id = params.get("tab_id")
+    if not isinstance(tab_id, str) or tab_id not in DASHBOARD_NAV_TABS:
+        return ActionResult(
+            success=False,
+            error="tab_id must be a registered dashboard section",
+            failure_class="invalid_params",
+        )
+    return ActionResult(success=True, result={"navigate_to": tab_id})
+
+
 def register_standard_actions(registry: ActionRegistry) -> None:
     """Register the standard staff actions (the non-maintenance catalogue) into ``registry``."""
     from staff.actions import ActionDefinition, ActionRiskClass
 
     standard_defs = (
+        ActionDefinition(
+            name="dashboard.navigate",
+            description="Navigate the dashboard to a registered section after owner approval; use its exact tab id.",
+            params_schema={"tab_id": "string"},
+            required_scope="staff.chat",
+            risk_class=ActionRiskClass.LOW,
+            executor=execute_dashboard_navigate,
+        ),
         ActionDefinition(
             name="staff.dispatch",
             description="Dispatch an AI staff role to work on an issue, PR, or prompt.",
