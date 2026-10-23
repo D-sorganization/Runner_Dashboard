@@ -96,7 +96,9 @@ describe("StaffConsoleDesktop", () => {
     fireEvent.click(upstreamStarter);
     const textarea = screen.getByRole("textbox", { name: /staff conversation input/i }) as HTMLTextAreaElement;
     expect(textarea.value).toContain("Triage UpstreamDrift");
+    expect(textarea.value).toContain("review open issues and pull requests in the UpstreamDrift repository");
     expect(textarea.value).toContain("wait for my approval before dispatch");
+    expect(textarea.value).toContain("registered workflows");
     expect(textarea).toHaveFocus();
     expect(api.postThreadMessage).not.toHaveBeenCalled();
 
@@ -111,6 +113,7 @@ describe("StaffConsoleDesktop", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Start AffineDrift" }));
     expect(textarea.value).toContain("Triage AffineDrift");
+    expect(textarea.value).toContain("review open issues and pull requests in the AffineDrift repository");
     expect(textarea).toHaveFocus();
     expect(api.postThreadMessage).not.toHaveBeenCalled();
   });

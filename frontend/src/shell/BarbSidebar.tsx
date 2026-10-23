@@ -5,27 +5,13 @@ import { GroupCostConfirm } from "../pages/StaffConsole/GroupCostConfirm";
 import { Thread } from "../pages/StaffConsole/Thread";
 import { useStaffConsole } from "../pages/StaffConsole/useStaffConsole";
 import { ChatGlyph } from "../pages/decompIcons";
+import { PROJECT_WORKFLOWS } from "../pages/StaffConsole/projectWorkflows";
 import "./BarbSidebar.css";
 
 const QUICK_ROUTES = [
   { label: "Fleet Command", tabId: "fleet-command" },
   { label: "Projects", tabId: "projects" },
   { label: "Queue", tabId: "queue" },
-];
-
-const PROJECT_PROMPTS = [
-  {
-    repo: "UpstreamDrift",
-    summary: "Review open work and identify the next useful action.",
-    prompt:
-      "In UpstreamDrift, review open issues and pull requests, summarize active work and recommend the most useful next step. Use the repository's registered workflows for any action you can take.",
-  },
-  {
-    repo: "AffineDrift",
-    summary: "Check project health and find a clear next step.",
-    prompt:
-      "In AffineDrift, review open issues and pull requests, summarize active work and recommend the most useful next step. Use the repository's registered workflows for any action you can take.",
-  },
 ];
 
 export interface BarbSidebarProps {
@@ -185,15 +171,15 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
             <h3>What would you like to move forward?</h3>
             <p>Ask a question, choose a project, or jump to a fleet workspace.</p>
             <div className="barb-sidebar__projects" aria-label="Project starters">
-              {PROJECT_PROMPTS.map((project) => (
+              {PROJECT_WORKFLOWS.map((project) => (
                 <button
-                  key={project.repo}
+                  key={project.project}
                   type="button"
                   className="barb-sidebar__project"
-                  aria-label={`Triage ${project.repo}`}
+                  aria-label={`Triage ${project.project}`}
                   onClick={() => applyComposerPrefill(project.prompt)}
                 >
-                  <span className="barb-sidebar__project-name">{project.repo}</span>
+                  <span className="barb-sidebar__project-name">{project.project}</span>
                   <span className="barb-sidebar__project-summary">{project.summary}</span>
                   <span className="barb-sidebar__project-action">Start with Barb &rarr;</span>
                 </button>
