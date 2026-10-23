@@ -52,6 +52,9 @@ ALLOWED_ACTIONS = frozenset(
         "decision_default_applied",
         "decision_default_refused",
         "memory_append",
+        "email_intake",
+        "intake_proposal_create",
+        "intake_proposal_decide",
     }
 )
 
@@ -73,6 +76,9 @@ MUTATING_ACTIONS = frozenset(
         "work_item_transition",
         "message_reconcile",
         "decision_default_applied",
+        "intake_proposal_create",
+        "intake_proposal_decide",
+        "email_intake",
     }
 )
 
