@@ -24,6 +24,8 @@ export interface UseThreadStreamResult {
   updateMessage: (messageId: string, updater: (prev: ThreadMessage) => ThreadMessage) => void;
 }
 
+const NO_MESSAGES: ThreadMessage[] = [];
+
 /**
  * The message a `message` SSE frame carries, or null when it carries none.
  *
@@ -41,28 +43,48 @@ export function messageFromFrame(data: unknown): ThreadMessage | null {
 
 export function useThreadStream({
   threadId,
-  initialMessages = [],
+  initialMessages = NO_MESSAGES,
   apiBase = "/api/v1/staff",
   enabled = true,
 }: UseThreadStreamOptions): UseThreadStreamResult {
-  const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ThreadMessage[]>(() => initialMessages.filter((message) => message.thread_id === threadId));
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [activeStreamingId, setActiveStreamingId] = useState<string | null>(null);
 
   const lastEventIdRef = useRef<number>(0);
+  const messagesThreadRef = useRef(threadId);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Synchronize initial messages when thread changes
+  // Delayed history may predate live events. Reset only for a different thread.
   useEffect(() => {
-    setMessages(initialMessages);
-    let maxSeq = 0;
-    for (const m of initialMessages) {
+    const sameThread = messagesThreadRef.current === threadId;
+    messagesThreadRef.current = threadId;
+    const history = initialMessages.filter((message) => message.thread_id === threadId);
+    setMessages((current) => {
+      if (!sameThread) return history;
+      const combined = new Map(history.map((message) => [message.id, message]));
+      for (const message of current) {
+        const historical = combined.get(message.id);
+        combined.set(
+          message.id,
+          message.delivery === "pending" && historical && historical.delivery !== "pending"
+            ? { ...message, ...historical, streaming: false }
+            : message,
+        );
+      }
+      return [...combined.values()].sort((a, b) => (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER));
+    });
+    let maxSeq = sameThread ? lastEventIdRef.current : 0;
+    for (const m of history) {
       if (m.seq && m.seq > maxSeq) {
         maxSeq = m.seq;
       }
     }
     lastEventIdRef.current = maxSeq;
+    setActiveStreamingId((current) =>
+      !sameThread || history.some((message) => message.id === current && message.delivery !== "pending") ? null : current,
+    );
   }, [threadId, initialMessages]);
 
   const stopStreaming = useCallback((messageId?: string) => {
@@ -166,7 +188,7 @@ export function useThreadStream({
           if (ev.lastEventId) {
             const parsed = parseInt(ev.lastEventId, 10);
             if (!isNaN(parsed)) {
-              lastEventIdRef.current = parsed;
+              lastEventIdRef.current = Math.max(lastEventIdRef.current, parsed);
             }
           }
 
