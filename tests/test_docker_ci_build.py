@@ -13,10 +13,11 @@ RECOVER = ROOT / "scripts" / "ci" / "docker_buildx_recover.sh"
 
 
 @pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
-def test_docker_buildx_recover_removes_only_ephemeral_builder_names(tmp_path: Path) -> None:
+def test_unscoped_recovery_leaves_every_builder_untouched(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "calls.log"
+    log.touch()
 
     docker = bin_dir / "docker"
     docker.write_text(
@@ -41,8 +42,11 @@ exit 0
     docker.chmod(0o755)
 
     result = subprocess.run(
-        [BASH, str(RECOVER)],
-        env={"PATH": f"{as_bash_path(bin_dir)}:{as_bash_path(Path(BASH).parent)}"},
+        [BASH, as_bash_path(RECOVER)],
+        env={
+            "PATH": f"{as_bash_path(bin_dir)}:{as_bash_path(Path(BASH).parent)}",
+            "DOCKER_HOST": "unix:///nonexistent/buildx-test.sock",
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -50,6 +54,4 @@ exit 0
     )
     assert result.returncode == 0, result.stderr
     calls = log.read_text(encoding="utf-8").splitlines()
-    assert any(call == "buildx rm -f builder-deadbeef" for call in calls)
-    assert any(call == "buildx rm -f gm-ci-9" for call in calls)
-    assert all("ud-buildkit" not in call for call in calls if call.startswith("buildx rm"))
+    assert calls == []
