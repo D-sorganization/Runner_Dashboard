@@ -42,7 +42,9 @@
   margin-bottom: -1px;
   padding: 8px 4px;
   text-decoration: none;
-  transition: color 140ms ease-out, border-color 140ms ease-out;
+  transition:
+    color 140ms ease-out,
+    border-color 140ms ease-out;
 }
 
 .staff__tabs .subtab:hover {
@@ -67,6 +69,36 @@
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
+}
+
+.staff__activity {
+  flex-shrink: 0;
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.staff__activity > summary {
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.staff__activity > summary:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* Share the shell's remaining height with its intro instead of overflowing it. */
+.desktop-shell__main:has(> .staff) {
+  display: flex;
+  flex-direction: column;
+}
+
+.desktop-shell__main > .staff {
+  flex: 1;
+  height: auto;
 }
 
 /* Staff panels (Roster, Holds, Outcomes) */
