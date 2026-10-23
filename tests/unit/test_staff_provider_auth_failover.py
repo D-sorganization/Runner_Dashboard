@@ -88,3 +88,34 @@ def test_provider_auth_preflight_marks_stale_codex_auth(tmp_path: Path, monkeypa
     with patch("staff.provider_auth_preflight.provider_oauth_session_alive", return_value=(True, "ok")):
         report = probe_local_provider_auth("Desk")
     assert report["providers"]["codex"]["status"] == "stale"
+
+
+@pytest.mark.unit
+def test_provider_auth_preflight_ok_with_refresh_token_and_4h_keepalive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from staff.provider_auth_preflight import (
+        _KEEPALIVE_INTERVAL_SECONDS,
+        _seconds_until_next_evening_pt,
+        probe_local_provider_auth,
+    )
+
+    cred_dir = tmp_path / "claude"
+    cred_dir.mkdir()
+    cred = cred_dir / ".credentials.json"
+    eight_hours = time.time() + 8 * 3600
+    cred.write_text(
+        f'{{"expiresAt": {int(eight_hours * 1000)}, "refreshToken": "rt-seat"}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cred_dir))
+    monkeypatch.setattr("staff.cli_oauth_session.resolve_claude_config_dir", lambda: cred_dir)
+
+    with patch("staff.cli_oauth_session.claude_oauth_session_alive", return_value=(True, "ok")):
+        report = probe_local_provider_auth("Brick")
+    assert report["providers"]["claude"]["status"] == "ok"
+    assert report["providers"]["claude"]["has_refresh_token"] is True
+    assert _KEEPALIVE_INTERVAL_SECONDS == 4 * 3600
+    assert _seconds_until_next_evening_pt() <= 4 * 3600

@@ -10,10 +10,13 @@ from unittest.mock import patch
 
 import pytest
 from staff.cli_oauth_session import (
+    _has_refresh_token,
     antigravity_oauth_session_alive,
     claude_oauth_session_alive,
     invalidate_oauth_probe_cache,
     oauth_expired_in_file,
+    oauth_has_refresh_token_for_provider,
+    oauth_last_refresh_epoch_for_provider,
     provider_oauth_session_alive,
     resolve_claude_config_dir,
 )
@@ -162,3 +165,70 @@ def test_claude_setup_token_env_counts_as_alive_without_credentials_file(
     assert "setup-token-seat-secret" not in detail
     assert "setup-token-seat-secret" not in provider_detail
     assert "setup-token" in detail.lower() or "oauth" in detail.lower()
+
+
+def test_claude_expired_with_refresh_token_refreshes_and_syncs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    seat = tmp_path / ".config" / "runner-dashboard" / "claude"
+    home_claude = tmp_path / ".claude"
+    seat.mkdir(parents=True)
+    home_claude.mkdir(parents=True)
+    seat_cred = seat / ".credentials.json"
+    home_cred = home_claude / ".credentials.json"
+    expired_ms = int((time.time() - 600) * 1000)
+    fresh_ms = int((time.time() + 8 * 3600) * 1000)
+    seat_cred.write_text(
+        json.dumps({"claudeAiOauth": {"expiresAt": expired_ms, "refreshToken": "rt-valid"}}),
+        encoding="utf-8",
+    )
+    assert _has_refresh_token(seat_cred) is True
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[1:] == ["-p", "ok", "--max-turns", "1"]:
+            assert kwargs.get("timeout") == 25.0
+            seat_cred.write_text(
+                json.dumps({"claudeAiOauth": {"expiresAt": fresh_ms, "refreshToken": "rt-valid"}}),
+                encoding="utf-8",
+            )
+            return CompletedProcess(cmd, 0, "ok", "")
+        return CompletedProcess(cmd, 0, "authenticated", "")
+
+    invalidate_oauth_probe_cache()
+    with (
+        patch("staff.cli_oauth_session.Path.home", return_value=tmp_path),
+        patch("staff.cli_oauth_session.subprocess.run", fake_run),
+    ):
+        assert oauth_has_refresh_token_for_provider("claude") is True
+        alive, _detail = claude_oauth_session_alive("/usr/bin/claude")
+    assert alive is True
+    assert ["/usr/bin/claude", "-p", "ok", "--max-turns", "1"] in calls
+    assert home_cred.is_file()
+    assert (home_cred.stat().st_mode & 0o777) == 0o600
+
+
+def test_antigravity_jetski_state_overrides_stale_oauth_creds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    home = tmp_path / ".gemini"
+    agy_dir = home / "antigravity-cli"
+    agy_dir.mkdir(parents=True)
+    oauth_file = home / "oauth_creds.json"
+    oauth_file.write_text(json.dumps({"expiresAt": int((time.time() - 86400) * 1000)}), encoding="utf-8")
+    old_ts = time.time() - 131 * 86400
+    os.utime(oauth_file, (old_ts, old_ts))
+    jetski = agy_dir / "jetski_state.pbtxt"
+    jetski.write_text("user_tier: true\n", encoding="utf-8")
+    monkeypatch.setenv("ANTIGRAVITY_HOME", str(home))
+
+    invalidate_oauth_probe_cache()
+    with patch(
+        "staff.cli_oauth_session.subprocess.run",
+        return_value=CompletedProcess(["/usr/bin/agy", "models"], 0, "gemini-3.8-flash-high", ""),
+    ):
+        alive, _detail = antigravity_oauth_session_alive("/usr/bin/agy")
+    assert alive is True
+    refreshed = oauth_last_refresh_epoch_for_provider("antigravity")
+    assert refreshed is not None and (time.time() - refreshed) < 60
