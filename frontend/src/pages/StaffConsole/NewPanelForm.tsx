@@ -118,6 +118,8 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
       mode,
       rounds,
       confirm_cost: confirmCost,
+      pack_id: "cartographer" as const,
+      preload_codebase: true,
       moderator_provider: providers[0] || "claude",
       experts: experts.map((e) => ({
         name: e.name.trim(),

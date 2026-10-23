@@ -8842,6 +8842,18 @@ export interface components {
              */
             moderator_provider: string;
             /**
+             * Pack Id
+             * @default cartographer
+             */
+            pack_id: "cartographer" | null;
+            /**
+             * Preload Codebase
+             * @default true
+             */
+            preload_codebase: boolean;
+            /** Repos */
+            repos?: string[] | null;
+            /**
              * Rounds
              * @default 3
              */

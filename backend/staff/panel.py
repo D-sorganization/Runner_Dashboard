@@ -29,6 +29,7 @@ from staff.conversation_models import ThreadRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.group_models import GroupCostEstimate, get_group_threshold, lookup_seat_price
 from staff.panel_models import (
+    CODEBASE_REPOS,
     DEFAULT_TURN_TIMEOUT_SECONDS,
     MODERATOR_NAME,
     STANCES,
@@ -113,7 +114,11 @@ def _transcript(turns: list[dict[str, Any]]) -> str:
 
 
 def build_turn_prompt(
-    request: PanelCreateRequest, speaker: PanelSpeaker, round_no: int, turns: list[dict[str, Any]]
+    request: PanelCreateRequest,
+    speaker: PanelSpeaker,
+    round_no: int,
+    turns: list[dict[str, Any]],
+    codebase_context: str = "",
 ) -> str:
     """The prompt for one expert turn: persona, mode, round, topic and the whole discussion so far."""
     others = ", ".join(f"{e.name} ({e.perspective})" for e in request.experts if e.name != speaker.name)
@@ -125,6 +130,7 @@ def build_turn_prompt(
         f"This is round {round_no} of {request.rounds}. Keep your turn under 300 words. "
         "Do not use tools or edit files; answer from your own knowledge.\n\n"
         f"## Topic\n{request.topic}\n\n"
+        f"{codebase_context}\n\n"
         f"## Discussion so far\n{_transcript(turns)}\n\n"
         "End your turn with exactly these two lines:\n"
         "STANCE: agree | partly | disagree  (with the emerging panel consensus)\n"
@@ -133,7 +139,11 @@ def build_turn_prompt(
 
 
 def build_synthesis_prompt(
-    request: PanelCreateRequest, turns: list[dict[str, Any]], rounds_used: int, consensus: bool
+    request: PanelCreateRequest,
+    turns: list[dict[str, Any]],
+    rounds_used: int,
+    consensus: bool,
+    codebase_context: str = "",
 ) -> str:
     """The moderator's prompt: the whole discussion and the sections the synthesis must have."""
     if consensus:
@@ -152,6 +162,7 @@ def build_synthesis_prompt(
         "Do not use tools or edit files. Summarise the discussion faithfully; do not invent "
         "positions no panelist took, and say plainly where the panel disagreed.\n\n"
         f"## Topic\n{request.topic}\n\n"
+        f"{codebase_context}\n\n"
         f"## Discussion\n{_transcript(turns)}\n\n"
         f"Write the synthesis in Markdown with these sections: {sections}."
     )
@@ -184,6 +195,24 @@ def estimate_panel_cost(request: PanelCreateRequest) -> GroupCostEstimate:
 
 
 # ── thread state ────────────────────────────────────────────────────────────
+def _preload_codebase_context(request: PanelCreateRequest) -> str:
+    """Read an available pack once; absent packs never trigger a cold repository scan."""
+    from knowledge_pack.cartographer import preload_panel_context
+    from staff.knowledge_refresh import get_knowledge_dir
+    from staff.workspace import find_repo_checkout
+
+    if not request.preload_codebase or request.pack_id is None:
+        return ""
+    if not (get_knowledge_dir() / "cartographer.sqlite").is_file():
+        return ""
+    roots = {}
+    for repo in request.repos or CODEBASE_REPOS:
+        root = find_repo_checkout(repo)
+        if root is not None:
+            roots[repo] = root
+    return preload_panel_context(roots, request.topic, max_tokens=800) if roots else ""
+
+
 def start_panel_thread(request: PanelCreateRequest, created_by: str, store: ConversationStore) -> ThreadRecord:
     """Create the ``kind="panel"`` thread and post the topic as the opening user message."""
     names = [e.name for e in request.experts]
@@ -201,6 +230,7 @@ def start_panel_thread(request: PanelCreateRequest, created_by: str, store: Conv
                 "consensus": False,
                 "experts": [e.model_dump() for e in request.experts],
                 "synthesis_message_id": None,
+                "codebase_context": _preload_codebase_context(request),
             }
         },
     )
@@ -270,6 +300,8 @@ async def run_panel(
     """Run every round, then the moderator. Post: ``meta.panel.status`` is ``complete`` or ``failed``."""
     run = runner or default_turn_runner
     store = get_conversation_store()
+    thread = store.get_thread(thread_id)
+    codebase_context = str(thread.meta.get("panel", {}).get("codebase_context", "")) if thread else ""
     turns: list[dict[str, Any]] = []
     rounds_used, consensus = 0, False
     _ACTIVE_PANELS.add(thread_id)
@@ -282,7 +314,7 @@ async def run_panel(
             round_turns = []
             for expert in request.experts:
                 speaker = _speaker(expert)
-                prompt = build_turn_prompt(request, speaker, round_no, turns)
+                prompt = build_turn_prompt(request, speaker, round_no, turns, codebase_context)
                 meta = {"is_panel_turn": True, "panel_round": round_no, "panel_expert": speaker.name}
                 record = await _speak(store, thread_id, speaker, prompt, meta, run, turn_timeout)
                 record.update(round=round_no, expert=speaker.name)
@@ -297,7 +329,7 @@ async def run_panel(
         moderator = PanelSpeaker(
             MODERATOR_NAME, "neutral synthesis", request.moderator_provider, request.moderator_model
         )
-        prompt = build_synthesis_prompt(request, turns, rounds_used, consensus)
+        prompt = build_synthesis_prompt(request, turns, rounds_used, consensus, codebase_context)
         meta = {"is_panel_synthesis": True, "panel_expert": MODERATOR_NAME}
         synthesis = await _speak(store, thread_id, moderator, prompt, meta, run, turn_timeout)
         ok = synthesis["status"] == "ok"

@@ -2680,6 +2680,40 @@
             "title": "Moderator Provider",
             "type": "string"
           },
+          "pack_id": {
+            "anyOf": [
+              {
+                "const": "cartographer",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "cartographer",
+            "title": "Pack Id"
+          },
+          "preload_codebase": {
+            "default": true,
+            "title": "Preload Codebase",
+            "type": "boolean"
+          },
+          "repos": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repos"
+          },
           "rounds": {
             "default": 3,
             "maximum": 6.0,

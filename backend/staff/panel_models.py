@@ -21,6 +21,14 @@ STANCES = ("agree", "partly", "disagree")
 PANEL_PROVIDERS: tuple[str, ...] = tuple(sorted(_CHAT_READ_ONLY_FLAGS))
 DEFAULT_TURN_TIMEOUT_SECONDS = 300.0
 MAX_ACTIVE_PANELS = 2
+CODEBASE_REPOS = (
+    "UpstreamDrift",
+    "AffineDrift",
+    "Gasification_Model",
+    "Tools",
+    "Repository_Management",
+    "Runner_Dashboard",
+)
 
 
 def enabled_panel_providers() -> tuple[str, ...]:
@@ -69,6 +77,16 @@ class PanelCreateRequest(BaseModel):
     confirm_cost: bool = False
     moderator_provider: str = "claude"
     moderator_model: str | None = Field(default=None, max_length=80)
+    pack_id: Literal["cartographer"] | None = "cartographer"
+    repos: list[str] | None = Field(default=None, min_length=1, max_length=6)
+    preload_codebase: bool = True
+
+    @field_validator("repos")
+    @classmethod
+    def _known_repositories(cls, repos: list[str] | None) -> list[str] | None:
+        if repos is not None and (len(set(repos)) != len(repos) or any(repo not in CODEBASE_REPOS for repo in repos)):
+            raise ValueError("repos must contain unique configured fleet repository names")
+        return repos
 
     @field_validator("moderator_provider")
     @classmethod
