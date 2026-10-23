@@ -19,6 +19,7 @@ _CITATION = re.compile(
 )
 _LINK = re.compile(r"(?<!!)\[[^\]]*\]\((?P<url>[^)]+)\)")
 _LEGACY = re.compile(r"\(work_id=(?P<work>\d+)\)")
+_MAX_SQLITE_INTEGER = 2**63 - 1
 
 
 def _anchors(markdown: str) -> set[str]:
@@ -31,11 +32,14 @@ def _verify_citation(
 ) -> dict[str, Any]:
     groups = match.groupdict()
     source = groups["source"] or groups["libsource"]
-    work_id = int(groups["work"] or groups["libwork"])
-    passage_id = int(groups["passage"] or groups["libpassage"])
+    result: dict[str, Any] = {"citation": match.group(0)[:500], "verified": False}
+    numeric_fields = [groups[key] or groups[f"lib{key}"] for key in ("work", "passage", "start", "end")]
+    if any(len(value) > 19 for value in numeric_fields):
+        return {**result, "status": "invalid_citation"}
+    work_id, passage_id, page_start, page_end = map(int, numeric_fields)
+    if any(value < 1 or value > _MAX_SQLITE_INTEGER for value in (work_id, passage_id, page_start, page_end)):
+        return {**result, "status": "invalid_citation"}
     digest_prefix = (groups["sha"] or groups["libsha"]).lower()
-    page_start = int(groups["start"] or groups["libstart"])
-    page_end = int(groups["end"] or groups["libend"])
     row = conn.execute(
         "SELECT w.id,w.title,w.author,w.year,f.sha256,p.id,p.page_start,p.page_end,p.text "
         "FROM works w JOIN passages p ON p.work_id=w.id "
@@ -43,7 +47,6 @@ def _verify_citation(
         "WHERE w.id=? AND p.id=? ORDER BY f.id LIMIT 1",
         (source, work_id, passage_id),
     ).fetchone()
-    result: dict[str, Any] = {"citation": match.group(0), "verified": False}
     if row is None:
         result.update(status="citation_not_found")
         return result

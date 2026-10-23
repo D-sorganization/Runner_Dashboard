@@ -25,7 +25,7 @@ _REF = re.compile(
     r"(?P<repo>[A-Za-z0-9][A-Za-z0-9_.-]{0,127})@(?P<commit>[a-f0-9]{8}):"
     r"(?P<path>[^\[\]#@\r\n]+)#L(?P<start>\d+)-L(?P<end>\d+)\]"
 )
-REFERENCE_TOKEN = re.compile(r"\[ref:[^\]\r\n]*(?:\]|$)", re.MULTILINE)
+REFERENCE_TOKEN = re.compile(r"\[ref:[^\]\r\n]*(?:\]|(?=[\r\n]|\Z))")
 MAX_BLOB_BYTES = 1_000_000
 MAX_SPAN_LINES = 400
 _VERIFY_SECONDS = 10
