@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from barb_lib import cmd_lib_get, cmd_lib_search, cmd_lib_submit, register_lib_commands  # noqa: E402
+from barb_ops import handle_ops_command, register_ops_commands  # noqa: E402
 from fleet_client import FleetAPIError, FleetArgumentError, FleetClient  # noqa: E402
 
 
@@ -94,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     disp.add_argument("--issue", type=int, default=0)
 
     register_lib_commands(sub)
+    register_ops_commands(sub)
 
     args = parser.parse_args(argv)
     try:
@@ -116,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_lib_get(client, args.work_id)
         if args.command == "lib" and args.lib_cmd == "submit":
             return cmd_lib_submit(client, args)
+        ops_rc = handle_ops_command(client, args)
+        if ops_rc is not None:
+            return ops_rc
     except FleetAPIError as exc:
         print(json.dumps(exc.to_envelope(), indent=2), file=sys.stderr)
         return 1

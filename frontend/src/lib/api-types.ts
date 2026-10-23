@@ -4572,6 +4572,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/bean-counter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Staff Bean Counter
+         * @description Zero-LLM-cost Bean-Counter token economy & waste ledger.
+         */
+        get: operations["get_staff_bean_counter_api_staff_bean_counter_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/board": {
         parameters: {
             query?: never;
@@ -4673,6 +4693,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Staff Leaderboard
+         * @description Empirical model/provider routing leaderboard and task-complexity suitability matrix.
+         */
+        get: operations["get_staff_leaderboard_api_staff_leaderboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/providers": {
         parameters: {
             query?: never;
@@ -4703,11 +4743,28 @@ export interface paths {
         /**
          * Get Quota
          * @description Billing kind and current plan windows for every staff provider on this node.
-         *
-         *     Reads local files only (the quota store and Codex session logs); never runs a
-         *     CLI, so asking costs no quota. ``quota`` is null until a source has been seen.
          */
         get: operations["get_quota_api_staff_quota_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/report-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Staff Report Cards
+         * @description Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard.
+         */
+        get: operations["get_staff_report_cards_api_staff_report_cards_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4955,9 +5012,6 @@ export interface paths {
         /**
          * Export Usage
          * @description Append today's per-provider totals to RM ``data/credit_usage.json``.
-         *
-         *     503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)
-         *     with ``scripts/append_credit_usage.py`` is available on this node.
          */
         post: operations["export_usage_api_staff_usage_export_post"];
         delete?: never;
@@ -5780,6 +5834,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/barb/classify-surface": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Classify whether a task belongs on Desktop App vs. Headless CLI */
+        post: operations["post_barb_classify_surface_api_v1_staff_barb_classify_surface_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/continuity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Multi-Barb scoped leases, turnover log, compliance & task inventory */
+        get: operations["get_barb_continuity_api_v1_staff_barb_continuity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition CLI <-> Desktop handoff state with monotonic fencing epoch */
+        post: operations["post_barb_handoff_api_v1_staff_barb_handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active Barb task inventory and desktop handoff queue */
+        get: operations["get_barb_inventory_api_v1_staff_barb_inventory_get"];
+        put?: never;
+        /** Create or update a task in the Barb inventory */
+        post: operations["post_barb_inventory_api_v1_staff_barb_inventory_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/leases/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check out a scoped Barb sub-role lease */
+        post: operations["post_barb_lease_checkout_api_v1_staff_barb_leases_checkout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/leases/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a scoped Barb lease with turnover compliance check */
+        post: operations["post_barb_lease_release_api_v1_staff_barb_leases_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/barb/status": {
         parameters: {
             query?: never;
@@ -5792,6 +5949,44 @@ export interface paths {
          * @description Role (unset/authority/replica), epoch, outbox depth and whether delivery is degraded.
          */
         get: operations["get_barb_status_api_v1_staff_barb_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/turnover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Barb shift turnover log entries */
+        get: operations["get_barb_turnover_api_v1_staff_barb_turnover_get"];
+        put?: never;
+        /** Record a shift turnover log entry */
+        post: operations["post_barb_turnover_api_v1_staff_barb_turnover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/bean-counter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bean Counter
+         * @description Zero-LLM-cost Bean-Counter token economy & waste ledger.
+         */
+        get: operations["get_bean_counter_api_v1_staff_bean_counter_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6050,6 +6245,26 @@ export interface paths {
          * @description Search knowledge pack by BM25 query (Issue #1479).
          */
         get: operations["search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Leaderboard
+         * @description Empirical model/provider routing leaderboard and task-complexity suitability matrix.
+         */
+        get: operations["get_leaderboard_api_v1_staff_leaderboard_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6321,6 +6536,26 @@ export interface paths {
          * @description Provider availability, chat-only/unattended capabilities, and CLI versions (#1697).
          */
         get: operations["providers_v1_api_v1_staff_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/report-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Report Cards
+         * @description Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard.
+         */
+        get: operations["get_report_cards_api_v1_staff_report_cards_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7463,6 +7698,210 @@ export interface components {
             }[];
             /** Total */
             total: number;
+        };
+        /** BarbHandoffTransitionRequest */
+        BarbHandoffTransitionRequest: {
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /**
+             * Artifact Uri
+             * @default
+             */
+            artifact_uri: string;
+            /**
+             * Desktop App
+             * @default
+             */
+            desktop_app: string;
+            /** Expected Epoch */
+            expected_epoch?: number | null;
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /**
+             * Persona
+             * @default
+             */
+            persona: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Resume Notes
+             * @default
+             */
+            resume_notes: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /** BarbLeaseCheckoutRequest */
+        BarbLeaseCheckoutRequest: {
+            /** Holder */
+            holder: string;
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /**
+             * Persona
+             * @default rd-barb
+             */
+            persona: string;
+            /**
+             * Scope
+             * @default barb:front-door
+             */
+            scope: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Takeover
+             * @default false
+             */
+            takeover: boolean;
+            /**
+             * Ttl Sec
+             * @default 3600
+             */
+            ttl_sec: number;
+        };
+        /** BarbLeaseReleaseRequest */
+        BarbLeaseReleaseRequest: {
+            /** Blockers */
+            blockers?: string[];
+            /** Completed Items */
+            completed_items?: string[];
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /** Holder */
+            holder: string;
+            /** In Progress Items */
+            in_progress_items?: string[];
+            /** Next Actions */
+            next_actions?: string[];
+            /** Scope */
+            scope: string;
+            /**
+             * Turnover Summary
+             * @default
+             */
+            turnover_summary: string;
+        };
+        /** BarbSurfaceClassifyRequest */
+        BarbSurfaceClassifyRequest: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Labels */
+            labels?: string[];
+            /** Title */
+            title: string;
+        };
+        /** BarbTaskUpsertRequest */
+        BarbTaskUpsertRequest: {
+            /**
+             * Assigned Holder
+             * @default
+             */
+            assigned_holder: string;
+            /**
+             * Assigned Persona
+             * @default
+             */
+            assigned_persona: string;
+            /**
+             * Desktop App
+             * @default
+             */
+            desktop_app: string;
+            /**
+             * Desktop Reason
+             * @default
+             */
+            desktop_reason: string;
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /**
+             * Priority
+             * @default normal
+             */
+            priority: string;
+            /**
+             * Repo
+             * @default
+             */
+            repo: string;
+            /** Requires Desktop */
+            requires_desktop?: boolean | null;
+            /**
+             * Scope
+             * @default barb:dispatch-coordinator
+             */
+            scope: string;
+            /**
+             * Status
+             * @default queued
+             */
+            status: string;
+            /** Surface */
+            surface?: string | null;
+            /**
+             * Target Ref
+             * @default
+             */
+            target_ref: string;
+            /** Task Id */
+            task_id?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** BarbTurnoverCreateRequest */
+        BarbTurnoverCreateRequest: {
+            /** Blockers */
+            blockers?: string[];
+            /** Completed Items */
+            completed_items?: string[];
+            /** Holder */
+            holder: string;
+            /** In Progress Items */
+            in_progress_items?: string[];
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /** Next Actions */
+            next_actions?: string[];
+            /**
+             * Persona
+             * @default rd-barb
+             */
+            persona: string;
+            /**
+             * Scope
+             * @default barb:front-door
+             */
+            scope: string;
+            /** Summary */
+            summary: string;
         };
         /**
          * BoardRoute
@@ -9420,6 +9859,32 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * StaffBeanCounterResponse
+         * @description Bean-Counter token economy & waste ledger response.
+         */
+        StaffBeanCounterResponse: {
+            /** Bean Counter Ledger */
+            bean_counter_ledger?: {
+                [key: string]: unknown;
+            };
+            /** Leaderboard */
+            leaderboard?: {
+                [key: string]: unknown;
+            }[];
+            /** Machine */
+            machine: string;
+            /** Routing Recommendations */
+            routing_recommendations?: {
+                [key: string]: unknown;
+            }[];
+            /** Since */
+            since: string;
+            /** Total Runs Analyzed */
+            total_runs_analyzed: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * StaffBoardResponse
          * @description Response model for GET /api/staff/board (issue #1289).
          */
@@ -9781,6 +10246,45 @@ export interface components {
             providers?: {
                 [key: string]: unknown;
             }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffReportCardsResponse
+         * @description Zero-LLM-cost Agent Report Cards & Empirical Routing Leaderboard response.
+         */
+        StaffReportCardsResponse: {
+            /** Bean Counter Ledger */
+            bean_counter_ledger?: {
+                [key: string]: unknown;
+            };
+            /** Leaderboard */
+            leaderboard?: {
+                [key: string]: unknown;
+            }[];
+            /** Machine */
+            machine: string;
+            /** Methodology */
+            methodology?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Prs Truncated
+             * @default false
+             */
+            prs_truncated: boolean;
+            /** Role Tier Breakdown */
+            role_tier_breakdown?: {
+                [key: string]: unknown;
+            }[];
+            /** Routing Recommendations */
+            routing_recommendations?: {
+                [key: string]: unknown;
+            }[];
+            /** Since */
+            since: string;
+            /** Total Runs Analyzed */
+            total_runs_analyzed: number;
         } & {
             [key: string]: unknown;
         };
@@ -16967,6 +17471,39 @@ export interface operations {
             };
         };
     };
+    get_staff_bean_counter_api_staff_bean_counter_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                role?: string | null;
+                provider?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffBeanCounterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     board_api_staff_board_get: {
         parameters: {
             query?: {
@@ -17131,6 +17668,40 @@ export interface operations {
             };
         };
     };
+    get_staff_leaderboard_api_staff_leaderboard_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                role?: string | null;
+                provider?: string | null;
+                include_pr_facts?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffReportCardsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     providers_api_staff_providers_get: {
         parameters: {
             query?: never;
@@ -17167,6 +17738,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffQuotaResponse"];
+                };
+            };
+        };
+    };
+    get_staff_report_cards_api_staff_report_cards_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                role?: string | null;
+                provider?: string | null;
+                include_pr_facts?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffReportCardsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -19036,6 +19641,250 @@ export interface operations {
             };
         };
     };
+    post_barb_classify_surface_api_v1_staff_barb_classify_surface_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbSurfaceClassifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_barb_continuity_api_v1_staff_barb_continuity_get: {
+        parameters: {
+            query?: {
+                turnover_limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_handoff_api_v1_staff_barb_handoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbHandoffTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_barb_inventory_api_v1_staff_barb_inventory_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                surface?: string | null;
+                scope?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_inventory_api_v1_staff_barb_inventory_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbTaskUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_lease_checkout_api_v1_staff_barb_leases_checkout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_lease_release_api_v1_staff_barb_leases_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseReleaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_barb_status_api_v1_staff_barb_status_get: {
         parameters: {
             query?: never;
@@ -19054,6 +19903,108 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_barb_turnover_api_v1_staff_barb_turnover_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_turnover_api_v1_staff_barb_turnover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbTurnoverCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bean_counter_api_v1_staff_bean_counter_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                role?: string | null;
+                provider?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffBeanCounterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -19450,6 +20401,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffKnowledgeSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_leaderboard_api_v1_staff_leaderboard_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                role?: string | null;
+                provider?: string | null;
+                include_pr_facts?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffReportCardsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19935,6 +20920,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffProvidersResponse"];
+                };
+            };
+        };
+    };
+    get_report_cards_api_v1_staff_report_cards_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                role?: string | null;
+                provider?: string | null;
+                include_pr_facts?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffReportCardsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

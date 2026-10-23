@@ -200,6 +200,384 @@
         "title": "AuditHistoryResponse",
         "type": "object"
       },
+      "BarbHandoffTransitionRequest": {
+        "properties": {
+          "action": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "artifact_uri": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Artifact Uri",
+            "type": "string"
+          },
+          "desktop_app": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Desktop App",
+            "type": "string"
+          },
+          "expected_epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Epoch"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "resume_notes": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Resume Notes",
+            "type": "string"
+          },
+          "task_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": ["task_id", "action", "actor"],
+        "title": "BarbHandoffTransitionRequest",
+        "type": "object"
+      },
+      "BarbLeaseCheckoutRequest": {
+        "properties": {
+          "holder": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Holder",
+            "type": "string"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "persona": {
+            "default": "rd-barb",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Summary",
+            "type": "string"
+          },
+          "takeover": {
+            "default": false,
+            "title": "Takeover",
+            "type": "boolean"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["holder"],
+        "title": "BarbLeaseCheckoutRequest",
+        "type": "object"
+      },
+      "BarbLeaseReleaseRequest": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Items",
+            "type": "array"
+          },
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "holder": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Holder",
+            "type": "string"
+          },
+          "in_progress_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "In Progress Items",
+            "type": "array"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "scope": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "turnover_summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Turnover Summary",
+            "type": "string"
+          }
+        },
+        "required": ["scope", "holder"],
+        "title": "BarbLeaseReleaseRequest",
+        "type": "object"
+      },
+      "BarbSurfaceClassifyRequest": {
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title"],
+        "title": "BarbSurfaceClassifyRequest",
+        "type": "object"
+      },
+      "BarbTaskUpsertRequest": {
+        "properties": {
+          "assigned_holder": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Assigned Holder",
+            "type": "string"
+          },
+          "assigned_persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Assigned Persona",
+            "type": "string"
+          },
+          "desktop_app": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Desktop App",
+            "type": "string"
+          },
+          "desktop_reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Desktop Reason",
+            "type": "string"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "priority": {
+            "default": "normal",
+            "maxLength": 32,
+            "title": "Priority",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Repo",
+            "type": "string"
+          },
+          "requires_desktop": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Desktop"
+          },
+          "scope": {
+            "default": "barb:dispatch-coordinator",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "default": "queued",
+            "maxLength": 32,
+            "title": "Status",
+            "type": "string"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface"
+          },
+          "target_ref": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Target Ref",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title"],
+        "title": "BarbTaskUpsertRequest",
+        "type": "object"
+      },
+      "BarbTurnoverCreateRequest": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Items",
+            "type": "array"
+          },
+          "holder": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Holder",
+            "type": "string"
+          },
+          "in_progress_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "In Progress Items",
+            "type": "array"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "persona": {
+            "default": "rd-barb",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": ["holder", "summary"],
+        "title": "BarbTurnoverCreateRequest",
+        "type": "object"
+      },
       "BoardRoute": {
         "description": "Routing policy for Architecture Board review.",
         "enum": ["auto", "force_board", "skip_board"],
@@ -4436,6 +4814,48 @@
         "title": "StaffAuditRecordResponse",
         "type": "object"
       },
+      "StaffBeanCounterResponse": {
+        "additionalProperties": true,
+        "description": "Bean-Counter token economy & waste ledger response.",
+        "properties": {
+          "bean_counter_ledger": {
+            "additionalProperties": true,
+            "title": "Bean Counter Ledger",
+            "type": "object"
+          },
+          "leaderboard": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Leaderboard",
+            "type": "array"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "routing_recommendations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Routing Recommendations",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "total_runs_analyzed": {
+            "title": "Total Runs Analyzed",
+            "type": "integer"
+          }
+        },
+        "required": ["machine", "since", "total_runs_analyzed"],
+        "title": "StaffBeanCounterResponse",
+        "type": "object"
+      },
       "StaffBoardResponse": {
         "additionalProperties": true,
         "description": "Response model for GET /api/staff/board (issue #1289).",
@@ -5196,6 +5616,66 @@
         },
         "required": ["generated_at"],
         "title": "StaffQuotaResponse",
+        "type": "object"
+      },
+      "StaffReportCardsResponse": {
+        "additionalProperties": true,
+        "description": "Zero-LLM-cost Agent Report Cards & Empirical Routing Leaderboard response.",
+        "properties": {
+          "bean_counter_ledger": {
+            "additionalProperties": true,
+            "title": "Bean Counter Ledger",
+            "type": "object"
+          },
+          "leaderboard": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Leaderboard",
+            "type": "array"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "methodology": {
+            "additionalProperties": true,
+            "title": "Methodology",
+            "type": "object"
+          },
+          "prs_truncated": {
+            "default": false,
+            "title": "Prs Truncated",
+            "type": "boolean"
+          },
+          "role_tier_breakdown": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Role Tier Breakdown",
+            "type": "array"
+          },
+          "routing_recommendations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Routing Recommendations",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "total_runs_analyzed": {
+            "title": "Total Runs Analyzed",
+            "type": "integer"
+          }
+        },
+        "required": ["machine", "since", "total_runs_analyzed"],
+        "title": "StaffReportCardsResponse",
         "type": "object"
       },
       "StaffRoleBudget": {
@@ -15977,6 +16457,97 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/bean-counter": {
+      "get": {
+        "description": "Zero-LLM-cost Bean-Counter token economy & waste ledger.",
+        "operationId": "get_staff_bean_counter_api_staff_bean_counter_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffBeanCounterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Staff Bean Counter",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/board": {
       "get": {
         "description": "Status monitor. With peers configured this is the fleet-wide view (#1195).",
@@ -16212,6 +16783,107 @@
         "tags": ["staff-inbox"]
       }
     },
+    "/api/staff/leaderboard": {
+      "get": {
+        "description": "Empirical model/provider routing leaderboard and task-complexity suitability matrix.",
+        "operationId": "get_staff_leaderboard_api_staff_leaderboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Staff Leaderboard",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/providers": {
       "get": {
         "description": "Provider availability, chat-only/unattended capabilities, and CLI versions (#1697).",
@@ -16242,7 +16914,7 @@
     },
     "/api/staff/quota": {
       "get": {
-        "description": "Billing kind and current plan windows for every staff provider on this node.\n\nReads local files only (the quota store and Codex session logs); never runs a\nCLI, so asking costs no quota. ``quota`` is null until a source has been seen.",
+        "description": "Billing kind and current plan windows for every staff provider on this node.",
         "operationId": "get_quota_api_staff_quota_get",
         "responses": {
           "200": {
@@ -16265,6 +16937,107 @@
           }
         ],
         "summary": "Get Quota",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/report-cards": {
+      "get": {
+        "description": "Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard.",
+        "operationId": "get_staff_report_cards_api_staff_report_cards_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Staff Report Cards",
         "tags": ["staff"]
       }
     },
@@ -16873,7 +17646,7 @@
     },
     "/api/staff/usage/export": {
       "post": {
-        "description": "Append today's per-provider totals to RM ``data/credit_usage.json``.\n\n503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)\nwith ``scripts/append_credit_usage.py`` is available on this node.",
+        "description": "Append today's per-provider totals to RM ``data/credit_usage.json``.",
         "operationId": "export_usage_api_staff_usage_export_post",
         "responses": {
           "200": {
@@ -19374,6 +20147,406 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/barb/classify-surface": {
+      "post": {
+        "operationId": "post_barb_classify_surface_api_v1_staff_barb_classify_surface_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbSurfaceClassifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Classify Surface Api V1 Staff Barb Classify Surface Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Classify whether a task belongs on Desktop App vs. Headless CLI",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/continuity": {
+      "get": {
+        "operationId": "get_barb_continuity_api_v1_staff_barb_continuity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "turnover_limit",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Turnover Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Barb Continuity Api V1 Staff Barb Continuity Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Multi-Barb scoped leases, turnover log, compliance & task inventory",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/handoff": {
+      "post": {
+        "operationId": "post_barb_handoff_api_v1_staff_barb_handoff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbHandoffTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Handoff Api V1 Staff Barb Handoff Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Transition CLI <-> Desktop handoff state with monotonic fencing epoch",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/inventory": {
+      "get": {
+        "operationId": "get_barb_inventory_api_v1_staff_barb_inventory_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Surface"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Barb Inventory Api V1 Staff Barb Inventory Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List active Barb task inventory and desktop handoff queue",
+        "tags": ["staff-barb"]
+      },
+      "post": {
+        "operationId": "post_barb_inventory_api_v1_staff_barb_inventory_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbTaskUpsertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Inventory Api V1 Staff Barb Inventory Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create or update a task in the Barb inventory",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/leases/checkout": {
+      "post": {
+        "operationId": "post_barb_lease_checkout_api_v1_staff_barb_leases_checkout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseCheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Checkout Api V1 Staff Barb Leases Checkout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Check out a scoped Barb sub-role lease",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/leases/release": {
+      "post": {
+        "operationId": "post_barb_lease_release_api_v1_staff_barb_leases_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseReleaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Release Api V1 Staff Barb Leases Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release a scoped Barb lease with turnover compliance check",
+        "tags": ["staff-barb"]
+      }
+    },
     "/api/v1/staff/barb/status": {
       "get": {
         "description": "Role (unset/authority/replica), epoch, outbox depth and whether delivery is degraded.",
@@ -19402,6 +20575,214 @@
         ],
         "summary": "Barb authority role, epoch and outbox depth",
         "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/turnover": {
+      "get": {
+        "operationId": "get_barb_turnover_api_v1_staff_barb_turnover_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Barb Turnover Api V1 Staff Barb Turnover Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Barb shift turnover log entries",
+        "tags": ["staff-barb"]
+      },
+      "post": {
+        "operationId": "post_barb_turnover_api_v1_staff_barb_turnover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbTurnoverCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Turnover Api V1 Staff Barb Turnover Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Record a shift turnover log entry",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/bean-counter": {
+      "get": {
+        "description": "Zero-LLM-cost Bean-Counter token economy & waste ledger.",
+        "operationId": "get_bean_counter_api_v1_staff_bean_counter_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffBeanCounterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Bean Counter",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/board": {
@@ -20060,6 +21441,107 @@
         ],
         "summary": "Search Knowledge V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/leaderboard": {
+      "get": {
+        "description": "Empirical model/provider routing leaderboard and task-complexity suitability matrix.",
+        "operationId": "get_leaderboard_api_v1_staff_leaderboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Leaderboard",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/maintenance/detect-stalled": {
@@ -20866,6 +22348,107 @@
         ],
         "summary": "Providers V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/report-cards": {
+      "get": {
+        "description": "Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard.",
+        "operationId": "get_report_cards_api_v1_staff_report_cards_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pr_facts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pr Facts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffReportCardsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Report Cards",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/requests": {

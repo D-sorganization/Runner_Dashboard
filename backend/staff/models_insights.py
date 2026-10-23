@@ -86,3 +86,32 @@ class StaffOutcomesResponse(BaseModel):
     rows: list[StaffOutcomeRow]
     totals: StaffOutcomeRow
     prs_truncated: bool = False
+
+
+class StaffReportCardsResponse(BaseModel):
+    """Zero-LLM-cost Agent Report Cards & Empirical Routing Leaderboard response."""
+
+    machine: str
+    since: str
+    total_runs_analyzed: int
+    methodology: dict[str, object] = Field(default_factory=dict)
+    leaderboard: list[dict[str, object]] = Field(default_factory=list)
+    role_tier_breakdown: list[dict[str, object]] = Field(default_factory=list)
+    routing_recommendations: list[dict[str, object]] = Field(default_factory=list)
+    bean_counter_ledger: dict[str, object] = Field(default_factory=dict)
+    prs_truncated: bool = False
+
+    model_config = ConfigDict(extra="allow")
+
+
+class StaffBeanCounterResponse(BaseModel):
+    """Bean-Counter token economy & waste ledger response."""
+
+    machine: str
+    since: str
+    total_runs_analyzed: int
+    bean_counter_ledger: dict[str, object] = Field(default_factory=dict)
+    routing_recommendations: list[dict[str, object]] = Field(default_factory=list)
+    leaderboard: list[dict[str, object]] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="allow")
