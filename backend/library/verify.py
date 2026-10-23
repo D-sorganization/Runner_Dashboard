@@ -60,16 +60,18 @@ def _verify_citation(
         from library.retrieval_ledger import references_for_run
 
         run_references = references_for_run(Path(conn.execute("PRAGMA database_list").fetchone()[2]), run_id)
-        if not any(
-            item["source_id"] == source
+        matching_retrievals = [
+            item
+            for item in run_references
+            if item["source_id"] == source
             and item["work_id"] == work_id
             and item["passage_id"] == passage_id
             and item["file_sha256"] == file_hash
             and item["page_start"] == page_start
             and item["page_end"] == page_end
-            for item in run_references
-        ):
-            result.update(status="unretrieved_reference")
+        ]
+        if not any(item["node"] == groups["node"] for item in matching_retrievals):
+            result.update(status="node_mismatch" if matching_retrievals else "unretrieved_reference")
             return result
     # Check the bounded sentence immediately preceding the citation. Never return passage text.
     prefix = content[max(0, match.start() - 500) : match.start()].rstrip()
