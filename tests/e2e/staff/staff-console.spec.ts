@@ -81,6 +81,24 @@ test.describe("chat", () => {
     await expect(page.getByRole("button", { name: /^E2E Analyst, Status:/ })).toBeVisible();
   });
 
+  test("sending from the mobile chat-first home reveals Barb's conversation", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/staff");
+    await expect(page.getByTestId("staff-mobile-home")).toBeVisible();
+
+    const text = `mobile home ${nonce()}`;
+    await send(page, text);
+
+    await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
+    await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    await expect(page).toHaveURL(/\/staff\?role=barb&thread=[^&]+/);
+
+    await page.reload();
+    await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
+    await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
+  });
+
   test("a direct reply is shown exactly once", async ({ page }) => {
     const text = `hello ${nonce()}`;
     await openThread(page, "E2E Analyst");
