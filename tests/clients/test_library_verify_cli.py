@@ -34,10 +34,16 @@ def test_file_verification_posts_exact_content_and_sets_exit_status(
         return {"verified": verified, "citations": [], "links": []}
 
     monkeypatch.setattr(client, "request", request)
-    assert fleetctl.main(["library", "verify", "--file", str(path), "--run-id", "run-123"]) == (0 if verified else 1)
+    assert fleetctl.main(
+        ["library", "verify", "--file", str(path), "--run-id", "run-123", "--repo", "Runner_Dashboard"]
+    ) == (0 if verified else 1)
     assert json.loads(capsys.readouterr().out)["verified"] is verified
     assert calls == [
-        {"method": "POST", "route": "/api/v1/library/verify", "body": {"content": content, "run_id": "run-123"}}
+        {
+            "method": "POST",
+            "route": "/api/v1/library/verify",
+            "body": {"content": content, "run_id": "run-123", "repo": "Runner_Dashboard"},
+        }
     ]
 
 
@@ -89,7 +95,14 @@ def test_shared_command_uses_content_not_local_file_access(
     assert calls == [{"body": {"content": "Claim", "run_id": "run-current"}}]
 
 
-@pytest.mark.parametrize("arguments", [{"content": "x" * 1_000_001}, {"content": "Claim", "run_id": "bad/run"}])
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"content": "x" * 1_000_001},
+        {"content": "Claim", "run_id": "bad/run"},
+        {"content": "Claim", "repo": "../private"},
+    ],
+)
 def test_client_validates_before_network(
     client: FleetClient,
     monkeypatch: pytest.MonkeyPatch,
