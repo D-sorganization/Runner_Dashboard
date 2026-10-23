@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 
 from knowledge_pack import KnowledgePack
-from knowledge_pack.sources import head_commit
+from staff.codebase_freshness import snapshot_is_stale
 from staff.knowledge_refresh import get_knowledge_dir, pack_is_stale, resolve_pack_roots
 from staff.roles import RoleSpec
 
@@ -56,7 +56,7 @@ def _build_code_map_block(role: RoleSpec, query: str) -> str:
         if role.repos:
             roots = {name: root for name, root in roots.items() if name in role.repos}
         commits = pack.info().commits
-        stale = any(commits.get(name) != head_commit(root) for name, root in roots.items())
+        stale = any(snapshot_is_stale(root, commits.get(name)) for name, root in roots.items())
         notice = "Notice: Indexed code map is stale.\n\n" if stale else ""
         hits = [hit for hit in pack.search(query, k=16) if hit.repo in roots][:3]
         context = render_codebase_context(hits, roots, max_tokens=800 - len((prefix + notice).encode()))
