@@ -556,6 +556,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/browser-csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Browser Csrf Token
+         * @description Issue a session/thread proof for a same-origin browser mutation.
+         */
+        post: operations["browser_csrf_token_api_auth_browser_csrf_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/callback": {
         parameters: {
             query?: never;
@@ -8047,6 +8067,11 @@ export interface components {
             /** Repo */
             repo?: string[] | null;
         };
+        /** BrowserCsrfRequest */
+        BrowserCsrfRequest: {
+            /** Thread Id */
+            thread_id: string;
+        };
         /**
          * BudgetSummary
          * @description Budget burn for the tab. ``limit_usd <= 0`` means "no limit configured".
@@ -12108,6 +12133,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browser_csrf_token_api_auth_browser_csrf_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserCsrfRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */
