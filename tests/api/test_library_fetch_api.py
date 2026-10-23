@@ -48,7 +48,13 @@ def test_fetch_resolves_canonical_reference_without_exposing_paths(tmp_path: Pat
     assert body["text"] == "Bounded passage text"
     assert body["citation"] == "Unknown, A book, p. 4-5"
     assert body["cite_key"].startswith("[ref:") and body["cite_key"].endswith(":p.4-5]")
-    assert body["cite_uri"] == "lib://shared/w1/p7@bbbbbbbb#p4-5" and TestClient(app).get("/api/v1/library/fetch", params={"cite": body["cite_uri"], "scope": "local"}).status_code == 200
+    assert (
+        body["cite_uri"] == "lib://shared/w1/p7@bbbbbbbb#p4-5"
+        and TestClient(app)
+        .get("/api/v1/library/fetch", params={"cite": body["cite_uri"], "scope": "local"})
+        .status_code
+        == 200
+    )
     assert body["file_sha256"] == "b" * 64
     assert "file_path" not in body and "book.txt" not in response.text
 
@@ -144,7 +150,6 @@ def test_hub_fetch_only_uses_registered_node_url(tmp_path: Path, monkeypatch) ->
     response = TestClient(app).get("/api/v1/library/fetch", params={"cite": cite})
     assert response.status_code == 200
     assert seen_urls == ["https://peer-a.tailnet:8321/api/v1/library/fetch"]
-
 
 
 def test_fetch_rejects_ambiguous_sha_prefix(tmp_path: Path) -> None:
