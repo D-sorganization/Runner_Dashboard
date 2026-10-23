@@ -119,7 +119,9 @@ class RunRecord:
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
-        d.update({"retryable": bool(self.retryable), "attempt": int(self.attempt), "max_attempts": int(self.max_attempts)})  # noqa: E501
+        d.update(
+            {"retryable": bool(self.retryable), "attempt": int(self.attempt), "max_attempts": int(self.max_attempts)}
+        )  # noqa: E501
         d["skill"] = None if not self.skill_pin else {"pin": self.skill_pin}
         return d
 
