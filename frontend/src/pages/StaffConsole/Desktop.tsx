@@ -26,11 +26,16 @@ export interface StaffConsoleDesktopProps {
   threadApi?: ThreadApi;
   /** Backend thread to open on mount (the thread a dispatched request names, #1504). */
   initialThreadId?: string | null;
+  /** Give the home conversation the full canvas; staff/context stay on demand. */
+  chatFirst?: boolean;
 }
 
 /** True when the console is below the three-column width (see desktop.css). */
 function isMediumWindow(): boolean {
-  return typeof window !== "undefined" && Boolean(window.matchMedia?.("(max-width: 1280px)").matches);
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.matchMedia?.("(max-width: 1280px)").matches)
+  );
 }
 
 const EMPTY_SUGGESTIONS = [
@@ -40,10 +45,18 @@ const EMPTY_SUGGESTIONS = [
   "Show active runner jobs",
 ];
 
-export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThreadId }: StaffConsoleDesktopProps) {
+export function StaffConsoleDesktop({
+  roles: seedRoles,
+  threadApi,
+  initialThreadId,
+  chatFirst = false,
+}: StaffConsoleDesktopProps) {
   const sc = useStaffConsole({ roles: seedRoles, threadApi, initialThreadId });
   // Below 1280px the context pane overlays the conversation, so it starts closed there.
-  const [showContext, setShowContext] = useState(() => !isMediumWindow());
+  const [showContext, setShowContext] = useState(
+    () => !chatFirst && !isMediumWindow(),
+  );
+  const [showRoster, setShowRoster] = useState(!chatFirst);
   const [composerPrefill, setComposerPrefill] = useState("");
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
@@ -59,7 +72,11 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
     const params = new URLSearchParams(window.location.search);
     if (params.get("thread") === activeThreadId) return;
     params.set("thread", activeThreadId);
-    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}`);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}?${params.toString()}`,
+    );
   }, [activeThreadId]);
 
   const handleExport = (format: "markdown" | "json") => {
@@ -77,23 +94,37 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
   const participantsCount = activeThread?.participants?.length ?? 0;
 
   return (
-    <div className={`staff-console${showContext ? "" : " staff-console--no-context"}`} data-testid="staff-console-desktop">
-      <Roster
-        className="staff-console__roster"
-        roles={readiness.roles}
-        availableProviders={readiness.availableProviders}
-        selectedRoleId={sc.selectedRole ?? undefined}
-        onSelectRole={(name) => void sc.openRole(name)}
-        onThreadCreated={(thread) => sc.openThread(thread)}
-        isLoading={sc.rosterLoading}
-        isError={Boolean(rosterError)}
-        errorMessage={rosterError ?? undefined}
-      />
+    <div
+      className={`staff-console${showContext ? "" : " staff-console--no-context"}${chatFirst && !showRoster ? " staff-console--chat-first" : ""}`}
+      data-testid="staff-console-desktop"
+    >
+      {showRoster && (
+        <Roster
+          className="staff-console__roster"
+          roles={readiness.roles}
+          availableProviders={readiness.availableProviders}
+          selectedRoleId={sc.selectedRole ?? undefined}
+          onSelectRole={(name) => {
+            void sc.openRole(name);
+            if (chatFirst) setShowRoster(false);
+          }}
+          onThreadCreated={(thread) => sc.openThread(thread)}
+          isLoading={sc.rosterLoading}
+          isError={Boolean(rosterError)}
+          errorMessage={rosterError ?? undefined}
+        />
+      )}
 
-      <section className="staff-console__main" role="region" aria-label="Staff conversation">
+      <section
+        className="staff-console__main"
+        role="region"
+        aria-label="Staff conversation"
+      >
         <header className="staff-console__header">
           <div className="staff-console__header-left">
-            <h2 className="staff-console__title">{activeThread ? activeThread.title : "Staff Console"}</h2>
+            <h2 className="staff-console__title">
+              {activeThread ? activeThread.title : "Staff Console"}
+            </h2>
             {participantsCount > 0 && (
               <span
                 className="staff-console__participants"
@@ -121,6 +152,16 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
           </div>
 
           <div className="staff-console__header-actions">
+            {chatFirst && (
+              <button
+                type="button"
+                className="staff-console__export-btn"
+                aria-expanded={showRoster}
+                onClick={() => setShowRoster((shown) => !shown)}
+              >
+                {showRoster ? "Hide staff" : "Choose staff"}
+              </button>
+            )}
             {activeThread && (
               <>
                 <button
@@ -172,7 +213,9 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
               type="button"
               className="staff-console__context-toggle"
               aria-expanded={showContext}
-              aria-label={showContext ? "Hide role context" : "Show role context"}
+              aria-label={
+                showContext ? "Hide role context" : "Show role context"
+              }
               title={showContext ? "Hide role context" : "Show role context"}
               onClick={() => setShowContext((shown) => !shown)}
             >
@@ -229,12 +272,16 @@ export function StaffConsoleDesktop({ roles: seedRoles, threadApi, initialThread
               <h3 className="staff-console__empty-title">
                 {sc.openingRole
                   ? `Opening conversation with ${sc.openingRole}…`
-                  : "Ask Barb anything, or pick a staff role"}
+                  : chatFirst
+                    ? "What would you like to get done?"
+                    : "Ask Barb anything, or pick a staff role"}
               </h3>
               {!sc.openingRole && (
                 <>
                   <p className="staff-console__empty-subtitle">
-                    Pick a role or ask Barb to start a conversation.
+                    {chatFirst
+                      ? "Ask Barb to investigate, plan, or move a project forward."
+                      : "Pick a role or ask Barb to start a conversation."}
                   </p>
                   <div className="staff-console__suggestions">
                     {EMPTY_SUGGESTIONS.map((text) => (

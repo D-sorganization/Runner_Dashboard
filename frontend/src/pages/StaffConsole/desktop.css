@@ -5,11 +5,13 @@
 
 .staff-console {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 320px);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(
+      240px,
+      320px
+    );
   gap: 12px;
-  height: calc(100dvh - var(--shell-topbar-h, 56px) - 32px);
-  min-height: 520px;
-  margin-bottom: 16px;
+  height: 100%;
+  min-height: 0;
   box-sizing: border-box;
   position: relative;
 }
@@ -170,7 +172,10 @@
   padding: 4px 8px;
   height: 28px;
   box-sizing: border-box;
-  transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    border-color 140ms ease-out;
 }
 
 .staff-console__context-toggle:hover {
@@ -233,7 +238,10 @@
   padding: 6px 14px;
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 140ms ease-out, color 140ms ease-out, background 140ms ease-out;
+  transition:
+    border-color 140ms ease-out,
+    color 140ms ease-out,
+    background 140ms ease-out;
 }
 
 .staff-console__suggestion-chip:hover {
@@ -288,10 +296,59 @@
   padding: 2px 8px;
   text-decoration: none;
   cursor: pointer;
-  transition: border-color 140ms ease-out, color 140ms ease-out;
+  transition:
+    border-color 140ms ease-out,
+    color 140ms ease-out;
 }
 
 .staff-console__export-btn:hover {
   color: var(--text-primary);
   border-color: var(--text-muted);
+}
+
+/* Home starts with one readable conversation; optional context keeps its own column. */
+.staff-console--chat-first {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+}
+
+.staff-console--chat-first.staff-console--no-context {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.staff-console--chat-first .staff-console__empty {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.staff-console--chat-first .staff-console__empty-title {
+  font-size: clamp(24px, 2.5vw, 36px);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.staff-console--chat-first .staff-console__empty-subtitle {
+  font-size: 15px;
+  margin-top: 8px;
+}
+
+.staff-console--chat-first .staff-console__suggestion-chip {
+  font-size: 14px;
+  min-height: 40px;
+  padding: 8px 14px;
+}
+
+.staff-console--chat-first .staff-composer {
+  width: 100%;
+  max-width: 920px;
+  margin-inline: auto;
+}
+
+.staff-console--chat-first .staff-composer__textarea {
+  font-size: 16px;
+}
+
+@media (max-width: 1280px) {
+  .staff-console--chat-first {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

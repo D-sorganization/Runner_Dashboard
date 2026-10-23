@@ -66,6 +66,28 @@ function openMaintenance() {
 }
 
 describe("StaffConsoleDesktop", () => {
+  it("puts chat first while keeping staff selection and context available on demand", async () => {
+    render(<StaffConsoleDesktop roles={ROLES} chatFirst />);
+    expect(screen.getByRole("heading", { name: "What would you like to get done?" })).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("staff-roster-sidebar"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("complementary", { name: "Role context" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /staff conversation input/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Choose staff" }));
+    expect(screen.getByTestId("staff-roster-sidebar")).toBeInTheDocument();
+    openMaintenance();
+    expect(await screen.findByText("All hosts healthy.")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("staff-roster-sidebar"),
+    ).not.toBeInTheDocument();
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+  });
+
   it("renders the roster, an empty conversation pane and the context pane", () => {
     render(<StaffConsoleDesktop roles={ROLES} />);
 
