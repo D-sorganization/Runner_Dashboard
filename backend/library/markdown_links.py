@@ -21,6 +21,16 @@ def _link_result(url: str, verified: bool, status: str) -> dict[str, Any]:
     return {"url": url[:2_000], "verified": verified, "status": status}
 
 
+def reject_links_without_files(content: str) -> list[dict[str, Any]]:
+    """Mark every link unsupported without resolving or reading its target."""
+    if not isinstance(content, str) or len(content) > _MAX_CONTENT_CHARS:
+        raise ValueError("content must be text of at most 1000000 characters")
+    return [
+        _link_result(match.group("url").strip(), False, "unsupported_in_shared_only")
+        for match in _LINK.finditer(content)
+    ]
+
+
 def verify_links(
     content: str,
     *,
