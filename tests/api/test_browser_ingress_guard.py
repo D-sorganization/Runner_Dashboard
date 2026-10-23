@@ -87,7 +87,7 @@ def browser(monkeypatch: pytest.MonkeyPatch):
     )
     app.add_middleware(
         BrowserSessionMiddleware,
-        secret_key="guard-test-secret",
+        secret_key="session-signing-fixture",
         https_only=True,
     )
     client = TestClient(app, base_url=origin, raise_server_exceptions=False)
