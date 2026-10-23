@@ -268,4 +268,81 @@ describe("useThreadStream", () => {
 
     expect(result.current.messages).toHaveLength(1);
   });
+
+  it("keeps the sent user message when delayed empty history arrives before the reply", () => {
+    const { result, rerender } = renderHook(
+      ({ history }) => useThreadStream({ threadId: "thread-abc", initialMessages: history }),
+      { initialProps: { history: [] as ThreadMessage[] } },
+    );
+    act(() => MockEventSource.instances[0].emit("message", { message: INITIAL_MESSAGES[0] }, "1"));
+    rerender({ history: [] }); // The history GET started before the message POST.
+    act(() => MockEventSource.instances[0].emit("message", { message: REPLY }, "2"));
+    expect(result.current.messages.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
+  });
+
+  it("merges older history without replacing a completed live reply", () => {
+    const { result, rerender } = renderHook(
+      ({ history }) => useThreadStream({ threadId: "thread-abc", initialMessages: history }),
+      { initialProps: { history: [] as ThreadMessage[] } },
+    );
+    act(() => MockEventSource.instances[0].emit("message", { message: REPLY }, "2"));
+    rerender({ history: [INITIAL_MESSAGES[0], { ...REPLY, body_md: "", delivery: "pending" }] });
+    expect(result.current.messages).toEqual([INITIAL_MESSAGES[0], REPLY]);
+  });
+
+  it("does not rewind the reconnect cursor when older history or replay arrives", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender, unmount } = renderHook(
+        ({ history }) => useThreadStream({ threadId: "thread-abc", initialMessages: history }),
+        { initialProps: { history: [] as ThreadMessage[] } },
+      );
+      act(() => MockEventSource.instances[0].emit("message", { message: REPLY }, "2"));
+      rerender({ history: INITIAL_MESSAGES });
+      act(() => MockEventSource.instances[0].emit("message", INITIAL_MESSAGES[0], "1"));
+      act(() => MockEventSource.instances[0].onerror?.());
+      act(() => vi.advanceTimersByTime(3000));
+      expect(MockEventSource.instances[1].url).toContain("since_seq=2&follow=true");
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resets messages and cursor when opening a different thread", () => {
+    const { result, rerender } = renderHook(
+      ({ threadId, history }) => useThreadStream({ threadId, initialMessages: history }),
+      { initialProps: { threadId: "thread-abc", history: INITIAL_MESSAGES } },
+    );
+    act(() => MockEventSource.instances[0].emit("message", { message: REPLY }, "2"));
+    rerender({ threadId: "thread-other", history: [] });
+    expect(result.current.messages).toEqual([]);
+    expect(MockEventSource.instances[1].url).toContain("/thread-other/stream?since_seq=0&follow=true");
+  });
+
+  it("does not seed a new thread with the previous thread's in-flight history", () => {
+    const { result, rerender } = renderHook(
+      ({ threadId }) => useThreadStream({ threadId, initialMessages: INITIAL_MESSAGES }),
+      { initialProps: { threadId: "thread-abc" } },
+    );
+    rerender({ threadId: "thread-other" });
+    expect(result.current.messages).toEqual([]);
+    expect(MockEventSource.instances[1].url).toContain("/thread-other/stream?since_seq=0&follow=true");
+  });
+
+  it("preserves live token progress until authoritative completed history arrives", () => {
+    const { result, rerender } = renderHook(
+      ({ history }) => useThreadStream({ threadId: "thread-abc", initialMessages: history }),
+      { initialProps: { history: INITIAL_MESSAGES } },
+    );
+    const placeholder = { ...REPLY, body_md: "", delivery: "pending" as const };
+    act(() => MockEventSource.instances[0].emit("message", { message: placeholder }, "2"));
+    act(() => MockEventSource.instances[0].emit("token", { message_id: "msg-2", delta: "Fake" }));
+    rerender({ history: [INITIAL_MESSAGES[0], placeholder] });
+    expect(result.current.messages[1]).toMatchObject({ body_md: "Fake", streaming: true });
+    expect(result.current.activeStreamingId).toBe("msg-2");
+    rerender({ history: [INITIAL_MESSAGES[0], REPLY] });
+    expect(result.current.messages[1]).toMatchObject({ body_md: "Fake reply", delivery: "complete", streaming: false });
+    expect(result.current.activeStreamingId).toBeNull();
+  });
 });
