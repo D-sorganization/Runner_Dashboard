@@ -29,6 +29,7 @@ import {
   CompassIcon,
   RepoIcon,
   UsersIcon,
+  BrainIcon,
 } from "./navIcons";
 
 export type NavGroupId = "staff" | "work" | "fleet" | "settings";
@@ -101,6 +102,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: RepoIcon,
     tooltip: "Alexandria library search, ingest status, and submission review queue.",
     tabId: "library",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "context",
+    label: "Context",
+    group: "staff",
+    Icon: BrainIcon,
+    tooltip: "Fleet context standards pack pin, lesson review queue, AGENTS.md version lag, and per-run context size.",
+    tabId: "context",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

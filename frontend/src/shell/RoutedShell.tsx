@@ -75,6 +75,7 @@ const LazyFleetCommandPage = React.lazy(
 );
 const LazyAgentBusPage = React.lazy(() => import("../pages/AgentBus/AgentBusPage"));
 const LazyLibraryPage = React.lazy(() => import("../pages/Library/LibraryPage"));
+const LazyContextPage = React.lazy(() => import("../pages/Context/ContextPage"));
 const LazyOperationsPage = React.lazy(
   () => import("../pages/Operations/OperationsPage"),
 );
@@ -132,6 +133,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LazyAgentBusPage />;
     case "library":
       return <LazyLibraryPage />;
+    case "context":
+      return <LazyContextPage />;
     case "machines":
       return <MachinesPage />;
     case "projects":
