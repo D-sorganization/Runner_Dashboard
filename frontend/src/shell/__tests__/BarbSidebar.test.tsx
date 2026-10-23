@@ -50,6 +50,15 @@ afterEach(() => {
 });
 
 describe("BarbSidebar", () => {
+  it("restores Barb history without sending a message when the sidebar opens", () => {
+    render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(mockUseStaffConsole).toHaveBeenCalledWith(
+      expect.objectContaining({ initialRole: "barb", restoreInitialRoleThread: true }),
+    );
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("navigates directly to fleet pages from the persistent panel", () => {
     const onNavigate = vi.fn();
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={onNavigate} />);
