@@ -58,6 +58,4 @@ regexes = [
 
 # Commits that have been audited and are known to contain only test fixtures
 # or placeholders. Add SHAs here only after manual review.
-commits = [
-  "2e016f6377b0c2dcbd88647aaf683cb79f29d0bf",
-]
+commits = []
