@@ -451,7 +451,7 @@ class StaffRunner:
             updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 updated_rec = verification.apply_deliverable_failure(
-                    store, updated_rec, verdict, opens_pr=self.opens_pr(rec.role)
+                    store, updated_rec, verdict, opens_pr=lambda: self.opens_pr(rec.role)
                 )
             if updated_rec is not None:
                 q = question if status == "needs_input" else None

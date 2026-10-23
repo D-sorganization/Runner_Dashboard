@@ -454,7 +454,9 @@ def client(staff: runner_mod.StaffRunner) -> Iterator[TestClient]:
 
 
 @pytest.mark.unit
-def test_roster_lists_roles_and_providers(client: TestClient) -> None:
+def test_roster_lists_roles_and_providers(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    # This role/adapter contract test must not probe a developer's installed CLIs.
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
     body = client.get("/api/staff/roster").json()
     assert body["machine"] == "TestNode"
     names = {r["name"] for r in body["roles"]}
