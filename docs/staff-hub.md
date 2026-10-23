@@ -646,3 +646,12 @@ External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) int
 ## Not yet here (tracked in the epic)
 
 The fleet deploy (#1201).
+
+## Routing statistics and shadow advice (#2484)
+
+Observability for a future learning router; nothing here changes provider or machine selection.
+
+- **Success definition** (`backend/staff/run_outcome.py`, used by the report cards): a run is `success` only when it succeeded AND its verification is `verified`. `no_op` (succeeded with `no_change`, `not_applicable` or no verdict) and `cancelled` are neutral and excluded from the quality sample (`terminal_runs`, reported as `neutral_runs`). Infra failures (`rate_limited`, `quota_exhausted`, `auth_expired`, `provider_capacity`, `environment_error`, blocked runs, ...) never lower the quality score; they surface as `infra_failed_runs` and `availability`. `first_pass_*` additionally excludes runs that needed a later pr-remediator rework.
+- **Where to read it**: `GET /api/v1/staff/report-cards`, `/leaderboard` (Wilson 95% CI in `first_pass_ci_95`, cost per success in `effective_cost_per_success_usd`).
+- **Shadow mode**: set `STAFF_ROUTING_MODE=shadow` (default `off`). Each newly admitted run then gets one `routing_shadow` run event `{chosen, recommended, agrees, scores}`, where `recommended` is the best provider for the role and complexity tier from the last 14 days of runs. The router stays in shadow until a provider has n >= 8 scored runs: below that `recommended` is `null`. Advice failures are logged and swallowed; the chosen provider is never altered. The hook sits at the dispatch admission seam in `backend/staff/dispatch_service.py` (the selection itself is `failover_dispatch.select_provider_from_chain`).
+- Override/feedback counts (`routing_feedback`) live in the conversation store and are not joined here yet.
