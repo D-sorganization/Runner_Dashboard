@@ -13,6 +13,7 @@ from typing import Any
 from staff.conversations import ConversationStore
 from staff.inbox_models import InboxItem
 from staff.redaction import redact_sensitive_content
+from staff.store import _now
 
 log = logging.getLogger("dashboard.staff.concerns")
 BARB_CONCERNS_THREAD_ID = "th_barb_concerns"
@@ -37,10 +38,6 @@ class RateLimitExceededError(Exception):
 def reset_concerns_memory() -> None:
     with _MEMORY_LOCK:
         _AUTHOR_POSTS.clear()
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _ensure_concerns_thread(c_store: ConversationStore) -> None:
