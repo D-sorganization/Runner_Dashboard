@@ -78,9 +78,20 @@ class AssistantMemoryStore:
         self._db.execute("CREATE INDEX IF NOT EXISTS memory_created_idx ON memory_entries(created_at)")
         self._db.execute("CREATE INDEX IF NOT EXISTS memory_type_idx ON memory_entries(entry_type)")
         self._db.execute("CREATE INDEX IF NOT EXISTS memory_author_idx ON memory_entries(author_principal)")
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memory_idempotency (
+              idempotency_key TEXT PRIMARY KEY,
+              fingerprint TEXT NOT NULL,
+              entry_id TEXT NOT NULL UNIQUE
+            )
+            """
+        )
 
     def total_payload_bytes(self) -> int:
-        row = self._db.execute("SELECT COALESCE(SUM(LENGTH(body_json)), 0) FROM memory_entries").fetchone()
+        row = self._db.execute(
+            "SELECT COALESCE(SUM(LENGTH(CAST(body_json AS BLOB))), 0) FROM memory_entries"
+        ).fetchone()
         return int(row[0] if row else 0)
 
     def append(self, entry: MemoryEntry) -> MemoryEntry:
@@ -114,6 +125,61 @@ class AssistantMemoryStore:
                     (entry.id, entry.supersedes_id),
                 )
         return entry
+
+    def append_idempotent(
+        self, entry: MemoryEntry, *, idempotency_key: str, fingerprint: str
+    ) -> tuple[MemoryEntry, bool]:
+        """Atomically append once for a stable key, or return the matching prior entry."""
+        body_json = json.dumps(entry.body, separators=(",", ":"), ensure_ascii=False)
+        payload = len(body_json.encode("utf-8"))
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                prior = self._db.execute(
+                    "SELECT fingerprint, entry_id FROM memory_idempotency WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                ).fetchone()
+                if prior:
+                    if prior[0] != fingerprint:
+                        raise ValueError("idempotency_key_reused")
+                    row = self._db.execute("SELECT * FROM memory_entries WHERE id = ?", (prior[1],)).fetchone()
+                    if row is None:
+                        raise RuntimeError("memory_idempotency_entry_missing")
+                    self._db.execute("COMMIT")
+                    return _Row(*row).to_entry(), True
+
+                if self.total_payload_bytes() + payload > MAX_STORE_BYTES:
+                    raise ValueError("store_size_cap_exceeded")
+                self._db.execute(
+                    """
+                    INSERT INTO memory_entries (
+                      id, entry_type, author_principal, source_product, tags_json, body_json,
+                      created_at, expires_at, supersedes_id, superseded_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        entry.id,
+                        entry.entry_type,
+                        entry.author_principal,
+                        entry.source_product,
+                        json.dumps(entry.tags),
+                        body_json,
+                        entry.created_at,
+                        entry.expires_at,
+                        entry.supersedes_id,
+                        entry.superseded_by,
+                    ),
+                )
+                self._db.execute(
+                    "INSERT INTO memory_idempotency (idempotency_key, fingerprint, entry_id) VALUES (?, ?, ?)",
+                    (idempotency_key, fingerprint, entry.id),
+                )
+                self._db.execute("COMMIT")
+                return entry, False
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
 
     def get(self, entry_id: str) -> MemoryEntry | None:
         row = self._db.execute("SELECT * FROM memory_entries WHERE id = ?", (entry_id,)).fetchone()

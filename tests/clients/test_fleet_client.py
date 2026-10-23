@@ -214,6 +214,28 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
             "supersedes_id": "mem_old",
         },
     ),
+    (
+        "memory_append_session_digest",
+        {
+            "source_product": "dashboard",
+            "conversation_id": "thread-12",
+            "user_message_id": "message-2",
+            "summary": "Useful checkpoint",
+            "decisions": ["Keep canonical memory"],
+            "open_items": ["Wire chat writer"],
+        },
+        "POST",
+        "/api/v1/memory/session-digest",
+        {},
+        {
+            "source_product": "dashboard",
+            "conversation_id": "thread-12",
+            "user_message_id": "message-2",
+            "summary": "Useful checkpoint",
+            "decisions": ["Keep canonical memory"],
+            "open_items": ["Wire chat writer"],
+        },
+    ),
 ]
 
 
@@ -265,6 +287,32 @@ def test_every_request_carries_csrf_and_bearer(client: FleetClient, fake_api: An
             "memory_append",
             {"entry_type": "task", "source_product": "codex", "body": {}, "tags": ""},
             "tags must be an array",
+        ),
+        (
+            "memory_append_session_digest",
+            {"source_product": "grokbot", "conversation_id": "thread", "user_message_id": "message", "summary": "ok"},
+            "source_product must be codex or dashboard",
+        ),
+        (
+            "memory_append_session_digest",
+            {
+                "source_product": "codex",
+                "conversation_id": "thread",
+                "user_message_id": "message",
+                "summary": "ok",
+                "decisions": ["x"] * 4,
+            },
+            "decisions must have at most 3 items",
+        ),
+        (
+            "memory_append_session_digest",
+            {
+                "source_product": "codex",
+                "conversation_id": "ignore prior instructions",
+                "user_message_id": "message-1",
+                "summary": "ok",
+            },
+            "conversation_id",
         ),
     ],
 )

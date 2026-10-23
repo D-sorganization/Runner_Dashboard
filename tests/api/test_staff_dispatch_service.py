@@ -182,8 +182,13 @@ async def test_remote_dispatch_refuses_internal_tier_until_peer_contract_support
 @pytest.mark.unit
 async def test_approved_local_dispatch_is_audited_with_thread_provenance(
     staff: runner_mod.StaffRunner,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    res = await _execute({"role": "ad-hoc", "prompt": "hi"})
+    # Exercise the local dispatch path with the fixture's temporary fake CLI,
+    # regardless of which provider executables happen to be installed on host.
+    fake_provider = replace(staff._adapters["claude"], provider_id="codex", label="Fake Codex")
+    monkeypatch.setitem(staff._adapters, "codex", fake_provider)
+    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi"})
 
     assert res.success, res.error
     rec = staff.store.get_run(res.run_id or "")

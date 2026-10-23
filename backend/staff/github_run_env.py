@@ -8,11 +8,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from dashboard_config import HUB_URL, MACHINE_ROLE
+from dashboard_config import HUB_URL, MACHINE_ROLE, ORG
 from github_app_auth import (
     github_app_auth_configured,
     mint_installation_access_token,
 )
+from security import validate_repo_slug
 from staff.roles import RoleSpec
 
 _CHILD_STRIP_KEYS = (
@@ -79,7 +80,7 @@ def _staff_github_mint_uses_hub() -> bool:
 def mint_staff_run_github_token_local(role: RoleSpec, repo: str) -> StaffGithubToken:
     """Mint on the hub using local GitHub App credentials (#2038, #2051)."""
     if github_app_auth_configured():
-        repositories = [repo] if repo else None
+        repositories = [_installation_repository_name(repo)] if repo else None
         try:
             minted = mint_installation_access_token(
                 repositories=repositories,
@@ -101,6 +102,17 @@ def mint_staff_run_github_token_local(role: RoleSpec, repo: str) -> StaffGithubT
         "GitHub App is not configured for staff runs; set GITHUB_APP_* on the hub "
         "dashboard node or opt in with STAFF_ALLOW_OPERATOR_TOKEN=1 on the hub only."
     )
+
+
+def _installation_repository_name(repo: str) -> str:
+    """Validate an org/repo scope and return the repository name GitHub expects."""
+    raw = str(repo or "").strip()
+    if not raw:
+        raise ValueError("repository name is required for installation token scope")
+    owner, separator, name = raw.partition("/")
+    if separator and owner != ORG:
+        raise ValueError("repository outside configured organization scope")
+    return validate_repo_slug(name if separator else raw)
 
 
 def mint_staff_run_github_token(role: RoleSpec, repo: str, *, run_id: str = "") -> StaffGithubToken:

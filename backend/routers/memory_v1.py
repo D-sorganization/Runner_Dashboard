@@ -5,10 +5,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from identity import Principal, format_caller, require_scope
-from memory.models import MemoryAppendRequest, MemoryAppendResponse, MemoryListResponse
-from memory.service import append_entry, build_context_pack, list_entries
+from memory.models import (
+    MemoryAppendRequest,
+    MemoryAppendResponse,
+    MemoryListResponse,
+    SessionDigestAppendRequest,
+    SessionDigestAppendResponse,
+)
+from memory.service import append_entry, append_session_digest, build_context_pack, list_entries
 from staff.audit import record_audit
 
 log = logging.getLogger("dashboard.memory")
@@ -52,3 +58,31 @@ async def post_memory_entry(
     )
     log.info("memory: appended %s by %s", entry.id, format_caller(writer))
     return MemoryAppendResponse(entry=entry)
+
+
+@router.post(
+    "/session-digest",
+    response_model=SessionDigestAppendResponse,
+    status_code=201,
+    responses={200: {"model": SessionDigestAppendResponse, "description": "Idempotent replay"}},
+)
+async def post_session_digest(
+    body: SessionDigestAppendRequest,
+    response: Response,
+    writer: Principal = Depends(require_scope("memory.shared.summarize")),
+) -> SessionDigestAppendResponse:
+    entry, replayed = append_session_digest(writer, body)
+    if replayed:
+        response.status_code = 200
+    else:
+        response.status_code = 201
+    record_audit(
+        action="memory_session_digest_append",
+        target=entry.id,
+        principal=format_caller(writer),
+        surface="api",
+        detail={"source_product": entry.source_product, "replayed": replayed},
+        fail_closed=False,
+    )
+    log.info("memory: session digest %s by %s (replayed=%s)", entry.id, format_caller(writer), replayed)
+    return SessionDigestAppendResponse(entry=entry, replayed=replayed)
