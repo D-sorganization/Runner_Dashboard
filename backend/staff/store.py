@@ -185,7 +185,7 @@ class RunStore:
     """Thread-safe SQLite-backed run + event store."""
 
     def __init__(self, path: Path | None = None) -> None:
-        self.path = path or default_db_path()
+        self.path = (path or default_db_path()).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None, timeout=30.0)
@@ -473,7 +473,7 @@ def first_touch_lock(path: Path) -> threading.RLock:
 def get_store(path: Path | None = None) -> RunStore:
     """Process-wide store (path resolved lazily so tests can point it at tmp)."""
     global _store  # noqa: PLW0603
-    target_path = path or default_db_path()
+    target_path = (path or default_db_path()).expanduser().resolve()
     with _store_lock:
         if _store is None or _store.path != target_path:
             _store = RunStore(target_path)
