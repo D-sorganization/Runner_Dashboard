@@ -5,6 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+import yaml
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "deploy"))
 
@@ -51,3 +54,34 @@ def test_real_quality_check_still_blocks() -> None:
 
 def test_verify_closure_listed() -> None:
     assert "verify-closure" in NON_BLOCKING_DEPLOY_CHECK_NAMES
+
+
+@pytest.mark.parametrize("status,conclusion", [("in_progress", None), ("completed", "failure")])
+def test_split_publisher_gate_never_waits_on_itself(status: str, conclusion: str | None) -> None:
+    from main_auto_release.gate import commit_passes_publisher_ci_gate, publisher_gate_failure_is_terminal
+
+    runs = [
+        _run("quality-gate", "completed", "success", 1),
+        _run("Wait for CI gate (cancellable; newer candidate supersedes)", status, conclusion, 2),
+    ]
+    passed, detail = commit_passes_publisher_ci_gate(runs, _SHA)
+    assert passed, detail
+    assert ci_gate_for_deploy_commit(runs, _SHA)[0]
+    assert not publisher_gate_failure_is_terminal([runs[1]], _SHA)
+
+
+@pytest.mark.parametrize("status,conclusion", [("in_progress", None), ("completed", "failure")])
+def test_source_checks_still_block_with_a_passing_publisher(status: str, conclusion: str | None) -> None:
+    runs = [
+        _run("quality-gate", status, conclusion, 1),
+        _run("Wait for CI gate (cancellable; newer candidate supersedes)", "completed", "success", 2),
+    ]
+    passed, detail = ci_gate_for_deploy_commit(runs, _SHA)
+    assert not passed
+    assert "quality-gate" in detail
+
+
+def test_publisher_workflow_job_names_match_self_reference_exclusions() -> None:
+    workflow = yaml.safe_load((REPO / ".github/workflows/main-ci-auto-release.yml").read_text())
+    names = {job["name"] for job in workflow["jobs"].values()}
+    assert names <= NON_BLOCKING_DEPLOY_CHECK_NAMES
