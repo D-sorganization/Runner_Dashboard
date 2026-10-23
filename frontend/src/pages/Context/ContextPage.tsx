@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { legacyFetch } from "../../lib/api";
+import { AgentsSyncPanel } from "./AgentsSyncPanel";
 
 export interface ContextPackInfo {
   version: string;
@@ -194,7 +195,7 @@ export function ContextPage({
     <div className="p-6 max-w-7xl mx-auto space-y-8 font-sans text-neutral-100">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Fleet Context & Shared Memory</h1>
-        <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, current Tier-1 skill registry, latest per-repo run versions, lesson review queue, and per-run context estimates. AGENTS.md synchronization is not reported by the current API.</p>
+        <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, current Tier-1 skill registry, live managed AGENTS.md synchronization, latest per-repo run versions, lesson review queue, and per-run context estimates.</p>
       </div>
 
       {pack ? (
@@ -238,9 +239,11 @@ export function ContextPage({
         )}
       </section>
 
+      <AgentsSyncPanel />
+
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-4">
         <h2 className="text-lg font-semibold">Standards Pack Version at Latest Recorded Run</h2>
-        <p className="text-xs text-neutral-400">AGENTS.md sync versions are not exposed by the current API; this table compares run records with the current Tier-0 pack only.</p>
+        <p className="text-xs text-neutral-400">This table compares run records with the current Tier-0 pack. Managed AGENTS.md block status is shown separately above.</p>
         {runsState === "loading" ? <p className="text-sm text-neutral-400">Loading run version data…</p> : runsState === "unavailable" ? <div className="text-sm text-amber-300" role="status">Run version data is unavailable.<button onClick={onRefresh || fetchData} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry run data</button></div> : repoLag.length === 0 ? <p className="text-sm text-neutral-400">No active repositories detected.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
