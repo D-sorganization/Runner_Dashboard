@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from staff.cli_oauth_session import (
     oauth_expiry_epoch_for_provider,
+    oauth_has_refresh_token_for_provider,
     oauth_last_refresh_epoch_for_provider,
     provider_oauth_session_alive,
 )
@@ -21,6 +22,7 @@ log = logging.getLogger("dashboard.staff.provider_auth_preflight")
 _EVENING_TZ = ZoneInfo("America/Los_Angeles")
 _EVENING_HOUR = 20
 _EXPIRING_HOURS = 48.0
+_KEEPALIVE_INTERVAL_SECONDS = 4 * 3600
 _STALE_REFRESH_DAYS = float(os.environ.get("STAFF_PROVIDER_AUTH_STALE_DAYS", "7"))
 _PROBE_PROVIDERS = ("claude", "antigravity", "codex")
 
@@ -41,9 +43,14 @@ def _classify(
     detail: str,
     expires_at: float | None,
     last_refresh_at: float | None,
+    has_refresh_token: bool = False,
 ) -> dict[str, Any]:
     now = time.time()
-    row: dict[str, Any] = {"provider": provider, "detail": detail}
+    row: dict[str, Any] = {
+        "provider": provider,
+        "detail": detail,
+        "has_refresh_token": has_refresh_token,
+    }
     if expires_at is not None:
         row["expires_at"] = datetime.fromtimestamp(expires_at, UTC).isoformat().replace("+00:00", "Z")
         row["hours_remaining"] = round(max(0.0, (expires_at - now) / 3600.0), 2)
@@ -59,7 +66,9 @@ def _classify(
             if detail
             else f"subscription token not refreshed in {int((now - last_refresh_at) // 86400)} days"
         )
-    elif expires_at is not None and expires_at <= now + _EXPIRING_HOURS * 3600:
+    elif expires_at is not None and (
+        expires_at <= now or (not has_refresh_token and expires_at <= now + _EXPIRING_HOURS * 3600)
+    ):
         row["status"] = "expiring"
     else:
         row["status"] = "ok"
@@ -80,7 +89,8 @@ def probe_local_provider_auth(machine: str = "") -> dict[str, Any]:
         alive, detail = provider_oauth_session_alive(pid)
         expires = oauth_expiry_epoch_for_provider(pid)
         refreshed = oauth_last_refresh_epoch_for_provider(pid)
-        providers[pid] = _classify(pid, alive, detail, expires, refreshed)
+        has_refresh = oauth_has_refresh_token_for_provider(pid)
+        providers[pid] = _classify(pid, alive, detail, expires, refreshed, has_refresh_token=has_refresh)
     return {
         "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "machine": machine,
@@ -146,11 +156,11 @@ def _seconds_until_next_evening_pt() -> float:
     target = now.replace(hour=_EVENING_HOUR, minute=0, second=0, microsecond=0)
     if now >= target:
         target += timedelta(days=1)
-    return max(30.0, (target - now).total_seconds())
+    return min(float(_KEEPALIVE_INTERVAL_SECONDS), max(30.0, (target - now).total_seconds()))
 
 
 async def periodic_provider_auth_evening_loop(machine_loader: Any) -> None:
-    """Run a full OAuth probe daily at ~20:00 America/Los_Angeles."""
+    """Run a full OAuth keepalive and preflight probe every 4 hours (and at ~20:00 PT)."""
     await asyncio.sleep(10)
     while True:
         try:
@@ -159,7 +169,7 @@ async def periodic_provider_auth_evening_loop(machine_loader: Any) -> None:
                 await asyncio.to_thread(run_preflight_and_cache, machine)
         except Exception as exc:  # noqa: BLE001
             log.warning("staff provider auth preflight bootstrap failed: %s", exc)
-        await asyncio.sleep(_seconds_until_next_evening_pt())
+        await asyncio.sleep(min(float(_KEEPALIVE_INTERVAL_SECONDS), _seconds_until_next_evening_pt()))
         try:
             machine = str(machine_loader() or "local")
             await asyncio.to_thread(run_preflight_and_cache, machine)
