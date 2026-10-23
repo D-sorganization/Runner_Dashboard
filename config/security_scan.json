@@ -20,5 +20,13 @@
   "min_free_gb": 60,
   "max_new_findings_per_scan": 10,
   "usd_per_day": 5.0,
-  "alerts_ttl_seconds": 21600
+  "alerts_ttl_seconds": 21600,
+  "executor": {
+    "cli_version": null,
+    "model": "claude-opus-5-5",
+    "max_turns": 200,
+    "exec_timeout_s": 600,
+    "scan_timeout_minutes": 180,
+    "build_timeout_minutes": 30
+  }
 }

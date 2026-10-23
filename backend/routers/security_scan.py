@@ -7,12 +7,20 @@
 ``GET  /api/v1/security/findings``           private findings (``security.read``)
 ``GET  /api/v1/security/findings/{id}``      one finding with its triage audit trail
 ``POST /api/v1/security/findings/{id}/triage``  change state (``security.triage``, audited)
+``POST /api/v1/security/scans``              plan (dry run, default) or start a scan (``security.scan``)
+``GET  /api/v1/security/scans``              recent scan runs
+``GET  /api/v1/security/scans/{id}``         one scan run
+``POST /api/v1/security/scans/{id}/cancel``  stop a running scan (``security.scan``)
 
 Contract status mirrors the Projects tab: contracts are public repository files, so
 those reads are gated like the fleet routes (``require_fleet_peer``). Findings and
 posture are not public, so they need ``security.read``. Until identity presets grant
-the ``security.*`` scopes, only admin principals (``*``) hold them. Nothing here
-starts a scan or writes to GitHub.
+the ``security.*`` scopes, only admin principals (``*``) hold them.
+
+A scan always targets the default-branch head; the request cannot name a SHA. A dry
+run (the default) evaluates admission and records a ``planned`` row without touching
+docker. A real scan starts only when every admission rule passes (VM scan host, idle
+CI, night window, budget; see ``vuln_scan.admission``). Nothing here writes to GitHub.
 """
 
 from __future__ import annotations
@@ -23,7 +31,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_fleet_peer, require_scope
 from pydantic import BaseModel, Field
-from vuln_scan import service
+from vuln_scan import scan_service, service
 from vuln_scan.findings import SEVERITIES, STATES, FindingError, get_findings_store
 from vuln_scan.operator_config import load_operator_config
 
@@ -33,6 +41,8 @@ _REPO = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _ID = re.compile(r"^[0-9a-f]{32}$")
 _SECURITY_READ = Depends(require_scope("security.read"))
 _SECURITY_TRIAGE = Depends(require_scope("security.triage"))
+_SECURITY_SCAN = Depends(require_scope("security.scan"))
+_SCAN_ID = re.compile(r"^[0-9a-f]{16}$")
 
 
 def _repo_or_404(repo: str) -> str:
@@ -45,6 +55,11 @@ def _id_or_404(finding_id: str) -> str:
     if not _ID.match(finding_id):
         raise HTTPException(status_code=404, detail="no such finding")
     return finding_id
+
+
+class ScanRequestBody(BaseModel):
+    repo: str = Field(..., max_length=100)
+    dry_run: bool = Field(True, description="evaluate admission only (default)")
 
 
 class TriageRequest(BaseModel):
@@ -116,3 +131,34 @@ async def triage_finding(
     except FindingError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"finding": row}
+
+
+@router.post("/scans")
+async def request_scan(body: ScanRequestBody, principal: Principal = _SECURITY_SCAN) -> dict[str, Any]:
+    repo = _repo_or_404(body.repo)
+    row = await scan_service.request_scan(repo, dry_run=body.dry_run, requested_by=principal.id)
+    return {"scan": row}
+
+
+@router.get("/scans")
+async def list_scans(
+    limit: int = Query(50, ge=1, le=500),
+    _p: Principal = _SECURITY_READ,
+) -> dict[str, Any]:
+    rows = scan_service.scan_log().recent(limit)
+    return {"scans": rows, "count": len(rows)}
+
+
+@router.get("/scans/{scan_id}")
+async def get_scan(scan_id: str, _p: Principal = _SECURITY_READ) -> dict[str, Any]:
+    row = scan_service.scan_log().get(scan_id) if _SCAN_ID.match(scan_id) else None
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such scan")
+    return {"scan": row}
+
+
+@router.post("/scans/{scan_id}/cancel")
+async def cancel_scan(scan_id: str, _p: Principal = _SECURITY_SCAN) -> dict[str, Any]:
+    if not _SCAN_ID.match(scan_id) or not scan_service.cancel_scan(scan_id):
+        raise HTTPException(status_code=404, detail="no running scan with that id")
+    return {"cancelled": scan_id}
