@@ -176,6 +176,25 @@ class ScanLog:
             ).fetchall()
         return [_row(r) for r in rows]
 
+    def latest_by_repo(self) -> dict[str, dict[str, Any]]:
+        """Per repo: the last real scan's state and time, and the last success."""
+        out: dict[str, dict[str, Any]] = {}
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT repo, state, created, finished FROM vs_scans "
+                "WHERE dry_run=0 ORDER BY created"
+            ).fetchall()
+        for row in rows:
+            entry = out.setdefault(
+                row["repo"],
+                {"last_scan_at": "", "last_state": "", "last_success_at": ""},
+            )
+            entry["last_scan_at"] = row["created"]
+            entry["last_state"] = row["state"]
+            if row["state"] == "succeeded":
+                entry["last_success_at"] = row["finished"] or row["created"]
+        return out
+
     def spent_today(self) -> float:
         midnight = (
             datetime.now(UTC)

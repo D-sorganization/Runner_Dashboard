@@ -113,6 +113,36 @@ on [#2574](https://github.com/D-sorganization/Runner_Dashboard/issues/2574).
 It covers a real build behind the filter, a real agent run, and negative
 network probes from inside phase A.
 
+## Coverage and Scheduling (Owner Enables)
+
+`GET /api/v1/security/coverage` lists, for every tracked repository:
+
+- whether its contract is present and valid;
+- whether it is enabled, with its priority and `full_scan_days`;
+- its last real scan and last success;
+- whether it is **due**: enabled, valid contract, and no success within
+  `full_scan_days`.
+
+Contracts reach the rest of the fleet in staggered waves of scaffold PRs from
+Repository_Management (`maintenance_scripts/propagate_oss_scanner.py`). Each
+threat model is a draft that the owner reviews before merging.
+
+The scheduler ships **off**. To turn it on, set this in
+`config/security_scan.json`:
+
+```json
+"schedule": { "enabled": true, "check_minutes": 30 }
+```
+
+Every `check_minutes` the hub picks the most urgent due repository: the lowest
+`priority`, then the oldest last success. It evaluates admission without writing
+a row. It starts a real scan only when every admission rule passes, so outside
+the night window or while CI is busy it does nothing.
+
+The scheduler adds no guard of its own and can bypass none. Nodes never schedule
+(it checks `MACHINE_ROLE == "hub"` on every tick), and the config is re-read
+every tick, so setting `enabled` back to `false` takes effect without a restart.
+
 ## Scopes
 
 | Action                        | Scope               |

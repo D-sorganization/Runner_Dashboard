@@ -22361,6 +22361,35 @@
         "tags": ["security"]
       }
     },
+    "/api/v1/security/coverage": {
+      "get": {
+        "operationId": "get_coverage_api_v1_security_coverage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Coverage Api V1 Security Coverage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Coverage",
+        "tags": ["security"]
+      }
+    },
     "/api/v1/security/export/sarif": {
       "get": {
         "description": "Open findings as SARIF 2.1.0; off unless the operator config sets ``sarif_export``.",

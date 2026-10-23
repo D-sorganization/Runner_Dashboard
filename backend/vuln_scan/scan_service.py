@@ -17,7 +17,7 @@ import asyncio
 import logging
 import shutil
 import threading
-from collections.abc import Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 from urllib.parse import urlsplit
@@ -25,7 +25,7 @@ from urllib.parse import urlsplit
 from dashboard_config import ORG
 from fastapi import HTTPException
 from security import safe_subprocess_env
-from vuln_scan import launch, service
+from vuln_scan import launch, schedule, service
 from vuln_scan.executor import Probes, ScanExecutor, ScanRequest, codeload_fetch
 from vuln_scan.findings import default_db_path, get_findings_store
 from vuln_scan.operator_config import ScanHost, load_operator_config
@@ -154,6 +154,11 @@ async def request_scan(
         )
     executor = build_executor(asyncio.get_running_loop())
     req = ScanRequest(repo=repo, sha=sha, dry_run=dry_run, requested_by=requested_by)
+    return await _submit(executor, req)
+
+
+async def _submit(executor: ScanExecutor, req: ScanRequest) -> dict[str, Any]:
+    """Submit, and when admitted run the scan on a worker thread."""
     row = await asyncio.to_thread(executor.submit, req)
     if row.get("state") == "running":
         scan_id = str(row["id"])
@@ -171,6 +176,50 @@ async def request_scan(
             target=work, name=f"security-scan-{scan_id}", daemon=True
         ).start()
     return row
+
+
+async def coverage_rows() -> list[dict[str, Any]]:
+    report = await service.coverage_overview()
+    return list(report["coverage"])
+
+
+async def scheduled_tick() -> dict[str, Any]:
+    """One scheduler decision (#2574); see :mod:`vuln_scan.schedule`.
+
+    The config file deploys to every node, so the hub check lives here: only the
+    hub holds the fleet-wide slot, and a node never starts a scheduled scan.
+    """
+    import dashboard_config
+
+    if dashboard_config.MACHINE_ROLE != "hub":
+        return {"started": False, "reason": "not the hub"}
+
+    async def plan(
+        repo: str,
+    ) -> tuple[list[str], Callable[[], Awaitable[dict[str, Any]]]]:
+        sha = await default_branch_sha(repo)
+        if sha is None:
+            return [f"could not resolve {repo}'s default-branch SHA"], _noop
+        executor = build_executor(asyncio.get_running_loop())
+        req = ScanRequest(repo=repo, sha=sha, dry_run=False, requested_by="scheduler")
+        reasons = await asyncio.to_thread(executor.plan, req)
+        return reasons, lambda: _submit(executor, req)
+
+    return await schedule.tick(
+        config=load_operator_config(),
+        slot_free=scan_log().slot_free,
+        coverage=coverage_rows,
+        plan=plan,
+    )
+
+
+async def _noop() -> dict[str, Any]:
+    return {}
+
+
+def start_schedule_loop() -> None:
+    """Start the hub's scheduler loop; it does nothing until the owner enables it."""
+    asyncio.get_running_loop().create_task(schedule.schedule_loop(scheduled_tick))
 
 
 def cancel_scan(scan_id: str) -> bool:

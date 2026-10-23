@@ -4,6 +4,7 @@
 ``GET  /api/v1/security/contracts/{repo}``   one repository's contract status
 ``GET  /api/v1/security/config``             operator settings (``config/security_scan.json``)
 ``GET  /api/v1/security/posture``            contract + open findings + GitHub alert counts
+``GET  /api/v1/security/coverage``           enrolled / enabled / last scan / due per repo
 ``GET  /api/v1/security/findings``           private findings (``security.read``)
 ``GET  /api/v1/security/findings/{id}``      one finding with its triage audit trail
 ``POST /api/v1/security/findings/{id}/triage``  change state (``security.triage``, audited)
@@ -116,6 +117,11 @@ async def get_posture(
     _p: Principal = _SECURITY_READ,
 ) -> dict[str, Any]:
     return await service.posture_overview(include_alerts=alerts)
+
+
+@router.get("/coverage")
+async def get_coverage(_p: Principal = _SECURITY_READ) -> dict[str, Any]:
+    return await service.coverage_overview()
 
 
 @router.get("/findings")
