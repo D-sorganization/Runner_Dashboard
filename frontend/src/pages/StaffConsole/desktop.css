@@ -337,6 +337,31 @@
   padding: 8px 14px;
 }
 
+.staff-console__project-starters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: min(100%, 560px);
+  margin-top: 24px;
+  text-align: left;
+}
+.staff-console__project-starter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.staff-console__project-starter span + span { color: var(--text-muted); font-size: 12px; }
+.staff-console__project-starter:hover, .staff-console__project-starter:focus-visible { border-color: var(--accent-blue); }
+.staff-console__project-starter:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
 .staff-console--chat-first .staff-composer {
   width: 100%;
   max-width: 920px;

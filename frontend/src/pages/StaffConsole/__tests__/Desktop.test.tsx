@@ -89,6 +89,20 @@ describe("StaffConsoleDesktop", () => {
     expect(api.postThreadMessage).not.toHaveBeenCalled();
   });
 
+  it("offers project-specific Barb starters that prefill without sending", () => {
+    render(<StaffConsoleDesktop roles={ROLES} chatFirst />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start UpstreamDrift" }));
+    const textarea = screen.getByRole("textbox", { name: /staff conversation input/i });
+    expect(textarea.value).toContain("Triage UpstreamDrift");
+    expect(textarea.value).toContain("wait for my approval before dispatch");
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start AffineDrift" }));
+    expect(textarea.value).toContain("Triage AffineDrift");
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+  });
+
   it("renders the roster, an empty conversation pane and the context pane", () => {
     render(<StaffConsoleDesktop roles={ROLES} />);
 

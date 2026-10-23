@@ -166,6 +166,28 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(screen.getByText("Fleet Maintenance")).toBeInTheDocument();
   });
 
+  it("offers project starters in the mobile roster and only pre-fills the Barb composer", async () => {
+    const onSendMessage = vi.fn().mockResolvedValue({ ok: true });
+    render(<StaffConsoleMobile roles={MOCK_ROLES} onSendMessage={onSendMessage} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start UpstreamDrift" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("staff-mobile-thread")).toBeInTheDocument();
+    });
+    await waitFor(() => expect(screen.getByPlaceholderText(/message/i).value).toContain(
+      "Triage UpstreamDrift",
+    ));
+    expect(onSendMessage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("staff-mobile-back-btn"));
+    fireEvent.click(screen.getByRole("button", { name: "Start AffineDrift" }));
+    await waitFor(() => expect(screen.getByPlaceholderText(/message/i).value).toContain(
+      "Triage AffineDrift",
+    ));
+    expect(onSendMessage).not.toHaveBeenCalled();
+  });
+
   it("lists roles whose API group is free-form or missing (desktop tiering)", () => {
     const liveShaped: StaffRoleItem[] = [
       { ...MOCK_ROLES[1], name: "librarian", title: "Librarian", group: "Specialist" },
