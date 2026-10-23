@@ -349,3 +349,95 @@ test.describe("runs", () => {
     await expect(run).toContainText("cancelled", { timeout: 30_000 });
   });
 });
+
+test.describe("approved dashboard navigation", () => {
+  async function openBarbSidebar(page: Page, threadId?: string): Promise<Locator> {
+    await page.goto(threadId ? `/staff?role=barb&thread=${threadId}` : "/staff");
+    const askBarb = page.getByRole("button", { name: "Ask Barb" });
+    if (!(await page.getByTestId("barb-sidebar").isVisible())) await askBarb.click();
+    const drawer = page.getByTestId("barb-sidebar");
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    return drawer;
+  }
+
+  async function proposeFromSidebar(drawer: Locator, scenario: string): Promise<string> {
+    const cards = drawer.locator(".staff-action-card");
+    const before = await cards.count();
+    await drawer.getByRole("textbox", { name: COMPOSER }).fill(`open Context [[e2e:${scenario}]]`);
+    await drawer.getByRole("button", { name: "Send message" }).click();
+    await expect(cards).toHaveCount(before + 1);
+    const id = await cards.last().getAttribute("data-proposal-id");
+    if (!id) throw new Error("navigation proposal has no id");
+    return id;
+  }
+
+  test("approved navigation changes the route, preserves Barb's conversation on desktop and mobile, and rejects unknown sections", async ({ page, browser }) => {
+    const requesterContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const requester = await requesterContext.newPage();
+    await requester.route("**/api/**", (route) =>
+      route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+    );
+    await openThread(requester, BARB);
+    await requester.getByRole("button", { name: "New conversation" }).click();
+    await expect(requester.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    const threadId = new URL(requester.url()).searchParams.get("thread");
+    if (!threadId) throw new Error("new navigation conversation has no thread id");
+    const requesterDrawer = await openBarbSidebar(requester, threadId);
+
+    const desktopProposalId = await proposeFromSidebar(requesterDrawer, "navigate");
+    const desktopDrawer = await openBarbSidebar(page, threadId);
+    const desktopCard = desktopDrawer.locator(`[data-proposal-id="${desktopProposalId}"]`);
+    await expect(desktopCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await desktopCard.getByRole("button", { name: /^Approve$/ }).click();
+    await expect(page).toHaveURL(/\/context(?:\?|$)/);
+    await expect(desktopDrawer).toContainText("open Context");
+    await expect(desktopDrawer).toContainText("Action Executed");
+
+    await desktopDrawer.getByRole("button", { name: "Open Projects" }).click();
+    await expect(page).toHaveURL(/\/projects(?:\?|$)/);
+
+    const replayContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const replayPage = await replayContext.newPage();
+    await replayPage.route("**/api/**", (route) =>
+      route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+    );
+    await replayPage.goto(`/projects?role=barb&thread=${encodeURIComponent(threadId)}`);
+    await replayPage.getByRole("button", { name: "Ask Barb" }).click();
+    await expect(replayPage.getByTestId("barb-sidebar")).toBeVisible();
+    await expect(replayPage).toHaveURL(/\/projects(?:\?|$)/);
+    await replayContext.close();
+
+    if (!(await desktopDrawer.isVisible())) await page.getByRole("button", { name: "Ask Barb" }).click();
+    const mobileProposalId = await proposeFromSidebar(requesterDrawer, "navigate");
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileDrawer = page.getByTestId("barb-sidebar");
+    if (!(await mobileDrawer.isVisible())) await page.getByRole("button", { name: "Ask Barb" }).click();
+    await expect(mobileDrawer).toBeVisible();
+    const mobileCard = mobileDrawer.locator(`[data-proposal-id="${mobileProposalId}"]`);
+    await expect(mobileCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await mobileCard.getByRole("button", { name: /^Approve$/ }).click();
+    await expect(page).toHaveURL(/\/context(?:\?|$)/);
+    await expect(mobileDrawer).toHaveAttribute("aria-hidden", "true");
+    await page.getByRole("button", { name: "Ask Barb" }).click();
+    const reopenedDrawer = page.getByTestId("barb-sidebar");
+    await expect(reopenedDrawer).toBeVisible();
+    await expect(reopenedDrawer).toContainText("open Context");
+    await expect(reopenedDrawer).toContainText("Action Executed");
+
+    const routeBeforeInvalidAction = page.url();
+    const invalidProposalId = await proposeFromSidebar(requesterDrawer, "navigate-invalid");
+    const invalidCard = reopenedDrawer.locator(`[data-proposal-id="${invalidProposalId}"]`);
+    await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await invalidCard.getByRole("button", { name: /^Approve$/ }).click();
+    await expect(page).toHaveURL(routeBeforeInvalidAction);
+    await expect(reopenedDrawer).toContainText("Action Failed", { timeout: 30_000 });
+    await expect(invalidCard).toContainText("Action failed. You can review the failure below and retry approval.");
+    await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await expect(reopenedDrawer).toContainText("registered dashboard section");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Staff Console", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await requesterContext.close();
+  });
+});

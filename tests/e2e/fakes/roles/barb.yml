@@ -36,4 +36,5 @@ persona:
 chat:
   providers:
     - claude
-  tools: []
+  tools:
+    - dashboard.navigate
