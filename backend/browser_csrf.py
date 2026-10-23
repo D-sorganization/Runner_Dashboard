@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import uuid
-from urllib.parse import urlsplit
 
 import dashboard_config
+from browser_origin import browser_origin, external_browser_request
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from identity import Principal
@@ -41,28 +40,10 @@ def _audit_denial(request: Request, reason: str) -> str:
     return request_id
 
 
-def _external(request: Request) -> bool:
-    if any(request.headers.get(key) for key in ("cf-ray", "cf-connecting-ip", "cf-access-jwt-assertion", "cf-visitor")):
-        return True
-    try:
-        origin = urlsplit(os.environ.get("DASHBOARD_PUBLIC_ORIGIN", ""))
-    except ValueError:
-        return True
-    return bool(origin.scheme == "https" and origin.netloc.casefold() == request.headers.get("host", "").casefold())
-
-
 def _origin_valid(request: Request) -> bool:
-    expected = os.environ.get("DASHBOARD_PUBLIC_ORIGIN", "")
-    try:
-        parsed = urlsplit(expected)
-        valid = parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username
-    except ValueError:
-        return False
+    expected = browser_origin()
     return bool(
-        valid
-        and not parsed.path
-        and not parsed.query
-        and not parsed.fragment
+        expected
         and request.headers.get("origin") == expected
         and request.headers.get("x-requested-with") == "XMLHttpRequest"
     )
@@ -98,7 +79,7 @@ def issue_browser_csrf(request: Request, principal: Principal, thread_id: str) -
 
 def browser_csrf_denial(request: Request, principal: Principal) -> JSONResponse | None:
     """Reject external conversation mutations before their handler writes data."""
-    if request.method not in _MUTATIONS or not _external(request):
+    if request.method not in _MUTATIONS or not external_browser_request(request):
         return None
     path = request.url.path
     match = _THREAD.fullmatch(path)

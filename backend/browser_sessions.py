@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import os
 from typing import Literal
-from urllib.parse import urlsplit
 
-from starlette.datastructures import Headers
+from browser_origin import external_browser_request
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 _BROWSER_MAX_AGE_SECONDS = 15 * 60
-_EDGE_HEADERS = ("cf-ray", "cf-connecting-ip", "cf-access-jwt-assertion", "cf-visitor")
 
 
 class BrowserSessionMiddleware:
@@ -46,16 +44,11 @@ class BrowserSessionMiddleware:
             same_site="lax",
             https_only=True,
         )
-        origin = urlsplit(os.environ.get("DASHBOARD_PUBLIC_ORIGIN", ""))
-        self.public_host = origin.netloc.casefold() if origin.scheme == "https" and not origin.username else ""
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in {"http", "websocket"}:
             await self.app(scope, receive, send)
             return
-        headers = Headers(scope=scope)
-        external = any(headers.get(header) for header in _EDGE_HEADERS) or bool(
-            self.public_host and headers.get("host", "").casefold() == self.public_host
-        )
+        external = external_browser_request(HTTPConnection(scope))
         middleware = self.browser if external else self.local
         await middleware(scope, receive, send)

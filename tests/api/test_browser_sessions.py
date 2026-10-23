@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DASHBOARD_PUBLIC_ORIGIN", "https://ops.example.invalid")
+    monkeypatch.setenv("DASHBOARD_PUBLIC_ORIGIN", "https://desk.example.ts.net")
+    monkeypatch.setenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN", "https://ops.example.invalid")
     app = FastAPI()
     app.add_middleware(
         BrowserSessionMiddleware,
@@ -103,3 +104,20 @@ def test_tailnet_origin_does_not_switch_local_cookie_plane(client: TestClient) -
     assert client.get("/session", headers={"Origin": "http://desk.example.ts.net:8321"}).json() == {
         "principal_id": "owner"
     }
+
+
+def test_tailnet_oauth_host_keeps_local_cookie(client: TestClient) -> None:
+    cookie = _cookie(client.post("/login", headers={"Host": "desk.example.ts.net"}), "dashboard_session")
+    assert cookie["max-age"] == "86400"
+
+
+def test_invalid_public_origin_does_not_break_local_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN", "https://[broken")
+    app = FastAPI()
+    app.add_middleware(BrowserSessionMiddleware, secret_key="test-only-key")  # pragma: allowlist secret
+
+    @app.get("/")
+    def home(request: Request) -> dict:
+        return {"session": request.session}
+
+    assert TestClient(app).get("/").json() == {"session": {}}
