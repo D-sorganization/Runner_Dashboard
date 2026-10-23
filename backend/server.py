@@ -44,7 +44,9 @@ except ImportError:
     _sd_notify = None
 
 import httpx
+from browser_ingress_guard import BrowserIngressMiddleware
 from browser_sessions import BrowserSessionMiddleware
+from cloudflare_access import CloudflareAccessValidator
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -667,6 +669,16 @@ async def _systemd_watchdog_loop() -> None:
 
 
 # ── Bounded domain routers ────────────────────────────────────────────────────
+
+# External browser ingress is opt-in. A valid explicit HTTPS origin, Access
+# issuer/audience, and the runtime kill switch are all required for admission.
+_BROWSER_ACCESS_VALIDATOR = CloudflareAccessValidator(
+    issuer=os.environ.get("DASHBOARD_CLOUDFLARE_ACCESS_ISSUER"),
+    audience=os.environ.get("DASHBOARD_CLOUDFLARE_ACCESS_AUDIENCE"),
+    enabled=True,
+)
+app.state.browser_access_validator = _BROWSER_ACCESS_VALIDATOR
+
 app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
@@ -799,6 +811,7 @@ app.include_router(_proposals_router.router)
 # in Starlette's middleware stack.
 app.add_middleware(DrainAdmissionMiddleware, is_draining=lambda: _drain_mode)
 app.add_middleware(BaseHTTPMiddleware, dispatch=auth_perimeter_check)
+app.add_middleware(BrowserIngressMiddleware, enabled=True)
 
 app.add_middleware(
     BrowserSessionMiddleware,
@@ -2818,6 +2831,7 @@ async def _startup() -> None:
 async def _shutdown() -> None:
     """Close pooled HTTP clients on shutdown (issue #364)."""
     await shutdown_http_clients()
+    _BROWSER_ACCESS_VALIDATOR.close()
     log.info("Closed pooled HTTP clients")
 
 
