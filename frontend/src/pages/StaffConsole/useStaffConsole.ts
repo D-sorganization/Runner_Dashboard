@@ -297,7 +297,26 @@ export function useStaffConsole({
           // The server refuses an approval that does not name the parameters reviewed (#1807).
           throw new Error("The reviewed parameters are not loaded yet; reload the card and try again");
         }
-        await decideActionProposal(proposalId, decision, `${decision} in the Staff Console`, true, undefined, paramsHash);
+        const response = await decideActionProposal(
+          proposalId,
+          decision,
+          `${decision} in the Staff Console`,
+          true,
+          undefined,
+          paramsHash,
+        );
+        if (
+          decision === "approved" &&
+          response &&
+          typeof response === "object" &&
+          "execution_result" in response &&
+          response.execution_result &&
+          typeof response.execution_result === "object" &&
+          "success" in response.execution_result &&
+          response.execution_result.success === false
+        ) {
+          return false;
+        }
         return true;
       } catch (err) {
         report("decision", err);

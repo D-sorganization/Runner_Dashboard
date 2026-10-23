@@ -435,6 +435,14 @@ test.describe("approved dashboard navigation", () => {
     await expect(invalidCard).toContainText("Action failed. You can review the failure below and retry approval.");
     await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await expect(reopenedDrawer).toContainText("registered dashboard section");
+    const retryResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith(`/proposals/${invalidProposalId}/decide`),
+    );
+    await invalidCard.getByRole("button", { name: /^Approve$/ }).click();
+    expect((await retryResponse).status()).toBe(200);
+    await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Staff Console", exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
