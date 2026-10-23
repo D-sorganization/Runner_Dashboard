@@ -78,8 +78,8 @@ vi.mock("../../pages/Staff/StaffPage", () => ({
 }));
 
 vi.mock("../../pages/StaffConsole/Mobile", () => ({
-  default: () => <div data-testid="mobile-staff">Mobile Staff</div>,
-  StaffConsoleMobile: () => <div data-testid="mobile-staff">Mobile Staff</div>,
+  default: (props: { initialView?: string }) => <div data-testid="mobile-staff" data-initial-view={props.initialView}>Mobile Staff</div>,
+  StaffConsoleMobile: (props: { initialView?: string }) => <div data-testid="mobile-staff" data-initial-view={props.initialView}>Mobile Staff</div>,
 }));
 
 vi.mock("../../pages/FleetCommand/FleetCommandPage", () => ({
@@ -379,6 +379,13 @@ describe("RoutedShell — URL is the source of truth", () => {
       "operations",
     );
     expect(await screen.findByTestId("native-operations")).toBeInTheDocument();
+  });
+
+  it("opens the mobile Staff route on its chat-first home", async () => {
+    breakpointMock.mockReturnValue("md");
+    renderAt("/staff");
+
+    expect(await screen.findByTestId("mobile-staff")).toHaveAttribute("data-initial-view", "home");
   });
 
   it.each([

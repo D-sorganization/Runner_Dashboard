@@ -321,7 +321,7 @@ export function AppShell({
       insights: <ReportsMobile />,
       staff: (
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
-          <LazyStaffMobile />
+          <LazyStaffMobile initialView="home" />
         </React.Suspense>
       ),
       "fleet-command": (

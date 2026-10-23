@@ -26,7 +26,7 @@ import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import "./mobile.css";
 
-export type MobileView = "roster" | "thread" | "inbox" | "runs";
+export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
 
 export interface StaffConsoleMobileProps {
   roles?: StaffRoleItem[];
@@ -297,8 +297,42 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
         </div>
       )}
 
+      {/* ── Chat-first home ────────────────────────────────────────────────── */}
+      {view === "home" && (
+        <div className="staff-mobile__view-container" data-testid="staff-mobile-home" role="region" aria-label="Ask Barb">
+          <header className="staff-mobile__header">
+            <h1 className="staff-mobile__title">Ask Barb</h1>
+            <button type="button" className="staff-mobile__details-btn" onClick={() => setView("roster")}>Choose staff</button>
+          </header>
+          <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
+          <main className="staff-mobile__main-content staff-mobile__home-content">
+            <section className="staff-mobile__home-intro" aria-labelledby="staff-mobile-home-title">
+              <span className="staff-mobile__home-eyebrow">Your fleet, one conversation away</span>
+              <h2 id="staff-mobile-home-title">What would you like to work on?</h2>
+              <p>Ask Barb to help, or start with a project workflow. Nothing runs until you send.</p>
+            </section>
+            <div className="staff-mobile__project-starters" aria-label="Project starters">
+              {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
+                <button key={project} type="button" className="staff-mobile__project-starter" aria-label={`Start ${project}`} onClick={() => setComposerPrefill(prompt)}>
+                  <span>Start {project}</span><span>Prepare a test-first triage</span>
+                </button>
+              ))}
+            </div>
+          </main>
+          <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
+            <GroupCostConfirm guard={sc.costGuard} />
+            <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} />
+          </div>
+          <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Choose staff</button>
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-inbox" onClick={() => setView("inbox")}>Inbox</button>
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-runs" onClick={() => setView("runs")}>Runs</button>
+          </nav>
+        </div>
+      )}
+
       {/* ── Roster, Inbox & Runs Views ────────────────────────────────────── */}
-      {view !== "thread" && (
+      {view !== "thread" && view !== "home" && (
         <div
           className="staff-mobile__view-container"
           data-testid="staff-mobile-roster"
