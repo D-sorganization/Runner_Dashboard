@@ -106,6 +106,7 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
     _inspect_wslconfig,
     _probe_detail,
 )
+from diagnostics_logs import attach_log_ring_buffer, validate_log_level  # noqa: E402
 from drain_admission import DrainAdmissionMiddleware  # noqa: E402
 from error_models import (  # noqa: E402
     from_http_exception,
@@ -148,6 +149,7 @@ from routers import credentials as _credentials_router  # noqa: E402
 from routers import delivery_metrics as _delivery_metrics_router  # noqa: E402  # issue #2121
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
+from routers import diagnostics_logs as _diagnostics_logs_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import fleet as _fleet_router  # noqa: E402
@@ -196,8 +198,9 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
+_log_level = validate_log_level(os.environ.get("LOG_LEVEL", "INFO"))
 logging.basicConfig(
-    level=logging.INFO,
+    level=_log_level,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -205,6 +208,7 @@ log = logging.getLogger("dashboard")
 # Configure JSON logging and request_id filter (issue #331).
 # Must come after basicConfig so handlers are already attached.
 configure_json_logging()
+attach_log_ring_buffer()
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_LLM_MODEL = os.environ.get("DASHBOARD_LLM_MODEL", "claude-haiku-4-5-20251001")
@@ -751,6 +755,8 @@ app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
 app.include_router(_library_router.router)  # Alexandria library (#2165)
+
+app.include_router(_diagnostics_logs_router.router, prefix="/api/v1/diagnostics")
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402

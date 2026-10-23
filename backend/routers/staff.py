@@ -258,6 +258,7 @@ async def get_run(
         "run": rec.to_dict(),
         "events": evs[-events:] if events else [],
         "attempts": attempts,
+        "logs_ref": f"/api/v1/diagnostics/logs?run_id={run_id}",
     }
 
 

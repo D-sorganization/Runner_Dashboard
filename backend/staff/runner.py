@@ -241,6 +241,9 @@ class StaffRunner:
 
     # ── worker ───────────────────────────────────────────────────────────
     def _worker(self, rec: RunRecord, plan: RunPlan) -> None:
+        from request_context import run_id_ctx
+
+        run_id_ctx.set(rec.id)
         store = self.store
         provider_sema = self._get_provider_sema(plan.provider)
         with provider_sema, self._sema:

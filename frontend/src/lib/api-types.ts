@@ -5449,6 +5449,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/diagnostics/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Diagnostics Logs
+         * @description Retrieve ring-buffer log entries with redacting and response caps.
+         */
+        get: operations["get_diagnostics_logs_api_v1_diagnostics_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/search": {
         parameters: {
             query?: never;
@@ -9938,6 +9958,11 @@ export interface components {
             attempts?: components["schemas"]["StaffRunRecord"][];
             /** Events */
             events: components["schemas"]["StaffRunEvent"][];
+            /**
+             * Logs Ref
+             * @description Direct URL to filter diagnostic logs for this run
+             */
+            logs_ref?: string | null;
             run: components["schemas"]["StaffRunRecord"];
         } & {
             [key: string]: unknown;
@@ -18253,6 +18278,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_diagnostics_logs_api_v1_diagnostics_logs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

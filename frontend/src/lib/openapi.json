@@ -5560,6 +5560,18 @@
             "title": "Events",
             "type": "array"
           },
+          "logs_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Direct URL to filter diagnostic logs for this run",
+            "title": "Logs Ref"
+          },
           "run": {
             "$ref": "#/components/schemas/StaffRunRecord"
           }
@@ -17905,6 +17917,36 @@
         ],
         "summary": "Post Register",
         "tags": ["agent-bus"]
+      }
+    },
+    "/api/v1/diagnostics/logs": {
+      "get": {
+        "description": "Retrieve ring-buffer log entries with redacting and response caps.",
+        "operationId": "get_diagnostics_logs_api_v1_diagnostics_logs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Diagnostics Logs Api V1 Diagnostics Logs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Diagnostics Logs",
+        "tags": ["diagnostics"]
       }
     },
     "/api/v1/library/search": {
