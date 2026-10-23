@@ -838,7 +838,10 @@ def _arm_cli(
         root = Path(repo_root or ".").resolve()
         try:
             policy = arm_cap.load_policy(root)
-            store = arm_cap.ArmCapStore(arm_cap.DEFAULT_STORE_PATH)
+            store_path = (
+                arm_cap.resolve_store_path() if hasattr(arm_cap, "resolve_store_path") else arm_cap.DEFAULT_STORE_PATH
+            )
+            store = arm_cap.ArmCapStore(store_path)
             admit = arm_cap.admit_for_arm(
                 repo,
                 pr,
@@ -859,7 +862,10 @@ def _arm_cli(
 
     result = arm_auto_merge(repo, pr, strategy=strategy, delete_branch=delete_branch)
     if arm_cap is not None and cap_token:
-        cap_store = arm_cap.ArmCapStore(arm_cap.DEFAULT_STORE_PATH)
+        store_path = (
+            arm_cap.resolve_store_path() if hasattr(arm_cap, "resolve_store_path") else arm_cap.DEFAULT_STORE_PATH
+        )
+        cap_store = arm_cap.ArmCapStore(store_path)
         if result.armed or result.merged:
             cap_store.confirm_reservation(cap_token)
         else:

@@ -154,3 +154,24 @@ def test_token_exchange_is_bound_to_the_exact_callback() -> None:
     assert data["redirect_uri"] == _CALLBACK
     assert data["client_id"] == _CLIENT_ID
     assert data["client_secret"] == _CLIENT_SECRET
+
+
+def test_github_login_redirects_home_and_clears_stale_session_when_loopback_fallback_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from routers.auth import github_login
+
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("DASHBOARD_DEV_LOGIN", raising=False)
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_SESSION_FALLBACK", "1")
+
+    req = _request()
+    req.session["principal_id"] = "gh:99999"
+    req.session["user"] = "stale-user"
+
+    response = asyncio.run(github_login(req))
+    assert response.status_code in (302, 307)
+    assert response.headers["location"] == "/"
+    assert "principal_id" not in req.session

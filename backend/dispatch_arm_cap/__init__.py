@@ -31,6 +31,8 @@ from dispatch_arm_cap.types import (
     Lifecycle,
     PrArmSnapshot,
     ReservationStatus,
+    fallback_temp_store_path,
+    resolve_store_path,
 )
 
 __all__ = [
@@ -49,9 +51,11 @@ __all__ = [
     "admit_for_arm",
     "build_disarm_workflow_inputs",
     "classify_arm_health",
+    "fallback_temp_store_path",
     "load_policy",
     "load_required_contexts",
     "reconcile_snapshots",
     "record_disarm_triggered",
+    "resolve_store_path",
     "should_trigger_cap_disarm",
 ]

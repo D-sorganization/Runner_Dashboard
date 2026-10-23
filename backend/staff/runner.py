@@ -431,6 +431,7 @@ class StaffRunner:
                     error = review_verdict.error or "Malformed review verdict line"
                     remediation = "Review completed with a malformed STAFF_RESULT line."
 
+            workspace.persist_run_transcript(store, rec.id, workdir)
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
             store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
             store.update_run(
@@ -470,6 +471,7 @@ class StaffRunner:
                 handle_run_status_change(updated_rec, status=status, question=q, summary=summary)
         finally:
             revoke_run_token(rec.id)
+            workspace.finalize_run_worktree(self.store, rec.id, workdir, plan.repo, branch=plan.branch)
 
     def _pump_output(
         self,

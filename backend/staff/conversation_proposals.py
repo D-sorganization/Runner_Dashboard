@@ -100,6 +100,7 @@ def create_proposal(
     decide_by: str | None = None,
     default_if_silent: str = "",
     deduplicate: bool = False,
+    epoch: int | None = None,
 ) -> ActionProposalRecord:
     assert risk in PROPOSAL_RISKS, f"Invalid risk: {risk}"  # noqa: S101
     import uuid
@@ -108,6 +109,9 @@ def create_proposal(
     validate_decision_sla(decide_by, default_if_silent, risk, now)
 
     param_dict = redact_value(dict(params or {}))
+    if epoch is None and thread_id:
+        thread = conn.execute("SELECT epoch FROM threads WHERE id = ?", (thread_id,)).fetchone()
+        epoch = int(thread["epoch"]) if thread and "epoch" in thread.keys() else 0
 
     # De-duplicate identical pending proposals within the same thread when requested (#1716)
     if deduplicate and proposal_id is None and thread_id and action:
@@ -142,13 +146,14 @@ def create_proposal(
         created_at=now,
         decide_by=decide_by,
         default_if_silent=default_if_silent,
+        epoch=epoch or 0,
     )
 
     with lock:
         conn.execute(
             "INSERT INTO action_proposals (id, message_id, thread_id, action, params, risk, state, "
-            "decided_by, decided_at, reason, created_at, decide_by, default_if_silent) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "decided_by, decided_at, reason, created_at, decide_by, default_if_silent, epoch) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 rec.id,
                 rec.message_id,
@@ -163,6 +168,7 @@ def create_proposal(
                 rec.created_at,
                 rec.decide_by,
                 rec.default_if_silent,
+                rec.epoch,
             ),
         )
 
@@ -251,11 +257,16 @@ def decide_proposal(
         # A failed proposal may be decided again: approving it is the explicit retry (#1485).
         if prop.state not in ("proposed", "failed"):
             raise ValueError(f"Cannot decide proposal in state '{prop.state}' (must be 'proposed' or 'failed')")
+        thread = conn.execute("SELECT epoch FROM threads WHERE id = ?", (prop.thread_id,)).fetchone()
+        if thread is not None and int(thread["epoch"]) != prop.epoch:
+            raise ValueError(f"Proposal {proposal_id} belongs to stale thread epoch {prop.epoch}")
         now = _now()
-        conn.execute(
-            "UPDATE action_proposals SET state = ?, decided_by = ?, decided_at = ?, reason = ? WHERE id = ?",
-            (state, decided_by, now, redact_sensitive_content(reason), proposal_id),
-        )
+        updated_count = conn.execute(
+            "UPDATE action_proposals SET state = ?, decided_by = ?, decided_at = ?, reason = ? WHERE id = ? AND state = ?",  # noqa: E501
+            (state, decided_by, now, redact_sensitive_content(reason), proposal_id, prop.state),
+        ).rowcount
+        if updated_count != 1:
+            raise ValueError(f"Proposal {proposal_id} was already decided")
         updated = get_proposal(conn, lock, proposal_id)
         assert updated is not None  # noqa: S101
 
@@ -297,10 +308,12 @@ def transition_proposal_state(
         dec_by = decided_by or prop.decided_by
         dec_at = now if new_state in {"approved", "denied"} else prop.decided_at
         r = redact_sensitive_content(reason) or prop.reason
-        conn.execute(
-            "UPDATE action_proposals SET state = ?, decided_by = ?, decided_at = ?, reason = ? WHERE id = ?",
-            (new_state, dec_by, dec_at, r, proposal_id),
-        )
+        updated_count = conn.execute(
+            "UPDATE action_proposals SET state = ?, decided_by = ?, decided_at = ?, reason = ? WHERE id = ? AND state = ?",  # noqa: E501
+            (new_state, dec_by, dec_at, r, proposal_id, prop.state),
+        ).rowcount
+        if updated_count != 1:
+            raise ValueError(f"Proposal {proposal_id} changed state concurrently")
         updated = get_proposal(conn, lock, proposal_id)
         assert updated is not None  # noqa: S101
 

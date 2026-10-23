@@ -34,6 +34,7 @@ from staff.conversation_models import (
 )
 from staff.redaction import redact_sensitive_content, redact_value
 from staff.store import default_db_path, first_touch_lock
+from staff.thread_helpers import StaleThreadEpochError
 
 __all__ = [
     "MESSAGE_AUTHOR_KINDS",
@@ -48,6 +49,7 @@ __all__ = [
     "ConversationStoreStatus",
     "ConversationsUnavailableError",
     "MessageRecord",
+    "StaleThreadEpochError",
     "ThreadRecord",
     "get_conversation_store",
     "get_conversation_store_status",
@@ -155,6 +157,20 @@ class ConversationStore(BarbAuthorityMixin):
             row = self._conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
         return ThreadRecord.from_row(row) if row else None
 
+    def advance_thread_epoch(self, thread_id: str, reason: str = "seat_handoff") -> int:
+        """Atomically fence in-flight turns and return the new persisted thread epoch."""
+        self._ensure_available()
+        from staff.thread_helpers import advance_thread_turn_epoch
+
+        epoch = advance_thread_turn_epoch(self._conn, self._lock, thread_id, reason)
+        log.info("Advanced thread turn epoch to %d for %s (%s)", epoch, thread_id, reason)
+        return epoch
+
+    def is_current_thread_epoch(self, thread_id: str, epoch: int) -> bool:
+        """Return whether ``epoch`` still owns writes for ``thread_id``."""
+        thread = self.get_thread(thread_id)
+        return thread is not None and thread.epoch == epoch
+
     def list_threads(
         self,
         kind: str | None = None,
@@ -163,46 +179,15 @@ class ConversationStore(BarbAuthorityMixin):
         limit: int = 50,
     ) -> list[ThreadRecord]:
         self._ensure_available()
-        clauses: list[str] = []
-        params: list[Any] = []
-        if kind:
-            clauses.append("kind = ?")
-            params.append(kind)
-        if status:
-            clauses.append("status = ?")
-            params.append(status)
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        query = f"SELECT * FROM threads {where} ORDER BY updated_at DESC LIMIT ?"  # noqa: S608
-        params.append(limit)
-        with self._lock:
-            rows = self._conn.execute(query, tuple(params)).fetchall()
+        from staff.thread_helpers import query_threads
 
-        threads = [ThreadRecord.from_row(r) for r in rows]
-        if participant:
-            threads = [t for t in threads if participant in t.participants]
-        return threads
+        return query_threads(self._conn, self._lock, kind=kind, status=status, participant=participant, limit=limit)
 
     def update_thread(self, thread_id: str, **fields: Any) -> ThreadRecord | None:
         self._ensure_available()
-        with self._lock:
-            cur = self.get_thread(thread_id)
-            if not cur:
-                return None
-            allowed = {"title", "status", "participants", "unread_counters", "meta"}
-            updates: dict[str, Any] = {}
-            for k, v in fields.items():
-                if k in allowed:
-                    updates[k] = redact_value(json.dumps(v) if k in {"participants", "unread_counters", "meta"} else v)
-            if not updates:
-                return cur
-            updates["updated_at"] = _now()
-            sets = ", ".join(f"{k} = ?" for k in updates)
-            self._conn.execute(
-                f"UPDATE threads SET {sets} WHERE id = ?",
-                (*updates.values(), thread_id),
-            )  # noqa: S608
-            row = self._conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
-            return ThreadRecord.from_row(row) if row else None
+        from staff.thread_helpers import mutate_thread
+
+        return mutate_thread(self._conn, self._lock, self.get_thread(thread_id), thread_id, **fields)
 
     def archive_thread(self, thread_id: str, principal: str = "") -> ThreadRecord | None:
         self._ensure_available()
@@ -247,6 +232,7 @@ class ConversationStore(BarbAuthorityMixin):
         idempotency_key: str | None = None,
         delivery: str = "complete",
         message_id: str | None = None,
+        turn_epoch: int | None = None,
     ) -> MessageRecord:
         self._ensure_available()
         assert author_kind in MESSAGE_AUTHOR_KINDS, f"Invalid author_kind: {author_kind}"  # noqa: S101
@@ -258,6 +244,10 @@ class ConversationStore(BarbAuthorityMixin):
         meta_dict = redact_value(dict(meta or {}))
 
         with self._lock:
+            if turn_epoch is not None:
+                from staff.thread_helpers import validate_turn_epoch
+
+                validate_turn_epoch(self._conn, thread_id, turn_epoch)
             for attempt in range(10):
                 if idempotency_key:
                     existing = self._conn.execute(
@@ -342,12 +332,15 @@ class ConversationStore(BarbAuthorityMixin):
             ).fetchall()
         return [MessageRecord.from_row(r) for r in rows]
 
-    def update_message(self, message_id: str, **fields: Any) -> MessageRecord | None:
+    def update_message(self, message_id: str, *, turn_epoch: int | None = None, **fields: Any) -> MessageRecord | None:
         """Update mutable fields of a message (body_md, kind, meta, delivery, run_id)."""
         self._ensure_available()
         with self._lock:
             cur = self.get_message(message_id)
             if not cur:
+                return None
+            if turn_epoch is not None and not self.is_current_thread_epoch(cur.thread_id, turn_epoch):
+                log.warning("Dropped stale-epoch message update for thread %s (turn=%d)", cur.thread_id, turn_epoch)
                 return None
             allowed = {"body_md", "kind", "meta", "delivery", "run_id"}
             updates = {
@@ -388,6 +381,7 @@ class ConversationStore(BarbAuthorityMixin):
         decide_by: str | None = None,
         default_if_silent: str = "",
         deduplicate: bool = False,
+        epoch: int | None = None,
     ) -> ActionProposalRecord:
         self._ensure_available()
         return _proposals.create_proposal(
@@ -404,6 +398,7 @@ class ConversationStore(BarbAuthorityMixin):
             decide_by=decide_by,
             default_if_silent=default_if_silent,
             deduplicate=deduplicate,
+            epoch=epoch,
         )
 
     def get_proposal(self, proposal_id: str) -> ActionProposalRecord | None:
@@ -419,8 +414,9 @@ class ConversationStore(BarbAuthorityMixin):
         after_deadline: tuple[str, str] | None = None,
     ) -> list[ActionProposalRecord]:
         self._ensure_available()
-        args = (self._conn, self._lock, thread_id, message_id, state, limit)
-        return _proposals.list_proposals(*args, after_deadline=after_deadline)
+        return _proposals.list_proposals(
+            self._conn, self._lock, thread_id, message_id, state, limit, after_deadline=after_deadline
+        )
 
     def decide_proposal(
         self,

@@ -83,6 +83,8 @@ class DispatchCommand:
     task_type: str = ""
     standards_extra: str = ""
     requested_skill: str | None = None
+    # Force duplicate run/PR: bypasses pre-dispatch open-PR and active-run guards (#2254).
+    force_duplicate: bool = False
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -103,6 +105,8 @@ class DispatchCommand:
             body.pop("head_ref")
         if not body["model_tier"]:
             body.pop("model_tier")
+        if not body.get("force_duplicate"):
+            body.pop("force_duplicate", None)
         return body
 
     def run_id(self) -> str:
@@ -187,6 +191,11 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     outage starts nothing. Any refusal is an ``HTTPException`` raised before a run row
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
+    if not cmd.dry_run and not cmd.force_duplicate and cmd.issue and cmd.repo:
+        from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
+
+        await check_duplicate_pr_or_run(cmd.repo, cmd.issue, current_run_id=cmd.run_id())
+
     if not cmd.dry_run and not cmd.skip_premise_check and (cmd.issue or cmd.prompt):
         from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
         from dispatch_routing import dispatch_queue_manager, extract_declared_paths, resolve_model_routing

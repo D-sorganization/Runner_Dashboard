@@ -33,6 +33,11 @@ shows the same `deployment.git_sha` at the target commit.
 **Staff safety:** deploy is skipped immediately while staff runs or active chat
 replies exist; the next timer tick retries after they finish.
 
+**Strict TDD for deploy/release changes (#2116):** Any PR modifying deploy scripts,
+service units, release packaging, or auto-release workflows must first add a failing
+regression test case reproducing the failure mode to the `#2116` deploy smoke test suite
+(`tests/deploy/` / `tests/test_main_ci_release_wait.py`) before implementing the fix.
+
 ## One-time install (each node)
 
 From a checkout that includes this runbook (or after the stack merges to `main`):

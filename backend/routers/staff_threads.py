@@ -404,6 +404,7 @@ async def relay_thread_run_card(
 @router.get(
     "/threads/{thread_id}/stream",
 )
+@router.get("/threads/{thread_id}/events", include_in_schema=False)
 async def stream_thread(
     thread_id: str,
     request: Request,

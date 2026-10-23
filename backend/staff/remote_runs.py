@@ -44,7 +44,7 @@ async def find_remote_run(
     headers = staff_fleet.fleet_headers()
     for name, url in nodes.items():
         try:
-            data = await staff_fleet.get_json(f"{url}/api/staff/runs/{run_id}?events=0", headers)
+            data = await staff_fleet.get_json(f"{url}/api/staff/runs/{run_id}?events=0&local=1", headers)
             if data and data.get("run", {}).get("id") == run_id:
                 _RUN_PEER_CACHE[run_id] = (name, url)
                 return name, url
@@ -68,7 +68,7 @@ async def proxy_remote_run(
 
     try:
         data = await staff_fleet.get_json(
-            f"{peer_url}/api/staff/runs/{run_id}?events={events}",
+            f"{peer_url}/api/staff/runs/{run_id}?events={events}&local=1",
             headers,
         )
         return data
