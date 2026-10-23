@@ -191,6 +191,7 @@ def test_packager_rebinds_final_metadata_to_prebuild_checkout_sha():
     content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
     assert "--validate-source-only" in content
     assert '--sha "${GIT_SHA}" --output "${STAGE_DIR}/deployment.json"' in content
+    assert '--static-assets-dir "${STAGE_DIR}/dist"' in content
 
 
 def test_package_script_ships_statusline_quota_script():
