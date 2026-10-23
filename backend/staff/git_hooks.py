@@ -38,8 +38,11 @@ def install_pre_push_hook(worktree: Path) -> Path:
     hooks_dir = git_dir / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hook = hooks_dir / "pre-push"
+    # Reference this dashboard's own copy, not the target worktree's (which only exists for Runner_Dashboard).
+    hook_script = Path(__file__).resolve()
     script = (
-        f"#!/usr/bin/env sh\nset -eu\nexec python3 {shlex.quote(str(root / 'backend/staff/git_hooks.py'))} pre-push\n"
+        f"#!/usr/bin/env sh\nset -eu\nexec {shlex.quote(sys.executable or 'python3')} "
+        f"{shlex.quote(str(hook_script))} pre-push\n"
     )
     hook.write_text(script, encoding="utf-8")
     hook.chmod(0o755)
