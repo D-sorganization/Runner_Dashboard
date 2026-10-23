@@ -155,6 +155,11 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "submit_proposal",
         "list_proposals",
         "fleet_query",
+        "fleet_barb_status",
+        "fleet_barb_checkout",
+        "fleet_barb_heartbeat",
+        "fleet_barb_turnover",
+        "fleet_barb_release",
     }
 
 

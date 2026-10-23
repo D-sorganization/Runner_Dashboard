@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from fleet_barb_seat import BarbSeatMixin
 from fleet_validators import (
     BROADCAST,
     LIMITS,
@@ -87,7 +88,7 @@ DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
-class FleetClient:
+class FleetClient(BarbSeatMixin):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""
 

@@ -21,9 +21,7 @@ def test_lib_search_calls_library_api() -> None:
     with mock.patch("builtins.print") as printed:
         code = cmd_lib_search(client, ns)
     assert code == 0
-    client.library_search.assert_called_once_with(
-        "hip torque", repo="UpstreamDrift", topic=None, budget=1200, k=None
-    )
+    client.library_search.assert_called_once_with("hip torque", repo="UpstreamDrift", topic=None, budget=1200, k=None)
     printed.assert_called_once()
 
 

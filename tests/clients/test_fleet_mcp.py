@@ -57,7 +57,7 @@ def test_handshake_list_and_call(fake_api: Any) -> None:
     assert "tools" in init["capabilities"]
 
     tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
-    assert len(tools) == 32
+    assert len(tools) == 37
     assert "fleet_query" in tools
     claim_schema = tools["fleet_claim_issue"]["inputSchema"]
     assert claim_schema["type"] == "object"
