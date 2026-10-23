@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from fleet_client import LIMITS, FleetArgumentError, FleetClient
+from fleet_client import LIMITS, MAX_VERIFICATION_CHARACTERS, FleetArgumentError, FleetClient
 from fleet_validators import MEMORY_ENTRY_TYPES
 
 REPO = {"type": "string", "description": "Repository name, e.g. Runner_Dashboard (owner/ prefix optional)."}
@@ -653,6 +653,16 @@ COMMANDS: tuple[Command, ...] = (
         "library-sources",
         "library_sources",
         "Read local and pooled library sources, including peer availability (no mutations).",
+    ),
+    Command(
+        "library-verify",
+        "library_verify",
+        "Verify document citations and links without changing source content.",
+        {
+            "content": {"type": "string", "maxLength": MAX_VERIFICATION_CHARACTERS},
+            "run_id": RUN_ID,
+        },
+        required=("content",),
     ),
     Command(
         "query-codebase",
