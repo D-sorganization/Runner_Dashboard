@@ -231,11 +231,12 @@ def evaluate(
                 remote_ahead_by = probe.remote_ahead_by(rec.repo, rec.branch)
             except GitHubLookupError as exc:
                 return Verdict("unverified", f"GitHub lookup failed: {exc}")
-        if pr is None and rec.target_kind == "pr" and remote_ahead_by > 0:
+        get_pr = getattr(probe, "get", None)
+        if pr is None and rec.target_kind == "pr" and remote_ahead_by > 0 and callable(get_pr):
             target_pr = _target_pr_number(rec)
             if target_pr is not None:
                 try:
-                    pr = probe.get(rec.repo, target_pr)
+                    pr = get_pr(rec.repo, target_pr)
                 except GitHubLookupError as exc:
                     return Verdict("unverified", f"GitHub lookup failed: {exc}")
     verdict = decide(

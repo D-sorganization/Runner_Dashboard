@@ -159,7 +159,7 @@ def test_pr_remediator_verifies_via_target_pr_when_branch_lookup_misses() -> Non
     assert verdict.verification == "verified"
     assert verdict.pr_number == 5117
     assert probe.get_calls == [("AffineDrift", 5117)]
-    assert probe.ahead_calls == []
+    assert probe.ahead_calls == [("AffineDrift", "staff/pr-remediator-5117-78e20c")]
 
 
 def test_run_with_pushed_commits_but_no_pr_still_fails() -> None:
