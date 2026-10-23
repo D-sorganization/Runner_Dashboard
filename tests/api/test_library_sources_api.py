@@ -68,3 +68,21 @@ def test_source_api_rejects_overlapping_roots_with_422(tmp_path: Path) -> None:
         headers=_XHR,
     )
     assert response.status_code == 422
+
+
+def test_reindex_source_endpoint(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    root.mkdir()
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
+    client = _client(tmp_path / "library.sqlite", principal)
+    client.post(
+        "/api/v1/library/sources",
+        json={"id": "reindex-me", "label": "Reindex Me", "root_path": str(root)},
+        headers=_XHR,
+    )
+    res = client.post("/api/v1/library/sources/reindex-me/reindex", headers=_XHR)
+    assert res.status_code == 200
+    assert res.json().get("status") in ("queued", "completed", "ok")
+    assert res.json().get("source_id") == "reindex-me"

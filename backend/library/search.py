@@ -25,6 +25,8 @@ _WORD_RE = re.compile(r"\w+", re.UNICODE)
 class SearchOptions:
     topic: str | None = None
     repo: str | None = None
+    filter_source_id: str | None = None
+    shared_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,15 @@ class SearchHit:
     score: float
     file_path: str | None
     token_estimate: int
+    source_id: str = "default"
+    file_sha256: str = ""
+    work_sha256: str = ""
+    node: str = ""
+
+    @property
+    def sha8(self) -> str:
+        digest = self.file_sha256 or self.work_sha256 or ""
+        return digest[:8]
 
     @property
     def citation(self) -> str:
@@ -47,6 +58,21 @@ class SearchHit:
         year = f" ({self.year})" if self.year else ""
         page = self.page_start if self.page_start == self.page_end else f"{self.page_start}-{self.page_end}"
         return f"{who}{year}, {tit}, p. {page}"
+
+    @property
+    def cite_key(self) -> str:
+        from dashboard_config import HOSTNAME
+
+        node = self.node or HOSTNAME or "local"
+        source = self.source_id or "default"
+        pages = f"{self.page_start}-{self.page_end}"
+        return f"[ref:{node}:{source}:w{self.work_id}:p{self.passage_id}#sha256={self.sha8}:p.{pages}]"
+
+    @property
+    def cite_uri(self) -> str:
+        source = self.source_id or "default"
+        pages = f"{self.page_start}-{self.page_end}"
+        return f"lib://{source}/w{self.work_id}/p{self.passage_id}@{self.sha8}#p{pages}"
 
 
 def estimate_tokens(text: str) -> int:
@@ -123,8 +149,12 @@ def passage_hits_by_id(db_path: Path, passage_ids: list[int]) -> dict[int, Searc
     placeholders = ",".join("?" for _ in passage_ids)
     sql = (
         "SELECT p.id,p.work_id,w.author,w.title,w.year,p.page_start,p.page_end,p.text,p.token_estimate,"
-        " (SELECT rel_path FROM files WHERE work_id=w.id AND status='present' ORDER BY id LIMIT 1)"
-        f" FROM passages p JOIN works w ON w.id=p.work_id WHERE p.id IN ({placeholders}) AND w.status='active'"
+        " (SELECT f.rel_path FROM files f WHERE f.work_id=w.id AND f.status='present' ORDER BY f.id LIMIT 1),"
+        " (SELECT f.source_id FROM files f WHERE f.work_id=w.id AND f.status='present' ORDER BY f.id LIMIT 1),"
+        " (SELECT f.sha256 FROM files f WHERE f.work_id=w.id AND f.status='present' ORDER BY f.id LIMIT 1),"
+        " w.sha256"
+        f" FROM passages p JOIN works w ON w.id=p.work_id"
+        f" WHERE p.id IN ({placeholders}) AND w.status='active'"
     )
     with closing(LibraryStore(db_path).connect()) as conn:
         rows = conn.execute(sql, passage_ids).fetchall()
@@ -142,6 +172,9 @@ def passage_hits_by_id(db_path: Path, passage_ids: list[int]) -> dict[int, Searc
             0.0,
             row[9],
             int(row[8]) or estimate_tokens(str(row[7])),
+            source_id=row[10] or "default",
+            file_sha256=row[11] or "",
+            work_sha256=row[12] or "",
         )
     return out
 
@@ -165,15 +198,49 @@ def bm25_ranked_passages(
         return []
     if k < 1:
         raise ValueError("invalid k")
+    where_parts = [
+        "passages_fts MATCH ?",
+        "w.status='active'",
+        (
+            "NOT EXISTS (SELECT 1 FROM files f JOIN library_sources s ON s.id=f.source_id "
+            "WHERE f.work_id=w.id AND f.status='present' AND s.status!='active')"
+        ),
+    ]
+    params: list[Any] = [match]
+    if opts.filter_source_id:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM files f WHERE f.work_id=w.id AND f.status='present' AND f.source_id=?)"
+        )
+        params.append(opts.filter_source_id)
+    if opts.shared_only:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM files f JOIN library_sources s ON s.id=f.source_id "
+            "WHERE f.work_id=w.id AND f.status='present' AND s.shared=1)"
+        )
+    where_sql = " AND ".join(where_parts)
+    params.append(k * 4)
+
+    src_sub = "(SELECT f.source_id FROM files f WHERE f.work_id=w.id AND f.status='present' "
+    if opts.filter_source_id:
+        src_sub += f"AND f.source_id='{opts.filter_source_id}' "
+    rel_sub = src_sub.replace("f.source_id", "f.rel_path") + "ORDER BY f.id LIMIT 1)"
+    sha_sub = src_sub.replace("f.source_id", "f.sha256") + "ORDER BY f.id LIMIT 1)"
+    src_sub += "ORDER BY f.id LIMIT 1)"
+
     sql = (
         "SELECT p.id,p.work_id,w.author,w.title,w.year,p.page_start,p.page_end,p.text,p.token_estimate,w.topics,"
-        " (SELECT rel_path FROM files WHERE work_id=w.id AND status='present' ORDER BY id LIMIT 1),"
-        f" bm25(passages_fts,{_TITLE_WEIGHT},{_TEXT_WEIGHT})"
-        " FROM passages_fts JOIN passages p ON p.id=passages_fts.rowid JOIN works w ON w.id=p.work_id"
-        " WHERE passages_fts MATCH ? AND w.status='active' ORDER BY 10,p.id LIMIT ?"
+        f" {rel_sub},"
+        f" bm25(passages_fts,{_TITLE_WEIGHT},{_TEXT_WEIGHT}),"
+        f" {src_sub},"
+        f" {sha_sub},"
+        " w.sha256"
+        " FROM passages_fts JOIN passages p ON p.id=passages_fts.rowid"
+        " JOIN works w ON w.id=p.work_id"
+        f" WHERE {where_sql}"
+        " ORDER BY 10,p.id LIMIT ?"
     )
     with closing(LibraryStore(db_path).connect()) as conn:
-        rows = conn.execute(sql, (match, k * 4)).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     ranked: list[SearchHit] = []
     for row in rows:
         topics = json.loads(row[9] or "[]")
@@ -199,6 +266,9 @@ def bm25_ranked_passages(
                 score,
                 row[10],
                 int(row[8]) or estimate_tokens(str(row[7])),
+                source_id=row[12] or "default",
+                file_sha256=row[13] or "",
+                work_sha256=row[14] or "",
             )
         )
     ranked.sort(key=lambda h: h.score, reverse=True)
