@@ -4,7 +4,7 @@
  * (Roster, Runs, Assign, Holds) stay reachable as tabs.
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../hooks/usePollingQueries";
 import { StaffPage } from "../Staff";
@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe("StaffPage console", () => {
-  it("opens on the Staff Console with the roster in its sidebar", async () => {
+  it("opens on the chat-first Staff Console with the roster available on demand", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) =>
@@ -40,6 +40,9 @@ describe("StaffPage console", () => {
 
     expect(screen.getByRole("tab", { name: "Console" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("staff-console-desktop")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Staff conversation" })).toBeInTheDocument();
+    expect(screen.queryByTestId("roster-row-night-watch")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Choose staff" }));
     await waitFor(() => expect(screen.getByTestId("roster-row-night-watch")).toBeInTheDocument());
     expect(screen.queryByTestId("role-card-night-watch")).not.toBeInTheDocument();
     for (const tab of ["Roster", "Runs", "Assign", "Holds"]) {

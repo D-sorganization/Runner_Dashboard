@@ -7,6 +7,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(path.join(__dirname, "../desktop.css"), "utf8");
+const pageCss = readFileSync(path.join(__dirname, "../../Staff/StaffPage.css"), "utf8");
 
 describe("desktop console responsive layout", () => {
   it("overlays the context pane on the conversation's right edge on medium widths (#1718)", () => {
@@ -31,9 +32,11 @@ describe("desktop console responsive layout", () => {
     expect(block).toMatch(/\.staff-console,\s*\.staff-console--no-context\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   });
 
-  it("enforces app-height layout with bounded height and internally scrolling columns", () => {
-    expect(css).toMatch(/\.staff-console\s*\{[^}]*height:\s*calc\(100dvh[^;]+\)/);
-    expect(css).toMatch(/\.staff-console\s*\{[^}]*min-height:\s*520px/);
+  it("fills the flexed app region and bounds internally scrolling columns", () => {
+    expect(css).toMatch(/\.staff-console\s*\{[^}]*height:\s*100%/);
+    expect(css).toMatch(/\.staff-console\s*\{[^}]*min-height:\s*0/);
+    expect(pageCss).toMatch(/\.staff__content\s*\{[^}]*flex:\s*1/);
+    expect(pageCss).toMatch(/\.staff__content\s*\{[^}]*min-height:\s*0/);
 
     expect(css).toMatch(/\.staff-console__roster\s*\{[^}]*min-height:\s*0/);
     expect(css).toMatch(/\.staff-console__roster\s*\{[^}]*overflow-y:\s*auto/);
