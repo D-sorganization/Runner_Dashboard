@@ -1,8 +1,10 @@
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const { legacyFetchMock } = vi.hoisted(() => ({ legacyFetchMock: vi.fn() }));
 vi.mock("../../../lib/api", () => ({ legacyFetch: legacyFetchMock }));
+vi.mock("../AgentsSyncPanel", () => ({ AgentsSyncPanel: () => <section><h2>Repository AGENTS.md Sync</h2></section> }));
+beforeEach(() => legacyFetchMock.mockReset());
 
 import { ContextPage, type ContextPackInfo, type ContextLesson, type ContextRunRecord } from "../ContextPage";
 
@@ -61,11 +63,19 @@ describe("ContextPage", () => {
     expect(screen.getByText(/builtin fallback warning/i)).toBeInTheDocument();
   });
 
-  it("labels standards-pack comparison honestly and discloses missing AGENTS sync data", () => {
+  it("labels Tier-0 run comparison separately from live AGENTS sync data", () => {
     render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
-    expect(screen.getByText(/AGENTS.md sync versions are not exposed/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Repository AGENTS.md Sync" })).toBeInTheDocument();
+    expect(screen.queryByText(/AGENTS.md sync versions are not exposed/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("repo-status-Runner_Dashboard")).toHaveTextContent(/matches current Tier-0/i);
     expect(screen.getByTestId("repo-status-Repository_Management")).toHaveTextContent(/different Tier-0 version/i);
+  });
+
+  it("renders live managed-block AGENTS sync separately from Tier-0 run comparison", () => {
+    render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
+    expect(screen.getByRole("heading", { name: "Repository AGENTS.md Sync" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Standards Pack Version at Latest Recorded Run" })).toBeInTheDocument();
+    expect(screen.queryByText(/AGENTS.md sync versions are not exposed/i)).not.toBeInTheDocument();
   });
 
   it("renders lesson queue with provenance, expiration, quarantine, and NEVER shows barb-only entries", () => {
@@ -115,7 +125,7 @@ describe("ContextPage", () => {
   });
 
   it("reports failed lesson telemetry as unavailable instead of an empty queue", async () => {
-    legacyFetchMock.mockImplementation((url: string) => Promise.resolve(
+    legacyFetchMock.mockImplementation((url: string = "") => Promise.resolve(
       url.includes("memory")
         ? { ok: false, status: 403, json: async () => ({ detail: "Forbidden" }) }
         : { ok: true, status: 200, json: async () => url.includes("summary")
