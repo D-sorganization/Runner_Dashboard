@@ -71,6 +71,8 @@ __all__ = [
     "run_doctor",
 ]
 
+_CONTEXT_QUERY_CACHE: dict[tuple[str, str, str, str], tuple[float, dict[str, Any]]] = {}
+
 DEFAULT_URL = "http://127.0.0.1:8321"
 DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
@@ -700,6 +702,218 @@ class FleetClient:
         if not isinstance(payload, dict):
             raise FleetArgumentError("payload must be an object")
         return self.request("POST", "/api/v1/library/submissions", body=payload)
+
+    # ------------------------------------------------------------------ unified query (#2223)
+
+    def fleet_query(
+        self,
+        source: str,
+        op: str = "search",
+        query: str | None = None,
+        repo: str | None = None,
+        topic: str | None = None,
+        k: int = 5,
+        offset: int = 0,
+        full: bool = False,
+    ) -> dict[str, Any]:
+        """Unified fleet context query tool (#2223).
+
+        Exposes on-request context across sources ('context', 'library', 'knowledge', 'memory').
+        Ceilings enforced: top-k <= 5, snippet length <= 400 chars, citations included.
+        """
+        valid_sources = ("context", "library", "knowledge", "memory")
+        _check(source in valid_sources, f"source must be one of {valid_sources}")
+        valid_ops = ("search", "get", "request")
+        _check(op in valid_ops, f"op must be one of {valid_ops}")
+        effective_k = min(max(1, int(k)), 5)
+        offset = max(0, int(offset))
+
+        if source == "context":
+            if op == "request":
+                if not query or not query.strip():
+                    raise FleetArgumentError("query is required for context request op")
+                msg = f"Context request for repo '{repo or 'fleet'}': {query.strip()}"
+                return {
+                    "status": "requested",
+                    "recipient": "librarian",
+                    "detail": self.send_message(repo=repo or "fleet", to="librarian", text=msg),
+                }
+
+            cache_key = (getattr(self, "token", "") or "", repo or "", query or "", op)
+            now = time.time()
+            cached = _CONTEXT_QUERY_CACHE.get(cache_key)
+            if cached and (now - cached[0] < 30.0):
+                return cached[1]
+
+            try:
+                pack = self.request("GET", "/api/v1/memory/context-pack")
+            except Exception:
+                return {
+                    "status": "unavailable",
+                    "holds": "unavailable",
+                    "directives": "unavailable",
+                    "lessons": "unavailable",
+                    "results": [],
+                }
+
+            directives = [d for d in pack.get("directives", []) if not d.get("barb_only") and not d.get("is_barb_only")]
+            holds = pack.get("holds", [])
+            digests = pack.get("session_digests", [])
+            tasks = pack.get("open_tasks", [])
+
+            results: list[dict[str, Any]] = []
+            for d in digests:
+                body = d.get("body", {}) if isinstance(d, dict) else {}
+                summary = str(body.get("summary", ""))[:400]
+                results.append(
+                    {
+                        "id": d.get("id", ""),
+                        "type": "digest",
+                        "title": f"Session Digest: {d.get('id', '')}",
+                        "snippet": summary,
+                        "ref": f"/api/v1/memory/{d.get('id', '')}",
+                    }
+                )
+            for t in tasks:
+                body = t.get("body", {}) if isinstance(t, dict) else {}
+                title = str(body.get("title", body.get("name", "Task")))
+                results.append(
+                    {
+                        "id": t.get("id", ""),
+                        "type": "task",
+                        "title": title,
+                        "snippet": str(body.get("description", ""))[:400],
+                        "ref": f"/api/v1/memory/{t.get('id', '')}",
+                    }
+                )
+
+            paged = results[offset : offset + effective_k]
+            res = {
+                "status": "ok",
+                "source": "context",
+                "holds": holds,
+                "directives": directives,
+                "results": paged,
+                "has_more": len(results) > (offset + effective_k),
+            }
+            _CONTEXT_QUERY_CACHE[cache_key] = (now, res)
+            return res
+
+        elif source == "library":
+            params: dict[str, Any] = {"k": effective_k + offset}
+            if query:
+                params["q"] = query
+            if repo:
+                params["repo"] = repo
+            if topic:
+                params["topic"] = topic
+            data = self.request("GET", "/api/v1/library/search", params=params)
+            items = data.get("items", []) if isinstance(data, dict) else []
+            paged_items = items[offset : offset + effective_k]
+            results = []
+            for it in paged_items:
+                raw_text = it.get("snippet") or it.get("text") or it.get("body") or it.get("summary") or ""
+                results.append(
+                    {
+                        "id": it.get("id", ""),
+                        "title": it.get("title", "Library item"),
+                        "snippet": str(raw_text)[:400],
+                        "ref": it.get("url") or it.get("ref") or f"/api/v1/library/works/{it.get('id', '')}",
+                    }
+                )
+            return {
+                "status": "ok",
+                "source": "library",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        elif source == "knowledge":
+            params = {"q": query or "", "limit": effective_k + offset}
+            pack_id = repo or "fleet"
+            try:
+                data = self.request("GET", f"/api/v1/staff/knowledge/{pack_id}/search", params=params)
+                items = data.get("results", data.get("items", [])) if isinstance(data, dict) else []
+            except Exception:
+                items = []
+            paged_items = items[offset : offset + effective_k]
+            results = []
+            for it in paged_items:
+                raw_text = it.get("snippet") or it.get("text") or it.get("body") or ""
+                results.append(
+                    {
+                        "id": it.get("id", ""),
+                        "title": it.get("title", f"Knowledge: {pack_id}"),
+                        "snippet": str(raw_text)[:400],
+                        "ref": it.get("ref") or f"/api/v1/staff/knowledge/{pack_id}",
+                    }
+                )
+            return {
+                "status": "ok",
+                "source": "knowledge",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        elif source == "memory":
+            params = {"tag": repo, "limit": effective_k + offset}
+            data = self.request("GET", "/api/v1/memory", params={k: v for k, v in params.items() if v})
+            items = data.get("entries", data.get("items", [])) if isinstance(data, dict) else []
+            paged_items = items[offset : offset + effective_k]
+            results = []
+            for it in paged_items:
+                raw_text = it.get("body") if isinstance(it, dict) else ""
+                snippet = json.dumps(raw_text) if isinstance(raw_text, dict) else str(raw_text)
+                results.append(
+                    {
+                        "id": it.get("id", ""),
+                        "title": it.get("entry_type", "Memory item"),
+                        "snippet": snippet[:400],
+                        "ref": f"/api/v1/memory/{it.get('id', '')}",
+                    }
+                )
+            return {
+                "status": "ok",
+                "source": "memory",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        return {"status": "error", "message": f"unhandled source {source}"}
+
+    def query_context(
+        self,
+        repo: str | None = None,
+        op: str = "search",
+        query: str | None = None,
+        k: int = 5,
+        offset: int = 0,
+        full: bool = False,
+    ) -> dict[str, Any]:
+        return self.fleet_query(source="context", op=op, query=query, repo=repo, k=k, offset=offset, full=full)
+
+    def query_library(
+        self,
+        query: str | None = None,
+        repo: str | None = None,
+        topic: str | None = None,
+        k: int = 5,
+        offset: int = 0,
+        full: bool = False,
+    ) -> dict[str, Any]:
+        return self.fleet_query(
+            source="library", op="search", query=query, repo=repo, topic=topic, k=k, offset=offset, full=full
+        )
+
+    def query_knowledge(
+        self, query: str | None = None, repo: str | None = None, k: int = 5, offset: int = 0, full: bool = False
+    ) -> dict[str, Any]:
+        return self.fleet_query(source="knowledge", op="search", query=query, repo=repo, k=k, offset=offset, full=full)
+
+    def query_memory(
+        self, query: str | None = None, repo: str | None = None, k: int = 5, offset: int = 0, full: bool = False
+    ) -> dict[str, Any]:
+        return self.fleet_query(source="memory", op="search", query=query, repo=repo, k=k, offset=offset, full=full)
 
     # ------------------------------------------------------------------ priorities
 
