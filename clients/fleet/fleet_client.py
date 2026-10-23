@@ -736,7 +736,7 @@ class FleetClient:
                 return {
                     "status": "requested",
                     "recipient": "librarian",
-                    "detail": self.send_message("librarian", msg, intent="context_request"),
+                    "detail": self.send_message(repo=repo or "fleet", to="librarian", text=msg),
                 }
 
             cache_key = (getattr(self, "token", "") or "", repo or "", query or "", op)

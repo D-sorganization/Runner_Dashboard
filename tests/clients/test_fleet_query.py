@@ -128,10 +128,10 @@ def test_fleet_query_request_op_routes_to_librarian(monkeypatch: pytest.MonkeyPa
     client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
     sent: dict[str, Any] = {}
 
-    def mock_send(recipient: str, body: str, intent: str = "general") -> Any:
-        sent["recipient"] = recipient
-        sent["body"] = body
-        sent["intent"] = intent
+    def mock_send(repo: str, to: str, text: str, **kwargs: Any) -> Any:
+        sent["repo"] = repo
+        sent["recipient"] = to
+        sent["body"] = text
         return {"id": "msg-123", "status": "sent"}
 
     monkeypatch.setattr(client, "send_message", mock_send)
