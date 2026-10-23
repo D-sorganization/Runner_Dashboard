@@ -538,7 +538,8 @@ test.describe("approved dashboard navigation", () => {
     await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Staff Console", exact: true }).click();
-    await expect(page).toHaveURL(/\/$/);
+    expect(new URL(page.url()).pathname).toBe("/");
+    expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
     await requesterContext.close();
   });
 });
