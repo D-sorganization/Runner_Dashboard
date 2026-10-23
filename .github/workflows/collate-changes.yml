@@ -78,6 +78,7 @@ jobs:
           JULES_APP_CLIENT_ID: ${{ secrets.JULES_APP_ID }}
           JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
           EVENT_NAME: ${{ github.event_name }}
+          PENDING_COUNT: ${{ steps.pending-fragments.outputs.count }}
         run: | # pragma: allowlist secret
           missing=0
           if [ -z "$JULES_APP_CLIENT_ID" ]; then
@@ -91,6 +92,13 @@ jobs:
           if [ "$missing" -ne 0 ]; then
             echo "credentials-present=false" >> "$GITHUB_OUTPUT"
             echo "OUTCOME=skipped; missing JULES_APP_ID / JULES_APP_PRIVATE_KEY" >> "$GITHUB_ENV"
+            echo "::warning title=Change fragments not collated::${PENDING_COUNT} fragment(s) are pending on main and cannot be collated until the owner sets the JULES_APP_ID and JULES_APP_PRIVATE_KEY Actions secrets (Runner_Dashboard#2014)."
+            {
+              echo "## Collate Change Fragments - BLOCKED"
+              echo ""
+              echo "- **Fragments pending:** ${PENDING_COUNT}"
+              echo "- **Owner action (Runner_Dashboard#2014):** set the repository or organization Actions secrets \`JULES_APP_ID\` (the GitHub App client ID) and \`JULES_APP_PRIVATE_KEY\` (its PEM private key), then run this workflow once via workflow_dispatch."
+            } >> "$GITHUB_STEP_SUMMARY"
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
               echo "::error::Configure JULES_APP_ID and JULES_APP_PRIVATE_KEY before manually running this workflow."
               exit 1
