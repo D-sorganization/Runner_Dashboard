@@ -32,6 +32,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
 
   useEffect(() => {
     if (!open) return;
+    const sidebarEl = sidebarRef.current;
     if (document.activeElement instanceof HTMLElement) {
       restoreFocusRef.current = document.activeElement;
     }
@@ -71,7 +72,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
       const restoreEl =
         restoreFocusRef.current?.isConnected &&
         restoreFocusRef.current !== document.body &&
-        !sidebarRef.current?.contains(restoreFocusRef.current)
+        !sidebarEl?.contains(restoreFocusRef.current)
           ? restoreFocusRef.current
           : fallbackToggle;
       restoreEl?.focus();
