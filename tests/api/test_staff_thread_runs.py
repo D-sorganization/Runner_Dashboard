@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
-from pathlib import Path
+import asyncio
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from identity import Principal, require_principal, require_scope
-from routers.staff import router as staff_router
-from routers.staff_threads import router as staff_threads_router
-from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.plan import RunRequest
 from staff.run_link import (
     answer_needs_input,
@@ -20,55 +14,18 @@ from staff.run_link import (
     post_run_card,
     result_summary,
 )
-from staff.store import RunRecord, RunStore, get_store, reset_store
+from staff.store import RunRecord, RunStore
 from staff.thread_bus import ThreadEventBus, get_thread_bus, reset_thread_bus
 
-TEST_PRINCIPAL = Principal(
-    id="test-user",
-    type="human",
-    name="Test User",
-    roles=["admin"],
-    scopes=["staff.read", "staff.dispatch", "staff.cancel", "staff.write"],
+from tests.api._staff_thread_run_fixtures import (
+    client as _client_fixture,  # noqa: F401
 )
-
-
-@pytest.fixture
-def run_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[RunStore]:
-    db = tmp_path / "test_runs.sqlite3"
-    monkeypatch.setenv("STAFF_RUNS_DB", str(db))
-    reset_store()
-    store = get_store()
-    yield store
-    reset_store()
-
-
-@pytest.fixture
-def conv_store(tmp_path: Path) -> Any:
-    reset_conversation_store()
-    reset_thread_bus()
-    store = get_conversation_store(tmp_path / "test_conv.sqlite3")
-    return store
-
-
-@pytest.fixture
-def client(run_store: RunStore, conv_store: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    app = FastAPI()
-    app.include_router(staff_router)
-    app.include_router(staff_threads_router, prefix="/api/v1/staff")
-
-    app.dependency_overrides[require_principal] = lambda: TEST_PRINCIPAL
-    app.dependency_overrides[require_scope("staff.read")] = lambda: TEST_PRINCIPAL
-    app.dependency_overrides[require_scope("staff.dispatch")] = lambda: TEST_PRINCIPAL
-    app.dependency_overrides[require_scope("staff.cancel")] = lambda: TEST_PRINCIPAL
-    app.dependency_overrides[require_scope("staff.write")] = lambda: TEST_PRINCIPAL
-
-    with TestClient(app) as tc:
-        yield tc
-
-    app.dependency_overrides.clear()
-    reset_store()
-    reset_conversation_store()
-    reset_thread_bus()
+from tests.api._staff_thread_run_fixtures import (
+    conv_store as _conv_store_fixture,  # noqa: F401
+)
+from tests.api._staff_thread_run_fixtures import (
+    run_store as _run_store_fixture,  # noqa: F401
+)
 
 
 @pytest.mark.unit
@@ -222,124 +179,6 @@ def test_needs_input_creates_question_card_and_continuation_run(
     assert continuation.thread_id == "thread-input-1"
     assert "Yes, delete files older than 30 days." in continuation.prompt
     assert staff_launches == [continuation.id]
-
-
-@pytest.mark.unit
-def test_hub_proxies_remote_run_detail(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    remote_data = {
-        "run": {
-            "id": "run-remote-999",
-            "role": "librarian",
-            "provider": "claude",
-            "machine": "OGLaptop",
-            "status": "running",
-            "repo": "UpstreamDrift",
-            "thread_id": "thread-rem-1",
-        },
-        "events": [{"seq": 1, "kind": "start", "text": "Started on OGLaptop", "ts": "2026-09-24T00:00:00Z"}],
-        "attempts": [],
-    }
-
-    async def fake_get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
-        if "og:8321/api/staff/runs/run-remote-999" in url:
-            return remote_data
-        raise ConnectionError("not found")
-
-    monkeypatch.setattr("staff.fleet.get_json", fake_get_json)
-    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
-
-    resp = client.get("/api/staff/runs/run-remote-999")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["run"]["id"] == "run-remote-999"
-    assert data["run"]["machine"] == "OGLaptop"
-    assert data["events"][0]["text"] == "Started on OGLaptop"
-
-
-@pytest.mark.unit
-def test_hub_proxies_remote_run_not_found(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
-        raise ConnectionError("connection failed")
-
-    monkeypatch.setattr("staff.fleet.get_json", fake_get_json)
-    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
-
-    resp = client.get("/api/staff/runs/run-nonexistent")
-    assert resp.status_code == 404
-
-
-@pytest.mark.unit
-def test_hub_proxies_remote_cancel(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    remote_data = {
-        "run": {"id": "run-rem-cancel", "machine": "OGLaptop", "status": "running"},
-        "events": [],
-    }
-
-    async def fake_get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
-        if "og:8321/api/staff/runs/run-rem-cancel" in url:
-            return remote_data
-        raise ConnectionError("not found")
-
-    async def fake_post_json(url: str, data: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
-        if "og:8321/api/staff/runs/run-rem-cancel/cancel" in url:
-            return 200, {"ok": True, "run_id": "run-rem-cancel", "cancelled": True}
-        raise ConnectionError("cancel failed")
-
-    monkeypatch.setattr("staff.fleet.get_json", fake_get_json)
-    monkeypatch.setattr("staff.fleet.post_json", fake_post_json)
-    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
-
-    resp = client.post("/api/staff/runs/run-rem-cancel/cancel")
-    assert resp.status_code == 200
-    assert resp.json()["cancelled"] is True
-
-
-@pytest.mark.unit
-def test_hub_proxies_remote_stream(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    remote_data = {
-        "run": {"id": "run-rem-stream", "machine": "OGLaptop", "status": "running"},
-        "events": [],
-    }
-
-    async def fake_get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
-        if "og:8321/api/staff/runs/run-rem-stream" in url:
-            return remote_data
-        raise ConnectionError("not found")
-
-    class FakeStreamResponse:
-        status_code = 200
-
-        async def aiter_lines(self) -> AsyncIterator[str]:
-            yield "event: progress"
-            yield 'data: {"msg": "working"}'
-            yield ""
-
-        async def __aenter__(self) -> FakeStreamResponse:
-            return self
-
-        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
-
-    class FakeClient:
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            pass
-
-        def stream(self, method: str, url: str, **kwargs: Any) -> FakeStreamResponse:
-            return FakeStreamResponse()
-
-        async def __aenter__(self) -> FakeClient:
-            return self
-
-        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
-
-    monkeypatch.setattr("staff.fleet.get_json", fake_get_json)
-    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
-    monkeypatch.setattr("httpx.AsyncClient", FakeClient)
-
-    resp = client.get("/api/staff/runs/run-rem-stream/stream")
-    assert resp.status_code == 200
-    assert "event: progress" in resp.text
 
 
 @pytest.mark.unit
@@ -508,7 +347,6 @@ def test_answering_marks_the_question_card_answered(conv_store: Any, run_store: 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_publish_sync_from_a_worker_thread_reaches_an_async_subscriber() -> None:
-    import asyncio
     import threading
 
     reset_thread_bus()

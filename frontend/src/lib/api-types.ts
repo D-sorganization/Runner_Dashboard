@@ -17922,7 +17922,10 @@ export interface operations {
     };
     cancel_run_api_staff_runs__run_id__cancel_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Do not search peer nodes for this run. */
+                local?: boolean;
+            };
             header?: never;
             path: {
                 run_id: string;
@@ -17986,6 +17989,8 @@ export interface operations {
         parameters: {
             query?: {
                 after?: number;
+                /** @description Do not search peer nodes for this run. */
+                local?: boolean;
             };
             header?: never;
             path: {

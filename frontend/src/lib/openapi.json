@@ -17330,6 +17330,18 @@
               "title": "Run Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Do not search peer nodes for this run.",
+            "in": "query",
+            "name": "local",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Do not search peer nodes for this run.",
+              "title": "Local",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -17438,6 +17450,18 @@
               "minimum": 0,
               "title": "After",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Do not search peer nodes for this run.",
+            "in": "query",
+            "name": "local",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Do not search peer nodes for this run.",
+              "title": "Local",
+              "type": "boolean"
             }
           }
         ],

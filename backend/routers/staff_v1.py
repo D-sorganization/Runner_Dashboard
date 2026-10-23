@@ -289,7 +289,7 @@ async def get_run_v1(
     from routers.staff import get_run as staff_get_run
 
     try:
-        return await staff_get_run(run_id=run_id, events=200, _peer=_peer)
+        return await staff_get_run(run_id=run_id, events=200, local=False, _peer=_peer)
     except HTTPException as exc:
         if exc.status_code != 404:
             raise
@@ -312,7 +312,7 @@ async def stream_run_v1(
 ) -> StreamingResponse:
     from routers.staff import stream_run
 
-    return await stream_run(run_id=run_id, after=after, _peer=_peer)
+    return await stream_run(run_id=run_id, after=after, local=False, _peer=_peer)
 
 
 # ── Mutating Operations (Idempotent) ──────────────────────────────────────────
@@ -354,7 +354,7 @@ async def cancel_run_v1(
     async def _execute() -> Any:
         from routers.staff import cancel_run as staff_cancel_run
 
-        return await staff_cancel_run(run_id=run_id, caller=_peer)
+        return await staff_cancel_run(run_id=run_id, local=False, caller=_peer)
 
     return await _handle_idempotent_post(idempotency_key, endpoint, caller, {}, _execute, takeover_safe=True)
 

@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
+from routers.staff_dispatch import run_dispatch
 from staff import fleet as staff_fleet
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
@@ -40,7 +41,6 @@ from staff.audit import (
 )
 from staff.cli_version import provider_versions
 from staff.dispatch_auth import require_staff_run_dispatch
-from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.github_app_preflight import run_preflight_and_cache
 from staff.github_credential_service import mint_github_credential_for_run
 from staff.models import (
@@ -246,14 +246,30 @@ async def get_run(
     store = get_runner().store
     rec = store.get_run(run_id)
     if rec is None:
-        if local:
-            raise HTTPException(status_code=404, detail="run not found")
-        from staff.remote_runs import find_remote_run, proxy_remote_run  # noqa: PLC0415
+        if not (local or staff_fleet.is_fleet_peer(_peer)):
+            from staff.remote_runs import (
+                RemoteRunLookupUnavailable,
+                RemoteRunNotFound,
+                find_remote_run,
+                proxy_remote_run,
+            )  # noqa: PLC0415
 
-        remote = await find_remote_run(run_id)
-        if remote is not None:
-            peer_name, peer_url = remote
-            return await proxy_remote_run(run_id, events, peer_name, peer_url, caller_id=getattr(_peer, "id", ""))
+            try:
+                remote = await find_remote_run(run_id)
+            except RemoteRunLookupUnavailable as exc:
+                raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
+            if remote is not None:
+                peer_name, peer_url = remote
+                try:
+                    return await proxy_remote_run(
+                        run_id,
+                        events,
+                        peer_name,
+                        peer_url,
+                        caller_id=getattr(_peer, "id", ""),
+                    )
+                except RemoteRunNotFound as exc:
+                    raise HTTPException(status_code=404, detail="run not found") from exc
         raise HTTPException(status_code=404, detail="run not found")
     evs = store.events_after(run_id, 0, limit=MAX_LIMIT)
     attempts = [a.to_dict() for a in store.get_attempts(run_id)]
@@ -269,30 +285,36 @@ async def get_run(
 async def stream_run(
     run_id: str,
     after: int = Query(default=0, ge=0),
+    local: bool = Query(default=False, description="Do not search peer nodes for this run."),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> StreamingResponse:
     """SSE feed of run events. Ends with an ``end`` event when the run finishes."""
     store = get_runner().store
     if store.get_run(run_id) is None:
-        from staff.remote_runs import (
-            find_remote_run,
-            stream_remote_run,
-        )  # noqa: PLC0415
+        if not (local or staff_fleet.is_fleet_peer(_peer)):
+            from staff.remote_runs import (
+                RemoteRunLookupUnavailable,
+                find_remote_run,
+                stream_remote_run,
+            )  # noqa: PLC0415
 
-        remote = await find_remote_run(run_id)
-        if remote is not None:
-            peer_name, peer_url = remote
-            return StreamingResponse(
-                stream_remote_run(
-                    run_id,
-                    after,
-                    peer_name,
-                    peer_url,
-                    caller_id=getattr(_peer, "id", ""),
-                ),
-                media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-            )
+            try:
+                remote = await find_remote_run(run_id)
+            except RemoteRunLookupUnavailable as exc:
+                raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
+            if remote is not None:
+                peer_name, peer_url = remote
+                return StreamingResponse(
+                    stream_remote_run(
+                        run_id,
+                        after,
+                        peer_name,
+                        peer_url,
+                        caller_id=getattr(_peer, "id", ""),
+                    ),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
         raise HTTPException(status_code=404, detail="run not found")
 
     async def _gen():  # type: ignore[no-untyped-def]
@@ -357,18 +379,38 @@ async def refresh_github_credential(
     response_model=StaffCancelResponse,
     response_model_exclude_none=True,
 )
-async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("staff.cancel"))) -> dict[str, Any]:
+async def cancel_run(
+    run_id: str,
+    local: bool = Query(default=False, description="Do not search peer nodes for this run."),
+    caller: Principal = Depends(require_scope("staff.cancel")),
+) -> dict[str, Any]:
     runner = get_runner()
     if runner.store.get_run(run_id) is None:
-        from staff.remote_runs import (
-            find_remote_run,
-            proxy_remote_cancel,
-        )  # noqa: PLC0415
+        if not (local or staff_fleet.is_fleet_peer(caller)):
+            from staff.remote_runs import (
+                RemoteRunLookupUnavailable,
+                RemoteRunNotFound,
+                find_remote_run,
+                proxy_remote_cancel,
+            )  # noqa: PLC0415
 
-        remote = await find_remote_run(run_id)
-        if remote is not None:
-            peer_name, peer_url = remote
-            return await proxy_remote_cancel(run_id, peer_name, peer_url, caller_id=getattr(caller, "id", ""))
+            try:
+                remote = await find_remote_run(run_id)
+            except RemoteRunLookupUnavailable as exc:
+                raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
+            if remote is not None:
+                peer_name, peer_url = remote
+                try:
+                    return await proxy_remote_cancel(
+                        run_id,
+                        peer_name,
+                        peer_url,
+                        caller_id=getattr(caller, "id", ""),
+                    )
+                except RemoteRunNotFound as exc:
+                    raise HTTPException(status_code=404, detail="run not found") from exc
+                except RemoteRunLookupUnavailable as exc:
+                    raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
         raise HTTPException(status_code=404, detail="run not found")
     ok = runner.cancel(run_id)
     caller_str = format_caller(caller)
@@ -409,62 +451,3 @@ async def dispatch(
     ``plan.consolidation`` and the run's ``strategy_mode``.
     """
     return await run_dispatch(role, body, request, caller, force_duplicate=force_duplicate)
-
-
-async def run_dispatch(
-    role: str,
-    body: RunBody,
-    request: Request,
-    caller: Principal,
-    operation_id: str = "",
-    force_duplicate: bool = False,
-) -> dict[str, Any]:
-    """The /run policy; ``operation_id`` comes from the v1 Idempotency-Key reservation (#1796)."""
-    caller_id = staff_fleet.caller_identity(caller)
-    is_peer = staff_fleet.is_fleet_peer(caller)
-    if is_peer and body.operation_id:
-        operation_id = body.operation_id
-    surface = body.surface or "api"
-    thread_id = body.thread_id or ""
-    origin_node = body.origin_node or ""
-    on_behalf_of = ""
-    obo = staff_fleet.extract_on_behalf_of(request.headers.get("x-staff-on-behalf-of"), is_peer)
-    if obo:
-        caller_id = obo["principal"]
-        on_behalf_of = obo["principal"]
-        surface = obo.get("surface") or surface
-        thread_id = obo.get("thread_id") or thread_id
-        origin_node = obo.get("origin_node") or origin_node
-
-    is_force = force_duplicate
-    try:
-        raw_json = await request.json()
-        if isinstance(raw_json, dict) and raw_json.get("force_duplicate"):
-            is_force = True
-    except Exception:
-        pass
-
-    cmd = DispatchCommand(
-        role=role,
-        requested_by=caller_id,
-        provider=body.provider,
-        model=body.model,
-        repo=body.repo,
-        issue=body.issue,
-        pr=body.pr,
-        prompt=body.prompt,
-        machine=body.machine,
-        dry_run=body.dry_run,
-        work_item_id=body.work_item_id or "",
-        on_behalf_of=on_behalf_of,
-        surface=surface,
-        thread_id=thread_id,
-        origin_node=origin_node,
-        ignore_budget=body.ignore_budget,
-        operation_id=operation_id,
-        task_type=body.task_type,
-        standards_extra=body.standards_extra,
-        requested_skill=body.skill,
-        force_duplicate=is_force,
-    )
-    return await dispatch_staff_run(cmd, caller)
