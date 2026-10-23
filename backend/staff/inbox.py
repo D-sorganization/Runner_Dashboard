@@ -356,6 +356,7 @@ async def collect_inbox(
         "project_decision_repos": 0,
         "board_proposals": 0,
         "auth_sign_ins": 0,
+        "agent_concerns": 0,
     }
 
     # 1. Approvals
@@ -426,6 +427,19 @@ async def collect_inbox(
     except Exception as exc:
         log.warning("Inbox failed collecting auth_sign_ins: %s", exc)
         sources["auth_sign_ins"] = SourceStatus(status="unavailable", count=0, error=str(exc))
+
+    # 7. Agent concerns (#2237)
+    if c_store is not None:
+        try:
+            from staff.concerns import collect_agent_concerns
+
+            concern_items = collect_agent_concerns(c_store)
+            all_items.extend(concern_items)
+            counts["agent_concerns"] = len(concern_items)
+            sources["agent_concerns"] = SourceStatus(status="ok", count=len(concern_items))
+        except Exception as exc:
+            log.exception("Inbox failed collecting agent_concerns: %s", exc)
+            sources["agent_concerns"] = SourceStatus(status="unavailable", count=0, error=str(exc))
 
     counts["total"] = len(all_items)
 
