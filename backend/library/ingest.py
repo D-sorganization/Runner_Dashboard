@@ -18,6 +18,9 @@ from library.collections import load_collections, topics_for_rel_path
 from library.db import LibraryStore, init_library_db
 from library.search import estimate_tokens
 from library.sources import get_source, matches_source_globs, seed_default_source
+from library.text_extraction import extract_text_passages as _extract_text_passages
+from library.text_extraction import parse_filename as _parse_filename
+from library.text_extraction import year as _year
 from pypdf import PdfReader
 
 log = logging.getLogger("dashboard.library.ingest")
@@ -25,7 +28,6 @@ _INGEST_INTERVAL_S = float(os.environ.get("LIBRARY_INGEST_INTERVAL_S", "3600"))
 _BACKGROUND_INGEST_MAX_FILES = int(os.environ.get("LIBRARY_BACKGROUND_INGEST_MAX_FILES", "250"))
 _MIN_PAGE_CHARS = 12
 _MIN_PDF_BYTES = 4096
-_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _MAX_FILE_BYTES = 10 * 1024 * 1024
 _INGEST_SUFFIXES = {".pdf", ".epub", ".md", ".markdown", ".txt"}
 
@@ -366,32 +368,6 @@ def _replace_epub_passages(
     _insert_passages(conn, work_id, title_s, [(sec, idx, idx, txt) for idx, (sec, txt) in enumerate(chapters, start=1)])
 
 
-def _extract_text_passages(raw: bytes, fmt: str) -> list[tuple[str | None, int, int, str]]:
-    lines = raw.decode("utf-8", errors="replace").splitlines(keepends=True)
-    if not lines:
-        return []
-    passages: list[tuple[str | None, int, int, str]] = []
-    sec: str | None = None
-    cur: list[str] = []
-    start: int = 1
-    chars: int = 0
-    for idx, line in enumerate(lines, start=1):
-        stripped = line.strip()
-        is_hd = fmt in ("md", "markdown") and stripped.startswith("#")
-        if (is_hd or chars + len(line) > 1500) and cur:
-            txt = "".join(cur).strip()
-            if txt:
-                passages.append((sec, start, idx - 1, txt))
-            cur, chars, start = [], 0, idx
-        if is_hd:
-            sec = stripped.lstrip("#").strip() or None
-        cur.append(line)
-        chars += len(line)
-    if cur and (txt := "".join(cur).strip()):
-        passages.append((sec, start, len(lines), txt))
-    return passages
-
-
 def _index_text(
     conn: sqlite3.Connection,
     path: Path,
@@ -415,16 +391,6 @@ def _index_text(
     return True
 
 
-def _parse_filename(stem: str) -> tuple[str | None, str | None, int | None]:
-    stem = stem.strip()
-    if not stem:
-        return None, None, None
-    if " - " in stem:
-        author, title = (p.strip() or None for p in stem.split(" - ", 1))
-        return author, title, _year(stem)
-    return None, stem, _year(stem)
-
-
 def _merge_pdf_meta(
     author: str | None, title: str | None, year: int | None, pdf_meta: dict[str, Any] | None
 ) -> tuple[str | None, str | None, int | None]:
@@ -438,14 +404,6 @@ def _merge_pdf_meta(
     author = author or _s(pdf_meta.get("/Author"))
     title = title or _s(pdf_meta.get("/Title"))
     return author, title, year or _year(f"{author or ''} {title or ''}")
-
-
-def _year(text: str) -> int | None:
-    match = _YEAR_RE.search(text)
-    if not match:
-        return None
-    year = int(match.group(0))
-    return year if 1800 <= year <= 2100 else None
 
 
 def _page_text(reader: PdfReader, page_index: int) -> str:
