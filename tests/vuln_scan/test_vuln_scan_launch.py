@@ -117,3 +117,32 @@ def test_cli_version_must_match_the_pin() -> None:
         launch.check_cli_version("2.1.264 (Claude Code)", "2.1.263")
     with pytest.raises(launch.LaunchRefused, match="not pinned"):
         launch.check_cli_version("2.1.263 (Claude Code)", None)
+
+
+def test_verify_mode_has_its_own_exact_tool_set(tmp_path: Path) -> None:
+    verify_init = {
+        **REAL_INIT,
+        "tools": [t.replace("report_finding", "report_verdict") for t in REAL_INIT["tools"]],
+    }
+    launch.check_init(verify_init, "verify")
+    with pytest.raises(launch.LaunchRefused):
+        launch.check_init(REAL_INIT, "verify")  # the scanner's report_finding is not allowed
+    with pytest.raises(launch.LaunchRefused):
+        launch.check_init(verify_init)  # and the verifier's tool is not a scan tool
+    with pytest.raises(launch.LaunchRefused):
+        launch.check_event(_assistant("mcp__scan_sandbox__report_finding"), "verify")
+    argv = launch.cli_argv("claude", mcp_config_path=tmp_path / "m.json", model="claude-sonnet-5-5", mode="verify")
+    assert "mcp__scan_sandbox__report_verdict" in argv[argv.index("--allowedTools") + 1]
+    cfg = launch.mcp_config(
+        python="python",
+        server_path=Path("scan_mcp.py"),
+        container="vs-abcd1234ef567890-v",
+        findings_out=tmp_path / "v.jsonl",
+        max_findings=2,
+        exec_timeout_s=600,
+        docker_env={},
+        mode="verify",
+        finding_ids=("a" * 32,),
+    )
+    args = cfg["mcpServers"]["scan_sandbox"]["args"]
+    assert args[args.index("--mode") + 1] == "verify" and args[args.index("--finding-ids") + 1] == "a" * 32

@@ -6141,6 +6141,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/security/export/sarif": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Sarif
+         * @description Open findings as SARIF 2.1.0; off unless the operator config sets ``sarif_export``.
+         */
+        get: operations["export_sarif_api_v1_security_export_sarif_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/security/findings": {
         parameters: {
             query?: never;
@@ -6169,6 +6189,26 @@ export interface paths {
         get: operations["get_finding_api_v1_security_findings__finding_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/findings/{finding_id}/advisory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Advisory
+         * @description Draft a GitHub security advisory (private fork) for one confirmed high/critical finding.
+         */
+        post: operations["create_advisory_api_v1_security_findings__finding_id__advisory_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21430,6 +21470,37 @@ export interface operations {
             };
         };
     };
+    export_sarif_api_v1_security_export_sarif_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_findings_api_v1_security_findings_get: {
         parameters: {
             query?: {
@@ -21467,6 +21538,39 @@ export interface operations {
         };
     };
     get_finding_api_v1_security_findings__finding_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                finding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_advisory_api_v1_security_findings__finding_id__advisory_post: {
         parameters: {
             query?: never;
             header?: never;

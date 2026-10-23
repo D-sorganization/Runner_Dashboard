@@ -88,6 +88,10 @@ class ExecutorSettings:
     exec_timeout_s: int = 600
     scan_timeout_minutes: int = 180
     build_timeout_minutes: int = 30
+    # A second, different Claude model re-runs each new finding in a fresh
+    # container (q4 item 4). None turns verification off; findings then stay new.
+    verifier_model: str | None = "claude-sonnet-5-5"
+    verify_max_turns: int = 100
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -97,6 +101,8 @@ class ExecutorSettings:
             "exec_timeout_s": self.exec_timeout_s,
             "scan_timeout_minutes": self.scan_timeout_minutes,
             "build_timeout_minutes": self.build_timeout_minutes,
+            "verifier_model": self.verifier_model,
+            "verify_max_turns": self.verify_max_turns,
         }
 
 
@@ -113,6 +119,7 @@ class OperatorConfig:
     usd_per_day: float = 5.0
     alerts_ttl_seconds: int = 6 * 3600
     executor: ExecutorSettings = ExecutorSettings()
+    sarif_export: bool = False  # opt-in (q3): SARIF can leak findings when uploaded
     errors: tuple[str, ...] = ()
 
     def repo(self, name: str) -> RepoSettings:
@@ -133,8 +140,18 @@ class OperatorConfig:
             "usd_per_day": self.usd_per_day,
             "alerts_ttl_seconds": self.alerts_ttl_seconds,
             "executor": self.executor.to_dict(),
+            "sarif_export": self.sarif_export,
             "errors": list(self.errors),
         }
+
+
+def _bool(raw: Any, key: str, errors: list[str]) -> bool:
+    if raw is None:
+        return False
+    if not isinstance(raw, bool):
+        errors.append(f"{key} must be true or false")
+        return False
+    return raw
 
 
 def _int(raw: Any, key: str, lo: int, hi: int, default: int, errors: list[str]) -> int:
@@ -227,6 +244,15 @@ def _executor(raw: Any, errors: list[str]) -> ExecutorSettings:
     if not (isinstance(model, str) and _MODEL.match(model)):
         errors.append("executor.model is not a model id")
         model = base.model
+    verifier = raw.get("verifier_model", base.verifier_model)
+    if verifier is not None and not (
+        isinstance(verifier, str) and _MODEL.match(verifier)
+    ):
+        errors.append("executor.verifier_model is not a model id")
+        verifier = base.verifier_model
+    if verifier == model:
+        errors.append("executor.verifier_model must differ from executor.model")
+        verifier = None
     return ExecutorSettings(
         cli_version=version,
         model=model,
@@ -250,6 +276,15 @@ def _executor(raw: Any, errors: list[str]) -> ExecutorSettings:
             1,
             30,
             30,
+            errors,
+        ),
+        verifier_model=verifier,
+        verify_max_turns=_int(
+            raw.get("verify_max_turns"),
+            "executor.verify_max_turns",
+            1,
+            500,
+            100,
             errors,
         ),
     )
@@ -325,6 +360,7 @@ def parse_operator_config(payload: Any) -> OperatorConfig:
             errors,
         ),
         executor=_executor(payload.get("executor"), errors),
+        sarif_export=_bool(payload.get("sarif_export"), "sarif_export", errors),
         errors=tuple(errors),
     )
 

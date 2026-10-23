@@ -22361,6 +22361,60 @@
         "tags": ["security"]
       }
     },
+    "/api/v1/security/export/sarif": {
+      "get": {
+        "description": "Open findings as SARIF 2.1.0; off unless the operator config sets ``sarif_export``.",
+        "operationId": "export_sarif_api_v1_security_export_sarif_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Export Sarif",
+        "tags": ["security"]
+      }
+    },
     "/api/v1/security/findings": {
       "get": {
         "operationId": "list_findings_api_v1_security_findings_get",
@@ -22509,6 +22563,57 @@
           }
         ],
         "summary": "Get Finding",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/findings/{finding_id}/advisory": {
+      "post": {
+        "description": "Draft a GitHub security advisory (private fork) for one confirmed high/critical finding.",
+        "operationId": "create_advisory_api_v1_security_findings__finding_id__advisory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Advisory Api V1 Security Findings  Finding Id  Advisory Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Advisory",
         "tags": ["security"]
       }
     },

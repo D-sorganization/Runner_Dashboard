@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from vuln_scan.sandbox import ExecResult, Sandbox
-from vuln_scan.scan_mcp import TOOL_NAMES, ScanSandboxServer, build_server
+from vuln_scan.scan_mcp import TOOL_NAMES, VERIFY_TOOL_NAMES, ScanSandboxServer, build_server
 
 CONTAINER = "vs-abcd1234ef567890"
 FINDING = {
@@ -103,3 +103,35 @@ def test_build_server_from_argv(tmp_path: Path, monkeypatch) -> None:
     )
     assert server.max_findings == 100
     assert "GH_TOKEN" not in server.sandbox._env
+
+
+def test_verify_mode_swaps_report_finding_for_report_verdict(tmp_path: Path) -> None:
+    fid = "a" * 32
+    sandbox = Sandbox(CONTAINER, FakeDocker(), env={})
+    server = ScanSandboxServer(sandbox, tmp_path / "v.jsonl", 1, mode="verify", finding_ids=frozenset({fid}))
+    listed = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert listed is not None
+    assert [t["name"] for t in listed["result"]["tools"]] == list(VERIFY_TOOL_NAMES)
+    assert _call(server, "report_finding", FINDING)["error"]["code"] == -32602
+    assert _call(server, "report_verdict", {"finding_id": "b" * 32, "verdict": "reproduced", "evidence": "x"})[
+        "result"
+    ]["isError"]
+    assert _call(server, "report_verdict", {"finding_id": fid, "verdict": "pwned", "evidence": "x"})["result"][
+        "isError"
+    ]
+    ok = _call(server, "report_verdict", {"finding_id": fid, "verdict": "reproduced", "evidence": "uid=65532"})
+    assert ok["result"]["isError"] is False
+    again = _call(server, "report_verdict", {"finding_id": fid, "verdict": "not_reproduced", "evidence": "x"})
+    assert again["result"]["isError"]
+    lines = (tmp_path / "v.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["verdict"] for line in lines] == ["reproduced"]
+
+
+def test_build_server_verify_mode_rejects_bad_ids(tmp_path: Path) -> None:
+    import pytest
+
+    base = ["--container", CONTAINER, "--findings-out", str(tmp_path / "v.jsonl"), "--mode", "verify"]
+    server = build_server([*base, "--finding-ids", "a" * 32], runner=FakeDocker())
+    assert server.mode == "verify" and server.finding_ids == {"a" * 32}
+    with pytest.raises(SystemExit):
+        build_server([*base, "--finding-ids", "../x"], runner=FakeDocker())

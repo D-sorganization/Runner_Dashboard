@@ -24,10 +24,17 @@ from pathlib import Path
 from typing import Any
 
 from security import safe_subprocess_env
-from vuln_scan.scan_mcp import SERVER_NAME, TOOL_NAMES
+from vuln_scan.scan_mcp import MODES, SERVER_NAME, TOOL_NAMES
 
 MCP_PREFIX = f"mcp__{SERVER_NAME}__"
 ALLOWED_TOOLS = frozenset(MCP_PREFIX + name for name in TOOL_NAMES)
+
+
+def allowed_tools(mode: str = "scan") -> frozenset[str]:
+    """The exact MCP tool set the CLI may expose in ``mode`` (scan or verify)."""
+    return frozenset(MCP_PREFIX + name for name in MODES[mode])
+
+
 # Enough for the CLI to find its subscription login and run; nothing that grants
 # repository, fleet or cloud access. Keys are compared case-insensitively (Windows).
 ENV_ALLOWLIST = frozenset(
@@ -85,8 +92,13 @@ def mcp_config(
     max_findings: int,
     exec_timeout_s: int,
     docker_env: Mapping[str, str],
+    mode: str = "scan",
+    finding_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """The ``--mcp-config`` document: one stdio server bound to one container."""
+    extra = ["--mode", mode]
+    if finding_ids:
+        extra += ["--finding-ids", ",".join(finding_ids)]
     return {
         "mcpServers": {
             SERVER_NAME: {
@@ -103,6 +115,7 @@ def mcp_config(
                     str(max_findings),
                     "--exec-timeout",
                     str(exec_timeout_s),
+                    *extra,
                 ],
                 "env": dict(docker_env),
             }
@@ -110,7 +123,9 @@ def mcp_config(
     }
 
 
-def cli_argv(cli: str, *, mcp_config_path: Path, model: str) -> list[str]:
+def cli_argv(
+    cli: str, *, mcp_config_path: Path, model: str, mode: str = "scan"
+) -> list[str]:
     """argv for ``claude -p`` in the sanitized profile; the prompt goes on stdin."""
     return [
         cli,
@@ -131,7 +146,7 @@ def cli_argv(cli: str, *, mcp_config_path: Path, model: str) -> list[str]:
         "--permission-mode",
         "dontAsk",
         "--allowedTools",
-        ",".join(sorted(ALLOWED_TOOLS)),
+        ",".join(sorted(allowed_tools(mode))),
         "--model",
         model,
     ]
@@ -153,17 +168,14 @@ def check_cli_version(version_output: str, pinned: str | None) -> str:
     return found
 
 
-def check_init(event: Mapping[str, Any]) -> None:
+def check_init(event: Mapping[str, Any], mode: str = "scan") -> None:
     """Fail closed unless the session exposes exactly the scan_sandbox tools."""
+    allowed = allowed_tools(mode)
     if event.get("type") != "system" or event.get("subtype") != "init":
         raise LaunchRefused("first stream event was not system/init")
     tools = event.get("tools")
-    if not isinstance(tools, list) or set(tools) != ALLOWED_TOOLS:
-        extra = (
-            sorted(set(tools or []) - ALLOWED_TOOLS)
-            if isinstance(tools, list)
-            else tools
-        )
+    if not isinstance(tools, list) or set(tools) != allowed:
+        extra = sorted(set(tools or []) - allowed) if isinstance(tools, list) else tools
         raise LaunchRefused(
             f"tool set is not exactly scan_sandbox (unexpected: {extra})"
         )
@@ -192,8 +204,9 @@ def tool_calls(event: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def check_event(event: Mapping[str, Any]) -> None:
+def check_event(event: Mapping[str, Any], mode: str = "scan") -> None:
     """Kill switch: any tool call outside the scan_sandbox set aborts the run."""
+    allowed = allowed_tools(mode)
     for name in tool_calls(event):
-        if name not in ALLOWED_TOOLS:
+        if name not in allowed:
             raise LaunchRefused(f"agent called {name!r}, outside the scan sandbox")
