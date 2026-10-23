@@ -152,6 +152,7 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "fleet_memory_list",
         "fleet_memory_append",
         "fleet_memory_append_session_digest",
+        "fleet_memory_brief",
         "submit_proposal",
         "list_proposals",
         "fleet_query",
