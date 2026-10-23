@@ -66,24 +66,7 @@ async def build_staff_summary() -> dict[str, Any]:
     for _machine, snap in (provider_auth.get("machines") or {}).items():
         auth_attention.extend(attention_items_from_provider_auth(snap))
     standards = load_fleet_standards()
-    standards_attention: list[dict[str, Any]] = []
-    if standards.source_path == "<builtin>":
-        standards_attention.append(
-            {
-                "id": "standards-builtin-fallback",
-                "role": "hub",
-                "status": "warning",
-                "failure_class": "standards_fallback",
-                "error": f"Fleet standards resolved to built-in fallback ({standards.pin})",
-                "remediation": "Provide staff/standards/FLEET.md in Repository_Management or set STAFF_STANDARDS_PATH.",
-            }
-        )
-    attention = (
-        attention_items_from_preflight(preflight)
-        + auth_attention
-        + format_attention_items(recent)
-        + standards_attention
-    )
+    attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
     keep = (
         "id",
         "role",
@@ -113,6 +96,8 @@ async def build_staff_summary() -> dict[str, Any]:
         "standards_pin": standards.pin,
         "standards_source": standards.source_path,
         "standards_version": standards.version,
+        "standards_attention": standards.source_path == "<builtin>",
+        "standards_fallback": standards.source_path == "<builtin>",
         "roles": [
             {
                 "name": s.name,

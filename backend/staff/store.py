@@ -98,11 +98,9 @@ class RunRecord:
     verification: str = ""
     verification_detail: str = ""
     pr_number: int | None = None
-    # Typed completion evidence (#1808): "" | pr_open | pr_merged | deployed (see staff.completion).
-    artifact: str = ""
+    artifact: str = ""  # pr_open | pr_merged | deployed (#1808)
     origin_node: str = ""
-    # JSON list of {provider, model, outcome} attempts for failover briefs (#2047).
-    provider_chain: str = ""
+    provider_chain: str = ""  # JSON list of {provider, model, outcome} attempts (#2047)
     model_tier: str = ""
     skill_pin: str = ""
     standards_version: str = ""

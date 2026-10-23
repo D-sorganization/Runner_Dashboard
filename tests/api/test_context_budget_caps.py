@@ -33,9 +33,7 @@ async def test_briefing_and_summary_standards_reporting(tmp_path: Path, monkeypa
     b = await build_briefing(repo="Tools", agent="Argon")
     s = await build_staff_summary()
     assert b["standards_source"] == "<builtin>" and any("<builtin>" in w for w in b["warnings"])
-    assert s["standards_source"] == "<builtin>" and any(
-        a.get("failure_class") == "standards_fallback" for a in s.get("attention", [])
-    )
+    assert s["standards_source"] == "<builtin>" and s.get("standards_attention") is True
 
     custom = tmp_path / "FLEET.md"
     custom.write_text("---\nname: fleet-standards\nversion: 1.1.0\ndigest: a\nsource_revision: m\n---\nTDD\n")
@@ -80,7 +78,7 @@ def test_run_context_stamping_and_token_accounting() -> None:
     from staff.plan import RunRequest
     from staff.runner import get_runner
 
-    rec, plan, _ = get_runner().admit(RunRequest(role="night-watch", repo="Tools", issue=1, prompt="Review"))
+    rec, plan, _ = get_runner().admit(RunRequest(role="ad-hoc", repo="Tools", issue=1, prompt="Review"))
     assert plan.standards_version and plan.standards_tokens > 0
     stamp = json.loads(plan.context_stamp)
     assert stamp["pack_version"] and stamp["estimator_version"] == "chars_div_4_v1"
