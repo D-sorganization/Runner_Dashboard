@@ -665,3 +665,8 @@
     transition: none !important;
   }
 }
+
+@media (max-width: 180px) {
+  .staff-mobile__header-right .staff-mobile__details-btn:first-child { flex: 0 0 44px; min-width: 44px; font-size: 0; }
+  .staff-mobile__header-right .staff-mobile__details-btn:first-child::before { content: "+"; font-size: 16px; }
+}
