@@ -2,18 +2,31 @@
 
 from __future__ import annotations
 
+import hmac
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from identity import Principal, require_scope
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from identity import (
+    Principal,
+    _is_loopback_request,
+    _loopback_auth_enabled,
+    _loopback_principal,
+    _principal_may_read_fleet,
+    _resolve_principal_optional,
+    auth_cookie,
+    auth_header,
+    require_principal,
+    require_scope,
+)
 from library.browse import browse_directory
 from library.db import init_library_db, library_db_path
+from library.pool import _hit_to_dict, federated_search, get_pooled_catalog
 from library.search import (
     DEFAULT_BUDGET,
     MAX_BUDGET,
-    SearchHit,
     SearchOptions,
     get_work,
     library_stats,
@@ -38,6 +51,41 @@ def _db() -> Path:
     return path
 
 
+def require_library_peer(
+    request: Request,
+    header_token: str | None = Depends(auth_header),
+    cookie_token: str | None = Depends(auth_cookie),
+) -> Principal:
+    """Validate intra-fleet or operator credentials with fail-closed semantics (#2229)."""
+    overrides = getattr(request.app, "dependency_overrides", {})
+    for target in (require_principal, require_scope("fleet.read"), require_library_peer):
+        if target in overrides:
+            fn = overrides[target]
+            res = fn() if callable(fn) else fn
+            if isinstance(res, Principal):
+                if _principal_may_read_fleet(res):
+                    return res
+                raise HTTPException(status_code=403, detail={"error": "Fleet authorization failed"})
+            return res
+    prin = _resolve_principal_optional(request, header_token)
+    if prin is not None:
+        if _principal_may_read_fleet(prin):
+            return prin
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Fleet authorization failed", "required_scope": "fleet.read", "principal": prin.id},
+        )
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    if hub_token and header_token and header_token.startswith("Bearer "):
+        if hmac.compare_digest(header_token[7:], hub_token):
+            return Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+    if _loopback_auth_enabled() and _is_loopback_request(request):
+        return _loopback_principal()
+    if not hub_token:
+        raise HTTPException(status_code=503, detail="Fleet token not configured")
+    raise HTTPException(status_code=401, detail="Fleet authentication required")
+
+
 @router.get("/browse")
 def library_browse_route(
     path: str | None = None,
@@ -52,11 +100,19 @@ def library_browse_route(
 
 
 @router.get("/sources")
-def library_sources_route(_principal: Principal = Depends(require_scope("fleet.read"))) -> dict[str, Any]:  # noqa: B008
+def library_sources_route(
+    request: Request,
+    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+) -> dict[str, Any]:
     from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE
 
+    shared = request.query_params.get("shared") in ("1", "true", "True")
+    sources = list_sources(_db())
+    if shared or _principal.id == "fleet-peer":
+        sources = [s for s in sources if s.get("shared")]
     return {
-        "sources": list_sources(_db()),
+        "sources": sources,
+        "pooled_sources": get_pooled_catalog().list_sources(),
         "machine_role": MACHINE_ROLE,
         "is_hub": MACHINE_ROLE == "hub",
         "current_node": HOSTNAME,
@@ -172,50 +228,57 @@ def library_work(
 
 
 @router.get("/search")
-def library_search(
+async def library_search(
+    request: Request,
     q: str = Query(..., min_length=1),
     k: int = Query(32, ge=1, le=100),
     budget: int | None = Query(None, alias="budget"),
     budget_tokens: int | None = Query(None),
     topic: str | None = Query(None),
     repo: str | None = Query(None),
-    _principal: Principal = Depends(require_scope("fleet.read")),  # noqa: B008
+    _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
+    from dashboard_config import HOSTNAME
+
+    scope = request.query_params.get("scope", "federated")
+    shared = request.query_params.get("shared") in ("1", "true", "True")
     tokens_budget = budget if budget is not None else budget_tokens or DEFAULT_BUDGET
     if tokens_budget < 1 or tokens_budget > MAX_BUDGET:
         raise HTTPException(status_code=422, detail=f"budget must be between 1 and {MAX_BUDGET}")
+
+    if scope == "local":
+        shared_only = shared or _principal.id == "fleet-peer"
+        try:
+            hits = search_passages(
+                _db(),
+                q,
+                k=k,
+                budget_tokens=tokens_budget,
+                options=SearchOptions(topic=topic, repo=repo, shared_only=shared_only),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        passages = [_hit_to_dict(h, HOSTNAME or "local") for h in hits]
+        return {
+            "query": q,
+            "topic": topic,
+            "repo": repo,
+            "budget_tokens": tokens_budget,
+            "tokens_used": sum(h.token_estimate for h in hits),
+            "passages": passages,
+            "unavailable_sources": [],
+        }
+
     try:
-        hits = search_passages(
-            _db(),
-            q,
-            k=k,
-            budget_tokens=tokens_budget,
-            options=SearchOptions(topic=topic, repo=repo),
-        )
+        res = await federated_search(q, k=k, budget_tokens=tokens_budget, topic=topic, repo=repo, db_path=_db())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
-        "query": q,
-        "topic": topic,
-        "repo": repo,
-        "budget_tokens": tokens_budget,
-        "tokens_used": sum(h.token_estimate for h in hits),
-        "passages": [_hit(h) for h in hits],
-    }
-
-
-def _hit(hit: SearchHit) -> dict[str, Any]:
-    return {
-        "passage_id": hit.passage_id,
-        "work_id": hit.work_id,
-        "author": hit.author,
-        "title": hit.title,
-        "year": hit.year,
-        "page_start": hit.page_start,
-        "page_end": hit.page_end,
-        "text": hit.text,
-        "score": hit.score,
-        "citation": hit.citation,
-        "file_path": hit.file_path,
-        "token_estimate": hit.token_estimate,
+        "query": res.query,
+        "topic": res.topic,
+        "repo": res.repo,
+        "budget_tokens": res.budget_tokens,
+        "tokens_used": res.tokens_used,
+        "passages": res.passages,
+        "unavailable_sources": res.unavailable_sources,
     }

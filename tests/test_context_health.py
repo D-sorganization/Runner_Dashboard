@@ -76,7 +76,9 @@ def test_library_health_ok_and_degraded(tmp_path: Path) -> None:
 
 
 def test_pool_and_memory_health_not_installed(tmp_path: Path) -> None:
-    assert check_pool_health().status == "not_installed"
+    with patch.dict("sys.modules", {"library.pool": None}):
+        assert check_pool_health().status == "not_installed"
+    assert check_pool_health().status == "ok"
     assert check_memory_health(db_path=tmp_path / "missing.sqlite").status == "not_installed"
 
 
