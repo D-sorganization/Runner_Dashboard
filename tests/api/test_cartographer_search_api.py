@@ -102,6 +102,31 @@ def test_codebase_search_still_requires_staff_read(fixture: SearchFixture) -> No
     assert client.get("/api/v1/staff/knowledge/cartographer/search?q=energy").status_code == 403
 
 
+@pytest.mark.parametrize("suffix", ["", "/search?q=energy"])
+def test_indexed_api_reads_never_enumerate_or_hash_checkout_files(
+    fixture: SearchFixture, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    client, _, _ = fixture
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("indexed API read scanned checkout files")
+
+    monkeypatch.setattr("knowledge_pack.pack.select_files", forbidden)
+    monkeypatch.setattr("knowledge_pack.cartographer.build_cartographer_pack", forbidden)
+    response = client.get(f"/api/v1/staff/knowledge/cartographer{suffix}")
+    assert response.status_code == 200
+    assert response.json()["stale"] is False
+
+
+def test_dirty_checkout_cannot_replace_committed_snapshot_evidence(fixture: SearchFixture) -> None:
+    client, root, _ = fixture
+    (root / "SPEC.md").write_text("# Contract\nDirtysecret energy contract replacement\n")
+    data = client.get("/api/v1/staff/knowledge/cartographer/search?q=energy").json()
+    assert data["passages"]
+    assert all("Dirtysecret" not in hit["text"] for hit in data["passages"])
+    assert all(hit["commit"] == git(root, "rev-parse", "HEAD") for hit in data["passages"])
+
+
 @pytest.mark.asyncio
 async def test_slow_commit_verification_does_not_block_other_requests(
     fixture: SearchFixture, monkeypatch: pytest.MonkeyPatch

@@ -28,7 +28,12 @@ router = APIRouter(prefix="/knowledge")
 
 
 def _codebase_state(pack: KnowledgePack) -> tuple[dict[str, Path], bool]:
-    """Resolve configured checkouts and compare their current heads with the indexed snapshot."""
+    """Compare indexed commits with current Git heads without scanning source trees.
+
+    Cartographer serves a committed snapshot. Dirty working files do not replace
+    its evidence; each emitted passage is separately checked against its Git blob.
+    Content scanning belongs to pack refresh, never an indexed read request.
+    """
     from staff.workspace import find_repo_checkout
 
     commits = pack.info().commits
@@ -36,7 +41,6 @@ def _codebase_state(pack: KnowledgePack) -> tuple[dict[str, Path], bool]:
     stale = (
         not roots
         or len(roots) != len(commits)
-        or pack.is_stale(roots)
         or any(head_commit(root) != commits[name] for name, root in roots.items())
     )
     return roots, stale
