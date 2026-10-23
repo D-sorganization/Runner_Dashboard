@@ -375,7 +375,7 @@ def test_compose_prompt_chat_turn_vs_batch(sample_role: RoleSpec) -> None:
     )
     assert "running unattended" in batch_prompt
     assert "STAFF_RESULT:" in batch_prompt
-    assert "Fleet rules:" in batch_prompt
+    assert "Fleet standards" in batch_prompt or "Fleet rules" in batch_prompt
 
     # Chat turn prompt includes chat contract and does not instruct worktree/STAFF_RESULT
     chat_prompt = compose_prompt(

@@ -6289,6 +6289,42 @@
             "description": "Per-provider spend in USD plus a 'total' key (issue #1289)",
             "title": "Spend Today Usd",
             "type": "object"
+          },
+          "standards_pin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved fleet standards pin (issue #2220)",
+            "title": "Standards Pin"
+          },
+          "standards_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Path or <builtin> where standards were resolved",
+            "title": "Standards Source"
+          },
+          "standards_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved fleet standards semver",
+            "title": "Standards Version"
           }
         },
         "required": ["generated_at", "hub"],

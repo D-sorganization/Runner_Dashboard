@@ -87,6 +87,8 @@ class RunPlan:
     model_tier: str = ""
     skill_pin: str = ""
     standards_version: str = ""
+    standards_tokens: int = 0
+    context_stamp: str = "{}"
     library_work_ids: tuple[int, ...] = ()
     provider_auth_skipped: tuple[dict[str, str], ...] = ()
 
