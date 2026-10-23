@@ -3233,7 +3233,6 @@
           "moderator_model": {
             "anyOf": [
               {
-                "maxLength": 80,
                 "type": "string"
               },
               {
@@ -3264,6 +3263,19 @@
             "default": true,
             "title": "Preload Codebase",
             "type": "boolean"
+          },
+          "quorum": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quorum"
           },
           "repos": {
             "anyOf": [
@@ -3318,7 +3330,6 @@
           "model": {
             "anyOf": [
               {
-                "maxLength": 80,
                 "type": "string"
               },
               {
