@@ -36,7 +36,7 @@ export interface BarbSidebarProps {
 }
 
 export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbSidebarProps): React.ReactElement {
-  const sc = useStaffConsole({ initialRole: "barb" });
+  const sc = useStaffConsole({ initialRole: "barb", restoreInitialRoleThread: true });
   const [composerPrefill, setComposerPrefill] = useState("");
   const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);

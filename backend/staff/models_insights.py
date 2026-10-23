@@ -51,6 +51,7 @@ class StaffKnowledgeSearchResponse(BaseModel):
     count: int
     passages: list[StaffKnowledgePassage] = Field(default_factory=list)
     stale: bool | None = None
+    run_id: str | None = None
 
     model_config = ConfigDict(extra="allow")
 

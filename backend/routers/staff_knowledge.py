@@ -8,6 +8,7 @@ to keep that module under the repo's 500-line soft cap.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,45 @@ def _search_codebase(pack: KnowledgePack, query: str, k: int, include_superseded
                 }
             )
     return {"pack_id": "cartographer", "query": query, "count": len(passages), "passages": passages, "stale": stale}
+
+
+_CODEBASE_CITATION = re.compile(
+    r"^\[ref:([A-Za-z0-9][A-Za-z0-9.-]{0,63}):codebase:([A-Za-z0-9][A-Za-z0-9_.-]{0,127})@([0-9a-f]{8}):([^#]+)#L([1-9][0-9]*)-L([1-9][0-9]*)\]$"
+)
+
+
+def _ledger_references(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    references: list[dict[str, Any]] = []
+    for passage in passages:
+        citation = passage.get("citation")
+        match = _CODEBASE_CITATION.fullmatch(citation) if isinstance(citation, str) else None
+        commit = passage.get("commit")
+        content_hash = passage.get("content_hash")
+        if match is None or not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise ValueError("emitted Cartographer citation is not canonical")
+        node, repo, short_commit, relative_path, start, end = match.groups()
+        if repo != passage.get("repo") or not commit.startswith(short_commit):
+            raise ValueError("emitted Cartographer citation does not match its source identity")
+        references.append(
+            {
+                "node": node,
+                "repo": repo,
+                "commit_sha": commit,
+                "relative_path": relative_path,
+                "line_start": int(start),
+                "line_end": int(end),
+                "content_hash": content_hash,
+                "citation": citation,
+            }
+        )
+    return references
+
+
+def _record_codebase_references(run_id: str, passages: list[dict[str, Any]]) -> None:
+    from library.codebase_retrieval_ledger import record_codebase_references
+    from library.db import library_db_path
+
+    record_codebase_references(library_db_path(), run_id=run_id, references=_ledger_references(passages))
 
 
 def _open_pack(pack_id: str) -> KnowledgePack:
@@ -110,12 +150,34 @@ async def search_knowledge_v1(
     q: str = Query(..., min_length=1, description="Search query string"),
     k: int = Query(default=8, ge=1, le=100, description="Max passages to return"),
     include_superseded: bool = Query(default=False, description="Include superseded passages"),
+    run_id: str | None = Query(default=None, min_length=1, max_length=120),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
-    """Search knowledge packs. Cartographer returns committed-line citations and <=400 UTF-8 byte snippets."""
+    """Search knowledge packs; optional run_id records emitted Cartographer citations for that run owner."""
+    if run_id is not None and pack_id != "cartographer":
+        raise HTTPException(status_code=422, detail="run_id is supported only for Cartographer search")
+    if run_id is not None:
+        try:
+            from library.retrieval_ledger import authorize_run_owner
+            from staff.store import get_run_store
+
+            authorize_run_owner(get_run_store(), run_id=run_id, principal_id=_peer.id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     pack = _open_pack(pack_id)
     if pack_id == "cartographer":
-        return await asyncio.to_thread(_search_codebase, pack, q, k, include_superseded)
+        result = await asyncio.to_thread(_search_codebase, pack, q, k, include_superseded)
+        if run_id is not None:
+            try:
+                await asyncio.to_thread(_record_codebase_references, run_id, result["passages"])
+            except ValueError as exc:
+                raise HTTPException(status_code=500, detail="Cartographer references could not be recorded") from exc
+            result["run_id"] = run_id
+        return result
     hits = pack.search(q, k=k, include_superseded=include_superseded)
     return {
         "pack_id": pack_id,
