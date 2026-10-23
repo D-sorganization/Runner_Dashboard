@@ -231,4 +231,83 @@ describe("Composer Component", () => {
     });
     expect(textarea).toHaveValue("Ask the Board");
   });
+
+  it("focuses the textarea when clicking anywhere on the composer box surface (#2540)", () => {
+    render(<Composer threadId="thread-click" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+    expect(textarea).not.toHaveFocus();
+
+    fireEvent.click(screen.getByTestId("composer-box"));
+    expect(textarea).toHaveFocus();
+  });
+
+  it("preserves in-flight draft text when threadId transitions from 'new' to a restored thread (#2540)", () => {
+    const { rerender } = render(
+      <Composer threadId="new" roles={MOCK_ROLES} onSendMessage={vi.fn()} />,
+    );
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+    fireEvent.change(textarea, { target: { value: "Typing before thread restore completes" } });
+
+    rerender(<Composer threadId="thr_restored_1" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+    expect(textarea).toHaveValue("Typing before thread restore completes");
+    expect(localStorage.getItem("staff-console:draft:thr_restored_1")).toBe(
+      "Typing before thread restore completes",
+    );
+  });
+
+  it("stages files via the + button into the Librarian intake queue and includes attachment metadata on send (#2540)", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 42,
+        sha256: "abc123def456",
+        sensitivity: "public_reference",
+      }),
+    } as Response);
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<Composer threadId="thread-attach" roles={MOCK_ROLES} onSendMessage={onSend} />);
+    expect(screen.getByTestId("composer-attach-btn")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("composer-sensitivity-select"), {
+      target: { value: "public_reference" },
+    });
+
+    const file = new File(["reference content"], "architecture-notes.md", {
+      type: "text/markdown",
+    });
+    const input = screen.getByTestId("composer-file-input");
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("composer-attachment-architecture-notes.md")).toBeInTheDocument();
+      expect(screen.getByText("attached")).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/library/intake",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: "Attached architecture-notes.md",
+          meta: {
+            attachments: [
+              expect.objectContaining({
+                filename: "architecture-notes.md",
+                sensitivity: "public_reference",
+                sha256: "abc123def456",
+                intake_id: 42,
+              }),
+            ],
+          },
+        }),
+      );
+    });
+    fetchMock.mockRestore();
+  });
 });

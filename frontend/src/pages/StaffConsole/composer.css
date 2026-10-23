@@ -116,3 +116,12 @@
   text-align: center;
   user-select: none;
 }
+
+.staff-composer__footer-left { display: flex; align-items: center; gap: 6px; margin-right: auto; }
+.staff-composer__file-input { display: none; }
+.staff-composer__attach-btn { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; font-size: 16px; line-height: 1; }
+.staff-composer__sensitivity { font-size: 11px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary); }
+.staff-composer__attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.staff-composer__chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border-color); background: var(--bg-secondary); }
+.staff-composer__chip-badge { font-size: 10px; opacity: 0.8; }
+.staff-composer__chip-remove { border: none; background: transparent; cursor: pointer; padding: 0 2px; }

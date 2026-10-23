@@ -35,7 +35,18 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
     if (document.activeElement instanceof HTMLElement) {
       restoreFocusRef.current = document.activeElement;
     }
-    closeButtonRef.current?.focus();
+    if (mobile) {
+      closeButtonRef.current?.focus();
+    } else {
+      const composerInput = sidebarRef.current?.querySelector<HTMLTextAreaElement>(
+        "textarea.staff-composer__textarea",
+      );
+      if (composerInput && !composerInput.disabled) {
+        composerInput.focus();
+      } else {
+        closeButtonRef.current?.focus();
+      }
+    }
     const siblings = mobile && sidebarRef.current?.parentElement
       ? Array.from(sidebarRef.current.parentElement.children)
           .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== sidebarRef.current)
