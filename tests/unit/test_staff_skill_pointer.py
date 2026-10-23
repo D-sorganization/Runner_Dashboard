@@ -38,9 +38,7 @@ def test_slice3_seed_catalog(slice3_env: None) -> None:
     assert "technical-report" not in names
 
 
-def test_pointer_loads_external_package(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pointer_loads_external_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     clear_skills_cache()
     repos = tmp_path / "repos"
     report = repos / "Report-Template" / "skills" / "technical-report"

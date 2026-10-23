@@ -22,7 +22,9 @@ def collector() -> GhClientDeliveryCollector:
 
 
 @pytest.mark.asyncio
-async def test_fetch_pull_uses_gh_client_and_cache(monkeypatch: pytest.MonkeyPatch, collector: GhClientDeliveryCollector) -> None:
+async def test_fetch_pull_uses_gh_client_and_cache(
+    monkeypatch: pytest.MonkeyPatch, collector: GhClientDeliveryCollector
+) -> None:
     payload = json.loads((FIXTURES / "pr_2111.json").read_text(encoding="utf-8"))
     calls: list[str] = []
 
@@ -41,7 +43,9 @@ async def test_fetch_pull_uses_gh_client_and_cache(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
-async def test_list_check_runs_from_fixture(monkeypatch: pytest.MonkeyPatch, collector: GhClientDeliveryCollector) -> None:
+async def test_list_check_runs_from_fixture(
+    monkeypatch: pytest.MonkeyPatch, collector: GhClientDeliveryCollector
+) -> None:
     payload = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
     head_sha = payload["check_runs"][0]["head_sha"]
 
@@ -58,7 +62,9 @@ async def test_list_check_runs_from_fixture(monkeypatch: pytest.MonkeyPatch, col
 
 
 @pytest.mark.asyncio
-async def test_list_pulls_updated_since_filters_old(monkeypatch: pytest.MonkeyPatch, collector: GhClientDeliveryCollector) -> None:
+async def test_list_pulls_updated_since_filters_old(
+    monkeypatch: pytest.MonkeyPatch, collector: GhClientDeliveryCollector
+) -> None:
     pr_payload = json.loads((FIXTURES / "pr_2111.json").read_text(encoding="utf-8"))
     old = dict(pr_payload)
     old["number"] = 1

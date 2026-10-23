@@ -272,9 +272,7 @@ class StaffRunner:
                 if not cloud_run and ops.fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
                     return  # below the CLI floor: no worktree, no lease (#1680)
                 workdir = (
-                    ops.prepare_cloud_workdir(store, rec)
-                    if cloud_run
-                    else ops.prepare_run_workdir(store, rec, plan)
+                    ops.prepare_cloud_workdir(store, rec) if cloud_run else ops.prepare_run_workdir(store, rec, plan)
                 )
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent
@@ -371,9 +369,7 @@ class StaffRunner:
                 launch_argv,
                 cwd=str(workdir),
                 env=env,
-                stdin=subprocess.PIPE
-                if stdin_payload is not None or adapter.prompt_via_stdin
-                else subprocess.DEVNULL,
+                stdin=subprocess.PIPE if stdin_payload is not None or adapter.prompt_via_stdin else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,

@@ -13,8 +13,11 @@ def _page(writer: PdfWriter, text: str) -> None:
     stream.set_data(f"BT /F1 12 Tf 72 720 Td ({safe}) Tj ET".encode())
     page[NameObject("/Contents")] = stream
     font = DictionaryObject(
-        {NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"),
-         NameObject("/BaseFont"): NameObject("/Helvetica")}
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
     )
     page[NameObject("/Resources")] = DictionaryObject(
         {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
@@ -28,4 +31,3 @@ def make_text_pdf(*lines: str) -> bytes:
     buf = BytesIO()
     writer.write(buf)
     return buf.getvalue()
-

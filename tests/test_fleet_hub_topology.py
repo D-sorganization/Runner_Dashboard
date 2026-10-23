@@ -32,10 +32,7 @@ _REGISTRY_HUB_DESK = {
 
 
 def test_resolve_hub_url_from_registry() -> None:
-    assert (
-        resolve_hub_url_from_registry(_REGISTRY_HUB_DESK)
-        == "http://deskcomputer.tail2bbcc7.ts.net:8321"
-    )
+    assert resolve_hub_url_from_registry(_REGISTRY_HUB_DESK) == "http://deskcomputer.tail2bbcc7.ts.net:8321"
 
 
 def test_assert_unique_hub_role_rejects_dual_hub() -> None:
