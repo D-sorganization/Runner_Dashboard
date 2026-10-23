@@ -20708,6 +20708,36 @@
         "tags": ["library"]
       }
     },
+    "/api/v1/library/sources/verify": {
+      "get": {
+        "description": "Report registered source health without changing sources or indexed works.",
+        "operationId": "library_sources_verify_route_api_v1_library_sources_verify_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Sources Verify Route Api V1 Library Sources Verify Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Sources Verify Route",
+        "tags": ["library"]
+      }
+    },
     "/api/v1/library/sources/{source_id}": {
       "delete": {
         "operationId": "library_remove_source_api_v1_library_sources__source_id__delete",
