@@ -5540,6 +5540,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library Fetch
+         * @description Fetch one bounded, digest-verified passage through trusted fleet nodes.
+         */
+        get: operations["library_fetch_api_v1_library_fetch_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/search": {
         parameters: {
             query?: never;
@@ -18964,6 +18984,40 @@ export interface operations {
         parameters: {
             query?: {
                 path?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_fetch_api_v1_library_fetch_get: {
+        parameters: {
+            query: {
+                cite: string;
+                scope?: string;
             };
             header?: never;
             path?: never;

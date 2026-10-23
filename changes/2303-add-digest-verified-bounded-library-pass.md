@@ -1,4 +1,4 @@
 ---
 issue: 2303
-summary: "Add digest-verified bounded library passage fetch through fleet query"
+summary: "Add bounded digest-verified library passage fetch endpoint"
 ---
