@@ -15,6 +15,8 @@ from staff.adapters import chat_only_providers, unattended_providers
 
 @pytest.fixture
 def api_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    monkeypatch.setattr(staff_router, "provider_versions", lambda _adapters: {})
+    monkeypatch.setattr(staff_v1_router, "provider_versions", lambda _adapters: {})
     app = FastAPI()
     app.include_router(staff_router.router)
     app.include_router(staff_v1_router.router)

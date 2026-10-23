@@ -364,6 +364,7 @@ SUPPORTED_CHAT_TOOLS: frozenset[str] = frozenset(
         "read_issue",
         "read_run",
         "read_repo",
+        "search_code",
         "search_knowledge",
     }
 )

@@ -24,6 +24,40 @@ from staff.thread_bus import reset_thread_bus
 pytestmark = pytest.mark.unit
 
 
+@pytest.mark.asyncio
+async def test_knowledge_retrieval_does_not_block_other_coroutines(conv_store, monkeypatch) -> None:
+    import asyncio
+    import threading
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    release = threading.Event()
+
+    def retrieve(*_):
+        assert release.wait(timeout=1), "knowledge retrieval blocked the event loop"
+        return None
+
+    async def heartbeat():
+        await asyncio.sleep(0.01)
+        release.set()
+
+    monkeypatch.setattr("staff.chat.build_knowledge_turn_block", retrieve)
+    monkeypatch.setattr("staff.chat.load_roles", lambda: {})
+    monkeypatch.setattr("staff.chat.load_fleet_standards", lambda: SimpleNamespace(pin="test", body="test"))
+    for name in (
+        "build_fleet_context_block",
+        "build_issue_context_block",
+        "build_shared_memory_context_block",
+        "record_chat_capacity_failure",
+    ):
+        monkeypatch.setattr("staff.chat." + name, AsyncMock(return_value=None))
+    thread = conv_store.create_thread(title="responsive chat", role="scout", created_by="test")
+    message = conv_store.add_message(thread.id, author_kind="user", author="test", body_md="solver")
+    runner = ChatTurnRunner(conv_store=conv_store, pool=SimpleNamespace(acquire=AsyncMock(return_value=False)))
+    await asyncio.gather(heartbeat(), runner.execute_turn(thread.id, message.id, message.id, "scout"))
+    assert release.is_set()
+
+
 @pytest.fixture
 def conv_store(tmp_path: Path) -> ConversationStore:
     reset_conversation_store()

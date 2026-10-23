@@ -98,3 +98,59 @@ def test_dirty_text_is_not_given_a_committed_citation(source_pack) -> None:
     )
     block = build_knowledge_turn_block(role, "secretphrase")
     assert block and "secretphrase" not in block
+
+
+def test_search_code_supplies_scoped_indexed_context_without_rebuilding(source_pack, monkeypatch) -> None:
+    roots, manifest, knowledge = source_pack
+    refresh_pack(manifest, roots=roots, knowledge_dir=knowledge)
+    before = (knowledge / "cartographer.sqlite").read_bytes()
+    monkeypatch.setattr("knowledge_pack.cartographer.build_cartographer_pack", lambda *_: pytest.fail("cold rebuild"))
+    monkeypatch.setattr("knowledge_pack.pack.select_files", lambda *_: pytest.fail("checkout enumeration"))
+    role = RoleSpec(name="scout", title="Scout", repos=("UpstreamDrift",), chat={"tools": ["search_code"]})
+    block = build_knowledge_turn_block(role, "solver contracts")
+    assert block and "## Code map search" in block and ":codebase:UpstreamDrift@" in block
+    assert "AffineDrift" not in block and len(block.encode()) <= 800
+    assert (knowledge / "cartographer.sqlite").read_bytes() == before
+
+
+def test_search_code_missing_pack_is_explicit_and_never_scans(source_pack, monkeypatch) -> None:
+    monkeypatch.setattr("knowledge_pack.cartographer.build_cartographer_pack", lambda *_: pytest.fail("cold rebuild"))
+    role = RoleSpec(name="scout", title="Scout", chat={"tools": ["search_code"]})
+    assert "not available" in (build_knowledge_turn_block(role, "solver contracts") or "")
+
+
+def test_search_code_omits_uncommitted_text_and_preserves_other_knowledge(source_pack) -> None:
+    roots, manifest, knowledge = source_pack
+    (roots["UpstreamDrift"] / "SPEC.md").write_text("# Map\nUncommitted secretphrase contract.\n")
+    refresh_pack(manifest, roots=roots, knowledge_dir=knowledge, force=True)
+    role = RoleSpec(
+        name="scout",
+        title="Scout",
+        repos=("UpstreamDrift",),
+        chat={"tools": ["search_code", "search_knowledge"]},
+        scope={"pack": "findings"},
+    )
+    block = build_knowledge_turn_block(role, "secretphrase")
+    assert block and "secretphrase" not in block and "No verifiable indexed" in block
+    assert "Knowledge pack 'findings' is not available" in block
+
+
+def test_search_code_filters_legacy_broad_sources_and_reports_head_staleness(source_pack) -> None:
+    roots, manifest, knowledge = source_pack
+    build_pack(load_manifest(manifest), roots, knowledge / "cartographer.sqlite")
+    role = RoleSpec(name="scout", title="Scout", chat={"tools": ["search_code"]})
+    block = build_knowledge_turn_block(role, "Private material")
+    assert block and "Private material" not in block and "No verifiable indexed" in block
+    git(
+        roots["UpstreamDrift"],
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "--allow-empty",
+        "-qm",
+        "new head",
+    )
+    block = build_knowledge_turn_block(role, "UpstreamDrift solver")
+    assert block and "Indexed code map is stale" in block and "[ref:" in block

@@ -270,7 +270,30 @@ def _render_context(passages: list[Passage], max_tokens: int, repos: Mapping[str
         if not excerpt:
             continue
         result += block
-    return result.rstrip()
+    return result.rstrip() if result != _REFERENCE else ""
+
+
+def render_codebase_context(passages: list[Passage], repos: Mapping[str, Path], max_tokens: int = 800) -> str:
+    """Render indexed, in-scope hits with committed proof and a UTF-8 byte bound.
+
+    This read-only path never builds a pack or scans checkout directories.
+    """
+    if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 1:
+        raise ValueError("max_tokens must be a positive integer")
+    if not repos:
+        return ""
+    from .sources import matches
+
+    clean, manifest = _manifest(repos)
+    allowed = [
+        passage
+        for passage in passages
+        if passage.repo in clean
+        and any(spec.repo == passage.repo and matches(spec, passage.source) for spec in manifest.sources)
+        and not (clean[passage.repo] / passage.source).is_symlink()
+        and (clean[passage.repo] / passage.source).resolve().is_relative_to(clean[passage.repo])
+    ]
+    return _render_context(allowed, max_tokens, clean)
 
 
 def preload_panel_context(
