@@ -18,16 +18,7 @@ from typing import Any
 from staff.redaction import redact_sensitive_content, redact_value
 from staff.run_schema import _ADDED_COLUMNS
 
-RUN_STATUSES = (
-    "queued",
-    "preparing",
-    "running",
-    "succeeded",
-    "failed",
-    "cancelled",
-    "blocked",
-    "needs_input",
-)
+RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked", "needs_input")
 ACTIVE_STATUSES = ("queued", "preparing", "running")
 
 
@@ -107,11 +98,16 @@ class RunRecord:
     standards_tokens: int = 0
     context_stamp: str = "{}"
     library_work_ids: str = "[]"
+    injected_lesson_ids: str = "[]"
+    skipped_lesson_ids: str = "{}"
+    lessons_tokens: int = 0
 
     def __post_init__(self) -> None:
-        self.retryable = bool(self.retryable)
-        self.attempt = int(self.attempt)
-        self.max_attempts = int(self.max_attempts)
+        self.retryable, self.attempt, self.max_attempts = (
+            bool(self.retryable),
+            int(self.attempt),
+            int(self.max_attempts),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
@@ -182,11 +178,7 @@ def _redacted(column: str, value: Any) -> Any:
 
 
 USAGE_GROUPS = ("provider", "role", "day")
-_USAGE_GROUP_SQL = {
-    "provider": "provider",
-    "role": "role",
-    "day": "substr(created_at, 1, 10)",
-}
+_USAGE_GROUP_SQL = {"provider": "provider", "role": "role", "day": "substr(created_at, 1, 10)"}
 
 
 class RunStore:

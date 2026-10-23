@@ -6,7 +6,7 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from staff import consolidation
@@ -91,6 +91,9 @@ class RunPlan:
     context_stamp: str = "{}"
     library_work_ids: tuple[int, ...] = ()
     provider_auth_skipped: tuple[dict[str, str], ...] = ()
+    injected_lesson_ids: tuple[str, ...] = ()
+    skipped_lesson_ids: dict[str, str] = field(default_factory=dict)
+    lessons_tokens: int = 0
 
     @property
     def strategy_mode(self) -> str:
@@ -126,4 +129,7 @@ class RunPlan:
             "skill_pin": self.skill_pin,
             "skill": None if not self.skill_pin else {"pin": self.skill_pin},
             "provider_auth_skipped": [dict(row) for row in self.provider_auth_skipped],
+            "injected_lesson_ids": list(self.injected_lesson_ids),
+            "skipped_lesson_ids": dict(self.skipped_lesson_ids),
+            "lessons_tokens": self.lessons_tokens,
         }
