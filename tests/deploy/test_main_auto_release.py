@@ -114,6 +114,12 @@ def test_cancelled_or_pending_runs_remain_retryable() -> None:
     assert publisher_gate_failure_is_terminal(pending, _CANCEL_SHA) is False
 
 
+def test_documented_pending_check_statuses_are_retryable() -> None:
+    for status in ("queued", "in_progress", "requested", "waiting", "pending"):
+        runs = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": status, "conclusion": None}]
+        assert publisher_gate_failure_is_terminal(runs, _FAIL_SHA) is False
+
+
 def test_current_sha_with_only_cancelled_blocking_runs_is_terminal() -> None:
     runs = [
         {"head_sha": _CANCEL_SHA, "name": name, "status": "completed", "conclusion": "cancelled"}
@@ -129,7 +135,7 @@ def test_malformed_publisher_check_run_is_terminal_fail_closed() -> None:
 
     assert publisher_gate_failure_is_terminal(runs, _FAIL_SHA) is True
 
-    unknown_status = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "waiting"}]
+    unknown_status = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "unknown"}]
     assert publisher_gate_failure_is_terminal(unknown_status, _FAIL_SHA) is True
 
 
