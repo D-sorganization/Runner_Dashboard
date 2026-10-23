@@ -19,9 +19,8 @@ const role = {
   valid: true,
 };
 
-beforeEach(() => {
-  sendMessage.mockResolvedValue({ ok: true });
-  mockUseStaffConsole.mockReturnValue({
+function staffConsoleState(overrides: Record<string, unknown> = {}) {
+  return {
     roles: [role],
     selectedRole: "barb",
     activeThread: null,
@@ -41,7 +40,13 @@ beforeEach(() => {
     openRole: vi.fn(),
     openThread: vi.fn(),
     closeThread: vi.fn(),
-  });
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  sendMessage.mockResolvedValue({ ok: true });
+  mockUseStaffConsole.mockReturnValue(staffConsoleState());
 });
 
 afterEach(() => {
@@ -63,6 +68,51 @@ describe("BarbSidebar", () => {
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
     const composer = screen.getByRole("textbox", { name: /staff conversation input/i });
     expect(composer).toHaveFocus();
+  });
+
+
+  it("does not stage attachments against the new-thread placeholder while restoring Barb", async () => {
+    const thread = {
+      id: "th-restored-barb",
+      title: "Existing Barb conversation",
+      kind: "auto",
+      participants: ["barb"],
+      status: "active",
+    };
+    mockUseStaffConsole.mockReturnValue(staffConsoleState({ openingRole: "barb" }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 81, sha256: "fixture" }),
+    } as Response);
+    const view = render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const fileInput = screen.getByTestId("composer-file-input");
+
+    expect(screen.getByRole("status")).toHaveTextContent(/restoring.*attachments.*available/i);
+    expect(fileInput).toBeDisabled();
+    expect(screen.getByTestId("composer-attach-btn")).toBeDisabled();
+    fireEvent.change(fileInput, { target: { files: [new File(["notes"], "audit.md", { type: "text/markdown" })] } });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    mockUseStaffConsole.mockReturnValue(staffConsoleState({ activeThread: thread, openingRole: null }));
+    view.rerender(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByTestId("composer-file-input")).toBeEnabled();
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["notes"], "audit.md", { type: "text/markdown" })] },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const request = fetchMock.mock.calls[0][1];
+    expect(JSON.parse(String(request?.body))).toMatchObject({ thread_id: thread.id });
+    fetchMock.mockRestore();
+  });
+
+  it("keeps the new-chat attachment action available after an empty Barb restore", () => {
+    mockUseStaffConsole.mockReturnValue(staffConsoleState({ openingRole: null }));
+    render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByTestId("composer-file-input")).toBeEnabled();
+    expect(screen.getByTestId("composer-attach-btn")).toBeEnabled();
   });
 
   it("restores Barb history without sending a message when the sidebar opens", () => {

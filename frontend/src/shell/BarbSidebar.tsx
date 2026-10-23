@@ -225,6 +225,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
           focusOnThreadChange={open}
           isPanel={false}
           prefilledText={composerPrefill}
+          attachmentDisabled={sc.openingRole === "barb"}
         />
       </div>
     </aside>

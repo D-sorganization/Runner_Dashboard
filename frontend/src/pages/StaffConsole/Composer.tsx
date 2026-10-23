@@ -42,6 +42,7 @@ function attachmentStatusLabel(status: ComposerAttachment["status"]): string {
 
 interface ComposerComponentProps extends BaseComposerProps {
   prefilledText?: string;
+  attachmentDisabled?: boolean;
 }
 
 export const Composer: React.FC<ComposerComponentProps> = ({
@@ -56,6 +57,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   autoFocus = false,
   isPanel = false,
   prefilledText,
+  attachmentDisabled = false,
 }) => {
   const [text, setText] = useState<string>(() => getDraft(threadId));
   const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
@@ -213,7 +215,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   const attachedItems = useMemo(() => attachments.filter((a) => a.status === "attached"), [attachments]);
   const hasUnsettledAttachments = attachments.some((item) => item.status !== "attached");
   const stageFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
+    if (attachmentDisabled || !files?.length) return;
     const staged = Array.from(files).map((file) => {
       const id = "upload-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
       return {
@@ -371,6 +373,16 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           Voice error: {voiceError}
         </div>
       )}
+      {attachmentDisabled && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="composer-panel-notice"
+          style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}
+        >
+          Restoring your Barb conversation. File attachments will be available when ready.
+        </div>
+      )}
       {isPanel && (
         <div role="status" className="composer-panel-notice" style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}>
           {panelDisabledMessage}
@@ -425,13 +437,13 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
         <div className="staff-composer__footer">
           <div className="staff-composer__footer-left">
-            <input ref={fileInputRef} type="file" multiple tabIndex={-1} className="staff-composer__file-input" data-testid="composer-file-input" aria-label="Upload files to conversation" onChange={(e) => void stageFiles(e.target.files)} disabled={disabled || isPanel || sendState === "sending"} />
-            <select aria-label="Attachment sensitivity" data-testid="composer-sensitivity-select" className="staff-composer__sensitivity" value={sensitivity} onChange={(e) => setSensitivity(e.target.value as IntakeSensitivity)} disabled={disabled || isPanel || sendState === "sending"}>
+            <input ref={fileInputRef} type="file" multiple tabIndex={-1} className="staff-composer__file-input" data-testid="composer-file-input" aria-label="Upload files to conversation" onChange={(e) => void stageFiles(e.target.files)} disabled={disabled || isPanel || attachmentDisabled || sendState === "sending"} />
+            <select aria-label="Attachment sensitivity" data-testid="composer-sensitivity-select" className="staff-composer__sensitivity" value={sensitivity} onChange={(e) => setSensitivity(e.target.value as IntakeSensitivity)} disabled={disabled || isPanel || attachmentDisabled || sendState === "sending"}>
               <option value="confidential_work">Confidential work</option>
               <option value="public_reference">Library reference</option>
               <option value="vault_sensitive">Vault sensitive</option>
             </select>
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={disabled || isPanel || sendState === "sending"} title="Add files or context" aria-label="Add files or context" data-testid="composer-attach-btn" className="staff-composer__attach-btn">+</button>
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={disabled || isPanel || attachmentDisabled || sendState === "sending"} title="Add files or context" aria-label="Add files or context" data-testid="composer-attach-btn" className="staff-composer__attach-btn">+</button>
           </div>
           {/* Voice Input Button */}
           <button
