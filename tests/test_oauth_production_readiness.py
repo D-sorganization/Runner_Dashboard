@@ -1,9 +1,10 @@
-"""Production OAuth readiness contracts for the OGLaptop Tailscale origin.
+"""Production OAuth readiness contracts for the fleet hub Tailscale origin.
 
-Issue #1141 requires browser authentication to fail closed until an
-administrator has installed a dedicated GitHub OAuth credential and the exact
-MagicDNS callback.  These tests intentionally exercise only redacted
-configuration and route behaviour; secret values must never enter diagnostics.
+Issue #1141 / #2075 require browser authentication to fail closed until an
+administrator has installed GitHub App user OAuth credentials and a MagicDNS
+callback on a registry hub origin.  These tests intentionally exercise only
+redacted configuration and route behaviour; secret values must never enter
+diagnostics.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-_ORIGIN = "https://oglaptop.tail2bbcc7.ts.net"
+_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
 _CALLBACK = f"{_ORIGIN}/api/auth/callback"
 _CLIENT_ID = "Ov23liProductionClient"
 _CLIENT_SECRET = "s" * 40  # pragma: allowlist secret
