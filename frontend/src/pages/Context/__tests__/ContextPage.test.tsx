@@ -97,6 +97,8 @@ describe("ContextPage", () => {
   it("shows current Tier-1 registry pins and each run recorded skill pin", () => {
     render(<ContextPage pack={samplePack} skills={sampleSkills} lessons={sampleLessons} runs={sampleRuns} />);
     expect(screen.getByText("Current Tier-1 Skill Packs")).toBeInTheDocument();
+    expect(screen.getByText(/current Tier-1 skill registry/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Tier-1 pack versions are not reported/i)).not.toBeInTheDocument();
     expect(screen.getByText("fleet-meaningful-tests@1.0.0+87ba571a0adb")).toBeInTheDocument();
     expect(screen.getByText(/Tier-1 skill: fleet-meaningful-tests@1.0.0\+87ba571a0adb/i)).toBeInTheDocument();
   });

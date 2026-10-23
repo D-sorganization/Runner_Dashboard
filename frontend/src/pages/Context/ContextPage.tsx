@@ -195,7 +195,7 @@ export function ContextPage({
     <div className="p-6 max-w-7xl mx-auto space-y-8 font-sans text-neutral-100">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Fleet Context & Shared Memory</h1>
-        <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, latest per-repo run versions, lesson review queue, and per-run context estimates. AGENTS.md synchronization and Tier-1 pack pins are not reported by the current API.</p>
+        <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, current Tier-1 skill registry, latest per-repo run versions, lesson review queue, and per-run context estimates. AGENTS.md synchronization is not reported by the current API.</p>
       </div>
 
       {pack ? (
@@ -217,7 +217,7 @@ export function ContextPage({
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Content Digest</span><span className="font-mono text-xs text-neutral-300 break-all">{pack.digest}</span></div>
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Source Location</span><span className="font-mono text-xs text-neutral-300 break-all">{pack.source_path}</span></div>
           </div>
-          <p className="text-xs text-neutral-400">Tier-1 pack versions are not reported by the current API.</p>
+          <p className="text-xs text-neutral-400">Tier-1 skills are reported separately in the registry below.</p>
         </section>
       ) : (
         <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 text-sm text-neutral-300" role="status">
