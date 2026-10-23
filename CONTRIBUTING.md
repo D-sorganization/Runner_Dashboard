@@ -104,6 +104,13 @@ review first.
    against the latest `main` before merging. Do not rebase or update the
    branch just because `main` moved; "up to date" is not required
    (Repository_Management#1900).
+6. **Deploy & Auto-Release Fixes Require #2116 Deploy Smoke TDD**:
+   Every PR modifying deploy scripts (`deploy/**`), service reload/restart units,
+   release packaging, or auto-release workflows must follow strict TDD against the
+   `#2116` deploy smoke test suite (`ci-auto-deploy-regression.yml` / `tests/deploy/` /
+   `tests/test_main_ci_release_wait.py`):
+   - **RED:** Add a failing regression test case reproducing the deploy/release failure mode to the `#2116` deploy smoke test suite first.
+   - **GREEN:** Implement the deploy script or auto-release workflow fix so the smoke test passes.
 
 ## Code Style
 

@@ -1,4 +1,6 @@
 # Regression gate for node auto-deploy live bugs (#2083, #2108, #2111, #2114).
+# Mandatory #2116 deploy smoke TDD rule: every PR modifying deploy/**, service units,
+# release packaging, or auto-release workflows must first add a failing regression test case here (#2255).
 name: Node auto-deploy regression
 
 on:
@@ -7,6 +9,7 @@ on:
       - "deploy/**"
       - "tests/deploy/**"
       - "tests/test_main_ci_release_wait.py"
+      - "tests/test_deploy_smoke_tdd_rule.py"
       - ".github/workflows/ci-auto-deploy-regression.yml"
   push:
     branches:
@@ -16,6 +19,7 @@ on:
       - "deploy/**"
       - "tests/deploy/**"
       - "tests/test_main_ci_release_wait.py"
+      - "tests/test_deploy_smoke_tdd_rule.py"
       - ".github/workflows/ci-auto-deploy-regression.yml"
   merge_group:
   workflow_dispatch:
@@ -53,4 +57,5 @@ jobs:
         run: >-
           python3.12 -m pytest --confcutdir=tests/deploy
           tests/deploy/test_auto_deploy_ci_regression.py
-          tests/test_main_ci_release_wait.py -q
+          tests/test_main_ci_release_wait.py
+          tests/test_deploy_smoke_tdd_rule.py -q
