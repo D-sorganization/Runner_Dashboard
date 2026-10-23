@@ -74,10 +74,14 @@ def test_compose_prompt_aggregate_budget_caps() -> None:
         _prompt(dispatch_bundle=b, lessons=["L" * 2800])
 
 
-def test_run_context_stamping_and_token_accounting() -> None:
+def test_run_context_stamping_and_token_accounting(monkeypatch: pytest.MonkeyPatch) -> None:
     from staff.plan import RunRequest
     from staff.runner import get_runner
 
+    monkeypatch.setattr(
+        "staff.failover_dispatch.resolve_provider_and_model",
+        lambda *args, **kwargs: ("claude", None, "routine", []),
+    )
     rec, plan, _ = get_runner().admit(RunRequest(role="ad-hoc", repo="Tools", issue=1, prompt="Review"))
     assert plan.standards_version and plan.standards_tokens > 0
     stamp = json.loads(plan.context_stamp)
