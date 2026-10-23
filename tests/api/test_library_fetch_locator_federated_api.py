@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -165,8 +166,16 @@ def test_unqualified_federation_uses_one_global_deadline(tmp_path: Path, monkeyp
 
     requested = _mock_nodes(monkeypatch, handler)
     monkeypatch.setattr("routers.library_fetch.PAGE_FETCH_DEADLINE_S", 0.05)
+    create_client = _client
+
+    def slow_client_startup(path: Path) -> TestClient:
+        time.sleep(0.3)
+        return create_client(path)
+
+    monkeypatch.setattr(sys.modules[__name__], "_client", slow_client_startup)
+    client = _client(tmp_path)
     started = time.monotonic()
-    response = _client(tmp_path).get("/api/v1/library/fetch", params={"source_id": "shared", "work_id": 1, "page": 5})
+    response = client.get("/api/v1/library/fetch", params={"source_id": "shared", "work_id": 1, "page": 5})
 
     assert response.status_code == 503
     assert time.monotonic() - started < 0.25
