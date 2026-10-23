@@ -406,6 +406,9 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 outcome=str(row.get("outcome") or "auth_expired"),
             )
     if created:
+        from staff.routing_shadow import record_for_run  # noqa: PLC0415
+
+        record_for_run(runner.store, rec)  # shadow advice only (STAFF_ROUTING_MODE=shadow); never reroutes
         try:
             runner.launch(rec, plan)
         except Exception as exc:

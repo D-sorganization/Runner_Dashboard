@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from staff.outcomes import PrFact, PrKey, full_repo, pr_key, rate
+from staff.run_outcome import classify_outcome
 from staff.store import ACTIVE_STATUSES, RunRecord
 
 DEFAULT_REPORT_WINDOW_DAYS = 14
@@ -75,13 +76,12 @@ def _is_low_tier_model(provider: str, model: str) -> bool:
 
 
 def _is_clean_success(rec: RunRecord) -> bool:
-    if rec.status not in ("succeeded", "completed"):
-        return False
+    """Success = succeeded AND verification ``verified`` (a clean exit and no failure class)."""
     if rec.exit_code is not None and int(rec.exit_code) != 0:
         return False
     if (rec.failure_class or "").strip():
         return False
-    return (rec.verification or "").strip() not in ("failed", "unverified")
+    return classify_outcome(rec.status, rec.verification, rec.failure_class) == "success"
 
 
 def _remediated_targets(runs: Sequence[RunRecord]) -> tuple[set[PrKey], set[tuple[str, str]]]:
@@ -159,7 +159,11 @@ def _build_card(
     complexity_tier: str = "*",
 ) -> dict[str, Any]:
     in_flight = sum(1 for r in runs if r.status in ACTIVE_STATUSES)
-    term_runs = [r for r in runs if r.status not in ACTIVE_STATUSES]
+    # Neutral (no-op / cancelled) and infra-failed runs are excluded from the quality denominator (n).
+    buckets = {r.id: classify_outcome(r.status, r.verification, r.failure_class) for r in runs}
+    neutral = sum(1 for b in buckets.values() if b in ("no_op", "cancelled"))
+    infra_failed = sum(1 for b in buckets.values() if b == "infra_fail")
+    term_runs = [r for r in runs if buckets[r.id] in ("success", "quality_fail")]
     terminal = len(term_runs)
     succeeded = first_pass = failed = retried = remediation_followups = wasted_tokens = prs_merged_count = 0
     failure_breakdown: dict[str, int] = {}
@@ -237,6 +241,9 @@ def _build_card(
         "complexity_tier": complexity_tier,
         "sample_size": len(runs),
         "terminal_runs": terminal,
+        "neutral_runs": neutral,
+        "infra_failed_runs": infra_failed,
+        "availability": rate(terminal + neutral, terminal + neutral + infra_failed),
         "in_flight_runs": in_flight,
         "succeeded_runs": succeeded,
         "first_pass_succeeded_runs": first_pass,
