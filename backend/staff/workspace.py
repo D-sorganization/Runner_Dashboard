@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from platform_utils.wsl_paths import windows_repositories_root
 from staff import cli_projects
+from staff.git_hooks import install_pre_push_hook
 from staff.roles import RoleSpec
 from staff.standards_registry import _BUILTIN
 from staff.worktree_hygiene import (
@@ -208,7 +209,10 @@ def add_worktree(checkout: Path, worktree: Path, branch: str, *, start_ref: str 
     if start_ref:
         _git(checkout, "fetch", "origin", "--quiet", f"+refs/heads/{start_ref}:refs/remotes/origin/{start_ref}")
         base = f"origin/{start_ref}"
+    _git(checkout, "config", "extensions.worktreeConfig", "true")
     _git(checkout, "worktree", "add", "-b", branch, str(worktree), base)
+    if worktree.is_dir():
+        install_pre_push_hook(worktree)
 
 
 def add_run_worktree(checkout: Path, worktree: Path, branch: str, head_ref: str = "") -> None:
