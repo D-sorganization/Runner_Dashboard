@@ -48,10 +48,12 @@ def load_cordon_state(path: Path | None = None) -> DiskFullCordonState:
     if phase not in ("normal", "tripping", "cordoned"):
         phase = "normal"
     tripped_at = payload.get("tripped_at")
+    last_proactive = payload.get("last_proactive_cleanup_at")
     return DiskFullCordonState(
         phase=phase,
         tripped_at=float(tripped_at) if tripped_at is not None else None,
         cleanup_done=bool(payload.get("cleanup_done", False)),
+        last_proactive_cleanup_at=float(last_proactive) if last_proactive is not None else None,
     )
 
 
@@ -62,6 +64,7 @@ def save_cordon_state(state: DiskFullCordonState, path: Path | None = None) -> N
         "phase": state.phase,
         "tripped_at": state.tripped_at,
         "cleanup_done": state.cleanup_done,
+        "last_proactive_cleanup_at": state.last_proactive_cleanup_at,
     }
     tmp = state_path.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -110,6 +113,12 @@ def _run_cleanup_commands(
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             log.warning("disk-full cordon: cleanup %s failed: %s", command.description, exc)
+    try:
+        from staff.worktree_hygiene import sweep_stale_worktrees  # noqa: PLC0415
+
+        sweep_stale_worktrees()
+    except Exception as exc:  # noqa: BLE001
+        log.debug("disk-full cordon: stale worktree sweep skipped: %s", exc)
 
 
 def apply_cordon_actions(

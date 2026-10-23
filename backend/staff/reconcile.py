@@ -391,6 +391,11 @@ def reconcile_orphaned_runs(
 
         reconciled_ids.append(rec.id)
 
+    try:
+        workspace.sweep_stale_worktrees(store)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to sweep stale worktrees: %s", exc, exc_info=True)
+
     if reconciled_ids:
         log.info("Reconciled %d orphaned staff runs: %s", len(reconciled_ids), reconciled_ids)
     return reconciled_ids

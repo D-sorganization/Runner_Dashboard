@@ -8,10 +8,13 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from cache_utils import cache_get, cache_get_swr
+from dashboard_config import HttpTimeout
 
 FLEET_STATUS_FRESH_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_FLEET_STATUS_FRESH_TTL_S", "10"))
 FLEET_STATUS_STALE_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_FLEET_STATUS_STALE_TTL_S", "120"))
-FLEET_STATUS_WAIT_TIMEOUT_S = float(os.environ.get("RUNNER_DASHBOARD_FLEET_STATUS_WAIT_S", "4.0"))
+FLEET_STATUS_WAIT_TIMEOUT_S = float(
+    os.environ.get("RUNNER_DASHBOARD_FLEET_STATUS_WAIT_S", str(HttpTimeout.FLEET_NODE_PROBE_READ_S + 1.0))
+)
 
 FLEET_STATUS_CACHE_PREFIX = "fleet:status:v1"
 
