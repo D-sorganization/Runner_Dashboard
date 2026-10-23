@@ -367,6 +367,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           onChange={(e) => {
             setText(e.target.value);
             saveDraft(threadId, e.target.value);
+            setIdempotencyKey(null);
           }}
           onKeyDown={handleKeyDown}
           placeholder={defaultPlaceholder}
