@@ -348,17 +348,23 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
         client_host = request.client.host if request.client else "unknown"
         request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex[:12]
         request.state.request_id = request_id
-        log.warning(
-            "blocked bearer credential on external ingress",
-            extra={
-                "request_id": request_id,
-                "source_ip": client_host,
-                "cf_ray": request.headers.get("cf-ray"),
-                "path": request.url.path,
-                "method": request.method,
-                "reason": "machine_credentials_not_allowed_on_external_ingress",
-            },
-        )
+        from request_context import request_id_ctx  # noqa: PLC0415
+
+        request_id_token = request_id_ctx.set(request_id)
+        try:
+            log.warning(
+                "blocked bearer credential on external ingress",
+                extra={
+                    "request_id": request_id,
+                    "source_ip": client_host,
+                    "cf_ray": request.headers.get("cf-ray"),
+                    "path": request.url.path,
+                    "method": request.method,
+                    "reason": "machine_credentials_not_allowed_on_external_ingress",
+                },
+            )
+        finally:
+            request_id_ctx.reset(request_id_token)
         return JSONResponse(
             {"error": "Request not permitted"},
             status_code=403,
