@@ -1,5 +1,5 @@
 version: 1
-updated_at: 2026-10-21
+updated_at: 2026-10-22
 machines:
   - name: ControlTower
     aliases:
@@ -298,8 +298,9 @@ machines:
       - d-sorg-fleet
       - d-sorg-fleet-docker
     runners:
-      default: 2
-      max: 4
+      min: 0
+      default: 0
+      max: 0
     storage:
       runner_backing_drive: "/"
       host_drive: "/"
@@ -315,4 +316,5 @@ machines:
       notes: >
         Native Linux host (not WSL). Tailnet brick.tail2bbcc7.ts.net:8321.
         Brought into the registry 2026-10-21 (#2022); redeploy runbook at
-        docs/runbooks/brick-dashboard-redeploy.md.
+        docs/runbooks/brick-dashboard-redeploy.md. Dashboard staff jobs only;
+        GitHub Actions runner capacity remains disabled until explicitly opted in.
