@@ -213,6 +213,42 @@ test.describe("send failures keep the draft", () => {
   });
 });
 
+test.describe("Ask Barb drawer keyboard access", () => {
+  test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }) => {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 960, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/staff");
+      const trigger = page.getByRole("button", { name: "Ask Barb" });
+      await trigger.focus();
+      await page.keyboard.press("Enter");
+
+      const drawer = page.getByTestId("barb-sidebar");
+      const close = drawer.getByRole("button", { name: "Close Ask Barb" });
+      await expect(drawer).toBeVisible();
+      await expect(close).toBeFocused();
+
+      if (viewport.width === 390) {
+        await expect(drawer).toHaveAttribute("aria-modal", "true");
+        const last = drawer.locator(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ).last();
+        await page.keyboard.press("Shift+Tab");
+        await expect(last).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(close).toBeFocused();
+      }
+
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveAttribute("aria-hidden", "true");
+      await expect(trigger).toBeFocused();
+    }
+  });
+});
+
 test.describe("proposals", () => {
   test("a proposed action appears as an action card, live and after reload", async ({ page }) => {
     await openThread(page, BARB);
