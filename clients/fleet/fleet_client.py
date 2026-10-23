@@ -412,6 +412,47 @@ class FleetClient:
             body["params_hash"] = _opt(PATTERNS.sha256_hex, params_hash, "params_hash") or self._previewed_hash(pid)
         return self.request("POST", f"/api/v1/staff/proposals/{pid}/decide", body=body)
 
+    # ------------------------------------------------------------------ context query (#2223)
+
+    def fleet_query(
+        self,
+        source: str = "context",
+        query: str = "",
+        op: str = "query",
+        repo: str | None = None,
+        limit: int = 5,
+        page: int = 1,
+        full: bool = False,
+    ) -> Any:
+        """Unified on-request context query across context, library, knowledge, memory (#2223)."""
+        _check(source in ("context", "library", "knowledge", "memory"), f"invalid source: {source!r}")
+        _check(op in ("query", "request"), f"invalid op: {op!r}")
+        if op == "request" and source == "context":
+            try:
+                self.send_message(repo or "Runner_Dashboard", "*", f"@librarian context request: {query}")
+            except Exception:
+                pass
+        params: dict[str, Any] = {"source": source, "op": op, "limit": min(max(1, limit), 5), "page": max(1, page)}
+        if query:
+            params["query"] = query
+        if repo:
+            params["repo"] = repo
+        if full:
+            params["full"] = True
+        return self.request("GET", "/api/v1/fleet/query", params=params)
+
+    def fleet_query_context(self, repo: str | None = None, query: str = "", limit: int = 5) -> Any:
+        return self.fleet_query(source="context", repo=repo, query=query, limit=limit)
+
+    def fleet_query_library(self, query: str, repo: str | None = None, limit: int = 5, page: int = 1) -> Any:
+        return self.fleet_query(source="library", query=query, repo=repo, limit=limit, page=page)
+
+    def fleet_query_knowledge(self, query: str, repo: str | None = None, limit: int = 5, page: int = 1) -> Any:
+        return self.fleet_query(source="knowledge", query=query, repo=repo, limit=limit, page=page)
+
+    def fleet_query_memory(self, query: str, repo: str | None = None, limit: int = 5, page: int = 1) -> Any:
+        return self.fleet_query(source="memory", query=query, repo=repo, limit=limit, page=page)
+
     # ------------------------------------------------------------------ shared memory
 
     def memory_context_pack(self) -> Any:

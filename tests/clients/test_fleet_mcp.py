@@ -57,7 +57,8 @@ def test_handshake_list_and_call(fake_api: Any) -> None:
     assert "tools" in init["capabilities"]
 
     tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
-    assert len(tools) == 31
+    assert len(tools) == 32
+    assert "fleet_query" in tools
     claim_schema = tools["fleet_claim_issue"]["inputSchema"]
     assert claim_schema["type"] == "object"
     assert set(claim_schema["required"]) == {"repo", "issue"}
@@ -253,6 +254,24 @@ def test_shared_memory_tools_use_api_contract_without_replaying_append(fake_api:
         "decisions": ["Keep canonical memory"],
         "open_items": ["Wire chat writer"],
     }
+
+
+def test_fleet_query_mcp_flow(fake_api: Any) -> None:
+    responses = _session(
+        fake_api,
+        [
+            INIT,
+            INITIALIZED,
+            _call(2, "fleet_query", {"source": "context", "repo": "Runner_Dashboard"}),
+        ],
+    )
+    assert responses[1]["id"] == 2
+    call = responses[1]["result"]
+    assert call["isError"] is False
+    rec = fake_api.last
+    assert rec.path == "/api/v1/fleet/query"
+    assert rec.query.get("source") == "context"
+    assert rec.query.get("repo") == "Runner_Dashboard"
 
 
 # --- generated connect.md tool table (#1802 step 2) ---

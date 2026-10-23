@@ -77,7 +77,11 @@ The clients follow the same rule so a mismatch fails before anything is sent (CL
   start with `<agent>-` is rejected with an error naming the expected prefix.
 - Without an agent, any valid session id is accepted and a session is required.
 
-## Claude Code
+### Least-Privilege Agent Tokens
+
+Each agent runs with its own least-privilege `svc_` bot token (`memory.read`, `fleet.read`, `staff.read`). Lesson writes are restricted to creating `proposed` entries, enforced server-side.
+
+## Claude Code & Claude Desktop
 
 ```bash
 claude mcp add fleet --scope user \
@@ -86,6 +90,8 @@ claude mcp add fleet --scope user \
   --env FLEET_AGENT=claude \
   -- python3 /path/Runner_Dashboard/clients/fleet/fleet_mcp.py
 ```
+
+For Claude Desktop (`claude_desktop_config.json`) and Antigravity (`agy` / `~/.gemini/antigravity/mcp/fleet.json`), configure `command: "python"`, `args: ["/path/Runner_Dashboard/clients/fleet/fleet_mcp.py"]` with `FLEET_API_URL`, `FLEET_API_TOKEN`, `FLEET_AGENT`.
 
 See [Claude Connection Guide](claude.md) for full Claude Desktop / Cowork configuration.
 
@@ -123,7 +129,7 @@ See [Codex CLI Guide](codex.md) for complete options and workflow.
 ```
 
 On Windows, use `python` (or the full path to `python.exe`) instead of `python3` in all
-three configurations.
+configurations.
 
 ## Grok Bot (Local Exec)
 
@@ -184,6 +190,11 @@ The fleet MCP server provides the tools below (generated from `COMMANDS` in `cli
 | `staff_approval_decide`              | `fleetctl approval-decide`              | Decide (approve or deny) an action proposal (requires staff.approve scope).                                                                                                                       | `proposal_id`, `decision`                                                                                 |
 | `submit_proposal`                    | `fleetctl submit-proposal`              | Submit a proposal to the Board (stored in Repository_Management labelled board:proposal).                                                                                                         | `title`, `target_repos`, `problem`, `evidence`, `options_considered`, `lean`, `estimated_cost`, `urgency` |
 | `list_proposals`                     | `fleetctl list-proposals`               | List board proposals with decision labels, meeting consensus links, and outcome badges.                                                                                                           | -                                                                                                         |
+| `fleet_query`                        | `fleetctl fleet-query`                  | Unified on-request context query across context, library, knowledge, and memory.                                                                                                                  | -                                                                                                         |
+| -                                    | `fleetctl context`                      | Query fleet active context (directives, holds, accepted lessons).                                                                                                                                 | -                                                                                                         |
+| -                                    | `fleetctl library-query`                | Search passages across Alexandria library works (requires fleet.read scope).                                                                                                                      | `query`                                                                                                   |
+| -                                    | `fleetctl knowledge-query`              | Search curated repository knowledge pack (requires staff.read scope).                                                                                                                             | `query`                                                                                                   |
+| -                                    | `fleetctl memory-query`                 | Search shared fleet memory entries (requires memory.read scope).                                                                                                                                  | `query`                                                                                                   |
 
 <!-- END GENERATED: fleet-tools -->
 <!-- prettier-ignore-end -->

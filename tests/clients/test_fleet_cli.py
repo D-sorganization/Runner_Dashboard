@@ -154,6 +154,7 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "fleet_memory_append_session_digest",
         "submit_proposal",
         "list_proposals",
+        "fleet_query",
     }
 
 
@@ -194,3 +195,22 @@ def test_memory_commands(capsys: pytest.CaptureFixture[str], fake_api: Any) -> N
             "body": {"summary": "checkpoint"},
         },
     )
+
+
+def test_fleet_query_cli_commands(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, _ = _run(capsys, fake_api, "fleet-query", "--source", "context", "--repo", "Runner_Dashboard")
+    assert code == 0
+    assert fake_api.last.path == "/api/v1/fleet/query"
+    assert fake_api.last.query["source"] == "context"
+    assert fake_api.last.query["repo"] == "Runner_Dashboard"
+
+    code, _ = _run(capsys, fake_api, "context", "--repo", "Runner_Dashboard")
+    assert code == 0
+    assert fake_api.last.path == "/api/v1/fleet/query"
+    assert fake_api.last.query["source"] == "context"
+
+    code, _ = _run(capsys, fake_api, "library-query", "--query", "alexandria")
+    assert code == 0
+    assert fake_api.last.path == "/api/v1/fleet/query"
+    assert fake_api.last.query["source"] == "library"
+    assert fake_api.last.query["query"] == "alexandria"

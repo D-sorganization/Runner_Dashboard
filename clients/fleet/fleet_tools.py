@@ -587,6 +587,81 @@ COMMANDS: tuple[Command, ...] = (
         },
         tool="list_proposals",
     ),
+    # ---------------------------------------------------------------- context query (#2223)
+    Command(
+        "fleet-query",
+        "fleet_query",
+        "Unified on-request context query across context, library, knowledge, and memory.",
+        {
+            "source": {
+                "type": "string",
+                "enum": ["context", "library", "knowledge", "memory"],
+                "description": "Context source to query (default: context).",
+            },
+            "query": {"type": "string", "description": "Search query or request description."},
+            "op": {
+                "type": "string",
+                "enum": ["query", "request"],
+                "description": "Operation type: 'query' (default) or 'request'.",
+            },
+            "repo": REPO,
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5,
+                "description": "Max snippets to return (ceiling: 5).",
+            },
+            "page": {"type": "integer", "minimum": 1, "description": "Page number (1-based)."},
+            "full": {"type": "boolean", "description": "Request full representation (snippets capped at <=400 chars)."},
+        },
+        tool="fleet_query",
+    ),
+    Command(
+        "context",
+        "fleet_query_context",
+        "Query fleet active context (directives, holds, accepted lessons).",
+        {
+            "repo": REPO,
+            "query": {"type": "string", "description": "Optional filter query."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max snippets (ceiling: 5)."},
+        },
+    ),
+    Command(
+        "library-query",
+        "fleet_query_library",
+        "Search passages across Alexandria library works (requires fleet.read scope).",
+        {
+            "query": {"type": "string", "description": "Search query text."},
+            "repo": REPO,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max snippets (ceiling: 5)."},
+            "page": {"type": "integer", "minimum": 1, "description": "Page number (1-based)."},
+        },
+        required=("query",),
+    ),
+    Command(
+        "knowledge-query",
+        "fleet_query_knowledge",
+        "Search curated repository knowledge pack (requires staff.read scope).",
+        {
+            "query": {"type": "string", "description": "Search query text."},
+            "repo": REPO,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max snippets (ceiling: 5)."},
+            "page": {"type": "integer", "minimum": 1, "description": "Page number (1-based)."},
+        },
+        required=("query",),
+    ),
+    Command(
+        "memory-query",
+        "fleet_query_memory",
+        "Search shared fleet memory entries (requires memory.read scope).",
+        {
+            "query": {"type": "string", "description": "Search query text."},
+            "repo": REPO,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max snippets (ceiling: 5)."},
+            "page": {"type": "integer", "minimum": 1, "description": "Page number (1-based)."},
+        },
+        required=("query",),
+    ),
 )
 
 BY_CLI: dict[str, Command] = {c.cli: c for c in COMMANDS}

@@ -617,3 +617,31 @@ def test_approving_without_a_server_hash_sends_nothing(client: FleetClient, fake
     with pytest.raises(FleetArgumentError):
         client.staff_approval_decide("prop_1", "approved")
     assert all(r.method == "GET" for r in fake_api.requests)
+
+
+def test_fleet_query_client_methods(client: FleetClient, fake_api: Any) -> None:
+    client.fleet_query(source="context", repo="Runner_Dashboard", limit=10, page=2, full=True)
+    assert fake_api.last.path == "/api/v1/fleet/query"
+    assert fake_api.last.query == {
+        "source": "context",
+        "op": "query",
+        "limit": "5",
+        "page": "2",
+        "repo": "Runner_Dashboard",
+        "full": "true",
+    }
+    client.fleet_query_context(repo="Runner_Dashboard")
+    assert fake_api.last.query["source"] == "context"
+    client.fleet_query_library("search term", repo="Runner_Dashboard")
+    assert fake_api.last.query["source"] == "library" and fake_api.last.query["query"] == "search term"
+    client.fleet_query_knowledge("guidelines")
+    assert fake_api.last.query["source"] == "knowledge"
+    client.fleet_query_memory("lesson")
+    assert fake_api.last.query["source"] == "memory"
+
+
+def test_fleet_query_request_op_notifies_librarian(client: FleetClient, fake_api: Any) -> None:
+    fake_api.respond("POST", "/api/coordination/messages", 200, {"status": "ok"})
+    client.fleet_query(source="context", op="request", query="Need docs on X", repo="Runner_Dashboard")
+    assert any(r.path == "/api/coordination/messages" for r in fake_api.requests)
+    assert fake_api.last.path == "/api/v1/fleet/query"
