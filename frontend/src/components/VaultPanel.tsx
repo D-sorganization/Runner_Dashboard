@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { legacyFetch as apiFetch } from '../lib/api';
 
 interface VaultSecretRecord {
   key: string;

@@ -30,7 +30,7 @@ def test_vault_encrypts_at_rest_and_never_leaks_canary_across_surfaces(
     vault_env: tuple[TestClient, Path, Path],
 ) -> None:
     client, key_path, db_path = vault_env
-    canary = "sk-vault-CANARY-998877665544332211-ULTRASECRET"
+    canary = "vault-test-canary-secret-phrase"
     res = client.post(
         "/api/v1/vault/secrets",
         json={
