@@ -320,12 +320,20 @@ export function ContextPage({
                   } catch (e: unknown) {
                     void e;
                   }
-                  const tokenEstimates = stamp?.token_estimates as Record<string, number> | undefined;
-                  const t0 = tokenEstimates?.tier0_standards ?? (r.standards_tokens || 0);
-                  const t1Skills = tokenEstimates?.tier1_skills ?? 0;
-                  const t1Lessons = tokenEstimates?.tier1_lessons ?? (r.lessons_tokens || 0);
-                  const total = t0 + t1Skills + t1Lessons;
-                  const fullPromptEstimate = tokenEstimates?.full_prompt ?? (stamp?.context_accounting_version === 2 ? undefined : tokenEstimates?.total_injected);
+                  const tokenEstimates = stamp?.token_estimates as Record<string, unknown> | undefined;
+                  const recordedEstimate = (primary: unknown, legacy?: unknown): number | null => {
+                    if (typeof primary === "number") return primary;
+                    return typeof legacy === "number" ? legacy : null;
+                  };
+                  const t0 = recordedEstimate(tokenEstimates?.tier0_standards, r.standards_tokens);
+                  const t1Skills = recordedEstimate(tokenEstimates?.tier1_skills);
+                  const t1Lessons = recordedEstimate(tokenEstimates?.tier1_lessons, r.lessons_tokens);
+                  const knownEstimates = [t0, t1Skills, t1Lessons].filter((value): value is number => value !== null);
+                  const total = knownEstimates.reduce((sum, value) => sum + value, 0);
+                  const fullPromptEstimate = recordedEstimate(
+                    tokenEstimates?.full_prompt,
+                    stamp?.context_accounting_version === 2 ? undefined : tokenEstimates?.total_injected,
+                  );
                   const isOverCap = total > TOTAL_BUDGET_CAP;
                   const selectedIds: string[] = Array.isArray(stamp?.lesson_ids) ? (stamp.lesson_ids as string[]) : [];
                   const skippedItems: Array<{ id: string; reason: string }> = Array.isArray(stamp?.lessons_skipped)
@@ -335,8 +343,8 @@ export function ContextPage({
                   return (
                     <tr key={r.id} className="hover:bg-neutral-800/30">
                       <td className="py-2.5 px-3"><div className="font-mono text-xs font-semibold text-neutral-200">{r.id}</div><div className="text-xs text-neutral-400">{r.role} ({r.repo})</div>{r.skill_pin && <div className="mt-1 break-all font-mono text-xs text-neutral-500">Tier-1 skill: {r.skill_pin}</div>}</td>
-                      <td className="py-2.5 px-3 font-mono text-xs text-neutral-300">{t0} / {t1Skills} / {t1Lessons}</td>
-                      <td className="py-2.5 px-3 font-mono text-xs text-neutral-200 font-medium"><div>{total} known tokens</div>{fullPromptEstimate !== undefined && <div className="mt-1 text-neutral-500">Full prompt: {fullPromptEstimate} (estimate)</div>}</td>
+                      <td className="py-2.5 px-3 font-mono text-xs text-neutral-300">{t0 ?? "Not recorded"} / {t1Skills ?? "Not recorded"} / {t1Lessons ?? "Not recorded"}</td>
+                      <td className="py-2.5 px-3 font-mono text-xs text-neutral-200 font-medium"><div>{knownEstimates.length === 0 ? "No component estimates recorded" : <>{total} known tokens <span className="text-neutral-500">({knownEstimates.length} of 3 component estimates)</span></>}</div>{fullPromptEstimate !== null && <div className="mt-1 text-neutral-500">Full prompt: {fullPromptEstimate} (estimate)</div>}</td>
                       <td className="py-2.5 px-3" data-testid={`run-cap-${r.id}`}>
                         {isOverCap ? <span className="px-2 py-0.5 text-xs rounded bg-red-900/40 text-red-300 border border-red-700/60 font-medium">Over-Cap</span> : <span className="px-2 py-0.5 text-xs rounded bg-amber-950 text-amber-300 border border-amber-800">Partial</span>}
                       </td>
