@@ -32,7 +32,7 @@ def test_explicit_browser_origin_selects_only_exact_host(monkeypatch: pytest.Mon
     "value",
     [
         "http://ops.invalid",
-        "https://user:pass@ops.invalid",
+        "https://user:pass@ops.invalid",  # pragma: allowlist secret — intentional invalid Basic Auth URL.
         "https://ops.invalid/",
         "https://ops.invalid?q=x",
         "https://ops.invalid#x",

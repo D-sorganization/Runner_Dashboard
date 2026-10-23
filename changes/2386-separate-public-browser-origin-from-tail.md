@@ -1,4 +1,4 @@
 ---
 issue: 2386
-summary: "Separate public browser origin from tailnet OAuth configuration"
+summary: "Separate browser cookie and CSRF origin from tailnet OAuth configuration"
 ---
