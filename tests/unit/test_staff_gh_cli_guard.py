@@ -54,7 +54,7 @@ def test_issue_close_allowed_when_comment_cites_merged_pr_and_posts_comment_firs
             return _completed(
                 stdout=json.dumps({"number": 2456, "mergedAt": "2026-10-23T12:00Z", "body": "Summary.", "labels": []})
             )
-        if cmd[1:3] in (["pr", "edit"], ["issue", "comment"]):
+        if cmd[1:4] == ["api", "-X", "PATCH"] or cmd[1:3] == ["issue", "comment"]:
             return _completed()
         raise AssertionError(f"Unexpected command: {cmd}")
 
@@ -64,7 +64,7 @@ def test_issue_close_allowed_when_comment_cites_merged_pr_and_posts_comment_firs
         )
     assert allowed and err == "" and new_args == ["issue", "close", "2454"]
     assert any(c[1:3] == ["issue", "comment"] for c in calls)
-    assert any(c[1:3] == ["pr", "edit"] for c in calls)
+    assert any(c[1:4] == ["api", "-X", "PATCH"] for c in calls)
 
 
 def test_issue_close_allowed_with_exempt_label() -> None:

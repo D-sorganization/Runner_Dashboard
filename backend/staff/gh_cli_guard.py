@@ -130,15 +130,16 @@ def _is_verified_merged_pr(real_gh: str, repo_args: list[str], pr_num: int) -> t
     return ("jules-verification-failed" not in _label_names(data.get("labels"))), str(data.get("body") or "")
 
 
-def _backfill_pr_closing_keyword(real_gh: str, repo_args: list[str], pr_num: int, pr_body: str, issue_num: int) -> None:
+def _backfill_pr_closing_keyword(real_gh: str, repo: str | None, pr_num: int, pr_body: str, issue_num: int) -> None:
     cleaned = unescape_literal_newlines(pr_body)
     if _closing_re(issue_num).search(cleaned) and "\\n" not in pr_body:
         return
     if not _closing_re(issue_num).search(cleaned):
         cleaned = f"{cleaned.rstrip()}\n\nCloses #{issue_num}\n" if cleaned.strip() else f"Closes #{issue_num}\n"
+    endpoint = f"repos/{repo or '{owner}/{repo}'}/pulls/{pr_num}"
     try:
         subprocess.run(
-            [real_gh, "pr", "edit", str(pr_num), *repo_args, "--body", cleaned],
+            [real_gh, "api", "-X", "PATCH", endpoint, "-f", f"body={cleaned}", "--silent"],
             capture_output=True,
             text=True,
             timeout=20,
@@ -177,12 +178,9 @@ def check_and_prepare_issue_close(
         _check_text_refs(comment)
 
     if not allowed:
-        fields = "labels,comments,closedByPullRequestsReferences"
-        data = _run_gh_json(real_gh, ["issue", "view", str(issue_num), *repo_args, "--json", fields])
+        data = _run_gh_json(real_gh, ["issue", "view", str(issue_num), *repo_args, "--json", "labels,comments"])
         if isinstance(data, dict):
             if _label_names(data.get("labels")) & EXEMPT_ISSUE_LABELS:
-                allowed = True
-            if any(isinstance(r, dict) and r.get("merged") for r in (data.get("closedByPullRequestsReferences") or [])):
                 allowed = True
             for c in reversed(data.get("comments") or []) if not allowed else []:
                 c_body = str(c.get("body") or "") if isinstance(c, dict) else ""
@@ -223,7 +221,7 @@ def check_and_prepare_issue_close(
         )
 
     if matched_pr is not None:
-        _backfill_pr_closing_keyword(real_gh, repo_args, matched_pr[0], matched_pr[1], issue_num)
+        _backfill_pr_closing_keyword(real_gh, repo, matched_pr[0], matched_pr[1], issue_num)
     if comment:
         subprocess.run(
             [real_gh, "issue", "comment", str(issue_num), *repo_args, "--body", comment],
