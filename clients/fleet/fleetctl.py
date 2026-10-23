@@ -58,6 +58,25 @@ def _add_argument(parser: argparse.ArgumentParser, name: str, schema: dict[str, 
         parser.add_argument(f"--{name.replace('_', '-')}", dest=name, **kwargs)
 
 
+def _add_library_operations(parser: argparse.ArgumentParser) -> None:
+    """Expose ergonomic aliases using the unified query schema and implementation."""
+    query = BY_CLI["query"]
+    operations = parser.add_subparsers(dest="library_operation", required=True)
+    for operation, positional, optional in (
+        ("search", "query", ("repo", "topic", "k", "offset", "full", "run_id")),
+        ("fetch", "cite", ("run_id",)),
+        ("sources", None, ()),
+    ):
+        child = operations.add_parser(operation, help=f"Read-only library {operation}.")
+        defaults: dict[str, Any] = {name: None for name in query.properties}
+        defaults.update(source="library", op=operation)
+        child.set_defaults(command="query", **defaults)
+        if positional is not None:
+            _add_argument(child, positional, query.properties[positional], positional=True)
+        for name in optional:
+            _add_argument(child, name, query.properties[name], positional=False)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fleetctl", description="Runner Dashboard Fleet API client (JSON output).")
     parser.add_argument("--url", help="API base URL (default $FLEET_API_URL or http://127.0.0.1:8321).")
@@ -69,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_parser = sub.add_parser(command.cli, help=command.description, description=command.description)
         for name, schema in command.properties.items():
             _add_argument(cmd_parser, name, schema, positional=name in command.positional)
+    _add_library_operations(sub.add_parser("library", help="Read-only library search, fetch and source discovery."))
     doctor = sub.add_parser(
         "doctor",
         help="Read-only connection diagnostics (DNS/TLS, token, scopes, version, briefing freshness).",
