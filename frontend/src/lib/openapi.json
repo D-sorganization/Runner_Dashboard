@@ -19468,6 +19468,85 @@
         "tags": ["library"]
       }
     },
+    "/api/v1/library/verify": {
+      "get": {
+        "operationId": "library_verify_citation_route_api_v1_library_verify_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cite",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Cite",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Verify Citation Route Api V1 Library Verify Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Verify Citation Route",
+        "tags": ["library"]
+      },
+      "post": {
+        "operationId": "library_verify_route_api_v1_library_verify_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Verify Route Api V1 Library Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Verify Route",
+        "tags": ["library"]
+      }
+    },
     "/api/v1/library/works/{work_id}": {
       "get": {
         "operationId": "library_work_api_v1_library_works__work_id__get",

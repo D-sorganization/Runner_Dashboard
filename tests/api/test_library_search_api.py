@@ -44,3 +44,15 @@ def test_library_search(tmp_path: Path, monkeypatch) -> None:
     assert client.get(f"/api/v1/library/works/{wid}", headers=_XHR).json()["topics"] == ["Golf"]
     assert client.get("/api/v1/library/search", params={"q": "", "topic": "Golf"}, headers=_XHR).status_code == 422
     assert client.get("/api/v1/library/search", params={"q": "golf", "topic": "nope"}, headers=_XHR).status_code == 422
+
+
+def test_library_verify_endpoints(tmp_path: Path, monkeypatch) -> None:
+    client = TestClient(_app(tmp_path, monkeypatch))
+    cite = "[ref:desk:shared:w1:p1#sha256=00000000:p.1-1]"
+
+    response = client.post("/api/v1/library/verify", json={"content": cite}, headers=_XHR)
+
+    assert response.status_code == 200
+    assert response.json()["citations"][0]["status"] == "citation_not_found"
+    assert client.get("/api/v1/library/verify", params={"cite": "not-a-citation"}, headers=_XHR).status_code == 422
+    assert client.post("/api/v1/library/verify", json={"content": 123}, headers=_XHR).status_code == 422

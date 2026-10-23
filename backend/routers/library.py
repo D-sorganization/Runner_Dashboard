@@ -38,6 +38,7 @@ from library.search import (
 )
 from library.sources import add_source, list_sources, remove_source, seed_default_source, update_source
 from library.submissions import create_submission, list_submissions
+from library.verify import verify_content
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
 _db_override: Path | None = None
@@ -447,3 +448,51 @@ async def library_search(
         "passages": res.passages,
         "unavailable_sources": res.unavailable_sources,
     }
+
+
+@router.post("/verify")
+async def library_verify_route(
+    request: Request,
+    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="request body must be JSON") from exc
+    if not isinstance(payload, dict) or set(payload) - {"content", "run_id"}:
+        raise HTTPException(status_code=422, detail="expected content and optional run_id")
+    content = payload.get("content")
+    if not isinstance(content, str):
+        raise HTTPException(status_code=422, detail="content must be text")
+    if payload.get("run_id") is not None and not isinstance(payload["run_id"], str):
+        raise HTTPException(status_code=422, detail="run_id must be a string")
+    try:
+        run_id = payload.get("run_id")
+        if run_id is not None:
+            from library.retrieval_ledger import authorize_run_owner
+            from staff.store import get_run_store
+
+            authorize_run_owner(get_run_store(), run_id=run_id, principal_id=_principal.id)
+        return verify_content(
+            _db(),
+            content,
+            run_id=run_id,
+            repo_root=Path.cwd(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/verify")
+def library_verify_citation_route(
+    cite: str = Query(..., min_length=1, max_length=500),
+    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+) -> dict[str, Any]:
+    result = verify_content(_db(), cite)
+    if not result["citations"]:
+        raise HTTPException(status_code=422, detail="cite must contain a canonical library citation")
+    return result

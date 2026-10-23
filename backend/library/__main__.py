@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from library.db import library_db_path, library_source_dir
 from library.ingest import ingest_directory
 from library.sources import add_source, get_source, list_sources, remove_source, update_source
 from library.vector_index import backfill_db
+from library.verify import verify_content
 
 
 def main() -> int:
@@ -17,6 +19,10 @@ def main() -> int:
     ingest.add_argument("directory", nargs="?")
     ingest.add_argument("--source-id", help="Use this registered source and its full root path")
     ingest.add_argument("--max-files", type=int, help="Bound this scan; incomplete scans never reconcile removals")
+    verify = sub.add_parser("verify", help="Verify citations and repository-relative Markdown links")
+    verify.add_argument("--file", required=True)
+    verify.add_argument("--run-id")
+    verify.add_argument("--repo-root", type=Path)
     embed_p = sub.add_parser("embed", help="Backfill passage embeddings (sqlite-vec)")
     embed_p.add_argument("--batch-size", type=int, default=32)
     sources = sub.add_parser("sources")
@@ -38,6 +44,15 @@ def main() -> int:
             count = backfill_db(library_db_path(), batch_size=args.batch_size)
             sys.stdout.write(f"embedded {count} passage(s)\n")
             return 0
+        if args.command == "verify":
+            result = verify_content(
+                library_db_path(),
+                Path(args.file).read_text(encoding="utf-8"),
+                run_id=args.run_id,
+                repo_root=args.repo_root,
+            )
+            sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+            return 0 if result["verified"] else 1
         if args.command == "sources":
             db = library_db_path()
             if args.source_command == "list":
