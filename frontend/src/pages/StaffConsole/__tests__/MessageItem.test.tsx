@@ -9,6 +9,20 @@ import type { ThreadMessage } from "../threadTypes";
 
 afterEach(cleanup);
 
+describe("Barb shared continuity status", () => {
+  it.each([
+    ["saved", "Short summary saved to shared Barb memory."],
+    ["replayed", "Short summary already saved to shared Barb memory."],
+    ["unavailable", "Shared Barb memory unavailable; summary save is unconfirmed."],
+    ["omitted", "No valid continuity summary was supplied; nothing was saved."],
+  ])("reports %s using the server outcome", (status, label) => {
+    render(<MessageItem message={systemMessage({ author_kind: "staff", author: "barb", kind: "text",
+      body_md: "Your answer.", meta: { shared_memory_summary: status } })} />);
+    expect(screen.getByRole("status")).toHaveTextContent(label);
+    expect(screen.getByTestId("message-m1")).toHaveTextContent("Your answer.");
+  });
+});
+
 function systemMessage(overrides: Partial<ThreadMessage>): ThreadMessage {
   return {
     id: "m1",

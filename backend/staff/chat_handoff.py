@@ -11,6 +11,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from identity import Principal
 
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.roles import load_roles
@@ -73,3 +77,41 @@ async def post_reply_handoff(
     if card:
         await (bus or get_thread_bus()).publish_message(thread_id, card.to_dict())
     return result
+
+
+async def run_chat_turn_in_background(
+    thread_id: str,
+    user_message_id: str,
+    placeholder_id: str,
+    role_name: str,
+    caller_id: str,
+    requester: Principal | None = None,
+) -> None:
+    """Async background task invoked by POST /threads/{id}/messages to execute reply."""
+    from staff import chat
+
+    try:
+        runner = chat.ChatTurnRunner()
+        result = await runner.execute_turn(
+            thread_id=thread_id,
+            user_message_id=user_message_id,
+            placeholder_id=placeholder_id,
+            role_name=role_name,
+            requester=requester,
+        )
+        if result.ok and result.handoff:
+            await chat.post_reply_handoff(
+                thread_id=thread_id,
+                user_message_id=user_message_id,
+                from_role=role_name,
+                to_role=result.handoff,
+                reply=result.reply,
+                caller_id=caller_id,
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.error(
+            "Unhandled error during chat turn for thread %s: %s",
+            thread_id,
+            exc,
+            exc_info=True,
+        )

@@ -42,9 +42,18 @@ def _jsonl(*events: dict[str, Any]) -> list[str]:
     return [json.dumps(e) + "\n" for e in events]
 
 
-def _run(provider: str, lines: list[str]) -> tuple[Any, _Bus]:
+def _run(provider: str, lines: list[str], *, hide_memory_summary: bool = False) -> tuple[Any, _Bus]:
     bus = _Bus()
-    out = asyncio.run(stream_turn_output(LiveProcessReader(_Proc(lines)), get_adapter(provider), bus, "th_1", "msg_1"))
+    out = asyncio.run(
+        stream_turn_output(
+            LiveProcessReader(_Proc(lines)),
+            get_adapter(provider),
+            bus,
+            "th_1",
+            "msg_1",
+            hide_memory_summary=hide_memory_summary,
+        )
+    )
     return out, bus
 
 
@@ -81,3 +90,44 @@ def test_plain_text_providers_keep_every_line() -> None:
 
     assert out.reply_text == "first line\nsecond line\n"
     assert bus.tokens == ["first line", "second line"]
+
+
+@pytest.mark.unit
+def test_opt_in_summary_capsule_is_hidden_from_sse_across_delta_boundaries() -> None:
+    capsule = '```staff-memory\n{"summary":"private digest","decisions":[],"open_items":[]}\n```'
+    answer = "The task is complete.\n" + capsule
+    pieces = [answer[:23], answer[23:29], answer[29:41], answer[41:]]
+    out, bus = _run("claude", _jsonl(*(_assistant(piece) for piece in pieces)), hide_memory_summary=True)
+
+    assert out.reply_text == answer
+    assert "The task is complete.\n" == "".join(bus.tokens)
+    assert all("staff-memory" not in token and "private digest" not in token for token in bus.tokens)
+
+
+@pytest.mark.unit
+def test_opt_in_summary_capsule_filter_does_not_hide_fenced_examples() -> None:
+    answer = 'Example:\r\n```\r\n```staff-memory\r\n{"summary":"example"}\r\n```\r\n'
+    out, bus = _run("claude", _jsonl(_assistant(answer)), hide_memory_summary=True)
+
+    assert out.reply_text == answer
+    assert "".join(bus.tokens) == answer
+
+
+@pytest.mark.unit
+def test_summary_capsule_filter_is_opt_in_and_keeps_unrecognized_trailing_text() -> None:
+    answer = "Answer.\n```staff-memoryX\nvisible text\n"
+    default_out, default_bus = _run("claude", _jsonl(_assistant(answer)))
+    filtered_out, filtered_bus = _run("claude", _jsonl(_assistant(answer)), hide_memory_summary=True)
+
+    assert default_out.reply_text == answer
+    assert "".join(default_bus.tokens) == answer
+    assert filtered_out.reply_text == answer
+    assert "".join(filtered_bus.tokens) == answer
+
+
+@pytest.mark.unit
+def test_plain_codex_summary_filter_preserves_lines_for_marker_detection() -> None:
+    answer = 'Answer.\n```staff-memory\n{"summary":"private digest"}\n```\n'
+    out, bus = _run("codex", answer.splitlines(keepends=True), hide_memory_summary=True)
+    assert out.reply_text == answer
+    assert "".join(bus.tokens) == "Answer.\n"

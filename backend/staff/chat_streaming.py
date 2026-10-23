@@ -22,6 +22,112 @@ from staff.chat_history import extract_session_id
 log = logging.getLogger("dashboard.staff.chat_streaming")
 
 
+class _SummaryCapsuleStreamFilter:
+    """Hide the opt-in final summary capsule from live tokens without changing capture."""
+
+    _MARKER = "```staff-memory"
+
+    def __init__(self) -> None:
+        self.hidden = False
+        self._fence: str | None = None
+        self._line_start = True
+        self._candidate = ""
+        self._candidate_cr = False
+        self._line_prefix = ""
+        self._line_length = 0
+        self._line_trailing_cr = False
+
+    def feed(self, text: str) -> str:
+        """Return publishable bytes, holding only a possible marker prefix."""
+        if self.hidden:
+            return ""
+        output: list[str] = []
+        for char in text:
+            if self.hidden:
+                continue
+            if char == "\n":
+                if self._candidate == self._MARKER:
+                    self.hidden = True
+                    self._candidate = ""
+                    self._candidate_cr = False
+                elif self._candidate:
+                    output.append(self._candidate)
+                    if self._candidate_cr:
+                        output.append("\r")
+                    self._candidate = ""
+                    self._candidate_cr = False
+                    output.append(char)
+                else:
+                    output.append(char)
+                self._finish_line()
+                continue
+
+            self._line_length = min(self._line_length + 1, 4)
+            self._line_trailing_cr = char == "\r"
+            if len(self._line_prefix) < 3:
+                self._line_prefix += char
+
+            if self._candidate_cr:
+                # CRLF is also an exact marker line; other continuations invalidate it.
+                output.append(self._candidate)
+                output.append("\r")
+                self._candidate = ""
+                self._candidate_cr = False
+                output.append(char)
+                self._line_start = False
+                continue
+
+            if self._candidate == self._MARKER:
+                if char == "\r":
+                    self._candidate_cr = True
+                else:
+                    output.append(self._candidate)
+                    self._candidate = ""
+                    output.append(char)
+                self._line_start = False
+                continue
+
+            if self._candidate:
+                proposed = self._candidate + char
+                if self._MARKER.startswith(proposed):
+                    self._candidate = proposed
+                else:
+                    output.append(self._candidate)
+                    self._candidate = ""
+                    output.append(char)
+                self._line_start = False
+                continue
+
+            if self._line_start and self._fence is None and self._MARKER.startswith(char):
+                self._candidate = char
+            else:
+                output.append(char)
+            self._line_start = False
+        return "".join(output)
+
+    def finish(self) -> str:
+        """Flush an incomplete marker prefix; it is not a recognized capsule."""
+        if self.hidden or not self._candidate:
+            return ""
+        suffix = "\r" if self._candidate_cr else ""
+        pending = self._candidate + suffix
+        self._candidate = ""
+        self._candidate_cr = False
+        return pending
+
+    def _finish_line(self) -> None:
+        line_length = self._line_length - int(self._line_trailing_cr)
+        if self._fence is None:
+            if line_length >= 3 and self._line_prefix in {"```", "~~~"}:
+                self._fence = self._line_prefix
+        elif line_length == 3 and self._line_prefix == self._fence:
+            self._fence = None
+        self._line_start = True
+        self._line_prefix = ""
+        self._line_length = 0
+        self._line_trailing_cr = False
+
+
 def spawn_cli_process(
     cmd: list[str],
     cwd: str,
@@ -161,6 +267,7 @@ async def stream_turn_output(
     bus: Any,
     thread_id: str,
     placeholder_id: str,
+    hide_memory_summary: bool = False,
 ) -> TurnStreamOutput:
     """Streams stdout lines incrementally, publishes tokens live over SSE bus, and returns final output."""
     stdout_text: list[str] = []
@@ -169,6 +276,7 @@ async def stream_turn_output(
     captured_session_id: str | None = None
     result_text = ""
     chat_json = getattr(adapter, "chat_json", adapter.json_lines)  # codex chats are plain text (#1586)
+    summary_filter = _SummaryCapsuleStreamFilter() if hide_memory_summary else None
 
     async for line in reader.stream_lines():
         stdout_text.append(line)
@@ -178,7 +286,9 @@ async def stream_turn_output(
         if detected_sid:
             captured_session_id = detected_sid
 
-        delta = event.get("text", "")
+        # Plain-text parse_line strips newlines (and can interpret JSON prose as
+        # events). The capsule filter needs the same exact text as final capture.
+        delta = line if hide_memory_summary and not chat_json else event.get("text", "")
         if chat_json and event.get("kind") == "result":
             # The result event repeats the whole reply; stream it only when nothing was streamed before.
             result_text = delta
@@ -188,7 +298,14 @@ async def stream_turn_output(
             deltas.append(delta)
             if t_first_token is None:
                 t_first_token = time.monotonic()
-            await bus.publish_token(thread_id, placeholder_id, delta)
+            publishable = summary_filter.feed(delta) if summary_filter is not None else delta
+            if publishable:
+                await bus.publish_token(thread_id, placeholder_id, publishable)
+
+    if summary_filter is not None:
+        pending = summary_filter.finish()
+        if pending:
+            await bus.publish_token(thread_id, placeholder_id, pending)
 
     return TurnStreamOutput(
         stdout_lines=stdout_text,
