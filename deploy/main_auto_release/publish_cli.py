@@ -12,6 +12,11 @@ REPO_DEPLOY = Path(__file__).resolve().parents[1]
 if str(REPO_DEPLOY) not in sys.path:
     sys.path.insert(0, str(REPO_DEPLOY))
 
+from node_auto_deploy.check_inventory import (  # noqa: E402
+    MAX_CHECK_RUNS,
+    CheckInventoryUnavailable,
+    normalize_latest_check_runs,
+)
 from node_auto_deploy.check_runs import PENDING_STATUSES, normalize_commit_sha  # noqa: E402
 
 from main_auto_release.gate import (  # noqa: E402
@@ -33,7 +38,7 @@ def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _flatten_check_runs(payload: Any) -> tuple[list[dict[str, Any]] | None, str]:
+def _flatten_check_runs(payload: Any, expected_sha: str) -> tuple[list[dict[str, Any]] | None, str]:
     """Validate complete GitHub check-run pages before the strict gate sees them."""
     pages = payload if isinstance(payload, list) else [payload]
     if not pages or any(not isinstance(page, dict) for page in pages):
@@ -52,6 +57,8 @@ def _flatten_check_runs(payload: Any) -> tuple[list[dict[str, Any]] | None, str]
             or page_count < 0
         ):
             return None, "page is missing a valid check_runs list or total_count"
+        if page_count > MAX_CHECK_RUNS:
+            return None, f"check inventory exceeds the {MAX_CHECK_RUNS} raw-run limit"
         for run in page_runs:
             run_id = run.get("id") if isinstance(run, dict) else None
             name = run.get("name") if isinstance(run, dict) else None
@@ -79,7 +86,11 @@ def _flatten_check_runs(payload: Any) -> tuple[list[dict[str, Any]] | None, str]
     expected_total = next(iter(total_counts))
     if len(flattened) != expected_total:
         return None, f"incomplete pagination: received {len(flattened)} of {expected_total} check runs"
-    return flattened, ""
+    try:
+        normalized = normalize_latest_check_runs(flattened, expected_sha)
+    except CheckInventoryUnavailable as exc:
+        return None, str(exc)
+    return normalized, ""
 
 
 def cmd_verify_gate(args: argparse.Namespace) -> int:
@@ -88,7 +99,7 @@ def cmd_verify_gate(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         sys.stderr.write(f"invalid check-runs payload: {type(exc).__name__}\n")
         return 3
-    runs, error = _flatten_check_runs(payload)
+    runs, error = _flatten_check_runs(payload, args.sha)
     if runs is None:
         sys.stderr.write(f"invalid check-runs payload: {error}\n")
         return 3
