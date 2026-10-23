@@ -30,7 +30,7 @@ it.
 4. [0004 — FastAPI as the backend framework (chosen over Flask)](./0004-fastapi-over-flask.md) — async I/O, Pydantic-typed boundaries, and free OpenAPI motivated FastAPI over Flask for `backend/server.py`.
 5. [0005 — Single-port architecture: FastAPI serves both API and frontend bundle](./0005-single-port-frontend-and-backend.md) — production runs on port 8321 only; FastAPI serves `/api/*` and the built Vite bundle from `dist/`.
 6. [0006 — Staff conversation model](./0006-staff-conversation-model.md) — retroactive, as-built record of threads, chat turns vs work runs, session resume and node-local state; gaps tracked in #1484–#1494.
-7. [0007 — Agent client ingress stays local-only](./0007-agent-client-ingress-local-only.md) — owner decision (#1335): no Tailscale Funnel or outbound relay for cloud-hosted agent clients; fleet-machine access only.
+7. [0007 — Agent client ingress stays local-only](./0007-agent-client-ingress-local-only.md) — fleet-machine access for agents; #2252 defines a separately gated owner browser exception.
 
 ## Template
 
