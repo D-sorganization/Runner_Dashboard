@@ -17,6 +17,7 @@ import path from "path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 // Thread resolution hits the backend (#1446); keep it hermetic.
 const threadApi = vi.hoisted(() => ({
   fetchThreads: vi.fn(),
@@ -164,6 +165,33 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(screen.getByTestId("staff-mobile-ask-barb")).toBeInTheDocument();
     expect(screen.getByText("Chief Architect")).toBeInTheDocument();
     expect(screen.getByText("Fleet Maintenance")).toBeInTheDocument();
+  });
+
+  it("provides a chat-first home with keyboard project starters and no automatic send", async () => {
+    const user = userEvent.setup();
+    const onSendMessage = vi.fn().mockResolvedValue({ ok: true });
+    render(<StaffConsoleMobile initialView="home" roles={MOCK_ROLES} onSendMessage={onSendMessage} />);
+
+    expect(screen.getByTestId("staff-mobile-home")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose staff" })).toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: /staff conversation input/i });
+    expect(input).toBeInTheDocument();
+
+    const upstream = screen.getByRole("button", { name: "Start UpstreamDrift" });
+    upstream.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect((input as HTMLTextAreaElement).value).toContain("UpstreamDrift"));
+    expect(document.activeElement).toBe(input);
+    expect(onSendMessage).not.toHaveBeenCalled();
+
+    const affine = screen.getByRole("button", { name: "Start AffineDrift" });
+    affine.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect((input as HTMLTextAreaElement).value).toContain("AffineDrift"));
+    expect(onSendMessage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose staff" }));
+    expect(screen.getByTestId("staff-mobile-roster")).toBeInTheDocument();
   });
 
   it("offers project starters in the mobile roster and only pre-fills the Barb composer", async () => {
