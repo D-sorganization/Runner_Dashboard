@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from bash_host import BASH
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "security-scan-host" / "setup-build-network.sh"
-pytestmark = pytest.mark.skipif(sys.platform == "win32" or not shutil.which("bash"), reason="needs POSIX bash")
+pytestmark = pytest.mark.skipif(sys.platform == "win32" or BASH is None, reason="needs POSIX bash")
 
 
 def _run(tmp_path: Path, hostname: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -22,7 +22,7 @@ def _run(tmp_path: Path, hostname: str, *args: str) -> subprocess.CompletedProce
         tool.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
         tool.chmod(0o755)
     env = {**os.environ, "PATH": f"{stub}:{os.environ['PATH']}"}
-    return subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, text=True, env=env, check=False)
+    return subprocess.run([str(BASH), str(SCRIPT), *args], capture_output=True, text=True, env=env, check=False)
 
 
 def test_dry_run_prints_the_firewall_and_builder(tmp_path: Path) -> None:
