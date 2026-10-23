@@ -74,3 +74,70 @@ def test_library_verify_endpoints(tmp_path: Path, monkeypatch) -> None:
     )
     assert client.get("/api/v1/library/verify", params={"cite": "not-a-citation"}, headers=_XHR).status_code == 422
     assert client.post("/api/v1/library/verify", json={"content": 123}, headers=_XHR).status_code == 422
+
+
+def test_verify_links_use_only_the_explicit_trusted_checkout(tmp_path: Path, monkeypatch) -> None:
+    client = TestClient(_app(tmp_path, monkeypatch))
+    repos = tmp_path / "repos"
+    checkout = repos / "Runner_Dashboard"
+    docs = checkout / "docs"
+    docs.mkdir(parents=True)
+    (checkout / ".git").mkdir()
+    (docs / "guide.md").write_text("# Getting Started\n", encoding="utf-8")
+    outside = tmp_path / "outside.md"
+    outside.write_text("# Secret\n", encoding="utf-8")
+    (docs / "escape.md").symlink_to(outside)
+    escaped_checkout = tmp_path / "escaped-checkout"
+    (escaped_checkout / ".git").mkdir(parents=True)
+    (repos / "Escaped").symlink_to(escaped_checkout, target_is_directory=True)
+    monkeypatch.setenv("STAFF_REPOS_ROOT", str(repos))
+    content = "See [the guide](docs/guide.md#getting-started)."
+
+    response = client.post(
+        "/api/v1/library/verify", json={"content": content, "repo": "Runner_Dashboard"}, headers=_XHR
+    )
+    no_context = client.post("/api/v1/library/verify", json={"content": content}, headers=_XHR)
+    unknown_repo = client.post("/api/v1/library/verify", json={"content": content, "repo": "missing"}, headers=_XHR)
+    escaped_repo = client.post("/api/v1/library/verify", json={"content": content, "repo": "Escaped"}, headers=_XHR)
+    bad_name = client.post("/api/v1/library/verify", json={"content": content, "repo": "../outside"}, headers=_XHR)
+    traversal = client.post(
+        "/api/v1/library/verify",
+        json={"content": "[escape](../../outside.md)", "repo": "Runner_Dashboard"},
+        headers=_XHR,
+    )
+    absolute = client.post(
+        "/api/v1/library/verify", json={"content": f"[escape]({outside})", "repo": "Runner_Dashboard"}, headers=_XHR
+    )
+    symlink = client.post(
+        "/api/v1/library/verify", json={"content": "[escape](docs/escape.md)", "repo": "Runner_Dashboard"}, headers=_XHR
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["links"][0]["verified"] is True
+    assert no_context.json()["links"][0]["status"] == "broken_link"
+    assert unknown_repo.status_code == 404
+    assert escaped_repo.status_code == 404
+    assert bad_name.status_code == 422
+    assert traversal.json()["links"][0]["status"] == "broken_link"
+    assert absolute.json()["links"][0]["status"] == "broken_link"
+    assert symlink.json()["links"][0]["status"] == "broken_link"
+
+
+def test_verify_authorizes_run_before_resolving_repo(tmp_path: Path, monkeypatch) -> None:
+    client = TestClient(_app(tmp_path, monkeypatch))
+
+    def deny_run(*_args, **_kwargs) -> None:
+        raise PermissionError("not run owner")
+
+    def fail_repo_lookup(_repo: str | None) -> None:
+        raise AssertionError("repository lookup preceded run authorization")
+
+    monkeypatch.setattr("library.retrieval_ledger.authorize_run_owner", deny_run)
+    monkeypatch.setattr("routers.library_verify.verification_repo_root", fail_repo_lookup)
+    response = client.post(
+        "/api/v1/library/verify",
+        json={"content": "[relative](docs/file.md)", "run_id": "foreign-run", "repo": "Runner_Dashboard"},
+        headers=_XHR,
+    )
+
+    assert response.status_code == 403

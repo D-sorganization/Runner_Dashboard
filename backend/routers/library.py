@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hmac
 import os
 import re
@@ -43,6 +42,7 @@ from library.sources import add_source, list_sources, remove_source, seed_defaul
 from library.submissions import create_submission, list_submissions
 from library.verify import verify_content
 from routers.library_fetch import fetch_page_locator
+from routers.library_verify import verify_library_request
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
 _db_override: Path | None = None
@@ -452,40 +452,7 @@ async def library_verify_route(
     request: Request,
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
-    try:
-        payload = await request.json()
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=422, detail="request body must be JSON") from exc
-    if not isinstance(payload, dict) or set(payload) - {"content", "run_id", "local_only"}:
-        raise HTTPException(status_code=422, detail="expected content and optional run_id/local_only")
-    content = payload.get("content")
-    if not isinstance(content, str):
-        raise HTTPException(status_code=422, detail="content must be text")
-    if payload.get("run_id") is not None and not isinstance(payload["run_id"], str):
-        raise HTTPException(status_code=422, detail="run_id must be a string")
-    if payload.get("local_only", False) is not True and payload.get("local_only", False) is not False:
-        raise HTTPException(status_code=422, detail="local_only must be a boolean")
-    try:
-        run_id = payload.get("run_id")
-        if run_id is not None:
-            from library.retrieval_ledger import authorize_run_owner
-            from staff.store import get_run_store
-
-            authorize_run_owner(get_run_store(), run_id=run_id, principal_id=_principal.id)
-        return await asyncio.to_thread(
-            verify_content,
-            _db(),
-            content,
-            run_id=run_id,
-            repo_root=Path.cwd(),
-            local_only=payload.get("local_only", False),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return await verify_library_request(request, _principal.id, _db())
 
 
 @router.get("/verify")
