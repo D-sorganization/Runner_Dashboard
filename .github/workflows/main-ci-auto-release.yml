@@ -44,6 +44,7 @@ jobs:
       cancel-in-progress: true
     outputs:
       ok: ${{ steps.gate.outputs.ok }}
+      sha: ${{ steps.gate.outputs.sha }}
     env:
       GH_TOKEN: ${{ github.token }}
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -80,7 +81,9 @@ jobs:
   publish:
     name: Publish dashboard release when CI gate is green
     needs: gate
-    if: needs.gate.outputs.ok == 'true'
+    if: >-
+      needs.gate.outputs.ok == 'true' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: d-sorg-fleet
     timeout-minutes: 120
     # An upload/tag must never be interrupted; the script re-checks ordering before tagging.
@@ -89,12 +92,12 @@ jobs:
       cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
-      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_SHA: ${{ needs.gate.outputs.sha }}
     steps:
       - name: Checkout release source at workflow_run head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.gate.outputs.sha }}
           fetch-depth: 1
 
       - name: Resolve committer date for deterministic tag

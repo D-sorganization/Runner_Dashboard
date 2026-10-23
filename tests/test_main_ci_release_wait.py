@@ -836,7 +836,7 @@ def test_gate_only_reports_ok_true_without_publishing(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "handing off to the publish job" in result.stdout
     assert "DRY RUN" not in result.stdout
-    assert _gate_output(tmp_path) == "ok=true"
+    assert _gate_output(tmp_path).splitlines() == [f"sha={SHA}", "ok=true"]
 
 
 def test_gate_only_reports_ok_false_on_exhausted_wait_and_terminal_failure(tmp_path: Path) -> None:
@@ -948,6 +948,10 @@ def test_gate_job_is_cancellable_and_publish_job_is_not() -> None:
     assert jobs["publish"]["needs"] == "gate"
     assert "needs.gate.outputs.ok == 'true'" in str(jobs["publish"]["if"])
     assert jobs["gate"]["outputs"]["ok"] == "${{ steps.gate.outputs.ok }}"
+    # Publish checks out the gate-verified main-ancestor SHA, never the raw workflow_run head ref.
+    assert "github.event.workflow_run.head_repository.full_name == github.repository" in str(jobs["publish"]["if"])
+    assert jobs["publish"]["env"]["HEAD_SHA"] == "${{ needs.gate.outputs.sha }}"
+    assert jobs["publish"]["steps"][0]["with"]["ref"] == "${{ needs.gate.outputs.sha }}"
 
 
 def test_workflow_run_gate_and_publisher_require_successful_trigger_and_ancestor_main() -> None:

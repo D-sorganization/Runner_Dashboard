@@ -201,6 +201,8 @@ if [[ "$gate_ok" != "true" ]]; then
 fi
 if [[ "$GATE_ONLY" == "true" ]]; then
   echo "CI gate satisfied for ${SHA:0:7}; handing off to the publish job"
+  # The publish job checks out exactly this gate-verified main-ancestor SHA.
+  echo "sha=${SHA}" >> "${GITHUB_OUTPUT:-/dev/null}"
   exit 0
 fi
 
