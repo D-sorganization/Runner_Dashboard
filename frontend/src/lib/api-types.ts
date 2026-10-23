@@ -19204,8 +19204,11 @@ export interface operations {
     };
     library_fetch_api_v1_library_fetch_get: {
         parameters: {
-            query: {
-                cite: string;
+            query?: {
+                cite?: string | null;
+                source_id?: string | null;
+                work_id?: number | null;
+                page?: number | null;
                 scope?: string;
             };
             header?: never;
