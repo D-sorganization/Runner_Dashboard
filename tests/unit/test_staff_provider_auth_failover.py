@@ -64,7 +64,7 @@ def test_provider_auth_preflight_classifies_expiring(tmp_path: Path, monkeypatch
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cred_dir))
     monkeypatch.setattr("staff.cli_oauth_session.resolve_claude_config_dir", lambda: cred_dir)
 
-    with patch("staff.cli_oauth_session.claude_oauth_session_alive", return_value=(True, "ok")):
+    with patch("staff.provider_auth_preflight.provider_oauth_session_alive", return_value=(True, "ok")):
         report = probe_local_provider_auth("Desk")
     assert report["providers"]["claude"]["status"] == "expiring"
 
@@ -113,7 +113,7 @@ def test_provider_auth_preflight_ok_with_refresh_token_and_4h_keepalive(
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cred_dir))
     monkeypatch.setattr("staff.cli_oauth_session.resolve_claude_config_dir", lambda: cred_dir)
 
-    with patch("staff.cli_oauth_session.claude_oauth_session_alive", return_value=(True, "ok")):
+    with patch("staff.provider_auth_preflight.provider_oauth_session_alive", return_value=(True, "ok")):
         report = probe_local_provider_auth("Brick")
     assert report["providers"]["claude"]["status"] == "ok"
     assert report["providers"]["claude"]["has_refresh_token"] is True
