@@ -732,8 +732,9 @@ class FleetClient:
         """
         valid_sources = ("context", "library", "knowledge", "memory", "codebase")
         _check(source in valid_sources, f"source must be one of {valid_sources}")
-        valid_ops = ("search", "get", "request", "fetch")
+        valid_ops = ("search", "get", "request", "fetch", "sources")
         _check(op in valid_ops, f"op must be one of {valid_ops}")
+        _check(op != "sources" or source == "library", "sources is only supported for library")
         _check(op != "fetch" or source == "library", "fetch is only supported for library")
         _check(cite is None or (source == "library" and op == "fetch"), "cite is only supported for library fetch")
         _check(
@@ -816,6 +817,10 @@ class FleetClient:
             return res
 
         elif source == "library":
+            if op == "sources":
+                catalog = self.request("GET", "/api/v1/library/sources")
+                return {**catalog, "status": "ok", "source": "library"}
+
             if op == "fetch":
                 if cite is None:
                     raise FleetArgumentError("cite is required for library fetch")
@@ -1002,6 +1007,10 @@ class FleetClient:
         return self.fleet_query(
             source="library", op="search", query=query, repo=repo, topic=topic, k=k, offset=offset, full=full
         )
+
+    def library_sources(self) -> dict[str, Any]:
+        """Read local and pooled source availability using the caller's existing permissions."""
+        return self.fleet_query(source="library", op="sources")
 
     def query_codebase(
         self, query: str | None = None, k: int = 5, offset: int = 0, run_id: str | None = None

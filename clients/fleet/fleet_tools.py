@@ -600,8 +600,8 @@ COMMANDS: tuple[Command, ...] = (
             },
             "op": {
                 "type": "string",
-                "enum": ["search", "get", "request", "fetch"],
-                "description": "Operation: search, get, fetch a cited library passage, or request librarian context.",
+                "enum": ["search", "get", "request", "fetch", "sources"],
+                "description": "Search, get, fetch a cited library passage, list library sources, or request context.",
             },
             "query": {"type": "string", "description": "Search term, question, or request details."},
             "cite": {"type": "string", "description": "Canonical citation for a library fetch."},
@@ -646,6 +646,11 @@ COMMANDS: tuple[Command, ...] = (
             "offset": {"type": "integer", "minimum": 0},
             "full": {"type": "boolean"},
         },
+    ),
+    Command(
+        "library-sources",
+        "library_sources",
+        "Read local and pooled library sources, including peer availability (no mutations).",
     ),
     Command(
         "query-codebase",
