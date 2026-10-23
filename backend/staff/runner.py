@@ -184,6 +184,8 @@ class StaffRunner:
             context_stamp=json.dumps(bundle.context_stamp(prompt=prompt)),
             library_work_ids=library_work_ids,
             provider_auth_skipped=tuple(auth_skipped),
+            lesson_ids=bundle.lesson_ids,
+            lessons_tokens=bundle.lessons_tokens,
         )
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
@@ -457,7 +459,9 @@ class StaffRunner:
                 q = question if status == "needs_input" else None
                 if status == "succeeded":
                     from staff.failover_dispatch import run_completion_summary
+                    from staff.lessons import file_staff_lessons
 
+                    file_staff_lessons(store=None, rec=updated_rec, plan=plan, transcript_path=transcript)
                     summary = run_completion_summary(
                         store, updated_rec, result_line, provider=plan.provider, model=plan.model
                     )

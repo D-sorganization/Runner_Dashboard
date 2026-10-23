@@ -362,16 +362,25 @@ def compose_prompt(
 
         # Lessons block (Tier 1)
         if lessons:
+            from staff.lessons import LESSONS_HEADER
+
             sorted_lessons = sorted(lessons)
             lessons_text = "\n".join(
                 f"- {item.strip()}" if not item.strip().startswith("-") else item.strip() for item in sorted_lessons
             )
-            lessons_block = f"Fleet lessons:\n{lessons_text}"
+            lessons_block = f"{LESSONS_HEADER}\n{lessons_text}"
             lessons_tokens = estimate_tokens(lessons_block)
             if lessons_tokens > LESSONS_TOKEN_CAP:
                 raise ContextBudgetExceededError(
                     f"Lessons budget exceeded: {lessons_tokens} > {LESSONS_TOKEN_CAP} tokens"
                 )
+        elif dispatch_bundle and dispatch_bundle.lessons_block:
+            lessons_block = dispatch_bundle.lessons_block
+            lessons_tokens = dispatch_bundle.lessons_tokens
+        elif repo and not chat_turn:
+            from staff.lessons import select_repo_lessons
+
+            _, _, lessons_block, lessons_tokens = select_repo_lessons(repo=repo)
         else:
             lessons_block = ""
             lessons_tokens = 0

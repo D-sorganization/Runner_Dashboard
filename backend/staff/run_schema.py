@@ -35,4 +35,6 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("standards_tokens", "INTEGER NOT NULL DEFAULT 0"),
     ("context_stamp", "TEXT NOT NULL DEFAULT '{}'"),
     ("library_work_ids", "TEXT NOT NULL DEFAULT '[]'"),
+    ("lesson_ids", "TEXT NOT NULL DEFAULT '[]'"),
+    ("lessons_tokens", "INTEGER NOT NULL DEFAULT 0"),
 )

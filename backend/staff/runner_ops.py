@@ -439,4 +439,6 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         standards_tokens=getattr(plan, "standards_tokens", 0) or 0,
         context_stamp=getattr(plan, "context_stamp", "{}") or "{}",
         library_work_ids=json.dumps(list(getattr(plan, "library_work_ids", ()) or ())),
+        lesson_ids=json.dumps(list(getattr(plan, "lesson_ids", ()) or ())),
+        lessons_tokens=getattr(plan, "lessons_tokens", 0) or 0,
     )

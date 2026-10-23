@@ -107,6 +107,8 @@ class RunRecord:
     standards_tokens: int = 0
     context_stamp: str = "{}"
     library_work_ids: str = "[]"
+    lesson_ids: str = "[]"
+    lessons_tokens: int = 0
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)

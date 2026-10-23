@@ -91,6 +91,8 @@ class RunPlan:
     context_stamp: str = "{}"
     library_work_ids: tuple[int, ...] = ()
     provider_auth_skipped: tuple[dict[str, str], ...] = ()
+    lesson_ids: tuple[str, ...] = ()
+    lessons_tokens: int = 0
 
     @property
     def strategy_mode(self) -> str:
