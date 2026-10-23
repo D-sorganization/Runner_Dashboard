@@ -23,7 +23,7 @@ from identity import (
 )
 from library.browse import browse_directory
 from library.db import init_library_db, library_db_path
-from library.pool import _hit_to_dict, federated_search, get_pooled_catalog
+from library.pool import _hit_to_dict, federated_search, get_pooled_catalog, refresh_catalog
 from library.search import (
     DEFAULT_BUDGET,
     MAX_BUDGET,
@@ -100,7 +100,7 @@ def library_browse_route(
 
 
 @router.get("/sources")
-def library_sources_route(
+async def library_sources_route(
     request: Request,
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
@@ -108,11 +108,23 @@ def library_sources_route(
 
     shared = request.query_params.get("shared") in ("1", "true", "True")
     sources = list_sources(_db())
-    if shared or _principal.id == "fleet-peer":
+    peer_request = shared or _principal.id == "fleet-peer"
+    catalog = get_pooled_catalog()
+    unavailable: list[str] = []
+    if peer_request:
         sources = [s for s in sources if s.get("shared")]
+    else:
+        catalog.update_node_sources(HOSTNAME, [s for s in sources if s.get("shared")])
+        unavailable = await refresh_catalog(
+            catalog=catalog,
+            fleet_nodes=FLEET_NODES,
+            local_node=HOSTNAME,
+            hub_token=os.environ.get("HUB_FLEET_TOKEN", ""),
+        )
     return {
         "sources": sources,
-        "pooled_sources": get_pooled_catalog().list_sources(),
+        "pooled_sources": [] if peer_request else catalog.list_sources(),
+        "unavailable_sources": unavailable,
         "machine_role": MACHINE_ROLE,
         "is_hub": MACHINE_ROLE == "hub",
         "current_node": HOSTNAME,

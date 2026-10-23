@@ -11,7 +11,8 @@ interface LibraryStats {
 }
 
 interface LibrarySource { id: string; label: string; root_path: string; shared: boolean; file_count?: number; last_ingest_at?: string | null; status: string; }
-interface SourcesData { sources: LibrarySource[]; is_hub: boolean; current_node: string; nodes: { name: string; url: string }[]; }
+interface PooledSource { id: string; label: string; node: string; file_count: number; available: boolean; last_seen: string; }
+interface SourcesData { sources: LibrarySource[]; pooled_sources?: PooledSource[]; unavailable_sources?: string[]; is_hub: boolean; current_node: string; nodes: { name: string; url: string }[]; }
 interface BrowseData { current_path: string; parent_path: string | null; roots: string[]; entries: { name: string; path: string; child_dirs: number; file_count: number }[]; }
 
 interface LibraryPassage {
@@ -216,6 +217,24 @@ export function LibraryPage(): React.ReactElement {
             </tbody>
           </table>
         )}
+      </section>
+
+      <section>
+        <h2>Fleet shared sources</h2>
+        <p>Read-only catalog across registered nodes. Manage folders on their owning dashboard.</p>
+        {!!sourcesData?.unavailable_sources?.length && <p role="status">Unavailable nodes: {sourcesData.unavailable_sources.join(", ")}. Cached entries may be out of date.</p>}
+        {sourcesData?.pooled_sources?.length ? (
+          <table className="data-table">
+            <thead><tr><th>Source</th><th>Node</th><th>Files</th><th>Availability</th><th>Last seen</th></tr></thead>
+            <tbody>{sourcesData.pooled_sources.map((source) => (
+              <tr key={`${source.node}:${source.id}`}>
+                <td>{source.label}</td><td>{source.node}</td><td>{source.file_count}</td>
+                <td>{source.available ? "Online" : "Offline · cached"}</td>
+                <td>{new Date(source.last_seen).toLocaleString()}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        ) : <p>No shared fleet sources discovered.</p>}
       </section>
 
       <section>
