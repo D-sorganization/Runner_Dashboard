@@ -32,10 +32,22 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
 
   useEffect(() => {
     if (!open) return;
+    const sidebarEl = sidebarRef.current;
     if (document.activeElement instanceof HTMLElement) {
       restoreFocusRef.current = document.activeElement;
     }
-    closeButtonRef.current?.focus();
+    if (mobile) {
+      closeButtonRef.current?.focus();
+    } else {
+      const composerInput = sidebarRef.current?.querySelector<HTMLTextAreaElement>(
+        "textarea.staff-composer__textarea",
+      );
+      if (composerInput && !composerInput.disabled) {
+        composerInput.focus();
+      } else {
+        closeButtonRef.current?.focus();
+      }
+    }
     const siblings = mobile && sidebarRef.current?.parentElement
       ? Array.from(sidebarRef.current.parentElement.children)
           .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== sidebarRef.current)
@@ -56,9 +68,14 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
         if (wasInert) element.setAttribute("inert", "");
         else element.removeAttribute("inert");
       });
-      if (restoreFocusRef.current?.isConnected) {
-        restoreFocusRef.current.focus();
-      }
+      const fallbackToggle = document.querySelector<HTMLElement>('[aria-controls="barb-sidebar"]');
+      const restoreEl =
+        restoreFocusRef.current?.isConnected &&
+        restoreFocusRef.current !== document.body &&
+        !sidebarEl?.contains(restoreFocusRef.current)
+          ? restoreFocusRef.current
+          : fallbackToggle;
+      restoreEl?.focus();
       restoreFocusRef.current = null;
     };
   }, [open, mobile]);
@@ -189,7 +206,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
           selectedRole="barb"
           onSendMessage={sc.sendMessage}
           placeholder="Message Barb..."
-          focusOnThreadChange
+          focusOnThreadChange={open}
           isPanel={false}
           prefilledText={composerPrefill}
         />

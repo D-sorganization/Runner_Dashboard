@@ -1,54 +1,34 @@
-/**
- * Unit tests for lib/providerModels — the static agent-provider model registry
- * extracted from the legacy App.tsx (decomposition #836, pass 9).
- */
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { PROVIDER_MODELS, PROVIDERS_WITH_MODEL } from "../providerModels";
+import {
+  PROVIDER_MODELS,
+  PROVIDERS_WITH_MODEL,
+  getDefaultModelForProvider,
+} from "../providerModels";
 
-describe("PROVIDER_MODELS", () => {
-  it("exposes the five known providers", () => {
-    expect(Object.keys(PROVIDER_MODELS).sort()).toEqual([
-      "antigravity",
-      "claude_code_cli",
-      "codex_cli",
-      "gemini_cli",
-      "jules_api",
+describe("providerModels", () => {
+  it("lists Gemini 3.x models for antigravity with gemini-3.8-flash-high as default", () => {
+    const models = PROVIDER_MODELS.antigravity;
+    expect(models).toBeDefined();
+    expect(models.map((m) => m.id)).toEqual([
+      "gemini-3.8-flash-high",
+      "gemini-3.8-pro-high",
+      "gemini-3.5-flash",
+      "gemini-3.5-pro",
     ]);
+    expect(getDefaultModelForProvider("antigravity")).toBe("gemini-3.8-flash-high");
+    expect(PROVIDERS_WITH_MODEL.has("antigravity")).toBe(true);
   });
 
-  it("lists Sonnet 4.6 first for claude_code_cli (the default model)", () => {
-    expect(PROVIDER_MODELS.claude_code_cli[0]).toEqual({
-      value: "claude-sonnet-4-6",
-      label: "Sonnet 4.6",
-    });
-  });
-
-  it("offers a single model for jules_api", () => {
-    expect(PROVIDER_MODELS.jules_api).toHaveLength(1);
-    expect(PROVIDER_MODELS.jules_api[0].value).toBe("gemini-2.5-pro");
-  });
-
-  it("gives every model both a value and a label", () => {
-    for (const models of Object.values(PROVIDER_MODELS)) {
-      for (const m of models) {
-        expect(typeof m.value).toBe("string");
-        expect(m.value.length).toBeGreaterThan(0);
-        expect(typeof m.label).toBe("string");
-        expect(m.label.length).toBeGreaterThan(0);
-      }
-    }
-  });
-});
-
-describe("PROVIDERS_WITH_MODEL", () => {
-  it("matches the set of providers that have a model list", () => {
-    expect([...PROVIDERS_WITH_MODEL].sort()).toEqual(
-      Object.keys(PROVIDER_MODELS).sort(),
-    );
-  });
-
-  it("does not include providers without a model override (e.g. ollama)", () => {
-    expect(PROVIDERS_WITH_MODEL).not.toContain("ollama");
-    expect(PROVIDERS_WITH_MODEL).not.toContain("cline");
+  it("provides models for claude_code_cli and codex_cli and excludes retired gemini_cli/jules_api", () => {
+    expect(PROVIDERS_WITH_MODEL.has("claude_code_cli")).toBe(true);
+    expect(PROVIDERS_WITH_MODEL.has("codex_cli")).toBe(true);
+    expect(PROVIDERS_WITH_MODEL.has("gemini_cli")).toBe(false);
+    expect(PROVIDERS_WITH_MODEL.has("jules_api")).toBe(false);
+    expect(PROVIDER_MODELS.gemini_cli).toBeUndefined();
+    expect(PROVIDER_MODELS.jules_api).toBeUndefined();
+    expect(getDefaultModelForProvider("jules_api")).toBe("");
+    expect(getDefaultModelForProvider("gemini_cli")).toBe("");
+    expect(getDefaultModelForProvider("unknown_provider")).toBe("");
   });
 });
