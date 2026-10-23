@@ -748,3 +748,9 @@
   max-width: 520px;
   margin: 0 auto;
 }
+
+@media (max-width: 180px) {
+  .staff-mobile__home-content { gap: 8px; padding: 8px 6px; }
+  .staff-mobile__home-intro p { display: none; }
+  .staff-mobile__home-intro h2 { font-size: 18px; }
+}
