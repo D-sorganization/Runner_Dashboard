@@ -175,15 +175,10 @@ async def fetch_page_locator(
         record_run_references(run_id, [result], db_path)
         return result
 
-    targets = (
-        [(node, nodes[node])]
-        if node is not None
-        else sorted((name, url) for name, url in nodes.items() if name != local_node)
-    )
-    if node is None and scope == "federated":
+    if node is not None:
+        targets = [(node, nodes[node])]
+    else:
         targets = sorted((name, url) for name, url in nodes.items() if name != local_node)
-    elif node is None:
-        targets = []
     token = os.environ.get("HUB_FLEET_TOKEN", "")
     if targets and not token:
         raise HTTPException(status_code=503, detail="fleet token is not configured")
