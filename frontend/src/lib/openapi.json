@@ -5367,6 +5367,17 @@
             "title": "Query",
             "type": "string"
           },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
           "stale": {
             "anyOf": [
               {
@@ -21663,7 +21674,7 @@
     },
     "/api/v1/staff/knowledge/{pack_id}/search": {
       "get": {
-        "description": "Search knowledge packs. Cartographer returns committed-line citations and <=400 UTF-8 byte snippets.",
+        "description": "Search knowledge packs; optional run_id records emitted Cartographer citations for that run owner.",
         "operationId": "search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get",
         "parameters": [
           {
@@ -21711,6 +21722,24 @@
               "description": "Include superseded passages",
               "title": "Include Superseded",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
             }
           }
         ],
