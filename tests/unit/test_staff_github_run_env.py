@@ -21,6 +21,8 @@ from staff.roles import RoleSpec
 from staff.runner import RunRecord, RunRequest, StaffRunner
 from staff.store import RunStore
 
+pytestmark = pytest.mark.unit
+
 _FAKE_GHS = "ghs_" + "A" * 40 + "_jwtbody"
 _FAKE_GHP = "ghp_" + "Z" * 36
 
@@ -130,8 +132,30 @@ def test_mint_staff_run_github_token_uses_app_when_configured(monkeypatch: pytes
     assert tok.token == _FAKE_GHS
     mint.assert_called_once()
     kwargs = mint.call_args.kwargs
-    assert kwargs["repositories"] == ["D-sorganization/Runner_Dashboard"]
+    assert kwargs["repositories"] == ["Runner_Dashboard"]
     assert kwargs["permissions"]["contents"] == "write"
+
+
+def test_mint_staff_run_github_token_rejects_foreign_repository_owner() -> None:
+    fake = InstallationToken(token=_FAKE_GHS, expires_at=1_700_000_000.0)
+    with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
+        with patch("staff.github_run_env.mint_installation_access_token", return_value=fake) as mint:
+            with pytest.raises(ValueError, match="outside configured organization"):
+                mint_staff_run_github_token(
+                    role=_role(),
+                    repo="another-org/Runner_Dashboard",
+                )
+    mint.assert_not_called()
+
+
+def test_mint_staff_run_github_token_preserves_local_repo_less_behavior() -> None:
+    fake = InstallationToken(token=_FAKE_GHS, expires_at=1_700_000_000.0)
+    with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
+        with patch("staff.github_run_env.mint_installation_access_token", return_value=fake) as mint:
+            token = mint_staff_run_github_token(role=_role(), repo="")
+    assert token.token == _FAKE_GHS
+    mint.assert_called_once()
+    assert mint.call_args.kwargs["repositories"] is None
 
 
 def test_runner_auth_error_when_github_mint_fails(tmp_path: Any) -> None:
