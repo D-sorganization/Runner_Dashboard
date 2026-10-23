@@ -25,6 +25,7 @@ import {
   severityTone,
   stateLabel,
 } from "./securityApi";
+import { CoverageSection } from "./CoverageSection";
 import { FindingDrawer } from "./FindingDrawer";
 import { type Section, useSecurity } from "./useSecurity";
 
@@ -268,6 +269,7 @@ export function SecurityPanel(): React.ReactElement {
   const {
     contracts,
     posture,
+    coverage,
     findings,
     filters,
     setFilters,
@@ -305,6 +307,15 @@ export function SecurityPanel(): React.ReactElement {
           <PostureSection data={posture.data} />
         ) : (
           <SectionStatus section={posture} name="posture" testId="security-posture" onRetry={refetch} />
+        )}
+      </section>
+
+      <section className="card" aria-labelledby="security-coverage-heading">
+        <h3 id="security-coverage-heading" style={{ marginTop: 0 }}>Scan coverage</h3>
+        {coverage.kind === "ready" ? (
+          <CoverageSection data={coverage.data} />
+        ) : (
+          <SectionStatus section={coverage} name="scan coverage" testId="security-coverage" onRetry={refetch} />
         )}
       </section>
 

@@ -59,6 +59,28 @@ export interface RepoPosture {
   github_alerts: Partial<Record<AlertKind, AlertKindStatus>> | null;
 }
 
+/** One row of ``GET /api/v1/security/coverage`` (#2574), most urgent due repo first. */
+export interface CoverageRow {
+  repo: string;
+  contract_present: boolean;
+  contract_valid: boolean;
+  contract_error?: string | null;
+  contract_disabled: boolean;
+  enabled: boolean;
+  priority: number;
+  full_scan_days: number;
+  last_scan_at: string;
+  last_state: string;
+  last_success_at: string;
+  due: boolean;
+}
+
+export interface CoverageOverview {
+  coverage: CoverageRow[];
+  summary: { repos: number; with_contract: number; valid: number; enabled: number; scanned: number; due: number };
+  schedule: { enabled: boolean; check_minutes: number; retry_hours: number };
+}
+
 export interface PostureOverview {
   repos: RepoPosture[];
   operator: {
@@ -177,6 +199,18 @@ function assertPosture(value: unknown): PostureOverview {
   return value as unknown as PostureOverview;
 }
 
+function assertCoverage(value: unknown): CoverageOverview {
+  if (!isRecord(value) || !Array.isArray(value.coverage) || !isRecord(value.summary) || !isRecord(value.schedule)) {
+    throw invalid("security coverage");
+  }
+  for (const row of value.coverage) {
+    if (!isRecord(row) || typeof row.repo !== "string" || typeof row.due !== "boolean") {
+      throw invalid("security coverage");
+    }
+  }
+  return value as unknown as CoverageOverview;
+}
+
 function assertFinding(value: unknown): Finding {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.title !== "string") {
     throw invalid("security finding");
@@ -206,6 +240,10 @@ export async function fetchContracts(): Promise<ContractsOverview> {
 
 export async function fetchPosture(): Promise<PostureOverview> {
   return assertPosture(await getJson(`${BASE}/posture?alerts=true`, "security.read"));
+}
+
+export async function fetchCoverage(): Promise<CoverageOverview> {
+  return assertCoverage(await getJson(`${BASE}/coverage`, "security.read"));
 }
 
 export async function fetchFindings(filters: FindingFilters = {}): Promise<Finding[]> {

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   type ContractsOverview,
+  type CoverageOverview,
   type Finding,
   type FindingDetail,
   type FindingFilters,
   type PostureOverview,
   SecurityApiError,
   fetchContracts,
+  fetchCoverage,
   fetchFinding,
   fetchFindings,
   fetchPosture,
@@ -39,6 +41,7 @@ export interface TriageState {
 export function useSecurity() {
   const [contracts, setContracts] = useState<Section<ContractsOverview>>({ kind: "loading" });
   const [posture, setPosture] = useState<Section<PostureOverview>>({ kind: "loading" });
+  const [coverage, setCoverage] = useState<Section<CoverageOverview>>({ kind: "loading" });
   const [findings, setFindings] = useState<Section<Finding[]>>({ kind: "loading" });
   const [filters, setFilters] = useState<FindingFilters>({});
   const [detail, setDetail] = useState<FindingDetail | null>(null);
@@ -49,6 +52,7 @@ export function useSecurity() {
   const loadOverview = useCallback(async () => {
     setContracts({ kind: "loading" });
     setPosture({ kind: "loading" });
+    setCoverage({ kind: "loading" });
     await Promise.all([
       fetchContracts().then(
         (data) => setContracts({ kind: "ready", data }),
@@ -57,6 +61,10 @@ export function useSecurity() {
       fetchPosture().then(
         (data) => setPosture({ kind: "ready", data }),
         (cause: unknown) => setPosture(toSection(cause, "Unable to load posture")),
+      ),
+      fetchCoverage().then(
+        (data) => setCoverage({ kind: "ready", data }),
+        (cause: unknown) => setCoverage(toSection(cause, "Unable to load scan coverage")),
       ),
     ]);
   }, []);
@@ -123,6 +131,7 @@ export function useSecurity() {
   return {
     contracts,
     posture,
+    coverage,
     findings,
     filters,
     setFilters,

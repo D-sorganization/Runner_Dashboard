@@ -46,6 +46,55 @@ const POSTURE = {
   operator: { scan_hosts: [], real_scans_possible: false, errors: [] },
 };
 
+const COVERAGE = {
+  coverage: [
+    {
+      repo: "Tools",
+      contract_present: true,
+      contract_valid: true,
+      contract_error: null,
+      contract_disabled: false,
+      enabled: true,
+      priority: 1,
+      full_scan_days: 7,
+      last_scan_at: "",
+      last_state: "",
+      last_success_at: "",
+      due: true,
+    },
+    {
+      repo: "AffineDrift",
+      contract_present: true,
+      contract_valid: true,
+      contract_error: null,
+      contract_disabled: true,
+      enabled: true,
+      priority: 2,
+      full_scan_days: 7,
+      last_scan_at: "2026-10-22T03:00:00Z",
+      last_state: "aborted",
+      last_success_at: "2026-10-20T03:00:00Z",
+      due: false,
+    },
+    {
+      repo: "Gasification_Model",
+      contract_present: false,
+      contract_valid: false,
+      contract_error: null,
+      contract_disabled: false,
+      enabled: false,
+      priority: 3,
+      full_scan_days: 30,
+      last_scan_at: "",
+      last_state: "",
+      last_success_at: "",
+      due: false,
+    },
+  ],
+  summary: { repos: 3, with_contract: 2, valid: 2, enabled: 2, scanned: 1, due: 1 },
+  schedule: { enabled: false, check_minutes: 30, retry_hours: 20 },
+};
+
 function finding(overrides: Record<string, unknown> = {}) {
   return {
     id: FINDING_ID,
@@ -89,6 +138,7 @@ function fullRoutes(extra: Record<string, Route | Handler> = {}) {
   return {
     "/api/v1/security/contracts": { status: 200, body: CONTRACTS },
     "/api/v1/security/posture": { status: 200, body: POSTURE },
+    "/api/v1/security/coverage": { status: 200, body: COVERAGE },
     "/api/v1/security/findings": { status: 200, body: { findings: [finding()], count: 1 } },
     [`/api/v1/security/findings/${FINDING_ID}`]: { status: 200, body: { finding: finding(), audit: [] } },
     ...extra,
@@ -129,6 +179,12 @@ describe("security hook", () => {
     expect(result.current.findings.kind).toBe("forbidden");
   });
 
+  it("rejects a malformed coverage response", async () => {
+    mockFetch(fullRoutes({ "/api/v1/security/coverage": { status: 200, body: { coverage: [{}] } } }));
+    const { result } = renderHook(() => useSecurity());
+    await waitFor(() => expect(result.current.coverage.kind).toBe("error"));
+  });
+
   it("rejects malformed responses", async () => {
     mockFetch({
       "/api/v1/security/contracts": { status: 200, body: { contracts: "nope" } },
@@ -153,6 +209,27 @@ describe("security hook", () => {
 });
 
 describe("security panel", () => {
+  it("shows scan coverage: due, disabled, last state and the schedule switch", async () => {
+    mockFetch(fullRoutes());
+    render(<SecurityPanel />);
+    const table = await screen.findByTestId("security-coverage-table");
+    const rows = within(table).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("Tools");
+    expect(within(rows[1]).getByText("due")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("contract disabled")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("aborted")).toBeInTheDocument();
+    expect(within(rows[3]).getByText("not enrolled")).toBeInTheDocument();
+    expect(screen.getByTestId("security-coverage-summary")).toHaveTextContent("2 of 3 enrolled · 1 scanned · 1 due");
+    expect(screen.getByTestId("security-coverage-schedule")).toHaveTextContent(/scheduler is off/i);
+  });
+
+  it("isolates a coverage failure from the other sections", async () => {
+    mockFetch(fullRoutes({ "/api/v1/security/coverage": { status: 403, body: {} } }));
+    render(<SecurityPanel />);
+    expect(await screen.findByTestId("security-coverage-forbidden")).toBeInTheDocument();
+    expect(await screen.findByTestId("security-posture-table")).toBeInTheDocument();
+  });
+
   it("renders contracts, posture and findings", async () => {
     mockFetch(fullRoutes());
     render(<SecurityPanel />);
