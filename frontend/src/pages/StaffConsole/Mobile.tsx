@@ -76,7 +76,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     onApproveProposal,
     onDenyProposal,
   });
-  const { roles, selectedRole, activeThread, currentRole: currentRoleObj } = sc;
+  const { roles, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
   const [view, setView] = useState<MobileView>(initialView);
 
   // SC-D9: move keyboard focus with the full-screen view change. The thread
@@ -95,6 +95,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [showContext, setShowContext] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState("");
+  const [showThreadAfterHomeSend, setShowThreadAfterHomeSend] = useState(false);
+
+  useEffect(() => {
+    if (!showThreadAfterHomeSend || !activeThread) return;
+    setView("thread");
+    setShowThreadAfterHomeSend(false);
+  }, [activeThread, showThreadAfterHomeSend]);
 
   // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
   // push link and is real; a ?role= link resolves to the role's backend thread.
@@ -165,7 +172,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     }
   }, []);
 
-  const handleSendMessage = sc.sendMessage;
+  const handleSendMessage = useCallback(async (payload: SendMessagePayload) => {
+    const result = await sendMessage(payload);
+    if (result.ok !== false && view === "home" && !onSendMessage) {
+      setShowThreadAfterHomeSend(true);
+    }
+    return result;
+  }, [onSendMessage, sendMessage, view]);
   const handleApproveProposal = sc.approveProposal;
   const handleDenyProposal = sc.denyProposal;
 
