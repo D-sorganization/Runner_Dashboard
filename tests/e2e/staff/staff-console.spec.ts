@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
-import { requesterHeaders, viewerHeaders } from "./identity";
+import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
 // The console banner, not an error card from an earlier turn.
@@ -71,6 +71,40 @@ async function occurrences(page: Page, needle: string): Promise<number> {
 }
 
 test.describe("chat", () => {
+  test("the persistent Barb panel follows the selected conversation across tab navigation", async ({ page, request }) => {
+    await page.goto("/staff");
+    const backendPort = process.env.STAFF_E2E_BACKEND_PORT ?? "5092";
+    const backendUrl = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${backendPort}`;
+    const createThread = async (role: string, kind: "auto" | "direct", title: string) => {
+      const response = await request.post(`${backendUrl}/api/v1/staff/threads`, {
+        headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
+        data: { role, kind, title },
+      });
+      if (!response.ok()) throw new Error(`Thread creation failed: ${response.status()}`);
+      return response.json() as Promise<{ id: string }>;
+    };
+    const selected = await createThread("barb", "auto", "Selected operator conversation");
+    await createThread("barb", "auto", "Newer operator conversation");
+
+    await page.goto(`/staff?role=barb&thread=${encodeURIComponent(selected.id)}`);
+    await expect(page.getByRole("region", { name: "Conversation thread with Selected operator conversation" })).toBeVisible();
+    await page.getByRole("navigation", { name: /dashboard sections/i }).getByRole("button", { name: /^Context/i }).click();
+    await expect(page).toHaveURL(new RegExp(`thread=${selected.id}`));
+
+    await page.getByTestId("ask-barb-toggle").click();
+    const panel = page.getByRole("complementary", { name: "Ask Barb" });
+    await expect(panel.getByRole("region", { name: "Conversation thread with Selected operator conversation" })).toBeVisible();
+    await expect(panel.getByRole("region", { name: "Conversation thread with Newer operator conversation" })).toHaveCount(0);
+
+    const specialist = await createThread("reviewer", "direct", "Reviewer conversation");
+    await page.goto(`/staff?role=reviewer&thread=${encodeURIComponent(specialist.id)}`);
+    await expect(page.getByRole("region", { name: "Conversation thread with Reviewer conversation" })).toBeVisible();
+    await page.getByTestId("ask-barb-toggle").click();
+    const resumedBarb = page.getByRole("complementary", { name: "Ask Barb" });
+    await expect(resumedBarb.getByRole("region", { name: "Conversation thread with Reviewer conversation" })).toHaveCount(0);
+    await expect(resumedBarb.getByRole("region", { name: "Conversation thread with Newer operator conversation" })).toBeVisible();
+  });
+
   test("chat-first home shows the composer and can reveal staff choices", async ({ page }) => {
     await page.goto("/staff");
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
@@ -240,6 +274,25 @@ test.describe("send failures keep the draft", () => {
 });
 
 test.describe("Ask Barb drawer keyboard access", () => {
+  test("returns focus to the launcher after focus moves during lazy drawer loading", async ({ page }) => {
+    await page.route("**/src/shell/BarbSidebar.tsx*", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.continue();
+    });
+    await page.goto("/staff");
+    const trigger = page.getByRole("button", { name: "Ask Barb" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("main").focus();
+
+    const drawer = page.getByTestId("barb-sidebar");
+    await expect(drawer).toBeVisible();
+    await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveAttribute("aria-hidden", "true");
+    await expect(trigger).toBeFocused();
+  });
+
   test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }) => {
     for (const viewport of [
       { width: 1440, height: 900 },
@@ -405,8 +458,26 @@ test.describe("approved dashboard navigation", () => {
       route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
     );
     await openThread(requester, BARB);
+    const priorThreadId = new URL(requester.url()).searchParams.get("thread");
+    requester.route("**/api/v1/staff/threads", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      await route.continue({
+        headers: { ...route.request().headers(), ...requesterHeaders },
+      });
+    });
+    const createdThread = requester.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/v1/staff/threads"),
+    );
     await requester.getByRole("button", { name: "New conversation" }).click();
-    await expect(requester.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    const createdThreadResponse = await createdThread;
+    expect(createdThreadResponse.ok()).toBeTruthy();
+    const createdThreadId = (await createdThreadResponse.json()).id as string;
+    await expect(requester).toHaveURL(new RegExp(`thread=${createdThreadId}`));
+    expect(createdThreadId).not.toBe(priorThreadId);
     const threadId = new URL(requester.url()).searchParams.get("thread");
     if (!threadId) throw new Error("new navigation conversation has no thread id");
     const requesterDrawer = await openBarbSidebar(requester, threadId);
@@ -485,7 +556,8 @@ test.describe("approved dashboard navigation", () => {
     await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Staff Console", exact: true }).click();
-    await expect(page).toHaveURL(/\/$/);
+    expect(new URL(page.url()).pathname).toBe("/");
+    expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
     await requesterContext.close();
   });
 });

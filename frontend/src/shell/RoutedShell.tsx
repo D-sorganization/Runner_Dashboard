@@ -211,7 +211,10 @@ export function RoutedShell({
 
   const onSelectTab = useCallback(
     (tabId: string) => {
-      navigate(tabIdToPath(tabId));
+      const destination = new URL(tabIdToPath(tabId), window.location.origin);
+      const threadId = new URLSearchParams(window.location.search).get("thread");
+      if (threadId) destination.searchParams.set("thread", threadId);
+      navigate(`${destination.pathname}${destination.search}${destination.hash}`);
     },
     [navigate],
   );

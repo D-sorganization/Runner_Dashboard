@@ -10,7 +10,7 @@
  *
  * LoD: flat typed props only — activeTabId, onSelect(tabId), and actions.
  */
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Tooltip } from "../primitives/Tooltip";
 import { Dropdown } from "../primitives/Dropdown";
@@ -223,6 +223,7 @@ export function DesktopShell({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [barbMounted, setBarbMounted] = useState(false);
   const [barbOpen, setBarbOpen] = useState(false);
+  const barbToggleRef = useRef<HTMLButtonElement>(null);
 
   const openBarb = () => {
     setBarbMounted(true);
@@ -284,6 +285,7 @@ export function DesktopShell({
             {helpAbout}
             <Tooltip content={barbOpen ? "Close Barb assistant" : "Open Barb assistant"} placement="bottom">
               <button
+                ref={barbToggleRef}
                 type="button"
                 className={`shell-action shell-action--has-icon${barbOpen ? " shell-action--active" : ""}`}
                 aria-label="Ask Barb"
@@ -322,6 +324,7 @@ export function DesktopShell({
             open={barbOpen}
             onClose={() => setBarbOpen(false)}
             onNavigate={onSelect}
+            restoreFocusTargetRef={barbToggleRef}
           />
         </React.Suspense>
       ) : null}
