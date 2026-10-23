@@ -306,6 +306,8 @@ _REVIEW_START_BARRIER: Any = None
 
 def _review_in_subprocess(db_path: str) -> dict[str, Any]:
     """Child process: attempt one auto-review and return storage/lock diagnostics."""
+    import fcntl
+    import multiprocessing
     import os
     import time
 
@@ -364,6 +366,11 @@ def _review_in_subprocess(db_path: str) -> dict[str, Any]:
         "submit_count": len(runner.submitted),
         "reviews": [(str(row[0]), str(row[1])) for row in reviews],
         "checks": checks,
+        "fcntl_module": getattr(fcntl, "__file__", None),
+        "flock_type": f"{type(fcntl.flock).__module__}.{type(fcntl.flock).__qualname__}",
+        "flock_module": getattr(fcntl.flock, "__module__", None),
+        "start_method": multiprocessing.get_start_method(),
+        "os_name": os.name,
     }
 
 
@@ -407,6 +414,9 @@ def test_auto_review_dedupe_uses_database_identity_across_path_aliases(tmp_path:
     assert len({attempt["lock_identity"] for attempt in attempts}) == 1, attempts
     assert len({attempt["sqlite_path"] for attempt in attempts}) == 1, attempts
     assert len({attempt["db_path"] for attempt in attempts}) == 1, attempts
+    assert all(attempt["flock_module"] == "fcntl" for attempt in attempts), attempts
+    assert all(attempt["flock_type"] == "builtins.builtin_function_or_method" for attempt in attempts), attempts
+    assert all(attempt["start_method"] == "fork" and attempt["os_name"] == "posix" for attempt in attempts), attempts
     assert sorted(attempt["queued"] for attempt in attempts) == [False, True], attempts
     assert all(len(attempt["reviews"]) == 1 for attempt in attempts), attempts
     assert attempts[0]["reviews"] == attempts[1]["reviews"], attempts
