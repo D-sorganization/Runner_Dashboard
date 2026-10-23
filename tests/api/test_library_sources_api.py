@@ -41,7 +41,9 @@ def test_source_api_register_update_and_unregister(tmp_path: Path) -> None:
     )
     assert post.status_code == 200
     assert client.patch("/api/v1/library/sources/docs", json={"shared": True}, headers=_XHR).json()["shared"]
-    assert client.get("/api/v1/library/sources", headers=_XHR).json()["sources"][0]["id"] == "docs"
+    sources_payload = client.get("/api/v1/library/sources", headers=_XHR).json()
+    assert sources_payload["sources"][0]["id"] == "docs" and sources_payload["sources"][0]["file_count"] == 0
+    assert {"is_hub", "current_node", "nodes"}.issubset(sources_payload)
     assert client.delete("/api/v1/library/sources/docs", headers=_XHR).status_code == 200
 
 
