@@ -25,12 +25,19 @@ def _run_guard(target: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:  # Windows without the symlink privilege
+        pytest.skip(f"symlink capability is unavailable: {exc}")
+
+
 def test_refuses_symlink_into_versioned_release_before_any_copy(tmp_path: Path) -> None:
     releases = tmp_path / "actions-runners" / "dashboard-releases" / "verified-sha"
     releases.mkdir(parents=True)
     (releases / "index.html").write_text("artifact", encoding="utf-8")
     target = tmp_path / "actions-runners" / "dashboard"
-    target.symlink_to(releases, target_is_directory=True)
+    _symlink_or_skip(target, releases)
     result = _run_guard(target)
     assert result.returncode != 0
     assert "artifact" in result.stderr.lower() or "versioned" in result.stderr.lower()
@@ -70,7 +77,7 @@ def test_update_script_refuses_versioned_target_before_backup(tmp_path: Path) ->
     sentinel = release / "asset.js"
     sentinel.write_text("verified artifact", encoding="utf-8")
     target = tmp_path / "dashboard"
-    target.symlink_to(release, target_is_directory=True)
+    _symlink_or_skip(target, release)
     assert BASH is not None
     result = subprocess.run(
         [
@@ -98,7 +105,7 @@ def test_setup_refuses_versioned_target_before_preflight(tmp_path: Path) -> None
     sentinel = release / "asset.js"
     sentinel.write_text("verified artifact", encoding="utf-8")
     target = tmp_path / "dashboard"
-    target.symlink_to(release, target_is_directory=True)
+    _symlink_or_skip(target, release)
     assert BASH is not None
     result = subprocess.run(
         [BASH, str(ROOT / "deploy" / "setup.sh"), "--deploy-dir", str(target), "--check-only"],
