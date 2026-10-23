@@ -69,6 +69,7 @@ def _create_fixture_scripts(scripts: Path) -> None:
     scripts.mkdir()
     shutil.copy2(UPDATE, scripts / "update-deployed.sh")
     shutil.copy2(ROOT / "deploy" / "lib.sh", scripts / "lib.sh")
+    shutil.copy2(ROOT / "deploy" / "source-deploy-guard.sh", scripts / "source-deploy-guard.sh")
     shutil.copy2(ROOT / "deploy" / "rollback-deployed.sh", scripts / "rollback-deployed.sh")
     (scripts / "systemd-dropins").mkdir()
     (scripts / "systemd-dropins" / "40-cursor-sandbox.conf").write_text("", encoding="utf-8")
