@@ -21,6 +21,7 @@ from staff.thread_bus import reset_thread_bus
 
 @pytest.fixture(autouse=True)
 def _clean(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "staff_runs.sqlite3"))
     monkeypatch.setenv("STAFF_MOCK_INSTALLED", "1")
     for reset in (reset_conversation_store, reset_thread_bus, reset_availability_metrics, reset_provider_health):

@@ -41,6 +41,7 @@ TEST_PRINCIPAL = Principal(
 
 @pytest.fixture(autouse=True)
 def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
     db_file = tmp_path / "staff_runs.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_file))
     reset_conversation_store()

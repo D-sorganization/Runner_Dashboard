@@ -142,6 +142,39 @@ describe("ContextPage", () => {
     await waitFor(() => expect(legacyFetchMock.mock.calls.filter(([url]) => String(url).includes("memory"))).toHaveLength(2));
   });
 
+  it("distinguishes missing per-run token estimates from recorded zero", () => {
+    const run: ContextRunRecord = {
+      id: "run-legacy", role: "barb", repo: "Runner_Dashboard", status: "succeeded", created_at: "2026-10-23T00:00:00Z",
+      context_stamp: JSON.stringify({ token_estimates: { tier0_standards: 100, tier1_lessons: 0 } }),
+    };
+    render(<ContextPage pack={samplePack} lessons={[]} runs={[run]} />);
+    const row = screen.getByRole("row", { name: /run-legacy/i });
+    expect(row).toHaveTextContent("100 / Not recorded / 0");
+    expect(row).toHaveTextContent("100 known tokens");
+    expect(row).toHaveTextContent("Partial");
+  });
+
+  it("extracts Tier-0 digest from a plus-delimited standards pin", async () => {
+    legacyFetchMock.mockImplementation((url: string = "") => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => url.includes("summary")
+        ? { standards_version: "1.1.0", standards_pin: "fleet-standards@1.1.0+646df67582c6" }
+        : url.includes("skills")
+          ? { skills: sampleSkills }
+          : url.includes("agents-sync")
+            ? { source: "Repository_Management/AGENTS.md", source_ref: "main", status: "current", reason: null, checked_at: "2026-10-23T00:00:00Z", source_digest: "abc", source_blocks: {}, repositories: [] }
+            : url.includes("runs") ? { runs: [] } : { entries: [] },
+    }));
+    render(<ContextPage />);
+    expect(await screen.findByText("646df67582c6")).toBeInTheDocument();
+  });
+
+  it("marks the page for its scoped responsive layout", () => {
+    const { container } = render(<ContextPage pack={samplePack} lessons={[]} runs={[]} />);
+    expect(container.querySelector(".context-page")).toBeInTheDocument();
+  });
+
   it("handles empty and error states gracefully", () => {
     const { rerender } = render(<ContextPage pack={samplePack} lessons={[]} runs={[]} />);
     expect(screen.getByText(/no lessons in review queue/i)).toBeInTheDocument();
