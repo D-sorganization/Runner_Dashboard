@@ -50,7 +50,17 @@ afterEach(() => {
 });
 
 describe("BarbSidebar", () => {
+  it("continues the selected Barb conversation instead of restoring another recent thread", () => {
+    window.history.replaceState({}, "", "/?thread=th-selected");
+    render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(mockUseStaffConsole).toHaveBeenCalledWith(
+      expect.objectContaining({ initialRole: "barb", preferredRoleThreadId: "th-selected", restoreInitialRoleThread: true }),
+    );
+  });
+
   it("restores Barb history without sending a message when the sidebar opens", () => {
+    window.history.replaceState({}, "", "/");
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(mockUseStaffConsole).toHaveBeenCalledWith(

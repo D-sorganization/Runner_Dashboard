@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
-import { requesterHeaders, viewerHeaders } from "./identity";
+import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
 // The console banner, not an error card from an earlier turn.
@@ -71,6 +71,40 @@ async function occurrences(page: Page, needle: string): Promise<number> {
 }
 
 test.describe("chat", () => {
+  test("the persistent Barb panel follows the selected conversation across tab navigation", async ({ page, request }) => {
+    await page.goto("/staff");
+    const backendPort = process.env.STAFF_E2E_BACKEND_PORT ?? "5092";
+    const backendUrl = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${backendPort}`;
+    const createThread = async (role: string, kind: "auto" | "direct", title: string) => {
+      const response = await request.post(`${backendUrl}/api/v1/staff/threads`, {
+        headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
+        data: { role, kind, title },
+      });
+      if (!response.ok()) throw new Error(`Thread creation failed: ${response.status()}`);
+      return response.json() as Promise<{ id: string }>;
+    };
+    const selected = await createThread("barb", "auto", "Selected operator conversation");
+    await createThread("barb", "auto", "Newer operator conversation");
+
+    await page.goto(`/staff?role=barb&thread=${encodeURIComponent(selected.id)}`);
+    await expect(page.getByRole("region", { name: "Conversation thread with Selected operator conversation" })).toBeVisible();
+    await page.getByRole("navigation", { name: /dashboard sections/i }).getByRole("button", { name: /^Context/i }).click();
+    await expect(page).toHaveURL(new RegExp(`thread=${selected.id}`));
+
+    await page.getByTestId("ask-barb-toggle").click();
+    const panel = page.getByRole("complementary", { name: "Ask Barb" });
+    await expect(panel.getByRole("region", { name: "Conversation thread with Selected operator conversation" })).toBeVisible();
+    await expect(panel.getByRole("region", { name: "Conversation thread with Newer operator conversation" })).toHaveCount(0);
+
+    const specialist = await createThread("reviewer", "direct", "Reviewer conversation");
+    await page.goto(`/staff?role=reviewer&thread=${encodeURIComponent(specialist.id)}`);
+    await expect(page.getByRole("region", { name: "Conversation thread with Reviewer conversation" })).toBeVisible();
+    await page.getByTestId("ask-barb-toggle").click();
+    const resumedBarb = page.getByRole("complementary", { name: "Ask Barb" });
+    await expect(resumedBarb.getByRole("region", { name: "Conversation thread with Reviewer conversation" })).toHaveCount(0);
+    await expect(resumedBarb.getByRole("region", { name: "Conversation thread with Newer operator conversation" })).toBeVisible();
+  });
+
   test("chat-first home shows the composer and can reveal staff choices", async ({ page }) => {
     await page.goto("/staff");
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();

@@ -219,6 +219,61 @@ describe("useStaffConsole", () => {
     expect(api.postThreadMessage).not.toHaveBeenCalled();
   });
 
+  it("prefers a selected thread only when it belongs to the requested role", async () => {
+    const selectedBarbThread: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_selected_barb",
+      title: "Selected Barb conversation",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const newerBarbThread: ThreadInfo = {
+      ...selectedBarbThread,
+      id: "thr_newer_barb",
+      title: "Newer Barb conversation",
+      updated_at: "2099-01-01T00:00:00Z",
+    };
+    const specialistThread: ThreadInfo = {
+      ...selectedBarbThread,
+      id: "thr_specialist",
+      title: "Specialist conversation",
+      kind: "direct",
+      participants: ["user:me", "reviewer"],
+    };
+    const deps = threadApi({ listThreads: vi.fn().mockResolvedValue([newerBarbThread, selectedBarbThread, specialistThread]) });
+
+    const { result } = renderHook(() => useStaffConsole({
+      roles: ROLES,
+      initialRole: "barb",
+      preferredRoleThreadId: selectedBarbThread.id,
+      restoreInitialRoleThread: true,
+      threadApi: deps,
+      streamEnabled: false,
+    }));
+
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(selectedBarbThread.id));
+    expect(deps.listThreads).toHaveBeenCalledWith("barb");
+  });
+
+  it("falls back to a Barb thread when the selected URL thread belongs to another role", async () => {
+    const barbThread: ThreadInfo = { ...MAINT_THREAD, id: "thr_barb_safe", kind: "auto", participants: ["user:me", "barb"] };
+    const specialistThread: ThreadInfo = { ...barbThread, id: "thr_specialist", kind: "direct", participants: ["user:me", "reviewer"] };
+    const deps = threadApi({ listThreads: vi.fn().mockResolvedValue([specialistThread, barbThread]) });
+    const { result } = renderHook(() => useStaffConsole({
+      roles: ROLES,
+      initialRole: "barb",
+      preferredRoleThreadId: specialistThread.id,
+      restoreInitialRoleThread: true,
+      threadApi: deps,
+      streamEnabled: false,
+    }));
+
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(barbThread.id));
+    expect(result.current.activeThread?.participants).toContain("barb");
+    expect(deps.listThreads).toHaveBeenCalledWith("barb");
+    expect(api.fetchThread).not.toHaveBeenCalledWith(specialistThread.id, expect.anything());
+  });
+
   it("does not create a thread when the initial role has no saved conversation", async () => {
     const deps = threadApi({ listThreads: vi.fn().mockResolvedValue([]) });
     const { result } = renderHook(() =>

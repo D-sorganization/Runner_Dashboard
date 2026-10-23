@@ -20,7 +20,7 @@ import {
   fetchThreads,
   postThreadMessage,
 } from "../Staff/staffApi";
-import { AUTO_ROUTE_ROLE, createFreshRoleThread, pickRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
+import { AUTO_ROUTE_ROLE, createFreshRoleThread, listRoleThreads, pickRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
 import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
@@ -42,6 +42,8 @@ export interface UseStaffConsoleOptions {
   initialRole?: string;
   /** Restore the latest existing thread for initialRole without creating or messaging. */
   restoreInitialRoleThread?: boolean;
+  /** Prefer this thread only when it is present in the initial role's authorized thread list. */
+  preferredRoleThreadId?: string | null;
   initialThread?: ThreadInfo;
   /** Open this backend thread on mount, e.g. the thread a request response names (#1504). */
   initialThreadId?: string | null;
@@ -100,6 +102,7 @@ export function useStaffConsole({
   roles: suppliedRoles,
   initialRole,
   restoreInitialRoleThread = false,
+  preferredRoleThreadId,
   initialThread,
   initialThreadId,
   initialMessages = NO_MESSAGES,
@@ -174,7 +177,9 @@ export function useStaffConsole({
     request
       .then((threads) => {
         if (cancelled) return;
-        const thread = pickRoleThread(threads, initialRole);
+        const roleThreads = listRoleThreads(threads, initialRole);
+        const thread = roleThreads.find((candidate) => candidate.id === preferredRoleThreadId)
+          ?? pickRoleThread(roleThreads, initialRole);
         if (thread) {
           setHistory(NO_MESSAGES);
           setActiveThread(thread);
@@ -190,7 +195,7 @@ export function useStaffConsole({
     return () => {
       cancelled = true;
     };
-  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, threadApi, report]);
+  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, preferredRoleThreadId, threadApi, report]);
 
   // History for the open thread. The seeded thread keeps its seeded messages.
   const threadId = activeThread?.id ?? "";

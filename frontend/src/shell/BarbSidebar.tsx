@@ -14,6 +14,10 @@ const QUICK_ROUTES = [
   { label: "Queue", tabId: "queue" },
 ];
 
+function selectedThreadFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("thread");
+}
 export interface BarbSidebarProps {
   open: boolean;
   onClose: () => void;
@@ -22,7 +26,12 @@ export interface BarbSidebarProps {
 }
 
 export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbSidebarProps): React.ReactElement {
-  const sc = useStaffConsole({ initialRole: "barb", restoreInitialRoleThread: true });
+  const preferredRoleThreadId = selectedThreadFromUrl();
+  const sc = useStaffConsole({
+    initialRole: "barb",
+    preferredRoleThreadId,
+    restoreInitialRoleThread: true,
+  });
   const [composerPrefill, setComposerPrefill] = useState("");
   const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
