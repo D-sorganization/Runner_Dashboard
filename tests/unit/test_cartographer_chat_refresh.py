@@ -72,7 +72,8 @@ def test_refresh_uses_fixed_sources_and_tracks_commit_only_changes(source_pack) 
     assert rebuilt and info.commits["UpstreamDrift"] == git(root, "rev-parse", "HEAD")
 
 
-def test_role_chat_returns_reproducible_codebase_reference(source_pack) -> None:
+def test_role_chat_returns_reproducible_codebase_reference(source_pack, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("dashboard_config.HOSTNAME", "fleet-runner-" + "x" * 50)
     roots, manifest, knowledge = source_pack
     refresh_pack(manifest, roots=roots, knowledge_dir=knowledge)
     role = RoleSpec(

@@ -55,7 +55,7 @@ def build_knowledge_turn_block(role: RoleSpec | None, query: str) -> str | None:
 
         try:
             roots = resolve_pack_roots(pack)
-            context = preload_panel_context(roots, query, max_tokens=800) if roots else ""
+            context = preload_panel_context(roots, query, max_tokens=800, topic_only=True) if roots else ""
         except (OSError, ValueError, KeyError):
             context = ""
         return "## Knowledge\n\n" + (context or "Notice: No verifiable codebase passages are available.")
