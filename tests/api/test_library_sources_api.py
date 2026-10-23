@@ -86,3 +86,44 @@ def test_reindex_source_endpoint(tmp_path: Path) -> None:
     assert res.status_code == 200
     assert res.json().get("status") in ("queued", "completed", "ok")
     assert res.json().get("source_id") == "reindex-me"
+
+
+def test_source_api_availability_recovers_without_reindexing_or_deletion(tmp_path: Path) -> None:
+    from library.ingest import ingest_directory
+
+    from tests.library.conftest import make_text_pdf
+
+    root = tmp_path / "source"
+    root.mkdir()
+    item = root / "guide.pdf"
+    item.write_bytes(make_text_pdf("Offline availability check keeps source and indexed content intact."))
+    original = item.read_bytes()
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
+    client = _client(tmp_path / "library.sqlite", principal)
+    response = client.post(
+        "/api/v1/library/sources",
+        json={"id": "desk-drive-library", "label": "Drive mirror", "root_path": str(root)},
+        headers=_XHR,
+    )
+    assert response.status_code == 200
+    ingest_directory(root, db_path=tmp_path / "library.sqlite", source_id="desk-drive-library")
+
+    def source_payload() -> dict[str, object]:
+        sources = client.get("/api/v1/library/sources", headers=_XHR).json()["sources"]
+        return next(source for source in sources if source["id"] == "desk-drive-library")
+
+    assert source_payload()["availability"] == "available"
+    before = client.get("/api/v1/library/stats", headers=_XHR).json()
+    disconnected = tmp_path / "disconnected"
+    root.rename(disconnected)
+    assert source_payload()["availability"] == "unavailable"
+    during = client.get("/api/v1/library/stats", headers=_XHR).json()
+    assert during["files_present"] == before["files_present"] == 1
+    assert (disconnected / "guide.pdf").read_bytes() == original
+
+    disconnected.rename(root)
+    assert source_payload()["availability"] == "available"
+    after = client.get("/api/v1/library/stats", headers=_XHR).json()
+    assert after["files_present"] == before["files_present"]
