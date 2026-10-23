@@ -127,3 +127,5 @@
 .staff-composer__chip-remove { border: none; background: transparent; cursor: pointer; padding: 0 2px; }
 
 .staff-composer__chip-error { color: var(--accent-red); font-size: 11px; }
+
+.staff-composer__chip--pending { border-color: var(--accent-blue); color: var(--text-secondary); }
