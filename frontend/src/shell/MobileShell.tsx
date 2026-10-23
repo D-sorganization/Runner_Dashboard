@@ -26,6 +26,7 @@ const LazyBarbSidebar = React.lazy(() =>
 import {
   mobilePrimaryItems,
   mobileDrawerItems,
+  navItemById,
   type NavItem,
 } from './navRegistry'
 
@@ -91,6 +92,22 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
 
   const openAsk = useCallback(() => setAskOpen(true), [])
   const closeAsk = useCallback(() => setAskOpen(false), [])
+  const handleBarbNavigate = useCallback((tabId: TabId) => {
+    onTabChange(tabId)
+    setBarbOpen(false)
+  }, [onTabChange])
+
+  // Approved assistant navigation changes the route outside this shell's callbacks.
+  // Dismiss the mobile modal only for registered routes so the destination is usable.
+  useEffect(() => {
+    if (!isMobile || !barbOpen) return
+    const handleAssistantNavigation = (event: Event) => {
+      const tabId = (event as CustomEvent<{ tabId?: unknown }>).detail?.tabId
+      if (typeof tabId === 'string' && navItemById(tabId)) setBarbOpen(false)
+    }
+    window.addEventListener('runner-dashboard:navigate', handleAssistantNavigation)
+    return () => window.removeEventListener('runner-dashboard:navigate', handleAssistantNavigation)
+  }, [barbOpen, isMobile])
 
   // Close ask sheet on Escape
   useEffect(() => {
@@ -252,7 +269,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
             open={barbOpen}
             mobile
             onClose={() => setBarbOpen(false)}
-            onNavigate={onTabChange}
+            onNavigate={handleBarbNavigate}
           />
         </React.Suspense>
       ) : null}
