@@ -396,7 +396,7 @@ describe("Composer Component", () => {
     });
 
     const attachment = await screen.findByTestId("composer-attachment-offline.md");
-    expect(attachment).toHaveClass("staff-composer__chip--rejected");
+    await waitFor(() => expect(attachment).toHaveClass("staff-composer__chip--rejected"));
     expect(attachment).toHaveTextContent("Confidential work");
     expect(attachment).toHaveTextContent("Needs attention");
     expect(within(attachment).getByRole("status")).toHaveAttribute("aria-live", "polite");
