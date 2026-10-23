@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -83,7 +84,8 @@ def get_fleet_nodes() -> dict[str, str]:
 def _hit_to_dict(h: SearchHit, default_node: str) -> dict[str, Any]:
     n = h.node or default_node
     keys = (
-        "passage_id work_id author title year page_start page_end text score citation cite_key file_path token_estimate"
+        "passage_id work_id author title year page_start page_end text score citation cite_key cite_uri "
+        "file_path token_estimate file_sha256 work_sha256"
     ).split()
     d = {k: getattr(h, k) for k in keys}
     d["node"] = n
@@ -95,6 +97,9 @@ def _hit_to_dict(h: SearchHit, default_node: str) -> dict[str, Any]:
 
 def _raw_to_search_hit(d: dict[str, Any], node_name: str) -> SearchHit:
     ref = d.get("ref") or {}
+    digests = {key: str(d.get(key) or "").lower() for key in ("file_sha256", "work_sha256")}
+    if any(value and not re.fullmatch(r"[0-9a-f]{64}", value) for value in digests.values()):
+        raise ValueError("invalid peer content digest")
     return SearchHit(
         int(d.get("passage_id") or ref.get("passage_id") or 0),
         int(d.get("work_id") or ref.get("work_id") or 0),
@@ -108,7 +113,8 @@ def _raw_to_search_hit(d: dict[str, Any], node_name: str) -> SearchHit:
         d.get("file_path"),
         int(d.get("token_estimate") or 1),
         source_id=str(d.get("source_id") or ref.get("source_id") or "default"),
-        node=str(d.get("node") or node_name),
+        node=node_name,
+        **digests,
     )
 
 
@@ -144,7 +150,11 @@ async def federated_search(
         local_hits = local_search_fn(query, k=k, budget_tokens=MAX_BUDGET, topic=topic, repo=repo)
     elif db_path is not None and db_path.exists():
         raw = search_passages(
-            db_path, query, k=k, budget_tokens=MAX_BUDGET, options=SearchOptions(topic=topic, repo=repo)
+            db_path,
+            query,
+            k=k,
+            budget_tokens=MAX_BUDGET,
+            options=SearchOptions(topic=topic, repo=repo, shared_only=True),
         )
         local_hits = [replace(h, node=local_name) for h in raw]
 
@@ -180,11 +190,16 @@ async def federated_search(
             else:
                 hit_lists.append(hits)
 
-    rrf_scores: dict[tuple[str, str, int, int], float] = {}
-    hits_by_key: dict[tuple[str, str, int, int], SearchHit] = {}
+    rrf_scores: dict[tuple, float] = {}
+    hits_by_key: dict[tuple, SearchHit] = {}
     for hit_list in hit_lists:
         for rank, hit in enumerate(hit_list, start=1):
-            key = (hit.node, hit.source_id, hit.work_id, hit.passage_id)
+            digest = hit.file_sha256 or hit.work_sha256
+            key = (
+                ("content", digest, hit.page_start, hit.page_end, hit.text)
+                if digest
+                else ("location", hit.node, hit.source_id, hit.work_id, hit.passage_id)
+            )
             rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (60.0 + rank)
             if key not in hits_by_key:
                 hits_by_key[key] = hit
@@ -193,7 +208,7 @@ async def federated_search(
         replace(hits_by_key[k], score=score)
         for k, score in sorted(rrf_scores.items(), key=lambda i: i[1], reverse=True)
     ]
-    packed = _pack_hits(ranked, budget_tokens=budget_tokens)
+    packed = _pack_hits(ranked[:k], budget_tokens=budget_tokens)
     passages = [_hit_to_dict(h, local_name) for h in packed]
 
     return FederatedSearchResult(

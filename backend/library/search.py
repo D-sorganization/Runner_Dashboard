@@ -137,7 +137,9 @@ def search_passages(
         raise ValueError("invalid k or budget_tokens")
     from library.hybrid_search import hybrid_enabled, hybrid_search_passages
 
-    if hybrid_enabled():
+    # Vector expansion currently has no source visibility filter. Shared searches
+    # use the filtered lexical path until vector candidates enforce that boundary.
+    if hybrid_enabled() and not (options and options.shared_only):
         return hybrid_search_passages(db_path, query, k=k, budget_tokens=budget_tokens, options=options)
     ranked = bm25_ranked_passages(db_path, query, k=k, options=options, collections=collections)
     return _pack_hits(ranked, budget_tokens=budget_tokens)
@@ -221,6 +223,8 @@ def bm25_ranked_passages(
     params.append(k * 4)
 
     src_sub = "(SELECT f.source_id FROM files f WHERE f.work_id=w.id AND f.status='present' "
+    if opts.shared_only:
+        src_sub += "AND source_id IN (SELECT id FROM library_sources WHERE shared=1 AND status='active') "
     if opts.filter_source_id:
         src_sub += f"AND f.source_id='{opts.filter_source_id}' "
     rel_sub = src_sub.replace("f.source_id", "f.rel_path") + "ORDER BY f.id LIMIT 1)"
