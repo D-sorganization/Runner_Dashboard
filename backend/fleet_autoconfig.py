@@ -1,10 +1,4 @@
-"""Helpers for deriving fleet peers from ``machine_registry.yml``.
-
-The dashboard can run as either a physical machine entry (for example
-``DeskComputer``) or as one pool under a split host (for example
-``ControlTower-NVMe`` under the physical ``ControlTower`` machine).  Keeping
-this logic separate from ``server.py`` makes the self-exclusion rules testable.
-"""
+"""Derive fleet identities and peer topology from ``machine_registry.yml``."""
 
 from __future__ import annotations
 
@@ -14,6 +8,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
+
+import fleet_public_origin as _public_origin
 
 log = logging.getLogger("dashboard.fleet_autoconfig")
 
@@ -59,33 +55,19 @@ def registry_machine_matches_current_dashboard(machine: Mapping[str, Any], ident
 
 
 def dashboard_url_to_tailscale_https_origin(dashboard_url: str) -> str:
-    """Map a registry ``dashboard_url`` to the Tailscale Serve HTTPS origin (no port)."""
-    parts = urlsplit(dashboard_url.strip())
-    if parts.scheme not in {"http", "https"} or not parts.hostname:
-        raise ValueError(f"Invalid dashboard_url for HTTPS origin: {dashboard_url!r}")
-    return f"https://{parts.hostname}"
+    return _public_origin.dashboard_url_to_tailscale_https_origin(dashboard_url)
 
 
 def hub_public_origins_from_registry(registry: Mapping[str, Any]) -> tuple[str, ...]:
-    """Return HTTPS origins for every non-retired machine with ``role: hub``."""
-    origins: list[str] = []
-    for machine in _active_machines(registry):
-        role = str(machine.get("role") or "node").strip().lower()
-        if role != "hub":
-            continue
-        url = registry_machine_url(machine)
-        if not url:
-            continue
-        origins.append(dashboard_url_to_tailscale_https_origin(url))
-    return tuple(origins)
+    return _public_origin.collect_hub_public_origins(
+        registry, active_machines=_active_machines, machine_url=registry_machine_url
+    )
 
 
 def resolve_hub_public_origin_from_registry(registry: Mapping[str, Any]) -> str:
-    """Return the canonical hub HTTPS origin when exactly one hub is declared."""
-    origins = hub_public_origins_from_registry(registry)
-    if len(origins) == 1:
-        return origins[0]
-    return ""
+    return _public_origin.resolve_unique_hub_public_origin(
+        registry, active_machines=_active_machines, machine_url=registry_machine_url
+    )
 
 
 def registry_machine_url(machine: Mapping[str, Any]) -> str:
@@ -268,7 +250,7 @@ class FleetIdentity:
 
 def _active_machines(registry: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     machines = registry.get("machines", []) or []
-    return [m for m in machines if isinstance(m, Mapping) and not m.get("retired")]
+    return [machine for machine in machines if isinstance(machine, Mapping) and not machine.get("retired")]
 
 
 def hub_machine_names(registry: Mapping[str, Any]) -> list[str]:

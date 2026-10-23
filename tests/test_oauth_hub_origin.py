@@ -143,3 +143,9 @@ def test_allowed_public_origins_includes_registry_hub_and_allowlist() -> None:
     )
     assert _DESK_ORIGIN in origins
     assert _OGLAPTOP_ORIGIN in origins
+
+
+def test_public_origin_helper_uses_https_host_without_dashboard_port() -> None:
+    from fleet_public_origin import dashboard_url_to_tailscale_https_origin
+
+    assert dashboard_url_to_tailscale_https_origin("http://100.64.0.1:8321/path") == "https://100.64.0.1"

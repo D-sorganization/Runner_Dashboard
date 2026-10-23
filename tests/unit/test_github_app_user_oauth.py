@@ -12,8 +12,9 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
+
+pytestmark = pytest.mark.unit
 
 _BACKEND = Path(__file__).resolve().parents[2] / "backend"
 if str(_BACKEND) not in sys.path:
