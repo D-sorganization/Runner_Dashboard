@@ -5469,6 +5469,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Library Browse Route */
+        get: operations["library_browse_route_api_v1_library_browse_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/search": {
         parameters: {
             query?: never;
@@ -8254,7 +8271,7 @@ export interface components {
              * Entry Type
              * @enum {string}
              */
-            entry_type: "session_digest" | "decision" | "task" | "transcript";
+            entry_type: "session_digest" | "decision" | "task" | "transcript" | "lesson";
             /** Expires At */
             expires_at?: string | null;
             /** Source Product */
@@ -8263,6 +8280,8 @@ export interface components {
             supersedes_id?: string | null;
             /** Tags */
             tags?: string[];
+        } & {
+            [key: string]: unknown;
         };
         /** MemoryAppendResponse */
         MemoryAppendResponse: {
@@ -8270,6 +8289,8 @@ export interface components {
         };
         /** MemoryEntry */
         MemoryEntry: {
+            /** Accepted At */
+            accepted_at?: string | null;
             /** Author Principal */
             author_principal: string;
             /** Body */
@@ -8282,19 +8303,29 @@ export interface components {
              * Entry Type
              * @enum {string}
              */
-            entry_type: "session_digest" | "decision" | "task" | "transcript";
+            entry_type: "session_digest" | "decision" | "task" | "transcript" | "lesson";
             /** Expires At */
             expires_at?: string | null;
             /** Id */
             id: string;
+            /** Repo */
+            repo?: string | null;
+            /** Review Status */
+            review_status?: string | null;
+            /** Reviewed By */
+            reviewed_by?: string | null;
             /** Source Product */
             source_product: string;
+            /** Source Run */
+            source_run?: string | null;
             /** Superseded By */
             superseded_by?: string | null;
             /** Supersedes Id */
             supersedes_id?: string | null;
             /** Tags */
             tags?: string[];
+            /** Visibility */
+            visibility?: string | null;
         };
         /** MemoryListResponse */
         MemoryListResponse: {
@@ -17255,8 +17286,6 @@ export interface operations {
         parameters: {
             query?: {
                 events?: number;
-                /** @description Do not search peer nodes for this run. */
-                local?: boolean;
             };
             header?: never;
             path: {
@@ -18322,6 +18351,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    library_browse_route_api_v1_library_browse_get: {
+        parameters: {
+            query?: {
+                path?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

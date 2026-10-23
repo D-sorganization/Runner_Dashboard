@@ -61,6 +61,7 @@ async def post_proposal(
     action: str,
     params: dict[str, Any],
     reason: str,
+    epoch: int | None = None,
 ) -> ActionProposalRecord:
     """Record a proposal from role ``author`` and post its card in ``thread_id``.
 
@@ -85,6 +86,7 @@ async def post_proposal(
         params=params,
         risk=registered_risk(action),
         principal=author,
+        epoch=epoch,
     )
     await _write_card(store, bus, msg.id, thread_id, proposal_card(prop, description=reason, proposed_by=author))
     return prop

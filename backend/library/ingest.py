@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sqlite3
+from collections.abc import Sequence
 from contextlib import closing
 from datetime import UTC, datetime
 from io import BytesIO
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from library.collections import load_collections, topics_for_rel_path
-from library.db import LibraryStore, init_library_db, library_source_dir
+from library.db import LibraryStore, init_library_db
 from library.search import estimate_tokens
 from library.sources import get_source, matches_source_globs, seed_default_source
 from pypdf import PdfReader
@@ -24,7 +25,8 @@ _INGEST_INTERVAL_S = float(os.environ.get("LIBRARY_INGEST_INTERVAL_S", "3600"))
 _MIN_PAGE_CHARS = 12
 _MIN_PDF_BYTES = 4096
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
-_INGEST_SUFFIXES = {".pdf", ".epub"}
+_MAX_FILE_BYTES = 10 * 1024 * 1024
+_INGEST_SUFFIXES = {".pdf", ".epub", ".md", ".markdown", ".txt"}
 
 
 def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_id: str = "default") -> dict[str, int]:
@@ -75,12 +77,18 @@ def ingest_directory(source_root: Path, *, db_path: Path | None = None, source_i
                 (source_root.as_posix(), rel),
             )
             digest = hashlib.sha256(raw).hexdigest()
-            if path.suffix.lower() == ".pdf":
+            ext = path.suffix.lower()
+            if ext == ".pdf":
                 if not _index_pdf(conn, path, rel, source_root, stat, raw, digest, source_id):
                     stats["files_rejected"] += 1
                     continue
-            else:
+            elif ext == ".epub":
                 if not _index_epub(conn, path, rel, source_root, stat, raw, digest, source_id):
+                    stats["files_rejected"] += 1
+                    continue
+            elif ext in (".md", ".markdown", ".txt"):
+                fmt = "txt" if ext == ".txt" else "md"
+                if not _index_text(conn, path, rel, source_root, stat, raw, digest, source_id, fmt=fmt):
                     stats["files_rejected"] += 1
                     continue
             stats["files_indexed"] += 1
@@ -112,6 +120,8 @@ def _should_skip(conn: sqlite3.Connection, source_id: str, rel: str, mtime: floa
 
 
 def _reject_reason(path: Path, raw: bytes) -> str | None:
+    if len(raw) > _MAX_FILE_BYTES:
+        return "file_too_large"
     if path.suffix.lower() != ".pdf" or len(raw) >= _MIN_PDF_BYTES:
         return None
     try:
@@ -177,7 +187,7 @@ def _index_epub(
     author, title, year = _parse_filename(path.stem)
     author = author or meta_author
     title = title or meta_title
-    work_id = _ensure_work_epub(conn, digest, author, title, year)
+    work_id = _ensure_work_simple(conn, digest, author, title, year, fmt="epub")
     _upsert_file(conn, work_id, rel, source_root, stat, digest, source_id)
     _merge_work_topics(conn, work_id, rel)
     _replace_epub_passages(conn, work_id, title or "", chapters)
@@ -252,54 +262,98 @@ def _ensure_work(conn: sqlite3.Connection, digest: str, reader: PdfReader, path:
     return int(cur.lastrowid)
 
 
-def _ensure_work_epub(
-    conn: sqlite3.Connection, digest: str, author: str | None, title: str | None, year: int | None
+def _ensure_work_simple(
+    conn: sqlite3.Connection, digest: str, author: str | None, title: str | None, year: int | None, fmt: str = "epub"
 ) -> int:
     row = conn.execute("SELECT id FROM works WHERE sha256 = ?", (digest,)).fetchone()
     if row:
         return int(row[0])
     cur = conn.execute(
-        "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,'epub','active',0)",
-        (digest, author, title, year),
+        "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,?,'active',0)",
+        (digest, author, title, year, fmt),
     )
     if cur.lastrowid is None:
         raise RuntimeError("insert work failed")
     return int(cur.lastrowid)
 
 
-def _replace_passages(conn: sqlite3.Connection, work_id: int, reader: PdfReader) -> None:
+def _insert_passages(
+    conn: sqlite3.Connection, work_id: int, title_s: str, passages: Sequence[tuple[str | None, int, int, str]]
+) -> None:
     conn.execute("DELETE FROM passages WHERE work_id = ?", (work_id,))
-    title = conn.execute("SELECT title FROM works WHERE id = ?", (work_id,)).fetchone()
-    title_s = (title[0] if title else None) or ""
-    for i in range(len(reader.pages)):
-        text = _page_text(reader, i)
-        if not text.strip():
-            continue
+    for section, start, end, text in passages:
         cur = conn.execute(
             "INSERT INTO passages (work_id, page_start, page_end, section, text, token_estimate)"
-            " VALUES (?, ?, ?, NULL, ?, ?)",
-            (work_id, i + 1, i + 1, text, estimate_tokens(text)),
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (work_id, start, end, section, text, estimate_tokens(text)),
         )
         conn.execute(
             "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
             (cur.lastrowid, title_s, text),
         )
+
+
+def _replace_passages(conn: sqlite3.Connection, work_id: int, reader: PdfReader) -> None:
+    title = conn.execute("SELECT title FROM works WHERE id = ?", (work_id,)).fetchone()
+    passages: list[tuple[str | None, int, int, str]] = [
+        (None, i + 1, i + 1, txt) for i in range(len(reader.pages)) if (txt := _page_text(reader, i).strip())
+    ]
+    _insert_passages(conn, work_id, (title[0] if title else None) or "", passages)
 
 
 def _replace_epub_passages(
     conn: sqlite3.Connection, work_id: int, title_s: str, chapters: list[tuple[str, str]]
 ) -> None:
-    conn.execute("DELETE FROM passages WHERE work_id = ?", (work_id,))
-    for idx, (section, text) in enumerate(chapters, start=1):
-        cur = conn.execute(
-            "INSERT INTO passages (work_id, page_start, page_end, section, text, token_estimate)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (work_id, idx, idx, section, text, estimate_tokens(text)),
-        )
-        conn.execute(
-            "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
-            (cur.lastrowid, title_s, text),
-        )
+    _insert_passages(conn, work_id, title_s, [(sec, idx, idx, txt) for idx, (sec, txt) in enumerate(chapters, start=1)])
+
+
+def _extract_text_passages(raw: bytes, fmt: str) -> list[tuple[str | None, int, int, str]]:
+    lines = raw.decode("utf-8", errors="replace").splitlines(keepends=True)
+    if not lines:
+        return []
+    passages: list[tuple[str | None, int, int, str]] = []
+    sec: str | None = None
+    cur: list[str] = []
+    start: int = 1
+    chars: int = 0
+    for idx, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        is_hd = fmt in ("md", "markdown") and stripped.startswith("#")
+        if (is_hd or chars + len(line) > 1500) and cur:
+            txt = "".join(cur).strip()
+            if txt:
+                passages.append((sec, start, idx - 1, txt))
+            cur, chars, start = [], 0, idx
+        if is_hd:
+            sec = stripped.lstrip("#").strip() or None
+        cur.append(line)
+        chars += len(line)
+    if cur and (txt := "".join(cur).strip()):
+        passages.append((sec, start, len(lines), txt))
+    return passages
+
+
+def _index_text(
+    conn: sqlite3.Connection,
+    path: Path,
+    rel: str,
+    source_root: Path,
+    stat: Any,
+    raw: bytes,
+    digest: str,
+    source_id: str = "default",
+    fmt: str = "md",
+) -> bool:
+    passages = _extract_text_passages(raw, fmt)
+    if not passages:
+        _record_rejection(conn, source_root, rel, "empty_file", datetime.now(UTC).isoformat())
+        return False
+    author, title, year = _parse_filename(path.stem)
+    work_id = _ensure_work_simple(conn, digest, author, title, year, fmt=fmt)
+    _upsert_file(conn, work_id, rel, source_root, stat, digest, source_id)
+    _merge_work_topics(conn, work_id, rel)
+    _insert_passages(conn, work_id, title or path.stem, passages)
+    return True
 
 
 def _parse_filename(stem: str) -> tuple[str | None, str | None, int | None]:
@@ -378,18 +432,34 @@ def _extract_epub(raw: bytes) -> tuple[str | None, str | None, list[tuple[str, s
         return _dc("creator"), _dc("title"), chapters
 
 
-def start_library_ingest_loop() -> None:
-    if library_source_dir() is None:
-        return
+def ingest_sources(db_path: Path | None = None) -> dict[str, dict[str, int]]:
+    db = init_library_db(db_path)
+    seed_default_source(db)
+    results: dict[str, dict[str, int]] = {}
+    with closing(LibraryStore(db).connect()) as conn:
+        sources = conn.execute("SELECT id, root_path FROM library_sources WHERE status='active' ORDER BY id").fetchall()
+    for source_id, root_path in sources:
+        p = Path(root_path)
+        if not p.is_dir():
+            continue
+        stats = ingest_directory(p, db_path=db, source_id=source_id)
+        results[source_id] = stats
+        with closing(LibraryStore(db).connect()) as conn:
+            conn.execute(
+                "UPDATE library_sources SET last_ingest_at=? WHERE id=?",
+                (datetime.now(UTC).isoformat(), source_id),
+            )
+            conn.commit()
+    return results
 
+
+def start_library_ingest_loop() -> None:
     async def _loop() -> None:
         while True:
-            root = library_source_dir()
-            if root is not None and root.is_dir():
-                try:
-                    log.info("library ingest: %s", ingest_directory(root))
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("library ingest failed: %s", exc)
+            try:
+                ingest_sources()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("library ingest failed: %s", exc)
             await asyncio.sleep(_INGEST_INTERVAL_S)
 
     asyncio.create_task(_loop())

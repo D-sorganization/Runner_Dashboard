@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
+from routers.staff_dispatch import run_dispatch
 from staff import fleet as staff_fleet
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
@@ -40,7 +41,6 @@ from staff.audit import (
 )
 from staff.cli_version import provider_versions
 from staff.dispatch_auth import require_staff_run_dispatch
-from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.github_app_preflight import run_preflight_and_cache
 from staff.github_credential_service import mint_github_credential_for_run
 from staff.models import (
@@ -240,7 +240,7 @@ async def list_runs(
 async def get_run(
     run_id: str,
     events: int = Query(default=200, ge=0, le=MAX_LIMIT),
-    local: bool = Query(default=False, description="Do not search peer nodes for this run."),
+    local: bool = Query(default=False, include_in_schema=False),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     store = get_runner().store
@@ -438,6 +438,7 @@ async def dispatch(
     role: str,
     body: RunBody,
     request: Request,
+    force_duplicate: bool = Query(default=False, include_in_schema=False),
     caller: Principal = Depends(require_staff_run_dispatch()),
 ) -> dict[str, Any]:
     """Dispatch a staff run on this node, or preview it with ``dry_run``.
@@ -449,49 +450,4 @@ async def dispatch(
     PR-consolidation decision (#1213) is evaluated first and lands in
     ``plan.consolidation`` and the run's ``strategy_mode``.
     """
-    return await run_dispatch(role, body, request, caller)
-
-
-async def run_dispatch(
-    role: str, body: RunBody, request: Request, caller: Principal, operation_id: str = ""
-) -> dict[str, Any]:
-    """The /run policy; ``operation_id`` comes from the v1 Idempotency-Key reservation (#1796)."""
-    caller_id = staff_fleet.caller_identity(caller)
-    is_peer = staff_fleet.is_fleet_peer(caller)
-    if is_peer and body.operation_id:
-        operation_id = body.operation_id
-    surface = body.surface or "api"
-    thread_id = body.thread_id or ""
-    origin_node = body.origin_node or ""
-    on_behalf_of = ""
-    obo = staff_fleet.extract_on_behalf_of(request.headers.get("x-staff-on-behalf-of"), is_peer)
-    if obo:
-        caller_id = obo["principal"]
-        on_behalf_of = obo["principal"]
-        surface = obo.get("surface") or surface
-        thread_id = obo.get("thread_id") or thread_id
-        origin_node = obo.get("origin_node") or origin_node
-
-    cmd = DispatchCommand(
-        role=role,
-        requested_by=caller_id,
-        provider=body.provider,
-        model=body.model,
-        repo=body.repo,
-        issue=body.issue,
-        pr=body.pr,
-        prompt=body.prompt,
-        machine=body.machine,
-        dry_run=body.dry_run,
-        work_item_id=body.work_item_id or "",
-        on_behalf_of=on_behalf_of,
-        surface=surface,
-        thread_id=thread_id,
-        origin_node=origin_node,
-        ignore_budget=body.ignore_budget,
-        operation_id=operation_id,
-        task_type=body.task_type,
-        standards_extra=body.standards_extra,
-        requested_skill=body.skill,
-    )
-    return await dispatch_staff_run(cmd, caller)
+    return await run_dispatch(role, body, request, caller, force_duplicate=force_duplicate)

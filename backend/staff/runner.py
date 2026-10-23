@@ -20,27 +20,15 @@ from staff import consolidation, review, verification, workspace
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
+from staff import runner_ops as ops
 from staff import usage as usage_mod
 from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.execution_result import classify_execution_result
+from staff.lessons import file_proposed_lessons, select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
-from staff.runner_ops import (
-    LaunchPaths,
-    apply_staff_run_fleet_token,
-    apply_staff_run_github_child_env,
-    execute_retry_nudge,
-    extract_transcript_question,
-    fail_if_cli_outdated,
-    new_run_record,
-    prepare_run_workdir,
-    pump_output,
-    read_only_kwargs,
-    resolve_launch_paths,
-    select_first_available_provider,
-)
 from staff.standards_registry import estimate_tokens
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
@@ -134,6 +122,7 @@ class StaffRunner:
             raise ValueError(str(exc)) from exc
         from library.dispatch_hook import library_references_for_plan
 
+        repo_lessons = select_repo_lessons(req.repo)
         references_block, library_work_ids = library_references_for_plan(role, req)
         prompt = workspace.compose_prompt(
             role,
@@ -145,6 +134,7 @@ class StaffRunner:
             focus=focus,
             dispatch_bundle=bundle,
             library_references=references_block,
+            repo_lessons_result=repo_lessons,
         )
         from staff.failover_model import resolve_launch_model, role_base_tier
         from staff.provider_failover_config import resolve_failover_chain
@@ -160,7 +150,7 @@ class StaffRunner:
             step=step,
             active_tier=role_base_tier(role),
         )
-        argv = adapter.build_command(prompt, "<workdir>", effective_model, **read_only_kwargs(role))
+        argv = adapter.build_command(prompt, "<workdir>", effective_model, **ops.read_only_kwargs(role))
         return RunPlan(
             role=role.name,
             provider=provider,
@@ -181,17 +171,20 @@ class StaffRunner:
             skill_pin=bundle.skill_pin,
             standards_version=bundle.standards_version,
             standards_tokens=bundle.standards_tokens or estimate_tokens(bundle.standards_block),
-            context_stamp=json.dumps(bundle.context_stamp(prompt=prompt)),
+            context_stamp=json.dumps(bundle.context_stamp(prompt=prompt, lessons_tokens=repo_lessons.tokens)),
             library_work_ids=library_work_ids,
+            injected_lesson_ids=repo_lessons.injected_ids,
+            skipped_lesson_ids=repo_lessons.skipped_ids,
+            lessons_tokens=repo_lessons.tokens,
             provider_auth_skipped=tuple(auth_skipped),
         )
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
-        return select_first_available_provider(self._adapters, providers, ceiling)
+        return ops.select_first_available_provider(self._adapters, providers, ceiling)
 
     @staticmethod
-    def _launch_paths(adapter: ProviderAdapter, workdir: Path) -> LaunchPaths:
-        return resolve_launch_paths(adapter, workdir)
+    def _launch_paths(adapter: ProviderAdapter, workdir: Path) -> ops.LaunchPaths:
+        return ops.resolve_launch_paths(adapter, workdir)
 
     def submit(self, req: RunRequest) -> RunRecord:
         """Validate, persist as ``queued`` and start the worker thread."""
@@ -209,7 +202,7 @@ class StaffRunner:
         if run_id and (existing := self.store.get_run(run_id)) is not None:
             return existing, plan, False
         role = self.roles().get(plan.role)
-        rec = new_run_record(plan, req, self.machine, getattr(role, "max_attempts", 2) or 2, run_id)
+        rec = ops.new_run_record(plan, req, self.machine, getattr(role, "max_attempts", 2) or 2, run_id)
         try:
             self.store.create_run(rec)
         except sqlite3.IntegrityError:
@@ -256,9 +249,9 @@ class StaffRunner:
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
                 handle_run_status_change(rec, "preparing")
-                if fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
+                if ops.fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
                     return  # below the CLI floor: no worktree, no lease (#1680)
-                workdir = prepare_run_workdir(store, rec, plan)
+                workdir = ops.prepare_run_workdir(store, rec, plan)
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
@@ -290,7 +283,7 @@ class StaffRunner:
         retry_mod.handle_post_execution_retry(self, rec, plan)
 
     def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
-        return prepare_run_workdir(self.store, rec, plan)
+        return ops.prepare_run_workdir(self.store, rec, plan)
 
     def _execute(self, rec: RunRecord, plan: RunPlan, workdir: Path, lease_note: str) -> None:
         store = self.store
@@ -305,19 +298,20 @@ class StaffRunner:
             lease_note=lease_note,
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
+            repo_lessons_result=select_repo_lessons(plan.repo),
         )
         launch_paths = self._launch_paths(adapter, workdir)
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
             antigravity_permissions(read_only=role.code_read_only, workdir=workdir, gitdir=gitdir)
-        argv = adapter.build_command(prompt, str(workdir), plan.model, **read_only_kwargs(role), **launch_paths)
+        argv = adapter.build_command(prompt, str(workdir), plan.model, **ops.read_only_kwargs(role), **launch_paths)
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
         idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
         real_gh = shutil.which("gh") or "gh"
 
-        env = apply_staff_run_github_child_env(
+        env = ops.apply_staff_run_github_child_env(
             store,
             rec,
             os.environ,
@@ -328,7 +322,9 @@ class StaffRunner:
         )
         if env is None:
             return
-        env = apply_staff_run_fleet_token(store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout)
+        env = ops.apply_staff_run_fleet_token(
+            store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
+        )
         if env is None:
             return
         try:
@@ -379,10 +375,10 @@ class StaffRunner:
             with self._lock:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
-            question = extract_transcript_question(transcript)
+            question = ops.extract_transcript_question(transcript)
 
             if not cancelled and rc == 0 and not result_line and not question:
-                n_line, n_usage, n_rc = execute_retry_nudge(
+                n_line, n_usage, n_rc = ops.execute_retry_nudge(
                     rec=rec,
                     adapter=adapter,
                     plan=plan,
@@ -429,6 +425,7 @@ class StaffRunner:
                     error = review_verdict.error or "Malformed review verdict line"
                     remediation = "Review completed with a malformed STAFF_RESULT line."
 
+            workspace.persist_run_transcript(store, rec.id, workdir)
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
             store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
             store.update_run(
@@ -454,6 +451,8 @@ class StaffRunner:
                     store, updated_rec, verdict, opens_pr=lambda: self.opens_pr(rec.role)
                 )
             if updated_rec is not None:
+                if status == "succeeded" and rc == 0 and not cancelled:
+                    file_proposed_lessons(store, updated_rec, transcript_path=transcript)
                 q = question if status == "needs_input" else None
                 if status == "succeeded":
                     from staff.failover_dispatch import run_completion_summary
@@ -466,6 +465,7 @@ class StaffRunner:
                 handle_run_status_change(updated_rec, status=status, question=q, summary=summary)
         finally:
             revoke_run_token(rec.id)
+            workspace.finalize_run_worktree(self.store, rec.id, workdir, plan.repo, branch=plan.branch)
 
     def _pump_output(
         self,
@@ -475,7 +475,7 @@ class StaffRunner:
         transcript: Path,
         watchdog: StaffWatchdog | None = None,
     ) -> Any:
-        return pump_output(rec, adapter, proc, transcript, self.store, watchdog)
+        return ops.pump_output(rec, adapter, proc, transcript, self.store, watchdog)
 
 
 _runner: StaffRunner | None = None

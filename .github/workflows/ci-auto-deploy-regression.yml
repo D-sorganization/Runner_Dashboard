@@ -1,4 +1,6 @@
 # Regression gate for node auto-deploy live bugs (#2083, #2108, #2111, #2114).
+# Mandatory #2116 deploy smoke TDD rule: every PR modifying deploy/**, service units,
+# release packaging, or auto-release workflows must first add a failing regression test case here (#2255).
 name: Node auto-deploy regression
 
 on:
@@ -6,6 +8,8 @@ on:
     paths:
       - "deploy/**"
       - "tests/deploy/**"
+      - "tests/test_main_ci_release_wait.py"
+      - "tests/test_deploy_smoke_tdd_rule.py"
       - ".github/workflows/ci-auto-deploy-regression.yml"
   push:
     branches:
@@ -14,6 +18,8 @@ on:
     paths:
       - "deploy/**"
       - "tests/deploy/**"
+      - "tests/test_main_ci_release_wait.py"
+      - "tests/test_deploy_smoke_tdd_rule.py"
       - ".github/workflows/ci-auto-deploy-regression.yml"
   merge_group:
   workflow_dispatch:
@@ -36,16 +42,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: |
             3.10
             3.12
 
       - name: Install test runner
-        run: python3.12 -m pip install --quiet pytest-asyncio==1.3.0
+        run: python3.12 -m pip install --quiet pytest-asyncio==1.3.0 PyYAML==6.0.3
 
-      - name: Node auto-deploy regression suite
+      - name: Node auto-deploy and main release regression suite (#2116)
         env:
           BASH: bash
-        run: python3.12 -m pytest --confcutdir=tests/deploy tests/deploy/test_auto_deploy_ci_regression.py -q
+        run: >-
+          python3.12 -m pytest --confcutdir=tests/deploy
+          tests/deploy/test_auto_deploy_ci_regression.py
+          tests/test_main_ci_release_wait.py
+          tests/test_deploy_smoke_tdd_rule.py -q

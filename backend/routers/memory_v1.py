@@ -11,10 +11,18 @@ from memory.models import (
     MemoryAppendRequest,
     MemoryAppendResponse,
     MemoryListResponse,
+    MemoryReviewRequest,
     SessionDigestAppendRequest,
     SessionDigestAppendResponse,
 )
-from memory.service import append_entry, append_session_digest, build_context_pack, list_entries
+from memory.service import (
+    append_entry,
+    append_session_digest,
+    build_context_pack,
+    is_barb_principal,
+    list_entries,
+    review_entry,
+)
 from staff.audit import record_audit
 
 log = logging.getLogger("dashboard.memory")
@@ -25,13 +33,16 @@ router = APIRouter(prefix="/api/v1/memory", tags=["assistant-memory"])
 async def get_memory_entries(
     since: str | None = Query(None),
     entry_type: str | None = Query(None, alias="type"),
+    repo: str | None = Query(None, include_in_schema=False),
+    review_status: str | None = Query(None, include_in_schema=False),
     tag: str | None = Query(None),
     author: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     _reader: Principal = Depends(require_scope("memory.read")),
 ) -> MemoryListResponse:
+    kw = {"since": since, "entry_type": entry_type, "repo": repo, "review_status": review_status}
     return MemoryListResponse(
-        entries=list_entries(since=since, entry_type=entry_type, tag=tag, author=author, limit=limit)
+        entries=list_entries(tag=tag, author=author, include_barb_only=is_barb_principal(_reader), limit=limit, **kw)
     )
 
 
@@ -86,3 +97,15 @@ async def post_session_digest(
     )
     log.info("memory: session digest %s by %s (replayed=%s)", entry.id, format_caller(writer), replayed)
     return SessionDigestAppendResponse(entry=entry, replayed=replayed)
+
+
+@router.patch("/{entry_id}/review", response_model=MemoryAppendResponse, include_in_schema=False)
+async def patch_memory_review(
+    entry_id: str, body: MemoryReviewRequest, reviewer: Principal = Depends(require_scope("memory.write"))
+) -> MemoryAppendResponse:
+    e = review_entry(reviewer, entry_id, body)
+    caller = format_caller(reviewer)
+    d = {"review_status": e.review_status}
+    record_audit(action="memory_review", target=e.id, principal=caller, detail=d, fail_closed=False)
+    log.info("memory: reviewed %s status=%s by %s", e.id, e.review_status, caller)
+    return MemoryAppendResponse(entry=e)

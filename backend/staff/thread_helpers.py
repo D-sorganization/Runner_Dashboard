@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from staff.conversations import ConversationStore, MessageRecord
+from staff.conversation_models import MessageRecord
+
+if TYPE_CHECKING:
+    from staff.conversations import ConversationStore
 
 
 def find_idempotent_reply(
@@ -81,3 +84,95 @@ def shape_new_thread(body: Any, caller_id: str) -> tuple[str, str, list[str], di
 
     title = body.title or (f"Conversation with {role.title()}" if role else "New conversation")
     return title, kind, participants, meta
+
+
+class StaleThreadEpochError(ValueError):
+    """A CLI turn attempted to write after its thread moved to a newer epoch."""
+
+
+def advance_thread_turn_epoch(
+    conn: sqlite3.Connection,
+    lock: Any,
+    thread_id: str,
+    reason: str = "seat_handoff",
+) -> int:
+    """Atomically fence in-flight turns and return the new persisted thread epoch."""
+    from staff.conversation_models import _now
+
+    if not thread_id or not reason:
+        raise ValueError("thread_id and reason are required to advance the turn epoch")
+    with lock:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            cur = conn.execute(
+                "UPDATE threads SET epoch = epoch + 1, updated_at = ? WHERE id = ? RETURNING epoch",
+                (_now(), thread_id),
+            ).fetchone()
+            if cur is None:
+                raise KeyError(f"Unknown conversation thread: {thread_id}")
+            epoch = int(cur["epoch"])
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+    return epoch
+
+
+def validate_turn_epoch(conn: sqlite3.Connection, thread_id: str, turn_epoch: int) -> None:
+    """Ensure a writing turn has not been fenced by an epoch advance."""
+    row = conn.execute("SELECT epoch FROM threads WHERE id = ?", (thread_id,)).fetchone()
+    if row is None:
+        raise KeyError(f"Unknown conversation thread: {thread_id}")
+    if int(row["epoch"]) != turn_epoch:
+        raise StaleThreadEpochError(f"thread {thread_id} is at epoch {row['epoch']}, turn is {turn_epoch}")
+
+
+def query_threads(
+    conn: sqlite3.Connection,
+    lock: Any,
+    kind: str | None = None,
+    status: str | None = None,
+    participant: str | None = None,
+    limit: int = 50,
+) -> list[Any]:
+    from staff.conversation_models import ThreadRecord
+
+    clauses: list[str] = []
+    params: list[Any] = []
+    if kind:
+        clauses.append("kind = ?")
+        params.append(kind)
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    query = f"SELECT * FROM threads {where} ORDER BY updated_at DESC LIMIT ?"  # noqa: S608
+    params.append(limit)
+    with lock:
+        rows = conn.execute(query, tuple(params)).fetchall()
+    threads = [ThreadRecord.from_row(r) for r in rows]
+    return [t for t in threads if participant in t.participants] if participant else threads
+
+
+def mutate_thread(conn: sqlite3.Connection, lock: Any, cur: Any, thread_id: str, **fields: Any) -> Any:
+    import json
+
+    from staff.conversation_models import ThreadRecord, _now
+    from staff.redaction import redact_value
+
+    if not cur:
+        return None
+    allowed = {"title", "status", "participants", "unread_counters", "meta"}
+    updates = {
+        k: redact_value(json.dumps(v) if k in {"participants", "unread_counters", "meta"} else v)
+        for k, v in fields.items()
+        if k in allowed
+    }
+    if not updates:
+        return cur
+    updates["updated_at"] = _now()
+    sets = ", ".join(f"{k} = ?" for k in updates)
+    with lock:
+        conn.execute(f"UPDATE threads SET {sets} WHERE id = ?", (*updates.values(), thread_id))  # noqa: S608
+        row = conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
+    return ThreadRecord.from_row(row) if row else None

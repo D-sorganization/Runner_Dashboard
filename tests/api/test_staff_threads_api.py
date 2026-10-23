@@ -221,6 +221,13 @@ def test_thread_stream_sse_and_resume(client: TestClient):
     assert "First message" in text
 
 
+def test_thread_events_alias_streams_sse(client: TestClient):
+    created = client.post("/api/v1/staff/threads", json={"title": "Events alias", "role": "barb"}).json()
+    response = client.get(f"/api/v1/staff/threads/{created['id']}/events", params={"follow": "false"})
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+
+
 def test_mark_thread_read_and_inbox(client: TestClient):
     """POST /threads/{id}/read marks thread read; GET /inbox reports unread threads."""
     created = client.post("/api/v1/staff/threads", json={"title": "Inbox Test", "role": "night-watch"}).json()

@@ -1,0 +1,15 @@
+{
+  "files": {
+    ".github/fleet-pr-cap/ruff.toml": "b677e39286932e67891ef6817150939a9fa926fb84bec63af5e5a3ba3bd8874b",
+    ".github/fleet-pr-cap/scripts/__init__.py": "419ae047f26e5821fa3d21e2b85124c0380579a2977317c32f7fb8f011b4353f",
+    ".github/fleet-pr-cap/scripts/pr_cap_check.py": "60663af4e074ee443108b18997f3dc95e3a25ba66fae6c355e477585c6315e3a",
+    ".github/fleet-pr-cap/scripts/pr_cap_preflight.py": "c7b7bf692adb12590bdc1f9dfe2207128ed450af22b193d107aa59be542cf846",
+    ".github/fleet-pr-cap/scripts/pr_cap_report.py": "1fc59c835d51253d7c5e0f61877e1bf6e2dd692224cf5082f5703340e25a4de1",
+    ".github/fleet-pr-cap/shared_scripts/__init__.py": "a35be61c25add99368e2dccf4005f875e8f3bb6f14e275db01452ebbcef01e8c",
+    ".github/fleet-pr-cap/shared_scripts/agent_identity.py": "e9e1aabbb8e7744fe538bd4400c43e1abf455c44acda48ccf0153fd206e1d93e",
+    ".github/fleet-pr-cap/shared_scripts/pr_agent_identity.py": "576064c90fce46a59e6a6822b413c9925a20b272126b0ea8ebf8915b43d59c70",
+    ".github/workflows/pr-cap.yml": "5b87ea1b8f7e18ad229de79d0628abc9161ee8dd77d1e8743e88f4cf9e5c6148",
+    ".github/workflows/reusable-pr-cap.yml": "98cb39bd7e54f4e9d3e13f3e92dfb9278028056268797f0974353c97aa615b54"
+  },
+  "schema": "fleet-pr-cap-bundle/v1"
+}

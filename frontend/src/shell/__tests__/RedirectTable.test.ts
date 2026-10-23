@@ -100,8 +100,6 @@ describe("SC-D2: Secondary pages live under their area prefix", () => {
   it("maps secondary staff pages under /staff/*", () => {
     expect(tabIdToPath("fleet-command")).toBe("/staff/fleet-command");
     expect(pathnameToTabId("/staff/fleet-command")).toBe("fleet-command");
-    expect(tabIdToPath("maxwell")).toBe("/staff/maxwell");
-    expect(pathnameToTabId("/staff/maxwell")).toBe("maxwell");
   });
 });
 

@@ -107,7 +107,10 @@ def list_sources(db_path: Path) -> list[dict[str, Any]]:
     with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT * FROM library_sources WHERE status='active' ORDER BY id").fetchall()
-    return [_row(row) for row in rows]
+        counts = dict(
+            conn.execute("SELECT source_id, COUNT(*) FROM files WHERE status='present' GROUP BY source_id").fetchall()
+        )
+    return [{**_row(row), "file_count": counts.get(row["id"], 0)} for row in rows]
 
 
 def get_source(db_path: Path, source_id: str) -> dict[str, Any]:

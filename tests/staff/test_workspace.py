@@ -80,3 +80,73 @@ def test_default_repos_roots_use_the_windows_profile_that_holds_repositories(mon
 
     assert profile_root in roots
     assert all("wsl-login" not in str(r) for r in roots)
+
+
+@pytest.mark.unit
+def test_finalize_run_worktree_persists_transcript_and_removes_clean_git_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """finalize_run_worktree copies .staff/transcript.log to transcripts/ and removes clean worktrees."""
+    wt_root = tmp_path / "staff-worktrees"
+    wt_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(wt_root))
+
+    worktree = wt_root / "Runner_Dashboard-run-abc123"
+    (worktree / ".git").mkdir(parents=True, exist_ok=True)
+    (worktree / ".staff").mkdir(parents=True, exist_ok=True)
+    (worktree / ".staff" / "transcript.log").write_text("hello transcript\n", encoding="utf-8")
+
+    monkeypatch.setattr(workspace, "worktree_has_unpushed_commits", lambda wt: False)
+    monkeypatch.setattr(workspace, "find_repo_checkout", lambda repo: None)
+
+    updated: dict[str, str] = {}
+    events: list[tuple[str, str, str]] = []
+
+    class _DummyStore:
+        db_path = tmp_path / "staff_runs.sqlite3"
+
+        def update_run(self, run_id: str, **kwargs: str) -> None:
+            updated.update(kwargs)
+
+        def append_event(self, run_id: str, kind: str, msg: str) -> None:
+            events.append((run_id, kind, msg))
+
+    workspace.finalize_run_worktree(_DummyStore(), "run-abc123", worktree, "Runner_Dashboard", branch="staff/test")
+
+    persisted = tmp_path / "transcripts" / "run-abc123.log"
+    assert persisted.is_file()
+    assert persisted.read_text(encoding="utf-8") == "hello transcript\n"
+    assert updated.get("transcript_path") == str(persisted)
+    assert not worktree.exists()
+    assert events == []
+
+
+@pytest.mark.unit
+def test_finalize_run_worktree_preserves_unpushed_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """finalize_run_worktree preserves worktrees with unpushed commits and emits a worktree event."""
+    wt_root = tmp_path / "staff-worktrees"
+    wt_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(wt_root))
+
+    worktree = wt_root / "Runner_Dashboard-run-dirty1"
+    (worktree / ".git").mkdir(parents=True, exist_ok=True)
+    (worktree / ".staff").mkdir(parents=True, exist_ok=True)
+    (worktree / ".staff" / "transcript.log").write_text("dirty transcript\n", encoding="utf-8")
+
+    monkeypatch.setattr(workspace, "worktree_has_unpushed_commits", lambda wt: True)
+
+    events: list[tuple[str, str, str]] = []
+
+    class _DummyStore:
+        db_path = tmp_path / "staff_runs.sqlite3"
+
+        def update_run(self, run_id: str, **kwargs: str) -> None:
+            pass
+
+        def append_event(self, run_id: str, kind: str, msg: str) -> None:
+            events.append((run_id, kind, msg))
+
+    workspace.finalize_run_worktree(_DummyStore(), "run-dirty1", worktree, "Runner_Dashboard", branch="staff/dirty")
+
+    assert worktree.exists()
+    assert any(kind == "worktree" and "unpushed worktree preserved" in msg for _, kind, msg in events)

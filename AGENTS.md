@@ -55,6 +55,8 @@ python scripts/automerge_guard.py D-sorganization/Runner_Dashboard <pr> --arm --
 - **Engineering Principles (Mandatory).** TDD (failing test first), Design by Contract
   (pre/post conditions at boundaries; `backend/dispatch_contract.py`), DRY, Law of Demeter,
   orthogonality (tabs fail independently), decoupled runtime, reversible deploys.
+  Deploy and auto-release fixes require adding a failing regression test case to the `#2116`
+  deploy smoke test suite (`tests/deploy/` / `tests/test_main_ci_release_wait.py`) first.
   Long form: [docs/agents/repository-guide.md#engineering-principles-mandatory](docs/agents/repository-guide.md#engineering-principles-mandatory).
 - **Issue Taxonomy & Dispatch.** Check pickability (`open`, no open PR, no claim,
   complexity matches tier). Respect `judgement:design` and `judgement:contested`

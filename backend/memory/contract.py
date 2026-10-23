@@ -16,6 +16,21 @@ CONTEXT_DIGEST_LIMIT = int(os.environ.get("ASSISTANT_MEMORY_CONTEXT_DIGESTS", "5
 CONTEXT_TASK_LIMIT = int(os.environ.get("ASSISTANT_MEMORY_CONTEXT_TASKS", "20"))
 
 
+LESSON_MAX_CHARS, DEFAULT_LESSON_TTL_DAYS, MAX_LESSON_TTL_DAYS = 400, 30, 90
+VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "proposed": {"accepted", "quarantined", "retired"},
+    "accepted": {"promoted", "quarantined", "retired"},
+    "quarantined": {"accepted", "retired"},
+    "retired": set(),
+    "promoted": set(),
+}
+
+
+def validate_status_transition(current: str | None, target: str) -> None:
+    if target not in VALID_STATUS_TRANSITIONS.get(current or "proposed", set()):
+        raise HTTPException(status_code=422, detail=f"invalid status transition from {current} to {target}")
+
+
 def require_entry_type(entry_type: str) -> EntryType:
     if entry_type not in ENTRY_TYPES:
         raise HTTPException(status_code=422, detail=f"invalid entry_type: {entry_type}")
@@ -27,6 +42,10 @@ def encoded_body_size(body: dict[str, Any], entry_type: EntryType) -> int:
 
 
 def enforce_entry_size(body: dict[str, Any], entry_type: EntryType) -> None:
+    if entry_type == "lesson" and (tc := sum(len(v) for v in body.values() if isinstance(v, str))) > LESSON_MAX_CHARS:
+        raise HTTPException(
+            status_code=422, detail={"code": "lesson_too_large", "max_chars": LESSON_MAX_CHARS, "chars": tc}
+        )
     limit = MAX_TRANSCRIPT_JSON_BYTES if entry_type == "transcript" else MAX_ENTRY_JSON_BYTES
     size = encoded_body_size(body, entry_type)
     if size > limit:

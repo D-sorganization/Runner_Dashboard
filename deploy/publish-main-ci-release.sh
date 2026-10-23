@@ -9,6 +9,7 @@ KEEP_RELEASES=30
 PROTECTED_SHAS=""
 DRY_RUN=false
 REQUIRE_CURRENT_MAIN=false
+REQUIRE_MAIN_ANCESTOR=false
 
 usage() {
   cat <<'EOF'
@@ -20,6 +21,7 @@ Options:
   --keep N                  Retain newest N auto-releases (default: 30)
   --protected-sha LIST      Comma-separated SHAs never deleted during retention
   --require-current-main    Skip when this SHA is no longer the current main head
+  --require-main-ancestor   Require GitHub to prove this SHA remains on main history
   --dry-run                 Plan only; do not create tag/release or delete old rows
   -h, --help                Show help
 EOF
@@ -32,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --keep) KEEP_RELEASES="$2"; shift 2 ;;
     --protected-sha) PROTECTED_SHAS="$2"; shift 2 ;;
     --require-current-main) REQUIRE_CURRENT_MAIN=true; shift ;;
+    --require-main-ancestor) REQUIRE_MAIN_ANCESTOR=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -40,11 +43,17 @@ done
 
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be 40 lowercase hex" >&2; exit 1; }
 [[ -n "$COMMITTER_DATE" ]] || { echo "committer-date is required" >&2; exit 1; }
+if [[ "$REQUIRE_CURRENT_MAIN" == "true" && "$REQUIRE_MAIN_ANCESTOR" == "true" ]]; then
+  echo "choose either --require-current-main or --require-main-ancestor" >&2
+  exit 1
+fi
 
 export PYTHONPATH="${REPO_ROOT}/deploy${PYTHONPATH:+:$PYTHONPATH}"
 WORK_DIR="${RUNNER_TEMP:-$(mktemp -d)}"
 CHECK_JSON="${WORK_DIR}/check-runs-${SHA}.json"
 RELEASES_JSON="${WORK_DIR}/releases.json"
+MAIN_COMPARE_JSON="${WORK_DIR}/main-compare-${SHA}.json"
+RELEASE_COMPARE_JSON="${WORK_DIR}/release-compare-${SHA}.json"
 
 GATE_ATTEMPTS="${GATE_ATTEMPTS:-90}"
 GATE_SLEEP_SECS="${GATE_SLEEP_SECS:-60}"
@@ -62,6 +71,68 @@ skip_if_main_moved() {
     exit 0
   fi
 }
+
+verify_main_ancestor() {
+  [[ "$REQUIRE_MAIN_ANCESTOR" == "true" ]] || return 0
+  gh api "repos/${GITHUB_REPOSITORY}/compare/${SHA}...main" > "$MAIN_COMPARE_JSON"
+  compare_status=0
+  python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-main-ancestor \
+    --sha "$SHA" --compare-json "$MAIN_COMPARE_JSON" || compare_status=$?
+  case "$compare_status" in
+    0) ;;
+    1)
+      echo "Main CI release candidate ${SHA:0:7} is not an ancestor of current main; skipping release"
+      exit 0
+      ;;
+    3)
+      echo "GitHub main ancestry response is invalid or inconsistent; refusing release" >&2
+      exit 3
+      ;;
+    *)
+      echo "GitHub main ancestry verifier failed with status ${compare_status}; refusing release" >&2
+      exit "$compare_status"
+      ;;
+  esac
+}
+
+verify_latest_release_order() {
+  [[ "$REQUIRE_MAIN_ANCESTOR" == "true" ]] || return 0
+  gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RELEASES_JSON"
+  latest_release_sha=""
+  if ! latest_release_sha="$(python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" \
+    latest-auto-release-sha --releases-json "$RELEASES_JSON")"; then
+    echo "Could not identify latest auto-release commit; refusing automatic release" >&2
+    exit 3
+  fi
+  [[ -n "$latest_release_sha" && "$latest_release_sha" != "$SHA" ]] || return 0
+
+  gh api "repos/${GITHUB_REPOSITORY}/compare/${SHA}...${latest_release_sha}" > "$RELEASE_COMPARE_JSON"
+  compare_status=0
+  python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-release-order \
+    --sha "$SHA" --released-sha "$latest_release_sha" --compare-json "$RELEASE_COMPARE_JSON" || compare_status=$?
+  case "$compare_status" in
+    0) ;;
+    1)
+      echo "Main CI release candidate ${SHA:0:7} is older than the latest auto-release; skipping release"
+      exit 0
+      ;;
+    3)
+      echo "Could not prove release order against the latest auto-release; refusing release" >&2
+      exit 3
+      ;;
+    *)
+      echo "GitHub release-order verifier failed with status ${compare_status}; refusing release" >&2
+      exit "$compare_status"
+      ;;
+  esac
+}
+
+verify_automatic_release_eligibility() {
+  verify_main_ancestor
+  verify_latest_release_order
+}
+
+verify_automatic_release_eligibility
 
 for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
   skip_if_main_moved
@@ -101,6 +172,7 @@ if [[ "$gate_ok" != "true" ]]; then
 fi
 
 skip_if_main_moved
+verify_automatic_release_eligibility
 
 gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RELEASES_JSON"
 if python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" should-skip \
@@ -116,6 +188,9 @@ PLAN="$(
 TAG="$(grep '^tag=' <<< "$PLAN" | cut -d= -f2-)"
 VERSION="$(grep '^version=' <<< "$PLAN" | cut -d= -f2-)"
 NOTES_HEADER="$(grep '^notes_header=' <<< "$PLAN" | cut -d= -f2-)"
+
+skip_if_main_moved
+verify_automatic_release_eligibility
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "DRY RUN: would publish ${TAG} for ${SHA} (dashboard-${VERSION}.tar.gz)"
@@ -144,6 +219,7 @@ NOTES_FILE="${WORK_DIR}/release-notes.md"
 } > "$NOTES_FILE"
 
 skip_if_main_moved
+verify_automatic_release_eligibility
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
