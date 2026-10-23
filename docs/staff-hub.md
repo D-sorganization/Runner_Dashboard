@@ -118,6 +118,10 @@ A handled slot moves the role's cursor to _now_ whether it fired or was
 skipped, so a node that was asleep fires at most once when it wakes and a slot
 skipped for a hold is not retried until the next slot. Cursor, last fire time
 and last reason persist in `<config dir>/staff_schedule_state.json`.
+If the cursor is stale by two or more slots (for example the scheduler was
+disabled for weeks), it is reseeded to _now_ on the next evaluation, so
+`next_fire` is always a future slot and the node does not replay old ones;
+a single missed slot still fires once on wake.
 
 The **holds list** (`staff/holds.py`) is `<config dir>/staff_holds.json`,
 seeded on first load from the `holds:` lists of the role YAML (same text on

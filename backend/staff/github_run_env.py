@@ -26,6 +26,7 @@ _CHILD_STRIP_KEYS = (
 )
 
 _WRAPPERS_DIR = Path(__file__).resolve().parent / "wrappers"
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 @dataclass(frozen=True)
@@ -169,6 +170,8 @@ def build_staff_run_env(
     env["GIT_TERMINAL_PROMPT"] = "0"
     wrapper_dir = str(_WRAPPERS_DIR)
     env["PATH"] = os.pathsep.join([wrapper_dir, env.get("PATH", "")])
+    # The gh wrapper and credential helper import ``staff.*``; a target repo's cwd does not provide it (#2481).
+    env["PYTHONPATH"] = os.pathsep.join(p for p in (str(_BACKEND_DIR), env.get("PYTHONPATH", "")) if p)
     return env
 
 

@@ -11,7 +11,9 @@ when the next slot after the role's cursor has passed and every gate opens:
   4. the daily budget allows another run (``staff.budget``).
 
 A handled slot — fired or skipped — moves the cursor to *now*, so a scheduler
-that was asleep for a day fires at most once when it wakes. The cursor and
+that was asleep fires at most once when it wakes. A cursor that is more than one
+full slot behind (scheduler disabled for weeks) is reseeded to *now*, so the
+next fire is the next real slot rather than a stale one. The cursor and
 last fire time per role persist in ``<config dir>/staff_schedule_state.json``.
 """
 
@@ -150,14 +152,30 @@ class StaffScheduler:
         tmp.write_text(json.dumps(self._state or {}, indent=2), encoding="utf-8")
         os.replace(tmp, self.path)
 
-    def _cursor(self, role: str, now: datetime) -> datetime:
+    def _cursor(self, role: str, now: datetime, schedule: str | None = None) -> datetime:
         entry = self._load_state().setdefault(role, {})
         raw = entry.get("cursor")
         if raw:
-            return datetime.fromisoformat(raw)
+            cursor = datetime.fromisoformat(raw)
+            if schedule and self._is_stale(schedule, cursor, now):
+                # Missed more than one full slot (e.g. scheduler disabled for weeks): reseed so the
+                # next fire is a real upcoming slot instead of replaying a stale one.
+                entry["cursor"] = now.isoformat()
+                self._save_state()
+                return now
+            return cursor
         entry["cursor"] = now.isoformat()  # never fire slots that predate first sight of the role
         self._save_state()
         return now
+
+    def _is_stale(self, schedule: str, cursor: datetime, now: datetime) -> bool:
+        """True when at least two slots after ``cursor`` have already passed (one missed slot still fires once)."""
+        try:
+            spec = parse_cron(schedule)
+            first = next_fire(spec, cursor, self._tz)
+            return next_fire(spec, first, self._tz) <= now
+        except ValueError:
+            return False
 
     # ── evaluation ───────────────────────────────────────────────────────
     def evaluate(self, role: RoleSpec, now: datetime) -> dict[str, Any]:
@@ -180,7 +198,9 @@ class StaffScheduler:
         }
         if role.schedule:
             try:
-                out["next_fire"] = _iso(next_fire(parse_cron(role.schedule), self._cursor(role.name, now), self._tz))
+                out["next_fire"] = _iso(
+                    next_fire(parse_cron(role.schedule), self._cursor(role.name, now, role.schedule), self._tz)
+                )
             except ValueError as exc:
                 out["schedule_error"] = str(exc)
         hold = self.holds.blocking(role.name, role.repos[0] if role.repos else "")

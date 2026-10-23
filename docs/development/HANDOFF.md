@@ -12,3 +12,9 @@
 - Combined context/summary credentials require an explicit operator opt-in and separate provisioning of exactly `memory.read` plus `memory.shared.summarize`; do not grant generic `memory.write`. Each original caller also needs summary permission.
 - Validation: three regression cases failed before the parser fix; all 38 summary/streaming/result tests pass afterward. Complete canonical and ordinary commit/pre-push checks before publication.
 - Runtime acceptance remains pending the qualified canonical DeskComputer API deployment and actual provider save acknowledgement. Preserve its existing memory and conversations; no ControlTower-local fallback.
+
+## Staff run env + scheduler cursor (#2485)
+
+- Staff run env now sets `PYTHONPATH` to the dashboard backend dir (gh wrapper and credential helper import `staff.*` from any repo cwd); the pre-push hook points at the dashboard's own `git_hooks.py` using the running interpreter.
+- Scheduler reseeds a cursor stale by two or more slots to now; one missed slot still fires once. Re-enabling a long-disabled node no longer replays old slots.
+- Next step: after merge and deploy, re-enable the staff scheduler on the node and confirm `/api/staff/schedule` shows a future `next_fire`.

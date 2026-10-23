@@ -436,11 +436,27 @@ def test_scheduler_fires_once_per_slot_and_persists_state(
     # a fresh scheduler on the same state file does not refire the handled slot
     s2 = scheduler_mod.StaffScheduler(runner, s.holds, s.budget, clock=lambda: clock["now"], state_file=s.path)  # type: ignore[arg-type]
     assert s2.tick() == []
-    # asleep for three days → exactly one run when it wakes
+    # asleep through one slot → exactly one run when it wakes
     runner.store.update_run("run-1", status="succeeded")
-    clock["now"] = _la(2026, 9, 25, 23, 0)
+    clock["now"] = _la(2026, 9, 23, 23, 0)
     assert [d["fired"] for d in s2.tick()] == [True] and len(runner.submitted) == 2
     assert s2.tick() == []
+
+
+@pytest.mark.unit
+def test_scheduler_stale_cursor_reseeds_to_now_and_fires_at_most_once(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+) -> None:
+    s, runner, clock = sched
+    clock["now"] = _la(2026, 10, 23, 12, 0)
+    s.path.write_text(json.dumps({"night-watch": {"cursor": _la(2026, 9, 23, 22, 0).isoformat()}}), encoding="utf-8")
+    report = s.status()[0]
+    assert report["role"] == "night-watch"
+    assert datetime.fromisoformat(report["next_fire"]) > clock["now"]
+    assert s.tick() == [] and runner.submitted == []  # a 30-day-old slot is not replayed
+    clock["now"] = _la(2026, 10, 23, 22, 0, 5)
+    assert [d["fired"] for d in s.tick()] == [True] and len(runner.submitted) == 1
+    assert s.tick() == []
 
 
 @pytest.mark.unit
