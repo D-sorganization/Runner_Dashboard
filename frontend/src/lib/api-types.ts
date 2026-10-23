@@ -8271,7 +8271,7 @@ export interface components {
              * Entry Type
              * @enum {string}
              */
-            entry_type: "session_digest" | "decision" | "task" | "transcript";
+            entry_type: "session_digest" | "decision" | "task" | "transcript" | "lesson";
             /** Expires At */
             expires_at?: string | null;
             /** Source Product */
@@ -8280,6 +8280,8 @@ export interface components {
             supersedes_id?: string | null;
             /** Tags */
             tags?: string[];
+        } & {
+            [key: string]: unknown;
         };
         /** MemoryAppendResponse */
         MemoryAppendResponse: {
@@ -8287,6 +8289,8 @@ export interface components {
         };
         /** MemoryEntry */
         MemoryEntry: {
+            /** Accepted At */
+            accepted_at?: string | null;
             /** Author Principal */
             author_principal: string;
             /** Body */
@@ -8299,19 +8303,29 @@ export interface components {
              * Entry Type
              * @enum {string}
              */
-            entry_type: "session_digest" | "decision" | "task" | "transcript";
+            entry_type: "session_digest" | "decision" | "task" | "transcript" | "lesson";
             /** Expires At */
             expires_at?: string | null;
             /** Id */
             id: string;
+            /** Repo */
+            repo?: string | null;
+            /** Review Status */
+            review_status?: string | null;
+            /** Reviewed By */
+            reviewed_by?: string | null;
             /** Source Product */
             source_product: string;
+            /** Source Run */
+            source_run?: string | null;
             /** Superseded By */
             superseded_by?: string | null;
             /** Supersedes Id */
             supersedes_id?: string | null;
             /** Tags */
             tags?: string[];
+            /** Visibility */
+            visibility?: string | null;
         };
         /** MemoryListResponse */
         MemoryListResponse: {

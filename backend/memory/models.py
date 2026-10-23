@@ -6,8 +6,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-ENTRY_TYPES = ("session_digest", "decision", "task", "transcript")
-EntryType = Literal["session_digest", "decision", "task", "transcript"]
+ENTRY_TYPES = ("session_digest", "decision", "task", "transcript", "lesson")
+EntryType = Literal["session_digest", "decision", "task", "transcript", "lesson"]
 
 MAX_TAGS = 32
 MAX_TAG_LEN = 64
@@ -34,12 +34,17 @@ class SessionDigestAppendRequest(BaseModel):
 
 
 class MemoryAppendRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     entry_type: EntryType
     source_product: str = Field(min_length=1, max_length=64)
     tags: list[str] = Field(default_factory=list, max_length=MAX_TAGS)
     body: dict[str, Any]
     expires_at: str | None = None
     supersedes_id: str | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        return (self.model_extra or {}).get(name)
 
 
 class MemoryEntry(BaseModel):
@@ -53,6 +58,17 @@ class MemoryEntry(BaseModel):
     expires_at: str | None = None
     supersedes_id: str | None = None
     superseded_by: str | None = None
+    repo: str | None = None
+    review_status: str | None = None
+    source_run: str | None = None
+    visibility: str | None = None
+    reviewed_by: str | None = None
+    accepted_at: str | None = None
+
+
+class MemoryReviewRequest(BaseModel):
+    review_status: str
+    expires_at: str | None = None
 
 
 class SessionDigestAppendResponse(BaseModel):

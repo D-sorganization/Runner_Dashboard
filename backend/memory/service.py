@@ -4,19 +4,29 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller
-from memory.contract import CONTEXT_DIGEST_LIMIT, CONTEXT_TASK_LIMIT, enforce_entry_size
+from memory.contract import (
+    CONTEXT_DIGEST_LIMIT,
+    CONTEXT_TASK_LIMIT,
+    DEFAULT_LESSON_TTL_DAYS,
+    MAX_LESSON_TTL_DAYS,
+    enforce_entry_size,
+    validate_status_transition,
+)
 from memory.models import (
     MemoryAppendRequest,
     MemoryContextPack,
     MemoryEntry,
+    MemoryReviewRequest,
     SessionDigestAppendRequest,
 )
-from memory.redact import redact_memory_text
-from memory.store import get_memory_store, new_entry_id
+from memory.redact import contains_secret, redact_memory_text
+from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
 from staff.store import _now  # noqa: PLC2701
@@ -34,14 +44,79 @@ def _redact_body(body: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def is_barb_principal(p: Principal | None) -> bool:
+    roles = set(p.roles + p.scopes) if p else set()
+    return bool(p and (p.assistant_kind == "grokbot" or p.id in {"barb", "agent-grok"} or roles & {"barb", "admin"}))
+
+
+def is_librarian_principal(p: Principal | None) -> bool:
+    roles = set(p.roles + p.scopes) if p else set()
+    return bool(p and (p.id in {"librarian", "fleet-librarian"} or roles & {"librarian", "memory.review", "admin"}))
+
+
+def extract_authenticated_run(p: Principal) -> str | None:
+    run_from_id = p.id.split(":")[2] if p.id.startswith("staff:") and p.id.count(":") >= 2 else None
+    return run_from_id or next((r[10:] for r in p.roles if r.startswith("staff-run:")), None)
+
+
+_FLEET_CONFLICT_RE = re.compile(
+    r"\b(request(?:ing)? human review|assign(?:ing)? dieterolson|human-approval|require human reviewer|"
+    r"pay-per-use|OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|GOOGLE_API_KEY|create draft pr|stack(?:ed)? prs?)\b",
+    re.I,
+)
+
+
+def validate_lesson_acceptance(entry: MemoryEntry, store: AssistantMemoryStore) -> str:
+    text = " ".join(str(v) for v in entry.body.values() if isinstance(v, (str, int, float)))
+    if _FLEET_CONFLICT_RE.search(text) or entry.body.get("conflicts_with_fleet_rules"):
+        return "quarantined"
+    top = str(entry.body.get("topic") or entry.body.get("rule") or "").strip().lower()
+    for o in store.list_entries(entry_type="lesson", review_status="accepted", repo=entry.repo):
+        ot = str(o.body.get("topic") or o.body.get("rule") or "").strip().lower()
+        clash = top and top == ot and entry.body.get("stance") != o.body.get("stance")
+        if o.id != entry.id and (entry.body.get("conflicts_with") == o.id or clash):
+            return "quarantined"
+    return "accepted"
+
+
+def _validate_and_resolve_expires_at(expires_at: str | None) -> str:
+    now = datetime.now(UTC)
+    if not expires_at:
+        return (now + timedelta(days=DEFAULT_LESSON_TTL_DAYS)).isoformat()
+    try:
+        dt = datetime.fromisoformat(expires_at)
+        dt = dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        if dt <= now or dt > now + timedelta(days=MAX_LESSON_TTL_DAYS, minutes=5):
+            raise ValueError
+        return dt.isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid expires_at timestamp") from exc
+
+
 def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
+    expires_at: str | None = req.expires_at
+    if req.entry_type == "lesson":
+        if contains_secret(req.body):
+            raise HTTPException(status_code=422, detail="secret detected in lesson entry")
+        enforce_entry_size(req.body, "lesson")
+        if req.review_status and req.review_status != "proposed" and not is_librarian_principal(principal):
+            raise HTTPException(status_code=403, detail="agent principal cannot set non-proposed review_status")
+        bound = extract_authenticated_run(principal)
+        if bound and req.source_run and req.source_run != bound:
+            raise HTTPException(status_code=403, detail="caller cannot spoof source_run")
+        if not (source_run := bound or req.source_run) or not (repo := req.repo or req.body.get("repo")):
+            raise HTTPException(status_code=422, detail="missing provenance: source_run and repo required")
+        review_status, visibility = req.review_status or "proposed", req.visibility or "fleet"
+        expires_at = _validate_and_resolve_expires_at(req.expires_at)
+    else:
+        source_run, repo = req.source_run, req.repo
+        review_status, visibility = req.review_status, req.visibility
+
     body = _redact_body(req.body)
     enforce_entry_size(body, req.entry_type)
     store = get_memory_store()
-    if req.supersedes_id:
-        prior = store.get(req.supersedes_id)
-        if prior is None:
-            raise HTTPException(status_code=404, detail="supersedes_id not found")
+    if req.supersedes_id and not store.get(req.supersedes_id):
+        raise HTTPException(status_code=404, detail="supersedes_id not found")
     entry = MemoryEntry(
         id=new_entry_id(),
         entry_type=req.entry_type,
@@ -50,8 +125,12 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
         tags=[t.strip()[:64] for t in req.tags if t.strip()],
         body=body,
         created_at=_now(),
-        expires_at=req.expires_at,
+        expires_at=expires_at,
         supersedes_id=req.supersedes_id,
+        repo=repo,
+        review_status=review_status,
+        source_run=source_run,
+        visibility=visibility,
     )
     try:
         return store.append(entry)
@@ -59,6 +138,20 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
         if str(exc) == "store_size_cap_exceeded":
             raise HTTPException(status_code=507, detail="assistant memory store size cap exceeded") from exc
         raise
+
+
+def review_entry(principal: Principal, entry_id: str, req: MemoryReviewRequest) -> MemoryEntry:
+    if not is_librarian_principal(principal):
+        raise HTTPException(status_code=403, detail="only librarian principal can review memory entries")
+    store = get_memory_store()
+    if not (entry := store.get(entry_id)):
+        raise HTTPException(status_code=404, detail="memory entry not found")
+    validate_status_transition(entry.review_status, req.review_status)
+    target = validate_lesson_acceptance(entry, store) if req.review_status == "accepted" else req.review_status
+    exp = _validate_and_resolve_expires_at(req.expires_at) if req.expires_at else None
+    acc = _now() if target == "accepted" else entry.accepted_at
+    kw = {"review_status": target, "reviewed_by": format_caller(principal), "accepted_at": acc, "expires_at": exp}
+    return store.update_review(entry_id, **kw)  # type: ignore[arg-type]
 
 
 def append_session_digest(principal: Principal, req: SessionDigestAppendRequest) -> tuple[MemoryEntry, bool]:
@@ -102,28 +195,30 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
         raise
 
 
-def list_entries(
-    *,
-    since: str | None,
-    entry_type: str | None,
-    tag: str | None,
-    author: str | None,
-    limit: int,
-) -> list[MemoryEntry]:
-    return get_memory_store().list_entries(
-        since=since,
-        entry_type=entry_type,
-        tag=tag,
-        author=author,
-        include_superseded=False,
-        limit=limit,
-    )
+def list_entries(**kwargs: Any) -> list[MemoryEntry]:
+    return get_memory_store().list_entries(include_superseded=False, **kwargs)
 
 
 def _open_tasks(entries: list[MemoryEntry]) -> list[MemoryEntry]:
     closed = {"done", "closed", "cancelled", "complete", "completed"}
     open_entries = [e for e in entries if str(e.body.get("status", "open")).lower() not in closed]
     return open_entries[:CONTEXT_TASK_LIMIT]
+
+
+def get_prompt_lessons(
+    store: AssistantMemoryStore | None = None,
+    repo: str | None = None,
+    principal: Principal | None = None,
+    limit: int = 10,
+) -> list[MemoryEntry]:
+    return (store or get_memory_store()).list_entries(
+        entry_type="lesson",
+        repo=repo,
+        review_status="accepted",
+        include_barb_only=is_barb_principal(principal),
+        active_only=True,
+        limit=limit,
+    )
 
 
 def build_context_pack() -> MemoryContextPack:

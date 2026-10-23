@@ -1948,6 +1948,7 @@
         "type": "object"
       },
       "MemoryAppendRequest": {
+        "additionalProperties": true,
         "properties": {
           "body": {
             "additionalProperties": true,
@@ -1955,7 +1956,13 @@
             "type": "object"
           },
           "entry_type": {
-            "enum": ["session_digest", "decision", "task", "transcript"],
+            "enum": [
+              "session_digest",
+              "decision",
+              "task",
+              "transcript",
+              "lesson"
+            ],
             "title": "Entry Type",
             "type": "string"
           },
@@ -2012,6 +2019,17 @@
       },
       "MemoryEntry": {
         "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
           "author_principal": {
             "title": "Author Principal",
             "type": "string"
@@ -2026,7 +2044,13 @@
             "type": "string"
           },
           "entry_type": {
-            "enum": ["session_digest", "decision", "task", "transcript"],
+            "enum": [
+              "session_digest",
+              "decision",
+              "task",
+              "transcript",
+              "lesson"
+            ],
             "title": "Entry Type",
             "type": "string"
           },
@@ -2045,9 +2069,53 @@
             "title": "Id",
             "type": "string"
           },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "review_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Status"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
           "source_product": {
             "title": "Source Product",
             "type": "string"
+          },
+          "source_run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Run"
           },
           "superseded_by": {
             "anyOf": [
@@ -2077,6 +2145,17 @@
             },
             "title": "Tags",
             "type": "array"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
           }
         },
         "required": [
