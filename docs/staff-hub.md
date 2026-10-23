@@ -1,5 +1,7 @@
 # Staff Hub
 
+> Operator and agent playbook: [Operating the Fleet Through the Dashboard](operating-the-fleet-through-the-dashboard.md).
+
 Epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192).
 The Staff Hub runs named AI "staff" roles (Night Watch, Issue Remediator,
 Project Steward, …) as local CLI subprocesses on a dashboard node, records
