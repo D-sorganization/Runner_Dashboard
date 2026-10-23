@@ -3,6 +3,7 @@
  * useStaffConsole.test.tsx — shared Staff Console state for desktop and mobile (#1446).
  */
 import "@testing-library/jest-dom/vitest";
+import { StrictMode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadApi } from "../consoleThreads";
@@ -186,6 +187,54 @@ describe("useStaffConsole", () => {
     expect(result.current.selectedRole).toBe("maintenance");
     await waitFor(() => expect(result.current.messages).toEqual(HISTORY));
     expect(api.fetchThreadMessages).toHaveBeenCalledWith("thr_real_123", expect.anything());
+  });
+
+  it("restores only the initial role latest thread when requested, without sending", async () => {
+    const latestBarbThread: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_barb_latest",
+      title: "Recent Barb conversation",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const unrelatedThread = { ...MAINT_THREAD, id: "thr_other", participants: ["user:me", "maintenance"] };
+    const deps = threadApi({ listThreads: vi.fn().mockResolvedValue([unrelatedThread, latestBarbThread]) });
+    const { result } = renderHook(
+      () =>
+        useStaffConsole({
+          roles: ROLES,
+          initialRole: "barb",
+          restoreInitialRoleThread: true,
+          threadApi: deps,
+          streamEnabled: false,
+        }),
+      { wrapper: StrictMode },
+    );
+
+    await waitFor(() => expect(result.current.activeThread?.id).toBe("thr_barb_latest"));
+    expect(result.current.selectedRole).toBe("barb");
+    expect(deps.listThreads).toHaveBeenCalledTimes(1);
+    expect(deps.listThreads).toHaveBeenCalledWith("barb");
+    expect(deps.createThread).not.toHaveBeenCalled();
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not create a thread when the initial role has no saved conversation", async () => {
+    const deps = threadApi({ listThreads: vi.fn().mockResolvedValue([]) });
+    const { result } = renderHook(() =>
+      useStaffConsole({
+        roles: ROLES,
+        initialRole: "barb",
+        restoreInitialRoleThread: true,
+        threadApi: deps,
+        streamEnabled: false,
+      }),
+    );
+
+    await waitFor(() => expect(deps.listThreads).toHaveBeenCalledWith("barb"));
+    expect(result.current.activeThread).toBeNull();
+    expect(deps.createThread).not.toHaveBeenCalled();
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
   });
 
   it("opens the thread named by initialThreadId from the backend (#1504)", async () => {
