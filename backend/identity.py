@@ -558,10 +558,6 @@ def require_scope(required_scope: str):
         if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
             if hmac.compare_digest(header_token[7:], hub_token):
                 prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
-        if prin is None:
-            _reject_unauthenticated_bearer(header_token)
-        if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
-            prin = _loopback_principal()
         if prin is None and required_scope == "staff.read" and not hub_token:
             prin = Principal(
                 id="anonymous:tailnet",
@@ -569,6 +565,10 @@ def require_scope(required_scope: str):
                 name="Anonymous Tailnet",
                 roles=["viewer"],
             )
+        if prin is None:
+            _reject_unauthenticated_bearer(header_token)
+        if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
+            prin = _loopback_principal()
 
         if prin is None:
             raise HTTPException(status_code=401, detail="Authentication required")
