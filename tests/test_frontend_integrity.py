@@ -76,7 +76,6 @@ _REQUIRED_FUNCTIONS = [
     "function CredentialsTab",
     "function CodeRequestsTab",
     "function FeatureRequestsTab",
-    "function MaxwellTab",
     "function FleetOrchestrationTab",
     "function DashboardHelp",
 ]
