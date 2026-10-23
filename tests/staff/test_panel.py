@@ -43,6 +43,7 @@ EXPERTS = [
 @pytest.fixture(autouse=True)
 def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "staff_runs.sqlite3"))
+    monkeypatch.setenv("STAFF_KNOWLEDGE_DIR", str(tmp_path / "knowledge"))
     reset_conversation_store()
     reset_thread_bus()
     yield get_conversation_store()

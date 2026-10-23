@@ -19,6 +19,7 @@ from routers import staff_panels
 from server import app
 from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.panel import PanelSpeaker, TurnOutcome
+from staff.panel_models import PanelCreateRequest
 from staff.thread_bus import reset_thread_bus
 
 TEST_OPERATOR = Principal(
@@ -45,6 +46,7 @@ async def agreeing_runner(speaker: PanelSpeaker, prompt: str, thread_id: str, me
 @pytest.fixture(autouse=True)
 def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "staff_runs.sqlite3"))
+    monkeypatch.setenv("STAFF_KNOWLEDGE_DIR", str(tmp_path / "knowledge"))
     monkeypatch.setattr(staff_panels, "_turn_runner", lambda: agreeing_runner)
     reset_conversation_store()
     reset_thread_bus()
@@ -84,6 +86,24 @@ def test_a_panel_runs_to_a_synthesis(client: TestClient) -> None:
     assert result["status"] == "complete" and result["consensus"] is True and result["rounds_used"] == 1
     assert [t["expert"] for t in result["turns"]] == ["Ada", "Brook", "Cy"]
     assert result["synthesis"].startswith("**Consensus:**")
+
+
+def test_api_accepts_preload_options_and_returns_persisted_snapshot(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff import panel
+
+    seen = []
+
+    def preload(request: PanelCreateRequest) -> str:
+        seen.append(request)
+        return "## Codebase & Architecture Context (Cited)\nReference fixture"
+
+    monkeypatch.setattr(panel, "_preload_codebase_context", preload)
+    response = client.post("/api/v1/staff/panels", json={**BODY, "repos": ["AffineDrift"], "preload_codebase": True})
+    assert response.status_code == 202
+    assert seen[0].repos == ["AffineDrift"] and seen[0].pack_id == "cartographer"
+    assert response.json()["thread"]["meta"]["panel"]["codebase_context"].endswith("Reference fixture")
 
 
 @pytest.mark.unit
