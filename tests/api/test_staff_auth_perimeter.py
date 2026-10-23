@@ -30,6 +30,7 @@ def remote_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[TestCli
     runner_mod.reset_runner()
     from server import app  # noqa: PLC0415
 
+    monkeypatch.setattr("routers.staff.provider_versions", lambda _adapters: {})
     yield TestClient(app, raise_server_exceptions=False, client=_REMOTE)
     store_mod.reset_store()
     runner_mod.reset_runner()

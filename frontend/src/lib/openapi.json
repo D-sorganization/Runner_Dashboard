@@ -794,6 +794,17 @@
         "title": "Body_get_prs_api_prs_get",
         "type": "object"
       },
+      "BrowserCsrfRequest": {
+        "properties": {
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["thread_id"],
+        "title": "BrowserCsrfRequest",
+        "type": "object"
+      },
       "BudgetSummary": {
         "description": "Budget burn for the tab. ``limit_usd <= 0`` means \"no limit configured\".",
         "properties": {
@@ -8553,6 +8564,58 @@
         ],
         "summary": "Get Node Audit Log",
         "tags": ["orchestration", "orchestration", "fleet"]
+      }
+    },
+    "/api/auth/browser-csrf": {
+      "post": {
+        "description": "Issue a session/thread proof for a same-origin browser mutation.",
+        "operationId": "browser_csrf_token_api_auth_browser_csrf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserCsrfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Browser Csrf Token Api Auth Browser Csrf Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Browser Csrf Token",
+        "tags": ["auth"]
       }
     },
     "/api/auth/callback": {
