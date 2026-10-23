@@ -19210,6 +19210,7 @@ export interface operations {
                 work_id?: number | null;
                 page?: number | null;
                 scope?: string;
+                node?: string | null;
             };
             header?: never;
             path?: never;

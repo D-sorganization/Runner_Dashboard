@@ -285,6 +285,7 @@ async def library_fetch(
     work_id: int | None = Query(None, gt=0),
     page: int | None = Query(None, gt=0),
     scope: str = Query("federated", pattern="^(local|federated)$"),
+    node: str | None = Query(None, min_length=1, max_length=128),
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
     """Fetch one bounded, digest-verified passage through trusted fleet nodes."""
@@ -293,7 +294,7 @@ async def library_fetch(
     from library.pool import validate_node_url
 
     if cite is None:
-        return fetch_page_locator(
+        return await fetch_page_locator(
             request,
             _principal,
             _db(),
@@ -302,6 +303,7 @@ async def library_fetch(
             page=page,
             scope=scope,
             local_node=HOSTNAME or "local",
+            node=node,
         )
     if source_id is not None or work_id is not None or page is not None:
         raise HTTPException(status_code=422, detail="use either cite or source_id/work_id/page")
