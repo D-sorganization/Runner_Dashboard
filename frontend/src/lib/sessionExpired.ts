@@ -38,6 +38,7 @@ export async function tryRefreshSession(fetchFn: typeof window.fetch = window.fe
       method: "POST",
       credentials: "include",
       cache: "no-store",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
     })
       .then((response) => response.ok)
       .catch(() => false)
