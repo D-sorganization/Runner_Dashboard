@@ -169,10 +169,17 @@ def apply_deliverable_failure(
     rec: RunRecord,
     verdict: Verdict | None,
     *,
-    opens_pr: bool,
+    opens_pr: bool | Callable[[], bool],
 ) -> RunRecord | None:
     """Apply deliverable-failure fields when a succeeded run produced no PR/commits."""
-    updates = deliverable_failure_updates(rec, verdict, opens_pr=opens_pr)
+    if verdict is None or verdict.verification not in ("no_change", "failed"):
+        return rec
+    try:
+        requires_pr = opens_pr() if callable(opens_pr) else opens_pr
+    except Exception:  # noqa: BLE001 - a role resolver must not crash run completion
+        log.warning("could not resolve deliverable policy for run %s", rec.id, exc_info=True)
+        return rec
+    updates = deliverable_failure_updates(rec, verdict, opens_pr=requires_pr)
     if not updates:
         return rec
     store.update_run(rec.id, **updates)

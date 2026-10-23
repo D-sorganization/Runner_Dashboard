@@ -11,7 +11,6 @@ sys.path.insert(0, str(REPO / "deploy"))
 
 from node_auto_deploy.ci_gate import (  # noqa: E402
     ci_gate_for_commit,
-    parse_check_runs_payload,
     select_deployable_main_commit,
 )
 
@@ -24,7 +23,12 @@ _GREEN_SHA = "4ece23d6a70f6c1eb3acc276f38c490ef6793a07"  # pragma: allowlist sec
 def _runs_from_fixture(path: Path, sha: str) -> list[dict[str, object]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     raw = payload["check_runs"] if isinstance(payload, dict) else payload
-    return [{**run, "head_sha": sha} for run in raw]
+    return [{**run, "id": index, "head_sha": sha} for index, run in enumerate(raw)]
+
+
+def _payload(path: Path, sha: str) -> dict:
+    runs = _runs_from_fixture(path, sha)
+    return {"total_count": len(runs), "check_runs": runs}
 
 
 def test_recorded_head_has_build_and_scan_still_running() -> None:
@@ -114,9 +118,12 @@ def test_evaluate_cycle_walks_back_when_head_green_but_unreleased(tmp_path: Path
         if "commits?sha=main" in path:
             return [{"sha": head_green_sha}, {"sha": _GREEN_SHA}]
         if head_green_sha in path and "check-runs" in path:
-            return {"check_runs": [{**r, "head_sha": head_green_sha} for r in green_runs]}
+            return {
+                "total_count": len(green_runs),
+                "check_runs": [{**r, "head_sha": head_green_sha} for r in green_runs],
+            }
         if _GREEN_SHA in path and "check-runs" in path:
-            return {"check_runs": json.loads(_GREEN_FIXTURE.read_text())["check_runs"]}
+            return _payload(_GREEN_FIXTURE, _GREEN_SHA)
         return {}
 
     releases = [
@@ -163,9 +170,9 @@ def test_evaluate_cycle_uses_walkback_commit(tmp_path: Path) -> None:
         if "commits?sha=main" in path:
             return [{"sha": _HEAD_SHA}, {"sha": _GREEN_SHA}]
         if _HEAD_SHA in path and "check-runs" in path:
-            return {"check_runs": json.loads(_HEAD_FIXTURE.read_text())["check_runs"]}
+            return _payload(_HEAD_FIXTURE, _HEAD_SHA)
         if _GREEN_SHA in path and "check-runs" in path:
-            return {"check_runs": json.loads(_GREEN_FIXTURE.read_text())["check_runs"]}
+            return _payload(_GREEN_FIXTURE, _GREEN_SHA)
         return {}
 
     releases = [

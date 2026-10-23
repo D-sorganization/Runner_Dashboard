@@ -91,9 +91,10 @@ def test_evaluate_cycle_skips_when_ci_red(tmp_path: Path) -> None:
         if path.endswith("/commits/main"):
             return {"sha": _SHA}
         return {
+            "total_count": 1,
             "check_runs": [
-                {"head_sha": _SHA, "name": "ci", "status": "completed", "conclusion": "failure"},
-            ]
+                {"id": 1, "head_sha": _SHA, "name": "ci", "status": "completed", "conclusion": "failure"},
+            ],
         }
 
     cfg = CycleConfig(

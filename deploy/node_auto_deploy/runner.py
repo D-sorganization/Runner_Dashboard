@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from node_auto_deploy.artifact import pick_release_assets
+from node_auto_deploy.check_inventory import CheckInventoryUnavailable, fetch_commit_checks
 from node_auto_deploy.ci_gate import (
     DEFAULT_MAIN_HISTORY_LIMIT,
-    parse_check_runs_payload,
     select_deployable_main_commit_with_release,
 )
 from node_auto_deploy.contracts import AutoDeployState
@@ -63,27 +63,18 @@ def _check_runs_for_commit(
     repo_full_name: str,
     commit_sha: str,
 ) -> list[dict[str, Any]]:
-    checks = deps.github_get(f"/repos/{repo_full_name}/commits/{commit_sha}/check-runs?per_page=100")
-    payload = checks if isinstance(checks, dict) else {}
-    runs = parse_check_runs_payload(payload)
-    out: list[dict[str, Any]] = []
-    for run in runs:
-        if str(run.get("head_sha") or "").lower() != commit_sha:
-            out.append({**run, "head_sha": commit_sha})
-        else:
-            out.append(run)
-    return out
+    return fetch_commit_checks(deps.github_get, repo_full_name, commit_sha)
 
 
 def evaluate_cycle(config: CycleConfig, deps: CycleDeps) -> tuple[str, str, str | None]:
     """Return (result, message, target_commit_sha) where result is skipped|failed|ready."""
     if auto_deploy_disabled():
-        return "skipped", "auto-deploy disabled by kill switch"
+        return "skipped", "auto-deploy disabled by kill switch", None
 
     main = deps.github_get(f"/repos/{config.repo_full_name}/commits/main")
     main_sha = str(main.get("sha") or "").lower()
     if len(main_sha) != 40:
-        return "failed", "could not resolve main HEAD"
+        return "failed", "could not resolve main HEAD", None
 
     from pathlib import Path
 
@@ -95,11 +86,14 @@ def evaluate_cycle(config: CycleConfig, deps: CycleDeps) -> tuple[str, str, str 
     def _has_release(sha: str) -> bool:
         return pick_release_assets(releases, sha) is not None
 
-    deployable_sha, gate_detail = select_deployable_main_commit_with_release(
-        history,
-        lambda sha: _check_runs_for_commit(deps, config.repo_full_name, sha),
-        _has_release,
-    )
+    try:
+        deployable_sha, gate_detail = select_deployable_main_commit_with_release(
+            history,
+            lambda sha: _check_runs_for_commit(deps, config.repo_full_name, sha),
+            _has_release,
+        )
+    except CheckInventoryUnavailable as exc:
+        return "failed", f"CI gate unavailable: {exc}", None
     if deployable_sha is None:
         return "failed", f"CI gate: {gate_detail}", None
 
