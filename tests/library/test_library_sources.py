@@ -17,7 +17,7 @@ from library.sources import (
 
 from tests.library.conftest import make_text_pdf
 
-_DRIVE_FOLDER_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz_012"
+_DRIVE_FOLDER_ID = "DriveFolder_test_12345"
 
 
 def _legacy_db(path: Path) -> None:
@@ -198,11 +198,9 @@ def test_google_drive_connector_and_multi_backend_priority_ordering(tmp_path: Pa
     local_dir.mkdir()
     drive_local_dir.mkdir()
 
-    fid, url = extract_drive_folder_id(
-        "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345?usp=sharing"
-    )
-    assert fid == "1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
-    assert url == "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    fid, url = extract_drive_folder_id("https://drive.google.com/drive/folders/test-folder-12345?usp=sharing")
+    assert fid == "test-folder-12345"
+    assert url == "https://drive.google.com/drive/folders/test-folder-12345"
 
     with pytest.raises(ValueError, match="valid Google Drive folder ID"):
         extract_drive_folder_id("not-a-drive-url/bad")
@@ -223,7 +221,7 @@ def test_google_drive_connector_and_multi_backend_priority_ordering(tmp_path: Pa
         source_id="gdrive-agent",
         label="Agent Shared Drive",
         backend_type="google_drive_connector",
-        drive_folder_url="https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+        drive_folder_url="https://drive.google.com/drive/u/0/folders/test-folder-12345",
         shared=True,
         repos=["Runner_Dashboard"],
     )
@@ -262,11 +260,11 @@ def test_extract_drive_folder_id_accepts_google_folder_references(value: str, ex
 @pytest.mark.parametrize(
     "value",
     [
-        "https://example.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
-        "https://evil.example/drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
-        "https://drive.google.com.evil.example/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
-        "https://user@drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
-        "https://drive.google.com:444/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
+        "https://example.com/drive/folders/DriveFolder_test_12345",
+        "https://evil.example/drive.google.com/drive/folders/DriveFolder_test_12345",
+        "https://drive.google.com.evil.example/drive/folders/DriveFolder_test_12345",
+        "https://user@drive.google.com/drive/folders/DriveFolder_test_12345",
+        "https://drive.google.com:444/drive/folders/DriveFolder_test_12345",
         "../folder",
         "https://drive.google.com/drive/folders/bad.id",
     ],
