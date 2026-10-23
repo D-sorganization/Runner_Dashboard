@@ -40,6 +40,27 @@ _PEER_FAILURE_STATUSES = {
 }
 
 
+def verification_repo_root(repo: str | None) -> Path | None:
+    """Resolve a repository name only to a checkout inside configured roots."""
+    if repo is None:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", repo):
+        raise ValueError("repo must be a repository name")
+    from staff.workspace import find_repo_checkout, repos_roots
+
+    checkout = find_repo_checkout(repo)
+    if checkout is None:
+        raise LookupError("repository checkout not found")
+    try:
+        resolved = checkout.resolve(strict=True)
+        roots = [root.resolve(strict=True) for root in repos_roots()]
+    except OSError as exc:
+        raise LookupError("repository checkout not found") from exc
+    if not resolved.is_dir() or not any(root in resolved.parents for root in roots):
+        raise LookupError("repository checkout is outside configured roots")
+    return resolved
+
+
 async def _fetch_peer_response(target: str, token: str, content: str, timeout_s: float) -> bytes | None:
     """Fetch a bounded peer response under one wall-clock deadline."""
     chunks: list[bytes] = []
