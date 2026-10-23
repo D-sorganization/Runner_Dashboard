@@ -181,6 +181,67 @@ def passage_hits_by_id(db_path: Path, passage_ids: list[int]) -> dict[int, Searc
     return out
 
 
+class AmbiguousPassageError(ValueError):
+    """A short citation digest matches multiple distinct files."""
+
+
+def fetch_passage(
+    db_path: Path,
+    *,
+    source_id: str,
+    work_id: int,
+    passage_id: int,
+    sha_prefix: str,
+    page_start: int,
+    page_end: int,
+    shared_only: bool = False,
+) -> SearchHit:
+    """Resolve a cited passage against its active source and file digest."""
+    if not re.fullmatch(r"[0-9a-fA-F]{8}", sha_prefix):
+        raise ValueError("sha_prefix must be eight hexadecimal characters")
+    if work_id < 1 or passage_id < 1 or page_start < 1 or page_end < page_start:
+        raise ValueError("invalid passage reference")
+    sql = (
+        "SELECT p.id,p.work_id,w.author,w.title,w.year,p.page_start,p.page_end,p.text,p.token_estimate,"
+        "f.rel_path,f.source_id,f.sha256,w.sha256 FROM passages p "
+        "JOIN works w ON w.id=p.work_id JOIN files f ON f.work_id=w.id "
+        "JOIN library_sources s ON s.id=f.source_id "
+        "WHERE f.source_id=? AND p.work_id=? AND p.id=? AND p.page_start=? AND p.page_end=? "
+        "AND lower(f.sha256) LIKE lower(?) AND f.status='present' AND s.status='active' AND w.status='active'"
+    )
+    params: list[Any] = [source_id, work_id, passage_id, page_start, page_end, f"{sha_prefix}%"]
+    if shared_only:
+        sql += " AND s.shared=1"
+    sql += " ORDER BY f.id"
+    with closing(LibraryStore(db_path).connect()) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    if not rows:
+        raise LookupError("passage reference not found")
+    digests = {str(row[11]).lower() for row in rows}
+    if len(digests) != 1:
+        raise AmbiguousPassageError("citation digest prefix matches multiple files")
+    row = rows[0]
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", str(row[11])) or not re.fullmatch(r"[0-9a-fA-F]{64}", str(row[12])):
+        raise LookupError("passage file digest is unavailable")
+    text = str(row[7]).encode("utf-8")[:2000].decode("utf-8", errors="ignore")
+    return SearchHit(
+        int(row[0]),
+        int(row[1]),
+        row[2],
+        row[3],
+        row[4],
+        int(row[5]),
+        int(row[6]),
+        text,
+        0.0,
+        None,
+        estimate_tokens(text),
+        source_id=str(row[10]),
+        file_sha256=str(row[11]),
+        work_sha256=str(row[12]),
+    )
+
+
 def bm25_ranked_passages(
     db_path: Path,
     query: str,

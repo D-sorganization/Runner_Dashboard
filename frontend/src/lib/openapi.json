@@ -18952,6 +18952,70 @@
         "tags": ["library"]
       }
     },
+    "/api/v1/library/fetch": {
+      "get": {
+        "description": "Fetch one bounded, digest-verified passage through trusted fleet nodes.",
+        "operationId": "library_fetch_api_v1_library_fetch_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cite",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Cite",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "federated",
+              "pattern": "^(local|federated)$",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Fetch Api V1 Library Fetch Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Fetch",
+        "tags": ["library"]
+      }
+    },
     "/api/v1/library/search": {
       "get": {
         "operationId": "library_search_api_v1_library_search_get",
