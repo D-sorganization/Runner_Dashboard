@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import session_management as sm
 from browser_csrf import issue_browser_csrf
+from external_ingress import validated_browser_owner_id
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from identity import (
@@ -196,6 +197,9 @@ async def github_callback(request: Request, code: str, state: str):
             matched_principal = p
             break
 
+    github_user_id = validated_browser_owner_id(
+        request, user_data.get("id"), matched_principal.type if matched_principal else None
+    )
     if not matched_principal:
         # Deny access if not in principals.yml
         raise HTTPException(status_code=403, detail="User not authorized")
@@ -207,6 +211,8 @@ async def github_callback(request: Request, code: str, state: str):
     )
 
     request.session["principal_id"] = matched_principal.id
+    if github_user_id is not None:
+        request.session["github_user_id"] = github_user_id
     request.session["session_id"] = sm.register_session(
         matched_principal.id,
         user_agent=request.headers.get("user-agent"),
