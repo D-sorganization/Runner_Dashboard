@@ -111,15 +111,15 @@ class RunRecord:
     lessons_tokens: int = 0
 
     def __post_init__(self) -> None:
-        self.retryable = bool(self.retryable)
-        self.attempt = int(self.attempt)
-        self.max_attempts = int(self.max_attempts)
+        self.retryable, self.attempt, self.max_attempts = (
+            bool(self.retryable),
+            int(self.attempt),
+            int(self.max_attempts),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
-        d["retryable"] = bool(self.retryable)
-        d["attempt"] = int(self.attempt)
-        d["max_attempts"] = int(self.max_attempts)
+        d.update({"retryable": bool(self.retryable), "attempt": int(self.attempt), "max_attempts": int(self.max_attempts)})  # noqa: E501
         d["skill"] = None if not self.skill_pin else {"pin": self.skill_pin}
         return d
 
@@ -184,11 +184,7 @@ def _redacted(column: str, value: Any) -> Any:
 
 
 USAGE_GROUPS = ("provider", "role", "day")
-_USAGE_GROUP_SQL = {
-    "provider": "provider",
-    "role": "role",
-    "day": "substr(created_at, 1, 10)",
-}
+_USAGE_GROUP_SQL = {"provider": "provider", "role": "role", "day": "substr(created_at, 1, 10)"}
 
 
 class RunStore:
